@@ -1141,21 +1141,38 @@ defmodule Apiary.Secrets do
   end
 
   # reveal_login_snapshot/2 is `reveal_login/2` with what a refresh starts from:
-  # `{:ok, plaintext, %{value_id:, nonce:, value_set_at:}}`, read from the same row, so
-  # `write_refreshed_key/4` can tell that the value is still the one the refresh used. The
-  # nonce is no secret, but it stays in the process that refreshes.
+  # `{:ok, plaintext, %{value_id:, value_set_at:}}`, read from the same row, so
+  # `write_refreshed_key/4` can tell that the value is still the one the refresh used: no
+  # new value was pasted since. `value_id` is the key's name when the refresh started; a
+  # rename changes it, and the write reads the name again.
   @doc false
   @spec reveal_login_snapshot(Connection.t(), Ecto.UUID.t()) ::
-          {:ok, binary, %{value_id: String.t(), nonce: binary, value_set_at: DateTime.t() | nil}}
+          {:ok, binary, %{value_id: String.t(), value_set_at: DateTime.t() | nil}}
           | {:error, :not_found | :unavailable}
   def reveal_login_snapshot(%Connection{provider_kind: kind} = provider, secret_value_id) do
     with true <- Login.provider?(kind),
          {:ok, plaintext, %Value{} = row} <- reveal_row(provider, secret_value_id) do
-      {:ok, plaintext,
-       %{value_id: row.value_id, nonce: row.nonce, value_set_at: row.value_set_at}}
+      {:ok, plaintext, %{value_id: row.value_id, value_set_at: row.value_set_at}}
     else
       false -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
+    end
+  end
+
+  # login_value_id/2 is the value id (the key's name) the key `secret_value_id` of
+  # `provider` has now, or nil for a key that is gone: for the audit entry of a refresh,
+  # which names the key as it is named when the entry is written. The caller holds the
+  # secret's lock, so a rename cannot run between this read and the entry.
+  @doc false
+  @spec login_value_id(Connection.t(), Ecto.UUID.t()) :: String.t() | nil
+  def login_value_id(%Connection{} = provider, secret_value_id) do
+    with {:ok, row_id} <- cast_row_id(secret_value_id),
+         {query, _secret_id, _workspace_id} <- provider_values(provider),
+         {%Value{value_id: value_id}, _data_key} when is_binary(value_id) <-
+           Repo.one(where(query, [v], v.id == ^row_id)) do
+      value_id
+    else
+      _gone -> nil
     end
   end
 
@@ -1184,38 +1201,38 @@ defmodule Apiary.Secrets do
 
   # write_refreshed_key/4 stores `plaintext`, a refreshed login's document, as the value of
   # the key `secret_value_id` of `provider`, for `Apiary.ModelKeys.Login` alone: the
-  # instance's write, with no scope. It writes only if the key's value is still the one
-  # the refresh started from, `from`, as `reveal_login_snapshot/2` returned it: the row's
-  # nonce and `value_set_at` are compared in the update itself. A new value pasted since,
-  # or a rename, which encrypts the value again under its new value id, changes the nonce,
-  # so the refresh's result is dropped and the key keeps what it has. A key that is gone
-  # is dropped too. It encrypts under the key's data key and the value id the row has,
-  # and changes the ciphertext and nonce only: `value_set_at` stays, so the key's states
-  # and the copies that runs hold stay (`Apiary.ModelKeys.keep_copies/2`), as a new value
-  # would clear them; `updated_at` and `updated_by_id` stay too, as no person changed the
-  # value. The caller holds the locks of the lock order of docs/access.md in a
-  # transaction: the organisation `FOR SHARE`, the keys' secret `FOR UPDATE`, then the
-  # login's row. `:ok`, or `{:error, reason}`: `:not_found` for a provider whose keys are
-  # not logins and for a key that is gone, `:changed` for a value that is no longer the
-  # one `from` names, `:unavailable` as `reveal_login/2` has it, `:too_large` for a
-  # document past a value's size, `:invalid` for a text that is no login's document
-  # (`Apiary.ModelKeys.Login.document?/1`).
+  # instance's write, with no scope. It writes only if no new value was pasted since the
+  # refresh started: the row's `value_set_at` must be the one in `from`, as
+  # `reveal_login_snapshot/2` returned it, compared in the update itself. A key that is gone
+  # is dropped too. A rename does not drop the result: it encrypts the value again under the
+  # key's new name, so this write reads the name the row has now, which the caller's lock on
+  # the secret keeps from changing, and encrypts under it, so that a rename while the call
+  # ran never loses the rotated refresh token. It encrypts under the key's data key and
+  # changes the ciphertext and nonce only: `value_set_at` stays, so the key's states and the
+  # copies that runs hold stay (`Apiary.ModelKeys.keep_copies/2`), as a new value would
+  # clear them; `updated_at` and `updated_by_id` stay too, as no person changed the value.
+  # The caller holds the locks of the lock order of docs/access.md in a transaction: the
+  # organisation `FOR SHARE`, the keys' secret `FOR UPDATE`, then the login's row. `:ok`, or
+  # `{:error, reason}`: `:not_found` for a provider whose keys are not logins and for a key
+  # that is gone, `:changed` for a value pasted since, `:unavailable` as `reveal_login/2` has
+  # it, `:too_large` for a document past a value's size, `:invalid` for a text that is no
+  # login's document (`Apiary.ModelKeys.Login.document?/1`).
   @doc false
   @spec write_refreshed_key(
           Connection.t(),
           Ecto.UUID.t(),
           binary,
-          %{nonce: binary, value_set_at: DateTime.t() | nil}
+          %{value_set_at: DateTime.t() | nil}
         ) ::
           :ok | {:error, :not_found | :changed | :unavailable | :too_large | :invalid}
   def write_refreshed_key(
         %Connection{organisation_id: organisation_id, secret_id: secret_row_id} = provider,
         secret_value_id,
         plaintext,
-        %{nonce: nonce, value_set_at: value_set_at}
+        %{value_set_at: value_set_at}
       )
       when is_binary(organisation_id) and is_binary(secret_row_id) and
-             is_binary(secret_value_id) and is_binary(plaintext) and is_binary(nonce) and
+             is_binary(secret_value_id) and is_binary(plaintext) and
              not is_nil(provider.provider_kind) do
     with true <- Login.provider?(provider) or {:error, :not_found},
          true <- byte_size(plaintext) <= Value.value_max() or {:error, :too_large},
@@ -1231,7 +1248,7 @@ defmodule Apiary.Secrets do
       case Repo.update_all(
              from(v in Value,
                where:
-                 v.id == ^row_id and v.value_id == ^value_id and v.nonce == ^nonce and
+                 v.id == ^row_id and v.value_id == ^value_id and
                    fragment(
                      "? IS NOT DISTINCT FROM ?",
                      v.value_set_at,

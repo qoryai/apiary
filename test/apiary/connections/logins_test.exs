@@ -467,7 +467,7 @@ defmodule Apiary.Connections.LoginsTest do
     # What a refresh starts from, as `Secrets.reveal_login_snapshot/2` returns it.
     defp guard(value) do
       row = Repo.get!(Value, value.id)
-      %{nonce: row.nonce, value_set_at: row.value_set_at}
+      %{value_set_at: row.value_set_at}
     end
 
     test "keeps the copies that runs hold of the value", %{scope: scope} do
@@ -541,7 +541,7 @@ defmodule Apiary.Connections.LoginsTest do
       assert stored(provider, "renamed").refresh_token == next.refresh_token
     end
 
-    test "drops the result when the value changed since the refresh started", %{scope: scope} do
+    test "writes under the new name after a rename since the refresh started", %{scope: scope} do
       provider = subscription!(scope)
 
       {:ok, provider} =
@@ -553,44 +553,41 @@ defmodule Apiary.Connections.LoginsTest do
       plain = Repo.get!(Connection, provider.id)
       value = key_value!(provider, "spare")
       started = guard(value)
+      next = login_tokens(tag: "after-rename")
+
+      # A rename encrypts the value again under its new value id.
+      {:ok, provider} = Connections.rename_provider_key(scope, provider, "spare", "renamed")
+      assert Repo.get!(Value, value.id).nonce != value.nonce
+
+      assert Secrets.write_refreshed_key(plain, value.id, refreshed(next), started) == :ok
+      assert stored(provider, "renamed").refresh_token == next.refresh_token
+      assert Secrets.login_value_id(plain, value.id) == "renamed"
+    end
+
+    test "drops the result when a value was pasted since the refresh started", %{scope: scope} do
+      provider = subscription!(scope)
+      plain = Repo.get!(Connection, provider.id)
+      value = key_value!(provider, "main")
+      started = guard(value)
       next = login_tokens(tag: "dropped")
 
-      # A rename encrypts the value again under its new value id: another nonce.
-      {:ok, provider} = Connections.rename_provider_key(scope, provider, "spare", "renamed")
-      renamed = Repo.get!(Value, value.id)
-      assert renamed.nonce != started.nonce
+      {:ok, _provider} =
+        Connections.update_provider_key(scope, provider, "main", %{
+          "value_id" => "main",
+          "value" => login_paste(tag: "new")
+        })
 
       assert Secrets.write_refreshed_key(plain, value.id, refreshed(next), started) ==
                {:error, :changed}
 
-      assert Repo.get!(Value, value.id).ciphertext == renamed.ciphertext
-      assert stored(provider, "renamed").refresh_token == login_tokens(tag: "s").refresh_token
+      assert stored(provider, "main").refresh_token == login_tokens(tag: "new").refresh_token
 
-      # A value pasted over the key changes the nonce and `value_set_at` too.
-      current = guard(value)
-
-      {:ok, _provider} =
-        Connections.update_provider_key(scope, provider, "renamed", %{
-          "value_id" => "renamed",
-          "value" => login_paste(tag: "new")
-        })
-
-      assert Secrets.write_refreshed_key(plain, value.id, refreshed(next), current) ==
-               {:error, :changed}
-
-      assert stored(provider, "renamed").refresh_token == login_tokens(tag: "new").refresh_token
-
-      # Only the right nonce with the wrong `value_set_at`, and the other way round.
+      # The same row with another `value_set_at` is another value too.
       now = guard(value)
 
       assert Secrets.write_refreshed_key(plain, value.id, refreshed(next), %{
                now
                | value_set_at: DateTime.add(now.value_set_at, -1, :second)
-             }) == {:error, :changed}
-
-      assert Secrets.write_refreshed_key(plain, value.id, refreshed(next), %{
-               now
-               | nonce: :binary.copy(<<0>>, byte_size(now.nonce))
              }) == {:error, :changed}
 
       assert Secrets.write_refreshed_key(plain, value.id, refreshed(next), now) == :ok

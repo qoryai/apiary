@@ -503,7 +503,8 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
                trail(provider)
     end
 
-    test "a key renamed during the call drops the result and keeps what it has", %{scope: scope} do
+    test "a key renamed during the call keeps the rotated token under the new name",
+         %{scope: scope} do
       {provider, _tokens} = subscription!(scope)
       spare = login_tokens(tag: "spare", expires_in: 60)
 
@@ -514,25 +515,32 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
         })
 
       id = value(provider, "spare").id
+      fresh = new_tokens("renamed")
 
       stub!(fn conn, _body ->
         {:ok, _} = Connections.rename_provider_key(scope, plain(provider), "spare", "renamed")
-        Req.Test.json(conn, new_tokens("renamed"))
+        Req.Test.json(conn, fresh)
       end)
 
       assert {:ok, access, _at} = token(provider, key: "spare")
-      assert access == spare.access_token
+      assert access == fresh["access_token"]
       assert length(requests()) == 1
       assert value(provider, "renamed").id == id
 
       assert stored(provider, "renamed") == %{
-               access_token: spare.access_token,
-               refresh_token: spare.refresh_token
+               access_token: fresh["access_token"],
+               refresh_token: fresh["refresh_token"]
              }
 
-      assert %Login{lease_id: nil, failures: 0, refreshed_at: nil} = row(provider, "renamed")
+      assert %Login{lease_id: nil, failures: 0, refreshed_at: %DateTime{}} =
+               row(provider, "renamed")
 
-      assert [%Entry{details: %{"outcome" => "failed", "cause" => "superseded"}}] =
+      # The next call reads the new token and makes no second call.
+      assert {:ok, ^access, _at} = token(provider, key: "renamed")
+      assert requests() == []
+
+      # The entry names the key as it is named when the outcome is written.
+      assert [%Entry{details: %{"outcome" => "refreshed", "value_id" => "renamed"}}] =
                trail(provider)
     end
 

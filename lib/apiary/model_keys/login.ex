@@ -48,11 +48,12 @@ defmodule Apiary.ModelKeys.Login do
     4. It writes the outcome in one transaction, in the lock order of docs/access.md: the
        organisation `FOR SHARE`, the keys' secret `FOR UPDATE`, then the login's row. The
        result is written only if the row's `lease_id` and `generation` are the ones the
-       refresh started from and the stored value's nonce and `value_set_at` are too
-       (the guarded write of `Apiary.Secrets`). A login pasted over the key meanwhile
-       (a new `generation`), a key that was deleted or renamed, or a lease taken over
-       drops the result, and the key keeps what it has. A refresh changes no
-       `value_set_at`, so the key's states and the runs' copies stay.
+       refresh started from and the stored value's `value_set_at` is too (the guarded write
+       of `Apiary.Secrets`). A login pasted over the key meanwhile (a new `generation`), a
+       key that was deleted, or a lease taken over drops the result, and the key keeps what
+       it has. A key renamed meanwhile keeps the result: it is written under the name the
+       key has when the outcome is written, so the rotated refresh token is not lost. A
+       refresh changes no `value_set_at`, so the key's states and the runs' copies stay.
     5. Every call leaves an entry `model_key.refresh` in the organisation's trail, by the
        instance, in the same transaction.
 
@@ -106,7 +107,7 @@ defmodule Apiary.ModelKeys.Login do
         }
 
   @states ~w(signed_in sign_in_needed)
-  # The provider's permanent refusals of a refresh (plan 521): the refresh token expired,
+  # The provider's permanent refusals of a refresh: the refresh token expired,
   # was used already, or was invalidated; a 400 `invalid_grant`; a 401 from the refresh
   # call, `refresh_unauthorized` (`unauthorized` is the model API's 401). The check of
   # `model_key_logins` lists the same five.
@@ -631,8 +632,8 @@ defmodule Apiary.ModelKeys.Login do
           {:refreshed, token, expires_at} -> {:ok, token, expires_at}
           :sign_in_needed -> {:error, :sign_in_needed}
           :failed -> while_valid(served(tokens.access_token), db_now())
-          # What the key has now: the new login's token, or, after a rename, the old
-          # one while it is valid. No second call, whose refresh token the first used.
+          # What the key has now: the new login's token pasted since, or the old one while
+          # it is valid. No second call, whose refresh token the first used.
           :dropped -> while_valid(serve(ctx), db_now())
         end
     end
@@ -701,7 +702,18 @@ defmodule Apiary.ModelKeys.Login do
             lock_secret(ctx.provider)
             row = lock_login(ctx.id)
             now = db_now()
-            write = %{ctx: ctx, leased: leased, reason: reason, organisation: organisation}
+            # The key's name now, which a rename while the call ran has changed, for the
+            # entry; the lease's name only for a key that is gone.
+            value_id =
+              Secrets.login_value_id(ctx.provider, ctx.id) || leased.snapshot.value_id
+
+            write = %{
+              ctx: ctx,
+              leased: leased,
+              reason: reason,
+              organisation: organisation,
+              value_id: value_id
+            }
 
             if ours?(row, leased),
               do: {:ok, settle(write, row, result, now)},
@@ -825,7 +837,7 @@ defmodule Apiary.ModelKeys.Login do
   # the provider. It names no token and no part of the answer: the cause is one of the fixed
   # words of `Apiary.ModelKeys.LoginRefresh`, `causes/0` or `superseded` and `not_stored`.
   defp audit(
-         %{ctx: ctx, leased: leased, reason: reason, organisation: organisation},
+         %{ctx: ctx, reason: reason, organisation: organisation, value_id: value_id},
          outcome,
          cause
        ) do
@@ -839,7 +851,7 @@ defmodule Apiary.ModelKeys.Login do
       %{
         provider_id: ctx.provider.public_id,
         provider: ctx.provider.name,
-        value_id: leased.snapshot.value_id,
+        value_id: value_id,
         trigger: trigger,
         run_id: run_id,
         refresh_reason: reason,
