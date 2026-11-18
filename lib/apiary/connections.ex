@@ -2102,20 +2102,6 @@ defmodule Apiary.Connections do
                  ),
                do: {:ok, current}
 
-        {:error, {:in_use, [%{kind: :model_choice, value_id: value_id} | _rest] = uses}} ->
-          {:error,
-           current
-           |> change()
-           |> add_error(
-             :value_id,
-             dgettext_noop(
-               "errors",
-               "Change the model choices that use the key %{value} first: %{places}."
-             ),
-             value: value_id,
-             places: ModelChoices.listed_words(Enum.map(uses, & &1.name))
-           )}
-
         {:error, {:in_use, [%{kind: :model_provider} | _uses]}} ->
           {:error,
            current

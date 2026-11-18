@@ -42,8 +42,9 @@ defmodule ApiaryWeb.StagesLive.Index do
   # shows under the field.
   #
   # With the features `factory` and `secrets`, each workflow's fold also has its model
-  # choice after the time limit (`ApiaryWeb.StagesLive.ModelPart`): Key, "Use workspace
-  # default" or a key, and with a key the three tiers and **Save model choice**, which
+  # choice after the time limit (`ApiaryWeb.StagesLive.ModelPart`): Provider, "Use
+  # workspace default" or a model provider, and with a provider the three tiers and
+  # **Save model choice**, which
   # writes the workflow's choice at once, under `model_choice.write`, and makes no version.
   # "Use workspace default" saved removes the workflow's choice. Whoever
   # `model_choice.write` refuses sees the fields disabled and no button.
@@ -334,7 +335,7 @@ defmodule ApiaryWeb.StagesLive.Index do
     end
   end
 
-  # A change of a workflow's model part: the Key and the tiers, kept for its row.
+  # A change of a workflow's model part: the Provider and the tiers, kept for its row.
   def handle_event("model_change", %{"model" => %{} = params}, socket) do
     with %{} = model <- socket.assigns.model,
          true <- known_row?(socket.assigns, params) do

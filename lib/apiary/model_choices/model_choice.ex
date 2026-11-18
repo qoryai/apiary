@@ -1,13 +1,12 @@
 defmodule Apiary.ModelChoices.ModelChoice do
   # A model choice set at a level of an organisation: the runtime its runs use (`runtime`,
   # a name of `Apiary.Kinds.Runtimes`), its model provider (`connection_id`, an
-  # `Apiary.Connections.Connection` with a `provider_kind`), the value id of one of the
-  # provider's keys (`value_id`), a model id (`model_id`), of the provider's description or
-  # any other, an effort value of that model (`effort`), and a tier map (`tiers`). A save
-  # needs the provider, and at levels 4 to 6 the tier map too; every other field may be
-  # empty: the catalogue's default runtime (`Apiary.ModelChoices.default_runtime/0`), the
-  # provider's default key, the provider's default model, and the runtime's default
-  # effort.
+  # `Apiary.Connections.Connection` with a `provider_kind`), whose keys its runs take, a
+  # model id (`model_id`), of the provider's description or any other, an effort value of
+  # that model (`effort`), and a tier map (`tiers`). A save needs the provider, and at
+  # levels 4 to 6 the tier map too; every other field may be empty: the catalogue's
+  # default runtime (`Apiary.ModelChoices.default_runtime/0`), the provider's default
+  # model, and the runtime's default effort.
   #
   # Its level is read from the columns it has set (`level/1`):
   #
@@ -48,7 +47,6 @@ defmodule Apiary.ModelChoices.ModelChoice do
     field :chain, :string, default: "organisation"
     field :locked, :boolean, default: false
     field :runtime, :string
-    field :value_id, :string
     field :model_id, :string
     field :effort, :string
     field :tiers, :map

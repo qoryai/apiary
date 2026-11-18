@@ -46,11 +46,6 @@ msgstr ""
 msgid "Another key of %{provider} has this name."
 msgstr ""
 
-#: lib/apiary/connections.ex
-#, elixir-autogen, elixir-format
-msgid "Change the model choices that use the key %{value} first: %{places}."
-msgstr ""
-
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a model for each tier: %{tier} has none."
@@ -128,7 +123,6 @@ msgid "Choose one of %{model}'s effort values: %{values}."
 msgstr ""
 
 #: lib/apiary/connections.ex
-#: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Choose one of %{provider}'s keys: %{value} is not one of them."
 msgstr ""

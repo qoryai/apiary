@@ -1,10 +1,10 @@
 defmodule Apiary.ModelChoices.Fallback do
   # A fallback of a model choice (`Apiary.ModelChoices.ModelChoice`): a model provider
   # (`connection_id`) whose keys runs use while every key of the choice's provider is in
-  # cooldown, at its `position` among the choice's fallbacks, from 0, with a model id
-  # (`model_id`) and an effort value (`effort`), each empty for the provider's default
-  # model and the runtime's default effort, as on the choice. A provider is at most once
-  # among a choice's fallbacks, and never the choice's provider.
+  # cooldown, at its `position` among the choice's fallbacks, from 0, with the runtime its
+  # runs use (`runtime`, a name of `Apiary.Kinds.Runtimes`, one the provider serves) and a
+  # tier map (`tiers`) with every tier, as a choice at levels 4 to 6 has. A provider is
+  # at most once among a choice's fallbacks, and never the choice's provider.
   #
   # Changed only through `Apiary.ModelChoices`, which writes a choice's fallbacks again
   # with each save of it.
@@ -18,8 +18,8 @@ defmodule Apiary.ModelChoices.Fallback do
   @foreign_key_type :binary_id
   schema "model_choice_fallbacks" do
     field :position, :integer
-    field :model_id, :string
-    field :effort, :string
+    field :runtime, :string
+    field :tiers, :map
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :model_choice, Apiary.ModelChoices.ModelChoice

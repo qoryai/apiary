@@ -69,8 +69,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     `collection.assign` does not allow sees who may. The page listens to the
   #     organisation's collections and connections
   #     (`Apiary.Adapters.Collections.subscribe/1`) and reads the step again on each change;
-  #   * Model, with the features `factory` and `secrets`: three choices. Key: each model
-  #     provider of the organisation with a key that reaches the workspace (applies to
+  #   * Model, with the features `factory` and `secrets`: three choices. Provider: each
+  #     model provider of the organisation with a key that reaches the workspace (applies to
   #     every workspace or lists it), by its name, to reuse, and Add a key, whose
   #     Provider, Key and, for a provider that needs one, Address add a model provider for
   #     the workspace (`Apiary.Connections.create_provider/3` with `:workspace`): the key
@@ -79,10 +79,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     setting "Available to every workspace in <organisation>", off; on, it adds the
   #     provider for the organisation, reaching every workspace, its key a secret of the
   #     organisation (`Apiary.Connections.reach_at_add/3`). Where the edition shows that
-  #     setting, the providers to reuse that apply to every workspace come first in Key,
-  #     under "Shared in <organisation>", each marked "every workspace"; with none, Key
-  #     has no heading. With
-  #     no provider to reuse, Add a key alone, open. Then the tiers
+  #     setting, the providers to reuse that apply to every workspace come first in
+  #     Provider, under "Shared in <organisation>", each marked "every workspace"; with
+  #     none, Provider has no heading. With no provider to reuse, Add a key alone, open.
+  #     A provider that works with no runtime of the catalogue has "<Provider> works with
+  #     no runtime in this version of Qory Apiary. Pick another provider." under
+  #     Provider, Continue disabled, and a save of it writes nothing. Then the tiers
   #     (`ApiaryWeb.ModelTiers.tiers/1`, each tier's name and line above its fields,
   #     under a heading `h2`): a Model and an Effort for each tier, from the models
   #     suggested for the provider and runtime (`Apiary.ModelChoices.suggestions/2`), or
@@ -90,17 +92,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     provider whose description cannot be read, a line that says so in their place.
   #     Then Runtime (`ApiaryWeb.ModelTiers.runtime_part/1`), the runtimes the provider
   #     serves (`Apiary.Kinds.Providers.runtimes/1`), as text where there is one, else a
-  #     select, with a line of why. A change of Key keeps the runtime while the new
-  #     provider serves it, else moves to its first. A change of Key or Provider empties
-  #     the tiers; a change of the runtime keeps the models, and an effort the runtime
+  #     select, with a line of why. A change of provider keeps the runtime while the new
+  #     provider serves it, else moves to its first. A change of provider empties the
+  #     tiers; a change of the runtime keeps the models, and an effort the runtime
   #     does not accept goes back to Not set. When the step opens, the workspace's choice
   #     fills them. A tier whose model id or
   #     effort breaks the save's rules (`Apiary.ModelChoices.tier_errors/1`) shows the
   #     refusal on its field. Continue, enabled once every tier has a model and no tier
   #     is refused, saves the workspace's choice (level 5,
-  #     `Apiary.ModelChoices.put_choice/4`) with the provider, the key of the
-  #     workspace's choice where it is still one of that provider's keys, else the
-  #     provider's default key, the runtime the form shows, and the tiers, the Thinking
+  #     `Apiary.ModelChoices.put_choice/4`) with the provider, whose keys runs take, the
+  #     runtime the form shows, and the tiers, the Thinking
   #     tier's model and effort as the choice's (`ApiaryWeb.ModelTiers.attrs/2`). Add a
   #     key adds the provider and saves the choice in one transaction, so a refused
   #     choice adds no provider and no key. With the choice unchanged it saves nothing
@@ -244,7 +245,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   alias Apiary.Adapters.Connections, as: AdapterConnections
   alias Apiary.Connections.Connection
   alias Apiary.Dispatches.RunSettings
-  alias Apiary.Kinds.{Provider, Providers, Runtime, Runtimes}
+  alias Apiary.Kinds.{Provider, Providers, Runtimes}
   alias Apiary.Lingo.Domain
   alias Apiary.ModelChoices.ModelChoice
   alias Apiary.Nodes.Node
@@ -525,12 +526,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       shared_keys: length(shared),
       choice: choice,
       stored: ModelTiers.stored(choice),
-      # Workspace settings › Model, for the line of a stored fallback the runtime leaves
-      # unfit; nil for a person who cannot open it.
-      model_page:
-        if(Access.can?(scope, :"connection.read", scope.organisation),
-          do: ~p"/#{flow.organisation}/#{flow.workspace}/settings/model"
-        ),
       # Whether the edition shows the organisation's secrets: the core shows none.
       organisation_secrets: Edition.organisation_secrets(scope, :read) != {:error, :not_found},
       done: step_done?(flow, :model)
@@ -1022,7 +1017,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         true -> ModelChoices.suggestions(source, runtime)
       end
 
-    key = model_key(source, chosen, models, socket.assigns.choice)
+    key = model_key(source, chosen, models)
 
     tiers =
       cond do
@@ -1063,7 +1058,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       chosen: chosen,
       runtimes: runtimes,
       runtime: runtime,
-      unfit: unfit_fallbacks(socket.assigns.choice, source, runtime),
+      no_runtime: if(chosen && runtimes == [], do: ModelTiers.no_runtime_line(chosen.title)),
       key: key,
       tiers: tiers,
       tier_errors:
@@ -1073,23 +1068,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         )
     )
   end
-
-  # The providers of the stored fallbacks of the workspace's choice that do not serve
-  # `runtime`. A save keeps the fallbacks and refuses such a one
-  # (`Apiary.ModelChoices.put_choice/4`); a fallback of the provider chosen is dropped by
-  # the save, so it is left out. The step does not show the fallbacks: a line says where
-  # to remove each, and Continue saves nothing while there is one.
-  defp unfit_fallbacks(%ModelChoice{fallbacks: [_ | _] = fallbacks}, source, %Runtime{} = runtime) do
-    chosen = if source == :add, do: nil, else: source.id
-
-    for %{connection: %Connection{} = provider} <- fallbacks,
-        provider.id != chosen,
-        {:ok, description} <- [Connections.provider(provider)],
-        not Providers.serves?(description, runtime),
-        do: provider
-  end
-
-  defp unfit_fallbacks(_choice, _source, _runtime), do: []
 
   # The refusals a save gives the tiers' model ids and efforts
   # (`Apiary.ModelChoices.tier_errors/1`), each on its tier's field
@@ -1116,27 +1094,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp first_tiers(%{provider_id: id, tiers: tiers}, %{provider: %Connection{id: id}}), do: tiers
   defp first_tiers(_stored, _key), do: ModelTiers.blank()
 
-  # The key of the tiers (`ApiaryWeb.ModelTiers.entry/4`): for Add a key, the catalogue's
-  # provider, with no key yet; for a provider to reuse, the key of `choice`, the
-  # workspace's choice, where it is one of that provider's keys, else the provider's
-  # default key. None while the provider has no description.
-  defp model_key(_source, nil, _models, _choice), do: nil
+  # The provider entry of the tiers (`ApiaryWeb.ModelTiers.entry/3`): for Add a key, the
+  # catalogue's provider, not added yet; for a provider to reuse, that provider. None
+  # while the provider has no description.
+  defp model_key(_source, nil, _models), do: nil
 
-  defp model_key(:add, chosen, models, _choice),
-    do: ModelTiers.entry(chosen, nil, models, Connections.provider_models(chosen) == [])
+  defp model_key(:add, chosen, models),
+    do: ModelTiers.entry(chosen, models, Connections.provider_models(chosen) == [])
 
-  defp model_key(provider, chosen, models, choice) do
-    value_id =
-      case choice do
-        %{connection_id: id, value_id: value_id} when id == provider.id and value_id != nil ->
-          if value_id in value_ids(provider), do: value_id, else: provider.default_value_id
-
-        _other ->
-          provider.default_value_id
-      end
-
-    ModelTiers.entry(provider, value_id, models, Connections.provider_models(chosen) == [])
-  end
+  defp model_key(provider, chosen, models),
+    do: ModelTiers.entry(provider, models, Connections.provider_models(chosen) == [])
 
   # Whether Add a key adds the provider for every workspace: the setting shown and on.
   defp everywhere?(scope, :add, params),
@@ -1186,41 +1153,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     if may_add, do: reused ++ [{gettext("Add a key"), "add"}], else: reused
   end
 
-  attr :fallbacks, :list, required: true, doc: "the providers of the unfit fallbacks"
-  attr :runtime, Runtime, required: true
-  attr :model_page, :string, default: nil, doc: "Workspace settings › Model, nil for none"
-
-  # A line for each stored fallback whose provider does not serve the runtime: under
-  # Runtime where it is a select, else under Key, the field that changes it. "Model page"
-  # is a link to Workspace settings › Model for a person who can open it.
-  defp unfit_lines(assigns) do
-    ~H"""
-    <div :if={@fallbacks != []} id="set-up-model-unfit" class="grid gap-1">
-      <p
-        :for={provider <- @fallbacks}
-        id={"set-up-model-unfit-#{provider.public_id}"}
-        class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
-      >
-        <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
-        <span>
-          <.rich text={
-            rich_gettext(
-              "Remove the fallback %{fallback} on the %{page}, or pick a key whose provider serves %{runtime}.",
-              fallback: provider.name,
-              page:
-                if(@model_page,
-                  do: {:link, @model_page, gettext("Model page")},
-                  else: gettext("Model page")
-                ),
-              runtime: @runtime.title
-            )
-          } />
-        </span>
-      </p>
-    </div>
-    """
-  end
-
   attr :field, Phoenix.HTML.FormField, required: true
   attr :options, :list, required: true, doc: "Key's options, `{words, value}`"
   attr :shared, :integer, required: true, doc: "how many of `options`, the first, are shared"
@@ -1250,7 +1182,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         @errors != [] && Enum.map_join(1..length(@errors), " ", &key_error_id(@id, &1))
       }
     >
-      <legend class="mb-1 text-[13px]/[18px] font-medium">{gettext("Key")}</legend>
+      <legend class="mb-1 text-[13px]/[18px] font-medium">{gettext("Provider")}</legend>
       <div
         :if={@shared_options != []}
         id={"#{@id}-shared"}
@@ -1420,6 +1352,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         {:noreply,
          socket |> load_step() |> put_flash(:error, gettext("Nothing was changed. Try again."))}
 
+      # A provider that works with no runtime: its line under Provider says why,
+      # Continue is disabled, and nothing is saved.
+      formed.assigns.no_runtime != nil ->
+        {:noreply, formed}
+
       # A tier without a model, or one whose model id or effort a save refuses: Continue
       # is disabled, and nothing is saved, so Add a key adds no provider.
       not continues?(key, tiers) ->
@@ -1427,11 +1364,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
       unchanged?(formed.assigns) ->
         {:noreply, go_on(socket)}
-
-      # A stored fallback whose provider does not serve the runtime: its line says how to
-      # fix it, and nothing is saved.
-      formed.assigns.unfit != [] ->
-        {:noreply, formed}
 
       true ->
         save_model(formed, scope, source, params)
@@ -1754,16 +1686,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  # Whether the form has the workspace's choice as it is: its provider and key, its
-  # runtime, and its tiers. Add a key never has.
+  # Whether the form has the workspace's choice as it is: its provider, its runtime, and
+  # its tiers. Add a key never has.
   # A stored runtime the catalogue no longer has is a change, so Continue saves the
   # runtime the form shows.
   defp unchanged?(%{choice: %ModelChoice{} = choice, key: %{provider: %Connection{}} = key} = a) do
     case ModelChoices.runtime(choice.runtime) do
       {:ok, runtime} ->
-        choice.connection_id == key.provider.id and
-          (choice.value_id || key.provider.default_value_id) == key.value_id and
-          a.runtime != nil and runtime.name == a.runtime.name and
+        choice.connection_id == key.provider.id and a.runtime != nil and
+          runtime.name == a.runtime.name and
           ModelTiers.stored(choice).tiers == a.tiers
 
       :error ->
@@ -1774,24 +1705,20 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp unchanged?(_assigns), do: false
 
   # Saves the workspace's choice of the provider of `source`, which Add a key adds first,
-  # with the key, the runtime and the tiers of the form, `socket`. The provider and the
+  # with the runtime and the tiers of the form, `socket`. The provider and the
   # choice are written in one transaction: a refused choice adds no provider and no key.
   defp save_model(socket, scope, source, params) do
-    %{key: key, tiers: tiers, choice: choice, runtime: runtime} = socket.assigns
+    %{key: key, tiers: tiers, runtime: runtime} = socket.assigns
 
     saved =
       Repo.transact(fn ->
         with {:ok, provider} <- model_provider(source, scope, socket.assigns.flow, params) do
-          key =
-            if source == :add,
-              do: ModelTiers.entry(provider, provider.default_value_id, key.models, key.free),
-              else: key
+          key = if source == :add, do: ModelTiers.entry(provider, key.models, key.free), else: key
 
           attrs =
             key
             |> ModelTiers.attrs(tiers)
             |> Map.put(:runtime, runtime && runtime.name)
-            |> default_key(choice, key)
 
           case ModelChoices.put_choice(scope, :workspace, attrs) do
             {:ok, _choice} -> {:ok, provider}
@@ -1822,19 +1749,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  # A saved choice that names no key uses its provider's default key. While the key is
-  # still that default, the save names no key either, so the choice keeps following the
-  # default, as Workspace settings › Model saves it.
-  defp default_key(attrs, %ModelChoice{connection_id: id, value_id: nil}, %{
-         provider: %Connection{id: id, default_value_id: value_id},
-         value_id: value_id
-       }),
-       do: %{attrs | key: nil}
-
-  defp default_key(attrs, _choice, _key), do: attrs
-
   # A refused choice, each reason on the step's field it is about
-  # (`ApiaryWeb.ModelTiers.field_errors/2`, its `:key` on Key), with `tiers` as sent; or
+  # (`ApiaryWeb.ModelTiers.field_errors/2`, its `:provider` on Provider), with `tiers` as
+  # sent; or
   # a refusal of the save in the flash.
   defp model_refused(socket, params, %Ecto.Changeset{} = changeset, tiers) do
     {tier_errors, errors} =
@@ -1843,7 +1760,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       |> Enum.split_with(fn {field, _error} -> field == :tiers or is_tuple(field) end)
 
     errors =
-      for {field, error} <- errors, do: {if(field == :key, do: :source, else: field), error}
+      for {field, error} <- errors,
+          do: {if(field == :provider, do: :source, else: field), error}
 
     assign_model_form(socket, params, errors, tiers: tiers, tier_errors: tier_errors)
   end
@@ -2389,12 +2307,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           shared={@shared_keys}
           organisation={@current_scope.organisation.name}
         />
-        <.unfit_lines
-          :if={match?([_], @runtimes)}
-          fallbacks={@unfit}
-          runtime={@runtime}
-          model_page={@model_page}
-        />
+        <p
+          :if={@no_runtime}
+          id="set-up-model-no-runtime"
+          class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+        >
+          <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+          <span>{@no_runtime}</span>
+        </p>
         <div :if={@source == :add} id="set-up-model-add" class="grid gap-4 ps-6">
           <.input
             field={@form[:provider]}
@@ -2447,7 +2367,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           :if={@key}
           id="set-up-model-tiers"
           name="model[tiers]"
-          key={@key}
+          entry={@key}
           tiers={@tiers}
           stored={@runtime && ModelTiers.accepted(@stored, @runtime)}
           errors={@tier_errors}
@@ -2463,12 +2383,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           runtime={@runtime}
           provider={@chosen.title}
           errors={for {:runtime, error} <- @form.errors, do: translate_error(error)}
-        />
-        <.unfit_lines
-          :if={match?([_, _ | _], @runtimes)}
-          fallbacks={@unfit}
-          runtime={@runtime}
-          model_page={@model_page}
         />
         <p
           :if={!@key and @source != :add}
@@ -2489,7 +2403,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             type="submit"
             variant="primary"
             size="md"
-            disabled={!continues?(@key, @tiers)}
+            disabled={@no_runtime != nil or !continues?(@key, @tiers)}
             loading_text={gettext("Saving")}
           >
             {gettext("Continue")}

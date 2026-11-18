@@ -763,7 +763,6 @@ defmodule Apiary.Secrets do
 
         {:ok, row} ->
           with :ok <- not_in_use(value_uses(current, value_id)),
-               :ok <- delete_leftovers(scope, current, value_id),
                {:ok, _row} <- reencrypt(scope, current, row, new_value_id),
                {:ok, current} <- touch(scope, current),
                {:ok, _entry} <-
@@ -800,7 +799,6 @@ defmodule Apiary.Secrets do
       with {:ok, row} <- fetch_value(current, value_id),
            :ok <- not_last(current),
            :ok <- not_in_use(value_uses(current, value_id)),
-           :ok <- delete_leftovers(scope, current, value_id),
            {:ok, _row} <- Repo.delete(row),
            {:ok, current} <- touch(scope, current),
            {:ok, _entry} <-
@@ -880,12 +878,6 @@ defmodule Apiary.Secrets do
 
   defp value_uses(%Secret{} = secret, value_id),
     do: Enum.filter(Usage.uses(Repo, secret), &(&1.value_id == value_id))
-
-  # A workflow's model choice that chose the key and that its workspace no longer keeps
-  # is no use (`Apiary.Secrets.Usage`): it goes with the key, or with the key's old value
-  # id, in the same transaction (`Apiary.ModelChoices.delete_leftovers_using_key/3`).
-  defp delete_leftovers(scope, %Secret{id: id}, value_id),
-    do: Apiary.ModelChoices.delete_leftovers_using_key(scope, id, value_id)
 
   ## A model provider's keys
 

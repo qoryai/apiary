@@ -3145,7 +3145,7 @@ msgstr ""
 
 #: lib/apiary_web/components/model_tiers.ex
 #, elixir-autogen, elixir-format
-msgid "%{provider} · %{key}"
+msgid "%{provider} works with no runtime in this version of Qory Apiary. Pick another provider."
 msgstr ""
 
 #: lib/apiary/stages/points.ex
@@ -3287,11 +3287,6 @@ msgstr ""
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{set_up} first, then add a model provider in its Model step."
-msgstr ""
-
-#: lib/apiary_web/live/model_choice_live.ex
-#, elixir-autogen, elixir-format
-msgid "%{shown} of %{total} models"
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -4410,11 +4405,6 @@ msgstr ""
 msgid "A member approves the proposal"
 msgstr ""
 
-#: lib/apiary_web/live/model_choice_live.ex
-#, elixir-autogen, elixir-format
-msgid "A model id this list leaves out."
-msgstr ""
-
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "A model provider's key lets runs in %{organisation} call a model."
@@ -5143,12 +5133,12 @@ msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
-msgid "Add another model provider in %{place}: Qory Apiary no longer has the description %{provider} was added from."
+msgid "Add another model provider in %{place}, then add it here as a fallback."
 msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
-msgid "Add another model provider that serves %{runtime} in %{place}, then add it here as a fallback."
+msgid "Add another model provider in %{place}: Qory Apiary no longer has the description %{provider} was added from."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -5960,11 +5950,6 @@ msgstr ""
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "An owner or an admin of the organisation added you to %{workspace}."
-msgstr ""
-
-#: lib/apiary_web/live/model_choice_live.ex
-#, elixir-autogen, elixir-format
-msgid "Another model"
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
@@ -7513,11 +7498,6 @@ msgstr ""
 #: lib/apiary/artifacts/type_rules.ex
 #, elixir-autogen, elixir-format
 msgid "Choose another name: this workspace has a type called %{name}."
-msgstr ""
-
-#: lib/apiary_web/live/model_choice_live.ex
-#, elixir-autogen, elixir-format
-msgid "Choose another provider or remove this fallback. %{provider} does not work with %{runtime}."
 msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
@@ -9415,7 +9395,6 @@ msgid "Effective policy"
 msgstr ""
 
 #: lib/apiary_web/components/model_tiers.ex
-#: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
 msgid "Effort"
 msgstr ""
@@ -10305,11 +10284,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Find a machine, pool or gateway by its name or id"
-msgstr ""
-
-#: lib/apiary_web/live/model_choice_live.ex
-#, elixir-autogen, elixir-format
-msgid "Find a model"
 msgstr ""
 
 #: lib/apiary_web/live/backlog_live/index.ex
@@ -12319,12 +12293,10 @@ msgstr ""
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #: lib/apiary_web/live/integration_live/definition.ex
-#: lib/apiary_web/live/model_choice_live.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/provider_live/index.ex
 #: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/run_live/show.ex
-#: lib/apiary_web/live/stages_live/inspector.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Key"
@@ -13432,11 +13404,6 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Model choice changed"
-msgstr ""
-
-#: lib/apiary_web/live/workspace_setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "Model page"
 msgstr ""
 
 #: lib/apiary_web/components/model_tiers.ex
@@ -14979,7 +14946,6 @@ msgstr ""
 
 #: lib/apiary_web/components/model_tiers.ex
 #: lib/apiary_web/live/integration_live/show.ex
-#: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
 msgid "Not set"
 msgstr ""
@@ -16671,6 +16637,7 @@ msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex
 #: lib/apiary_web/live/provider_live/index.ex
+#: lib/apiary_web/live/stages_live/inspector.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Provider"
@@ -17574,11 +17541,6 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the deny rule %{host}?"
-msgstr ""
-
-#: lib/apiary_web/live/workspace_setup_live.ex
-#, elixir-autogen, elixir-format
-msgid "Remove the fallback %{fallback} on the %{page}, or pick a key whose provider serves %{runtime}."
 msgstr ""
 
 #: lib/apiary_web/live/backlog_live/index.ex
@@ -18684,7 +18646,7 @@ msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
-msgid "Runs use this key and these models when their workflow sets none."
+msgid "Runs use this provider and these models when their workflow sets none."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
@@ -21692,7 +21654,7 @@ msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
-msgid "The models runs in %{workspace} use: one key, and a model and an effort for each tier. A workflow can choose another key and models in its settings on the Workflows page. If %{workspace} sets none, its runs use the models of %{organisation}."
+msgid "The models runs in %{workspace} use: one provider, and a model and an effort for each tier. A workflow can choose another provider and models in its settings on the Workflows page. If %{workspace} sets none, its runs use the models of %{organisation}."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -22978,7 +22940,7 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
-msgid "This workflow uses this key and these models in place of the workspace's."
+msgid "This workflow uses this provider and these models in place of the workspace's."
 msgstr ""
 
 #: lib/apiary_web/components/node_components.ex
@@ -23716,12 +23678,12 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
-msgid "Uses the default of %{organisation}: %{key}."
+msgid "Uses the default of %{organisation}: %{provider}."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
-msgid "Uses the workspace default: %{key}."
+msgid "Uses the workspace default: %{provider}."
 msgstr ""
 
 #: lib/apiary_web/live/setup_live.ex

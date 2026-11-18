@@ -881,8 +881,7 @@ push credentials, and the harness links.
 Each key is an API credential named `<provider's public id>-<n>`, from 1, with the
 provider's `format`, `endpoint` and `auth`, so the keys form one key group with the start
 key (the Forager contract, Several model keys). The claim orders the provider's keys at
-its clock: the key chosen in the model choice, while it is out of cooldown; then the keys
-with no known reset, or one already passed; then the keys by their known reset, the
+its clock: the keys with no known reset, or one already passed; then the keys by their known reset, the
 closest minute first; then the keys in cooldown, the earliest `cooldown_until` first. Ties
 go in tie order: the default key first, then the other keys by when each was added. A
 key's known reset is the earliest `resets_at` that a gateway reported, else the next reset
@@ -894,12 +893,12 @@ after the claim's clock (`Apiary.ModelKeys.cooldown/4`). The limit windows are
 description, vendored with the catalogue: `five_hour` and `seven_day` for the Claude
 subscription, none for an API key. The first key of that order is the start key,
 `model_credential`, never a key in cooldown. `credentials` lists the keys in the order the
-contract has the server send them: the chosen key while it is out of cooldown, then the
-other keys out of cooldown in tie order, then the keys in cooldown in tie order. Each
+contract has the server send them: the keys out of cooldown in tie order, then the keys in cooldown in tie order. Each
 entry has `pause_for_s`, the key's Pause for, else 60 for an API key and 3600 for a
 subscription, written into the run once: by its claim, or, for a run claimed before runs
 kept several keys, by the upgrade (20261111100000). Where the claim had them, an entry
-also has `resets_at`, `schedule_resets_at`, `cooldown_until` and `chosen`. A key's
+also has `resets_at`, `schedule_resets_at` and `cooldown_until`; no entry has `chosen`,
+since a model choice chooses a provider, not one of its keys. A key's
 `cooldown_until` is the latest end of its cooldown: a window's `cooldown_until`, or the
 `resets_at` of a limit window at the key's Use up to percentage. A key with a Use up to
 percentage, of a provider with limit windows, also has `use_up_to_percent` and
@@ -910,7 +909,9 @@ entry has both or neither: in a run claimed before runs kept the windows, no key
 either member. The entries are fixed for the run: a later state reaches the gateway in the
 answer to its model keys report (The model keys report, below). Where every key of the
 provider is in cooldown, the claim takes the first of the choice's fallbacks, in their
-order, with a key out of cooldown, and the fallback's model and effort. Where every key of
+order, with a key out of cooldown, and the fallback's runtime and tiers: the run's
+`runtime` is the fallback's, and its `provider_api` the API of the fallback's provider for
+that runtime. Where every key of
 the provider and of each fallback is in cooldown, the claim registers nothing and the run
 of the queue waits again, its `dispatch_runs.model_provider_ids` set to those providers;
 no claim takes a run of the queue while every key of each of its providers is in cooldown

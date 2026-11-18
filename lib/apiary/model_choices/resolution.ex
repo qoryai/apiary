@@ -1,6 +1,6 @@
 defmodule Apiary.ModelChoices.Resolution do
-  # What the model choices of a run's chain come to: one runtime, one model provider, one of
-  # its keys, one model, one effort value or none, a tier map, the default step under a
+  # What the model choices of a run's chain come to: one runtime, one model provider, whose
+  # keys the run takes, one model, one effort value or none, a tier map, the default step under a
   # workflow's override, and the fallbacks. Pure: choices and providers in, a resolution
   # out. `Apiary.ModelChoices` reads what it takes.
   #
@@ -15,9 +15,8 @@ defmodule Apiary.ModelChoices.Resolution do
   # override.
   #
   # **The choice in effect** is the first in the order that chose a provider. The
-  # runtime, the provider, the key and the tiers come from it alone. A choice without a
-  # runtime takes the input's `default_runtime`, and a choice without a key the
-  # provider's default key. No choice with a provider resolves to `:none`: the run uses
+  # runtime, the provider and the tiers come from it alone. A choice without a runtime
+  # takes the input's `default_runtime`. No choice with a provider resolves to `:none`: the run uses
   # the gateway's key. A choice whose provider is not among `providers` resolves to
   # `{:error, :provider_removed}`.
   #
@@ -42,18 +41,20 @@ defmodule Apiary.ModelChoices.Resolution do
   # **The default step.** Where the choice in effect is a workflow's override, the
   # resolution has a `default`: the next choice in the order at a level without a
   # workflow (3, 5 or 6) below the override's level that chose a provider, resolved as
-  # above, with its runtime, key and tiers. Under an override at level 4, that is level
+  # above, with its runtime and tiers. Under an override at level 4, that is level
   # 5, then 6; at level 2, level 3, then 5, then 6. A run uses it while every key of the
   # override's provider is in cooldown.
   # Its provider not among `providers`, or no such choice, gives no default step.
   #
   # **The fallbacks** come from the default step under an override, else from the choice
   # in effect; fallbacks stored on an override are not read.
-  # They keep their order: each its provider's row id, its model, the provider's default
-  # model where it names none, and its effort, none with the default model. A fallback
-  # whose provider is not among `providers` is left out, and so are a choice's fallbacks
-  # that were not read (`Ecto.Association.NotLoaded`). `fallback/3` is the resolution of
-  # one of them: its model and effort on the run and on every tier.
+  # They keep their order: each its provider's row id, its runtime, and its tiers, read as
+  # a choice's are, with the effort values of the fallback's runtime; its model and
+  # effort are those of its `thinking` tier, none where that tier does not go with the
+  # provider. A fallback whose provider is not among `providers` is left out, and so are
+  # a choice's fallbacks that were not read (`Ecto.Association.NotLoaded`). `fallback/3`
+  # is the resolution of one of them: its runtime, its tiers, and its model and effort as
+  # the run's.
   @moduledoc false
 
   alias Apiary.ModelChoices.{Fallback, ModelChoice}
@@ -65,13 +66,11 @@ defmodule Apiary.ModelChoices.Resolution do
   @override_levels [2, 4]
 
   @typedoc """
-  A provider as the resolution reads it: the value id of its default key, the id of its
-  default model (nil for none), its description's models, each with its `model_id` and
+  A provider as the resolution reads it: the id of its default model (nil for none), its description's models, each with its `model_id` and
   its `effort` values (nil for none), and the ids of the models suggested for its kind
   (`suggested`, from `priv/models/suggestions.json`; none where the map leaves it out).
   """
   @type provider :: %{
-          required(:default_value_id) => String.t() | nil,
           required(:default_model_id) => String.t() | nil,
           required(:models) => [
             %{required(:model_id) => String.t(), required(:effort) => [String.t()] | nil}
@@ -97,26 +96,27 @@ defmodule Apiary.ModelChoices.Resolution do
         }
 
   @typedoc """
-  A fallback of a resolution: its provider's row id (`connection_id`), its `model_id`, nil
-  where the provider has no default model, and its `effort` value or nil.
+  A fallback of a resolution: its provider's row id (`connection_id`), its `runtime`'s
+  name, its `tiers`, as a resolution's, and the `model_id` and `effort` of its `thinking`
+  tier, each nil where that tier does not go with the provider.
   """
   @type fallback :: %{
           connection_id: Ecto.UUID.t(),
+          runtime: String.t(),
+          tiers: %{optional(String.t()) => %{required(String.t()) => String.t()}},
           model_id: String.t() | nil,
           effort: String.t() | nil
         }
 
   @typedoc """
   A resolution: the `runtime`'s name, nil where the choice names none and the input has
-  no default, the provider's row id (`connection_id`), the key's `value_id`, the
-  `model_id`, the `effort` value or nil, the `tiers`, each an object of `model` and, when
+  no default, the provider's row id (`connection_id`), the `model_id`, the `effort` value or nil, the `tiers`, each an object of `model` and, when
   it has one, `effort`, the `level` of the choice they came from, the `default` step
   under a workflow's override (nil for none), and the `fallbacks`, in their order.
   """
   @type t :: %__MODULE__{
           runtime: String.t() | nil,
           connection_id: Ecto.UUID.t(),
-          value_id: String.t() | nil,
           model_id: String.t() | nil,
           effort: String.t() | nil,
           tiers: %{optional(String.t()) => %{required(String.t()) => String.t()}},
@@ -128,7 +128,6 @@ defmodule Apiary.ModelChoices.Resolution do
   @enforce_keys [:connection_id, :level]
   defstruct runtime: nil,
             connection_id: nil,
-            value_id: nil,
             model_id: nil,
             effort: nil,
             tiers: %{},
@@ -216,31 +215,18 @@ defmodule Apiary.ModelChoices.Resolution do
 
   @doc false
   # fallback/3 is the step `step` of `input`, a resolution or its default step, with its
-  # fallback `fallback` in place of its provider: the fallback's provider, the provider's
-  # default key, and the fallback's model and effort as the run's and on every tier; the
-  # same runtime and level, no default step and no fallbacks. The provider is among
-  # `input.providers`, as each of the fallbacks is. A fallback with no model has no tiers.
+  # fallback `fallback` in place of its provider: the fallback's provider, runtime and
+  # tiers, and its model and effort as the run's; the same level, no default step and no
+  # fallbacks. The provider is among `input.providers`, as each of the fallbacks is.
   @spec fallback(input, t, fallback) :: t
-  def fallback(%{} = input, %__MODULE__{} = step, %{connection_id: id} = fallback) do
-    provider = Map.fetch!(input.providers, id)
-
-    tiers =
-      case fallback.model_id do
-        nil ->
-          %{}
-
-        model_id ->
-          entry = if fallback.effort, do: %{"effort" => fallback.effort}, else: %{}
-          Map.new(@tiers, &{&1, Map.put(entry, "model", model_id)})
-      end
-
+  def fallback(%{} = _input, %__MODULE__{} = step, %{connection_id: id} = fallback) do
     %{
       step
-      | connection_id: id,
-        value_id: provider.default_value_id,
+      | runtime: fallback.runtime,
+        connection_id: id,
         model_id: fallback.model_id,
         effort: fallback.effort,
-        tiers: tiers,
+        tiers: fallback.tiers,
         default: nil,
         fallbacks: []
     }
@@ -330,17 +316,11 @@ defmodule Apiary.ModelChoices.Resolution do
     end
   end
 
-  # One choice resolved alone: its runtime, provider, key, tiers, model, effort and
+  # One choice resolved alone: its runtime, provider, tiers, model, effort and
   # fallbacks.
   defp step(level, choice, provider, input) do
     provider = effort_of(provider, input, choice)
-
-    tiers =
-      for tier <- @tiers,
-          entry = entry((choice.tiers || %{})[tier]),
-          goes_with?(provider, entry),
-          into: %{},
-          do: {tier, entry}
+    tiers = tiers_of(provider, choice.tiers)
 
     {model_id, effort} =
       cond do
@@ -353,30 +333,42 @@ defmodule Apiary.ModelChoices.Resolution do
     %__MODULE__{
       runtime: choice.runtime || input[:default_runtime],
       connection_id: choice.connection_id,
-      value_id: choice.value_id || provider.default_value_id,
       model_id: model_id,
       effort: effort,
       level: level,
       tiers: tiers,
-      fallbacks: fallbacks(choice, input.providers)
+      fallbacks: fallbacks(choice, input)
     }
   end
 
-  # The choice's fallbacks in their order, each whose provider is among `providers`.
-  defp fallbacks(%ModelChoice{fallbacks: fallbacks}, providers) when is_list(fallbacks) do
-    for %Fallback{connection_id: id} = fallback <- Enum.sort_by(fallbacks, & &1.position),
-        {:ok, provider} <- [Map.fetch(providers, id)] do
-      {model_id, effort} =
-        case fallback.model_id do
-          nil -> {provider.default_model_id, nil}
-          model_id -> {model_id, fallback.effort}
-        end
+  # The entries of `tiers`, a tier map, that go with `provider`.
+  defp tiers_of(provider, tiers) do
+    for tier <- @tiers,
+        entry = entry((tiers || %{})[tier]),
+        goes_with?(provider, entry),
+        into: %{},
+        do: {tier, entry}
+  end
 
-      %{connection_id: id, model_id: model_id, effort: effort}
+  # The choice's fallbacks in their order, each whose provider is among the input's
+  # providers, with its tiers read for its runtime.
+  defp fallbacks(%ModelChoice{fallbacks: fallbacks}, input) when is_list(fallbacks) do
+    for %Fallback{connection_id: id} = fallback <- Enum.sort_by(fallbacks, & &1.position),
+        {:ok, provider} <- [Map.fetch(input.providers, id)] do
+      tiers = provider |> effort_of(input, fallback) |> tiers_of(fallback.tiers)
+      run = tiers[@run_tier] || %{}
+
+      %{
+        connection_id: id,
+        runtime: fallback.runtime,
+        tiers: tiers,
+        model_id: run["model"],
+        effort: run["effort"]
+      }
     end
   end
 
-  defp fallbacks(_choice, _providers), do: []
+  defp fallbacks(_choice, _input), do: []
 
   defp entry(model) when is_binary(model), do: %{"model" => model}
 

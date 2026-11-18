@@ -28,21 +28,23 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   not refused.
 <!-- /feature -->
 <!-- feature: workflow_model -->
-- On **Workspace settings › Workflows**, each workflow's settings fold has a **Key** after
-  the time limit. "Use workspace default", the default, shows the line "Uses the
-  workspace default: <Provider> · <key>.", or the organisation's default, or "No default
-  is set. Set one in Workspace settings › Model." **Key** lists every key of a model
-  provider that serves a runtime. A key of a model provider shows **Model and effort per
-  tier**, as on Workspace settings › Model, then **Runtime**, as there, and **Save model
-  choice**, enabled once every tier has a model and something changed. "Use workspace
-  default" shows no **Runtime**: the default's runtime applies. A new override starts
-  from the default's runtime: a change of **Key** from the default to a key keeps it while
-  the key's provider works with it. The save writes
+- On **Workspace settings › Workflows**, each workflow's settings fold has a **Provider**
+  after the time limit. "Use workspace default", the default, shows the line "Uses the
+  workspace default: <Provider>.", or the organisation's default, or "No default is set.
+  Set one in Workspace settings › Model." **Provider** lists every model provider, by its
+  name. A provider that works with no runtime shows “DeepSeek works with no runtime in
+  this version of Qory Apiary. Pick another provider.” under **Provider**, and **Save
+  model choice** stays disabled. A model provider shows **Model and effort per tier**, as
+  on Workspace settings › Model, then **Runtime**, as there, and **Save model choice**,
+  enabled once every tier has a model and something changed. "Use workspace default"
+  shows no **Runtime**: the default's runtime applies. A new override starts from the
+  default's runtime: a change of **Provider** from the default to a provider keeps it
+  while the provider works with it. The save writes
   the workflow's model choice at once, with no fallbacks, and makes no version of the
   process; "Use workspace default" saved removes it. A refusal shows under its field, and
   the button is enabled again for the next save. A workflow the saved process does not
-  have yet has **Key** disabled, with "Save the stage first to set this workflow's model
-  choice." Whoever may not change model choices sees the fields disabled and no button.
+  have yet has **Provider** disabled, with "Save the stage first to set this workflow's
+  model choice." Whoever may not change model choices sees the fields disabled and no button.
   This needs the features `factory` and `secrets`.
 - A workflow's model choice and time limit in a workspace are deleted when neither the
   workspace's current process version nor the version of an open work item has the
@@ -564,7 +566,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   steps.
 - Where the edition shows the setting “Available to every workspace in Acme”, **Model**,
   and **Harness** for a harness repository, list first what the organisation shares,
-  under “Shared in Acme”, each marked “· every workspace”. On **Model**, **Key** lists
+  under “Shared in Acme”, each marked “· every workspace”. On **Model**, **Provider** lists
   each model provider with a key that applies to every workspace, then the providers of
   the workspace alone and **Add a key**; the first is chosen while the workspace has no
   model choice. On **Harness**, a harness repository the organisation shares comes
@@ -649,8 +651,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   destination assigns it to the workspace, with its Backlog off unless it is chosen as a
   work source. Unticking a destination removes it from the workspace and stops its
   tickets. Owners and admins choose; owners, admins and members read the settings pages.
-- **Model**, “Which models do runs in Main use?”, has three fields. **Key** lists each
+- **Model**, “Which models do runs in Main use?”, has three fields. **Provider** lists each
   model provider with a key that reaches the workspace, by its name, then **Add a key**.
+  A provider that works with no runtime shows “DeepSeek works with no runtime in this
+  version of Qory Apiary. Pick another provider.” under **Provider**, and **Continue** is
+  disabled.
   **Add a key** is the one option where there is no provider to reuse. It opens
   **Provider**, **Key**, and an address for a provider that needs one, as **Organisation
   settings › Model providers** does. It adds the provider for the workspace: its key is a
@@ -662,15 +667,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   provider whose description lists no models, such as LiteLLM, shows **Model per tier**,
   with a text field per tier and no **Effort**; a workspace's choice of such a provider
   shows the same with the feature off. **Runtime** follows the tiers, as on **Workspace
-  settings › Model**. A change of **Key** or **Provider** empties the tiers. A tier whose model id or effort a save refuses shows the refusal under its field.
-  A stored fallback whose provider does not work with the runtime the step shows, after
-  a change of **Key** or **Runtime**, has a line under **Runtime**, or under **Key**
-  where one runtime shows as text: “Remove the fallback OpenRouter team on the Model
-  page, or pick a key whose provider serves Codex.”, “Model page” a link to **Workspace
-  settings › Model** for whoever can open it. **Continue** then saves nothing.
+  settings › Model**. A change of provider empties the tiers. A tier whose model id or
+  effort a save refuses shows the refusal under its field.
   **Continue**, enabled once every tier has a model and no tier is refused, saves the
-  workspace's model choice: the provider, the key the workspace's choice has while the
-  provider still has it, else its default key, the runtime the step shows, and the tiers,
+  workspace's model choice: the provider, whose keys runs take, the runtime the step
+  shows, and the tiers,
   with the Thinking tier's model and effort as the choice's; with nothing changed it saves
   nothing. Add a key adds the provider and saves the choice together: when the save of the
   choice is refused, no provider and no key are added. **Workspace settings › Model**
@@ -823,26 +824,29 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   place of the form, and adds nothing. For a Claude subscription, **About model
   providers** shows `claude setup-token` on a separate line, with **Copy command**.
   **Workspace settings › Model** sets the default models of the workspace's runs under
-  **Default models**: **Key**, each key of a model provider as “Anthropic API key ·
-  main”, then **Model and effort per tier**, a **Model** and an **Effort** for each of
-  Thinking, Balanced and Light, then **Runtime**. **Model** suggests the key's provider's models from the
+  **Default models**: **Provider**, each model provider by its name, such as “Northwind
+  Claude”, whose keys runs take, then **Model and effort per tier**, a **Model** and an
+  **Effort** for each of Thinking, Balanced and Light, then **Runtime**. **Model**
+  suggests the provider's models from the
   models.dev list in the release, which the Mix task `apiary.models.update` writes
   before a release; Qory Apiary downloads nothing while it runs. With the feature
-  `model_proxies` on, a key of a provider whose description lists no models, such as
+  `model_proxies` on, a provider whose description lists no models, such as
   LiteLLM, shows **Model per tier**, with a text field per tier for any model id and no
   **Effort**. **Save** is enabled once every tier has a model. **Runtime** lists the
-  runtimes that work with the key's provider. Its line has the provider's title in the
-  catalogue, not the key's name. Where one does, it shows its name and
+  runtimes that work with the provider. Its line has the provider's title in the
+  catalogue, not the provider's name. Where one does, it shows its name and
   “Claude Code is the only runtime that works with Anthropic API key.”; where several do,
   a select, set to the saved runtime, else the first, and “These runtimes work with
-  OpenRouter.”. **Key** lists every key, whichever runtime is chosen. A change of **Key**
-  keeps the runtime while the new provider works with it, else takes the first that does.
-  A change of **Runtime** keeps the models, and an effort the runtime does not accept goes
-  back to “Not set”. A saved choice whose provider no longer serves a runtime, or whose
-  settings no longer fit, keeps its key in **Key**, with the line of why under it, such
-  as “Choose another provider for Codex. Anthropic API key serves no request format that
-  Codex sends.”; no other key is chosen in its place, and **Save** writes nothing until
-  another key is chosen. With no model provider, the page shows “Add a model provider in
+  OpenRouter.”. **Provider** lists every model provider, whichever runtime is chosen,
+  also one that works with no runtime. A change of **Provider** keeps the runtime while
+  the new provider works with it, else takes the first that does. A change of
+  **Runtime** keeps the models, and an effort the runtime does not accept goes back to
+  “Not set”. A provider that works with no runtime shows “DeepSeek works with no runtime
+  in this version of Qory Apiary. Pick another provider.” under **Provider**, and
+  **Save** writes nothing until another provider is chosen. A saved choice whose
+  provider's settings no longer fit keeps its provider in **Provider**, with the line of
+  why under it; no other provider is chosen in its place, and **Save** writes nothing
+  until another provider is chosen. With no model provider, the page shows “Add a model provider in
   Organisation settings › Model providers.” to whoever may add one, and who adds one to
   anyone else. The catalogue of this release has one runtime, `claude`. When the gateway had no model key for a run, the work item page puts “Add a
   model key in Organisation settings › Model providers.” first on the step card,
@@ -1368,28 +1372,30 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   spaces, tabs or newlines is empty: **Key** shows “can't be blank”, and an empty **New
   value** keeps the key's value. The value of any other secret stays as you typed it,
   its last newline included.
-- **Workspace settings › Model** has the part **Fallbacks** under Key, the tiers and
+- **Workspace settings › Model** has the part **Fallbacks** under Provider, the tiers and
   Runtime: “When every key of Northwind Claude is in cooldown, runs use these, in order,
-  from the next run.” Each fallback has Provider, Model and Effort, with **Move up**,
-  **Move down** and **Remove**. **Add fallback** adds a provider that applies to the
-  workspace, serves the chosen runtime, and is neither the Key's provider nor a
-  fallback already, with the Thinking tier's model where the provider has a model of the
-  same id. **Save** saves the fallbacks with the model choice. With no such
-  provider left, the part shows “Add another model provider that serves Claude Code in
-  Organisation settings › Model providers, then add it here as a fallback.” A save that
-  changes the Key's provider to a fallback's provider drops that fallback. A fallback
-  whose provider does not work with the chosen runtime, as after a change of **Runtime**
-  or **Key**, stays with “Choose another provider or remove this fallback. Anthropic API
-  key does not work with Codex.” under its **Provider**, and **Save** is disabled until
-  it is removed or given another provider.
+  from the next run.” Each fallback has **Provider**, **Model and effort per tier**, as
+  the default models have, and **Runtime**, with **Move up**, **Move down** and
+  **Remove**. **Runtime** lists the runtimes that work with the fallback's provider: one
+  as text, with “Claude Code is the only runtime that works with Anthropic API key.”, or
+  several in a select, with “These runtimes work with OpenRouter.”. **Add fallback** adds
+  a provider that applies to the workspace and works with a runtime, and is neither the
+  chosen provider nor a fallback already. A new fallback, and a fallback whose provider
+  changes, starts with no models and on the chosen runtime where its provider works with
+  it, else on the first runtime that does. A change of a fallback's **Runtime** keeps its
+  models, and an effort the runtime does not accept goes back to “Not set”. **Save** is
+  enabled once every tier of the default models and of each fallback has a model, and
+  saves the fallbacks with the model choice. With no such provider left, the part shows
+  “Add another model provider in Organisation settings › Model providers, then add it here
+  as a fallback.” A save that changes the chosen provider to a fallback's provider drops
+  that fallback.
 - Only a run of Explore uses a model key. Such a run gets up to 6 keys of its model
   provider at its claim, each a separate credential of the run, named after the
-  provider's public id: `con_…-1` to `con_…-6`. The run starts with the key chosen in the
-  model choice while that key is out of cooldown, else a key with no known reset, the
-  default key first, else the key whose known reset is closest. Forager's gateway moves
+  provider's public id: `con_…-1` to `con_…-6`. The run starts with a key with no known
+  reset, the default key first, else the key whose known reset is closest. Forager's gateway moves
   to the next key when a key reaches its limit. Where every key of the provider is in
   cooldown, the run gets the keys of the first fallback with a key out of cooldown, and
-  that fallback's model and effort. Where every key of the provider and of each
+  that fallback's runtime and tiers. Where every key of the provider and of each
   fallback is in cooldown, the run waits in the queue, and its page shows “Waiting for a
   model key: every key of Northwind Claude is in cooldown until 14:00.”, for the
   provider whose key leaves its cooldown first. The first claim after that time takes
@@ -2428,6 +2434,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `model_choices`; the function change locks no table. The migration is short. Rolling
   back restores the function with `fast` and deletes each model choice whose tier map
   has `balanced`, with its fallbacks.
+- `model_choices` and `model_choice_fallbacks` (20261118190000): `model_choices` drops
+  the column `value_id`, the key a choice chose, with its check; runs take the keys of
+  the chosen provider. `model_choice_fallbacks` drops `model_id` and `effort`, with their
+  checks, and gains `runtime` and `tiers`, both `NOT NULL`, with a check of each as
+  `model_choices` has. The migration deletes every fallback first and moves no data. The
+  migration is short. Rolling back adds the dropped columns back empty and drops
+  `runtime` and `tiers`.
 <!-- /feature -->
 - `instance_settings` (20261117170000): a nullable column `prebuilt_image_max_gb`, the
   largest prebuilt image in GB, with a check that a value is from 1 to 10000. The check

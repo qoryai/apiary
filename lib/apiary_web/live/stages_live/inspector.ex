@@ -13,7 +13,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   # row line ends with the limit.
   #
   # With `model` given, each workflow's fold has its model choice after the time limit
-  # (`ApiaryWeb.StagesLive.ModelPart`), its fields in a separate form per row too: Key,
+  # (`ApiaryWeb.StagesLive.ModelPart`), its fields in a separate form per row too: Provider,
   # "Use workspace default" or a key, the line of what the workflow uses, and with a key
   # the tiers (`ApiaryWeb.ModelTiers`) and Save model choice.
   @moduledoc false
@@ -796,32 +796,39 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   attr :id, :string, required: true
   attr :field, :map, required: true, doc: "the row's model choice (`model_field/4`)"
 
-  # A workflow's model choice, under its time limit: Key, "Use workspace default" or a key
-  # of a model provider, with a line under it of what the workflow uses. With a key, the
-  # key's tiers follow (`ApiaryWeb.ModelTiers`), then Runtime, the runtimes the key's
-  # provider serves (`ApiaryWeb.ModelTiers.runtime_part/1`), then Save model choice,
+  # A workflow's model choice, under its time limit: Provider, "Use workspace default" or
+  # a model provider, with a line under it of what the workflow uses. A provider that
+  # serves no runtime has the line of `ApiaryWeb.StagesLive.ModelPart.no_runtime/2` under
+  # it, and Save model choice stays disabled. With a provider, its tiers follow
+  # (`ApiaryWeb.ModelTiers`), then Runtime, the runtimes the provider serves
+  # (`ApiaryWeb.ModelTiers.runtime_part/1`), then Save model choice,
   # which stays disabled while there is nothing to save or a tier has no model. With the
   # default, Runtime is not shown: the default's runtime applies. With the default and
   # no override saved, there is no button. A refusal shows under its field, and Saved.
   # under the button after a save. Where the person may not change it, the fields are
-  # disabled with no button. A workflow the saved process does not have yet has Key
+  # disabled with no button. A workflow the saved process does not have yet has Provider
   # disabled, with no button and a line to save the stage first.
   defp model_part(assigns) do
     field = assigns.field
 
     assigns =
       assign(assigns,
-        error: field.key_errors != [],
+        error: field.provider_errors != [],
         error_ids:
-          for({_message, i} <- Enum.with_index(field.key_errors), do: error_id(assigns.id, i))
+          for(
+            {_message, i} <- Enum.with_index(field.provider_errors),
+            do: error_id(assigns.id, i)
+          )
       )
 
     ~H"""
     <fieldset class="fieldset">
-      <label for={"#{@id}-key"} class="text-[13px]/[18px] font-medium">{gettext("Key")}</label>
+      <label for={"#{@id}-provider"} class="text-[13px]/[18px] font-medium">
+        {gettext("Provider")}
+      </label>
       <select
-        id={"#{@id}-key"}
-        name="model[key]"
+        id={"#{@id}-provider"}
+        name="model[provider]"
         form={@field.form}
         class={["select select-sm w-full", @error && "select-error"]}
         aria-invalid={@error && "true"}
@@ -831,7 +838,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
         {Phoenix.HTML.Form.options_for_select(@field.options, @field.value)}
       </select>
       <p
-        :for={{message, i} <- Enum.with_index(@field.key_errors)}
+        :for={{message, i} <- Enum.with_index(@field.provider_errors)}
         id={error_id(@id, i)}
         class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
       >
@@ -841,12 +848,12 @@ defmodule ApiaryWeb.StagesLive.Inspector do
       <p id={"#{@id}-line"} class="text-[12.5px]/[18px] text-muted">{model_line(@field)}</p>
     </fieldset>
     <ModelTiers.tiers
-      :if={@field.key}
+      :if={@field.entry}
       id={"#{@id}-tiers"}
       name="model[tiers]"
       field_id={"#{@id}-tiers"}
       form={@field.form}
-      key={@field.key}
+      entry={@field.entry}
       tiers={@field.tiers}
       stored={@field.stored}
       errors={@field.tier_errors}
@@ -854,7 +861,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
       stacked
     />
     <ModelTiers.runtime_part
-      :if={@field.key && @field.runtime}
+      :if={@field.entry && @field.runtime}
       id={"#{@id}-runtime-part"}
       select_id={"#{@id}-runtime"}
       name="model[runtime]"
@@ -889,29 +896,29 @@ defmodule ApiaryWeb.StagesLive.Inspector do
     """
   end
 
-  # The line under Key: what the workflow uses.
+  # The line under Provider: what the workflow uses.
   defp model_line(%{draft_only: true}),
     do: gettext("Save the stage first to set this workflow's model choice.")
 
-  defp model_line(%{key: %{}}),
-    do: gettext("This workflow uses this key and these models in place of the workspace's.")
+  defp model_line(%{entry: %{}}),
+    do: gettext("This workflow uses this provider and these models in place of the workspace's.")
 
-  defp model_line(%{default: {:workspace, key}}),
-    do: gettext("Uses the workspace default: %{key}.", key: key)
+  defp model_line(%{default: {:workspace, provider}}),
+    do: gettext("Uses the workspace default: %{provider}.", provider: provider)
 
-  defp model_line(%{default: {:organisation, organisation, key}}),
+  defp model_line(%{default: {:organisation, organisation, provider}}),
     do:
-      gettext("Uses the default of %{organisation}: %{key}.",
+      gettext("Uses the default of %{organisation}: %{provider}.",
         organisation: organisation,
-        key: key
+        provider: provider
       )
 
   defp model_line(%{default: :none}),
     do: gettext("No default is set. Set one in Workspace settings › Model.")
 
   # The ids of a field's refusals, as `ApiaryWeb.CoreComponents.input/1` gives them.
-  defp error_id(id, 0), do: "#{id}-key-error"
-  defp error_id(id, i), do: "#{id}-key-error-#{i + 1}"
+  defp error_id(id, 0), do: "#{id}-provider-error"
+  defp error_id(id, i), do: "#{id}-provider-error-#{i + 1}"
 
   # The rows of the stage with a workflow whose model choices have a form; none without
   # model choices.
@@ -928,28 +935,30 @@ defmodule ApiaryWeb.StagesLive.Inspector do
       workflow = entry["workflow"]
       draft_only = not MapSet.member?(model.workflows, workflow)
       state = ModelPart.state(model, model.rows, time_limit_key(stage_id, id), workflow)
-      keys = ModelPart.keys(model, workflow, state.runtime)
-      key = ModelTiers.find(keys, state.value)
-      {runtimes, runtime} = ModelPart.runtimes(model, key, state.runtime)
+      entries = ModelPart.entries(model, workflow, state.runtime)
+      entry = ModelTiers.find(entries, state.value)
+      {runtimes, runtime} = ModelPart.runtimes(model, entry, state.runtime)
       stored = model.overrides[workflow]
       editable = model.editable and not draft_only
+      no_runtime = ModelPart.no_runtime(model, entry)
 
-      # A refusal of the runtime shows under Runtime where it is shown, else under Key.
-      runtime_fields = if key && runtime, do: [:runtime], else: []
+      # A refusal of the runtime shows under Runtime where it is shown, else under
+      # Provider.
+      runtime_fields = if entry && runtime, do: [:runtime], else: []
 
       {runtime_errors, errors} =
         Enum.split_with(state.errors, fn {field, _error} -> field in runtime_fields end)
 
-      {key_errors, tier_errors} =
-        Enum.split_with(errors, fn {field, _error} -> field in [:key, :runtime] end)
+      {provider_errors, tier_errors} =
+        Enum.split_with(errors, fn {field, _error} -> field in [:provider, :runtime] end)
 
       %{
         form: "#{id}-model-form",
         options: [
-          {gettext("Use workspace default"), ""} | for(k <- keys, do: {k.label, k.value})
+          {gettext("Use workspace default"), ""} | for(e <- entries, do: {e.label, e.value})
         ],
         value: state.value,
-        key: key,
+        entry: entry,
         runtimes: runtimes,
         runtime: runtime,
         tiers: state.tiers,
@@ -958,18 +967,20 @@ defmodule ApiaryWeb.StagesLive.Inspector do
             do: ModelTiers.accepted(ModelTiers.stored(stored), runtime),
             else: ModelTiers.stored(stored)
           ),
-        key_errors: for({_field, error} <- key_errors, do: translate_error(error)),
+        provider_errors:
+          if(no_runtime, do: [no_runtime], else: []) ++
+            for({_field, error} <- provider_errors, do: translate_error(error)),
         runtime_errors: for({_field, error} <- runtime_errors, do: translate_error(error)),
-        provider_title: key && ModelPart.provider_title(model, key),
+        provider_title: entry && ModelPart.provider_title(model, entry),
         tier_errors: tier_errors,
         done: state.done,
         editable: editable,
         draft_only: draft_only,
         default: model.default,
-        button: editable and (key != nil or stored != nil or state.done),
+        button: editable and (entry != nil or stored != nil or state.done),
         save_off:
-          not (ModelPart.changed?(model, state) or state.refused) or
-            (key != nil and not ModelTiers.complete?(key, state.tiers))
+          not (ModelPart.changed?(model, state) or state.refused) or no_runtime != nil or
+            (entry != nil and not ModelTiers.complete?(entry, state.tiers))
       }
     end
   end

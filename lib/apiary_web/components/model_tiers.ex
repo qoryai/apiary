@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.ModelTiers do
-  # One key, the three tiers and the runtime of a model choice (`Apiary.ModelChoices`), as
-  # a form sets them: the state of the form, and `tiers/1` and `runtime_part/1`, the
+  # One model provider, the three tiers and the runtime of a model choice
+  # (`Apiary.ModelChoices`), as a form sets them: the state of the form, and `tiers/1` and `runtime_part/1`, the
   # components that draw the tiers and Runtime.
   # Workspace settings › Model (`ApiaryWeb.ModelChoiceLive`), each workflow's fold on
   # the Workflows page (`ApiaryWeb.StagesLive.ModelPart`) and the Model step of a
@@ -9,19 +9,19 @@ defmodule ApiaryWeb.ModelTiers do
   #
   # The state:
   #
-  #   * `keys/2` the keys a form offers, each a key entry: `value`, the provider's public
-  #     id, a slash and the key's value id; `label`, "<Provider> · <key>"; the `provider`;
-  #     `provider_ref`, the provider's row id; its `value_id`; the provider's `models`, as
+  #   * `entries/2` the providers a form offers, each a provider entry: `value`, the
+  #     provider's public id; `label`, the provider's name; the `provider`;
+  #     `provider_ref`, the provider's row id; the provider's `models`, as
   #     `Apiary.ModelChoices.suggestions/2` lists them; and `free`, true for a provider
   #     whose description lists no models, whose tiers take any model id as text.
-  #     `entry/4` makes one key entry, also of a catalogue provider not added yet
+  #     `entry/3` makes one provider entry, also of a catalogue provider not added yet
   #     (`Apiary.Kinds.Provider`), whose `provider_ref` is `{:kind, name}`;
-  #   * `chosen/2` the entry of a stored choice's key, `params/2` and `stored/1` the
-  #     tiers of a stored choice, `sent/5` the tiers a form sent, fitted to the key;
+  #   * `chosen/2` the entry of a stored choice's provider, `params/2` and `stored/1` the
+  #     tiers of a stored choice, `sent/5` the tiers a form sent, fitted to the provider;
   #   * `complete?/2` whether every tier has a model, as a save at levels 4, 5 and 6
   #     needs (`Apiary.ModelChoices.put_choice/4`), and `attrs/2` what a save sends;
   #   * `field_errors/2` each refusal of a save on the field it is about;
-  #   * `runtime/2` the runtime a form shows for a key whose provider serves a list of
+  #   * `runtime/2` the runtime a form shows for a provider that serves a list of
   #     runtimes, `accepted/2` a stored choice's tiers without the efforts a runtime does
   #     not accept, and `runtime_part/1`, Runtime under the tiers, with its line
   #     (`runtime_line/2`).
@@ -49,67 +49,49 @@ defmodule ApiaryWeb.ModelTiers do
 
   defp blank_tier, do: %{"model" => "", "effort" => ""}
 
-  ## Keys
+  ## Providers
 
   @doc """
-  The keys of `providers`, each a map of `provider`, `models`, `free` and `offered` as a
-  page lists its providers, in their order, each provider's keys by value id; and the
-  key of `stored`, a stored choice, where its provider is among them and the list lacks
-  the key, so a save does not change it unseen. A provider that is not offered
-  (`offered: false`, `Apiary.Kinds.Providers.offered?/1`) gives only that key.
+  The provider entries of `providers`, each a map of `provider`, `models`, `free` and
+  `offered` as a page lists its providers, in their order; a provider that is not offered
+  (`offered: false`, `Apiary.Kinds.Providers.offered?/1`) only where it is the provider
+  of `stored`, a stored choice, so a save does not change it unseen.
   """
-  @spec keys([map], ModelChoice.t() | nil) :: [map]
-  def keys(providers, stored) do
-    listed =
-      for %{provider: provider} = entry <- providers,
-          Map.get(entry, :offered, true),
-          value_id <- value_ids(provider),
-          do: key_entry(provider, value_id, entry.models, entry.free)
+  @spec entries([map], ModelChoice.t() | nil) :: [map]
+  def entries(providers, stored) do
+    saved = stored && stored.connection_id
 
-    with %ModelChoice{connection_id: id} = choice <- stored,
-         nil <- chosen(listed, choice),
-         %{provider: provider} = entry <- Enum.find(providers, &(&1.provider.id == id)) do
-      value_id = choice.value_id || provider.default_value_id
-      listed ++ [key_entry(provider, value_id, entry.models, entry.free)]
-    else
-      _listed -> listed
-    end
+    for %{provider: provider} = entry <- providers,
+        Map.get(entry, :offered, true) or provider.id == saved,
+        do: provider_entry(provider, entry.models, entry.free)
   end
 
-  defp value_ids(%Connection{secret: %{values: values}}) when is_list(values),
-    do: Enum.map(values, & &1.value_id)
-
-  defp value_ids(_provider), do: []
-
   @doc """
-  One key entry, as `keys/2` lists them: of `provider`, a model provider of the
-  organisation, and its key `value_id`; or of a catalogue provider not added yet, with
-  no key (`value_id` nil), whose `value` is its name, `label` its title and
-  `provider_ref` `{:kind, name}`. `models` and `free` as `keys/2` has them.
+  One provider entry, as `entries/2` lists them: of `provider`, a model provider of the
+  organisation; or of a catalogue provider not added yet, whose `value` is its name,
+  `label` its title and `provider_ref` `{:kind, name}`. `models` and `free` as
+  `entries/2` has them.
   """
-  @spec entry(Connection.t() | Provider.t(), String.t() | nil, [map], boolean) :: map
-  def entry(%Connection{} = provider, value_id, models, free),
-    do: key_entry(provider, value_id, models, free)
+  @spec entry(Connection.t() | Provider.t(), [map], boolean) :: map
+  def entry(%Connection{} = provider, models, free), do: provider_entry(provider, models, free)
 
-  def entry(%Provider{} = provider, nil, models, free) do
+  def entry(%Provider{} = provider, models, free) do
     %{
       value: provider.name,
       label: provider.title,
       provider: provider,
       provider_ref: {:kind, provider.name},
-      value_id: nil,
       models: models,
       free: free
     }
   end
 
-  defp key_entry(%Connection{} = provider, value_id, models, free) do
+  defp provider_entry(%Connection{} = provider, models, free) do
     %{
-      value: if(value_id, do: provider.public_id <> "/" <> value_id, else: provider.public_id),
-      label: key_label(provider, value_id),
+      value: provider.public_id,
+      label: provider.name,
       provider: provider,
       provider_ref: provider.id,
-      value_id: value_id,
       models: models,
       free: free
     }
@@ -117,52 +99,40 @@ defmodule ApiaryWeb.ModelTiers do
 
   defp ref(%{provider_ref: ref}), do: ref
 
-  @doc """
-  The label of a key of `provider`: "<Provider> · <key>" for the value id `value_id`,
-  the provider's name for nil.
-  """
-  @spec key_label(Connection.t(), String.t() | nil) :: String.t()
-  def key_label(%Connection{name: name}, nil), do: name
+  @doc "The options of a Provider `choice` input for `entries`."
+  @spec options([map]) :: [map]
+  def options(entries), do: for(entry <- entries, do: %{value: entry.value, title: entry.label})
 
-  def key_label(%Connection{name: name}, value_id),
-    do: gettext("%{provider} · %{key}", provider: name, key: value_id)
-
-  @doc "The options of a Key `choice` input for `keys`."
-  @spec key_options([map]) :: [map]
-  def key_options(keys), do: for(key <- keys, do: %{value: key.value, title: key.label})
-
-  @doc "The entry of `keys` whose value is `value`, nil for none."
+  @doc "The entry of `entries` whose value is `value`, nil for none."
   @spec find([map], term) :: map | nil
-  def find(keys, value), do: Enum.find(keys, &(&1.value == value))
+  def find(entries, value), do: Enum.find(entries, &(&1.value == value))
 
-  @doc """
-  The entry of `keys` that is the key of `choice`: its provider's default key for a
-  choice that names none. nil for none.
-  """
+  @doc "The entry of `entries` that is the provider of `choice`; nil for none."
   @spec chosen([map], ModelChoice.t() | nil) :: map | nil
-  def chosen(_keys, nil), do: nil
+  def chosen(_entries, nil), do: nil
 
-  def chosen(keys, %ModelChoice{connection_id: id, value_id: value_id}) do
-    Enum.find(keys, fn key ->
-      ref(key) == id and
-        key.value_id == (value_id || Map.get(key.provider, :default_value_id))
-    end)
-  end
+  def chosen(entries, %ModelChoice{connection_id: id}),
+    do: Enum.find(entries, &(ref(&1) == id))
 
   ## Values
 
   @doc """
-  The tiers' values of `choice` while `key` is its key's entry; else `blank/0`. A tier
-  the choice leaves out is blank.
+  The tiers' values of `choice` while `key` is its provider's entry; else `blank/0`. A
+  tier the choice leaves out is blank.
   """
   @spec params(ModelChoice.t() | nil, map | nil) :: map
   def params(%ModelChoice{} = choice, %{} = key) do
-    if chosen([key], choice), do: tier_values(choice.tiers), else: blank()
+    if chosen([key], choice), do: values(choice.tiers), else: blank()
   end
 
   def params(_choice, _key), do: blank()
 
-  defp tier_values(tiers) do
+  @doc """
+  The tiers' values of a stored tier map `tiers`, of a choice or of a fallback: a tier it
+  leaves out, or nil, is blank.
+  """
+  @spec values(map | nil) :: map
+  def values(tiers) do
     tiers = tiers || %{}
 
     Map.new(shown(), fn tier ->
@@ -187,7 +157,7 @@ defmodule ApiaryWeb.ModelTiers do
   def stored(%ModelChoice{connection_id: id} = choice) when is_binary(id),
     do: %{
       provider_id: id,
-      tiers: tier_values(choice.tiers),
+      tiers: values(choice.tiers),
       runtime: choice.runtime || ModelChoices.default_runtime().name
     }
 
@@ -217,7 +187,7 @@ defmodule ApiaryWeb.ModelTiers do
   ## Runtime
 
   @doc """
-  The runtime a form shows for a key whose provider serves `runtimes`, in the catalogue's
+  The runtime a form shows for a provider that serves `runtimes`, in the catalogue's
   order (`Apiary.Kinds.Providers.runtimes/1`): the one named `name` while it is among
   them, else the first; nil for none.
   """
@@ -226,11 +196,11 @@ defmodule ApiaryWeb.ModelTiers do
     do: Enum.find(runtimes, &(&1.name == name)) || List.first(runtimes)
 
   @doc """
-  The tiers' values a form sent, for the key `key`, after the key `before`, with `old`
-  the values before. While the provider stays the same, a tier keeps a model of its list,
+  The tiers' values a form sent, for the provider entry `key`, after the entry `before`,
+  with `old` the values before. While the provider stays the same, a tier keeps a model of its list,
   or its model as it was, and an effort of that model (`efforts/3`); a field the form did
   not send is as it was, so a disabled Effort keeps its effort while its model stays.
-  Another provider's key, or none, leaves every tier blank. A provider whose description
+  Another provider, or none, leaves every tier blank. A provider whose description
   lists no models takes any model id, and no effort.
   """
   @spec sent(map | nil, map | nil, map, term, map | nil) :: map
@@ -303,7 +273,7 @@ defmodule ApiaryWeb.ModelTiers do
       else: listed ++ [{model, model}]
   end
 
-  @doc "Whether `key` is chosen and every tier has a model."
+  @doc "Whether a provider entry `key` is chosen and every tier has a model."
   @spec complete?(map | nil, map) :: boolean
   def complete?(nil, _tiers), do: false
 
@@ -311,38 +281,44 @@ defmodule ApiaryWeb.ModelTiers do
     do: Enum.all?(shown(), &(String.trim((tiers[&1] || %{})["model"] || "") != ""))
 
   @doc """
-  What a save of `key`, a key of a provider of the organisation (not a catalogue
-  provider's entry, `entry/4`), and `tiers` sends to `Apiary.ModelChoices.put_choice/4`:
-  `provider`, `key` and `tiers`, each tier with a model, its effort where it has one;
+  What a save of `key`, the entry of a provider of the organisation (not a catalogue
+  provider's entry, `entry/3`), and `tiers` sends to `Apiary.ModelChoices.put_choice/4`:
+  `provider` and `tiers`, each tier with a model, its effort where it has one;
   and `model` and `effort`, those of the `thinking` tier, as the run's model and effort
   are (`Apiary.ModelChoices.Resolution`), so a page that reads the choice's model shows
   the run's.
   """
   @spec attrs(map, map) :: map
   def attrs(key, tiers) do
-    sent =
-      for {tier, %{"model" => model} = set} <- tiers, model != "", into: %{} do
-        if set["effort"] in ["", nil],
-          do: {tier, %{"model" => model}},
-          else: {tier, %{"model" => model, "effort" => set["effort"]}}
-      end
-
+    sent = saved_tiers(tiers)
     thinking = sent["thinking"] || %{}
 
     %{
       provider: key.provider.public_id,
-      key: key.value_id,
       tiers: sent,
       model: thinking["model"],
       effort: thinking["effort"]
     }
   end
 
+  @doc """
+  The tier map a save sends for the tiers' values `tiers`: each tier with a model, its
+  effort where it has one.
+  """
+  @spec saved_tiers(map) :: map
+  def saved_tiers(tiers) do
+    for {tier, %{"model" => model} = set} <- tiers, model != "", into: %{} do
+      if set["effort"] in ["", nil],
+        do: {tier, %{"model" => model}},
+        else: {tier, %{"model" => model, "effort" => set["effort"]}}
+    end
+  end
+
   ## Refusals
 
   @doc """
-  Each refusal of a save, a changeset error, on the field it is about: `:key` for the
-  provider, the key and any field the form does not have, `:runtime` for the runtime,
+  Each refusal of a save, a changeset error, on the field it is about: `:provider` for
+  the provider and any field the form does not have, `:runtime` for the runtime,
   `{tier, :model}` or `{tier, :effort}` for a tier's, and `:tiers` for a refusal of the
   tiers that names neither a tier nor a model, which shows above them. `model` and
   `effort` are the `thinking` tier's (`attrs/2`), so their refusals are its; a refusal
@@ -353,12 +329,12 @@ defmodule ApiaryWeb.ModelTiers do
     placed =
       for {field, {_message, opts} = error} <- errors do
         case field do
-          field when field in [:provider, :key] -> {:key, error}
+          :provider -> {:provider, error}
           :model -> {{"thinking", :model}, error}
           :effort -> {{"thinking", :effort}, error}
           :tiers -> {tier_field(opts, tiers), error}
           :runtime -> {:runtime, error}
-          _other -> {:key, error}
+          _other -> {:provider, error}
         end
       end
 
@@ -404,7 +380,7 @@ defmodule ApiaryWeb.ModelTiers do
 
   attr :id, :string, required: true, doc: "the id of the section; each tier's id starts with it"
   attr :name, :string, required: true, doc: "the name the tiers' fields start with"
-  attr :key, :map, default: nil, doc: "the chosen key's entry (`keys/2`)"
+  attr :entry, :map, default: nil, doc: "the chosen provider's entry (`entries/2`)"
   attr :tiers, :map, required: true, doc: "the tiers' values"
   attr :stored, :map, default: nil, doc: "the stored choice, as `stored/1` gives it"
   attr :errors, :list, default: [], doc: "the refusals, as `field_errors/2` places them"
@@ -428,7 +404,7 @@ defmodule ApiaryWeb.ModelTiers do
     doc: "whether each tier's name and line stay above its fields at every width"
 
   @doc """
-  The tiers of `key`: one section, "Model and effort per tier", with a group per tier,
+  The tiers of the provider entry `entry`: one section, "Model and effort per tier", with a group per tier,
   its name and line as the group's legend, then its Model and Effort. Model lists the
   provider's models; Effort the effort values of the tier's model, disabled where it has
   none. For a provider whose description lists no models, the section is "Model per
@@ -436,7 +412,7 @@ defmodule ApiaryWeb.ModelTiers do
   field, and one that names no tier above the tiers.
   """
   def tiers(assigns) do
-    key = assigns.key
+    key = assigns.entry
 
     base =
       assigns.field_id ||
@@ -595,15 +571,27 @@ defmodule ApiaryWeb.ModelTiers do
   def runtime_line(_runtimes, provider),
     do: gettext("These runtimes work with %{provider}.", provider: provider)
 
+  @doc """
+  The line under Provider while the chosen provider, `title` its title in its catalogue
+  entry, works with no runtime of the catalogue (`Apiary.Kinds.Providers.runtimes/1`).
+  """
+  @spec no_runtime_line(String.t()) :: String.t()
+  def no_runtime_line(title),
+    do:
+      gettext(
+        "%{provider} works with no runtime in this version of Qory Apiary. Pick another provider.",
+        provider: title
+      )
+
   attr :id, :string, required: true, doc: "the id of the part; its line's id is it with `-line`"
   attr :select_id, :string, required: true, doc: "the id of the select, with several runtimes"
   attr :name, :string, required: true, doc: "the name of the field"
-  attr :runtimes, :list, required: true, doc: "the runtimes the key's provider serves"
+  attr :runtimes, :list, required: true, doc: "the runtimes the provider serves"
   attr :runtime, Runtime, required: true, doc: "the runtime chosen, one of `runtimes`"
 
   attr :provider, :string,
     required: true,
-    doc: "the title of the key's provider in its catalogue entry, such as \"OpenRouter\""
+    doc: "the title of the provider in its catalogue entry, such as \"OpenRouter\""
 
   attr :errors, :list, default: [], doc: "the refusals of Runtime, each a message"
   attr :disabled, :boolean, default: false
@@ -613,7 +601,7 @@ defmodule ApiaryWeb.ModelTiers do
     doc: "the id of the form the field belongs to, where it is not the form it is in"
 
   @doc """
-  Runtime, under the tiers: the runtimes the key's provider serves, in the catalogue's
+  Runtime, under the tiers: the runtimes the provider serves, in the catalogue's
   order (`Apiary.Kinds.Providers.runtimes/1`). With one, its name as text, and a hidden
   field with it; with several, a select. Then the line of `runtime_line/2`, and each
   refusal.
