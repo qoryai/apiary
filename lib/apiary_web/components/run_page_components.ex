@@ -310,12 +310,12 @@ defmodule ApiaryWeb.RunPageComponents do
       if @terminal,
         do:
           rich_gettext(
-            "Only Claude Code sends session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access.",
+            "Only Claude Code and Codex send session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access.",
             runtime: {:part, :runtime}
           ),
         else:
           rich_gettext(
-            "Only Claude Code sends session events. This session ran %{runtime}: its connections are under Network access.",
+            "Only Claude Code and Codex send session events. This session ran %{runtime}: its connections are under Network access.",
             runtime: {:part, :runtime}
           )
     }>

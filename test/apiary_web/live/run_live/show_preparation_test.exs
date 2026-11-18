@@ -1301,7 +1301,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
   describe "the note on a session's runtime" do
     setup :register_and_log_in_user
 
-    @runtime_note "Only Claude Code sends session events. This session ran qory: its output " <>
+    @runtime_note "Only Claude Code and Codex send session events. This session ran qory: its output " <>
                     "is under Terminal, and its connections under Network access."
 
     defp note_text(lv, selector) do
@@ -1413,18 +1413,75 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert note_count(lv) == 1
     end
 
-    test "sessions on claude and codex behind a wall: each note in its session's Run the agent",
+    test "sessions on claude and aider behind a wall: each note in its session's Run the agent",
          ctx do
-      run = sessions_run(ctx.scope, ["claude", "codex"], wall: "docker", hooks: false)
+      run = sessions_run(ctx.scope, ["claude", "aider"], wall: "docker", hooks: false)
       lv = open(ctx.conn, ctx.scope, run)
 
       assert note_text(lv, "#prepare-machine-session-agent .q-limits") == @wall_note
 
       assert note_text(lv, "#prepare-machine-session-2-agent .q-limits") ==
-               String.replace(@runtime_note, "qory", "codex")
+               String.replace(@runtime_note, "qory", "aider")
 
       refute has_element?(lv, "#run-timeline > .q-limits")
       assert note_count(lv) == 2
+    end
+
+    # A Codex session has no hooks: its session events are the ones its output carries,
+    # `runtime.started`, `runtime.turn_finished` and `runtime.turn_failed`.
+    defp codex_run(scope, opts) do
+      events = [
+        {1, "run.started",
+         started_data(Map.new(Keyword.take(opts, [:wall]), fn {k, v} -> {to_string(k), v} end))},
+        {2, "session.started",
+         session_started_data(%{
+           "runtime" => "codex",
+           "runtime_version" => "0.167.2",
+           "command" => "codex"
+         })},
+        {3, "runtime.started", %{"session" => 1, "session_id" => "t1", "source" => "startup"}},
+        {4, "runtime.turn_finished", %{"session" => 1, "session_id" => "t1"}},
+        {5, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}},
+        {6, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
+      ]
+
+      scope |> run_fixture() |> project!(events)
+    end
+
+    test "a Codex session sends session events: its Timeline shows them and no note says it sends none",
+         ctx do
+      lv = open(ctx.conn, ctx.scope, codex_run(ctx.scope, []))
+
+      assert note_count(lv) == 0
+      refute render(lv) =~ "send session events"
+      refute render(lv) =~ "No session events arrived."
+      assert has_element?(lv, "#timeline [id^=e-]", "Turn finished")
+    end
+
+    test "a Codex session behind a wall has no wall note: its events come from its output",
+         ctx do
+      lv = open(ctx.conn, ctx.scope, codex_run(ctx.scope, wall: "docker"))
+
+      assert note_count(lv) == 0
+      refute render(lv) =~ "could not be recorded"
+      assert has_element?(lv, "#timeline [id^=e-]", "Turn finished")
+    end
+
+    test "a Codex run shows its runtime and the version its session started with", ctx do
+      lv = open(ctx.conn, ctx.scope, codex_run(ctx.scope, []))
+
+      assert has_element?(lv, "dd", "codex")
+      assert has_element?(lv, "dd span.font-mono", "0.167.2")
+    end
+
+    test "sessions on claude and codex behind a wall: the wall note is in the Claude Code session only",
+         ctx do
+      run = sessions_run(ctx.scope, ["claude", "codex"], wall: "docker", hooks: false)
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert note_text(lv, "#prepare-machine-session-agent .q-limits") == @wall_note
+      refute has_element?(lv, "#prepare-machine-session-2-agent .q-limits")
+      assert note_count(lv) == 1
     end
 
     test "two Claude Code sessions behind a wall: each has the wall note", ctx do
@@ -1448,7 +1505,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
           {3, "run.step_exited",
            %{"step" => 1, "state" => "succeeded", "exit_code" => 0, "duration_ms" => 100}},
           {4, "session.started",
-           session_started_data(%{"runtime" => "codex", "command" => "codex", "bare" => true})},
+           session_started_data(%{"runtime" => "aider", "command" => "aider", "bare" => true})},
           {5, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}},
           {6, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
         ])
@@ -1456,7 +1513,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       lv = open(ctx.conn, ctx.scope, run)
 
       assert note_text(lv, "#run-timeline > .q-limits") ==
-               String.replace(@runtime_note, "qory", "codex")
+               String.replace(@runtime_note, "qory", "aider")
 
       assert note_count(lv) == 1
       refute has_element?(lv, "#prepare-machine .q-limits")
@@ -1464,7 +1521,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert before?(lv, "q-limits", ~s(id="timeline"))
     end
 
-    test "with no Run list, sessions on claude and codex: both notes above the Timeline", ctx do
+    test "with no Run list, sessions on claude and aider: both notes above the Timeline", ctx do
       run =
         ctx.scope
         |> run_fixture()
@@ -1473,7 +1530,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
           {2, "session.started", session_started_data()},
           {3, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}},
           {4, "session.started",
-           session_started_data(%{"session" => 2, "runtime" => "codex", "command" => "codex"})},
+           session_started_data(%{"session" => 2, "runtime" => "aider", "command" => "aider"})},
           {5, "session.exited", %{"session" => 2, "state" => "succeeded", "exit_code" => 0}},
           {6, "run.exited", %{"state" => "succeeded", "exit_code" => 0, "duration_ms" => 1000}}
         ])
@@ -1483,11 +1540,11 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       refute has_element?(lv, "#prepare-machine")
       assert note_count(lv) == 2
       assert render(lv) =~ "No session events arrived."
-      assert has_element?(lv, ".q-limits code.q-rule", "codex")
+      assert has_element?(lv, ".q-limits code.q-rule", "aider")
       assert before?(lv, "q-limits", ~s(id="timeline"))
     end
 
-    test "with no Run list, a codex session, then a Claude Code one: both notes above the Timeline",
+    test "with no Run list, a aider session, then a Claude Code one: both notes above the Timeline",
          ctx do
       run =
         ctx.scope
@@ -1495,7 +1552,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
         |> project!([
           {1, "run.started", started_data()},
           {2, "session.started",
-           session_started_data(%{"session" => 1, "runtime" => "codex", "command" => "codex"})},
+           session_started_data(%{"session" => 1, "runtime" => "aider", "command" => "aider"})},
           {3, "session.exited", %{"session" => 1, "state" => "succeeded", "exit_code" => 0}},
           {4, "session.started", session_started_data(%{"session" => 2})},
           {5, "session.exited", %{"session" => 2, "state" => "succeeded", "exit_code" => 0}},
@@ -1507,7 +1564,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       refute has_element?(lv, "#prepare-machine")
       assert note_count(lv) == 2
       assert render(lv) =~ "No session events arrived."
-      assert has_element?(lv, ".q-limits code.q-rule", "codex")
+      assert has_element?(lv, ".q-limits code.q-rule", "aider")
 
       html = render(lv)
       {timeline_at, _} = :binary.match(html, ~s(id="timeline"))
@@ -1538,7 +1595,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       lv = open(ctx.conn, ctx.scope, run)
 
       assert note_text(lv, "#prepare-machine-session-agent .q-limits") ==
-               "Only Claude Code sends session events. This session ran qory: its " <>
+               "Only Claude Code and Codex send session events. This session ran qory: its " <>
                  "connections are under Network access."
 
       :ok = Apiary.EditionStubs.HidesNamed.put([])
@@ -1579,7 +1636,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
 
       assert has_element?(lv, "#prepare-machine-session-agent #timeline")
       assert note_count(lv) == 0
-      refute render(lv) =~ "Only Claude Code sends session events."
+      refute render(lv) =~ "Only Claude Code and Codex send session events."
     end
 
     for runtimes <- [["qory", "claude"], ["claude", "qory"]] do

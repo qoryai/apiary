@@ -3775,6 +3775,11 @@ msgstr ""
 msgid "%{value_id} of %{name} is saved."
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{vendor}'s terms"
+msgstr ""
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{version} has been in force since %{time}."
@@ -6102,11 +6107,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Anthropic's coding agent."
-msgstr ""
-
-#: lib/apiary_web/live/provider_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "Anthropic's terms"
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/types.ex
@@ -11118,6 +11118,11 @@ msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
+msgid "Get the key from the provider first: create an API key in the OpenAI Platform."
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
 msgid "Get the key from the provider first: create an OpenRouter API key."
 msgstr ""
 
@@ -15647,12 +15652,12 @@ msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "Only Claude Code sends session events. This session ran %{runtime}: its connections are under Network access."
+msgid "Only Claude Code and Codex send session events. This session ran %{runtime}: its connections are under Network access."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
-msgid "Only Claude Code sends session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access."
+msgid "Only Claude Code and Codex send session events. This session ran %{runtime}: its output is under Terminal, and its connections under Network access."
 msgstr ""
 
 #: lib/apiary/policy.ex

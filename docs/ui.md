@@ -2249,10 +2249,13 @@ Forager claimed for the run, when it claimed one, under "Machine id".
        session with no result; Result, "exit 0 · success · 14 turns · 3 m 49 s · $0.84"
        (an exit code of -1 is no exit status and is left out); and Model, from the
        session's last `dev.qory.runtime.started`. A session whose runtime, the `runtime`
-       of its `dev.qory.session.started`, is not Claude Code (`claude`) then has a note:
-       "Only Claude Code sends session events. This session ran qory: its output is
+       of its `dev.qory.session.started`, is no runtime of the catalogue
+       (`Apiary.Kinds.Runtimes`: Claude Code and Codex) then has a note:
+       "Only Claude Code and Codex send session events. This session ran qory: its output is
        under Terminal, and its connections under Network access." For a reader without
-       the Terminal, the note ends "its connections are under Network access." A Claude
+       the Terminal, the note ends "its connections are under Network access." A Codex
+       session has no note: it has no hooks, and its events come from the runtime's output.
+       A Claude
        Code session whose hooks sent no event has the note about the wall instead, "This
        run's session events could not be recorded: the wall it ran behind runs inside a
        virtual machine.", or, on a run with no wall, "No session events arrived." Each
