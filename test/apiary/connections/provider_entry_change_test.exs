@@ -7,6 +7,7 @@ defmodule Apiary.Connections.ProviderEntryChangeTest do
   use Apiary.DataCase, async: true
 
   import Apiary.DispatchedRunsFixtures
+  import Apiary.ModelKeysFixtures, only: [stored_keys: 1]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
@@ -90,7 +91,7 @@ defmodule Apiary.Connections.ProviderEntryChangeTest do
 
       assert {:ok, %{registered: run}} = handover!(ctx)
       run = Repo.get!(Run, run.id)
-      assert run.provider_api["use_up_to_windows"] == ~w(five_hour seven_day)
+      assert [%{api: %{"use_up_to_windows" => ~w(five_hour seven_day)}}] = stored_keys(run)
 
       assert {:ok, %{keys: [%{name: name}]} = credential} = ProviderCredential.for_run(run)
       assert name == "#{pid}-1"

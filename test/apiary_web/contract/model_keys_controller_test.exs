@@ -10,6 +10,7 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
   import Ecto.Query, only: [from: 2]
   import ExUnit.CaptureLog, only: [with_log: 1]
   import Apiary.ContractFixtures
+  import Apiary.ModelKeysFixtures, only: [stored_keys: 1]
   import Apiary.OrganisationsFixtures
   import Apiary.SealedRunsFixtures
 
@@ -324,7 +325,7 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
           keys: for(n <- 1..6, do: %{value_id: "key-#{n}", value: "sk-ant-six-#{n}-0123456789"})
         )
 
-      assert length(Repo.get!(Run, six.run.id).model_keys) == 6
+      assert length(stored_keys(six.run)) == 6
 
       entries =
         for n <- 1..6, window <- State.windows() do

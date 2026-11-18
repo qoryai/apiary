@@ -2,8 +2,10 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
   # The migration that keeps a run's model keys in place of the value id of its one key,
   # run down and up again inside the test's transaction, which rolls it all back: the
   # list it fills for runs registered before it, the checks it adds, and the providers of
-  # a run of the queue. It changes the tables under every other test, so this is not
-  # async.
+  # a run of the queue. The later migration that drops the run's columns this one fills
+  # runs down first, which puts them back filled from the run's key rows, and up last; the
+  # columns are read in raw SQL, as the schema reads a run's keys from rows. It changes the
+  # tables under every other test, so this is not async.
   use Apiary.DataCase, async: false
 
   # Running a migration up again while later ones are applied makes Ecto warn that an
@@ -18,23 +20,45 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, ModelKeys, Repo}
-  alias Apiary.Runs.{ProviderCredential, Run}
+  alias Apiary.{Connections, Dispatches, ModelChoices, Repo}
   alias Apiary.Secrets.Value
 
   @version 20_261_111_100_000
   @migration Apiary.Repo.Migrations.KeepARunSModelKeys
   @name "keep_a_run_s_model_keys"
+  # The later migration that drops `model_keys` and the other provider columns of a run,
+  # whose keys are then rows of `run_model_keys`.
+  @columns_version 20_261_118_162_200
+  @columns_migration Apiary.Repo.Migrations.DropARunSOneProviderColumns
+  @columns_name "drop_a_run_s_one_provider_columns"
   @options [log: false, migration_lock: false]
 
   setup_all do
-    if not Code.ensure_loaded?(@migration) do
+    for {migration, file} <- [
+          {@migration, "#{@version}_#{@name}.exs"},
+          {@columns_migration, "#{@columns_version}_#{@columns_name}.exs"}
+        ],
+        not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
-      |> Path.join("#{@version}_#{@name}.exs")
+      |> Path.join(file)
       |> Code.require_file()
     end
 
     :ok
+  end
+
+  defp columns_down!,
+    do: assert(:ok = Ecto.Migrator.down(Repo, @columns_version, @columns_migration, @options))
+
+  defp columns_up!,
+    do: assert(:ok = Ecto.Migrator.up(Repo, @columns_version, @columns_migration, @options))
+
+  # The run's `model_keys` column.
+  defp model_keys(run_id) do
+    %{rows: [[keys]]} =
+      Repo.query!("SELECT model_keys FROM runs WHERE id = $1", [Ecto.UUID.dump!(run_id)])
+
+    keys
   end
 
   setup do
@@ -83,9 +107,11 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
     gone = claimed!(ctx, "acme/shop#2")
     ended = claimed!(ctx, "acme/shop#4")
     subscription = claimed!(ctx, "acme/shop#5")
-    assert [%{"name" => name} | _] = Repo.get!(Run, run.id).model_keys
+    assert [%{name: name} | _] = stored_keys(run)
     assert name == "#{ctx.provider.public_id}-1"
 
+    columns_down!()
+    assert [%{"name" => ^name} | _] = model_keys(run.id)
     assert :ok = Ecto.Migrator.down(Repo, @version, @migration, @options)
 
     # Down: the value id of the run's first key, the one its choice names.
@@ -122,7 +148,7 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
     # configuration had for its one key, the provider's public id, with its Pause for,
     # its setting; for a key that is gone, the all-zero row id, which no key has, and the
     # default of an API key, 60 seconds.
-    assert Repo.get!(Run, run.id).model_keys == [
+    assert model_keys(run.id) == [
              %{
                "id" => value(ctx, "spare").id,
                "name" => ctx.provider.public_id,
@@ -130,7 +156,7 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
              }
            ]
 
-    assert Repo.get!(Run, gone.id).model_keys == [
+    assert model_keys(gone.id) == [
              %{
                "id" => Ecto.UUID.cast!(<<0::128>>),
                "name" => ctx.provider.public_id,
@@ -139,17 +165,12 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
            ]
 
     # A subscription's default, 1 hour.
-    assert [%{"id" => main_id, "pause_for_s" => 3600}] =
-             Repo.get!(Run, subscription.id).model_keys
+    assert [%{"id" => main_id, "pause_for_s" => 3600}] = model_keys(subscription.id)
 
     assert main_id == value(ctx, "main").id
 
-    # The run configuration has the Pause for, and a later change of the setting leaves it.
-    {:ok, _setting} = put_key_setting(ctx.scope, value(ctx, "spare"), %{pause_seconds: 120})
-    {:ok, %{keys: [%{entry: entry}]}} = ProviderCredential.for_run(Repo.get!(Run, run.id))
-    assert entry["pause_for_s"] == 900
-
-    assert Repo.get!(Run, ended.id).model_keys == []
+    assert model_keys(ended.id) == []
+    columns_up!()
   end
 
   test "down keeps the first of several keys, and clears a run whose first key is gone",
@@ -173,6 +194,7 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
 
     main = value(ctx, "main").id
     spare = value(ctx, "spare").id
+    columns_down!()
     set_keys.(first_main, [main, spare])
     set_keys.(first_gone, [Ecto.UUID.generate(), spare])
 
@@ -191,14 +213,16 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
     assert {connection_id, secret_id, chain, api} == {nil, nil, nil, nil}
 
     assert :ok = Ecto.Migrator.up(Repo, @version, @migration, @options)
-    assert [%{"id" => ^main, "name" => kept_name}] = Repo.get!(Run, first_main.id).model_keys
+    assert [%{"id" => ^main, "name" => kept_name}] = model_keys(first_main.id)
     assert kept_name == ctx.provider.public_id
     # A run with no provider has no list, as runs_provider_check has it.
-    assert Repo.get!(Run, first_gone.id).model_keys == nil
+    assert model_keys(first_gone.id) == nil
+    columns_up!()
   end
 
   test "the list is at most 6 keys, each with a row id and a credential name", ctx do
     run = claimed!(ctx, "acme/shop#3")
+    columns_down!()
 
     set = fn keys ->
       try do
@@ -227,5 +251,6 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
     assert set.([%{key.(1) | "name" => 1}]) == "runs_model_keys_check"
     assert set.(["model-1"]) == "runs_model_keys_check"
     assert set.(%{"id" => Ecto.UUID.generate()}) == "runs_model_keys_check"
+    columns_up!()
   end
 end

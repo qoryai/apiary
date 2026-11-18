@@ -3,7 +3,7 @@ defmodule Apiary.ModelKeys.UseUpToTest do
   # whose catalogue entry lists limit windows, 1 to 99; a key in cooldown while a listed
   # window's use is at or above it, until that window resets, at the claim, in the claim's
   # filter, in the first key to leave its cooldown and in the counts; the run's keys and
-  # its run configuration with each key's percentage and the windows the run keeps once.
+  # its run configuration with each key's percentage and the windows in its row's API.
   use Apiary.DataCase, async: true
 
   import Apiary.ModelKeysFixtures
@@ -11,7 +11,7 @@ defmodule Apiary.ModelKeys.UseUpToTest do
 
   alias Apiary.{Connections, ModelKeys}
   alias Apiary.ModelKeys.{Setting, State}
-  alias Apiary.Runs.{ProviderCredential, Run}
+  alias Apiary.Runs.{ModelKey, ProviderCredential, Run}
   alias Apiary.Secrets.Value
 
   @moduletag needs: [:factory, :secrets]
@@ -286,14 +286,29 @@ defmodule Apiary.ModelKeys.UseUpToTest do
   end
 
   describe "a run's keys" do
-    # A run of the subscription with `keys` as it keeps them, and `api`.
+    # A run of the subscription with `keys` as its key rows have them, each with `api`.
     defp run(ctx, keys, api \\ @windows_api) do
+      rows =
+        for {key, position} <- Enum.with_index(keys, 1) do
+          struct!(
+            ModelKey,
+            Map.merge(
+              %{
+                position: position,
+                connection_id: ctx.subscription.id,
+                secret_id: ctx.subscription.secret_id,
+                chain: "organisation",
+                api: api
+              },
+              key
+            )
+          )
+        end
+
       %Run{
         id: Ecto.UUID.generate(),
         provider_connection_id: ctx.subscription.id,
-        provider_secret_id: ctx.subscription.secret_id,
-        provider_api: api,
-        model_keys: keys
+        model_keys: rows
       }
     end
 
@@ -311,13 +326,13 @@ defmodule Apiary.ModelKeys.UseUpToTest do
 
       keys = [
         %{
-          "id" => main,
-          "name" => "k-1",
-          "start" => true,
-          "pause_for_s" => 3600,
-          "use_up_to_percent" => 90
+          secret_value_id: main,
+          name: "k-1",
+          start: true,
+          pause_for_s: 3600,
+          use_up_to_percent: 90
         },
-        %{"id" => spare, "name" => "k-2", "pause_for_s" => 3600}
+        %{secret_value_id: spare, name: "k-2", pause_for_s: 3600}
       ]
 
       assert {:ok, credential} = ProviderCredential.for_run(run(ctx, keys))
@@ -330,8 +345,7 @@ defmodule Apiary.ModelKeys.UseUpToTest do
       bytes = configuration(credential)
       assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", bytes) == :ok
 
-      # A run that keeps no windows, such as one claimed before runs kept them, sends
-      # neither, though its key has a percentage.
+      # A key whose row's API has no windows sends neither, though it has a percentage.
       assert {:ok, credential} = ProviderCredential.for_run(run(ctx, keys, @subscription_api))
 
       for %{entry: entry} <- credential.keys do
@@ -346,70 +360,67 @@ defmodule Apiary.ModelKeys.UseUpToTest do
              ) == :ok
     end
 
-    test "fit runs.model_keys at 6 keys with every member, the windows once in the API",
+    test "fit run_model_keys at 6 keys with every member, 11 windows in each key's API",
          ctx do
       %{scope: scope} = ctx
       pool = Apiary.NodesFixtures.pool_fixture(scope)
       %{access_key: key} = Apiary.AccessKeysFixtures.enrolled_key_fixture(scope, pool)
 
       name = fn n -> String.duplicate("k", 62) <> "-#{n}" end
-      time = "2026-11-12T14:00:00Z"
+      time = ~U[2026-11-12 14:00:00Z]
       windows = for n <- 1..11, do: String.pad_trailing("w#{n}_", 64, "x")
       assert Enum.all?(windows, &(String.length(&1) == 64 and State.window?(&1)))
 
       keys =
         for n <- 1..6 do
-          first = if n == 1, do: %{"start" => true, "chosen" => true}, else: %{}
-
-          Map.merge(first, %{
-            "id" => Ecto.UUID.generate(),
-            "name" => name.(n),
-            "pause_for_s" => 604_800,
-            "resets_at" => time,
-            "schedule_resets_at" => time,
-            "cooldown_until" => time,
-            "use_up_to_percent" => 99
-          })
+          %{
+            provider: ctx.subscription,
+            secret_value_id: Ecto.UUID.generate(),
+            name: name.(n),
+            start: n == 1,
+            chosen: n == 1,
+            pause_for_s: 604_800,
+            resets_at: time,
+            schedule_resets_at: time,
+            cooldown_until: time,
+            use_up_to_percent: 99
+          }
         end
 
       api = Map.put(@subscription_api, "use_up_to_windows", windows)
 
       %{run: run} =
-        Apiary.DispatchedRunsFixtures.handed_over_fixture(scope, key, %{
-          provider_connection_id: ctx.subscription.id,
-          provider_secret_id: ctx.subscription.secret_id,
-          provider_chain: "organisation",
-          provider_api: api,
-          model_keys: keys,
-          run_settings: %{}
-        })
+        Apiary.DispatchedRunsFixtures.handed_over_fixture(scope, key, %{run_settings: %{}})
 
-      assert %Run{model_keys: stored, provider_api: ^api} = Repo.get!(Run, run.id)
-      assert stored == keys
+      run_keys!(run, keys, api: api)
+      stored = stored_keys(run)
+
+      assert Enum.map(stored, &Map.take(&1, [:name, :start, :chosen, :api])) ==
+               for(k <- keys, do: %{name: k.name, start: k.start, chosen: k.chosen, api: api})
+
+      assert Enum.all?(
+               stored,
+               &(&1.cooldown_until == time and &1.resets_at == time and
+                   &1.schedule_resets_at == time and &1.pause_for_s == 604_800 and
+                   &1.use_up_to_percent == 99)
+             )
 
       size =
         Repo.one(
-          from r in Run,
-            where: r.id == ^run.id,
-            select: fragment("octet_length(?::text)", r.model_keys)
+          from k in ModelKey,
+            where: k.run_id == ^run.id,
+            select: max(fragment("octet_length(?::text)", k.api))
         )
 
-      assert size <= 4096
+      assert size <= 8192
 
       # The run configuration, with the 11 windows of 64 characters on each key, passes
       # the contract's schema.
-      entries = for k <- keys, do: ProviderCredential.entry(k["name"], api, k)
+      assert {:ok, credential} = ProviderCredential.for_run(Repo.get!(Run, run.id))
+      entries = Enum.map(credential.keys, & &1.entry)
       assert Enum.all?(entries, &(&1["use_up_to_windows"] == windows))
       document = Jason.encode!(%{"version" => 1, "credentials" => entries})
       assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
-
-      # Kept on each key, those windows break the column's check: each key keeps the
-      # percentage alone, and the run keeps the windows once, in `provider_api`.
-      with_windows = Enum.map(keys, &Map.put(&1, "use_up_to_windows", windows))
-
-      assert_raise Postgrex.Error, ~r/runs_model_keys_check/, fn ->
-        Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [model_keys: with_windows])
-      end
     end
   end
 end

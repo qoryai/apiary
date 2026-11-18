@@ -12,6 +12,7 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   import Apiary.AccessKeysFixtures
   import Apiary.ContractFixtures
   import Apiary.DispatchedRunsFixtures
+  import Apiary.ModelKeysFixtures, only: [stored_keys: 1]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.SealedRunsFixtures
@@ -181,7 +182,7 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
         {{:ok, handed}, _queued} = hand_over(scope)
         run = attach!(gateway_key, handed)
         assert run.organisation_id == scope.organisation.id
-        assert run.provider_chain == "organisation"
+        assert [%{chain: "organisation"}] = stored_keys(run)
 
         conn = post_secrets(gateway_key, run, digest(gateway_key, run), provider)
         assert conn.status == 200

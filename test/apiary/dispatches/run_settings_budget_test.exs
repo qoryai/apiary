@@ -10,6 +10,7 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
 
   import Ecto.Query, only: [from: 2]
   import Apiary.DispatchedRunsFixtures
+  import Apiary.ModelKeysFixtures, only: [stored_keys: 1]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
@@ -214,12 +215,10 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
 
       assert answer(handed) =~ "run_settings"
 
-      assert %Run{
-               run_settings: %{"runtime" => ^runtime},
-               provider_connection_id: nil,
-               provider_api: nil,
-               model_keys: nil
-             } = Repo.get!(Run, handed.run.id)
+      assert %Run{run_settings: %{"runtime" => ^runtime}, provider_connection_id: nil} =
+               Repo.get!(Run, handed.run.id)
+
+      assert stored_keys(handed.run) == []
     end
   end
 end

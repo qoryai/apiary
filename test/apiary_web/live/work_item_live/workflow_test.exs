@@ -6707,14 +6707,6 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       paused
       |> Ecto.Changeset.change(
         provider_connection_id: provider.id,
-        provider_secret_id: provider.secret_id,
-        provider_chain: "organisation",
-        provider_api: %{
-          "format" => "anthropic-messages",
-          "endpoint" => "https://api.model.example/anthropic",
-          "auth" => %{"scheme" => "x-api-key"}
-        },
-        model_keys: [],
         run_settings: %{}
       )
       |> Repo.update!()

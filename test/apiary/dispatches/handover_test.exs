@@ -1890,7 +1890,7 @@ defmodule Apiary.Dispatches.HandoverTest do
     test "is checked for the organisation and the workspace of the run of the queue" do
       organisation_id = Ecto.UUID.generate()
       workspace_id = Ecto.UUID.generate()
-      formed = {:ok, %{settings: %{columns: %{provider_chain: "organisation"}}}}
+      formed = {:ok, %{settings: %{keys: [%{chain: "organisation"}]}}}
       keys = [%AccessKey{allow_secrets: true}]
       run = %DispatchRun{organisation_id: organisation_id, workspace_id: workspace_id}
 
@@ -1914,7 +1914,7 @@ defmodule Apiary.Dispatches.HandoverTest do
     # A wrong argument raises, with a model provider or without one, so the seal is not
     # skipped. `Apiary.Dispatches.RunSettingsTest` checks the seal through the claim.
     test "raises for a gateway or a run of the queue of another shape" do
-      formed = {:ok, %{settings: %{columns: %{provider_chain: "organisation"}}}}
+      formed = {:ok, %{settings: %{keys: [%{chain: "organisation"}]}}}
       keys = [%AccessKey{allow_secrets: true}]
       run = %DispatchRun{organisation_id: Ecto.UUID.generate(), workspace_id: nil}
       gateway = %Node{kind: :gateway, organisation_id: run.organisation_id}

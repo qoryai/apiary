@@ -9,6 +9,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
   import Ecto.Query, only: [from: 2]
   import ExUnit.CaptureLog, only: [capture_log: 1, capture_log: 2, with_log: 1]
   import Apiary.ContractFixtures
+  import Apiary.ModelKeysFixtures, only: [stored_keys: 1]
   import Apiary.OrganisationsFixtures
   import Apiary.SealedRunsFixtures
 
@@ -19,7 +20,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
   alias Apiary.Connections.Connection
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.ModelKeys.Copy
-  alias Apiary.Runs.{Run, RunCredential}
+  alias Apiary.Runs.{ModelKey, Run, RunCredential}
   alias Apiary.Secrets.Value
   alias ApiaryWeb.Contract.SignedRequest
 
@@ -164,7 +165,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
     end
 
     test "keeps when the value it sealed was set, the last request's", ctx do
-      %{"id" => id} = hd(ctx.run.model_keys)
+      %{secret_value_id: id} = hd(stored_keys(ctx.run))
       value = Repo.get!(Value, id)
       copies = fn -> Repo.all(from c in Copy, where: c.run_id == ^ctx.run.id) end
 
@@ -370,20 +371,23 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert seals() == []
     end
 
-    test "409 credential_unavailable for a run whose provider columns are empty", ctx do
+    test "409 credential_unavailable for a run whose key rows have no provider or secret",
+         ctx do
       for set <- [
-            [provider_connection_id: nil],
-            [provider_secret_id: nil],
-            [provider_connection_id: nil, provider_secret_id: nil]
+            [connection_id: nil],
+            [secret_id: nil],
+            [connection_id: nil, secret_id: nil]
           ] do
-        run = Repo.get!(Run, ctx.run.id)
-        {1, _rows} = Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: set)
+        keys = stored_keys(ctx.run)
 
-        conn = post_secrets(ctx, request(ctx))
+        {1, _rows} =
+          Repo.update_all(from(k in ModelKey, where: k.run_id == ^ctx.run.id), set: set)
+
+        {conn, _log} = with_log(fn -> post_secrets(ctx, request(ctx)) end)
         assert conn.status == 409, inspect(set)
         assert code(conn) == "credential_unavailable"
 
-        restore(run)
+        restore(keys)
       end
 
       assert seals() == []
@@ -406,7 +410,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
     test "409 credential_unavailable for a key whose row is not the one written", ctx do
       {1, _rows} =
         Repo.update_all(
-          from(v in Value, where: v.secret_id == ^ctx.run.provider_secret_id),
+          from(v in Value, where: v.secret_id == ^ctx.provider.secret_id),
           set: [nonce: :crypto.strong_rand_bytes(12)]
         )
 
@@ -465,13 +469,11 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       %{provider: theirs} = sealed_run_fixture(other)
       [theirs_key] = Repo.all(from v in Value, where: v.secret_id == ^theirs.secret_id)
 
-      # The run's list, written past the claim, has their key's row id in place of the
+      # The run's key row, written past the claim, has their key's row id in place of the
       # run's key's.
-      [entry] = ctx.run.model_keys
-
       {1, _rows} =
-        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
-          set: [model_keys: [%{entry | "id" => theirs_key.id}]]
+        Repo.update_all(from(k in ModelKey, where: k.run_id == ^ctx.run.id),
+          set: [secret_value_id: theirs_key.id]
         )
 
       {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx)) end)
@@ -505,7 +507,12 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
 
       {1, _rows} =
         Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
-          set: [provider_connection_id: theirs.id, provider_secret_id: theirs.secret_id]
+          set: [provider_connection_id: theirs.id]
+        )
+
+      {1, _rows} =
+        Repo.update_all(from(k in ModelKey, where: k.run_id == ^ctx.run.id),
+          set: [connection_id: theirs.id, secret_id: theirs.secret_id]
         )
 
       # The digest of what a reload returns now, which contains their provider.
@@ -1893,15 +1900,13 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       )
   end
 
-  defp restore(%Run{} = run) do
-    {1, _rows} =
-      Repo.update_all(from(r in Run, where: r.id == ^run.id),
-        set: [
-          provider_connection_id: run.provider_connection_id,
-          provider_secret_id: run.provider_secret_id,
-          model_keys: run.model_keys,
-          provider_api: run.provider_api
-        ]
-      )
+  # Writes back the provider and the secret of each key row of `keys`.
+  defp restore(keys) do
+    for %ModelKey{} = key <- keys do
+      {1, _rows} =
+        Repo.update_all(from(k in ModelKey, where: k.id == ^key.id),
+          set: [connection_id: key.connection_id, secret_id: key.secret_id]
+        )
+    end
   end
 end

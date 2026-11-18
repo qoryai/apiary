@@ -46,19 +46,9 @@ defmodule Apiary.Dispatches.PauseTest do
     keys = for id <- ~w(main spare), do: %{value_id: id, value: "sk-ant-fixture-#{id}-0123456789"}
     {:ok, provider} = Connections.create_provider(scope, %{provider: "anthropic", keys: keys})
 
-    # A run that took a key of the provider (`runs_provider_check`).
-    given = %{
-      provider_connection_id: provider.id,
-      provider_secret_id: provider.secret_id,
-      provider_chain: "organisation",
-      provider_api: %{
-        "format" => "anthropic-messages",
-        "endpoint" => "https://api.model.example/anthropic",
-        "auth" => %{"scheme" => "x-api-key"}
-      },
-      model_keys: [],
-      run_settings: %{}
-    }
+    # A run claimed on the provider, with no key row: its sessions run on the provider
+    # (`Apiary.Runs.Run.session_provider_ids/2`).
+    given = %{provider_connection_id: provider.id, run_settings: %{}}
 
     %{scope: scope, key: key, provider: provider, given: given}
   end
@@ -274,11 +264,7 @@ defmodule Apiary.Dispatches.PauseTest do
     # operator managed whole organisations.
     {1, _rows} =
       Repo.update_all(from(r in Run, where: r.id == ^run.id),
-        set: [
-          provider_connection_id: theirs.id,
-          provider_secret_id: theirs.secret_id,
-          provider_chain: "operator"
-        ]
+        set: [provider_connection_id: theirs.id]
       )
 
     until = DateTime.add(DateTime.utc_now(), 3_600, :second)

@@ -8,6 +8,7 @@ defmodule Apiary.Connections.SettingsFitTest do
   use Apiary.DataCase, async: false
 
   import Apiary.DispatchedRunsFixtures
+  import Apiary.ModelKeysFixtures, only: [stored_keys: 1]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
   import ExUnit.CaptureLog
@@ -133,7 +134,7 @@ defmodule Apiary.Connections.SettingsFitTest do
 
       check_returns(:fit)
       assert {:ok, %{registered: run}} = walked_claim(ctx.key, Dispatches.now(), @body)
-      assert %Run{model_keys: [_key]} = Repo.get!(Run, run.id)
+      assert [_key] = stored_keys(run)
     end
 
     test "leaves a run without a run configuration for that request, and ends nothing", ctx do

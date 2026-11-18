@@ -82,6 +82,12 @@ defmodule Apiary.Dispatches.SchemaTest do
   # decisions: down first, up last.
   @move_stage_version 20_261_116_170_000
   @move_stage Apiary.Repo.Migrations.KeepTheStageAMoveEnters
+  # The later migration that drops a run's one-provider columns, among them the check on
+  # `runs.model_keys`, which the model keys migration drops on its down: down first, up
+  # last.
+  @drop_columns_version 20_261_118_162_200
+  @drop_columns Apiary.Repo.Migrations.DropARunSOneProviderColumns
+
   # The later migration that keeps the sessions of a shared run, whose table links to the
   # runs of the queue: down first, up last.
   @sessions_version 20_261_118_130_000
@@ -121,7 +127,8 @@ defmodule Apiary.Dispatches.SchemaTest do
           {@move_valid_version, @move_valid, "validate_the_escalation_of_a_move"},
           {@switch_version, @switch, "keep_a_switch_as_a_resolution"},
           {@switch_valid_version, @switch_valid, "validate_a_switch_as_a_resolution"},
-          {@sessions_version, @sessions, "keep_the_sessions_of_a_shared_run"}
+          {@sessions_version, @sessions, "keep_the_sessions_of_a_shared_run"},
+          {@drop_columns_version, @drop_columns, "drop_a_run_s_one_provider_columns"}
         ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
@@ -300,7 +307,8 @@ defmodule Apiary.Dispatches.SchemaTest do
                      "('variables_invalid', 'ticket_gone', 'inputs_invalid', 'provider_gone', " <>
                      "'runtime_unserved', 'key_gone', 'model_gone', 'secrets_not_allowed', " <>
                      "'build_failed', 'harness_unresolved', 'target_access_gone', " <>
-                     "'write_without_work_item', 'shared_access_differs') " <>
+                     "'write_without_work_item', 'shared_access_differs', " <>
+                     "'model_choice_missing', 'too_many_providers') " <>
                      "THEN 'error' END",
                    [Atom.to_string(cause)]
                  )
@@ -1102,6 +1110,7 @@ defmodule Apiary.Dispatches.SchemaTest do
   @options [log: false, migration_lock: false]
 
   defp down! do
+    assert :ok = Ecto.Migrator.down(Repo, @drop_columns_version, @drop_columns, @options)
     assert :ok = Ecto.Migrator.down(Repo, @sessions_version, @sessions, @options)
 
     assert :ok =
@@ -1154,6 +1163,7 @@ defmodule Apiary.Dispatches.SchemaTest do
     assert :ok = Ecto.Migrator.up(Repo, @switch_valid_version, @switch_valid, @options)
 
     assert :ok = Ecto.Migrator.up(Repo, @sessions_version, @sessions, @options)
+    assert :ok = Ecto.Migrator.up(Repo, @drop_columns_version, @drop_columns, @options)
 
     # `DispatchRun` writes `image_requeue` and `machine_type_was_default`, of migrations
     # left down, on every insert.

@@ -7,6 +7,7 @@ defmodule Apiary.Dispatches.RunSettingsDefaultsTest do
   use Apiary.DataCase, async: false
 
   import Apiary.DispatchedRunsFixtures
+  import Apiary.ModelKeysFixtures, only: [stored_keys: 1]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
@@ -162,8 +163,8 @@ defmodule Apiary.Dispatches.RunSettingsDefaultsTest do
 
       assert %{"runtime" => @runtime, "model" => "claude-sonnet-5-5"} = settings(claimed)
 
-      assert %Run{provider_connection_id: nil, model_keys: nil, provider_api: nil} =
-               Repo.get!(Run, claimed.run.id)
+      assert %Run{provider_connection_id: nil} = Repo.get!(Run, claimed.run.id)
+      assert stored_keys(claimed.run) == []
     end
 
     test "with factory off too, the run gets the runtime and model with no key", ctx do

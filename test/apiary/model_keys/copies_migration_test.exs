@@ -6,8 +6,11 @@ defmodule Apiary.ModelKeys.CopiesMigrationTest do
   # away. The second writes a copy for each key of a live run that has none. They change
   # `secret_values` and `model_key_copies` under every other test, so this is not async.
   # The rows are read in raw SQL, as the schema has the column the migration takes away.
+  # The second reads the run's `model_keys` column, which a later migration drops: that
+  # one runs down before it, which fills the column from the run's key rows, and up after.
   use Apiary.DataCase, async: false
 
+  import Apiary.ModelKeysFixtures, only: [run_keys!: 3]
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{Connections, ModelKeys}
@@ -23,8 +26,11 @@ defmodule Apiary.ModelKeys.CopiesMigrationTest do
   @live_copies {20_261_111_220_000, Apiary.Repo.Migrations.KeepTheKeyValuesOfLiveRuns,
                 "keep_the_key_values_of_live_runs"}
 
+  @columns {20_261_118_162_200, Apiary.Repo.Migrations.DropARunSOneProviderColumns,
+            "drop_a_run_s_one_provider_columns"}
+
   setup_all do
-    for {version, migration, name} <- [@migration, @live_copies],
+    for {version, migration, name} <- [@migration, @live_copies, @columns],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
       |> Path.join("#{version}_#{name}.exs")
@@ -102,18 +108,15 @@ defmodule Apiary.ModelKeys.CopiesMigrationTest do
     %{access_key: key} = Apiary.AccessKeysFixtures.enrolled_key_fixture(scope, pool)
 
     %{run: run} =
-      Apiary.DispatchedRunsFixtures.handed_over_fixture(scope, key, %{
-        provider_connection_id: provider.id,
-        provider_secret_id: provider.secret_id,
-        provider_chain: "organisation",
-        provider_api: %{
-          "format" => "anthropic-messages",
-          "endpoint" => "https://api.model.example/anthropic",
-          "auth" => %{"scheme" => "x-api-key"}
-        },
-        model_keys: [%{"id" => id, "name" => "model-1", "pause_for_s" => 60}],
-        run_settings: %{}
-      })
+      Apiary.DispatchedRunsFixtures.handed_over_fixture(scope, key, %{run_settings: %{}})
+
+    run_keys!(run, [%{provider: provider, secret_value_id: id, name: "model-1"}],
+      api: %{
+        "format" => "anthropic-messages",
+        "endpoint" => "https://api.model.example/anthropic",
+        "auth" => %{"scheme" => "x-api-key"}
+      }
+    )
 
     {1, _rows} = Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [state: state])
     %{run | state: state}
@@ -174,6 +177,7 @@ defmodule Apiary.ModelKeys.CopiesMigrationTest do
 
     assert report(running, main) == []
 
+    down!(@columns)
     down!(@live_copies)
     up!(@live_copies)
     assert report(running, main) == ["allowed"]
@@ -199,5 +203,6 @@ defmodule Apiary.ModelKeys.CopiesMigrationTest do
     down!(@live_copies)
     up!(@live_copies)
     assert Repo.aggregate(from(c in Copy, where: c.run_id == ^running.id), :count) == 1
+    up!(@columns)
   end
 end
