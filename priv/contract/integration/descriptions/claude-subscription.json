@@ -3,12 +3,13 @@
   "name": "claude-subscription",
   "title": "Claude subscription token",
   "description": "Runs use your Claude subscription through an access token that `claude setup-token` creates. For personal use only: Anthropic's terms do not allow a subscription to serve requests on behalf of other users. Anthropic's terms: https://code.claude.com/docs/en/legal-and-compliance",
+  "vendor": "Anthropic",
   "settings": {"type": "object", "properties": {}, "additionalProperties": false},
   "egress_hosts": ["api.anthropic.com"],
   "roles": {
     "model_provider": {
       "apis": [
-        {"format": "anthropic-messages", "endpoint": "https://api.anthropic.com", "auth": {"scheme": "bearer", "oauth": true}}
+        {"format": "anthropic-messages", "endpoint": "https://api.anthropic.com", "auth": {"scheme": "bearer", "oauth": true}, "runtimes": ["claude"]}
       ],
       "models": [
         {"id": "claude-opus-5-5", "title": "Claude Opus 5.5", "effort": ["low", "medium", "high", "xhigh", "max"]},
@@ -16,7 +17,8 @@
         {"id": "claude-haiku-5-5", "title": "Claude Haiku 5.5", "effort": ["low", "medium", "high", "xhigh", "max"]},
         {"id": "claude-fable-5-1", "title": "Claude Fable 5.1", "effort": ["low", "medium", "high", "xhigh", "max"]}
       ],
-      "limit_windows": ["five_hour", "seven_day"]
+      "limit_windows": ["five_hour", "seven_day"],
+      "key_lifetime_days": 365
     }
   }
 }

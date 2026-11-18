@@ -41,7 +41,7 @@ defmodule Apiary.Kinds.Providers do
 
   for path <- @paths, do: @external_resource(path)
 
-  @providers Enum.map(@paths, &Provider.load!/1)
+  @providers @paths |> Enum.map(&Provider.load!/1) |> Enum.sort_by(& &1.name)
 
   # A file added to or removed from the directory changes no file of @paths, so the
   # module also compiles again when the list of files differs.

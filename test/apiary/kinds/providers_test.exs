@@ -32,7 +32,8 @@ defmodule Apiary.Kinds.ProvidersTest do
   describe "the catalogue" do
     test "lists one provider per vendored description, in the order of its name" do
       assert Enum.map(Providers.list(), & &1.name) ==
-               ~w(anthropic claude-subscription deepseek litellm openrouter)
+               ~w(anthropic claude-subscription deepseek litellm openai openai-subscription
+                  openrouter)
 
       assert {:ok, %Provider{name: "deepseek"}} = Providers.fetch("deepseek")
       assert Providers.fetch("nothing") == :error
@@ -58,6 +59,73 @@ defmodule Apiary.Kinds.ProvidersTest do
         assert provider.apis == role["apis"]
         assert provider.models == role["models"]
         assert provider.egress_hosts == document["egress_hosts"]
+        assert provider.vendor == document["vendor"]
+      end
+    end
+
+    test "each provider names its vendor" do
+      assert Map.new(Providers.list(), &{&1.name, &1.vendor}) == %{
+               "anthropic" => "Anthropic",
+               "claude-subscription" => "Anthropic",
+               "deepseek" => "DeepSeek",
+               "litellm" => "your LiteLLM proxy",
+               "openai" => "OpenAI",
+               "openai-subscription" => "OpenAI",
+               "openrouter" => "OpenRouter"
+             }
+    end
+
+    test "an API that lists runtimes lists only runtimes of the catalogue" do
+      catalogue = Enum.map(Runtimes.list(), & &1.name)
+
+      for provider <- Providers.list(), api <- provider.apis, name <- api["runtimes"] || [] do
+        assert name in catalogue, "#{provider.name}: #{name}"
+      end
+
+      assert {:ok, subscription} = Providers.fetch("openai-subscription")
+      assert [%{"runtimes" => ["codex"]}] = subscription.apis
+    end
+
+    test "openai lists its API, its models and their efforts" do
+      assert {:ok, provider} = Providers.fetch("openai")
+
+      assert provider.apis == [
+               %{
+                 "format" => "openai-responses",
+                 "endpoint" => "https://api.openai.com/v1",
+                 "auth" => %{"scheme" => "bearer"},
+                 "key_prefixes" => ["sk-"]
+               }
+             ]
+
+      assert provider.egress_hosts == ["api.openai.com"]
+
+      assert Enum.map(provider.models, & &1["id"]) ==
+               ~w(gpt-6-astra gpt-6.2-astra gpt-6.2-sol gpt-6.1-sol gpt-6.1-terra gpt-6-luna)
+
+      assert Enum.find(provider.models, &(&1["id"] == "gpt-6-luna"))["effort"] ==
+               ~w(none low medium high xhigh max)
+    end
+
+    test "openai-subscription has a login with an account header and a refresh" do
+      assert {:ok, provider} = Providers.fetch("openai-subscription")
+      assert [api] = provider.apis
+      assert api["auth"]["oauth"] == true
+      assert api["auth"]["account_header"] == "chatgpt-account-id"
+      assert api["paths"] == ["/backend-api/codex/*"]
+      assert api["oauth_refresh"]["url"] == "https://auth.openai.com/oauth/token"
+      assert provider.limit_windows == ~w(five_hour seven_day)
+      assert length(provider.models) == 10
+    end
+
+    test "every model's efforts are values the runtime that serves the provider accepts" do
+      for provider <- Providers.list(),
+          runtime <- Runtimes.list(),
+          Providers.serves?(provider, runtime) do
+        for model <- provider.models, effort <- model["effort"] || [] do
+          assert effort in runtime.effort_values,
+                 "#{provider.name} #{model["id"]}: #{effort} is no effort of #{runtime.name}"
+        end
       end
     end
 
@@ -220,6 +288,8 @@ defmodule Apiary.Kinds.ProvidersTest do
       "claude-subscription" => :ok,
       "deepseek" => :ok,
       "litellm" => :ok,
+      "openai" => {:error, :format},
+      "openai-subscription" => {:error, :format},
       "openrouter" => :ok
     }
 
@@ -251,8 +321,29 @@ defmodule Apiary.Kinds.ProvidersTest do
     test "api/2 is the one API of each provider" do
       assert {:ok, claude} = Runtimes.fetch("claude")
 
-      for provider <- Providers.list() do
+      for provider <- Providers.list(), provider.name not in ~w(openai openai-subscription) do
         assert Providers.api(provider, claude) == {:ok, hd(provider.apis)}, provider.name
+      end
+    end
+  end
+
+  describe "serve/2 against the vendored codex runtime" do
+    test "serves the two OpenAI providers and no other provider" do
+      assert {:ok, codex} = Runtimes.fetch("codex")
+
+      assert Map.new(Providers.list(), &{&1.name, Providers.serve(&1, codex)}) == %{
+               "anthropic" => {:error, :format},
+               "claude-subscription" => {:error, :format},
+               "deepseek" => {:error, :format},
+               "litellm" => {:error, :format},
+               "openai" => :ok,
+               "openai-subscription" => :ok,
+               "openrouter" => {:error, :format}
+             }
+
+      for name <- ~w(openai openai-subscription) do
+        assert {:ok, provider} = Providers.fetch(name)
+        assert Providers.api(provider, codex) == {:ok, hd(provider.apis)}
       end
     end
   end

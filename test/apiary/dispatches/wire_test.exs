@@ -109,13 +109,13 @@ defmodule Apiary.Dispatches.WireTest do
   # is at 55a22cb8, which adds the access value write-no-push to the run documents. That
   # commit comes after 0506879f, which binds a group role to a list of agents. The run
   # contract is at dbc1ce51, which adds largest_prebuilt_image_bytes to a prebuild's
-  # documents. The integration contract is at c6b77016, which adds the watch kind to the
-  # change feed.
+  # documents. The integration contract is at 805a7bdb, which adds `vendor`, and `runtimes`,
+  # `paths` and `oauth_refresh` of an API, to the description of a model provider.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "55a22cb87e724df3008e511a7de84e1c710ac913"},
           {"run/v1", "dbc1ce51ad47806febc95940c409d0817398a981"},
-          {"integration/v1", "c6b77016c47ddd29952718fb121646ff118fb474"},
+          {"integration/v1", "805a7bdb09a16441b8275857e9b50cdfe8227e2d"},
           {"explore/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
           {"diagnostics/v1", "8178d27815cb87dea356ccce614254f35deb58f4"}
         ] do
