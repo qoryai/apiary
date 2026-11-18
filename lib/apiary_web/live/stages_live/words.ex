@@ -622,7 +622,7 @@ defmodule ApiaryWeb.StagesLive.Words do
     case kind do
       {:access, workflow, level, other} ->
         gettext(
-          "Move %{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it %{other} access, then run the round again. %{workflow} runs with %{level} access, because its harness sets %{level}.",
+          "Move %{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it %{other} access. %{workflow} runs with %{level} access, because its harness sets %{level}.",
           workflow: workflow,
           level: level,
           other: other

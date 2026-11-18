@@ -256,7 +256,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
              ] = update.refused
 
       assert ApiaryWeb.StagesLive.Words.refusal(refused, update.document) ==
-               "Move write-acceptance-checks to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access, then run the round again. write-acceptance-checks runs with read access, because its harness sets read."
+               "Move write-acceptance-checks to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access. write-acceptance-checks runs with read access, because its harness sets read."
 
       assert {:error, [%{error: :shared_run_differs, detail: {:access, _, _, _}}]} =
                HarnessUpdate.save(ctx.scope, ctx.workspace, update)
@@ -268,6 +268,83 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       main_at!(shared_files("read", "read"))
 
       assert {:ok, %{refused: []} = update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      assert {:ok, %{number: 2}} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+    end
+
+    test "from a harness repository reads the levels at the commit it updates to, not the last read's",
+         ctx do
+      # The last read of the harness kept equal levels; the commit sets them apart.
+      :ok =
+        Processes.record_declared(ctx.workspace, %{
+          "plan-the-build" => :write,
+          "write-acceptance-checks" => :write
+        })
+
+      repository_choice!(ctx.workspace, shared_files("write", "read"))
+
+      assert {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+
+      assert [%{detail: {:access, "write-acceptance-checks", "read", "write"}}] =
+               update.refused
+
+      assert {:error, [%{error: :shared_run_differs}]} =
+               HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+
+      assert Enum.map(versions(ctx.workspace), & &1.number) == [1]
+    end
+
+    test "from a harness repository whose commit sets one level saves, whatever the last read kept",
+         ctx do
+      :ok =
+        Processes.record_declared(ctx.workspace, %{
+          "plan-the-build" => :write,
+          "write-acceptance-checks" => :read
+        })
+
+      repository_choice!(ctx.workspace, shared_files("read", "read"))
+
+      assert {:ok, %{refused: [], levels: levels} = update} =
+               HarnessUpdate.read(ctx.scope, ctx.workspace)
+
+      assert %{"plan-the-build" => :read, "write-acceptance-checks" => :read} = levels
+      assert {:ok, %{number: 2}} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+    end
+
+    test "from a harness repository whose new commit sets the levels apart saves nothing",
+         ctx do
+      repository =
+        repository_harness!(ctx.workspace, "main", files: shared_files("write", "write"))
+
+      PublicGitServer.commit!(repository.dir, shared_files("write", "read"))
+
+      assert {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+
+      assert [%{detail: {:access, "write-acceptance-checks", "read", "write"}}] =
+               update.refused
+
+      assert {:error, [%{error: :shared_run_differs}]} =
+               HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+
+      assert Enum.map(versions(ctx.workspace), & &1.number) == [1]
+    end
+
+    test "from a harness repository whose level read fails goes on with no levels, and saves",
+         ctx do
+      # The stack file of the template's stack does not parse: the template reads, the
+      # levels do not, and the claim is the check.
+      files =
+        Map.put(
+          shared_files("write", "read"),
+          "stacks/software/qory-stack.yaml",
+          "workflows: [\n"
+        )
+
+      repository_choice!(ctx.workspace, files)
+
+      assert {:ok, %{levels: levels, refused: []} = update} =
+               HarnessUpdate.read(ctx.scope, ctx.workspace)
+
+      assert levels == %{}
       assert {:ok, %{number: 2}} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
     end
 

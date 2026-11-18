@@ -6290,6 +6290,11 @@ msgstr ""
 msgid "Ask the owner of %{source} to assign it to this organisation, then run Explore again. That harness source belongs to another owner, who has not assigned it here."
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ask whoever keeps the harness to give %{workflow} %{other} access, or to move it to a separate stage. %{workflow} runs with %{level} access, because its harness sets %{level}."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Asked as question %{number}"
@@ -13648,14 +13653,14 @@ msgstr ""
 msgid "Move %{name} from %{from} to %{to}. Its settings and argument are kept."
 msgstr ""
 
-#: lib/apiary_web/live/stages_live/words.ex
-#, elixir-autogen, elixir-format
-msgid "Move %{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it %{other} access, then run the round again. %{workflow} runs with %{level} access, because its harness sets %{level}."
-msgstr ""
-
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Move %{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it %{other} access, then run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Move %{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it %{other} access. %{workflow} runs with %{level} access, because its harness sets %{level}."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
@@ -13692,6 +13697,11 @@ msgstr ""
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
 msgid "Move fallback %{number} up"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Move one of the workflows to a separate stage in Workspace settings › Workflows, then run the round again."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex

@@ -2905,6 +2905,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       for {detail, body} <- [
             {{:access, "implement-changes", "read", "write"},
              "Move implement-changes to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access, then run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."},
+            {:access,
+             "Move one of the workflows to a separate stage in Workspace settings › Workflows, then run the round again."},
             {nil,
              "Run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."}
           ] do

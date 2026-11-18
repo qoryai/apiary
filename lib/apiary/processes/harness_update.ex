@@ -92,9 +92,9 @@ defmodule Apiary.Processes.HarnessUpdate do
     * `stack`: `%{from: stack, to: stack}` where the template's stack differs from the
       stack of the workspace's harness choice, else nil;
     * `template`: the record the saved version keeps as its `template`;
-    * `levels`: the access level each workflow of the harness declares, by name: of the
-      template's stack at `commit` for the Qory harness, else as the workspace's last read
-      of its harness kept them (`Apiary.Processes.declared_access/1`);
+    * `levels`: the access level each workflow of the template's stack declares at
+      `commit`, by name; for a harness repository, a second read of the source at that
+      commit, none where that read fails;
     * `refused`: the errors of `Apiary.Processes.validate/2` with `levels` for a stage with
       `shared_run: true` whose workflows would run with different access, which a save
       returns; empty for none.
@@ -420,8 +420,25 @@ defmodule Apiary.Processes.HarnessUpdate do
 
     with {:ok, source, _stack} <- chosen_source(workspace),
          {:ok, %{commit: commit} = read} <- templates(scope, source),
-         {:ok, template} <- repository_template(read, in_use, chosen, workspace.type) do
-      {:ok, update(workspace, chosen, base, version, commit, template, :repository)}
+         {:ok, template} <- repository_template(read, in_use, chosen, workspace.type),
+         {:ok, levels} <- levels_at(scope, source, commit, template) do
+      {:ok, update(workspace, chosen, base, version, commit, template, :repository, levels)}
+    end
+  end
+
+  # The access level each workflow of the template's stack declares at `commit`, the
+  # commit the update reads: a second read of the source, as the scope's person, pinned to
+  # that commit and narrowed to that stack (`Apiary.Stacks.Sources.read/2`); of every
+  # stack for a template with none. A read that fails gives no levels: the update goes on,
+  # and the claim ends a run whose stage's workflows would run with different access
+  # (`Apiary.Dispatches.Handover`).
+  defp levels_at(scope, source, commit, template) do
+    stack = Map.get(template, :stack)
+    narrowing = if is_binary(stack), do: %{"stack" => stack}, else: %{}
+
+    case Sources.read(scope, %{source | ref: commit, narrowing: narrowing}) do
+      {:ok, stacks} -> {:ok, Sources.levels_of(stacks, stack)}
+      {:error, _reason} -> {:ok, %{}}
     end
   end
 
@@ -473,8 +490,17 @@ defmodule Apiary.Processes.HarnessUpdate do
     end
   end
 
-  defp update(workspace, chosen, base, {kind, name} = version, commit, template, source) do
-    levels = levels(workspace, source, commit, template)
+  defp update(
+         workspace,
+         chosen,
+         base,
+         {kind, name} = version,
+         commit,
+         template,
+         source,
+         levels \\ nil
+       ) do
+    levels = levels || levels(workspace, source, commit, template)
 
     %{
       levels: levels,
@@ -508,7 +534,8 @@ defmodule Apiary.Processes.HarnessUpdate do
     }
   end
 
-  # The access level each workflow of the harness declares (`t:update/0`).
+  # The access level each workflow of the harness declares (`t:update/0`), where the read
+  # gave none: for a harness repository, the switch's update, which saves without them.
   defp levels(_workspace, :qory, commit, template),
     do: Qory.workflow_levels(commit, Map.get(template, :stack))
 

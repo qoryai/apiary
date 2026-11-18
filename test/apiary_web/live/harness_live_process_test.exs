@@ -374,7 +374,7 @@ defmodule ApiaryWeb.HarnessLiveProcessTest do
       render_async(view)
 
       assert text(view, "#harness-update-refused") ==
-               "Move write-acceptance-checks to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access, then run the round again. write-acceptance-checks runs with read access, because its harness sets read."
+               "Ask whoever keeps the harness to give write-acceptance-checks write access, or to move it to a separate stage. write-acceptance-checks runs with read access, because its harness sets read."
 
       assert has_element?(view, "#harness-update-save[disabled]")
       assert has_element?(view, "#harness-update-try[disabled]")

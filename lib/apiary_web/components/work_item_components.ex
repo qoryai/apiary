@@ -6338,6 +6338,14 @@ defmodule ApiaryWeb.WorkItemComponents do
             other: other
           )}
 
+  # A run whose stage's entries set different access, with no harness level between them.
+  defp no_result_words(%{end_cause: :shared_access_differs, shared_access: :access}, _earlier),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run did not start."),
+       gettext(
+         "Move one of the workflows to a separate stage in Workspace settings › Workflows, then run the round again."
+       )}
+
   defp no_result_words(%{end_cause: cause}, _earlier) when cause in @unstarted,
     do:
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),
