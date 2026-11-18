@@ -256,6 +256,7 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
       src = ArtifactComponents.file_path(scope, work_item.number, second.version.public_id, file)
 
       assert has_element?(view, ~s(#{item} img[src="#{src}"]))
+      refute has_element?(view, "#{item} video")
       assert has_element?(view, item, "3 pictures")
     end
 
@@ -269,6 +270,7 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
       assert has_element?(view, "#{item}[phx-hook=QueueMedia] video[muted][preload=metadata]")
       assert has_element?(view, ~s(#{item} video[src$="/files/scenario-1.mp4#t=0.1"]))
       refute has_element?(view, "#{item} video[controls]")
+      refute has_element?(view, "#{item} img")
       assert has_element?(view, ~s(#{item} [data-length="Demo video · %{length}"]))
     end
 

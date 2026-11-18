@@ -257,7 +257,11 @@ defmodule ApiaryWeb.ArtifactLive.Show do
       assign(assigns,
         path: ArtifactComponents.version_path(scope, number, entry.version.public_id),
         film: film && src.(film),
-        picture: with([{file, _step, _i} | _more] <- pictures, do: src.(file)),
+        picture:
+          case pictures do
+            [{file, _step, _i} | _more] -> src.(file)
+            [] -> nil
+          end,
         pictures: length(pictures)
       )
 
