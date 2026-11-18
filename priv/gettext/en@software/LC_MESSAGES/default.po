@@ -559,6 +559,13 @@ msgstr[1] ""
 msgid "%{count} organisations match."
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} picture"
+msgid_plural "%{count} pictures"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{count} ready"
@@ -2583,6 +2590,11 @@ msgid "%{number} observes"
 msgid_plural "%{number} observe"
 msgstr[0] ""
 msgstr[1] ""
+
+#: lib/apiary_web/live/artifact_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} of %{total}"
+msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
@@ -7613,6 +7625,16 @@ msgstr ""
 msgid "Chosen when the workspace was created, and can't be changed. The type sets the words on the workspace's pages and the integrations offered to the workspace."
 msgstr ""
 
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cinema"
+msgstr ""
+
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "Cinema: the player takes the width of the page"
+msgstr ""
+
 #: lib/apiary_web/components/core_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
@@ -8890,6 +8912,11 @@ msgstr ""
 msgid "Deletion"
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Demo video · %{length}"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Denials"
@@ -9925,6 +9952,8 @@ msgstr ""
 msgid "Expand sidebar"
 msgstr ""
 
+#: lib/apiary_web/components/artifact_components.ex
+#: lib/apiary_web/live/artifact_live/show.ex
 #: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "Expected: %{result}"
@@ -10836,6 +10865,7 @@ msgstr ""
 msgid "Full log"
 msgstr ""
 
+#: lib/apiary_web/components/artifact_components.ex
 #: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
@@ -12592,10 +12622,16 @@ msgstr ""
 msgid "Leave %{organisation}?"
 msgstr ""
 
+#: lib/apiary_web/components/artifact_components.ex
 #: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/live/stages_live/canvas.ex
 #, elixir-autogen, elixir-format
 msgid "Leave full screen"
+msgstr ""
+
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "Leave full screen (Esc)"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/reading.ex
@@ -13961,6 +13997,11 @@ msgstr ""
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Next"
+msgstr ""
+
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "Next picture"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -16375,6 +16416,12 @@ msgstr ""
 msgid "Pick a track and approve the proposal, or add a comment and run another round."
 msgstr ""
 
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "Picture %{number} of %{total}"
+msgstr ""
+
+#: lib/apiary_web/components/artifact_components.ex
 #: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "Picture: %{step}"
@@ -16647,6 +16694,11 @@ msgstr ""
 #: lib/apiary_web/live/target_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Previous"
+msgstr ""
+
+#: lib/apiary_web/components/artifact_components.ex
+#, elixir-autogen, elixir-format
+msgid "Previous picture"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -18998,6 +19050,7 @@ msgid "Scenario %{number}: %{title}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/artifact_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Scenarios"
 msgstr ""
@@ -23984,6 +24037,7 @@ msgid "Versions"
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/load.ex
+#: lib/apiary_web/live/artifact_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Video"
 msgstr ""
@@ -24179,6 +24233,16 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Was refused %{access} access to %{target} for the run: %{cause}"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Watch"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Watch this scenario on its page, with the other scenarios beside it"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex

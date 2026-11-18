@@ -16,8 +16,17 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   # comments, which members write through Explore's actions. Add a version opens the add
   # page with the type and the name filled in (`ApiaryWeb.ArtifactLive.New`).
   #
+  # **A player page.** A version of a `demo-video` or `screenshot` that is a scenario of the
+  # work item's verification stage (`ApiaryWeb.WorkItemLive.VerifyTab.queue/4`, for the
+  # version's take in) has, under its view, the scenario's title and steps, and, at the top
+  # of the right column, the work item's scenarios as a queue, each a link to that
+  # scenario's page. A film, in a scenario or not, has Cinema and Full screen beside its
+  # Speed row; a scenario's pictures show one at a time (`picture-prev` and `picture-next`,
+  # not in the address). A version in no scenario has no queue and no scenario section, and
+  # a set of pictures in none stays a stack.
+  #
   # **Live.** The page listens on its work item's artifacts topic
-  # (`Apiary.Artifacts.subscribe/2`) and reads the history again on
+  # (`Apiary.Artifacts.subscribe/2`) and reads the history and the queue again on
   # `{:artifact_pushed, work_item_id, version_id}`, while `work_item.read`, asked of the
   # reader as they are now, passes; once it fails, the page stops listening.
   #
