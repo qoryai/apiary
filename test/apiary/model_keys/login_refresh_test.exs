@@ -729,6 +729,8 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       assert access == tokens.access_token
 
       eventually(fn -> stored(provider).refresh_token == fresh["refresh_token"] end)
+      # The task writes its entry after the token: wait for it, so it ends before the test.
+      assert [%Entry{details: %{"outcome" => "refreshed"}}] = eventually_trail(provider)
       assert {:ok, access, _at} = token(provider)
       assert access == fresh["access_token"]
       assert length(requests()) == 1
@@ -745,6 +747,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
 
       assert token(provider, wait: 50) == {:error, :unavailable}
       eventually(fn -> stored(provider).refresh_token == fresh["refresh_token"] end)
+      assert [%Entry{details: %{"outcome" => "refreshed"}}] = eventually_trail(provider)
     end
   end
 
@@ -810,7 +813,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       log = capture_log(fn -> send(self(), {:result, token(provider)}) end)
       assert_received {:result, {:error, :sign_in_needed}}
 
-      assert %Login{state: "sign_in_needed", sign_in_cause: "refresh_token_reused", lease_id: nil} =
+      assert %Login{state: "sign_in_needed", sign_in_cause: "token_not_stored", lease_id: nil} =
                row(provider)
 
       assert stored(provider) == %{
@@ -822,7 +825,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
 
       assert [
                %Entry{
-                 details: %{"outcome" => "sign_in_needed", "cause" => "refresh_token_reused"}
+                 details: %{"outcome" => "sign_in_needed", "cause" => "token_not_stored"}
                }
              ] =
                trail(provider)
@@ -862,6 +865,11 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
            {:permanent, "refresh_token_reused"}},
           {"a named code at a 200 is no refresh", 200, %{"code" => "refresh_token_reused"},
            {:transient, "bad_response"}},
+          {"a blank nested code falls through to the top-level code", 400,
+           %{"error" => %{"code" => " "}, "code" => "refresh_token_expired"},
+           {:permanent, "refresh_token_expired"}},
+          {"a blank nested code alone is no code", 400, %{"error" => %{"code" => " "}},
+           {:transient, "http_400"}},
           {"an access token with a space", 200, %{"access_token" => "has space"},
            {:transient, "bad_response"}},
           {"an access token that is not ASCII", 200, %{"access_token" => "tökén"},
@@ -1060,6 +1068,30 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
                 "at-in-an-answer"
               ],
           do: refute(text =~ secret)
+    end
+  end
+
+  describe "a 2xx answer" do
+    for status <- [201, 202] do
+      test "#{status} with tokens is a refresh, as codex reads it", %{scope: scope} do
+        {provider, _tokens} = subscription!(scope, expires_in: 60)
+        fresh = new_tokens("s#{unquote(status)}")
+        stub!({unquote(status), fresh})
+
+        assert {:ok, access, _at} = token(provider)
+        assert access == fresh["access_token"]
+        assert stored(provider).refresh_token == fresh["refresh_token"]
+        assert [%Entry{details: %{"outcome" => "refreshed"}}] = trail(provider)
+      end
+
+      test "#{status} without tokens is a bad_response", %{scope: scope} do
+        {provider, tokens} = subscription!(scope, expires_in: 100)
+        stub!({unquote(status), %{"note" => "none"}})
+
+        assert {:ok, access, _at} = token(provider)
+        assert access == tokens.access_token
+        assert [%Entry{details: %{"cause" => "bad_response"}}] = trail(provider)
+      end
     end
   end
 
@@ -1492,6 +1524,46 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
 
       assert Repo.aggregate(from(e in Entry, where: e.action == "model_key.refresh"), :count) ==
                50
+    end
+
+    defmodule RefusesOrganisation do
+      # An edition that refuses `model_key.refresh` in the organisations named "Refused ...".
+      @moduledoc false
+      def check(_scope, :"model_key.refresh", %Apiary.Organisations.Organisation{
+            name: "Refused" <> _
+          }),
+          do: {:error, :forbidden}
+
+      def check(scope, action, subject), do: Apiary.Edition.module().check(scope, action, subject)
+    end
+
+    test "skips the logins of an organisation that access refuses, whatever their number",
+         %{scope: scope} do
+      :ok = Apiary.Edition.put_test_stub(RefusesOrganisation)
+      %{scope: refused} = sign_up_fixture(%{organisation_name: "Refused Org"})
+
+      # 51 logins in the refused organisation, the oldest, and one in the allowed one.
+      for name <- ["One", "Two"] do
+        keys = for n <- 1..26, do: %{value_id: "k#{n}", value: login_paste(tag: "#{name}-#{n}")}
+
+        Connections.create_provider(refused, %{
+          provider: "openai-subscription",
+          name: name,
+          keys: keys
+        })
+      end
+
+      {provider, _tokens} = subscription!(scope, expires_in: 3600)
+      aged!(provider, 8)
+
+      Repo.update_all(
+        from(l in Login, where: l.organisation_id == ^refused.organisation.id),
+        set: [signed_in_at: DateTime.add(DateTime.utc_now(), -20 * @day)]
+      )
+
+      assert [{swept, id}] = Login.sweep_due(50)
+      assert swept.id == provider.id
+      assert id == value(provider).id
     end
 
     test "is in the crontab, every 6 hours" do

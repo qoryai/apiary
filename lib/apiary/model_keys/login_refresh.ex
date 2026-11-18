@@ -146,8 +146,9 @@ defmodule Apiary.ModelKeys.LoginRefresh do
     end
   end
 
-  defp classify(200, body), do: tokens(body)
-  defp classify(status, _body) when status in 201..299, do: {:transient, "bad_response"}
+  # Any 2xx answer is read for tokens, as `codex` does; one without usable tokens is a
+  # `bad_response`.
+  defp classify(status, body) when status in 200..299, do: tokens(body)
 
   defp classify(status, body) do
     code = error_code(body)

@@ -13,7 +13,7 @@ defmodule Apiary.Repo.Migrations.CreateModelKeyLogins do
   #   * `signed_in_at`: when the login was pasted; `refreshed_at`: when it was last
   #     refreshed, nil until the first refresh;
   #   * `state`: `signed_in`, or `sign_in_needed` once the provider rejected the refresh
-  #     for good; `sign_in_cause` is then the reason, one of the five the check lists
+  #     for good; `sign_in_cause` is then the reason, one of the six the check lists
   #     (`Apiary.ModelKeys.Login.causes/0`), and nil otherwise; a new cause needs a
   #     migration that replaces the check;
   #   * `failures`, `retry_at` and `last_failure`: the refreshes that failed since the
@@ -73,7 +73,7 @@ defmodule Apiary.Repo.Migrations.CreateModelKeyLogins do
              OR (state = 'sign_in_needed' AND sign_in_cause IS NOT NULL
                  AND sign_in_cause IN ('refresh_token_expired', 'refresh_token_reused',
                                        'refresh_token_invalidated', 'invalid_grant',
-                                       'refresh_unauthorized'))
+                                       'refresh_unauthorized', 'token_not_stored'))
              """
            )
 

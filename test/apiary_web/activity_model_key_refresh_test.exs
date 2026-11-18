@@ -38,7 +38,8 @@ defmodule ApiaryWeb.ActivityModelKeyRefreshTest do
            "this sign-in's refresh token was already used, for example by another program"},
           {"refresh_token_invalidated", "OpenAI ended this sign-in"},
           {"invalid_grant", "OpenAI no longer accepts this sign-in"},
-          {"refresh_unauthorized", "OpenAI returned HTTP 401 to the refresh"}
+          {"refresh_unauthorized", "OpenAI returned HTTP 401 to the refresh"},
+          {"token_not_stored", "Qory Apiary could not save the new sign-in"}
         ] do
       assert sentence(Map.merge(@details, %{"outcome" => "sign_in_needed", "cause" => cause})) ==
                "Sign in again on the key main of OpenAI subscription: Qory Apiary could not " <>

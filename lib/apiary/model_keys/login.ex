@@ -85,11 +85,15 @@ defmodule Apiary.ModelKeys.Login do
   failure in a row up to 10 minutes; the caller gets the old token while it is valid, else
   `{:error, :unavailable}`.
 
-  A rotated refresh token that the key cannot store (a document past a value's size, or a
-  key that cannot be read) makes the login `sign_in_needed` at once, with the cause
-  `refresh_token_reused`: the stored refresh token is spent, and no call is made with it.
-  When the node stops after the provider answered and before the write commits, the next
-  refresh gets `refresh_token_reused` from the provider, and the login ends the same way.
+  A rotated refresh token that the key cannot store (a document past a value's size, a key
+  that cannot be read, or a write that raises) is written once more at once, from the
+  task's memory. When that fails too, the login is `sign_in_needed` with the cause
+  `token_not_stored`, and no call is made with the stored refresh token, which the
+  provider has spent. When the node stops after the provider answered and before the write
+  commits, the next refresh gets `refresh_token_reused` from the provider, and the login
+  ends in that state. A shutdown of the task supervisor (a deploy) does not stop the task
+  at once: it traps exits, so it writes what it holds within the supervisor's shutdown
+  time, 5 seconds.
   """
 
   use Ecto.Schema
@@ -103,6 +107,7 @@ defmodule Apiary.ModelKeys.Login do
   alias Apiary.Accounts.Scope
   alias Apiary.Audit
   alias Apiary.Connections.Connection
+  alias Apiary.Features
   alias Apiary.Kinds.{Provider, Providers}
   alias Apiary.ModelKeys.LoginRefresh
   alias Apiary.Organisations.Organisation
@@ -130,12 +135,14 @@ defmodule Apiary.ModelKeys.Login do
         }
 
   @states ~w(signed_in sign_in_needed)
-  # The provider's permanent refusals of a refresh: the refresh token expired,
-  # was used already, or was invalidated; a 400 `invalid_grant`; a 401 from the refresh
-  # call, `refresh_unauthorized` (`unauthorized` is the model API's 401). The check of
-  # `model_key_logins` lists the same five.
+  # The causes of a sign-in that needs a new login: the provider's permanent refusals of a
+  # refresh (the refresh token expired, was used already, or was invalidated; a 400
+  # `invalid_grant`; a 401 from the refresh call, `refresh_unauthorized`, where
+  # `unauthorized` is the model API's 401) and `token_not_stored`, the provider's answer
+  # with a new refresh token that the key could not store. The check of `model_key_logins`
+  # lists the same six.
   @causes ~w(refresh_token_expired refresh_token_reused refresh_token_invalidated
-             invalid_grant refresh_unauthorized)
+             invalid_grant refresh_unauthorized token_not_stored)
   @paste_max 32_768
 
   # When a refresh is due: this long before the access token's `exp`, or this long after
@@ -444,7 +451,8 @@ defmodule Apiary.ModelKeys.Login do
       trigger: trigger,
       deadline: System.monotonic_time(:millisecond) + Keyword.get(opts, :wait, @wait_ms),
       poll: Keyword.get(opts, :poll, @poll_ms),
-      now: Keyword.get(opts, :now)
+      now: Keyword.get(opts, :now),
+      allowed: false
     })
   end
 
@@ -452,10 +460,46 @@ defmodule Apiary.ModelKeys.Login do
   The keys whose sign-in the sweep refreshes: at most `limit` of them, oldest first, each
   as `{provider, secret_value_id}`. A key is one whose login is `signed_in`, was last
   refreshed (signed in, when it never was) more than 7 days ago, has no live lease and no
-  `retry_at` in the future, and whose organisation is not marked for deletion.
+  `retry_at` in the future, and whose organisation `Apiary.Access` lets the instance
+  refresh in (`model_key.refresh`: not marked for deletion, `secrets` on). The logins of
+  an organisation that is refused are skipped and the next ones read, so they do not
+  take the places of the others.
   """
   @spec sweep_due(pos_integer) :: [{Connection.t(), Ecto.UUID.t()}]
   def sweep_due(limit) when is_integer(limit) and limit > 0 do
+    if Features.on?(:secrets), do: sweep_page(limit, 0, %{}, []), else: []
+  end
+
+  # Reads `limit` logins at a time, from `offset`, and keeps those of the organisations that
+  # may be refreshed (`allowed` has the answers read so far), until `limit` are kept or no
+  # login is left.
+  defp sweep_page(limit, offset, allowed, kept) do
+    case sweep_candidates(limit, offset) do
+      [] ->
+        Enum.reverse(kept)
+
+      page ->
+        {kept, allowed} =
+          Enum.reduce_while(page, {kept, allowed}, fn {provider, _id} = candidate,
+                                                      {kept, allowed} ->
+            organisation_id = provider.organisation_id
+
+            allowed =
+              Map.put_new_lazy(allowed, organisation_id, fn ->
+                organisation_allowed?(organisation_id)
+              end)
+
+            kept = if allowed[organisation_id], do: [candidate | kept], else: kept
+            if length(kept) >= limit, do: {:halt, {kept, allowed}}, else: {:cont, {kept, allowed}}
+          end)
+
+        if length(kept) >= limit,
+          do: Enum.reverse(kept),
+          else: sweep_page(limit, offset + limit, allowed, kept)
+    end
+  end
+
+  defp sweep_candidates(limit, offset) do
     oldest = DateTime.add(db_now(), -@sweep_age_days * @day)
 
     Repo.all(
@@ -474,8 +518,25 @@ defmodule Apiary.ModelKeys.Login do
             (is_nil(l.lease_until) or l.lease_until < fragment("clock_timestamp()")),
         order_by: [asc: coalesce(l.refreshed_at, l.signed_in_at), asc: l.secret_value_id],
         limit: ^limit,
+        offset: ^offset,
         select: {c, l.secret_value_id}
     )
+  end
+
+  @doc false
+  # Whether `Apiary.Access` lets the instance refresh a sign-in of the provider's
+  # organisation (`model_key.refresh`).
+  @spec refresh_allowed?(Connection.t()) :: boolean
+  def refresh_allowed?(%Connection{organisation_id: id}), do: organisation_allowed?(id)
+
+  defp organisation_allowed?(id) do
+    case Repo.get(Organisation, id) do
+      %Organisation{} = organisation ->
+        Access.check(Scope.for_instance(organisation), :"model_key.refresh", organisation) == :ok
+
+      nil ->
+        false
+    end
   end
 
   # Whether the sign-in is due for a refresh now, and the `refresh_reason` to send, by the
@@ -573,15 +634,14 @@ defmodule Apiary.ModelKeys.Login do
   # organisation (`model_key.refresh`, which needs the `secrets` feature), before the lease
   # is taken: refused, no call is made and no entry is written, and the caller gets the
   # stored token while it is valid.
+  # `ctx.allowed` is set once the answer is yes, so a caller that polls for another's
+  # refresh asks once, not at each poll.
+  defp refresh_allowed(%{allowed: true} = ctx), do: lease(ctx)
+
   defp refresh_allowed(ctx) do
-    with %Organisation{} = organisation <-
-           Repo.get(Organisation, ctx.provider.organisation_id),
-         :ok <-
-           Access.check(Scope.for_instance(organisation), :"model_key.refresh", organisation) do
-      lease(ctx)
-    else
-      _refused -> while_valid(serve(ctx), now(ctx))
-    end
+    if refresh_allowed?(ctx.provider),
+      do: lease(%{ctx | allowed: true}),
+      else: while_valid(serve(ctx), now(ctx))
   end
 
   # The row of the key's sign-in, if the key is a value of the provider's secret.
@@ -736,6 +796,9 @@ defmodule Apiary.ModelKeys.Login do
   defp owned(ctx, leased, reason) do
     task =
       Task.Supervisor.async_nolink(LoginRefresh.supervisor(), fn ->
+        # A shutdown of the supervisor (a deploy) then arrives as a message, and the task
+        # writes the result it holds before the supervisor's shutdown time ends (5 seconds).
+        Process.flag(:trap_exit, true)
         call_and_commit(ctx, leased, reason)
       end)
 
@@ -833,8 +896,44 @@ defmodule Apiary.ModelKeys.Login do
   # key clears it, or it lapsed and was taken over), a value was pasted over the key since
   # the refresh started, or the key or its organisation is gone. The entry of the call is
   # written after the transaction, and best effort (`record/2`): a refresh token that the
-  # provider rotated is in the key before any entry is tried.
+  # provider rotated is in the key before any entry is tried. A write of a rotated token
+  # that fails twice leaves the login `sign_in_needed` with the cause `token_not_stored`.
   defp commit(ctx, leased, reason, result) do
+    if rotated?(result) do
+      # The provider has spent the stored refresh token: the new one is in `result`, in this
+      # process, and nowhere else. A write that fails, or raises, is tried once more at
+      # once; if that fails too, the login needs a new sign-in (`token_not_stored`).
+      with :store_failed <- attempt(ctx, leased, reason, result),
+           :store_failed <- attempt(ctx, leased, reason, result) do
+        write_outcome(ctx, leased, reason, {:permanent, "token_not_stored"})
+      end
+    else
+      write_outcome(ctx, leased, reason, result)
+    end
+  end
+
+  defp rotated?({:ok, %{refresh_token: refresh_token}}), do: is_binary(refresh_token)
+  defp rotated?(_result), do: false
+
+  # One try of the write of a rotated token: the outcome, or `:store_failed` for a store that
+  # was refused or a write that raised. The exception is logged by its kind alone, as its
+  # message and stack may hold the tokens.
+  defp attempt(ctx, leased, reason, result) do
+    write_outcome(ctx, leased, reason, result)
+  rescue
+    exception ->
+      Logger.error(
+        "model key sign-in refresh: the write failed: #{inspect(exception.__struct__)}"
+      )
+
+      :store_failed
+  catch
+    kind, _reason ->
+      Logger.error("model key sign-in refresh: the write failed: #{inspect(kind)}")
+      :store_failed
+  end
+
+  defp write_outcome(ctx, leased, reason, result) do
     {:ok, {outcome, entry}} =
       Repo.transact(fn ->
         case lock_organisation(ctx.provider) do
@@ -935,7 +1034,7 @@ defmodule Apiary.ModelKeys.Login do
         dropped(write, row)
 
       {:error, _not_stored} when rotated? ->
-        spent(write, row, now)
+        {:store_failed, nil}
 
       {:error, _not_stored} ->
         failed(write, row, "not_stored", now)
@@ -987,14 +1086,6 @@ defmodule Apiary.ModelKeys.Login do
     )
 
     {:failed, if(opens?, do: entry(write, "failed", cause, retry_at: retry_at))}
-  end
-
-  # The provider rotated the refresh token and the new one could not be stored: the stored
-  # one is spent, and a call with it would end in `refresh_token_reused`. The sign-in needs
-  # a new login at once, with the cause the provider would give for a refresh token used
-  # twice, and no call is made with the spent one.
-  defp spent(write, row, now) do
-    settle(write, row, {:permanent, "refresh_token_reused"}, now)
   end
 
   # A result that is not the key's any more leaves no entry: the key has what a person

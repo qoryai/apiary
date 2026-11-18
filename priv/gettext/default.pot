@@ -17178,6 +17178,11 @@ msgstr ""
 msgid "Qory Apiary could not refresh the sign-in of the key %{key} of %{provider}: the refresh address in the description of %{provider} is not on the allowed list (bad_endpoint). Ask the author of that description to correct it"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not save the new sign-in"
+msgstr ""
+
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary could not save the work item, so the %{item} was not taken in."

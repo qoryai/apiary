@@ -32,7 +32,25 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
   @moduletag needs: [:factory, :secrets]
 
   setup_all :clean_up_leftovers
+  setup_all :drop_test_database_objects
   setup :setup_races
+
+  # Two tests add what the database refuses with, outside the sandbox: a constraint on
+  # the trail, and a trigger on the values. A run that crashed before its `on_exit` left them
+  # in place, and every later test in the database would meet them: dropped here first.
+  defp drop_test_database_objects(_context) do
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
+    drop_test_database_objects()
+    Ecto.Adapters.SQL.Sandbox.checkin(Repo)
+    :ok
+  end
+
+  defp drop_test_database_objects do
+    Repo.query!("ALTER TABLE audit_entries DROP CONSTRAINT IF EXISTS model_key_refresh_refused")
+    Repo.query!("DROP TRIGGER IF EXISTS refresh_write_refused ON secret_values")
+    Repo.query!("DROP FUNCTION IF EXISTS refresh_write_refused()")
+    Repo.query!("DROP SEQUENCE IF EXISTS refresh_write_attempts")
+  end
 
   setup do
     %{scope: scope} = sign_up()
@@ -275,7 +293,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
 
     on_exit(fn ->
       :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
-      Repo.query!("ALTER TABLE audit_entries DROP CONSTRAINT IF EXISTS model_key_refresh_refused")
+      drop_test_database_objects()
       Ecto.Adapters.SQL.Sandbox.checkin(Repo)
     end)
 
@@ -292,6 +310,137 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     assert log =~ "the entry was not written"
     refute log =~ fresh["refresh_token"]
     refute log =~ fresh["access_token"]
+  end
+
+  # The database refuses the first `times` writes of a key's value, as a failing disk would.
+  defp refuse_writes!(times) do
+    Repo.query!("CREATE SEQUENCE refresh_write_attempts")
+
+    Repo.query!("""
+    CREATE FUNCTION refresh_write_refused() RETURNS trigger AS $$
+    BEGIN
+      IF nextval('refresh_write_attempts') <= #{times} THEN
+        RAISE EXCEPTION 'the write is refused';
+      END IF;
+      RETURN NEW;
+    END
+    $$ LANGUAGE plpgsql
+    """)
+
+    Repo.query!("""
+    CREATE TRIGGER refresh_write_refused BEFORE UPDATE ON secret_values
+      FOR EACH ROW EXECUTE FUNCTION refresh_write_refused()
+    """)
+
+    on_exit(fn ->
+      :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
+      drop_test_database_objects()
+      Ecto.Adapters.SQL.Sandbox.checkin(Repo)
+    end)
+  end
+
+  test "a write that fails once is tried again at once, with the token in memory", ctx do
+    id = key_id(ctx.provider, "main")
+    fresh = answer("retried")
+    stub_answer!(fresh)
+    refuse_writes!(1)
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        send(self(), {:result, refresh(ctx.provider, id)})
+      end)
+
+    assert_received {:result, {:ok, access, _at}}
+    assert access == fresh["access_token"]
+    assert tokens!(ctx.provider, id).refresh_token == fresh["refresh_token"]
+
+    assert %Login{state: "signed_in", lease_id: nil, failures: 0, refreshed_at: %DateTime{}} =
+             Repo.get!(Login, id)
+
+    assert [%{details: %{"outcome" => "refreshed"}}] = entries(ctx.provider)
+    assert requests_made() == 1
+    assert log =~ "the write failed"
+    refute log =~ fresh["refresh_token"]
+    refute log =~ fresh["access_token"]
+  end
+
+  test "a write that fails twice needs a new sign-in, and no call uses the spent token", ctx do
+    id = key_id(ctx.provider, "main")
+    old = tokens!(ctx.provider, id)
+    fresh = answer("lost")
+    stub_answer!(fresh)
+    refuse_writes!(2)
+
+    log =
+      ExUnit.CaptureLog.capture_log(fn ->
+        send(self(), {:result, refresh(ctx.provider, id)})
+      end)
+
+    assert_received {:result, {:error, :sign_in_needed}}
+
+    assert %Login{state: "sign_in_needed", sign_in_cause: "token_not_stored", lease_id: nil} =
+             Repo.get!(Login, id)
+
+    assert tokens!(ctx.provider, id) == old
+
+    assert [%{details: %{"outcome" => "sign_in_needed", "cause" => "token_not_stored"}}] =
+             entries(ctx.provider)
+
+    assert requests_made() == 1
+    assert refresh(ctx.provider, id) == {:error, :sign_in_needed}
+    assert requests_made() == 0
+
+    for secret <- [fresh["refresh_token"], fresh["access_token"], old.refresh_token],
+        do: refute(log =~ secret)
+  end
+
+  test "a shutdown signal while the outcome waits for its lock still stores the token", ctx do
+    id = key_id(ctx.provider, "main")
+    fresh = answer("shutdown")
+    stub_answer!(fresh)
+
+    # A change of the key holds the secret's row: the write of the outcome waits for it.
+    {held, holder} =
+      hold(fn ->
+        Repo.one(
+          from s in Apiary.Secrets.Secret,
+            where: s.id == ^ctx.provider.secret_id,
+            lock: "FOR UPDATE",
+            select: s.id
+        )
+      end)
+
+    caller = start(fn -> refresh(ctx.provider, id) end)
+    assert_receive :request, 5_000
+    waiting!(holder)
+
+    # What the supervisor sends its children when the application stops.
+    tasks = Task.Supervisor.children(LoginRefresh.supervisor())
+    assert tasks != []
+    for task <- tasks, do: Process.exit(task, :shutdown)
+    assert Enum.any?(tasks, &Process.alive?/1)
+
+    commit(held)
+
+    assert {:ok, access, _at} = Task.await(caller.task, 10_000)
+    assert access == fresh["access_token"]
+    assert tokens!(ctx.provider, id).refresh_token == fresh["refresh_token"]
+    assert %Login{lease_id: nil, failures: 0} = Repo.get!(Login, id)
+  end
+
+  # Waits, in the database, until a backend waits on a lock `holder` holds.
+  defp waiting!(holder, left \\ 250) do
+    %{rows: rows} =
+      Repo.query!(
+        "SELECT pid FROM pg_stat_activity WHERE $1 = ANY (pg_blocking_pids(pid))",
+        [holder]
+      )
+
+    cond do
+      rows != [] -> :ok
+      left == 0 -> flunk("no backend waited on the held lock")
+      true -> Process.sleep(20) && waiting!(holder, left - 1)
+    end
   end
 
   test "a key deleted while the call ran is gone, and the result is dropped", ctx do
