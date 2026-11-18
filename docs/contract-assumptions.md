@@ -1100,7 +1100,8 @@ how a run's gateway reports the state of the run's model keys in each limit wind
 most 66 items, each `credential`, `window`, `status`, `resets_at`?, `utilization`?,
 `cooldown_until`?, `source` and `observed_at`, with `cooldown_until` when `status` is
 `rejected` and without it otherwise, and `session`?, the number of the session open when
-the gateway made the report, which is also counted into that session's key windows (Assumed, below). After the refusals every signed request gets, in
+the gateway made the report, which is also counted into that session's key windows
+(Assumed, below). After the refusals every signed request gets, in
 order: a body the schema does not match, a member twice, or an `observed_at` more than 300
 seconds after the server's clock is `400 invalid_request`, with the member in `names` and
 never a value; a `time` more than 300 seconds from the server's clock is `401`, unsigned;
@@ -1804,51 +1805,56 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   they are totals and not parts: Forager's descriptor sums `usage` from `modelUsage`, and
   `cost_usd` is `total_cost_usd`. `dev.qory.runtime.subagent_finished` carries no cost. So
   Qory Apiary takes a session's cost and tokens from the last line that has them, and never
-  adds the lines of one session together (decision 652 (a)). The last line is the one
-  with the highest `line`, the number of the line of the session's standard output; two
-  lines with no `line`, or the same one, are ordered by event sequence. A session is a
-  `session` number, from 1; a result with no `session` is of session 1. `turns` is summed
-  over the lines, because each line counts its own turns; `duration_ms` is the last line's;
-  and the session is an error when any line has `is_error` true. A run's cost
-  (`runs.cost_usd`) is the sum, over its sessions, of each session's cost: a second session
-  is a second total. A line without a cost leaves the cost of the line before it, and a
-  run whose results carried none has no cost (null), which the console reads as unrecorded,
-  not as free. A value that is not a JSON number, negative or absurd (a billion dollars or
-  more) is read as absent, and so is a count that is not an integer of 0 or more. The fold
-  reads all the run's results again at each pass that has one, the ones already projected
-  included, so a rebuild and a run projected in many passes have the same cost
-  (`Apiary.Runs.Sessions`). Runs projected before decision 652 (a) keep the cost they
-  were given, the sum of their lines, until they are rebuilt.
+  adds those of the lines of one session together (decision 652 (a)). The last line is the
+  one with the highest `line`, the number of the line of the session's standard output; the
+  lines with no `line` come after those with one, and lines with the same `line`, or none,
+  are ordered by event sequence. A session is a `session` number, from 1; a result with no
+  `session` is of session 1. `turns` and `duration_ms` are summed over the lines, up to the
+  bound of the column, because each line counts its own turns and its own time (the three
+  lines of one fixture have 9501, 1490 and 3 ms); and the session is an error when any line
+  has `is_error` true. A run's cost (`runs.cost_usd`) is the sum, over its sessions, of each
+  session's cost: a second session is a second total. A line without a cost leaves the cost
+  of the line before it, and a run whose results carried none has no cost (null), which the
+  console reads as unrecorded, not as free. A value that is not a JSON number, negative or
+  absurd (a billion dollars or more) is read as absent, and so is a count that is not an
+  integer of 0 or more. The fold reads all the run's results again at each pass that has
+  one, the ones already projected included, so a rebuild and a run projected in many passes
+  have the same cost (`Apiary.Runs.Sessions`). Runs projected before decision 652 (a) keep
+  the cost they were given, the sum of their lines, until they are rebuilt.
 - A session's record (`session_records`, `Apiary.Runs.SessionRecord`) is written, one for
   each session number of a run, in the pass that projects one of the session's
   `dev.qory.session.started`, `dev.qory.runtime.started`, `dev.qory.runtime.result` or
   `dev.qory.session.exited`, and again by every later pass, to the same row. It has a row
-  for a session with a start that is not `bare` or with a result; a session with no
-  runtime, and a refused join, which has an exit and no start, have none. Its work item,
-  target, stage, workflow and attempt come from Qory Apiary, not from the events: the
-  attempt is `dispatch_runs.attempt`, so the run that continues a paused run has the
-  paused run's attempt plus 1, while the paused run keeps its record as attempt 1; the
-  stage and workflow are those of the run of the queue, and, for a shared run, those of the
-  row of `shared_run_sessions` that Forager's session number is: the row whose reported
+  for a session with a start that is not `bare` or with a result; a session with no runtime,
+  and a refused join, which has an exit and no start, have none. Its work item, target,
+  stage, workflow and attempt come from Qory Apiary, not from the events: the attempt is
+  `dispatch_runs.attempt`, so the run that continues a paused run has the paused run's
+  attempt plus 1, while the paused run keeps its record as attempt 1; the stage and workflow
+  are those of the run of the queue, and, for a shared run, those of the row of
+  `shared_run_sessions` that Forager's session number is: the row whose reported
   `forager_session` is the number, else, for a session that no report ended, such as the one
   open when a run paused, the newest row with none, else the row of that sequence. A run the
   queue did not start has none of the five. The model is that of the session's
-  `dev.qory.runtime.started` in the main conversation, else the model of the run's
-  `run_settings`, which is session 1's. A step that a rerun keeps is not run again, so it
-  has no session and no record; its record stays on the run where it ran. The records stay
-  when `Apiary.Retention` deletes the run's events.
+  `dev.qory.runtime.started` in the main conversation, else, for session 1, the model of the
+  run's `run_settings`, and for another session none. A step that a rerun keeps is not run
+  again, so it has no session and no record; its record stays on the run where it ran. The
+  records stay when `Apiary.Retention` deletes the run's events, and a run whose events
+  retention has deleted or is due to delete is not written to: its records, and its cost,
+  are what is left.
 - A key report that has a `session` (`model-keys-report.schema.json`) is also counted into
-  that session's key windows (`session_key_windows`, `Apiary.Runs.SessionKeyWindow`): one row
-  for each session, key and window, with the utilization of the report with the earliest
+  that session's key windows (`session_key_windows`, `Apiary.Runs.SessionKeyWindow`): one
+  row for each session, key and window, with the utilization of the report with the earliest
   `observed_at` of the session, the one with the latest, and their difference, `share`. A
   report that Qory Apiary does not store as a key's state, for a window or a key it does not
   keep or a value the run no longer has, is not counted, and neither is an item with no
-  utilization. A report with no `session` changes no session's windows. The gateway sends a
-  report when a session starts and when it ends, so the first and the last are the
-  utilization at the start and at the end, and the reports between them can only move the
-  last. A report that arrives after the run ended is counted as for the states, within 60
-  seconds of the end. A share is only comparable within one key: one percent of a large
-  subscription is more than one percent of a small one.
+  utilization. A report with no `session`, or with one above 2,147,483,647, changes no
+  session's windows. A report that names a session the run never started makes an empty
+  record for it, with its windows, and the session's events fill the record when they come.
+  The gateway sends a report when a session starts and when it ends, so the first and the
+  last are the utilization at the start and at the end, and the reports between them can
+  only move the last. A report that arrives after the run ended is counted as for the
+  states, within 60 seconds of the end. A share is only comparable within one key: one
+  percent of a large subscription is more than one percent of a small one.
 - The optional `peak_memory_bytes` and `cpu_time_ms` of `dev.qory.session.exited` are
   the enclosure's peak memory, in bytes, and its CPU time, in milliseconds, measured
   inside the enclosure, and Forager's contract marks them as not for limits or billing.
