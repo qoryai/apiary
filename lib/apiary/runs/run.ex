@@ -519,7 +519,7 @@ defmodule Apiary.Runs.Run do
   The ids of the model providers whose keys the session number `session` of `run` runs
   on. Session 1 runs on the provider of the run's start key (`provider_connection_id`).
   A later session runs on the provider of the run's key whose name is that session's
-  `model_credential` in `session_settings` (`Apiary.Stages.session_credential/2`), else
+  `model_credential` in `session_settings`, else
   on the start key's provider. For a nil `session`, not known, every provider of the
   run's keys (`Apiary.Runs.ModelKey`). None for a run with no key. The end of a paused
   run, with `session` the session that paused (`paused_session`), keeps the earliest end

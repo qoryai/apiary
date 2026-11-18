@@ -1,6 +1,6 @@
 defmodule Apiary.Runs.ModelKey do
   @moduledoc """
-  One model key a run's claim stored for the run (`Apiary.Dispatches.RunSettings`), in
+  One model key a run's claim stored for the run, in
   `run_model_keys`: at most 6 per run, of one or more model providers, one provider per
   session. Written once, with the run's registration, and never changed; not folded, so a
   rebuild keeps it.

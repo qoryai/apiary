@@ -345,7 +345,7 @@ defmodule Apiary.Processes do
   condition one that an earlier gate offers, one condition on an item, `when` or `unless`, and one access level and machine type in a stage with
   `shared_run: true`, with the access levels the workflows declare in the harness,
   `levels` (`declared_access/1`), none by default; and, with `models`, the model choices
-  of the workspace (`workspace_models/2`, `Apiary.ModelChoices.shared_models/3`), the
+  of the workspace (`workspace_models/2`, Apiary.ModelChoices.shared_models/3), the
   model providers of each such stage (`shared_models/3`); with no `models`, the default,
   those are not checked. `:ok`, or
   `{:error, errors}` (`t:error/0`). Fields the schema does not list are kept. A
@@ -483,8 +483,8 @@ defmodule Apiary.Processes do
   @doc """
   shared_models/3 checks that the model choices of the workflows of `stage`, a stage with
   `shared_run: true`, fit the one run its workflow entries run as. `models` is
-  `Apiary.ModelChoices.shared_models/3` or `Apiary.ModelChoices.default_models/1`:
-  `choices`, each workflow's resolution by its name (`Apiary.ModelChoices.Resolution.resolve/1`),
+  Apiary.ModelChoices.shared_models/3 or Apiary.ModelChoices.default_models/1:
+  `choices`, each workflow's resolution by its name (Apiary.ModelChoices.Resolution.resolve/1),
   with `default` for a workflow not listed; and `providers`, the name and the catalogue
   description of each provider those use, by row id. `start_ids` are the providers the
   stage's runs can start on: nil for those of the stage's first workflow's choice, its
@@ -496,12 +496,12 @@ defmodule Apiary.Processes do
   workflows first use them: one run takes keys of at most 6, and at least one of each
   provider. Else `{:error, {:model_choice_missing, workflow, runtime, provider}}` for the
   first workflow with no model choice (`:none`) whose runtime, the catalogue's default
-  (`Apiary.ModelChoices.default_runtime/0`, its title as `runtime`), cannot use one of
+  (Apiary.ModelChoices.default_runtime/0, its title as `runtime`), cannot use one of
   `start_ids` (`Apiary.Kinds.Providers.api/2`), with that provider's name: such a session
   joins the start key's group and cannot use the machine's key. Else `:ok`. The
   providers are checked first: with more than 6, no claim can give each session a key,
   whatever the choices. The save checks it (`validate/3`), and the claim checks it again
-  (`Apiary.Stages.shared_models/1`), as a choice, a provider or the harness can change
+  (Apiary.Stages.shared_models/1), as a choice, a provider or the harness can change
   after the save.
   """
   @spec shared_models(map, map, [Ecto.UUID.t()] | nil) ::
@@ -581,10 +581,10 @@ defmodule Apiary.Processes do
   workspace_models/2 is the model choices that the save of `document` checks for
   `workspace` (`validate/3`): those of the workflows of its stages with `shared_run:
   true`, at the workspace's levels 4 to 6, with no target
-  (`Apiary.ModelChoices.shared_models/3`). Nil for a document with no such stage. Read
+  (Apiary.ModelChoices.shared_models/3). Nil for a document with no such stage. Read
   without a lock.
   """
-  @spec workspace_models(Workspace.t(), term) :: map | nil
+  @spec workspace_models(%Workspace{}, term) :: map | nil
   def workspace_models(%Workspace{} = workspace, %{"stages" => [_ | _] = stages}) do
     workflows =
       for stage <- stages,
