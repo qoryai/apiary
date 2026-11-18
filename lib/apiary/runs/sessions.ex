@@ -12,7 +12,8 @@ defmodule Apiary.Runs.Sessions do
   A session is a Forager session number (`session` of the event, from 1). `session` is
   optional in the schema of `dev.qory.runtime.result`
   (`priv/contract/events/runtime.result.schema.json`), so a result with no `session`
-  belongs to session 1, and so does a `dev.qory.runtime.started` with none. A session has a record
+  belongs to session 1, and so does a `dev.qory.runtime.started` with none. A session has
+  a record
   when it has a start that is not bare (`bare` is Forager's mark of a session with no
   runtime, which measures nothing) or a result. A refused join, which has an exit and no
   start, has none.
@@ -35,15 +36,15 @@ defmodule Apiary.Runs.Sessions do
 
   ## Writing
 
-  `write/1` writes the records of a run from all its session events, in a transaction of
-  its own after the projector's pass has committed (`Apiary.Runs.Projector`), unless
+  `write/1` writes the records of a run from all its session events, in a separate
+  transaction after the projector's pass has committed (`Apiary.Runs.Projector`), unless
   retention has deleted the run's events or is due to (`Apiary.Retention.due_or_pruned?/1`,
-  asked under the run's projection lock): it inserts a record or
-  replaces the columns that come from the events and from the run's place in the queue,
-  never its `id`, so the key windows that hang on it stay. The write is the same for the
-  same events whichever pass writes it. `record_windows/3` writes the key windows of the
-  gateway's reports (`Apiary.ModelKeys.record/4`), and creates the record when the first
-  report of a session arrives before the session's events do.
+  asked under the run's projection lock): it inserts a record or replaces the columns that
+  come from the events and from the run's place in the queue, never its `id`, so the key
+  windows that hang on it stay. The write is the same for the same events whichever pass
+  writes it. `record_windows/3` writes the key windows of the gateway's reports
+  (`Apiary.ModelKeys.record/4`), and creates the record when the first report of a session
+  arrives before the session's events do.
 
   An event carries a session's `dev.qory.runtime.result` data in the record's database
   columns only, never in a log line.
@@ -331,10 +332,10 @@ defmodule Apiary.Runs.Sessions do
 
   # Locks, `FOR KEY SHARE`, what a record's foreign keys check, in the order the end of a
   # run locks them (`Apiary.Dispatches.RunEnd`): the work item, the run of the queue, then
-  # the run. Postgres takes these locks on its own when it checks the keys, in the order of
-  # the columns, the run first, and a record that took them so would wait for a lock the
-  # end holds while the end waits for the lock the record holds on the run. Returns the
-  # run as it is, nil for a run that is gone.
+  # the run. Postgres takes these locks without a statement of ours when it checks the
+  # keys, in the order of the columns, the run first, and a record that took them so would
+  # wait for a lock the end holds while the end waits for the lock the record holds on the
+  # run. Returns the run as it is, nil for a run that is gone.
   defp lock_places(run_id) do
     with %Run{} = run <- Repo.get(Run, run_id) do
       dispatch = run.dispatch_run_id && Repo.get(DispatchRun, run.dispatch_run_id)

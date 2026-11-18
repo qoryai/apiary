@@ -205,13 +205,31 @@ defmodule Apiary.RetentionTest do
           }
         ])
 
-      Repo.update_all(from(r in Run, where: r.id == ^old.id), set: [last_event_at: days_ago(91)])
+      # `due_or_pruned?/1` reads the database's clock, not `@now`.
+      aged = DateTime.add(DateTime.utc_now(), -91 * 86_400, :second)
+      Repo.update_all(from(r in Run, where: r.id == ^old.id), set: [last_event_at: aged])
       old = Repo.get!(Run, old.id)
 
       records = Repo.all(from r in SessionRecord, where: r.run_id == ^old.id, order_by: r.id)
       windows = Repo.all(SessionKeyWindow)
       assert [%SessionRecord{session_number: 1, started_at: %DateTime{}}] = records
       assert [%SessionKeyWindow{}] = windows
+
+      # A report that arrives now, for a run that is due, writes no record and no window.
+      :ok =
+        Sessions.record_windows(old, 2, [
+          %{
+            secret_value_id: Ecto.UUID.generate(),
+            window: "five_hour",
+            utilization: 12,
+            observed_at: days_ago(1)
+          }
+        ])
+
+      assert Repo.all(from r in SessionRecord, where: r.run_id == ^old.id, order_by: r.id) ==
+               records
+
+      assert Repo.all(SessionKeyWindow) == windows
 
       assert %{runs_pruned: 1} = Retention.prune_workspace(scope.workspace, now: @now)
 

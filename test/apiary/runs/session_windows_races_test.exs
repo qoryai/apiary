@@ -1,6 +1,6 @@
 defmodule Apiary.Runs.SessionWindowsRacesTest do
   # A gateway's key report that names a session (`Apiary.Runs.Sessions.record_windows/3`)
-  # against a pass of the projector over the same run, each on a connection of its own,
+  # against a pass of the projector over the same run, each on a separate connection,
   # outside the SQL sandbox: the first is held after its lock (`hold/1`), the second
   # started and seen waiting on it (`await_blocked/2`). Not async: what these tests commit
   # is visible to every other test while they run, and they delete it again before they
@@ -126,8 +126,8 @@ defmodule Apiary.Runs.SessionWindowsRacesTest do
   end
 
   # The first lock of the end of a run (`Apiary.Dispatches.RunEnd`): its work item,
-  # `FOR UPDATE`. Run inside a held transaction. A pass of the projector takes none of the
-  # queue's rows but its run's own, and so is not held by this lock.
+  # `FOR UPDATE`. Run inside a held transaction. The records' write waits for it; a pass
+  # of the projector does not.
   defp lock_work_item(queued) do
     Repo.one(
       from w in WorkItem, where: w.id == ^queued.work_item_id, select: w.id, lock: "FOR UPDATE"

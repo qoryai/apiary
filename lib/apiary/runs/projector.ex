@@ -41,7 +41,7 @@ defmodule Apiary.Runs.Projector do
   A session's record (`Apiary.Runs.SessionRecord`) is written, or replaced, after the pass
   that folded one of the run's `dev.qory.session.started`, `dev.qory.session.exited`,
   `dev.qory.runtime.started` or `dev.qory.runtime.result` events has committed, in a
-  transaction of its own, from all the run's events of those types
+  separate transaction, from all the run's events of those types
   (`Apiary.Runs.Sessions`). A rebuild does not delete the records: the key
   windows that hang on them come from the gateway's reports, not from the events, and the
   records stay when retention deletes the events. A run whose events retention has deleted,
@@ -515,11 +515,13 @@ defmodule Apiary.Runs.Projector do
   end
 
   # The records of the run's sessions, after the passes have committed, for events that
-  # folded a session's start, runtime, result or exit: written in a transaction that holds
-  # the run's projection lock and no row of the run, so the pass never waits for what the
-  # end of a run holds (`Apiary.Runs.Sessions.write/1`). A failure is logged by the run's
-  # id and the exception's module, and the events stay projected: the next pass that folds a
-  # session event, or a rebuild, writes the records again.
+  # folded a session's start, runtime, result or exit: written in a separate transaction
+  # (`Apiary.Runs.Sessions.write/1`), so the pass does not hold the run's row while the
+  # records' foreign keys lock the queue's rows. A failure is logged by the run's id and
+  # the exception's module, and the events stay projected: the next pass that folds a
+  # session event, or a rebuild, writes the records again. The pass itself can still
+  # wait for the queue's rows: its second update of the run re-checks the run's foreign
+  # keys (`pass/2`).
   defp write_sessions(%Run{id: id}, first, last) do
     if Repo.exists?(
          from e in Event,

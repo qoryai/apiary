@@ -1834,10 +1834,10 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
 - A session's record (`session_records`, `Apiary.Runs.SessionRecord`) is written, one for
   each session number of a run, after the pass that projected one of the session's
   `dev.qory.session.started`, `dev.qory.runtime.started`, `dev.qory.runtime.result` or
-  `dev.qory.session.exited` has committed, in a transaction of its own, and again after
+  `dev.qory.session.exited` has committed, in a separate transaction, and again after
   every later such pass, to the same row. The write holds the run's projection lock and,
   `FOR KEY SHARE`, the run's work item, run of the queue and run, in the order the end of a
-  run locks them, so the end and the write never wait for each other. It has a row for a
+  run locks them, so the end and the write lock in one order. It has a row for a
   session with a start that is not `bare` or with a result; a session with no runtime, and a
   refused join, which has an exit and no start, have none. Its work item, target, stage,
   workflow and attempt come from Qory Apiary, not from the events: the attempt is
