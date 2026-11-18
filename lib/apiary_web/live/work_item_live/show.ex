@@ -404,28 +404,22 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             cancel={@cancel}
           >
             <:open_questions>
-              <.open_questions
+              <.tab_questions
                 id="work-item-explore-questions"
                 number={@number}
                 questions={@questions}
-                stages={question_stages(@flow)}
-                fallback={question_fallback(@flow)}
-                stage={stage_now(@flow)}
-                stage_id={stage_id_now(@flow)}
-                only={tab_only(@tab, @flow)}
-                form={answering?(@can, @item) and is_nil(tab_only(@tab, @flow))}
+                flow={@flow}
+                tab={@tab}
+                can={@can}
+                item={@item}
                 answers={@answers}
                 comment={@comment}
                 errors={@errors}
                 form_error={@form_error}
                 submits={@submits}
-                move_error={answering?(@can, @item) && @move_error}
-                commenting={@can.send and (question_updates(@flow) == :outputs or @proposal != nil)}
-                open_comments={
-                  if @can.send, do: Enum.count(@view.review_comments, &(&1.state == :open)), else: 0
-                }
-                change={@can.change}
-                updates={question_updates(@flow)}
+                move_error={@move_error}
+                proposal={@proposal}
+                review_comments={@view.review_comments}
                 now={@now}
               />
             </:open_questions>
@@ -492,28 +486,22 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             cancel={@cancel}
           >
             <:open_questions>
-              <.open_questions
+              <.tab_questions
                 id="work-item-tab-questions"
                 number={@number}
                 questions={@questions}
-                stages={question_stages(@flow)}
-                fallback={question_fallback(@flow)}
-                stage={stage_now(@flow)}
-                stage_id={stage_id_now(@flow)}
-                only={tab_only(@tab, @flow)}
-                form={answering?(@can, @item) and is_nil(tab_only(@tab, @flow))}
+                flow={@flow}
+                tab={@tab}
+                can={@can}
+                item={@item}
                 answers={@answers}
                 comment={@comment}
                 errors={@errors}
                 form_error={@form_error}
                 submits={@submits}
-                move_error={answering?(@can, @item) && @move_error}
-                commenting={@can.send and (question_updates(@flow) == :outputs or @proposal != nil)}
-                open_comments={
-                  if @can.send, do: Enum.count(@view.review_comments, &(&1.state == :open)), else: 0
-                }
-                change={@can.change}
-                updates={question_updates(@flow)}
+                move_error={@move_error}
+                proposal={@proposal}
+                review_comments={@view.review_comments}
                 now={@now}
               />
             </:open_questions>
@@ -2076,10 +2064,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # (`ApiaryWeb.WorkItemComponents.change_option/1`), picked with a wording other than the
   # agent's, keeps its title, and the note starts with the option's label and that
   # wording, "Change AC-4: <wording>", a blank line before the note written. With the
-  # agent's wording, or an empty field, the answer is the option as for any other. A
-  # wording that would make the note longer than `Proposal.max_answer/0` characters, or
-  # that has a character the note refuses, is the error `{:wording, error}` of its question
-  # (`ApiaryWeb.WorkItemComponents.wording_error/1`).
+  # agent's wording, the answer is the option as for any other. A
+  # wording that would make the note longer than `Proposal.max_answer/0` characters, that
+  # has a character the note refuses, or an empty field, is the error `{:wording, error}`
+  # of its question (`ApiaryWeb.WorkItemComponents.wording_error/1`).
   @spec answer_list(map, [map]) ::
           {:ok, [%{String.t() => String.t() | nil}]} | {:error, %{String.t() => term}}
   def answer_list(draft, open) when is_map(draft) and is_list(open) do
@@ -2112,15 +2100,19 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # member's wording where it differs from the agent's, line breaks compared as line feeds,
   # and nil; or the note as given and the wording's error: `{:too_long, count}` where the
   # note would pass `Proposal.max_answer/0` characters, `count` what the wording may take
-  # beside the label and the note, or `:characters` for a character the note refuses.
+  # beside the label and the note, `:characters` for a character the note refuses, or
+  # `{:blank, criterion}` for an empty field, `criterion` such as "AC-4": the answer then
+  # sends nothing, not the agent's wording.
   defp with_wording(note, %{"option" => option, "wording" => wording}, %{} = change)
        when is_binary(wording) do
     edited = line_feeds(wording)
 
     cond do
-      option != Integer.to_string(change.place) or edited == "" or
-          edited == line_feeds(change.proposal) ->
+      option != Integer.to_string(change.place) or edited == line_feeds(change.proposal) ->
         {note, nil}
+
+      edited == "" ->
+        {note, {:blank, change.criterion}}
 
       not Proposal.text?(edited) ->
         {note, :characters}
@@ -3225,7 +3217,57 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp open?(questions), do: Enum.any?(questions, &(not decision?(&1) and &1.state == :open))
 
   # Whether the reader may answer the open questions now: the work item waits for answers.
+  attr :id, :string, required: true
+  attr :number, :integer, required: true
+  attr :questions, :list, required: true
+  attr :flow, :map, default: nil
+  attr :tab, :any, required: true
+  attr :can, :map, required: true
+  attr :item, :map, required: true
+  attr :answers, :map, required: true
+  attr :comment, :any, required: true
+  attr :errors, :map, required: true
+  attr :form_error, :any, required: true
+  attr :submits, :integer, required: true
+  attr :move_error, :any, required: true
+  attr :proposal, :any, required: true
+  attr :review_comments, :list, required: true
+  attr :now, :any, required: true
+
+  # The frame Open questions of the tab `tab`, Explore's or a stage's
+  # (`ApiaryWeb.WorkItemComponents.open_questions/1`), from the page's assigns.
+  defp tab_questions(assigns) do
+    ~H"""
+    <.open_questions
+      id={@id}
+      number={@number}
+      questions={@questions}
+      stages={question_stages(@flow)}
+      fallback={question_fallback(@flow)}
+      stage={stage_now(@flow)}
+      stage_id={stage_id_now(@flow)}
+      only={tab_only(@tab, @flow)}
+      form={answering?(@can, @item) and is_nil(tab_only(@tab, @flow))}
+      answers={@answers}
+      comment={@comment}
+      errors={@errors}
+      form_error={@form_error}
+      submits={@submits}
+      move_error={answering?(@can, @item) && @move_error}
+      commenting={@can.send and (question_updates(@flow) == :outputs or @proposal != nil)}
+      open_comments={open_count(@can, @review_comments)}
+      change={@can.change}
+      updates={question_updates(@flow)}
+      now={@now}
+    />
+    """
+  end
+
   defp answering?(can, item), do: can.act and item.status == :questions
+
+  # The open review comments a round sends, for a reader who may send them; else 0.
+  defp open_count(%{send: true}, comments), do: Enum.count(comments, &(&1.state == :open))
+  defp open_count(_can, _comments), do: 0
 
   # The stages of the Questions tab's answered questions, in the process order: the stages
   # of the process, or Explore alone with no stage card, whose questions have no stage.

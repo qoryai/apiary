@@ -25375,6 +25375,11 @@ msgstr ""
 msgid "Write each track of the gate of %{stage} as an id of lower-case words joined by hyphens, such as small-change."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Write the new wording of %{criterion}, or pick another option."
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Write what needs to change."

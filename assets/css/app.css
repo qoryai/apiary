@@ -14476,8 +14476,7 @@
     border-radius: var(--radius-box);
     background-color: var(--color-base-100);
   }
-  /* The box with the field of a criterion's new wording (`q-xp-opt-box`) picks with its
-     radio and its label alone, so only they take the pointer. */
+  /* Only the radio and its label take the pointer. */
   .q-xp-opt-pick,
   .q-xp-opt-box > input,
   .q-xp-opt-box label {

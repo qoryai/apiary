@@ -103,7 +103,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   have no field. An answer with another wording keeps the option, and its note starts
   with “Change AC-4: ” and that wording. Where that note would pass 2,000 characters, the
   field shows “Shorten the new wording to at most 1,885 characters, or shorten your
-  note.”, with the number that the note leaves, and the round does not start.
+  note.”, with the number that the note leaves, and the round does not start. Where that
+  option is picked with the field empty, the field shows “Write the new wording of AC-4,
+  or pick another option.”, and the round does not start.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - The tab of a stage shows the result of the full test suite in one line under the build

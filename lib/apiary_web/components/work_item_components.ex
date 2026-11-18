@@ -711,7 +711,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :questions_path, :string,
     default: nil,
     doc:
-      "where the questions wait, linked from the step that waits for answers: the Open questions frame of a tab, or the Questions tab; nil on Explore's tab"
+      "the Open questions frame or the Questions tab, for the waiting step; nil on Explore's tab"
 
   attr :item_noun, :map,
     default: nil,
@@ -2351,8 +2351,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   slot :artifacts, doc: "the work item's artifacts, in the fold of its runs"
 
   slot :open_questions,
-    doc:
-      "the frame Open questions (`open_questions/1`), below the proposal, the decisions and the gate"
+    doc: "Open questions (`open_questions/1`), below the proposal, the decisions and the gate"
 
   slot :needs,
     doc:
@@ -2655,8 +2654,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   slot :artifacts, doc: "the stage's artifacts, in the record block"
 
   slot :open_questions,
-    doc:
-      "the frame Open questions (`open_questions/1`), below the outputs, the decisions and the gate"
+    doc: "Open questions (`open_questions/1`), below the outputs, the decisions and the gate"
 
   slot :row,
     doc:
@@ -5464,8 +5462,13 @@ defmodule ApiaryWeb.WorkItemComponents do
                     aria-invalid={@wording_message && "true"}
                     class="w-full"
                   >{["\n", @wording || ""]}</textarea>
-                  <span :if={@wording_message} id={"#{@field}-#{j}-wording-error"} class="q-xp-err">
-                    <.icon name="hero-exclamation-triangle-micro" class="size-3.5" />{@wording_message}
+                  <span
+                    :if={@wording_message}
+                    id={"#{@field}-#{j}-wording-error"}
+                    class="q-xp-err"
+                  >
+                    <.icon name="hero-exclamation-triangle-micro" class="size-3.5" />
+                    {@wording_message}
                   </span>
                 </span>
               </div>
@@ -5519,19 +5522,23 @@ defmodule ApiaryWeb.WorkItemComponents do
   @doc false
   # change_option/1 is the option of a question about a criterion (`criterion`, such as
   # `ac-4`) with the criterion's new wording that the run proposes (`proposal`):
-  # `%{place:, label:, proposal:}`, its place from 1, "Change AC-4:", which Qory Apiary
-  # builds from `criterion` and not from the option's title, and that wording. Nil for a
-  # question with no criterion or no option with a proposal; with several, the first.
-  @spec change_option(map) :: %{place: pos_integer, label: String.t(), proposal: String.t()} | nil
+  # `%{place:, criterion:, label:, proposal:}`, its place from 1, the criterion in upper
+  # case ("AC-4"), "Change AC-4:", which Qory Apiary builds from `criterion` and not from
+  # the option's title, and that wording. Nil for a question with no criterion or no
+  # option with a proposal; with several, the first.
+  @spec change_option(map) ::
+          %{place: pos_integer, criterion: String.t(), label: String.t(), proposal: String.t()}
+          | nil
   def change_option(%{criterion: criterion, options: options})
       when is_binary(criterion) and is_list(options) do
-    label = gettext("Change %{criterion}:", criterion: String.upcase(criterion))
+    criterion = String.upcase(criterion)
+    label = gettext("Change %{criterion}:", criterion: criterion)
 
     options
     |> Enum.with_index(1)
     |> Enum.find_value(fn
       {%{proposal: proposal}, place} when is_binary(proposal) ->
-        %{place: place, label: label, proposal: proposal}
+        %{place: place, criterion: criterion, label: label, proposal: proposal}
 
       _other ->
         nil
@@ -5596,7 +5603,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   # wording_error/1 is the message under the field of the criterion's new wording
   # (`change_option/1`) for a question's error, nil for an error of another field:
   # `{:wording, {:too_long, count}}`, the wording longer than the `count` characters its
-  # note leaves, or `{:wording, :characters}`.
+  # note leaves, `{:wording, :characters}`, or `{:wording, {:blank, criterion}}`, the field
+  # empty, `criterion` such as "AC-4".
   @spec wording_error(term) :: String.t() | nil
   def wording_error({:wording, {:too_long, count}}),
     do:
@@ -5605,6 +5613,13 @@ defmodule ApiaryWeb.WorkItemComponents do
       )
 
   def wording_error({:wording, :characters}), do: answer_error(:characters)
+
+  def wording_error({:wording, {:blank, criterion}}),
+    do:
+      gettext("Write the new wording of %{criterion}, or pick another option.",
+        criterion: criterion
+      )
+
   def wording_error(_error), do: nil
 
   @doc """

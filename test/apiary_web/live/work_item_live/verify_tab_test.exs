@@ -655,6 +655,35 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       assert focus =~ "#work-item-tab-questions-open-answer-1-1-wording"
     end
 
+    test "Change AC-2 with the field cleared shows its line on the field, and sends nothing", %{
+      conn: conn,
+      scope: scope
+    } do
+      for wording <- ["", "  \n "] do
+        work_item = waiting_at_verify!(scope)
+        view = tab(conn, scope, work_item)
+        field = "work-item-tab-questions-open-answer-1-1-wording"
+
+        send_answers(view, work_item, %{
+          "q1" => %{"option" => "1", "wording" => wording, "note" => "Ask design."}
+        })
+
+        assert has_element?(
+                 view,
+                 "##{field}-error",
+                 "Write the new wording of AC-2, or pick another option."
+               )
+
+        assert has_element?(view, "##{field}[aria-invalid=true][aria-describedby=#{field}-error]")
+        refute has_element?(view, "#spend-dialog")
+        assert answer_of(work_item, "q1") == nil
+
+        # Focus moves to the wording field.
+        focus = view |> element("#work-item-tab-questions-open-focus-1-1[hidden]") |> render()
+        assert focus =~ "##{field}"
+      end
+    end
+
     test "a wording with an invisible character shows the error on its field", %{
       conn: conn,
       scope: scope
@@ -727,9 +756,18 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       assert has_element?(view, "#work-item-questions-open-answer-1-1-wording", edited)
     end
 
-    test "the matrix has no link to a question", %{conn: conn, scope: scope} do
+    test "the matrix has no link to a question, and Open questions follows the outputs", %{
+      conn: conn,
+      scope: scope
+    } do
       work_item = waiting_at_verify!(scope)
       view = tab(conn, scope, work_item)
+
+      # Verify's outputs, then the frame Open questions, then the runs fold.
+      html = render(view)
+      at = &(:binary.match(html, ~s|id="#{&1}"|) |> elem(0))
+      assert at.("work-item-tab-output-verification") < at.("work-item-tab-questions-open")
+      assert at.("work-item-tab-questions-open") < at.("work-item-record")
 
       assert texts(view, "#work-item-tab-output-verification-parts-matrix-1 td:nth-child(2)") ==
                ["Not met"]

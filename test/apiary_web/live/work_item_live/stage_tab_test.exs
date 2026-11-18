@@ -10,6 +10,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
+  import Phoenix.Component, only: [sigil_H: 2]
   import Apiary.OrganisationsFixtures, only: [with_domain: 2]
   import Apiary.StagesFixtures
   import Apiary.WorkItemsFixtures
@@ -3437,6 +3438,57 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert length(Regex.scan(~r/id="work-item-tab-gate"/, html)) == 1
       assert html =~ ~s(id="work-item-tab-output-gate")
+    end
+  end
+
+  describe "the order of a stage tab's frames" do
+    test "Build's and Verify's tabs: Open questions after the outputs, decisions and gate" do
+      decision = %{
+        id: "q1",
+        number: 1,
+        text: "Which store keeps the orders?",
+        context: nil,
+        options: [
+          %{title: "Postgres", explanation: "The orders stay with the shop's data."},
+          %{title: "Redis", explanation: "The other services use Redis."}
+        ],
+        state: :decided,
+        decision: %{option: "Redis", reason: "The other services use Redis.", run: 4, at: nil},
+        asked_run: 4,
+        run: 4,
+        stage_id: @build,
+        answer: nil,
+        history: [],
+        follows: []
+      }
+
+      for {name, type} <- [{"Build", "build-report"}, {"Verify", "verification"}] do
+        assigns = %{name: name, type: type, decision: decision}
+
+        html =
+          rendered_to_string(~H"""
+          <ApiaryWeb.WorkItemComponents.stage_tab
+            stage={%{name: @name, outputs: [@type]}}
+            work_item={%{number: 1, status: :confirm, run: nil}}
+            outputs={[%{type: @type, version: 1, open: true, read: nil}]}
+            questions={[@decision]}
+            waiting={false}
+            current
+            round_gate
+            can_change
+            can_send
+          >
+            <:open_questions>
+              <section id="work-item-tab-questions-open"></section>
+            </:open_questions>
+          </ApiaryWeb.WorkItemComponents.stage_tab>
+          """)
+
+        at = &(:binary.match(html, ~s|id="#{&1}"|) |> elem(0))
+        assert at.("work-item-tab-output-#{type}") < at.("work-item-tab-decisions"), name
+        assert at.("work-item-tab-decisions") < at.("work-item-tab-gate"), name
+        assert at.("work-item-tab-gate") < at.("work-item-tab-questions-open"), name
+      end
     end
   end
 
