@@ -989,9 +989,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   choice is refused, no provider and no key are added. **Workspace settings › Model**
   shows that choice. Where the edition shows “Available to every workspace in Acme”, two
   workspaces can reuse one key and choose different models. The step is done once the
-  workspace has a model choice whose provider reaches the workspace and has a key. Owners
-  and admins fill it in. For a Claude subscription, **About models** shows `claude
-  setup-token` on a separate line, with **Copy command**.
+  workspace has a model choice whose provider reaches the workspace and has a key. Where
+  **Continue** is refused for a fallback kept on **Workspace settings › Model**, the step
+  shows one line under its form: “Change a fallback in Workspace settings › Model. Choose
+  another provider: Northwind Claude is not used in this workspace.”, the place a link
+  to that page. Owners and admins fill it in. For a Claude subscription, **About
+  models** shows `claude setup-token` on a separate line, with **Copy command**.
 - **Harness**, “Which harness do runs in Main use?”, sets the harness of the
   workspace's runs. **About harnesses** explains what a harness is, which harness a run
   uses, and the versions. The choices are two: **Qory harness**, with **Version**,
@@ -1697,14 +1700,19 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the default models have, and **Runtime**, with **Move up**, **Move down** and
   **Remove**. **Runtime** lists the runtimes that work with the fallback's provider: one
   as text, with “Claude Code is the only runtime that works with Anthropic API key.”, or
-  several in a select, with “These runtimes work with OpenRouter.”. **Add fallback** adds
-  a provider that applies to the workspace and works with a runtime, and is neither the
-  chosen provider nor a fallback already. A new fallback, and a fallback whose provider
-  changes, starts with no models and on the chosen runtime where its provider works with
-  it, else on the first runtime that does. A change of a fallback's **Runtime** keeps its
-  models, and an effort the runtime does not accept goes back to “Not set”. **Save** is
-  enabled once every tier of the default models and of each fallback has a model, and
-  saves the fallbacks with the model choice. With no such provider left, the part shows
+  several in a select, with “These runtimes work with OpenRouter.”. A fallback's
+  **Provider** lists every provider that applies to the workspace, also one that works
+  with no runtime, but the chosen provider and the other fallbacks' providers. A
+  fallback whose provider works with no runtime shows “<Provider> works with no runtime
+  in this version of Qory Apiary. Pick another provider.” under its **Provider**, and
+  **Save** is disabled while it shows. **Add fallback** adds the first provider left that
+  works with a runtime, else the first provider left. A new fallback, and a fallback
+  whose provider changes, starts with no models and on the chosen runtime where its
+  provider works with it, else on the first runtime that does. A change of a fallback's
+  **Runtime** keeps its models, and an effort the runtime does not accept goes back to
+  “Not set”. **Save** is enabled once every tier of the default models and of each
+  fallback has a model and each fallback's provider works with a runtime, and saves the
+  fallbacks with the model choice. With no provider left, the part shows
   “Add another model provider in Organisation settings › Model providers, then add it here
   as a fallback.” A save that changes the chosen provider to a fallback's provider drops
   that fallback.
