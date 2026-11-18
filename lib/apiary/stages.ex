@@ -1647,6 +1647,7 @@ defmodule Apiary.Stages do
     with %DispatchRun{} = run <- returning_run(work_item, stage),
          false <- left_since?(work_item, run) do
       listed_ids = for %{version: %{id: id}} <- listed, do: id
+      approvals = approvals_by_version(work_item)
 
       for type <- @returned_types,
           found = newest_made_in(artifacts, type, run.stage_id),
@@ -1654,7 +1655,7 @@ defmodule Apiary.Stages do
         %{
           type: type,
           required: false,
-          version: version_map(found, approvals_by_version(work_item)),
+          version: version_map(found, approvals),
           from: :return
         }
       end

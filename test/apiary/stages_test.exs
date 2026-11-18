@@ -6301,6 +6301,131 @@ defmodule Apiary.StagesTest do
       decide!(work_item, :approve, @build)
       assert from_return(work_item) == []
     end
+
+    # Build reads `inputs` and Verify makes a verdict and a verification, the two types that
+    # a return lists. `first` is a stage before Build (gate none), or nil for none.
+    defp ordered_process!(scope, first, inputs) do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "verification",
+          "base_view" => "document"
+        })
+
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "brief",
+          "base_view" => "document"
+        })
+
+      loop = %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "implement-changes"}]}}
+
+      verify =
+        stage(
+          @verify,
+          "Verify",
+          [%{"workflow" => "verify-a-ticket", "return" => %{"stage" => @build, "limit" => 5}}],
+          %{
+            "outputs" => [
+              %{"type" => "verdict", "required" => false},
+              %{"type" => "verification", "required" => false}
+            ]
+          }
+        )
+
+      before_build =
+        if first, do: [stage(@explore, "Explore", [], %{"gate" => %{"kind" => "none"}})], else: []
+
+      save!(
+        scope,
+        before_build ++
+          [
+            stage(@build, "Build", [loop], %{"gate" => %{"kind" => "none"}, "inputs" => inputs}),
+            verify
+          ]
+      )
+    end
+
+    # What Verify's run pushes when it passes: a verification, then a `passed` verdict.
+    defp passing(verification) do
+      fn run, registered ->
+        {:ok, _version} =
+          Artifacts.push(
+            {:run, run},
+            Repo.get!(WorkItem, run.work_item_id),
+            "verification",
+            [%{filename: "v.md", content_type: "text/markdown", binary: verification}],
+            name: "main",
+            stage_id: run.stage_id
+          )
+
+        verdict("passed").(run, registered)
+      end
+    end
+
+    defp typed(work_item),
+      do: for(input <- Stages.inputs(work_item), do: {input.type, Map.get(input, :from)})
+
+    test "the inputs list read, then moved, then returned, each version once", %{scope: scope} do
+      ordered_process!(scope, false, [%{"type" => "brief", "required" => false}])
+      work_item = take_in!(scope)
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+      {:ok, _version} = Stages.add_version(scope, work_item, "brief", file("brief.md"))
+
+      # Verify's first run ends passed, and a person moves the work item back to Build.
+      work_item = end_run!(work_item, verdict("passed"))
+      work_item = end_run!(work_item, passing("# First"))
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+      first = %{verdict: newest_id(work_item, "verdict"), v: newest_id(work_item, "verification")}
+
+      {:ok, _moved} = Stages.move(scope, work_item, @build, nil, expect_stage: @verify)
+      work_item = reload(work_item) |> through_build!() |> returned_by("# Second")
+
+      second = %{
+        verdict: newest_id(work_item, "verdict"),
+        v: newest_id(work_item, "verification")
+      }
+
+      assert typed(work_item) == [
+               {"brief", nil},
+               {"verdict", :move},
+               {"verification", :move},
+               {"verdict", :return},
+               {"verification", :return}
+             ]
+
+      ids = for %{version: %{id: id}} <- Stages.inputs(work_item), do: id
+      assert length(Enum.uniq(ids)) == 5
+      assert tl(ids) == [first.verdict, first.v, second.verdict, second.v]
+    end
+
+    test "a version that Build already reads is listed once, from the read", %{scope: scope} do
+      ordered_process!(scope, true, [%{"type" => "verification", "required" => false}])
+      work_item = take_in!(scope)
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+      work_item = work_item |> in_verify_again!() |> returned_by("# Criterion 2 fails")
+      verification = newest_id(work_item, "verification")
+      verdict = newest_id(work_item, "verdict")
+
+      # Explore's gate approved the verification, so Build reads it.
+      Repo.insert!(%GateDecision{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        process_version_id: work_item.process_version_id,
+        stage_id: @explore,
+        kind: :approve,
+        versions: [verification],
+        take_in: work_item.take_in,
+        inserted_at: DateTime.utc_now()
+      })
+
+      assert [
+               %{type: "verification", version: %{id: ^verification}} = read,
+               %{type: "verdict", from: :return, version: %{id: ^verdict}}
+             ] = Stages.inputs(work_item)
+
+      refute Map.has_key?(read, :from)
+    end
   end
 
   describe "a work item that is not live" do
