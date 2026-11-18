@@ -292,12 +292,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   type's frame, whose caption has the member's short name where that version is the
   frame's highest. A person's version makes its frame also where no run wrote one. A
   person's version of the type in `submit.type` is not a change: no approval lists it,
-  the gate card leaves it out, and runs read the run's version. The tab has no frame or
-  Submissions row for it, as only a run's submit step writes a submission. In a stage that started no run, the input frames follow the output
-  frames, folded. On the stage card, each output's version at the gate
-  links to that version's page, and the gate also links every further version that an
-  approval would record. In `GET artifacts`, each version has `decision` and
-  `decision_at`, the time of that note.
+  the gate card leaves it out of its outputs, its draft line, its Exists check and its
+  approval marks, and runs read the run's version. The tab has no frame or
+  Submissions row for it, as only a run's submit step writes a submission. In a stage
+  that started no run, the input frames follow the output frames, folded. On the stage
+  card, each output's version at the gate links to that version's page, and the gate
+  also links every further version that an approval would record. In `GET artifacts`,
+  each version has `decision` and `decision_at`, the time of that note.
 - Explore's gate lists the tracks it offers above Approve, each with its description, in the
   gate's order, under "Track to run after you approve". The track that the stage's runs
   proposed is selected and has the badge "Proposed by <stage>" and, where the run gave a

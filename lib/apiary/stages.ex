@@ -2409,7 +2409,10 @@ defmodule Apiary.Stages do
   # made after that approval ("changed after approval"). Each version has `decision` and
   # `decision_at`: the person's note that asked for it and the note's time, nil for none.
   # A version a cancelled run wrote stays in `versions`, and the artifact's stage and its
-  # changed mark leave it out.
+  # changed mark leave it out. `newest` is the public id of the newest version that
+  # counts, nil for none: no cancelled run's, and no person's version of the type in
+  # `submit.type` (`recordable/2`), which also stays in `versions` and is no newer version
+  # and no change.
   @doc false
   @spec artifact_index(WorkItem.t(), [Artifacts.Artifact.t()] | nil) :: [map]
   def artifact_index(%WorkItem{} = work_item, artifacts \\ nil) do
@@ -2417,10 +2420,16 @@ defmodule Apiary.Stages do
     approvals = approvals_by_version(work_item)
     artifacts = artifacts || Artifacts.list(work_item)
     times = decision_times(work_item, Enum.flat_map(artifacts, & &1.versions))
+    submit_type = Artifacts.submit_type(work_item)
 
     for artifact <- artifacts do
       versions = Enum.map(artifact.versions, &version_map(&1, approvals, times))
-      newest = Artifacts.newest_counted(%{versions: versions})
+
+      newest =
+        Artifacts.newest_counted(%{
+          versions: recordable_versions(versions, artifact, submit_type)
+        })
+
       approved_version = Enum.find(versions, &(&1.approvals != []))
 
       newer? =
@@ -2435,6 +2444,7 @@ defmodule Apiary.Stages do
         stage_id: staged && staged.stage_id,
         approved_version: approved_version && approved_version.id,
         changed_after_approval: newer? and newest.stage_id != work_item.stage_id,
+        newest: newest && newest.id,
         versions: versions
       }
     end
@@ -3089,7 +3099,7 @@ defmodule Apiary.Stages do
   def switch_tracks(%WorkItem{} = work_item) do
     with {:ok, version, stage} <- placed(work_item),
          {gate, others} <- switch_offers(work_item, version, stage) do
-      artifacts = Artifacts.list(work_item)
+      artifacts = work_item |> Artifacts.list() |> recordable(work_item)
 
       for track <- others do
         {first, later} = switch_plan(work_item, version, gate, track.id, artifacts)
@@ -4520,22 +4530,29 @@ defmodule Apiary.Stages do
   # change. An approval records none, at a person's gate or a gate `none`
   # (`approve_none!/4`); the work item page frames none (`recorded_versions/4`,
   # `gate_frames/3`); none reopens a gate (`reopened?/4`); the gate's outputs leave it out
-  # (`status/2`, `gate_versions/3`); and no stage reads it as an input (`inputs/1`,
-  # `read_version/6`, by way of `status/2`, `facts/3` and `approved/5`). A person's
-  # version of every other type stays.
+  # (`status/2`, `gate_versions/3`); no stage reads it as an input (`inputs/1`,
+  # `read_version/6`, by way of `status/2`, `facts/3` and `approved/5`), nor does a
+  # switch's plan (`switch_tracks/1`); and the artifact index has no newer version or
+  # change for it (`artifact_index/2`). A person's version of every other type stays.
   defp recordable(artifacts, work_item) do
     case Artifacts.submit_type(work_item) do
       nil ->
         artifacts
 
       type ->
-        for artifact <- artifacts do
-          if artifact.type == type,
-            do: %{artifact | versions: Enum.reject(artifact.versions, &(&1.writer == :person))},
-            else: artifact
-        end
+        for artifact <- artifacts,
+            do: %{artifact | versions: recordable_versions(artifact.versions, artifact, type)}
     end
   end
+
+  defp recordable_list(work_item), do: work_item |> Artifacts.list() |> recordable(work_item)
+
+  # The versions of `artifact` that `recordable/2` keeps, for the submit type `submit_type`
+  # (nil for none).
+  defp recordable_versions(versions, %{type: type}, type) when is_binary(type),
+    do: Enum.reject(versions, &(&1.writer == :person))
+
+  defp recordable_versions(versions, _artifact, _submit_type), do: versions
 
   defp framed_versions(work_item, stage, artifacts) do
     here? = work_item.stage_id == stage["id"]
@@ -4644,7 +4661,7 @@ defmodule Apiary.Stages do
 
     case placed(work_item) do
       {:ok, version, stage} ->
-        missing(outputs(work_item, version, stage, Artifacts.list(work_item)))
+        missing(outputs(work_item, version, stage, recordable_list(work_item)))
 
       :not_placed ->
         []
@@ -4657,7 +4674,7 @@ defmodule Apiary.Stages do
   defp outputs_exist(work_item, version, stage) do
     with true <- Runner.people?(stage),
          [_one | _more] = types <-
-           missing(outputs(work_item, version, stage, Artifacts.list(work_item))) do
+           missing(outputs(work_item, version, stage, recordable_list(work_item))) do
       {:error, {:outputs_missing, types}}
     else
       _none -> :ok

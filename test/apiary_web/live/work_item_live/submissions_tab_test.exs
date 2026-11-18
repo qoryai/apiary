@@ -91,11 +91,13 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
 
   # The default process with Shape running a workflow and outputting the submission type.
   # `opts`: `outputs`, more output types of Shape; `gate`, Shape's gate kind, "person" by
-  # default; `build_inputs`, the input types of Build, the stage after Shape.
+  # default; `build_inputs`, the input types of Build, the stage after Shape; `required`,
+  # whether Shape requires the submission type, false by default.
   defp process!(scope, submit, opts \\ []) do
     more_outputs = Keyword.get(opts, :outputs, [])
     gate = Keyword.get(opts, :gate, "person")
     build_inputs = Keyword.get(opts, :build_inputs, [])
+    required = Keyword.get(opts, :required, false)
     document = Processes.default_document("software")
 
     stages =
@@ -104,7 +106,7 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
           Map.merge(stage, %{
             "sequence" => [%{"workflow" => "shape-a-ticket"}],
             "outputs" =>
-              [%{"type" => "submission", "required" => false}] ++
+              [%{"type" => "submission", "required" => required}] ++
                 for(type <- more_outputs, do: %{"type" => type, "required" => false}),
             "gate" =>
               if(gate == "none",
@@ -575,15 +577,15 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
 
   describe "a person's version of the submission type (696 (c))" do
     # A person's version of `type` at Shape's gate, as `Apiary.Stages.add_version/5` stores
-    # an upload: no run.
-    defp person_version!(scope, work_item, type, filename, content_type, binary) do
+    # an upload: no run. `name` is `main` unless given.
+    defp person_version!(scope, work_item, type, filename, content_type, binary, name \\ "main") do
       {:ok, version} =
         Apiary.Stages.add_version(
           scope,
           Repo.get!(WorkItem, work_item.id),
           type,
           [%{filename: filename, content_type: content_type, binary: binary}],
-          name: "main"
+          name: name
         )
 
       version
@@ -591,8 +593,9 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
 
     # A person's version of the submission type, as one stored before `Apiary.Artifacts.push/5`
     # refused a person's push of the type that `submit` sets (`unknown_type`): the push runs
-    # while the process versions have no `submit`, and they get it back after.
-    defp person_submission!(scope, work_item) do
+    # while the process versions have no `submit`, and they get it back after. Its document
+    # has a draft in `northwind/by-hand`, which no gate line shows.
+    defp person_submission!(scope, work_item, name \\ "main") do
       template =
         Repo.one(
           from v in ProcessVersion,
@@ -610,11 +613,26 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
           "submission",
           "submission.json",
           "application/json",
-          Jason.encode!(%{"ref" => "by-hand"})
+          Jason.encode!(%{"ref" => "by-hand", "repositories" => [by_hand()]}),
+          name
         )
 
       templates!(scope, template)
       version
+    end
+
+    defp by_hand do
+      %{
+        repository()
+        | "path" => "northwind/by-hand",
+          "draft" => %{
+            "number" => 99,
+            "url" => "https://git.example.com/northwind/by-hand/pulls/99",
+            "title" => "By hand",
+            "state" => "draft",
+            "action" => "opened"
+          }
+      }
     end
 
     defp templates!(scope, template) do
@@ -825,6 +843,147 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
       inputs = Map.new(Apiary.Stages.inputs(work_item), &{&1.type, &1.version})
       assert inputs["submission"].id == ran.public_id
       assert inputs["notes"].id == later_notes.public_id
+    end
+
+    test "the gate card's draft line has the run's submission, not a person's", ctx do
+      process!(ctx.scope, %{"type" => "submission", "send" => "end_of_run"})
+      work_item = at_shape!(ctx.scope)
+      %{dispatch_run: run} = shape_run!(work_item)
+      _ran = submission!(run, work_item, repository())
+      work_item = at_gate!(work_item)
+      _person = person_submission!(ctx.scope, work_item)
+
+      {:ok, view, _html} = live(ctx.conn, stage_path(ctx.scope, work_item))
+
+      assert has_element?(
+               view,
+               "#work-item-stage-gate-draft-0",
+               "the draft in northwind/storefront"
+             )
+
+      refute has_element?(view, "#work-item-stage-gate", "northwind/by-hand")
+    end
+
+    test "a person's later version marks no output newer or changed after approval", ctx do
+      process!(ctx.scope, %{"type" => "submission", "send" => "end_of_run"})
+      work_item = at_shape!(ctx.scope)
+      %{dispatch_run: run} = shape_run!(work_item)
+      ran = submission!(run, work_item, repository())
+      work_item = at_gate!(work_item)
+
+      {:ok, _approved} =
+        Apiary.Stages.approve(ctx.scope, work_item, nil, expect_stage: @shape)
+
+      work_item = Repo.get!(WorkItem, work_item.id)
+      assert work_item.stage_id == @build
+      later = person_submission!(ctx.scope, work_item)
+      assert later.number > ran.number
+
+      # Back at Shape, a version made at Build after Shape's approval would read as a change
+      # after approval, were it a run's.
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_id: @shape, stage_state: :at_gate]
+        )
+
+      work_item = Repo.get!(WorkItem, work_item.id)
+
+      # `GET artifacts` reads the index: the approved version, no change, every version.
+      entry =
+        work_item
+        |> Apiary.Stages.artifact_index()
+        |> Enum.find(&(&1.type == "submission" and &1.name == "main"))
+
+      assert entry.approved_version == ran.public_id
+      refute entry.changed_after_approval
+      assert Enum.map(entry.versions, & &1.id) == [later.public_id, ran.public_id]
+
+      # The marks of the page: no newer version, no change.
+      page = ApiaryWeb.WorkItemLive.Workflow.page(ctx.scope, work_item)
+      mark = Enum.find(page.index, &(&1.type == "submission"))
+      assert mark.approved == ran.number
+      assert mark.newer == nil
+      refute mark.changed_after_approval
+
+      {:ok, _view, html} = live(ctx.conn, stage_path(ctx.scope, work_item))
+      refute html =~ "is newer"
+      refute html =~ "Changed after approval"
+    end
+
+    test "the Exists check passes on a run's version of the type, not a person's", ctx do
+      process!(ctx.scope, %{"type" => "submission", "send" => "end_of_run"}, required: true)
+      work_item = ctx.scope |> at_shape!() |> at_gate!()
+      _person = person_submission!(ctx.scope, work_item)
+
+      assert Apiary.Stages.missing_outputs(work_item) == ["submission"]
+      outputs = Map.new(Apiary.Stages.status(work_item).outputs, &{&1.type, &1})
+      assert outputs["submission"].check == :missing
+
+      %{dispatch_run: run} = shape_run!(work_item)
+      _ran = submission!(run, work_item, repository())
+
+      assert Apiary.Stages.missing_outputs(work_item) == []
+      outputs = Map.new(Apiary.Stages.status(work_item).outputs, &{&1.type, &1})
+      assert outputs["submission"].check == :passed
+    end
+
+    test "the row of a frame of another name of the type links the run's version", ctx do
+      process!(ctx.scope, %{"type" => "submission", "send" => "end_of_run"})
+      work_item = at_shape!(ctx.scope)
+      %{dispatch_run: run} = shape_run!(work_item)
+
+      {:ok, ran} =
+        Artifacts.push(
+          {:run, run},
+          work_item,
+          "submission",
+          [
+            %{
+              filename: "submission.json",
+              content_type: "application/json",
+              binary: Jason.encode!(%{"ref" => "qory/second", "repositories" => [repository()]})
+            }
+          ],
+          stage_id: @shape,
+          name: "second"
+        )
+
+      work_item = at_gate!(work_item)
+      person = person_submission!(ctx.scope, work_item, "second")
+      assert person.number > ran.number
+
+      {:ok, view, _html} = live(ctx.conn, stage_path(ctx.scope, work_item))
+
+      row = "#work-item-tab-output-submission--second---row"
+      assert has_element?(view, ~s(#{row} a[href$="/#{ran.public_id}"]))
+      refute has_element?(view, ~s(#{row} a[href$="/#{person.public_id}"]))
+    end
+
+    test "a person's version alone: no frame, no gate line, no output and no input", ctx do
+      process!(ctx.scope, %{"type" => "submission", "send" => "end_of_run"},
+        build_inputs: ["submission"]
+      )
+
+      work_item = ctx.scope |> at_shape!() |> at_gate!()
+      person = person_submission!(ctx.scope, work_item)
+
+      assert gate_frames(work_item) == []
+
+      {:ok, view, _html} = live(ctx.conn, stage_path(ctx.scope, work_item))
+      refute has_element?(view, "#work-item-tab-output-submission")
+      refute has_element?(view, "#work-item-stage-gate-draft-0")
+      refute has_element?(view, ~s(#work-item-stage-gate [href$="/#{person.public_id}"]))
+
+      outputs = Map.new(Apiary.Stages.status(work_item).outputs, &{&1.type, &1.version})
+      assert outputs["submission"] == nil
+
+      {:ok, _approved} =
+        Apiary.Stages.approve(ctx.scope, work_item, nil, expect_stage: @shape)
+
+      work_item = Repo.get!(WorkItem, work_item.id)
+      assert work_item.stage_id == @build
+      inputs = Map.new(Apiary.Stages.inputs(work_item), &{&1.type, &1.version})
+      assert inputs["submission"] == nil
     end
 
     test "with no submit type, a person's version of the type is recorded as any other", ctx do

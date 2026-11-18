@@ -252,7 +252,8 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   # queue/4 is the scenarios of the stage `stage_id` of the take in `take_in` (`scenarios/6`)
   # for `work_item`, whose `artifacts` are `Apiary.Artifacts.list/1`: the verified commit
   # is that of the stage's verification, and each JSON document is read from the store. The
-  # tab and the artifact page of a scenario's film or pictures show the same list.
+  # artifact page of a scenario's film or pictures shows this list; the tab also shows the
+  # versions a person made that an approval of the stage records (`queue/6`).
   @spec queue(map, [map], String.t(), integer | nil) :: [map]
   def queue(work_item, artifacts, stage_id, take_in) do
     {queue, _reads} = queue(work_item, artifacts, stage_id, take_in, %{})

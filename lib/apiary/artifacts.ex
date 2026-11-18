@@ -1920,6 +1920,9 @@ defmodule Apiary.Artifacts do
   @spec open_file(ArtifactFile.t()) :: {:ok, Path.t() | Enumerable.t()} | {:error, term}
   def open_file(%ArtifactFile{store_key: key}), do: Store.impl().open(key)
 
+  # exists?/3 is whether `stage_id` made a stored version of `type_name` (`made_in/4`). For
+  # the type in `submit.type` (`submit_type/1`) only a run's version counts: only a run's
+  # submit step writes a submission.
   @doc false
   @spec exists?(WorkItem.t(), String.t(), String.t()) :: boolean
   def exists?(%WorkItem{} = work_item, stage_id, type_name)
@@ -1929,7 +1932,7 @@ defmodule Apiary.Artifacts do
     case type(workspace, type_name) do
       %Type{} = type ->
         work_item
-        |> made_in(stage_id, type_name)
+        |> made_in(stage_id, type_name, submit_type(work_item) == type_name)
         |> Enum.any?(&Format.stored?(type, &1))
 
       nil ->
@@ -1941,9 +1944,10 @@ defmodule Apiary.Artifacts do
 
   # The content types of the files of each version of `type`, of any name, made in
   # `stage_id`, but by a run a member cancelled (`cancelled?/1`) and of a name whose newest
-  # version is a withdrawal (`withdrawn?/1`): a list per version. A version here has one
-  # file or more, so a withdrawal, which has none, is never in the list.
-  defp made_in(%WorkItem{id: id, workspace_id: workspace_id}, stage_id, type) do
+  # version is a withdrawal (`withdrawn?/1`): a list per version. With `runs_only?`, only
+  # a run's versions. A version here has one file or more, so a withdrawal, which has none,
+  # is never in the list.
+  defp made_in(%WorkItem{id: id, workspace_id: workspace_id}, stage_id, type, runs_only?) do
     Repo.all(
       from v in Version,
         as: :version,
@@ -1953,6 +1957,7 @@ defmodule Apiary.Artifacts do
         where:
           a.work_item_id == ^id and a.workspace_id == ^workspace_id and a.type == ^type and
             v.stage_id == ^stage_id,
+        where: not (^runs_only?) or v.writer == :run,
         where: not exists(Apiary.Runs.Run.cancelled_dispatch_run(:version, :run_id)),
         where: ^not_withdrawn_name(),
         group_by: v.id,

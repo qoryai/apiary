@@ -7236,6 +7236,84 @@ defmodule Apiary.StagesTest do
     defp switch(scope, work_item, track),
       do: Stages.resolve_escalation(scope, work_item, {:switch, track}, nil, expect_stage: @build)
 
+    test "a switch's plan leaves out a person's version of the type that submit sets",
+         %{scope: scope} do
+      Repo.delete_all(
+        from t in Apiary.Artifacts.Type,
+          where: t.workspace_id == ^scope.workspace.id and t.name == "submission"
+      )
+
+      for {name, attrs} <- [
+            {"build-report", %{"base_view" => "document"}},
+            {"submission", %{"base_view" => "structured", "json_schema" => %{"type" => "object"}}}
+          ] do
+        {:ok, _type} = Artifacts.create_type(scope, scope.workspace, Map.put(attrs, "name", name))
+      end
+
+      # switch_process!/2 with Verify after Build, which runs only where the submission
+      # type counts as its input.
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "tracks" => @switch_tracks,
+        "stages" => [
+          explore_stage(offering(["standard", "fast-track"])),
+          stage(@shape, "Shape", [%{"workflow" => "shape-a-ticket"}], %{"when" => @on_standard}),
+          stage(@build, "Build", [%{"workflow" => "make-a-small-change"}], %{
+            "outputs" => [
+              %{"type" => "build-report", "required" => false},
+              %{"type" => "submission", "required" => false}
+            ]
+          }),
+          stage(@verify, "Verify", [%{"workflow" => "make-a-small-change"}], %{
+            "inputs" => [%{"type" => "submission", "required" => false}],
+            "when" => %{"input" => "submission"}
+          })
+        ]
+      }
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, document)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+      work_item = reload(work_item)
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+
+      # A person's submission at Build, stored before the process sets `submit`.
+      {:ok, _version} =
+        Artifacts.push(
+          {:person, scope},
+          work_item,
+          "submission",
+          [
+            %{
+              filename: "submission.json",
+              content_type: "application/json",
+              binary: ~s({"ref":"by-hand"})
+            }
+          ],
+          stage_id: @build
+        )
+
+      escalated = end_run!(work_item, verdict("escalate", [again("A server check reads it.")]))
+      assert %Escalation{cause: :escalate} = escalation(escalated)
+
+      # With no submit type, the person's version counts: Verify runs after Build.
+      assert [%{id: "standard", first: "Shape", later: ["Build", "Verify"]}] =
+               Stages.switch_tracks(reload(escalated))
+
+      submit = %{"type" => "submission", "send" => "end_of_run"}
+
+      {_n, _rows} =
+        Repo.update_all(
+          from(v in Processes.Version, where: v.workspace_id == ^scope.workspace.id),
+          set: [template: %{"commit" => String.duplicate("a", 40), "submit" => submit}]
+        )
+
+      # With `submission` as the submit type, it does not: Verify is left out.
+      assert [%{id: "standard", first: "Shape", later: ["Build"]}] =
+               Stages.switch_tracks(reload(escalated))
+    end
+
     test "Switch to Standard records the track and starts the first stage that runs it",
          %{scope: scope} do
       work_item = escalated_in_build!(scope, "fast-track")

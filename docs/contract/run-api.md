@@ -137,7 +137,7 @@ Returns `200` with the work item snapshot:
   stage, that no approval lists, and whose number is higher than that of every version
   of its artifact that an approval lists. A withdrawal, a version of a withdrawn name and
   a version by a run that a member cancelled are never a change. A person's version of the
-  type in `submit.type` of the process version's harness is not a change: no approval
+  type in `submit.type` of the work item's process version is not a change: no approval
   lists it, `outputs` leaves it out, and runs read the run's version. Each name's change is
   its highest-numbered one, and the input is the newest of those by time. Every later run
   reads that version in place of the approved one, until an approval lists it. Where an
@@ -171,7 +171,8 @@ Returns `200` with the work item snapshot:
   and a decision in another stage end nothing. A later return lists the newer versions. No
   approval lists them, and `notes` does not.
 - `outputs` contains each output of the current stage with the version its gate shows
-  and its check: `passed`, `missing` or `not_checked`. The version is the newest one
+  and its check: `passed`, `missing` or `not_checked`. For the type in `submit.type`,
+  only a run's version passes the check. The version is the newest one
   made in the stage, or a higher-numbered version of that artifact that a person's
   approval lists or that is a change, which every later run reads, also after a move
   back to the stage.
@@ -273,6 +274,8 @@ none; `newest_version` is the number of the newest version, leaving out versions
 run a member cancelled, and null when a run a member cancelled wrote every version.
 `changed_after_approval` is true when that newest version is
 newer than the approved one and was made in a stage other than the work item's stage.
+For the type in `submit.type` of the work item's process version, it reads the newest
+version a run wrote, as a person's version of that type is not a change.
 A version
 written by a run has `"writer": {"kind": "run", "run_id": "..."}`, with the `run_id` of
 the answer to the redemption of the run code; a version written

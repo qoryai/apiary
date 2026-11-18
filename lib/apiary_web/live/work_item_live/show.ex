@@ -485,7 +485,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
               >
                 <ArtifactComponents.list
                   id={"work-item-tab-output-#{output.type}-row"}
-                  artifacts={row_artifacts(@artifacts, output, @view, @row)}
+                  artifacts={row_artifacts(@artifacts, output, @view, @row, @submit_type)}
                   scope={@current_scope}
                   number={@number}
                   label={verify_label(@view.stage)}
@@ -501,7 +501,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
               <ArtifactComponents.list
                 :if={output.kind not in [:verification, :scenarios]}
                 id={"work-item-tab-output-#{StageComponents.frame_key(output)}-row"}
-                artifacts={row_artifacts(@artifacts, output, @view, @row)}
+                artifacts={row_artifacts(@artifacts, output, @view, @row, @submit_type)}
                 scope={@current_scope}
                 number={@number}
                 label={verify_label(@view.stage)}
@@ -665,6 +665,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            suite_reads: %{},
            submissions: nil,
            submission_reads: %{},
+           submit_type: nil,
            frame_texts: %{},
            stored_reads: %{},
            opened_frames: MapSet.new(),
@@ -2285,6 +2286,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
     frames = anchored(frames)
     {submissions, submission_reads} = submissions(socket, frames)
+    {submit_type, submission_reads} = Submissions.type_cached(assigns.row, submission_reads)
     {suite, suite_reads} = suite(assigns, frames)
 
     assign(socket,
@@ -2293,12 +2295,14 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       stored_reads: reads,
       submissions: submissions,
       submission_reads: submission_reads,
+      submit_type: submit_type,
       suite: suite,
       suite_reads: suite_reads
     )
   end
 
-  defp framed(socket), do: assign(socket, frames: [], suite: nil, submissions: nil)
+  defp framed(socket),
+    do: assign(socket, frames: [], suite: nil, submissions: nil, submit_type: nil)
 
   # The Submissions list, in place of the frame of the submission type with name `main`, on the tab of a
   # stage that outputs it: `%{type:, rows:, names:}`, nil on any other tab and where the
@@ -2562,15 +2566,29 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   # The artifacts a frame's row lists: on the tab of a stage with a `verification` output,
   # those of the frame's type (`named/5`), with the names of the versions a person made that
-  # the frame shows (`persons`); elsewhere, the artifact of the frame's type and name.
-  defp row_artifacts(artifacts, output, view, row) do
-    if StageTab.verify?(view.stage) do
-      persons = for person <- Map.get(output, :persons, []), do: {person.type, person.name}
-      named(artifacts, output.type, view, row, persons)
-    else
-      Enum.filter(artifacts, &(&1.type == output.type and &1.name == output.name))
-    end
+  # the frame shows (`persons`); elsewhere, the artifact of the frame's type and name. An
+  # artifact of `submit_type`, the type in `submit.type`, has its runs' versions alone, so
+  # the row links the run's newest, as only a run's submit step writes a submission; one
+  # with no run's version is left out.
+  defp row_artifacts(artifacts, output, view, row, submit_type) do
+    listed =
+      if StageTab.verify?(view.stage) do
+        persons = for person <- Map.get(output, :persons, []), do: {person.type, person.name}
+        named(artifacts, output.type, view, row, persons)
+      else
+        Enum.filter(artifacts, &(&1.type == output.type and &1.name == output.name))
+      end
+
+    for artifact <- listed,
+        artifact = runs_only(artifact, submit_type),
+        artifact.versions != [],
+        do: artifact
   end
+
+  defp runs_only(%{type: type} = artifact, type),
+    do: %{artifact | versions: Enum.filter(artifact.versions, &(&1.writer == :run))}
+
+  defp runs_only(artifact, _submit_type), do: artifact
 
   # The words of the artifact rows in a frame: on the tab of a stage with a `verification`
   # output, today's plain form (`VerifyTab.label/2`); elsewhere `ArtifactComponents.title/2`.
