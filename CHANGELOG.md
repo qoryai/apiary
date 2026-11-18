@@ -1591,6 +1591,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   deletes a run's transcript with the run's log output, by **Keep a run's log output
   for**, or by **Keep a run's events for** when the log setting is empty; a paused
   run's transcript stays until the run that continues it ends.
+- The run that continues a paused run resumes the transcript of the session that
+  paused, also when transcript chunks of an earlier session were sent later. If the
+  session that paused sent no transcript, the run that continues it starts that
+  session's workflow in a new agent session.
 - **Use up to**, optional, on **Add key** and **Edit key** of a Claude subscription's key,
   and on **Add value** and **Change value** of such a key on **Workspace settings ›
   Secrets and variables**: a whole percentage from 1 to 99, else “Enter a percentage from
@@ -2640,6 +2644,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+<!-- feature: factory, secrets -->
+- `runs` (20261118151000): a nullable column `paused_session`, the number of the session
+  where a run paused at its keys' limit. It changes no row.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - `shared_run_sessions` (20261118130000): a new table, one row for each session of a run of
   a stage with `shared_run: true`, with its foreign keys to `organisations`, `workspaces`
