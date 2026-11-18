@@ -1156,7 +1156,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
                lv,
                "#variable_name-error",
                "Remove variables at any level until each repository has at most 126." <>
-                 " A run takes at most 126 variables, and this save would raise a repository's" <>
+                 " A run takes at most 126 variables, and this change would raise a repository's" <>
                  " variables above 126."
              )
 

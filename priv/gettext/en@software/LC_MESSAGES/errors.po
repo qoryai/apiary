@@ -220,8 +220,8 @@ msgstr ""
 
 #: lib/apiary/variables.ex
 #, elixir-autogen, elixir-format
-msgid "Remove variables at any level until each target has at most %{limit}. A run takes at most %{limit} variables, and this save would raise a target's variables above %{limit}."
-msgstr "Remove variables at any level until each repository has at most %{limit}. A run takes at most %{limit} variables, and this save would raise a repository's variables above %{limit}."
+msgid "Remove variables at any level until each target has at most %{limit}. A run takes at most %{limit} variables, and this change would raise a target's variables above %{limit}."
+msgstr "Remove variables at any level until each repository has at most %{limit}. A run takes at most %{limit} variables, and this change would raise a repository's variables above %{limit}."
 
 #: lib/apiary/kinds/endpoint.ex
 #, elixir-autogen, elixir-format

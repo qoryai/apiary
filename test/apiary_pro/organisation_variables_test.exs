@@ -100,7 +100,7 @@ defmodule ApiaryPro.OrganisationVariablesTest do
 
     "Remove variables at any level until each target has at most 126. " <>
       "A run takes at most 126 variables, " <>
-      "and this save would raise a target's variables#{in_workspace} above 126."
+      "and this change would raise a target's variables#{in_workspace} above 126."
   end
 
   describe "reading" do

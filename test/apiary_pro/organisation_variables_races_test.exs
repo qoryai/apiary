@@ -116,7 +116,7 @@ defmodule ApiaryPro.OrganisationVariablesRacesTest do
 
     assert {"Remove variables at any level until each target has at most %{limit}. " <>
               "A run takes at most %{limit} variables, " <>
-              "and this save would raise a target's variables above %{limit}.", [limit: 126]} =
+              "and this change would raise a target's variables above %{limit}.", [limit: 126]} =
              changeset.errors[:name]
 
     assert deadlocks() == before
@@ -155,7 +155,7 @@ defmodule ApiaryPro.OrganisationVariablesRacesTest do
 
     assert {"Remove variables at any level until each target has at most %{limit}. " <>
               "A run takes at most %{limit} variables, " <>
-              "and this save would raise a target's variables above %{limit}.", [limit: 126]} =
+              "and this change would raise a target's variables above %{limit}.", [limit: 126]} =
              changeset.errors[:name]
 
     assert deadlocks() == before

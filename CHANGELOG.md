@@ -1627,7 +1627,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   than 64 KiB.” A save of a variable is refused where it would leave a workspace or a
   repository with more than 126 variables, all levels together, and says “Remove variables
   at any level until each repository has at most 126. A run takes at most 126 variables,
-  and this save would raise a repository's variables above 126.” Before, a save allowed
+  and this change would raise a repository's variables above 126.” Before, a save allowed
   128 names. The claim still refuses a run whose variables pass either limit, such as
   variables saved before.
 <!-- /feature -->
