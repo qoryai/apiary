@@ -1,17 +1,20 @@
 defmodule ApiaryWeb.ModelTiers do
   # One key and the three tiers of a model choice (`Apiary.ModelChoices`), as a form sets
   # them: the state of the form, and `tiers/1`, the one component that draws the tiers.
-  # Workspace settings › Model (`ApiaryWeb.ModelChoiceLive`) and each workflow's fold on
-  # the Workflows page (`ApiaryWeb.StagesLive.ModelPart`) use both, and every other form
+  # Workspace settings › Model (`ApiaryWeb.ModelChoiceLive`), each workflow's fold on
+  # the Workflows page (`ApiaryWeb.StagesLive.ModelPart`) and the Model step of a
+  # workspace's set-up (`ApiaryWeb.WorkspaceSetupLive`) use both, and every other form
   # that sets tiers is to use them too, so a change of the tiers' look is made here.
   #
   # The state:
   #
   #   * `keys/2` the keys a form offers, each a key entry: `value`, the provider's public
   #     id, a slash and the key's value id; `label`, "<Provider> · <key>"; the `provider`;
-  #     its `value_id`; the provider's `models`, as `Apiary.ModelChoices.suggestions/2`
-  #     lists them; and `free`, true for a provider whose description lists no models,
-  #     whose tiers take any model id as text;
+  #     `provider_ref`, the provider's row id; its `value_id`; the provider's `models`, as
+  #     `Apiary.ModelChoices.suggestions/2` lists them; and `free`, true for a provider
+  #     whose description lists no models, whose tiers take any model id as text.
+  #     `entry/4` makes one key entry, also of a catalogue provider not added yet
+  #     (`Apiary.Kinds.Provider`), whose `provider_ref` is `{:kind, name}`;
   #   * `chosen/2` the entry of a stored choice's key, `params/2` and `stored/1` the
   #     tiers of a stored choice, `sent/5` the tiers a form sent, fitted to the key;
   #   * `complete?/2` whether every tier has a model, as a save at levels 4, 5 and 6
@@ -29,6 +32,7 @@ defmodule ApiaryWeb.ModelTiers do
   alias Apiary.ModelChoices
   alias Apiary.ModelChoices.{ModelChoice, Resolution}
   alias Apiary.Connections.Connection
+  alias Apiary.Kinds.Provider
 
   @doc "The tiers in the order a form shows them: the most capable first."
   @spec shown() :: [String.t()]
@@ -72,6 +76,28 @@ defmodule ApiaryWeb.ModelTiers do
 
   defp value_ids(_provider), do: []
 
+  @doc """
+  One key entry, as `keys/2` lists them: of `provider`, a model provider of the
+  organisation, and its key `value_id`; or of a catalogue provider not added yet, with
+  no key (`value_id` nil), whose `value` is its name, `label` its title and
+  `provider_ref` `{:kind, name}`. `models` and `free` as `keys/2` has them.
+  """
+  @spec entry(Connection.t() | Provider.t(), String.t() | nil, [map], boolean) :: map
+  def entry(%Connection{} = provider, value_id, models, free),
+    do: key_entry(provider, value_id, models, free)
+
+  def entry(%Provider{} = provider, nil, models, free) do
+    %{
+      value: provider.name,
+      label: provider.title,
+      provider: provider,
+      provider_ref: {:kind, provider.name},
+      value_id: nil,
+      models: models,
+      free: free
+    }
+  end
+
   defp key_entry(%Connection{} = provider, value_id, models, free) do
     %{
       value: if(value_id, do: provider.public_id <> "/" <> value_id, else: provider.public_id),
@@ -81,11 +107,17 @@ defmodule ApiaryWeb.ModelTiers do
           else: provider.name
         ),
       provider: provider,
+      provider_ref: provider.id,
       value_id: value_id,
       models: models,
       free: free
     }
   end
+
+  # The provider of a key entry: its `provider_ref`, or, for an entry made without one,
+  # its provider's row id.
+  defp ref(%{provider_ref: ref}), do: ref
+  defp ref(%{provider: provider}), do: provider.id
 
   @doc "The options of a Key `choice` input for `keys`."
   @spec key_options([map]) :: [map]
@@ -104,7 +136,8 @@ defmodule ApiaryWeb.ModelTiers do
 
   def chosen(keys, %ModelChoice{connection_id: id, value_id: value_id}) do
     Enum.find(keys, fn key ->
-      key.provider.id == id and key.value_id == (value_id || key.provider.default_value_id)
+      ref(key) == id and
+        key.value_id == (value_id || Map.get(key.provider, :default_value_id))
     end)
   end
 
@@ -158,7 +191,7 @@ defmodule ApiaryWeb.ModelTiers do
   """
   @spec sent(map | nil, map | nil, map, term, map | nil) :: map
   def sent(key, before, old, values, stored) do
-    if key != nil and before != nil and key.provider.id == before.provider.id do
+    if key != nil and before != nil and ref(key) == ref(before) do
       values = if is_map(values), do: values, else: %{}
 
       Map.new(shown(), fn tier ->
@@ -195,7 +228,7 @@ defmodule ApiaryWeb.ModelTiers do
   # The effort the stored choice has for `tier`, while `key` is of its provider and the
   # tier keeps its model; else "".
   defp stored_effort(key, tier, model, %{provider_id: id, tiers: tiers}) do
-    if key.provider.id == id and tiers[tier]["model"] == model,
+    if ref(key) == id and tiers[tier]["model"] == model,
       do: tiers[tier]["effort"],
       else: ""
   end
@@ -234,7 +267,8 @@ defmodule ApiaryWeb.ModelTiers do
     do: Enum.all?(shown(), &(String.trim((tiers[&1] || %{})["model"] || "") != ""))
 
   @doc """
-  What a save of `key` and `tiers` sends to `Apiary.ModelChoices.put_choice/4`:
+  What a save of `key`, a key of a provider of the organisation (not a catalogue
+  provider's entry, `entry/4`), and `tiers` sends to `Apiary.ModelChoices.put_choice/4`:
   `provider`, `key` and `tiers`, each tier with a model, its effort where it has one;
   and `model` and `effort`, those of the `thinking` tier, as the run's model and effort
   are (`Apiary.ModelChoices.Resolution`), so a page that reads the choice's model shows
