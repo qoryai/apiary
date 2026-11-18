@@ -19,10 +19,11 @@ defmodule ApiaryWeb.ArtifactComponents do
   alias Apiary.Runs.Run
   alias ApiaryWeb.People
   alias ApiaryWeb.WorkItemComponents
+  alias ApiaryWeb.WorkItemLive.VerifyTab
 
   # The content types an image view shows inline: raster formats only.
   @inline_images ~w(image/png image/jpeg image/gif image/webp)
-  @videos ~w(video/mp4 video/webm)
+  @videos Apiary.Artifacts.Format.video_types()
   @subtitles "text/vtt; charset=utf-8"
 
   # The most values a structured view shows; the file has the rest.
@@ -71,26 +72,35 @@ defmodule ApiaryWeb.ArtifactComponents do
   end
 
   @doc """
-  size/1 is a size in binary units, 1 KiB being 1,024 bytes, as every artifact page
-  shows one: "812 B", "64 KiB", "1.5 MiB", "2 GiB". A whole number has no decimal, and
-  a size that rounds up to 1,024 of its unit is shown in the next one.
+  size/1 is a size in binary units, 1 KiB being 1,024 bytes: "812 B", "64 KiB", "1.5 MiB",
+  "2 GiB". A whole number has no decimal, and a size that rounds up to 1,024 of its unit
+  is shown in the next one. Machine types show their memory and disk this way, too.
   """
   @spec size(non_neg_integer) :: String.t()
-  def size(bytes) when is_integer(bytes) and bytes < 1024,
+  def size(bytes), do: size(bytes, false)
+
+  @doc """
+  file_size/1 is the size of a file in the Files rows of an artifact page, in the units of
+  size/1 with one decimal from 1 KiB up: "812 B", "9.0 KiB", "1.5 MiB", "2.0 GiB".
+  """
+  @spec file_size(non_neg_integer) :: String.t()
+  def file_size(bytes), do: size(bytes, true)
+
+  defp size(bytes, _decimal?) when is_integer(bytes) and bytes < 1024,
     do: gettext("%{number} B", number: Format.number(bytes))
 
-  def size(bytes) when is_integer(bytes),
-    do: size(bytes, [{1024, :kib}, {1_048_576, :mib}, {1_073_741_824, :gib}])
+  defp size(bytes, decimal?) when is_integer(bytes),
+    do: size(bytes, decimal?, [{1024, :kib}, {1_048_576, :mib}, {1_073_741_824, :gib}])
 
-  defp size(bytes, [{unit, name} | larger]) do
+  defp size(bytes, decimal?, [{unit, name} | larger]) do
     # Tenths of the unit, a half rounded up.
     tenths = div(bytes * 10 + div(unit, 2), unit)
 
     if tenths >= 10_240 and larger != [] do
-      size(bytes, larger)
+      size(bytes, decimal?, larger)
     else
       number =
-        if rem(tenths, 10) == 0,
+        if rem(tenths, 10) == 0 and not decimal?,
           do: Format.number(div(tenths, 10)),
           else: Format.number(tenths / 10, digits: 1)
 
@@ -380,7 +390,7 @@ defmodule ApiaryWeb.ArtifactComponents do
         <a href={@path.(file)} download={file.filename} class="font-medium text-accent break-all">
           {file.filename}
         </a>
-        <span class="text-[12.5px] text-muted tabular-nums">{size(file.size)}</span>
+        <span class="text-[12.5px] text-muted tabular-nums">{file_size(file.size)}</span>
       </li>
     </ul>
     """
@@ -412,6 +422,14 @@ defmodule ApiaryWeb.ArtifactComponents do
       rows, every value as text, and a `questions` document's `context` is Markdown, as on
       Explore's tab.
 
+  `player` is `nil` where the page is no player page: the run page, with no controls. A
+  player page passes a map: with a video view, `%{}` gives the first film Cinema and Full
+  screen in the line of its Speed row (the `ArtifactPlayer` hook, `<figure>` is the
+  full-screen box); with an image view, `%{pictures: pictures, picture: number}`, the
+  scenario's pictures (`ApiaryWeb.WorkItemLive.VerifyTab.pictures/1`) and the number of the
+  one shown, shows that one picture large with Previous picture and Next picture
+  (`picture-prev` and `picture-next`), its step and its file name under it.
+
   `content` is what the page read of the files, a map from filename: for a document,
   `{:markdown, rendered}` (`ApiaryWeb.ArtifactLive.Markdown.render/1`) or `:too_large`;
   for a structured view, `{:json, value}` or `:unreadable`. `:pending`, before the page
@@ -427,6 +445,7 @@ defmodule ApiaryWeb.ArtifactComponents do
   attr :script, :string, default: nil
   attr :mockup, :map, default: nil
   attr :screen_path, :any, default: nil
+  attr :player, :map, default: nil
 
   # Before the page has read the files, the view is an empty block of another id: the
   # document's block is left alone by later patches (`phx-update="ignore"`, so the
@@ -529,6 +548,76 @@ defmodule ApiaryWeb.ArtifactComponents do
     """
   end
 
+  def view(%{type: %Type{base_view: :image}, player: %{pictures: [_first | _more]}} = assigns) do
+    %{pictures: pictures, picture: picture} = assigns.player
+    total = length(pictures)
+    {file, step, number} = Enum.at(pictures, picture - 1)
+
+    assigns =
+      assign(assigns,
+        file: file,
+        step: step,
+        number: number,
+        shown: picture,
+        total: total
+      )
+
+    ~H"""
+    <div id={@id} class="grid gap-6">
+      <figure id="artifact-player" class="q-player grid gap-2">
+        <div class="q-player-stage flex justify-center rounded-field bg-base-200 p-4">
+          <img
+            src={@path.(@file)}
+            alt={
+              if @step,
+                do: gettext("Picture: %{step}", step: VerifyTab.step_title(@number, @step)),
+                else: gettext("Image: %{filename}", filename: @file.filename)
+            }
+            class="h-[70vh] max-w-full rounded-field border border-base-300 object-contain"
+          />
+        </div>
+        <div class="q-player-bar flex flex-wrap items-center gap-2">
+          <div class="flex items-center gap-1.5">
+            <.button
+              id="artifact-picture-prev"
+              type="button"
+              size="xs"
+              phx-click="picture-prev"
+              disabled={@shown <= 1}
+              class={size_class()}
+            >
+              <.icon name="hero-chevron-left-micro" class="size-4 shrink-0" />
+              <span>{gettext("Previous picture")}</span>
+            </.button>
+            <span id="artifact-picture-count" class="text-[12.5px] text-muted tabular-nums">
+              {gettext("Picture %{number} of %{total}", number: @shown, total: @total)}
+            </span>
+            <.button
+              id="artifact-picture-next"
+              type="button"
+              size="xs"
+              phx-click="picture-next"
+              disabled={@shown >= @total}
+              class={size_class()}
+            >
+              <span>{gettext("Next picture")}</span>
+              <.icon name="hero-chevron-right-micro" class="size-4 shrink-0" />
+            </.button>
+          </div>
+          <.sizes id={"#{@id}-sizes"} version={@version.public_id} />
+        </div>
+        <figcaption class="grid gap-0.5 text-[13px]/5">
+          <span :if={@step}>{VerifyTab.step_title(@number, @step)}</span>
+          <span :if={@step && @step.expected} class="text-[12.5px]/5 text-muted">
+            {gettext("Expected: %{result}", result: @step.expected)}
+          </span>
+          <span class="text-[12.5px] text-muted break-all">{@file.filename}</span>
+        </figcaption>
+      </figure>
+    </div>
+    """
+  end
+
   def view(%{type: %Type{base_view: :image}} = assigns) do
     ~H"""
     <div id={@id} class="grid gap-6">
@@ -547,7 +636,7 @@ defmodule ApiaryWeb.ArtifactComponents do
           <a href={@path.(file)} download={file.filename} class="text-accent break-all">
             {file.filename}
           </a>
-          <span class="text-muted tabular-nums">{size(file.size)}</span>
+          <span class="text-muted tabular-nums">{file_size(file.size)}</span>
         </figcaption>
       </figure>
     </div>
@@ -563,7 +652,11 @@ defmodule ApiaryWeb.ArtifactComponents do
 
     ~H"""
     <div id={@id} class="grid gap-6">
-      <figure :for={{file, n} <- Enum.with_index(@videos)} class="grid gap-2">
+      <figure
+        :for={{file, n} <- Enum.with_index(@videos)}
+        id={controls?(@player, n) && "artifact-player"}
+        class={["grid gap-2", controls?(@player, n) && "q-player"]}
+      >
         <video
           controls
           preload="metadata"
@@ -579,32 +672,11 @@ defmodule ApiaryWeb.ArtifactComponents do
             default={index == 0}
           />
         </video>
-        <%!-- The VideoSpeed hook sets the film's rate and presses its button; a patch keeps both. --%>
-        <div
-          id={"#{@id}-speed-#{n}"}
-          phx-hook="VideoSpeed"
-          phx-update="ignore"
-          class="flex flex-wrap items-center gap-2"
-        >
-          <span id={"#{@id}-speed-#{n}-label"} class="text-[12.5px] text-muted">
-            {gettext("Speed")}
-          </span>
-          <div
-            role="group"
-            aria-labelledby={"#{@id}-speed-#{n}-label"}
-            class="flex items-center gap-1.5"
-          >
-            <button
-              :for={{rate, label} <- speeds()}
-              type="button"
-              data-rate={rate}
-              aria-pressed={to_string(rate == "1")}
-              class="btn btn-xs h-7 min-h-7 gap-1.5 border-base-300 bg-base-100 text-[13px]/none font-normal shadow-none aria-pressed:bg-base-300 px-2 tabular-nums"
-            >
-              {label}
-            </button>
-          </div>
+        <div :if={controls?(@player, n)} class="q-player-bar flex flex-wrap items-center gap-2">
+          <.speed id={"#{@id}-speed-#{n}"} />
+          <.sizes id={"#{@id}-sizes-#{n}"} version={@version.public_id} film={n} />
         </div>
+        <.speed :if={!controls?(@player, n)} id={"#{@id}-speed-#{n}"} />
         <figcaption class="text-[12.5px] text-muted break-all">{file.filename}</figcaption>
       </figure>
     </div>
@@ -630,6 +702,91 @@ defmodule ApiaryWeb.ArtifactComponents do
     </div>
     """
   end
+
+  # Only the first film of a version has Cinema and Full screen, so the page has one of each.
+  defp controls?(player, n), do: player != nil and n == 0
+
+  attr :id, :string, required: true
+
+  # The VideoSpeed hook sets the film's rate and presses its button; a patch keeps both.
+  defp speed(assigns) do
+    ~H"""
+    <div id={@id} phx-hook="VideoSpeed" phx-update="ignore" class="flex flex-wrap items-center gap-2">
+      <span id={"#{@id}-label"} class="text-[12.5px] text-muted">
+        {gettext("Speed")}
+      </span>
+      <div role="group" aria-labelledby={"#{@id}-label"} class="flex items-center gap-1.5">
+        <button
+          :for={{rate, label} <- speeds()}
+          type="button"
+          data-rate={rate}
+          aria-pressed={to_string(rate == "1")}
+          class="btn btn-xs h-7 min-h-7 gap-1.5 border-base-300 bg-base-100 text-[13px]/none font-normal shadow-none aria-pressed:bg-base-300 px-2 tabular-nums"
+        >
+          {label}
+        </button>
+      </div>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :version, :string, required: true, doc: "the public id of the version the player shows"
+  attr :film, :integer, default: nil, doc: "the film's place among the version's films, from 0"
+
+  # Cinema and Full screen, at the right end of the line under the player. The ArtifactPlayer
+  # hook presses Cinema from the browser's storage, changes Full screen to Leave full screen
+  # while the `<figure>` is the browser's full screen, and keeps what it set against a patch
+  # (`phx-update="ignore"`). Cinema is hidden under 1024 px, where the page has one column.
+  defp sizes(assigns) do
+    ~H"""
+    <div
+      id={@id}
+      phx-hook="ArtifactPlayer"
+      phx-update="ignore"
+      data-version={@version}
+      data-film={@film}
+      class="ml-auto flex items-center gap-1.5"
+    >
+      <.button
+        id="artifact-cinema"
+        type="button"
+        size="xs"
+        data-cinema-toggle
+        aria-pressed="false"
+        title={gettext("Cinema: the player takes the width of the page")}
+        class={[size_class(), "hidden lg:flex"]}
+      >
+        <.icon name="hero-arrows-right-left" class="size-4 shrink-0" />
+        <span>{gettext("Cinema")}</span>
+      </.button>
+      <.button
+        id="artifact-full-screen"
+        type="button"
+        size="xs"
+        data-full-screen
+        aria-pressed="false"
+        title={gettext("Full screen")}
+        data-title={gettext("Full screen")}
+        data-label={gettext("Full screen")}
+        data-leave-title={gettext("Leave full screen (Esc)")}
+        data-leave-label={gettext("Leave full screen")}
+        class={size_class()}
+      >
+        <.icon name="hero-arrows-pointing-out-micro" class="size-4 shrink-0" />
+        <span data-text>{gettext("Full screen")}</span>
+      </.button>
+    </div>
+    """
+  end
+
+  @doc false
+  # size_class/0 is the classes that make a `<.button size="xs">` the small button of the
+  # Speed row and the player's line: the same height, face and pressed state.
+  @spec size_class() :: String.t()
+  def size_class,
+    do:
+      "h-7 min-h-7 gap-1.5 border-base-300 bg-base-100 text-[13px]/none font-normal shadow-none aria-pressed:bg-base-300 px-2"
 
   defp inline_images, do: @inline_images
 

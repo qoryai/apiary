@@ -19,8 +19,11 @@ defmodule ApiaryPro.WorkspaceOperators do
   `FOR NO KEY UPDATE` first, so that it waits for such a write.
   """
 
+  use Gettext, backend: ApiaryProWeb.Gettext
+
   import Ecto.Query, warn: false
 
+  alias Apiary.Accounts.Scope
   alias Apiary.Repo
   alias Apiary.Organisations.{Organisation, Workspace}
   alias ApiaryPro.Operators.WorkspaceOperator
@@ -68,6 +71,26 @@ defmodule ApiaryPro.WorkspaceOperators do
   def operator_id(_organisation, nil), do: nil
   def operator_id(organisation, %Workspace{id: id}), do: operator_id(organisation, id)
   def operator_id(organisation, workspace_id), do: Map.get(operated(organisation), workspace_id)
+
+  @doc """
+  schema_change_line/1 is the step that the Artifact types page shows for a type that the
+  harness sets (`c:Apiary.Edition.schema_change_line/1`): "To change the schema, ask the
+  operator of this workspace." while the operator infrastructure flag is on,
+  the scope's workspace has an operator and the person does not act there through it
+  (`ApiaryPro.Access.through_operator?/1`). Nil otherwise: with the flag off, and for the
+  operator's people, the page shows the core's step. Translated when it is asked.
+  """
+  @spec schema_change_line(Scope.t()) :: String.t() | nil
+  # The page gate `artifact_type.edit` limits the page to owners and admins, so a member never
+  # reaches it. This checks the flag, the operator and `through_operator?/1`.
+  def schema_change_line(%Scope{organisation: %Organisation{} = organisation} = scope) do
+    if ApiaryPro.Flags.operator_infrastructure?() and
+         not is_nil(operator_id(organisation, scope.workspace)) and
+         not ApiaryPro.Access.through_operator?(scope),
+       do: gettext("To change the schema, ask the operator of this workspace.")
+  end
+
+  def schema_change_line(_scope), do: nil
 
   @doc """
   operator_ids/1 is the ids of the operators of `organisation`'s workspaces, each once, in

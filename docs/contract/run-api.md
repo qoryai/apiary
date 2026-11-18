@@ -1,7 +1,8 @@
 # The run API
 
 A run, an agent on a machine, uses the run API to read its work item and the work
-item's artifacts, to push artifacts and its verdict, and to report the commits it pushed. Each request is signed with the
+item's artifacts, to push artifacts and its verdict, to report the commits it pushed, and,
+in a stage whose workflows share one run, to get its next session. Each request is signed with the
 access key of the gateway the run goes through; the run has no access key.
 
 The run API is part of the feature `workflow_model`, which is off by default. On an
@@ -45,6 +46,7 @@ serves, and a request for a run the key does not serve gets `404` `not_found`.
 | `POST artifacts` | Stores a new version of an artifact, or a withdrawal of its name; returns the version |
 | `POST verdict` | Stores the run's verdict as a version of the `verdict` artifact |
 | `POST pushed-commits` | Adds the commits the run pushed to the run's list |
+| `POST next-session` | Steps the stage on the end of a session of a shared run; returns the next session or the end |
 | `GET resume/transcript` | The transcript of the paused run that the run continues, as a download |
 
 ### Signing and the order of checks
@@ -714,6 +716,81 @@ that is not a full commit id, is `400` `invalid_request`, with the first member 
 in `names`, such as `repositories[1].commit`; `body` for a body that is not a JSON object,
 and `repositories` for a list that is empty, over 64 or not a list.
 
+## POST next-session
+
+A run of a stage with `shared_run: true` runs the stage's workflows one after the other as
+sessions of one run. After each session that did not pause, qory sends this request from
+the run's host, never from a container, over the gateway's link; the gateway sends it here
+signed with its access key, as every request of the run API. The run's documents have
+`shared_run` true. The body, at most 4 KiB, is `next-session-request.schema.json` of the
+run contract:
+
+```json
+{"session": 1, "state": "succeeded", "reason": null}
+```
+
+- `session`: Forager's number of the session that ended, from 1.
+- `state`: `succeeded`, `failed` or `cancelled`, the state of its
+  `dev.qory.session.exited`.
+- `reason`: the reason of that event, a code of a lower-case letter, then lower-case
+  letters, digits and `_`, up to 64 characters, or null for none. A `cancelled` session
+  has a reason; `timeout` and `interrupted` are for a `cancelled` session only, and
+  `gateway_lost` for a `failed` session only.
+
+Qory Apiary steps the stage on the session's end as on the end of a run of a stage that
+does not share its run: the open questions of the run's take in, else the newest
+`verdict` version the run stored after the previous step, else, for `failed` or
+`cancelled`, a run that stopped without a result. Then it returns `200`, signed, with
+`Content-Type: application/json` and one of two bodies, `next-session-answer.schema.json`
+of the run contract. A next session of the same stage:
+
+```json
+{"next": "session", "session": 2, "workflow": "write-acceptance-checks",
+ "time_limit_minutes": 180, "full_suite": false, "inputs": {"version": 1, "...": "..."}}
+```
+
+- `session`: Qory Apiary's number of the session in the run, from 1; the claim's session is
+  1. It is not Forager's number.
+- `workflow`, `time_limit_minutes` and `full_suite`: the entry's, as the claim kept them,
+  so a time limit saved after the claim changes nothing for the run.
+- `inputs`: the input of the session, in the shape of the documents' `inputs`.
+- `model_choice` and `model_credential` are left out: every session uses the run's model
+  choice and key.
+
+Or the end of the run, where the stage runs no further workflow in this run: an
+escalation, open questions, the gate, or the next stage, whose run is queued as any run:
+
+```json
+{"next": "end"}
+```
+
+- A body is at most 1 MiB, the largest `200` the gateway passes back. `inputs` takes what
+  the rest of the body leaves, with the oldest comments of the ticket left out first and
+  counted in `comments_omitted`.
+- A second request for the same session returns the same body, byte for byte, and steps
+  nothing, whatever the newer verdicts: qory may send it again after a `5xx` or a
+  transport failure. A request for an older session than the newest one the run reported
+  is `409` `session_mismatch`.
+- The step and the record of the session are stored in one transaction, under the lock of
+  the work item that a push, a verdict, the end of a run and a cancel also take. An error
+  writes nothing, except the end of the run for inputs that cannot be formed.
+
+Checks, after checks 1 to 4 of the order of checks: a body over 4 KiB is `413`
+`payload_too_large`; a body outside the request's schema is `400` `invalid_request`, with
+the first member that failed in `names`, `body` for a body that is not a JSON object; then:
+
+- a run of a stage without `shared_run`, a run of Explore, and a run that no claim of such
+  a stage registered are `404` `not_found`;
+- a run that the stage no longer runs, or whose last step returned `end`, is `409`
+  `run_ended`;
+- a store that cannot read the run's newest verdict or questions is `503` `unavailable`;
+- a ticket that is no longer kept, or inputs that break the rules of Explore's input or do
+  not fit the body's 1 MiB with every comment left out, end the run, as a claim ends a run
+  it cannot form, with the cause `ticket_gone` or `inputs_invalid` and the outcome `error`,
+  and are `409` `run_ended`. The stage escalates `run_stopped`.
+
+Qory Apiary never returns `410` to this request, as the gateway turns a `410` into a `502`.
+
 ## GET resume/transcript
 
 The session of a run that continues a paused run reads the paused run's transcript with
@@ -738,11 +815,13 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 
 | Status | `error` | Other members | When |
 |---|---|---|---|
-| `400` | `invalid_request` | `names`, and `message` for a report of pushed commits | A body that is not the request's object, a report of pushed commits over its limits or with a commit that is not a full commit id, or a content that is not strict base64 |
+| `400` | `invalid_request` | `names`, and `message` for a report of pushed commits and a next-session request | A body that is not the request's object, a report of pushed commits over its limits or with a commit that is not a full commit id, a next-session request outside its schema, or a content that is not strict base64 |
 | `401` | `unauthorized` | | The request does not verify; unsigned |
-| `404` | `not_found` | | An unknown run, a run of another gateway, an unknown version or file; for `GET resume/transcript`, a run that ended, has no `resume`, or whose transcript cannot be served |
+| `404` | `not_found` | | An unknown run, a run of another gateway, an unknown version or file; for `GET resume/transcript`, a run that ended, has no `resume`, or whose transcript cannot be served; for `POST next-session`, a run of a stage without `shared_run` |
 | `404` | (the error page) | | The instance does not have `workflow_model`, or for `GET resume/transcript`, `observability` |
 | `409` | `run_ended` | `message` | A push or a verdict after the run ended or a member cancelled it, checked before the push and again when the version is stored; a report of pushed commits after the run ended (a cancel does not refuse it), checked before and again under the work item's lock |
+| `409` | `run_ended` | `message` | A next-session request after the run ended or a member cancelled it, after the stage stopped running the run, or for inputs that ended the run |
+| `409` | `session_mismatch` | `message` | A next-session request for an older session than the newest one the run reported |
 | `409` | `not_writable` | `message` | A report of pushed commits from a run whose access is not `write` |
 | `409` | `inputs_invalid` | | A ticket value that breaks Explore's input rules |
 | `409` | `no_version` | `type`, `message` | A withdrawal of a name that has no version outside cancelled runs |
@@ -765,6 +844,16 @@ The messages:
   artifacts or give a verdict."
 - `run_ended`, for a report of pushed commits: "Start a new run to record pushed commits.
   This run ended, so it records no more commits."
+- `run_ended`, for a next-session request: "Close the run. It ended, so it starts no more
+  sessions." For a run a member cancelled: "Close the run. A member cancelled it, so it
+  starts no more sessions." For a ticket that is no longer kept: "Close the run. The ticket
+  of its work item is no longer in Qory Apiary, so the run ended." For inputs that cannot
+  be formed: "Close the run. The input of its next session breaks a rule for the agent's
+  input, such as its size limit, so the run ended."
+- `session_mismatch`: "Send the number of the session that ended last. A later session of
+  this run ended already."
+- `invalid_request`, for a next-session request: "Send session, state and reason as the
+  run contract's next-session request has them."
 - `not_writable`: "Record pushed commits only from a run with write access. This run cannot
   push."
 - `invalid_request`, for a report of pushed commits: "Send 1 to 64 repositories, each with

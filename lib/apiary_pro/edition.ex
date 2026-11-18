@@ -101,6 +101,9 @@ defmodule ApiaryPro.Edition do
   def audit_details(_scope, _organisation_id, details), do: details
 
   @impl true
+  def schema_change_line(scope), do: ApiaryPro.WorkspaceOperators.schema_change_line(scope)
+
+  @impl true
   def set_up_steps(scope, steps), do: ApiaryPro.SetUp.steps(scope, steps)
 
   @impl true

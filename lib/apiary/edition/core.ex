@@ -76,6 +76,10 @@ defmodule Apiary.Edition.Core do
         organisation: organisation.name
       )
 
+  # No one else changes the harness of a workspace: the page links to Harness settings.
+  @impl true
+  def schema_change_line(_scope), do: nil
+
   @impl true
   def set_up_steps(_scope, steps), do: steps
 

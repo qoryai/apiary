@@ -71,6 +71,31 @@ defmodule ApiaryWeb.HarnessLiveProcessTest do
     version
   end
 
+  # The fixture's files with Build running plan-the-build and write-acceptance-checks as
+  # sessions of one run, and the software stack setting their access levels to `plan`
+  # and `checks`.
+  defp shared_files(plan, checks) do
+    QoryHarnessFixture.files()
+    |> Map.update!(
+      "stacks/software/qory-stack.yaml",
+      &String.replace(
+        &1,
+        "  explore-a-ticket: {access: read}\n",
+        "  explore-a-ticket: {access: read}\n  plan-the-build: {access: #{plan}}\n" <>
+          "  write-acceptance-checks: {access: #{checks}}\n"
+      )
+    )
+    |> Map.update!(
+      @process,
+      &String.replace(
+        &1,
+        "      name: Build\n      inputs: []\n      sequence: []\n",
+        "      name: Build\n      shared_run: true\n      inputs: []\n      sequence:\n" <>
+          "        - workflow: plan-the-build\n        - workflow: write-acceptance-checks\n"
+      )
+    )
+  end
+
   defp text(view, selector) do
     view
     |> element(selector)
@@ -337,6 +362,22 @@ defmodule ApiaryWeb.HarnessLiveProcessTest do
 
       assert text(view, "#harness-update-error") =~
                ~r/^Correct the process\.yaml of the harness, then press Update from harness again: the stage Explore uses blueprint, which artifact_types does not list.*\.$/
+    end
+
+    test "a shared stage whose harness sets its workflows different access shows why, and no save",
+         ctx do
+      QoryHarnessFixture.serve!(shared_files("write", "read"))
+      {:ok, _commit} = Qory.read({:branch, "main"})
+
+      {:ok, view, _html} = live(ctx.conn, ctx.path)
+      view |> element("#harness-update") |> render_click()
+      render_async(view)
+
+      assert text(view, "#harness-update-refused") ==
+               "Ask whoever keeps the harness to give write-acceptance-checks write access, or to move it to a separate stage. write-acceptance-checks runs with read access, because its harness sets read."
+
+      assert has_element?(view, "#harness-update-save[disabled]")
+      assert has_element?(view, "#harness-update-try[disabled]")
     end
 
     test "a removed line shows the hint; Try first saves a trial; Cancel closes", ctx do
