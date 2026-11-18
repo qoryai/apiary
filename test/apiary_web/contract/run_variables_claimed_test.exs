@@ -40,7 +40,8 @@ defmodule ApiaryWeb.Contract.RunVariablesClaimedTest do
   end
 
   # `earlier` seconds before the clock: two claims signed in one second carry the same body,
-  # so the same signature, and the second is refused as a replay (`401`).
+  # so the same signature, and the second is refused as a replay (`401`). The test asks for
+  # 60 seconds, which a clock tick between its two claims cannot undo.
   defp claim(ctx, earlier) do
     :ok = Apiary.DispatchedRunsFixtures.walks_resolved!()
     now = (SignedRequest.now() - earlier) |> DateTime.from_unix!() |> DateTime.to_iso8601()
@@ -157,7 +158,7 @@ defmodule ApiaryWeb.Contract.RunVariablesClaimedTest do
     assert values(reload) == first
 
     # The next run has the edit, under another digest.
-    {_next_id, next} = attached(ctx, 1)
+    {_next_id, next} = attached(ctx, 60)
     assert next.status == 200
     assert [next_digest] = get_resp_header(next, "x-qory-run-configuration")
     refute next_digest == digest
