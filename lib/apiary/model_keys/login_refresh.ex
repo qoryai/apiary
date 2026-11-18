@@ -204,7 +204,7 @@ defmodule Apiary.ModelKeys.LoginRefresh do
   end
 
   # The access token goes into a request header: printable ASCII with no space, as the
-  # account id is checked (`Apiary.ModelKeys.Login.parse/1`).
+  # account id is checked (`Apiary.ModelKeys.Login.from_tokens/3`).
   defp printable?(access_token), do: String.match?(access_token, ~r/\A[!-~]+\z/)
 
   defp with_refresh_token(answer, access_token) do

@@ -13,7 +13,8 @@ defmodule Apiary.Kinds.Provider do
   windows of the provider's limits that a key's Use up to percentage applies to, such as
   `five_hour` and `seven_day`, `[]` when the role has none. `vendor` is the description's
   `vendor`, the company that runs the model API, such as `OpenAI`, nil when the description
-  has none. An API may also have `runtimes`, `paths` and `oauth_refresh`, kept as the
+  has none. An API may also have `runtimes`, `paths`, `oauth_refresh` and `oauth_device`
+  (the addresses of the device sign-in, allowed with `oauth_refresh` alone), kept as the
   description has them. `egress_hosts` is the
   description's top-level list, `[]` when it has none. `description` is the description
   as `parse/1` returns it, and `sha256` the SHA-256 of the file's bytes, in lower-case
@@ -139,9 +140,14 @@ defmodule Apiary.Kinds.Provider do
     Enum.uniq(formats -- Enum.uniq(formats))
   end
 
-  # Every URL endpoint, every `oauth_refresh` URL and every default of an address setting
-  # that the endpoint rule does not accept, each with the reason.
-  defp addresses_refused(%__MODULE__{} = provider) do
+  @device_urls ~w(usercode_url poll_url verification_url redirect_uri)
+
+  @doc false
+  # Every URL endpoint, every `oauth_refresh` URL, every address of an `oauth_device` and
+  # every default of an address setting that the endpoint rule does not accept, each with
+  # the reason.
+  @spec addresses_refused(t) :: [{term, Endpoint.refusal()}]
+  def addresses_refused(%__MODULE__{} = provider) do
     endpoint = for %{"endpoint" => address} <- provider.apis, is_binary(address), do: address
 
     defaults =
@@ -151,7 +157,12 @@ defmodule Apiary.Kinds.Provider do
 
     refresh = for %{"oauth_refresh" => %{"url" => url}} <- provider.apis, do: url
 
-    for address <- Enum.uniq(endpoint ++ refresh ++ defaults),
+    device =
+      for %{"oauth_device" => %{} = addresses} <- provider.apis,
+          name <- @device_urls,
+          do: addresses[name]
+
+    for address <- Enum.uniq(endpoint ++ refresh ++ device ++ defaults),
         {:error, refusal} <- [Endpoint.check(address)],
         do: {address, refusal}
   end

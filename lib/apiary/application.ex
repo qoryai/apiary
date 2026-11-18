@@ -130,6 +130,12 @@ defmodule Apiary.Application do
       # Each call that refreshes a model key's sign-in, bounded in time
       # (`Apiary.ModelKeys.LoginRefresh`).
       {Task.Supervisor, name: Apiary.ModelKeys.LoginRefresh.supervisor()},
+      # Each call of a model key's device sign-in, bounded in time
+      # (`Apiary.ModelKeys.LoginDevice`), and each sign-in, which belongs to the process of
+      # its form (`Apiary.ModelKeys.DeviceSignIn`).
+      {Task.Supervisor, name: Apiary.ModelKeys.LoginDevice.supervisor()},
+      {DynamicSupervisor,
+       name: Apiary.ModelKeys.DeviceSignIn.supervisor(), strategy: :one_for_one},
       # The time of each call to an adapter, later than the one before
       # (`Apiary.Adapters.CallClock`).
       Apiary.Adapters.CallClock,

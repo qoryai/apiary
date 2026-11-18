@@ -1,8 +1,8 @@
 defmodule Apiary.Connections.LoginsTest do
   # The keys of a model provider whose API has `oauth_refresh`, an OpenAI subscription:
-  # a pasted `auth.json` is stored as the key's value in a document of the three tokens,
-  # with a row for the key's sign-in (`Apiary.ModelKeys.Login`), by every function that
-  # writes a key; a paste that is no login is refused with no key written; the secrets
+  # the sign-in of a device sign-in is stored as the key's value in a document of the two
+  # tokens, with a row for the key's sign-in (`Apiary.ModelKeys.Login`), by every function
+  # that writes a key; a text that is no sign-in is refused with no key written; the secrets
   # endpoint's read refuses the key (`{:error, :login}`); a refreshed document replaces
   # the value and keeps its states and copies. No token reaches a log line, an audit entry
   # or an error.
@@ -31,7 +31,7 @@ defmodule Apiary.Connections.LoginsTest do
         scope,
         %{
           provider: "openai-subscription",
-          keys: [%{value_id: "main", value: login_paste(tokens: tokens)}]
+          keys: [%{value_id: "main", value: device_login(tokens: tokens)}]
         },
         place
       )
@@ -50,9 +50,9 @@ defmodule Apiary.Connections.LoginsTest do
   defp trail(provider),
     do: Repo.all(from e in Entry, where: e.organisation_id == ^provider.organisation_id)
 
-  # Every token of `tokens` and the paste's text, as strings to look for.
+  # Every token of `tokens`, as strings to look for.
   defp secrets_of(tokens),
-    do: [tokens.access_token, tokens.refresh_token, tokens.id_token, "auth_mode"]
+    do: [tokens.access_token, tokens.refresh_token, tokens.id_token]
 
   defp refute_leaks(text, tokens) do
     for secret <- secrets_of(tokens), do: refute(text =~ secret)
@@ -91,7 +91,7 @@ defmodule Apiary.Connections.LoginsTest do
       refute_leaks(log, tokens)
     end
 
-    test "stores the access and refresh tokens and nothing else of the paste", %{scope: scope} do
+    test "stores the access and refresh tokens and nothing else of the answer", %{scope: scope} do
       tokens = login_tokens(tag: "doc")
       provider = subscription!(scope, tokens)
       plain = Repo.get!(Connection, provider.id)
@@ -99,7 +99,7 @@ defmodule Apiary.Connections.LoginsTest do
 
       {:ok, document} = Secrets.reveal_login(plain, value.id)
 
-      # The paste had an id token. It is decrypted away from the stored document.
+      # The answer had an id token. It is not in the stored document.
       assert document |> Jason.decode!() |> Map.keys() |> Enum.sort() ==
                ~w(access_token refresh_token version)
 
@@ -107,14 +107,14 @@ defmodule Apiary.Connections.LoginsTest do
       refute document =~ tokens.account_id
     end
 
-    test "refuses a paste that is no login, and creates nothing", %{scope: scope} do
+    test "refuses a text that is no sign-in, and creates nothing", %{scope: scope} do
       before = Repo.aggregate(Connection, :count)
 
       for {text, message} <- [
-            {"sk-proj-an-api-key", "Paste the whole auth.json that codex login wrote."},
-            {"", "can't be blank"},
+            {"sk-proj-an-api-key", "is invalid"},
             {Jason.encode!(%{"tokens" => %{"refresh_token" => "r", "access_token" => "a"}}),
-             "Paste the whole auth.json that codex login wrote."}
+             "is invalid"},
+            {"", "can't be blank"}
           ] do
         log =
           capture_log(fn ->
@@ -135,24 +135,6 @@ defmodule Apiary.Connections.LoginsTest do
       assert Repo.all(Login) == []
     end
 
-    test "tells a login without a refresh token from any other paste", %{scope: scope} do
-      no_refresh =
-        login_paste()
-        |> Jason.decode!()
-        |> update_in(["tokens"], &Map.delete(&1, "refresh_token"))
-        |> Jason.encode!()
-
-      assert {:error, %Ecto.Changeset{} = changeset} =
-               Connections.create_provider(scope, %{
-                 provider: "openai-subscription",
-                 keys: [%{value_id: "main", value: no_refresh}]
-               })
-
-      assert "Paste the whole auth.json that codex login wrote. This text has no refresh token." in values_errors(
-               changeset
-             )
-    end
-
     test "stores a workspace's login under the workspace's key", %{scope: scope} do
       tokens = login_tokens(tag: "w")
       provider = subscription!(scope, tokens, :workspace)
@@ -166,8 +148,8 @@ defmodule Apiary.Connections.LoginsTest do
         Connections.create_provider(scope, %{
           provider: "openai-subscription",
           keys: [
-            %{value_id: "main", value: login_paste(tag: "m")},
-            %{value_id: "spare", value: login_paste(tag: "s")}
+            %{value_id: "main", value: device_login(tag: "m")},
+            %{value_id: "spare", value: device_login(tag: "s")}
           ]
         })
 
@@ -201,7 +183,7 @@ defmodule Apiary.Connections.LoginsTest do
       assert {:ok, _} =
                Connections.add_provider_key(scope, provider, %{
                  value_id: "spare",
-                 value: "  " <> login_paste(tokens: tokens) <> "\n"
+                 value: device_login(tokens: tokens)
                })
 
       assert %Login{account_id: "acct-fixture-b", generation: 1} = row(provider, "spare")
@@ -209,13 +191,13 @@ defmodule Apiary.Connections.LoginsTest do
       assert row(provider, "main").account_id == "acct-fixture-a"
     end
 
-    test "refuses a paste that is no login with the error on value, and adds nothing", %{
+    test "refuses a text that is no sign-in with the error on value, and adds nothing", %{
       scope: scope
     } do
       provider = subscription!(scope)
 
       for {text, message} <- [
-            {"sk-proj-an-api-key", "Paste the whole auth.json that codex login wrote."},
+            {"sk-proj-an-api-key", "is invalid"},
             {"", "can't be blank"}
           ] do
         log =
@@ -245,7 +227,7 @@ defmodule Apiary.Connections.LoginsTest do
                Connections.add_provider_key(
                  scope,
                  provider,
-                 %{value_id: "spare", value: login_paste(tag: "b")},
+                 %{value_id: "spare", value: device_login(tag: "b")},
                  %{"pause_seconds" => 604_801}
                )
 
@@ -284,7 +266,7 @@ defmodule Apiary.Connections.LoginsTest do
                      scope,
                      provider,
                      "main",
-                     login_paste(tokens: tokens)
+                     device_login(tokens: tokens)
                    )
         end)
 
@@ -310,7 +292,7 @@ defmodule Apiary.Connections.LoginsTest do
       refute_leaks(log, tokens)
     end
 
-    test "refuses a paste that is no login, and leaves the key, its states and its sign-in", %{
+    test "refuses a text that is no sign-in, and leaves the key, its states and its sign-in", %{
       scope: scope
     } do
       tokens = login_tokens()
@@ -321,7 +303,7 @@ defmodule Apiary.Connections.LoginsTest do
       assert {:error, %Ecto.Changeset{errors: [value: {message, _}]}} =
                Connections.set_provider_key(scope, provider, "main", "sk-proj-an-api-key")
 
-      assert message == "Paste the whole auth.json that codex login wrote."
+      assert message == "is invalid"
       assert %Login{generation: 1} = row(provider, "main")
       assert stored(provider, "main").refresh_token == tokens.refresh_token
       assert ModelKeys.provider_states(provider, DateTime.utc_now())[value.id] != nil
@@ -336,7 +318,7 @@ defmodule Apiary.Connections.LoginsTest do
       assert {:ok, _} =
                Connections.update_provider_key(scope, provider, "main", %{
                  "value_id" => "main",
-                 "value" => login_paste(tokens: tokens),
+                 "value" => device_login(tokens: tokens),
                  "settings" => %{"pause_seconds" => 7200}
                })
 
@@ -353,7 +335,7 @@ defmodule Apiary.Connections.LoginsTest do
       assert stored(provider, "main").refresh_token == tokens.refresh_token
     end
 
-    test "refuses a new value that is no login", %{scope: scope} do
+    test "refuses a new value that is no sign-in", %{scope: scope} do
       provider = subscription!(scope)
 
       assert {:error, %Ecto.Changeset{errors: [value: {message, _}]}} =
@@ -362,7 +344,7 @@ defmodule Apiary.Connections.LoginsTest do
                  "value" => "sk-proj-an-api-key"
                })
 
-      assert message =~ "auth.json"
+      assert message == "is invalid"
       assert Repo.get_by(Value, secret_id: provider.secret_id).value_id == "main"
     end
 
@@ -374,7 +356,7 @@ defmodule Apiary.Connections.LoginsTest do
       {:ok, provider} =
         Connections.add_provider_key(scope, provider, %{
           value_id: "spare",
-          value: login_paste(tag: "s")
+          value: device_login(tag: "s")
         })
 
       {:ok, provider} = Connections.put_default_key(scope, provider, "spare")
@@ -391,7 +373,7 @@ defmodule Apiary.Connections.LoginsTest do
       {:ok, provider} =
         Connections.add_provider_key(scope, provider, %{
           value_id: "spare",
-          value: login_paste(tag: "s")
+          value: device_login(tag: "s")
         })
 
       assert map_size(Login.by_key(provider)) == 2
@@ -408,11 +390,11 @@ defmodule Apiary.Connections.LoginsTest do
       {:ok, provider} =
         Connections.add_provider_key(scope, provider, %{
           value_id: "spare",
-          value: login_paste(tokens: tokens)
+          value: device_login(tokens: tokens)
         })
 
       {:ok, _provider} =
-        Connections.set_provider_key(scope, provider, "spare", login_paste(tokens: tokens))
+        Connections.set_provider_key(scope, provider, "spare", device_login(tokens: tokens))
 
       entries = trail(provider)
       assert length(entries) >= 3
@@ -529,7 +511,7 @@ defmodule Apiary.Connections.LoginsTest do
       {:ok, provider} =
         Connections.add_provider_key(scope, provider, %{
           value_id: "spare",
-          value: login_paste(tag: "s")
+          value: device_login(tag: "s")
         })
 
       {:ok, provider} = Connections.rename_provider_key(scope, provider, "spare", "renamed")
@@ -547,7 +529,7 @@ defmodule Apiary.Connections.LoginsTest do
       {:ok, provider} =
         Connections.add_provider_key(scope, provider, %{
           value_id: "spare",
-          value: login_paste(tag: "s")
+          value: device_login(tag: "s")
         })
 
       plain = Repo.get!(Connection, provider.id)
@@ -564,7 +546,9 @@ defmodule Apiary.Connections.LoginsTest do
       assert Secrets.login_value_id(plain, value.id) == "renamed"
     end
 
-    test "drops the result when a value was pasted since the refresh started", %{scope: scope} do
+    test "drops the result when a new sign-in was stored since the refresh started", %{
+      scope: scope
+    } do
       provider = subscription!(scope)
       plain = Repo.get!(Connection, provider.id)
       value = key_value!(provider, "main")
@@ -574,7 +558,7 @@ defmodule Apiary.Connections.LoginsTest do
       {:ok, _provider} =
         Connections.update_provider_key(scope, provider, "main", %{
           "value_id" => "main",
-          "value" => login_paste(tag: "new")
+          "value" => device_login(tag: "new")
         })
 
       assert Secrets.write_refreshed_key(plain, value.id, refreshed(next), started) ==
@@ -698,7 +682,7 @@ defmodule Apiary.Connections.LoginsTest do
   describe "Connections.put_logins/2" do
     test "writes a row for each key it has a login for", %{scope: scope} do
       provider = subscription!(scope)
-      {:ok, parsed} = Login.parse(login_paste(tag: "again"))
+      parsed = device_login(tag: "again")
 
       assert {:ok, :ok} =
                Repo.transact(fn ->
@@ -710,7 +694,7 @@ defmodule Apiary.Connections.LoginsTest do
 
     test "fails with no row written when a login matches no key of the secret", %{scope: scope} do
       provider = subscription!(scope)
-      {:ok, parsed} = Login.parse(login_paste(tag: "again"))
+      parsed = device_login(tag: "again")
       before = row(provider, "main")
 
       assert {:error, :login_not_stored} =
@@ -728,10 +712,10 @@ defmodule Apiary.Connections.LoginsTest do
       {:ok, other} =
         Connections.create_provider(scope, %{
           provider: "openai-subscription",
-          keys: [%{value_id: "other", value: login_paste(tag: "o")}]
+          keys: [%{value_id: "other", value: device_login(tag: "o")}]
         })
 
-      {:ok, parsed} = Login.parse(login_paste(tag: "again"))
+      parsed = device_login(tag: "again")
 
       assert {:error, :login_not_stored} =
                Connections.put_logins(other.secret_id, %{"main" => parsed})
@@ -741,10 +725,10 @@ defmodule Apiary.Connections.LoginsTest do
   end
 
   describe "Login.put/3" do
-    test "adds 1 to the generation for each login pasted over the key", %{scope: scope} do
+    test "adds 1 to the generation for each sign-in over the key", %{scope: scope} do
       provider = subscription!(scope)
       value = key_value!(provider, "main")
-      {:ok, parsed} = Login.parse(login_paste(tag: "x"))
+      parsed = device_login(tag: "x")
 
       assert {:ok, %Login{generation: 2}} = Login.put(value, parsed)
       assert {:ok, %Login{generation: 3}} = Login.put(value, parsed)

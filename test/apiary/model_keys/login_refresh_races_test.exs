@@ -64,7 +64,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
         keys: [
           %{
             value_id: "main",
-            value: login_paste(tokens: login_tokens(tag: "main", expires_in: 60))
+            value: device_login(tokens: login_tokens(tag: "main", expires_in: 60))
           }
         ]
       })
@@ -108,7 +108,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     {:ok, _provider} =
       Connections.add_provider_key(scope, provider, %{
         value_id: name,
-        value: login_paste(tokens: login_tokens(tag: tag, expires_in: 60))
+        value: device_login(tokens: login_tokens(tag: tag, expires_in: 60))
       })
 
     key_id(provider, name)
@@ -127,7 +127,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     {:ok, _provider} =
       Connections.update_provider_key(scope, provider, name, %{
         "value_id" => name,
-        "value" => login_paste(tokens: login_tokens(tag: tag, expires_in: 60))
+        "value" => device_login(tokens: login_tokens(tag: tag, expires_in: 60))
       })
 
     :ok
@@ -198,7 +198,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     {:ok, _provider} =
       Connections.update_provider_key(ctx.scope, ctx.provider, "main", %{
         "value_id" => "main",
-        "value" => login_paste(tokens: pasted)
+        "value" => device_login(tokens: pasted)
       })
 
     send(call, :go)
@@ -227,7 +227,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
           {:ok, _provider} =
             Connections.update_provider_key(ctx.scope, ctx.provider, "main", %{
               "value_id" => "main",
-              "value" => login_paste(tokens: pasted)
+              "value" => device_login(tokens: pasted)
             })
         end
       ])
@@ -727,11 +727,11 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
           keys: [
             %{
               value_id: "main",
-              value: login_paste(tokens: login_tokens(tag: "m", expires_in: 60))
+              value: device_login(tokens: login_tokens(tag: "m", expires_in: 60))
             },
             %{
               value_id: "spare",
-              value: login_paste(tokens: login_tokens(tag: "s", expires_in: 60))
+              value: device_login(tokens: login_tokens(tag: "s", expires_in: 60))
             }
           ]
         })
@@ -739,7 +739,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
       provider = Repo.get!(Connection, provider.id)
       main = key_id(provider, "main")
       spare = key_id(provider, "spare")
-      pasted = login_paste(tokens: login_tokens(tag: "p#{round}"))
+      pasted = device_login(tokens: login_tokens(tag: "p#{round}"))
 
       results =
         together([

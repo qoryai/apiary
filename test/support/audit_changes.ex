@@ -2207,7 +2207,7 @@ defmodule Apiary.AuditChanges do
     {:ok, provider} =
       Apiary.Connections.create_provider(scope, %{
         provider: "openai-subscription",
-        keys: [%{value_id: "main", value: Apiary.ModelKeysFixtures.login_paste(tokens: tokens)}]
+        keys: [%{value_id: "main", value: Apiary.ModelKeysFixtures.device_login(tokens: tokens)}]
       })
 
     {provider, Apiary.ModelKeysFixtures.key_value!(provider, "main"), tokens}

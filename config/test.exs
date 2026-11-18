@@ -193,6 +193,15 @@ config :apiary, Apiary.Adapters.Calls,
 config :apiary, Apiary.ModelKeys.LoginRefresh,
   req_options: [plug: {Req.Test, Apiary.ModelKeys.LoginRefresh}]
 
+# The calls of a device sign-in are never made over the network in a test: they go to the
+# `Req.Test` stub of `Apiary.ModelKeys.LoginDevice`, which a test sets, and the poll is
+# every 20 ms. The provider's `oauth_device` is the one a test puts
+# (`Apiary.ModelKeys.DeviceSignIn.put_test_device/2`): the vendored description has none.
+config :apiary, Apiary.ModelKeys.LoginDevice,
+  req_options: [plug: {Req.Test, Apiary.ModelKeys.LoginDevice}]
+
+config :apiary, Apiary.ModelKeys.DeviceSignIn, test_seam: true, interval_ms: 20
+
 # The sweep of sign-ins goes on, in a node's next pass, where its last pass stopped
 # (`Apiary.ModelKeys.Login.sweep_due/1`). The position lives in the node, outside the
 # database, so tests that run at once would share it: off here, and the test of the position
