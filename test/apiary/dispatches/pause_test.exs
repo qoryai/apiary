@@ -67,8 +67,23 @@ defmodule Apiary.Dispatches.PauseTest do
     %{scope: scope, key: key, provider: provider, given: given}
   end
 
-  defp exit!(run, data, sequence \\ 9) do
-    event_fixture(run, sequence, "run.exited", data)
+  # The run exits with `data` after its session 1 started on the runtime of its run
+  # settings, as Forager reports it (`runs.runtime`); with `started: false`, no session
+  # started.
+  defp exit!(run, data, opts \\ []) do
+    started? =
+      Repo.exists?(
+        from(e in Apiary.Runs.Event,
+          where: e.run_id == ^run.id and e.type == "dev.qory.session.started"
+        )
+      )
+
+    if Keyword.get(opts, :started, true) and not started? do
+      runtime = (run.run_settings || %{})["runtime"]
+      event_fixture(run, 1, "session.started", session_started_data(%{"runtime" => runtime}))
+    end
+
+    event_fixture(run, 9, "run.exited", data)
     assert {:ok, %Run{exited_at: %DateTime{}}} = Projector.project(run)
   end
 
@@ -638,19 +653,21 @@ defmodule Apiary.Dispatches.PauseTest do
       assert Transcript.resume_at_claim(dispatch_run, @runtime) == nil
     end
 
-    test "is resumed only by a continuation on the paused run's runtime", ctx do
-      other = @runtime <> "-second"
-      given = %{ctx.given | run_settings: %{"runtime" => other}}
-
+    test "is resumed only by a continuation on the runtime of the session that paused", ctx do
       %{dispatch_run: dispatch_run, run: run} =
-        handed_over_fixture(ctx.scope, ctx.key, given)
+        handed_over_fixture(ctx.scope, ctx.key, ctx.given)
 
+      # The run's settings have the catalogue's runtime, and the session that paused ran
+      # on another one, as a later session of a shared stage can.
+      other = @runtime <> "-second"
+      event_fixture(run, 1, "session.started", session_started_data(%{"runtime" => other}))
       event_fixture(run, 3, "session.transcript", chunk(0, "{\"a\":1}\n"))
       exit!(run, @paused)
+      assert %Run{runtime: ^other, run_settings: %{"runtime" => @runtime}} = Repo.reload(run)
 
       queued = run_of(dispatch_run.work_item_id, 2)
 
-      # The same runtime resumes the transcript.
+      # The runtime of the session that paused resumes the transcript.
       assert %{"run_id" => run_id, "session_id" => "5f2c9a1e", "path" => @path} =
                Transcript.resume_at_claim(queued, other)
 
@@ -666,6 +683,88 @@ defmodule Apiary.Dispatches.PauseTest do
       assert continuation.run_settings["runtime"] == @runtime
       assert continuation.resume == nil
       assert Transcript.resume(continuation) == nil
+    end
+
+    test "is not resumed when no session of the paused run reported its runtime", ctx do
+      %{dispatch_run: dispatch_run, run: run} =
+        handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+
+      event_fixture(run, 3, "session.transcript", chunk(0, "{\"a\":1}\n"))
+      exit!(run, @paused, started: false)
+      assert %Run{runtime: nil} = Repo.reload(run)
+      assert Transcript.last(run.id) == %{session_id: "5f2c9a1e", path: @path}
+
+      queued = run_of(dispatch_run.work_item_id, 2)
+      assert Transcript.resume_at_claim(queued, @runtime) == nil
+      assert Transcript.resume_at_claim(queued, nil) == nil
+
+      %{run: continuation} = handed_over(ctx.scope, ctx.key, queued, %{})
+      assert continuation.run_settings["runtime"] == @runtime
+      assert continuation.resume == nil
+    end
+
+    test "is not resumed by a continuation claimed on a fallback of another runtime, which keeps the pushed commits",
+         ctx do
+      release = Apiary.Kinds.Runtimes.list() |> Enum.find(&(&1.name == "claude"))
+
+      # A runtime that takes only a bearer key, which OpenRouter's API has and Anthropic's
+      # does not.
+      bearer = %{
+        release
+        | name: release.name <> "-bearer",
+          title: release.title <> " bearer",
+          model_keys: Enum.filter(release.model_keys, &(&1["auth"] == %{"scheme" => "bearer"}))
+      }
+
+      :ok = Apiary.Kinds.Runtimes.put_test_list([release, bearer])
+
+      {:ok, router} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "openrouter",
+          keys: [%{value_id: "main", value: "sk-or-fallback-0123456789"}]
+        })
+
+      tiers = Map.new(Apiary.ModelChoices.Resolution.tiers(), &{&1, "anthropic/claude-opus-5.5"})
+
+      {:ok, _choice} =
+        Apiary.ModelChoicesFixtures.put_choice(ctx.scope, :workspace, %{
+          provider: ctx.provider.public_id,
+          runtime: release.name,
+          tiers: Map.new(Apiary.ModelChoices.Resolution.tiers(), &{&1, "claude-opus-5-5"}),
+          fallbacks: [%{provider: router.public_id, runtime: bearer.name, tiers: tiers}]
+        })
+
+      # A run that takes model keys is claimed through a gateway that may receive secrets.
+      %{key: key} = handover_place_fixture(ctx.scope, allow_secrets: true)
+      %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, key)
+      assert run.run_settings["runtime"] == release.name
+      assert run.provider_connection_id == ctx.provider.id
+
+      # The paused run pushed a commit and kept a transcript of its session.
+      work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
+      commit = %{system: "forge", path: "acme/shop", commit: String.duplicate("a1", 20)}
+      :ok = Apiary.Runs.PushedCommit.record(work_item, run, [commit])
+      event_fixture(run, 3, "session.transcript", chunk(0, "{\"a\":1}\n"))
+      exit!(run, @paused)
+      assert %Run{runtime: "claude"} = Repo.reload(run)
+
+      # Every key of the choice's provider is in cooldown, so the claim takes the fallback.
+      for key <- ["main", "spare"], do: key_state!(ctx.provider, key, until: in_seconds(3600))
+      queued = run_of(dispatch_run.work_item_id, 2)
+      assert queued.continues_id == dispatch_run.id
+
+      %{run: continuation} = handed_over(ctx.scope, key, queued, %{})
+      assert continuation.provider_connection_id == router.id
+      assert continuation.run_settings["runtime"] == bearer.name
+
+      # It starts a new session, from the commits the paused run pushed.
+      assert continuation.resume == nil
+      assert Transcript.resume(continuation) == nil
+
+      assert [%{commit: pushed, run_id: run_id}] =
+               Apiary.Runs.PushedCommit.for_run(work_item, continuation)
+
+      assert {pushed, run_id} == {commit.commit, run.node_run_id}
     end
 
     test "lists the paused runs a continuation continues, oldest first", ctx do

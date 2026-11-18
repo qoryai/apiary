@@ -31,9 +31,10 @@ defmodule Apiary.Runs.Transcript do
   paused run this run continues (`paused_run/1`): of the same organisation, workspace,
   work item and stage, registered, and ended with the reason `model_key_limit`
   (`Apiary.Runs.Run.paused?/1`). Its claim stores its `resume` (`resume_at_claim/2`) for
-  a path a machine may write at, while the run has the paused run's runtime (`resumable_path?/2`), as the contract has it fixed when
-  the run starts; every run configuration of the run then has it (`resume/1`), and its
-  gateway fetches the file through the run API.
+  a path a machine may write at (`resumable_path?/2`), and only on the runtime of the
+  session that paused, as the contract has it fixed when the run starts; every run
+  configuration of the run then has it (`resume/1`), and its gateway fetches the file
+  through the run API.
 
   Nothing here logs or returns a transcript's bytes but `stream/3`, and a log line
   contains the run's id and the cause alone.
@@ -330,18 +331,24 @@ defmodule Apiary.Runs.Transcript do
   of the last chunk of the session that paused (`last/2` with the paused run's
   `paused_session`), and `runs` (`continued_runs/1`), while that run is the paused run it
   continues, its transcript there passes `check/2`, and `runtime`, the runtime of
-  `continuation`'s run settings, is the runtime of the paused run's run settings (nil
-  where a run has none); nil for any other run, and when the session that paused has no
-  chunk, so the continuation starts a new session. A continuation on another runtime, as
-  one that takes a fallback on another runtime, cannot read the paused runtime's
-  transcript. A paused run with no `paused_session`, whose sessions sent no paused
-  `dev.qory.session.exited`, resumes its last chunk of any session.
+  `continuation`'s run settings, is the paused run's `runtime` (`Apiary.Runs.Run`); nil
+  for any other run, and when the session that paused has no chunk, so the continuation
+  starts a new session. A paused run with no `runtime`, or one other than `runtime`,
+  resumes nothing: the continuation, such as one that takes a fallback on another
+  runtime, starts a new session, which a runtime cannot do from another runtime's
+  transcript, and continues from the commits the paused run pushed
+  (`Apiary.Runs.PushedCommit.for_run/2`). A paused run with no `paused_session`, whose
+  sessions sent no paused `dev.qory.session.exited`, resumes its last chunk of any
+  session.
   """
   @spec resume_at_claim(map, String.t() | nil) :: map | nil
   def resume_at_claim(%DispatchRun{continues_id: paused_id} = continuation, runtime)
       when is_binary(paused_id) do
     with %Run{} = paused <- paused_run(continuation),
-         true <- (paused.run_settings || %{})["runtime"] == runtime,
+         # `runs.runtime` is the runtime of the run's last session that is not bare
+         # (`Apiary.Runs.Fold`). That is the session that paused, because Forager pauses
+         # only the last session of a run.
+         true <- is_binary(paused.runtime) and paused.runtime == runtime,
          %{session_id: session_id, path: path} <- last(paused.id, paused.paused_session),
          true <- resumable_path?(path, session_id),
          {:ok, _file} <- check(paused.id, path) do

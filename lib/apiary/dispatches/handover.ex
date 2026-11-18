@@ -118,9 +118,8 @@ defmodule Apiary.Dispatches.Handover do
   # run that is not a prebuild the variables of its workspace and target as they are at
   # the claim, `Apiary.Variables.for_run/2`; none where there are none), for a
   # continuation of a paused run its `resume` (`Apiary.Runs.Transcript.resume_at_claim/2`,
-  # none where the run's runtime is not the paused run's), its registration digest the
-  # SHA-256 of
-  # the claim's body, with no heartbeat interval, no answer digest and no contract version
+  # none where the run's runtime is not that of the session that paused), its
+  # registration digest the SHA-256 of the claim's body, with no heartbeat interval, no answer digest and no contract version
   # until its attach; with the gateway and a run code in place of a run key
   # (`Apiary.Runs.RunCode`): the code's SHA-256, its expiry 15 minutes after the claim,
   # the grant its run key will be made from at the code's redemption, `run_key_issued_at`

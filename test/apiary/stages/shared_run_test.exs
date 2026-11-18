@@ -603,8 +603,15 @@ defmodule Apiary.Stages.SharedRunTest do
           {10 + session, "session.exited", data}
         end
 
+      # Each session started on the runtime `claude` (`runs.runtime`).
+      starts =
+        for session <- ran,
+            do:
+              {session, "session.started",
+               Apiary.RunEventsFixtures.session_started_data(%{"session" => session})}
+
       exited = %{"state" => "paused", "reason" => "model_key_limit", "exit_code" => 143}
-      Apiary.RunEventsFixtures.events_fixture(registered, chunks ++ exits)
+      Apiary.RunEventsFixtures.events_fixture(registered, starts ++ chunks ++ exits)
       Apiary.RunEventsFixtures.event_fixture(registered, 20, "run.exited", exited)
       assert {:ok, %Run{state: "paused"}} = Apiary.Runs.Projector.project(registered)
 
@@ -618,10 +625,6 @@ defmodule Apiary.Stages.SharedRunTest do
 
       {Repo.get!(Run, registered.id), continuation}
     end
-
-    # The runtime of the paused run's settings, which a continuation on the same runtime
-    # has.
-    defp runtime(%Run{run_settings: settings}), do: (settings || %{})["runtime"]
 
     test "in its second session of three resumes the second session", %{scope: scope} do
       save!(scope, [
@@ -640,7 +643,7 @@ defmodule Apiary.Stages.SharedRunTest do
       assert %DispatchRun{workflow: "write-acceptance-checks", stage_entry: 1} = continuation
 
       assert %{"session_id" => "e5f6a7b8", "path" => path} =
-               Apiary.Runs.Transcript.resume_at_claim(continuation, runtime(paused))
+               Apiary.Runs.Transcript.resume_at_claim(continuation, "claude")
 
       assert path == transcript_path(2)
 
@@ -667,7 +670,7 @@ defmodule Apiary.Stages.SharedRunTest do
       # Session 1's transcript is there, but the continuation resumes no session: it runs
       # session 2's workflow in a new session.
       assert Apiary.Runs.Transcript.last(paused.id) != nil
-      assert Apiary.Runs.Transcript.resume_at_claim(continuation, runtime(paused)) == nil
+      assert Apiary.Runs.Transcript.resume_at_claim(continuation, "claude") == nil
       assert %DispatchRun{workflow: "write-acceptance-checks", stage_entry: 1} = continuation
     end
   end
