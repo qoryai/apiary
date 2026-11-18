@@ -1285,7 +1285,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert items(html, "work-item-explore-run") == ["Attempt 1 (Run 12)", "Queued"]
     end
 
-    test "running with answers: the wait block, then the proposal and the questions as text" do
+    test "running with open questions: the wait block, then the proposal, and no line" do
       w = invoice_item(%{status: :running, run: running_run(3)})
 
       html =
@@ -1312,16 +1312,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "work-item-explore-run",
                "work-item-explore-wait",
                "work-item-explore-proposal",
-               "work-item-explore-questions-line",
                "work-item-record"
              ]
 
-      # The questions are on the Questions tab: Explore's tab has the line that counts them.
-      assert text(html, "#work-item-explore-questions-line") |> String.replace(~r/\s+\./, ".") ==
-               "The agents of this stage asked 4 questions. See them on the Questions tab."
-
-      assert attr(html, "#work-item-explore-questions-line a", "href") ==
-               ["/acme/main/work/41/questions"]
+      # A question is open: the page puts the frame Open questions in its slot
+      # (`open_questions/1`), so the tab has no line that counts the questions.
+      assert count(html, "#work-item-explore-questions-line") == 0
 
       # While a run runs: no Add review comment, no gate, no form, no Reply.
       assert count(html, "#work-item-explore-proposal-review-add") == 0
@@ -3030,7 +3026,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     test "a run that ended at its handover, before it started: what to fix and why, here and in the folds" do
       for {cause, body} <- [
             {:variables_invalid,
-             "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."},
+             "Fix the variables in the workspace or its organisation, then run Explore again. One of the run's variables breaks a variable rule."},
             {:ticket_gone,
              "If the ticket is still in the Backlog, take it in again from there. Qory Apiary no longer has this work item's ticket."},
             {:inputs_invalid,

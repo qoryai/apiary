@@ -1613,6 +1613,31 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert note_at < timeline_at
     end
 
+    test "the note lists the runtimes of the catalogue, and its verb agrees with their number",
+         ctx do
+      runtimes = Apiary.Kinds.Runtimes.list()
+      extra = %{hd(runtimes) | name: "gemini", title: "Gemini CLI"}
+      run = sessions_run(ctx.scope, ["qory"])
+
+      :ok = Apiary.Kinds.Runtimes.put_test_list(runtimes)
+      lv = open(ctx.conn, ctx.scope, run)
+      assert note_text(lv, "#prepare-machine-session-agent .q-limits") == @runtime_note
+
+      :ok = Apiary.Kinds.Runtimes.put_test_list(runtimes ++ [extra])
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert note_text(lv, "#prepare-machine-session-agent .q-limits") ==
+               "Only Claude Code, Codex, and Gemini CLI send session events. This session ran " <>
+                 "qory: its output is under Terminal, and its connections under Network access."
+
+      :ok = Apiary.Kinds.Runtimes.put_test_list([hd(runtimes)])
+      lv = open(ctx.conn, ctx.scope, run)
+
+      assert note_text(lv, "#prepare-machine-session-agent .q-limits") ==
+               "Only Claude Code sends session events. This session ran qory: its output is " <>
+                 "under Terminal, and its connections under Network access."
+    end
+
     test "for a reader without the Terminal, the note in Run the agent leaves the Terminal out",
          ctx do
       run = sessions_run(ctx.scope, ["qory"])

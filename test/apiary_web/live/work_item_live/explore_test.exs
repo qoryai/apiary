@@ -104,24 +104,16 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
       assert has_element?(view, "#{q}-go[disabled]", "Run another round of Explore")
       assert has_element?(view, "#{q}-form .q-xp-comment label", "Comment on the whole proposal")
 
-      # Explore's tab has no questions frame: a line counts the questions and links the
-      # Questions tab (the regex allows the space the page draws before the full stop).
-      # The proposal stays above, with no Add review comment in its header.
+      # Explore's tab has the same frame and form below the proposal, and no line that
+      # counts the questions. The proposal stays above, with no Add review comment in its
+      # header.
       {:ok, view, _html} = live(conn, explore(scope, work_item.number))
-      refute has_element?(view, "#work-item-questions-open")
-      refute has_element?(view, "#work-item-questions-open-form")
-
-      assert has_element?(
-               view,
-               "#work-item-explore-questions-line",
-               ~r/The agents of this stage asked 2 questions\.\s+See them on the\s+Questions tab\s*\./
-             )
-
-      assert has_element?(
-               view,
-               ~s(#work-item-explore-questions-line a[href="#{questions(scope, work_item.number)}"]),
-               "Questions tab"
-             )
+      e = "#work-item-explore-questions-open"
+      assert has_element?(view, "#{e}-h", "Open questions")
+      assert has_element?(view, "#{e}-q-1 b", "Which currency should the invoice PDF show?")
+      assert has_element?(view, "label[for=work-item-explore-questions-open-answer-1-own]")
+      assert has_element?(view, "#{e}-go[disabled]", "Run another round of Explore")
+      refute has_element?(view, "#work-item-explore-questions-line")
 
       assert has_element?(view, "#work-item-explore-proposal-h", "Proposal")
       assert has_element?(view, "#work-item-explore-proposal .q-xp-cap", "Version 1")
@@ -1190,7 +1182,7 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
 
       view |> element("#{gate}-go", "Approve") |> render_click()
       refute has_element?(view, gate)
-      assert has_element?(view, "#work-item-explore-questions-line")
+      assert has_element?(view, "#work-item-explore-questions-open-form")
       render_patch(view, questions(scope, work_item.number))
       assert has_element?(view, "#work-item-questions-open-form")
 

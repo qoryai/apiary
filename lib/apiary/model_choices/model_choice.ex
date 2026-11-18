@@ -22,7 +22,7 @@ defmodule Apiary.ModelChoices.ModelChoice do
   # which an operator's chain served other organisations; no code writes or resolves a row
   # of that chain. Only a row of levels 4 and 5 is `locked`.
   #
-  # A tier map has one to three of the tiers `light`, `fast` and `thinking`, each an object
+  # A tier map has one to three of the tiers `light`, `balanced` and `thinking`, each an object
   # of a `model` id and, when it sets one, an `effort` value.
   #
   # `fallbacks` are the providers runs use, in order, while every key of the choice's

@@ -366,8 +366,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   end
 
   # Whether the current stage's tab has the questions open: some question is open, of any
-  # stage. The Questions tab then holds the decisions of the current stage in its form, so
-  # that tab's Decisions frame is empty.
+  # stage. The form of the Open questions frame, on this tab and on the Questions tab,
+  # then has the decisions of the current stage, so the tab's Decisions frame is empty.
   defp waiting?(flow, stage, questions),
     do: stage.id == flow.stage.id and Enum.any?(questions, &(&1.state == :open))
 
@@ -454,8 +454,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   # frames/2 is the output frames of `stage`, in its order, with the newest version a run of
   # the take in pushed at the stage of each type (`newest`): `%{type:, version:, open:,
   # kind:}`, the first one `open`. A type with no such version has no frame, nor do the
-  # review comments, the document a review comment is written to, and the questions, which
-  # are on the Questions tab. A frame's `kind` is `:output`. On the tab of a stage with a
+  # review comments, the document a review comment is written to. A frame's `kind` is
+  # `:output`. On the tab of a stage with a
   # `verification` output, every frame is open; the scenarios' films and pictures
   # (`ApiaryWeb.WorkItemLive.VerifyTab.media/0`) share one frame of the kind `:scenarios`, in
   # the place of the first, with the highest of their versions; and each output other than
@@ -463,11 +463,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   # and no text.
   @spec frames(map, %{String.t() => pos_integer}) :: [map]
   def frames(stage, newest) do
-    types =
-      Enum.filter(
-        stage.outputs,
-        &(Map.has_key?(newest, &1) and &1 not in ["review-comments", "questions"])
-      )
+    types = Enum.filter(stage.outputs, &(Map.has_key?(newest, &1) and &1 != "review-comments"))
 
     verify? = "verification" in stage.outputs
     media = if verify?, do: Enum.filter(types, &(&1 in VerifyTab.media())), else: []

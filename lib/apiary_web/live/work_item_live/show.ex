@@ -5,8 +5,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # tab (`:questions`, once a question exists) and its Thread (`:thread`). The tabs are live
   # actions of this one LiveView, so a tab is a patch and the header stays. The address with
   # no tab (`:open`) shows the tab the work item opens on
-  # (`home/4`), once, when the address loads: the Questions tab while the work item needs
-  # answers. A stage's id in the address is stable, so a
+  # (`home/4`), once, when the address loads: the tab of the stage that waits, while the
+  # work item needs answers. A stage's id in the address is stable, so a
   # stage renamed by an owner keeps its address.
   #
   # **`/explore`** (`:explore`) is Explore's tab with no stage card. With one, it patches to
@@ -55,8 +55,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # and a reply to a review comment on its form page (`?reply=<id>`), each
   # sent with the work item the page last read and the attempt of its latest run, so an
   # action from a page that read an earlier state fails (`Apiary.WorkItems.Moves`). A
-  # member answers the questions only on the Questions tab. Run another round, from the
-  # questions form of that tab or the gate of the current stage's tab, sends
+  # member answers the questions in the frame Open questions of the current stage's tab,
+  # or of the Questions tab: both forms read and write the page's one draft (`answers`,
+  # `comment`, `drafts/2`), so an answer picked on one tab shows on the other until the
+  # page loads again. Run another round, from either questions form or the gate of the
+  # current stage's tab, sends
   # the answers given, one comment on the whole round and the open review comments of
   # that stage in one move, which starts one run (`Apiary.WorkItems.another_round/4`);
   # the open review comments and the comment go only from a reader who may send review
@@ -129,7 +132,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   alias Apiary.{Access, AccessKeys, Artifacts, Edition, Gateways, Processes, Runs, Stages}
   alias Apiary.{Submissions, WorkItems, WorkspaceSetup}
   alias Apiary.Runs.Run
-  alias Apiary.WorkItems.ExploreView
+  alias Apiary.WorkItems.{ExploreView, Proposal}
   alias ApiaryWeb.{ArtifactComponents, HarnessComponents, SpendDialog, UserAuth}
   alias ApiaryWeb.WorkItemLive.{Comments, StageComponents, StageTab, VerifyTab, View, Workflow}
 
@@ -251,7 +254,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             page={@flow}
             number={@number}
             add_path={&add_path(@current_scope, @number, &1)}
-            answers_path={tab_path(@current_scope, @number, :questions)}
+            answers_path={answers_path(@current_scope, @number, @flow)}
             asking={@stage_asking}
             error={@stage_error}
             check={@stage_check}
@@ -269,7 +272,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             can_close={@can.close}
             previous={@previous}
             explore_path={if @tab != :explore, do: tab_path(@current_scope, @number, :explore, @flow)}
-            questions_path={if @tab != :questions, do: tab_path(@current_scope, @number, :questions)}
+            questions_path={if @tab != :explore, do: answers_path(@current_scope, @number, @flow)}
             item_noun={@source.item_noun}
             now={@now}
             stage_name={if one_card?(@flow, @item), do: @flow.stage.name}
@@ -400,6 +403,26 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             track_offer={track_offer(@flow, @track)}
             cancel={@cancel}
           >
+            <:open_questions>
+              <.tab_questions
+                id="work-item-explore-questions"
+                number={@number}
+                questions={@questions}
+                flow={@flow}
+                tab={@tab}
+                can={@can}
+                item={@item}
+                answers={@answers}
+                comment={@comment}
+                errors={@errors}
+                form_error={@form_error}
+                submits={@submits}
+                move_error={@move_error}
+                proposal={@proposal}
+                review_comments={@view.review_comments}
+                now={@now}
+              />
+            </:open_questions>
             <:needs :if={@flow && @flow.explore && needs?(@flow)}>
               <StageComponents.needs_block
                 page={@flow}
@@ -462,6 +485,26 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             now={@now}
             cancel={@cancel}
           >
+            <:open_questions>
+              <.tab_questions
+                id="work-item-tab-questions"
+                number={@number}
+                questions={@questions}
+                flow={@flow}
+                tab={@tab}
+                can={@can}
+                item={@item}
+                answers={@answers}
+                comment={@comment}
+                errors={@errors}
+                form_error={@form_error}
+                submits={@submits}
+                move_error={@move_error}
+                proposal={@proposal}
+                review_comments={@view.review_comments}
+                now={@now}
+              />
+            </:open_questions>
             <:artifacts :if={!lists_above?(@flow)}>
               <.artifacts_section
                 flow={@flow}
@@ -847,9 +890,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp ticketed(socket), do: socket
 
-  # The tab the work item opens on. The Questions tab, while the work item needs answers: its
-  # stage waits for them (`flow.state`) and a question is open, or, with no stage card,
-  # Explore waits for them. Else, with a stage card: the tab of its current stage while it
+  # The tab the work item opens on. The tab of the stage that waits, with its Open questions
+  # frame, while the work item needs answers: its stage waits for them (`flow.state`) and a
+  # question is open, or, with no stage card, Explore waits for them. Else, with a stage
+  # card: the tab of its current stage while it
   # is live, whatever Explore's status, because a moved-back work item has a confirmation and
   # a stopped run stops at its stage; else the Ticket tab. A test work item has no ticket, so
   # it opens on that tab even after it ended, else on the Thread. With none, Explore's for a
@@ -857,7 +901,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # (`at_explore?/2`), by its status; else the Ticket tab.
   defp home(row, status, flow, questions) do
     if open?(questions) and waits_for_answers?(status, flow),
-      do: :questions,
+      do: if(flow, do: StageTab.current(flow) || :questions, else: :explore),
       else: home(row, status, flow)
   end
 
@@ -908,6 +952,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   def handle_event("spend_cancel", _params, socket), do: {:noreply, assign(socket, :spend, nil)}
+
+  # The note typed in the spend's dialog, where it changes the run that starts.
+  def handle_event("spend_note", params, %{assigns: %{spend: %{} = spend}} = socket),
+    do: {:noreply, assign(socket, :spend, SpendDialog.noted(spend, params["note"]))}
+
+  def handle_event("spend_note", _params, socket), do: {:noreply, socket}
 
   def handle_event("show_earlier_comments", _params, socket),
     do: {:noreply, socket |> assign(:all_comments, true) |> load()}
@@ -1040,7 +1090,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     if round_sends?(socket, drafted(params), comment_of(params)) do
       # The questions form names the stage that waits, on its button and in its dialog.
       {title, action} =
-        if socket.assigns.tab == :questions do
+        if questions_form?(socket) do
           stage = stage_now(socket.assigns.flow)
 
           {gettext("Run another round of %{stage}?", stage: stage),
@@ -1052,7 +1102,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       SpendDialog.ask("answer", params,
         title: title,
         action: action,
-        line: run_line(socket, :next_run),
+        line: run_line(socket, :next_run, comment_of(params) != nil),
         return_to: round_button(socket)
       )
     end
@@ -1076,14 +1126,23 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp spend(_event, _params, _socket), do: nil
 
-  # The Run another round button the dialog's focus goes back to: the gate's, on Explore's
-  # tab or a stage's, or the questions form's, on the Questions tab.
+  # The Run another round button the dialog's focus goes back to: the questions form's, on
+  # the Questions tab, and on Explore's tab or a stage's while the questions wait; else the
+  # gate's.
   defp round_button(%{assigns: %{tab: :questions}}), do: "work-item-questions-open-go"
 
   defp round_button(socket) do
     tab = if is_binary(socket.assigns.tab), do: "work-item-tab", else: "work-item-explore"
-    "#{tab}-gate-send"
+
+    if questions_form?(socket),
+      do: "#{tab}-questions-open-go",
+      else: "#{tab}-gate-send"
   end
+
+  # Whether Run another round comes from a questions form: on the Questions tab, or while
+  # the questions wait, when the tab has no gate.
+  defp questions_form?(socket),
+    do: socket.assigns.tab == :questions or round_status(socket) == :questions
 
   defp stage_spend("stage_approve", params, socket) do
     ask_if_run("stage_approve", params, socket, :approve,
@@ -1118,6 +1177,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       title: gettext("Run another round?"),
       action: gettext("Run another round"),
       line: run_line(socket, :another_round),
+      noted_line: run_line(socket, :another_round, true),
       return_to: "work-item-stage-escalation-another",
       note: escalation_note()
     )
@@ -1176,23 +1236,52 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp escalation_note,
     do: [hint: gettext("A note you add goes to the next run as work item data.")]
 
-  # The dialog of `event` where `act` starts a run, named by its workflow; else nil.
+  # The dialog of `event` where `act` starts a run, named by its workflow; else nil. With
+  # the note of the click (`params["note"]`) or none, as the act stores it: a note is
+  # feedback where a stage has `{feedback: new}`, so the workflow can differ. A dialog with
+  # a note field has the line for each, and shows the one for the note typed
+  # (`SpendDialog.noted/2`).
   defp ask_if_run(event, params, socket, act, opts) do
-    case Stages.starts(socket.assigns.row, act) do
+    noted = note(params) != nil
+
+    case Stages.starts(socket.assigns.row, act, noted) do
       {:run, workflow} ->
-        line = SpendDialog.run_line({:workflow, workflow}, scope(socket).workspace)
-        SpendDialog.ask(event, params, [line: line] ++ opts)
+        line = workflow_line(socket, {:run, workflow})
+
+        lines =
+          if Keyword.has_key?(opts, :note) do
+            {plain, with_note} =
+              if noted,
+                do: {Stages.starts(socket.assigns.row, act), {:run, workflow}},
+                else: {{:run, workflow}, Stages.starts(socket.assigns.row, act, true)}
+
+            [line: run_or_none(socket, plain), noted_line: run_or_none(socket, with_note)]
+          else
+            [line: line]
+          end
+
+        SpendDialog.ask(event, params, lines ++ opts)
 
       :none ->
         nil
     end
   end
 
-  # What `act` starts: a run of its workflow where the stage runner finds it, else the
-  # next run of the work item's stage, or of Explore with no stage.
-  defp run_line(socket, act) do
+  # The line of a run of `workflow`.
+  defp workflow_line(socket, {:run, workflow}),
+    do: SpendDialog.run_line({:workflow, workflow}, scope(socket).workspace)
+
+  # The line of a run of `workflow`; nil where the act starts no run, so the dialog shows
+  # no line for it.
+  defp run_or_none(socket, {:run, _workflow} = run), do: workflow_line(socket, run)
+  defp run_or_none(_socket, :none), do: nil
+
+  # What `act` starts, with a note or a comment for `noted` (`Apiary.Stages.starts/3`): a
+  # run of its workflow where the stage runner finds it, else the next run of the work
+  # item's stage, or of Explore with no stage.
+  defp run_line(socket, act, noted \\ false) do
     what =
-      case Stages.starts(socket.assigns.row, act) do
+      case Stages.starts(socket.assigns.row, act, noted) do
         {:run, workflow} -> {:workflow, workflow}
         :none -> {:stage, stage_now(socket.assigns.flow)}
       end
@@ -1246,7 +1335,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # (`can_change`, `can/4`). `answer_list/2` keeps a decided question only where the
   # draft changes it.
   @spec answers(map, [map], atom, boolean) ::
-          {:ok, [%{String.t() => String.t() | nil}]} | {:error, %{String.t() => atom}}
+          {:ok, [%{String.t() => String.t() | nil}]} | {:error, %{String.t() => term}}
   def answers(draft, questions, status, can_change) do
     open = if status == :questions, do: Enum.filter(questions, &(&1.state == :open)), else: []
 
@@ -1562,6 +1651,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   def refused({:invalid, :note}, _flow),
     do: gettext("Shorten the note to 4,000 characters or fewer.")
 
+  def refused(:note_missing, _flow), do: gettext("Add a note that says what to change.")
+
   def refused(_reason, _flow),
     do:
       gettext(
@@ -1772,10 +1863,27 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # The drafts of the questions form and of the comment, as the reader changes them.
   defp drafts(socket, params) do
     socket
-    |> assign(:answers, drafted(params))
+    |> assign(:answers, params |> drafted() |> wording_picks(params, socket.assigns.questions))
     |> assign(:comment, if(is_binary(params["comment"]), do: params["comment"], else: ""))
     |> assign(:track, track_draft(params, socket.assigns.track))
   end
+
+  # The draft after an edit of the criterion's new wording (`_target` is the field
+  # `answers[<id>][wording]`) where no option is picked: the option with that wording
+  # (`change_option/1`) picked, so the edit counts when the round runs.
+  defp wording_picks(draft, %{"_target" => ["answers", id, "wording"]}, questions)
+       when is_binary(id) do
+    with %{} = given <- draft[id],
+         nil <- given["option"],
+         %{} = question <- Enum.find(questions, &(&1.id == id)),
+         %{place: place} <- change_option(question) do
+      Map.put(draft, id, Map.put(given, "option", Integer.to_string(place)))
+    else
+      _other -> draft
+    end
+  end
+
+  defp wording_picks(draft, _params, _questions), do: draft
 
   # The track draft after a change of the gate's form: the radio's value where the reader
   # changed the radios (`_target` is `["track"]`), else the draft as it was. A change of the
@@ -1919,7 +2027,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp unread_of(_proposal), do: nil
 
   # The questions form's draft: by question id, each `%{"option" => choice, "note" =>
-  # text}` with only text in it.
+  # text}` with only text in it, and `"wording"`, the text of the field of the option that
+  # changes a criterion (`ApiaryWeb.WorkItemComponents.change_option/1`), where it has one.
   defp drafted(params) do
     case params["answers"] do
       %{} = given ->
@@ -1927,7 +2036,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           {id,
            for(
              {field, text} <- value,
-             field in ["option", "note"],
+             field in ["option", "note", "wording"],
              is_binary(text),
              into: %{},
              do: {field, text}
@@ -1950,16 +2059,27 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # where the draft does not change it: the run's option, or nothing, picked, and an
   # empty field (`ApiaryWeb.WorkItemComponents.decision_changed?/2`). `{:error, errors}`
   # by question id, `:note_required` for Give your own option with an empty field.
+  #
+  # The option that changes a question's criterion
+  # (`ApiaryWeb.WorkItemComponents.change_option/1`), picked with a wording other than the
+  # agent's, keeps its title, and the note starts with the option's label and that
+  # wording, "Change AC-4: <wording>", a blank line before the note written. With the
+  # agent's wording, the answer is the option as for any other. A
+  # wording that would make the note longer than `Proposal.max_answer/0` characters, that
+  # has a character the note refuses, or an empty field, is the error `{:wording, error}`
+  # of its question (`ApiaryWeb.WorkItemComponents.wording_error/1`).
   @spec answer_list(map, [map]) ::
-          {:ok, [%{String.t() => String.t() | nil}]} | {:error, %{String.t() => atom}}
+          {:ok, [%{String.t() => String.t() | nil}]} | {:error, %{String.t() => term}}
   def answer_list(draft, open) when is_map(draft) and is_list(open) do
     checked =
       for %{id: id, options: options} = question <- open,
           not decided?(question) or decision_changed?(question, draft[id]) do
         given = Map.get(draft, id, %{})
         note = if blank?(given["note"]), do: nil, else: given["note"]
+        {note, wording_error} = with_wording(note, given, change_option(question))
 
         case {picked(given["option"], options), note} do
+          _any when wording_error != nil -> {:error, id, {:wording, wording_error}}
           {:own, nil} -> {:error, id, :note_required}
           {:own, note} -> {:ok, %{"id" => id, "option" => nil, "note" => note}}
           {nil, nil} -> :none
@@ -1975,6 +2095,46 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   defp decided?(question), do: question[:state] == :decided and question[:decision] != nil
+
+  # The note of an answer that picks the option changing a criterion (`change`), with the
+  # member's wording where it differs from the agent's, line breaks compared as line feeds,
+  # and nil; or the note as given and the wording's error: `{:too_long, count}` where the
+  # note would pass `Proposal.max_answer/0` characters, `count` what the wording may take
+  # beside the label and the note, `:characters` for a character the note refuses, or
+  # `{:blank, criterion}` for an empty field, `criterion` such as "AC-4": the answer then
+  # sends nothing, not the agent's wording.
+  defp with_wording(note, %{"option" => option, "wording" => wording}, %{} = change)
+       when is_binary(wording) do
+    edited = line_feeds(wording)
+
+    cond do
+      option != Integer.to_string(change.place) or edited == line_feeds(change.proposal) ->
+        {note, nil}
+
+      edited == "" ->
+        {note, {:blank, change.criterion}}
+
+      not Proposal.text?(edited) ->
+        {note, :characters}
+
+      true ->
+        changed = change.label <> " " <> edited
+        composed = if note, do: changed <> "\n\n" <> note, else: changed
+        max = Proposal.max_answer()
+
+        if length(String.codepoints(composed)) > max and
+             (is_nil(note) or length(String.codepoints(line_feeds(note))) <= max) do
+          rest = max - length(String.codepoints(composed)) + length(String.codepoints(edited))
+          {note, {:too_long, max(rest, 0)}}
+        else
+          {composed, nil}
+        end
+    end
+  end
+
+  defp with_wording(note, _given, _change), do: {note, nil}
+
+  defp line_feeds(text), do: text |> String.replace(~r/\r\n?/, "\n") |> String.trim()
 
   # The option of a choice: `:own`, an option's title by its place from 1, or nil.
   defp picked("own", _options), do: :own
@@ -3057,7 +3217,57 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp open?(questions), do: Enum.any?(questions, &(not decision?(&1) and &1.state == :open))
 
   # Whether the reader may answer the open questions now: the work item waits for answers.
+  attr :id, :string, required: true
+  attr :number, :integer, required: true
+  attr :questions, :list, required: true
+  attr :flow, :map, default: nil
+  attr :tab, :any, required: true
+  attr :can, :map, required: true
+  attr :item, :map, required: true
+  attr :answers, :map, required: true
+  attr :comment, :any, required: true
+  attr :errors, :map, required: true
+  attr :form_error, :any, required: true
+  attr :submits, :integer, required: true
+  attr :move_error, :any, required: true
+  attr :proposal, :any, required: true
+  attr :review_comments, :list, required: true
+  attr :now, :any, required: true
+
+  # The frame Open questions of the tab `tab`, Explore's or a stage's
+  # (`ApiaryWeb.WorkItemComponents.open_questions/1`), from the page's assigns.
+  defp tab_questions(assigns) do
+    ~H"""
+    <.open_questions
+      id={@id}
+      number={@number}
+      questions={@questions}
+      stages={question_stages(@flow)}
+      fallback={question_fallback(@flow)}
+      stage={stage_now(@flow)}
+      stage_id={stage_id_now(@flow)}
+      only={tab_only(@tab, @flow)}
+      form={answering?(@can, @item) and is_nil(tab_only(@tab, @flow))}
+      answers={@answers}
+      comment={@comment}
+      errors={@errors}
+      form_error={@form_error}
+      submits={@submits}
+      move_error={answering?(@can, @item) && @move_error}
+      commenting={@can.send and (question_updates(@flow) == :outputs or @proposal != nil)}
+      open_comments={open_count(@can, @review_comments)}
+      change={@can.change}
+      updates={question_updates(@flow)}
+      now={@now}
+    />
+    """
+  end
+
   defp answering?(can, item), do: can.act and item.status == :questions
+
+  # The open review comments a round sends, for a reader who may send them; else 0.
+  defp open_count(%{send: true}, comments), do: Enum.count(comments, &(&1.state == :open))
+  defp open_count(_can, _comments), do: 0
 
   # The stages of the Questions tab's answered questions, in the process order: the stages
   # of the process, or Explore alone with no stage card, whose questions have no stage.
@@ -3073,6 +3283,39 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # `ApiaryWeb.WorkItemComponents.tab_numbers/4` reads them.
   defp tab_numbers(questions, flow),
     do: tab_numbers(questions, question_stages(flow), question_fallback(flow), stage_id_now(flow))
+
+  # Where Answer the questions leads: the Open questions frame of the current stage's tab,
+  # or of Explore's with no stage card; the Questions tab where the current stage has no
+  # tab.
+  defp answers_path(scope, number, nil),
+    do: tab_path(scope, number, :explore) <> "#work-item-explore-questions-open"
+
+  defp answers_path(scope, number, flow) do
+    case StageTab.current(flow) do
+      nil ->
+        tab_path(scope, number, :questions)
+
+      :explore ->
+        tab_path(scope, number, :explore, flow) <> "#work-item-explore-questions-open"
+
+      tab ->
+        tab_path(scope, number, tab, flow) <> "#work-item-tab-questions-open"
+    end
+  end
+
+  # The open questions the Open questions frame of a stage's tab, or of Explore's, shows
+  # (`ApiaryWeb.WorkItemComponents.open_questions/1`): every one on the current stage's
+  # tab (`tab_only/2` nil); on another stage's tab, the questions asked in that stage.
+  defp tab_only(_tab, nil), do: nil
+
+  defp tab_only(tab, flow) do
+    cond do
+      StageTab.current(flow) == tab -> nil
+      tab == :explore -> flow.explore_id
+      is_binary(tab) -> tab
+      true -> nil
+    end
+  end
 
   # What the next run updates, where the questions wait: Explore's proposal, or the outputs
   # of a later stage.

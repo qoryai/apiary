@@ -4436,6 +4436,22 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     end
   end
 
+  test "the runtime follows the provider chosen: OpenAI gives Codex, Anthropic gives Claude Code",
+       %{conn: conn} do
+    %{user: user, organisation: organisation} = sign_up_fixture()
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    lv |> form("#set-up-model-form", model: %{provider: "openai"}) |> render_change()
+    assert has_element?(lv, "#set-up-model-runtime p", "Codex")
+    refute has_element?(lv, "#set-up-model-runtime p", "Claude Code")
+    assert has_element?(lv, ~s(#set-up-model-form input[name="model[runtime]"][value=codex]))
+
+    lv |> form("#set-up-model-form", model: %{provider: "anthropic"}) |> render_change()
+    assert has_element?(lv, "#set-up-model-runtime p", "Claude Code")
+    refute has_element?(lv, "#set-up-model-runtime p", "Codex")
+    assert has_element?(lv, ~s(#set-up-model-form input[name="model[runtime]"][value=claude]))
+  end
+
   test "with no provider, Add a key alone, open: adds the provider and the workspace's choice; never keeps the key",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()

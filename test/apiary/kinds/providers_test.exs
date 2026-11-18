@@ -484,6 +484,41 @@ defmodule Apiary.Kinds.ProvidersTest do
       assert Providers.api(provider, runtime) == {:ok, chat}
     end
 
+    test "keeps an API whose runtimes list the runtime, and one with no runtimes for every runtime" do
+      runtime = runtime(model_keys: [key(%{"scheme" => "bearer"})])
+      listed = Map.put(api("anthropic-messages", %{"scheme" => "bearer"}), "runtimes", ["runner"])
+      open = api("anthropic-messages", %{"scheme" => "bearer"}, "https://open.example.com")
+
+      assert Providers.api(provider(apis: [listed]), runtime) == {:ok, listed}
+      assert Providers.api(provider(apis: [open]), runtime) == {:ok, open}
+      assert Providers.api(provider(apis: [open]), %{runtime | name: "other"}) == {:ok, open}
+    end
+
+    test "drops an API whose runtimes omit the runtime, and the next API is the one used" do
+      runtime = runtime(model_keys: [key(%{"scheme" => "bearer"})])
+      other = Map.put(api("anthropic-messages", %{"scheme" => "bearer"}), "runtimes", ["other"])
+      open = api("anthropic-messages", %{"scheme" => "bearer"}, "https://open.example.com")
+
+      assert Providers.api(provider(apis: [other, open]), runtime) == {:ok, open}
+    end
+
+    test "a provider whose every API omits the runtime serves it with {:error, :format}" do
+      runtime = runtime(model_keys: [key(%{"scheme" => "bearer"})])
+      other = Map.put(api("anthropic-messages", %{"scheme" => "bearer"}), "runtimes", ["other"])
+      provider = provider(apis: [other])
+
+      assert Providers.api(provider, runtime) == {:error, :format}
+      assert Providers.serve(provider, runtime) == {:error, :format}
+      refute Providers.serves?(provider, runtime)
+    end
+
+    test "the OpenAI subscription is for codex alone, even for a runtime with the same format and key" do
+      assert {:ok, codex} = Runtimes.fetch("codex")
+      assert {:ok, subscription} = Providers.fetch("openai-subscription")
+      assert Providers.serves?(subscription, codex)
+      refute Providers.serves?(subscription, %{codex | name: "runner"})
+    end
+
     test "is the first in the description's order when more than one matches" do
       runtime =
         runtime(

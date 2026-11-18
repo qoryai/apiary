@@ -1616,8 +1616,16 @@ needs becomes a component, or an attribute of one, not a copy.
   "About" and the page's topic, such as **About models**, and labelled by that heading,
   in the muted text with no box (A form is a page,
   under No modals); and
-  `not_on_runs/1`, the one plain line a page over data no run receives says, in the
-  page's sentence (`inner_block`, required): the component adds no words.
+  `not_on_runs/1`, the one plain line a page over a workspace's secrets, variables or
+  integrations says, in the page's sentence (`inner_block`, required): the component adds
+  no words. The Secrets tab and the integration pages say "A run receives only its
+  security policy."; the workspace's Variables tab, "A run receives these variables when
+  it starts. A change reaches the next run."; the organisation's Variables page, "A run
+  receives the variables that its workspace and target inherit from this organisation, as
+  they are when it starts. A later change reaches the next run." and the line that Qory
+  Apiary keeps the variables and works out what each workspace and target inherits.
+  A software workspace reads "repository" for "target" in both sentences.
+  The guides say it so: A run receives the variables when it starts. It receives no secrets.
 - **`<.button>`** has the variants `primary`, `default`, `ghost`, `danger`,
   `danger-ghost` and `link`, and renders a link styled as a button when given `navigate`,
   `patch` or `href`, unless it is `disabled`: a disabled one is a `<button disabled>`
@@ -2250,7 +2258,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
        (an exit code of -1 is no exit status and is left out); and Model, from the
        session's last `dev.qory.runtime.started`. A session whose runtime, the `runtime`
        of its `dev.qory.session.started`, is no runtime of the catalogue
-       (`Apiary.Kinds.Runtimes`: Claude Code and Codex) then has a note:
+       (`Apiary.Kinds.Runtimes`: Claude Code and Codex) then has a note, which lists the
+       runtimes of the catalogue, all of which send session events:
        "Only Claude Code and Codex send session events. This session ran qory: its output is
        under Terminal, and its connections under Network access." For a reader without
        the Terminal, the note ends "its connections are under Network access." A Codex

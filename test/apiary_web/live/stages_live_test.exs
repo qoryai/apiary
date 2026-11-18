@@ -1092,6 +1092,22 @@ defmodule ApiaryWeb.StagesLiveTest do
                Processes.save(scope, scope.workspace, document)
     end
 
+    test "a save with feedback: new off a workflow entry says to move it (A-27)", %{scope: scope} do
+      document =
+        Draft.update_stage(Processes.default_document("software"), id_of("Build"), fn stage ->
+          Map.put(stage, "unless", %{"feedback" => "new"})
+        end)
+
+      assert {:error, errors} = Processes.validate(document)
+
+      assert Enum.map(errors, &Words.refusal(&1, document)) == [
+               "Move `feedback: new` to a workflow entry: only an entry starts a run."
+             ]
+
+      assert {:error, [%{error: :condition_feedback_entry_only}]} =
+               Processes.save(scope, scope.workspace, document)
+    end
+
     test "the refusal names the entry, the stage and the input type, as for an input condition" do
       on = %{"input" => "demo-scenarios", "changed" => true}
 

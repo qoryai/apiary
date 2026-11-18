@@ -100,7 +100,9 @@
 # keys report: the number of the session open when the gateway made it; and a host
 # credential's `purpose` `push`, the credential only the run's push proxy sets, for qory's
 # push and the calls of its submit step; and 1 to 16 credentials in a run configuration, a
-# secrets request and a sealed plaintext, at most 6 of them API credentials; and the
+# secrets request and a sealed plaintext, at most 6 of them API credentials; and
+# `denied-variables.json`, the built-in deny list of variables, with the `forge_tokens` and
+# `model_keys` that a run's variables never carry; and the
 # `codex` runtime of runtimes.json, with a `resume` prefix and path on a runtime; and
 # `account_header` and `account_claim` of an auth, for an OAuth login whose token carries
 # the account id; and `paths` of an API credential; and `unauthorized`, optional, in a
@@ -118,6 +120,7 @@ priv/contract/auth.schema.json
 priv/contract/policy.schema.json
 priv/contract/run-configuration.schema.json
 priv/contract/runtimes.json
+priv/contract/denied-variables.json
 priv/contract/secrets-request.schema.json
 priv/contract/secrets-answer.schema.json
 priv/contract/sealed-plaintext.schema.json

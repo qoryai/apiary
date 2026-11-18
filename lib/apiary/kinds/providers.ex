@@ -70,11 +70,11 @@ defmodule Apiary.Kinds.Providers do
   @doc """
   serve/2 checks whether `provider` can serve `runtime`, in this order:
 
-    1. an API of the provider has a `format` among the runtime's model formats
-       (`Runtimes.formats/1`), or else `{:error, :format}`;
-    2. an API of the provider has the `format` and the `auth` of an entry of the
-       runtime's `model_keys`, or else `{:error, :key_variable}`: the runtime has no
-       variable for a key of the provider.
+    1. an API of the provider that is for the runtime (see `api/2`) has a `format` among
+       the runtime's model formats (`Runtimes.formats/1`), or else `{:error, :format}`;
+    2. such an API has the `format` and the `auth` of an entry of the runtime's
+       `model_keys`, or else `{:error, :key_variable}`: the runtime has no variable for
+       a key of the provider.
 
   The result is `:ok` when both hold. Two auths are the same when their `scheme` is the
   same, their `header` is the same with case ignored, as HTTP header names are, and both
@@ -96,13 +96,14 @@ defmodule Apiary.Kinds.Providers do
   @doc """
   api/2 is the API of `provider` that a run of `runtime` uses: the first in the
   description's order whose `format` and `auth` an entry of the runtime's `model_keys`
-  has, as `serve/2` compares them. `{:ok, api}`, or the refusal of `serve/2`.
+  has, as `serve/2` compares them. An API with `runtimes` is for the runtimes it lists
+  alone; one without is for every runtime. `{:ok, api}`, or the refusal of `serve/2`.
   """
   @spec api(Provider.t(), Runtime.t()) ::
           {:ok, Provider.api()} | {:error, :format | :key_variable}
   def api(%Provider{apis: apis}, %Runtime{} = runtime) do
     formats = Runtimes.formats(runtime)
-    spoken = Enum.filter(apis, &(&1["format"] in formats))
+    spoken = Enum.filter(apis, &(for_runtime?(&1, runtime) and &1["format"] in formats))
 
     case Enum.find(spoken, fn api -> Enum.any?(runtime.model_keys, &key?(&1, api)) end) do
       %{} = api -> {:ok, api}
@@ -110,6 +111,11 @@ defmodule Apiary.Kinds.Providers do
       nil -> {:error, :key_variable}
     end
   end
+
+  defp for_runtime?(%{"runtimes" => runtimes}, %Runtime{name: name}) when is_list(runtimes),
+    do: name in runtimes
+
+  defp for_runtime?(_api, _runtime), do: true
 
   defp key?(%{"format" => format, "auth" => key_auth}, %{"format" => format, "auth" => auth}),
     do: same_auth?(key_auth, auth)

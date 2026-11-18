@@ -1055,8 +1055,12 @@ and `secrets`; [access.md](access.md), The organisation's variables). The core k
 seam (`Apiary.Policy.Above`, its `variables`, which `c:Apiary.Edition.above_workspace/1`
 answers), resolves the level first in every chain (`Apiary.Variables.Resolution`) and
 refuses below it what the level refuses; the edition keeps the rows and makes the writes.
-A run receives only its security policy: the core keeps and resolves variables at every
-level, and the run configuration does not carry them.
+A run receives what its workspace and target inherit: the core resolves the chain, this
+level first (`Apiary.Variables.for_run/2`, with the `secrets` feature), when the claim
+registers the run, and the run configuration carries the result in its `variables`
+(`runs.registration_variables`, kept with the run). A later change reaches the next run.
+A prebuild's image is shared by the organisation's workspaces and keyed by commit and
+environment only, so a prebuild gets none of the workspace's variables.
 
 - **The rows** (`organisation_variables`) are a name, a value and a lock each, with the
   core's checks of `variables` copied: a name's rule, a value of one line of at most 4096
@@ -1090,7 +1094,7 @@ level, and the run configuration does not carry them.
   checked as one in use, since `Apiary.Deletion.restore_workspace/2` checks nothing of its
   variables; it takes the workspace's row as the write does, so the two take turns. A
   name beginning `QORY_` is refused (`Apiary.Variables.Denied`). After the write, in its
-  transaction, the variables as they are now are checked alone, at most 128 names
+  transaction, the variables as they are now are checked alone, at most 126 names
   and 64 KiB, which the core's check does not see where there is no workspace, and
   against every workspace locked with the core's `Apiary.Variables.check_above/2`: a
   workspace or a repository that spells a name otherwise refuses the write, and so does

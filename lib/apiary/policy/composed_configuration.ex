@@ -91,9 +91,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # host (`Apiary.Harnesses.RunHarness`, `pins`): `stack_hosts`, the hosts the run's stack
   # proxy allows for qory's fetch of the harness sources before the first session joins
   # (`stack_hosts/1`). The hosts come from every source in `pins`, not from the walk's
-  # `harness_links`, and from the source of the `submit_module` in the documents the claim
-  # sent the run (`runs.run_documents`), whose module qory fetches too, and go in no
-  # `egress` list. More than 32 hosts, the most the
+  # `harness_links`, and go in no `egress` list. More than 32 hosts, the most the
   # contract takes, compose no document, as more than 64 entries in `allow_first` do. A
   # run with no walk, or whose walk pinned no such source, gains no such member.
   #
@@ -104,10 +102,10 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # For a run of a workspace's queue that continues a paused run, whose transcript could
   # be restored at its claim: `resume`, as the claim stored it (`runs.resume`,
   # `Apiary.Runs.Transcript.resume/1`), the paused run's id, the session id and the path
-  # of its transcript's last chunk, and the paused runs it continues where the claim
-  # stored them, the same in each document. Any other run gains no such member, and
-  # starts a new session. A `resume` the stored document has is dropped,
-  # so only Qory Apiary sets it.
+  # of the last transcript chunk of the session that paused, and the paused runs it
+  # continues where the claim stored them, the same in each document. Any other run
+  # gains no such member, and starts a new session. A `resume` the stored document has
+  # is dropped, so only Qory Apiary sets it.
   #
   # The members come after the document's last member, in the schema's order:
   # `variables`, `credentials`, `model_credential`, `stack_hosts`, `resume`,
@@ -121,7 +119,6 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
   require Logger
 
-  alias Apiary.Adapters.Wire
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.RunHarness
   alias Apiary.Policy.{Grammar, Render, RunConfiguration}
@@ -495,7 +492,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
         registry: RunAccess.member(run),
         work: RunCredentials.work(run),
         push: RunCredentials.push(run),
-        stack_hosts: stack_hosts((pins || []) ++ submit_source(run)),
+        stack_hosts: stack_hosts(pins),
         resume: Transcript.resume(run),
         harness_hidden: hidden?
       }
@@ -528,22 +525,6 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
       _none ->
         {false, []}
-    end
-  end
-
-  # The source of the `submit_module` in the documents the claim sent `run`
-  # (`runs.run_documents`, as encoded), `[%{"git" => url}]`, as a pin of a harness walk
-  # has its `git`; `[]` for none. The claim writes `submit_module`, then `submit`, then
-  # `inputs` (`ApiaryWeb.Contract.DispatchAnswer`), so the scan stops at the first of
-  # `submit` and `inputs` (`Wire.member_value/3`), with or without a module, and never
-  # reads the input, the documents' largest member.
-  defp submit_source(run) do
-    with documents when is_binary(documents) <- Map.get(run, :run_documents),
-         {:ok, raw} <- Wire.member_value(documents, "submit_module", ["submit", "inputs"]),
-         {:ok, %{"source" => %{"git" => git}}} when is_binary(git) <- Jason.decode(raw) do
-      [%{"git" => git}]
-    else
-      _none -> []
     end
   end
 

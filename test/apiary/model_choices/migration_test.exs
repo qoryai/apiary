@@ -22,7 +22,9 @@ defmodule Apiary.ModelChoices.MigrationTest do
     {20_261_022_171_500, Apiary.Repo.Migrations.KeyAModelChoiceByWorkflow,
      "key_a_model_choice_by_workflow"},
     {20_261_110_153_000, Apiary.Repo.Migrations.KeepTheFallbacksOfAModelChoice,
-     "keep_the_fallbacks_of_a_model_choice"}
+     "keep_the_fallbacks_of_a_model_choice"},
+    {20_261_118_120_000, Apiary.Repo.Migrations.NameTheModelTierBalanced,
+     "name_the_model_tier_balanced"}
   ]
 
   @options [log: false, migration_lock: false]
@@ -183,7 +185,12 @@ defmodule Apiary.ModelChoices.MigrationTest do
       id = "a" <> String.duplicate("b", 199)
       effort = "a" <> String.duplicate("b", 31)
 
-      full = %{"light" => id, "fast" => %{"model" => id, "effort" => effort}, "thinking" => "m"}
+      full = %{
+        "light" => id,
+        "balanced" => %{"model" => id, "effort" => effort},
+        "thinking" => "m"
+      }
+
       assert for_workflow(ctx, "a", %{tiers: full}) == :ok
 
       for {kind, tiers} <- [
@@ -191,6 +198,7 @@ defmodule Apiary.ModelChoices.MigrationTest do
             {"c", %{"light" => %{"model" => id <> "b"}}},
             {"d", %{"light" => %{"model" => "m", "effort" => effort <> "b"}}},
             {"e", %{"huge" => "m"}},
+            {"e2", %{"fast" => "m"}},
             {"f", %{"light" => %{"effort" => "high"}}},
             {"g", %{"light" => %{"model" => "m", "extra" => "x"}}},
             {"h", %{"light" => 1}},
@@ -214,6 +222,44 @@ defmodule Apiary.ModelChoices.MigrationTest do
 
         assert error.postgres.constraint == "model_choices_tiers_check"
       end
+    end
+
+    test "the tier fast is renamed balanced: a choice with fast is deleted", ctx do
+      {version, migration, _name} = List.last(@migrations)
+      ids = %{fast: Ecto.UUID.generate(), balanced: Ecto.UUID.generate()}
+      kept = Ecto.UUID.generate()
+
+      # Rolled back, the check accepts fast and refuses balanced.
+      assert :ok = Ecto.Migrator.down(Repo, version, migration, @options)
+      assert for_workflow(ctx, "a", %{tiers: %{"balanced" => "m"}}) == "model_choices_tiers_check"
+
+      assert for_workflow(ctx, "b", %{id: ids.fast, tiers: %{"fast" => "m", "light" => "m"}}) ==
+               :ok
+
+      assert for_workflow(ctx, "c", %{id: kept, tiers: %{"light" => "m"}}) == :ok
+
+      fallback = %{
+        organisation_id: ctx.organisation_id,
+        model_choice_id: ids.fast,
+        position: 0,
+        connection_id: ctx.provider.id
+      }
+
+      assert write(Fallback, fallback) == :ok
+
+      # Up, the choice with fast goes with its fallback, and the check refuses fast.
+      assert :ok = Ecto.Migrator.up(Repo, version, migration, @options)
+      assert Repo.get(ModelChoice, ids.fast) == nil
+      assert Repo.get(ModelChoice, kept)
+      assert Repo.aggregate(Fallback, :count) == 0
+      assert for_workflow(ctx, "d", %{tiers: %{"fast" => "m"}}) == "model_choices_tiers_check"
+      assert for_workflow(ctx, "e", %{id: ids.balanced, tiers: %{"balanced" => "m"}}) == :ok
+
+      # Down again, the choice with balanced goes.
+      assert :ok = Ecto.Migrator.down(Repo, version, migration, @options)
+      assert Repo.get(ModelChoice, ids.balanced) == nil
+      assert Repo.get(ModelChoice, kept)
+      assert :ok = Ecto.Migrator.up(Repo, version, migration, @options)
     end
 
     test "the shape: what goes with what", ctx do

@@ -1512,7 +1512,7 @@ defmodule Apiary.WorkItems.Moves do
 
         with {:ok, held, current} <- hold_step(scope, :"work_item.explore_again", work_item, now),
              :ok <- waiting(current, [:no_result, :lost, :time_limit, :cancelled], attempt),
-             {:ok, run} <- next_run(held, false),
+             {:ok, %DispatchRun{} = run} <- explore_run(held),
              data = %{"take_in" => held.take_in, "attempt" => run.attempt},
              :ok <- event(held, :explore_again, scope, now, data),
              {:ok, work_item} <- touch(held, now),
@@ -1661,8 +1661,18 @@ defmodule Apiary.WorkItems.Moves do
   defp invalid({:error, :invalid}), do: {:error, {:invalid, :form}}
   defp invalid({:error, errors}) when is_map(errors), do: {:error, {:invalid, errors}}
 
+  # Explore again needs a run: a stage that waits for a workflow instead
+  # (`Apiary.Stages.next_run/2`, `{:ok, nil}`) is `:not_waiting`.
+  defp explore_run(held) do
+    case next_run(held, false) do
+      {:ok, nil} -> {:error, :not_waiting}
+      result -> result
+    end
+  end
+
   # The take in's next run (`Apiary.Dispatches.queue_next/3`), one run more at the run
-  # limit when `extend?`: a take in with no run yet does not wait for a member.
+  # limit when `extend?`: a take in with no run yet does not wait for a member. `{:ok, nil}`
+  # where feedback starts the stage again and the stage waits for a workflow.
   defp next_run(held, extend?) do
     case Dispatches.queue_next(held, held.take_in, extend: extend?) do
       {:ok, run} -> {:ok, run}

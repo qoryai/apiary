@@ -20,7 +20,7 @@ defmodule Apiary.ModelChoices.Resolution do
   # choice with a provider resolves to `:none`: the run uses the gateway's key. A choice
   # whose provider is not among `providers` resolves to `{:error, :provider_removed}`.
   #
-  # **The tiers**, each of `light`, `fast` and `thinking` by itself: the first choice in the
+  # **The tiers**, each of `light`, `balanced` and `thinking` by itself: the first choice in the
   # order whose tier map maps the tier to a model that goes with the resolved provider: a
   # model of its description with one of that model's effort values or none, or any
   # other model id with no effort. Where the input has `effort_values`, the effort values
@@ -38,7 +38,7 @@ defmodule Apiary.ModelChoices.Resolution do
 
   alias Apiary.ModelChoices.{Fallback, ModelChoice}
 
-  @tiers ~w(light fast thinking)
+  @tiers ~w(light balanced thinking)
 
   @typedoc """
   A provider as the resolution reads it: the value id of its default key, the id of its
