@@ -1646,6 +1646,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+<!-- feature: factory, secrets -->
+- The tier `fast` is now `balanced`.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - A run cannot withdraw a name of the type in `submit.type` of its process version or of
   its work item's process version: the run API returns `422` `type_not_withdrawable`, with
@@ -2609,6 +2612,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: factory, secrets -->
+- `model_choices` and `model_choice_fallbacks` (20261118120000): the function
+  `model_choice_tiers_valid`, which the check `model_choices_tiers_check` calls, accepts
+  the tier `balanced` in place of `fast`. The migration deletes each model choice whose
+  tier map has `fast`, with its fallbacks, and moves no data. The delete scans
+  `model_choices`; the function change locks no table. The migration is short. Rolling
+  back restores the function with `fast` and deletes each model choice whose tier map
+  has `balanced`, with its fallbacks.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - `stage_skips` (20261118100000): a column `changed`, false by default, true for the record
   of a condition `{input: <type>, changed: true}`. It is not null with a constant default,
