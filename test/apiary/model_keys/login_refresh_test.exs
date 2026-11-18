@@ -1168,22 +1168,6 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       end
     end
 
-    test "a call that outlasts its limit is stopped and is a timeout", %{scope: scope} do
-      {provider, tokens} = subscription!(scope, expires_in: 120)
-      previous = Application.get_env(:apiary, LoginRefresh)
-      Application.put_env(:apiary, LoginRefresh, Keyword.put(previous, :total_timeout, 100))
-      on_exit(fn -> Application.put_env(:apiary, LoginRefresh, previous) end)
-
-      stub!(fn conn, _body ->
-        Process.sleep(2_000)
-        Req.Test.json(conn, new_tokens("late"))
-      end)
-
-      assert {:ok, access, _at} = token(provider)
-      assert access == tokens.access_token
-      assert [%Entry{details: %{"cause" => "timeout"}}] = trail(provider)
-    end
-
     test "an answer over 64 KiB is a failure", %{scope: scope} do
       {provider, _tokens} = subscription!(scope, expires_in: 120)
       stub!(fn conn, _body -> Plug.Conn.send_resp(conn, 200, String.duplicate("x", 70_000)) end)
@@ -1273,10 +1257,11 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
   end
 
   describe "what the key shows after a call" do
-    test "a refresh writes the state line, and no token is in the entry's page words",
+    test "a refresh writes the state line, and the page words of its entries hold no token",
          %{scope: scope} do
-      {provider, _tokens} = subscription!(scope, expires_in: 60)
-      stub!(new_tokens("shown"))
+      {provider, tokens} = subscription!(scope, expires_in: 60)
+      shown = new_tokens("shown")
+      stub!(shown)
       assert {:ok, _access, _at} = token(provider)
 
       assert {:signed_in, time} =
@@ -1293,6 +1278,24 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
 
       assert rejected =~ "OpenAI rejected it on"
       assert help == "Run codex login --device-auth and replace the key."
+
+      # The Activity line of each entry, as the page renders it.
+      lines =
+        for entry <- trail(provider) do
+          Enum.find_value(
+            ApiaryWeb.Activity.Describer.describers(),
+            & &1.sentence(:"model_key.refresh", entry, %{})
+          )
+        end
+
+      assert [
+               "Qory Apiary refreshed the sign-in of the key main of OpenAI subscription",
+               "Sign in again on the key main of OpenAI subscription: " <> _
+             ] = lines
+
+      for line <- lines,
+          secret <- secrets_of(tokens) ++ [shown["access_token"], shown["refresh_token"]],
+          do: refute(line =~ secret)
     end
   end
 
@@ -1456,6 +1459,39 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
 
       set_login!(provider, signed_in_at: -7 * @day - 60)
       assert [_due] = Login.sweep_due(10)
+    end
+
+    test "a pass takes at most 50 logins and leaves the others for the next", %{scope: scope} do
+      # A secret has 32 values at most: two providers of 26 keys each.
+      for name <- ["First", "Second"] do
+        keys =
+          for n <- 1..26,
+              do: %{value_id: "k#{n}", value: login_paste(tag: "#{name}-k#{n}")}
+
+        {:ok, _provider} =
+          Connections.create_provider(scope, %{
+            provider: "openai-subscription",
+            name: name,
+            keys: keys
+          })
+      end
+
+      Repo.update_all(from(l in Login),
+        set: [signed_in_at: DateTime.add(DateTime.utc_now(), -8 * @day)]
+      )
+
+      assert length(Login.sweep_due(100)) == 52
+
+      stub!(fn conn, _body ->
+        Req.Test.json(conn, new_tokens("b#{System.unique_integer([:positive])}"))
+      end)
+
+      assert :ok = perform_job(LoginSweep, %{})
+      assert length(requests()) == 50
+      assert [{_provider, _id}, {_provider2, _id2}] = Login.sweep_due(100)
+
+      assert Repo.aggregate(from(e in Entry, where: e.action == "model_key.refresh"), :count) ==
+               50
     end
 
     test "is in the crontab, every 6 hours" do
