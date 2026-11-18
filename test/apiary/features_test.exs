@@ -516,7 +516,10 @@ defmodule Apiary.FeaturesTest do
                Enum.filter(Features.enabled(), &(&1 == :path_rules))
 
       assert Features.hidden_of([:factory]) ==
-               Enum.filter(Features.enabled(), &(&1 in [:factory, :model_proxies, :workflow_model]))
+               Enum.filter(
+                 Features.enabled(),
+                 &(&1 in [:factory, :model_proxies, :workflow_model])
+               )
 
       assert Features.hidden_of([:security]) ==
                Enum.filter(
