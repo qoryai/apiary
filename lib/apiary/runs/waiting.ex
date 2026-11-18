@@ -108,7 +108,7 @@ defmodule Apiary.Runs.Waiting do
     with true <- ProviderCredential.applies?(),
          horizon = RunSettings.horizon_for(queued, now),
          reason when not is_nil(reason) <-
-           ModelKeys.waiting_reason(ids, now, expires_before: horizon) do
+           ModelKeys.waiting_reason(ids, now, expires_before: horizon, decrypt: false) do
       words(reason, queued)
     else
       _not_waiting -> nil

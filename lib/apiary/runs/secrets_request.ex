@@ -180,6 +180,7 @@ defmodule Apiary.Runs.SecretsRequest do
   # answer and the network. Set `deadline` of `Apiary.Runs.SecretsRequest` in the
   # application's configuration to change it, as the tests do.
   @deadline_ms 8_000
+  @after_login_ms 2_000
 
   defp deadline_ms,
     do: :apiary |> Application.get_env(__MODULE__, []) |> Keyword.get(:deadline, @deadline_ms)
@@ -198,7 +199,7 @@ defmodule Apiary.Runs.SecretsRequest do
          :ok <- sealable(run, model, access_key),
          :ok <- work_sealable(run, works, access_key),
          {:ok, public_key} <- recipient_key(run, access_key),
-         {:ok, values, secret, copies} <- values(run, credentials, request.unauthorized, deadline),
+         {:ok, values, secret, copies} <- values(run, credentials, request, deadline),
          {:ok, issued} <- issued(run, works, access_key, now, deadline),
          {:ok, body} <-
            sealed(run, credentials, values, issued, access_key, public_key, digest, now),
@@ -224,8 +225,7 @@ defmodule Apiary.Runs.SecretsRequest do
          names = Enum.map(values, &elem(&1, 0)),
          true <- Enum.sort(names) in [Enum.sort(@members), Enum.sort(@members ++ @optional)],
          fields = Map.new(values),
-         true <- Enum.all?(@members ++ present(fields), &valid?(&1, fields[&1])),
-         true <- unauthorized_listed?(fields) do
+         true <- Enum.all?(@members ++ present(fields), &valid?(&1, fields[&1])) do
       {:ok,
        %{
          run_id: fields["run_id"],
@@ -252,8 +252,10 @@ defmodule Apiary.Runs.SecretsRequest do
 
   defp valid?("credentials", _value), do: false
 
-  # `unauthorized`: 1 to 6 names, each once, each among `credentials` (the schema: the
-  # gateway lists API credentials that are in `credentials`; `unauthorized_listed?/1`).
+  # `unauthorized`: 1 to 6 names, each once, each a credential name. A name that is not one
+  # of the run's credentials is ignored, as if absent (the schema: a credential can leave
+  # the run configuration between the gateway's fetch and this request); the order of the
+  # names is not checked.
   defp valid?("unauthorized", [_ | _] = names) do
     length(names) <= 6 and length(Enum.uniq(names)) == length(names) and
       Enum.all?(names, &(is_binary(&1) and &1 =~ @credential))
@@ -265,12 +267,6 @@ defmodule Apiary.Runs.SecretsRequest do
     do: is_integer(value) and value >= 0 and value <= @max_timestamp
 
   defp present(fields), do: Enum.filter(@optional, &Map.has_key?(fields, &1))
-
-  # Every name of `unauthorized` is one of `credentials`, and in its order.
-  defp unauthorized_listed?(%{"unauthorized" => listed, "credentials" => credentials}),
-    do: Enum.filter(credentials, &(&1 in listed)) == listed
-
-  defp unauthorized_listed?(_fields), do: true
 
   defp fresh(%{timestamp: timestamp}, now) do
     if abs(timestamp - now) <= @window_seconds, do: :ok, else: {:error, :unauthorized}
@@ -627,8 +623,8 @@ defmodule Apiary.Runs.SecretsRequest do
   # read for sealing before the work entry's credential is requested, and the registry
   # credential's, made now (`Apiary.Registry.Credential.new_secret/0`) and stored only
   # once the seal succeeded.
-  defp values(run, %{model: model, registry: registry}, unauthorized, deadline) do
-    with {:ok, model_values, copies} <- model_value(run, model, unauthorized, deadline) do
+  defp values(run, %{model: model, registry: registry}, request, deadline) do
+    with {:ok, model_values, copies} <- model_value(run, model, request.unauthorized, deadline) do
       secret = if registry, do: Credential.new_secret()
 
       registry_values =
@@ -641,7 +637,7 @@ defmodule Apiary.Runs.SecretsRequest do
   defp model_value(_run, nil, _unauthorized, _deadline), do: {:ok, [], []}
 
   # Each named key of the run, revealed by its row id, under the value id it has now
-  # (`Apiary.Secrets.reveal_key_and_set_at/2`): a key renamed since the claim is
+  # (`Apiary.ModelKeys.reveal_for_sealing/4`): a key renamed since the claim is
   # revealed, and for one removed since, or no longer a value of the provider's secret,
   # this returns a refusal, `{:error, :credential_unavailable}`. With the copies,
   # `[{secret_value_id, value_set_at}]`, when each revealed value was set, read with it
@@ -666,37 +662,24 @@ defmodule Apiary.Runs.SecretsRequest do
     end)
   end
 
-  # The sealed entry of one key and when its value was set. A key of a provider whose keys
-  # are sign-ins is its access token, refreshed first when that is due
-  # (`Apiary.ModelKeys.Login.access_token/3`), with `expires_at` its expiry so the gateway
-  # renews it 5 minutes before; after a 401 of the provider to the key
-  # (`unauthorized?`) the renewal is a refresh, at most one in 5 minutes per sign-in
-  # (`recover: true`). The call waits for a refresh until the request's deadline. A token
-  # with no account id is refused, as a key that needs a new sign-in: the gateway would
-  # refuse it at its first request, and no request goes to any provider here. A
-  # refresh that cannot be made now is `:unavailable`, which the gateway tries again,
-  # and a key that needs a new sign-in `:sign_in_needed`, which it does not.
+  # The sealed entry of one key and when its value was set, from the one gate that reveals
+  # a model key (`Apiary.ModelKeys.reveal_for_sealing/4`). A key of a provider whose keys
+  # are sign-ins is its access token, with `expires_at` its expiry so the gateway renews it
+  # 5 minutes before; after a 401 of the provider to the key (`unauthorized?`) the renewal
+  # is a refresh, at most one in 5 minutes per sign-in. The wait for a refresh ends
+  # `@after_login_ms` before the request's deadline, which leaves that long for the seal,
+  # the audit entry, the work credential's call (`issued/5`, which has the same deadline)
+  # and the answer. A refresh that cannot be made now is `:unavailable`, which the gateway
+  # tries again, and a key that needs a new sign-in `:sign_in_needed`, which it does not.
   defp key_value(run, provider, key, unauthorized?, deadline) do
-    if Login.provider?(provider) do
-      login_value(run, provider, key, unauthorized?, deadline)
-    else
-      with {:ok, value, set_at} <- Secrets.reveal_key_and_set_at(provider, key.secret_value_id),
-           do: {:ok, %{"credential" => key.name, "value" => value}, set_at}
-    end
-  end
+    wait = max(deadline - System.monotonic_time(:millisecond) - @after_login_ms, 0)
 
-  defp login_value(run, provider, key, unauthorized?, deadline) do
-    wait = max(deadline - System.monotonic_time(:millisecond), 0)
-
-    with {:ok, set_at} <- Login.value_set_at(provider, key.secret_value_id),
-         {:ok, token, expires_at} <-
-           Login.access_token(provider, key.secret_value_id,
-             trigger: {:run, run.public_id},
+    with {:ok, value, expires_at, set_at} <-
+           ModelKeys.reveal_for_sealing(provider, key.secret_value_id, run,
              recover: unauthorized?,
              wait: wait
-           ),
-         :ok <- account(provider, token) do
-      entry = %{"credential" => key.name, "value" => token}
+           ) do
+      entry = %{"credential" => key.name, "value" => value}
 
       entry =
         if expires_at,
@@ -709,14 +692,8 @@ defmodule Apiary.Runs.SecretsRequest do
           else: entry
 
       {:ok, entry, set_at}
-    else
-      :error -> {:error, :not_found}
-      {:error, reason} -> {:error, reason}
     end
   end
-
-  defp account(provider, token),
-    do: if(Login.account?(provider, token), do: :ok, else: {:error, :sign_in_needed})
 
   defp seal(run, credential, plaintext, recipient) do
     case Sealing.seal(plaintext, recipient) do

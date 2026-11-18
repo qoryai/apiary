@@ -63,7 +63,7 @@ defmodule Apiary.ModelKeys.LoginRefreshJob do
   defp refresh(provider, secret_value_id, before) do
     unless Login.stopping?() do
       _result =
-        Login.access_token(provider, secret_value_id, trigger: :schedule, expires_before: before)
+        Login.refresh(provider, secret_value_id, trigger: :schedule, expires_before: before)
     end
 
     :ok

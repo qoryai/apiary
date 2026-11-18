@@ -1,8 +1,9 @@
 defmodule Apiary.ModelKeys.LoginStatusTest do
-  # What a claim reads of a sign-in without calling the provider (`Apiary.ModelKeys.Login.status/2`,
-  # `statuses/3`, `account?/2`, `rejectable?/2`), and the two refreshes a run causes: the one in the
-  # background for a sign-in that expires before the end of the run's time limit
-  # (`expires_before:`), and the one after a 401 (`recover: true`, at most one in 5 minutes).
+  # What a claim reads of a sign-in without calling the provider
+  # (`Apiary.ModelKeys.Login.status/2`, `statuses/3`, `account?/2`, `rejectable?/2`), and the
+  # two refreshes a run causes: the one in the background for a sign-in that expires before
+  # the end of the run's time limit (`expires_before:`), and the one after a 401
+  # (`recover: true`, at most one in 5 minutes).
   # Every call goes to the `Req.Test` stub of `LoginRefresh`; no token reaches a log line.
   use Apiary.DataCase, async: true
 
@@ -158,7 +159,9 @@ defmodule Apiary.ModelKeys.LoginStatusTest do
   end
 
   describe "statuses/3" do
-    test "reads the expiry and the account from the access token, with no call", %{scope: scope} do
+    test "reads the expiry and the account from the access token, with no call", %{
+      scope: scope
+    } do
       {provider, _tokens} = subscription!(scope, expires_in: 7200)
       set_login!(provider, signed_in_at: -3600)
       stub!(%{})
@@ -179,7 +182,7 @@ defmodule Apiary.ModelKeys.LoginStatusTest do
       assert requests() == []
     end
 
-    test "has nothing for a provider whose keys are not sign-ins, for no ids and for an unknown id",
+    test "has nothing for a provider with no sign-ins, for no ids and for an unknown id",
          %{scope: scope} do
       {:ok, api} =
         Connections.create_provider(scope, %{
@@ -213,7 +216,9 @@ defmodule Apiary.ModelKeys.LoginStatusTest do
       assert Login.account?(plain(provider), tokens.access_token)
     end
 
-    test "is false for a token without it, with a blank one, or that is no JWT", %{scope: scope} do
+    test "is false for a token without it, with a blank one, or that is no JWT", %{
+      scope: scope
+    } do
       {provider, _tokens} = subscription!(scope)
       none = login_tokens(account: false).access_token
 

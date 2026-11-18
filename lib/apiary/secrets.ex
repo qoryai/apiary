@@ -13,8 +13,9 @@ defmodule Apiary.Secrets do
   ## Write-only
 
   No function of this module returns a value, but `reveal_for_sealing/3` and the reveals
-  of a model provider's key, by its value id or its row id, which the secrets endpoint calls to seal a value to the
-  gateway, and only that. A listing loads the
+  of a model provider's key, by its value id or its row id, which the secrets endpoint calls
+  to seal a value to the gateway (a model key through `Apiary.ModelKeys.reveal_for_sealing/4`),
+  and only that. A listing loads the
   values without their ciphertext. Nothing logs a value, and an audit entry names a
   secret and a value id, never a value.
 
@@ -1092,8 +1093,9 @@ defmodule Apiary.Secrets do
   # key is decrypted under the value id it has now, which its associated data binds, so a
   # key renamed since a run's claim is revealed. `{:error, :not_found}` for a provider that
   # links no secret, and for a key that is not a value of that secret, or is gone;
-  # `{:error, :login}` for a key of a provider whose API has `oauth_refresh`, a login that
-  # `Apiary.ModelKeys.Login` alone reads (`reveal_login/2`).
+  # `{:error, :login}` for a key of a provider whose API has `oauth_refresh`, a login whose
+  # document `Apiary.ModelKeys.Login` alone reads (`reveal_login/2`); the gate
+  # (`Apiary.ModelKeys.reveal_for_sealing/4`) seals only its access token.
   @doc false
   @spec reveal_key_for_sealing(Connection.t(), Ecto.UUID.t()) ::
           {:ok, binary} | {:error, :not_found | :unavailable | :login}

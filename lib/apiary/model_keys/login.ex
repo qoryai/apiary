@@ -497,7 +497,8 @@ defmodule Apiary.ModelKeys.Login do
   The status (`status/2`) of each of the keys `ids` (row ids, `secret_values.id`) of
   `provider` that has a sign-in, by id; none for a provider whose keys are not sign-ins and
   for a key with no row. `opts` are `status/2`'s, `expires_before:` the time a run needs the
-  token until.
+  token until, and `decrypt: false` reads the rows' columns alone (the expiry the row has
+  and no account claim), for a page's render, which never decrypts a token.
 
   The stored access token is decrypted here, in this process, and decoded: its `exp` is
   the expiry `status/2` reads, and a token that has none of the account claim the
@@ -510,25 +511,40 @@ defmodule Apiary.ModelKeys.Login do
   @spec statuses(Connection.t(), [Ecto.UUID.t()], keyword) :: %{Ecto.UUID.t() => status}
   def statuses(provider, ids, opts \\ [])
 
-  def statuses(%Connection{secret_id: secret_id} = provider, ids, opts)
-      when is_binary(secret_id) and is_list(ids) do
-    if ids != [] and provider?(provider) do
-      opts = Keyword.put_new_lazy(opts, :now, &db_now/0)
-      claim = account_claim(provider)
+  def statuses(%Connection{} = provider, ids, opts) when is_list(ids) do
+    opts = Keyword.put_new_lazy(opts, :now, &db_now/0)
+    claim = account_claim(provider)
 
-      Repo.all(
-        from l in __MODULE__,
-          join: v in Value,
-          on: v.id == l.secret_value_id,
-          where: v.secret_id == ^secret_id and l.secret_value_id in ^ids
+    status =
+      if Keyword.get(opts, :decrypt, true),
+        do: &row_status(provider, &1, claim, opts),
+        else: &status(&1, opts)
+
+    provider
+    |> by_id(ids)
+    |> Map.new(fn {id, row} -> {id, status.(row)} end)
+  end
+
+  def statuses(%Connection{}, _ids, _opts), do: %{}
+
+  # The sign-in rows of the keys `ids` of `provider`, by id; none for a provider whose keys
+  # are not sign-ins.
+  defp by_id(%Connection{secret_id: secret_id} = provider, ids)
+       when is_binary(secret_id) and ids != [] do
+    if provider?(provider) do
+      from(l in __MODULE__,
+        join: v in Value,
+        on: v.id == l.secret_value_id,
+        where: v.secret_id == ^secret_id and l.secret_value_id in ^ids
       )
-      |> Map.new(&{&1.secret_value_id, row_status(provider, &1, claim, opts)})
+      |> Repo.all()
+      |> Map.new(&{&1.secret_value_id, &1})
     else
       %{}
     end
   end
 
-  def statuses(%Connection{}, _ids, _opts), do: %{}
+  defp by_id(_provider, _ids), do: %{}
 
   defp row_status(_provider, %__MODULE__{state: "sign_in_needed"}, _claim, _opts),
     do: :sign_in_needed
@@ -655,22 +671,7 @@ defmodule Apiary.ModelKeys.Login do
   are not sign-ins.
   """
   @spec rows(Connection.t(), [Ecto.UUID.t()]) :: %{Ecto.UUID.t() => t}
-  def rows(%Connection{secret_id: secret_id} = provider, ids)
-      when is_binary(secret_id) and is_list(ids) do
-    if ids != [] and provider?(provider) do
-      Repo.all(
-        from l in __MODULE__,
-          join: v in Value,
-          on: v.id == l.secret_value_id,
-          where: v.secret_id == ^secret_id and l.secret_value_id in ^ids
-      )
-      |> Map.new(&{&1.secret_value_id, &1})
-    else
-      %{}
-    end
-  end
-
-  def rows(%Connection{}, _ids), do: %{}
+  def rows(%Connection{} = provider, ids) when is_list(ids), do: by_id(provider, ids)
 
   ## The refresh
 
@@ -680,39 +681,40 @@ defmodule Apiary.ModelKeys.Login do
   """
   @type trigger :: :schedule | {:run, String.t()}
 
-  @doc """
-  The access token of the key `secret_value_id` of `provider` and when it expires (nil for
-  a token with no readable `exp`),
-  refreshed first when that is due (see the module's documentation): `{:ok, token,
-  expires_at}`, or `{:error, reason}`:
-
-    * `:sign_in_needed`: the key needs a new sign-in, now or earlier, because the provider
-      rejected the refresh for good or Qory Apiary could not store the new sign-in
-      (`token_not_stored`), and no call is made until a new login is pasted;
-    * `:unavailable`: the access token has expired and could not be refreshed, because a
-      call failed for a reason that may pass, another caller's refresh did not end in
-      time, `Apiary.Access` does not allow the refresh (`model_key.refresh`), the node is
-      stopping (no refresh starts then), or the key cannot be read;
-    * `:not_found`: a key that is gone, or that is no login.
-
-  `opts`: `trigger:` (required, `t:trigger/0`), `wait:`, how long in milliseconds a caller
-  waits for a refresh, whether another caller's or the call it makes itself (10,000), and
-  `poll:`, how often it looks (250). When the wait ends first, the caller gets the stored
-  token while it is valid, else `{:error, :unavailable}`, and the call goes on and stores
-  its result. `now:` fixes the time the due decision reads, for a test. The token is for the
-  caller's one use: it goes to a run's secrets request and nowhere else.
-
-  `expires_before:` (a time) makes a refresh due also when the access token expires before
-  it: the background refresh of a key a run's claim found expiring before the end of the
-  run's time limit (the job `LoginRefreshJob`).
-
-  `recover: true` is a renewal after the model provider returned 401 to the stored token
-  (`unauthorized_recovery`). The token is then not served as it is, even when it is far
-  from its expiry: the call refreshes with that reason, at most once per login in 5 minutes
-  (the last refresh, or the last failed one, counts), and a caller inside those 5 minutes
-  gets `{:error, :unavailable}`. A caller that waited for another caller's refresh or
-  failure, begun after this call started, gets that refresh's token, or the same refusal.
-  """
+  # access_token/3 is the access token of the key `secret_value_id` of `provider` and when
+  # it expires (nil for a token with no readable `exp`). Only
+  # `Apiary.ModelKeys.reveal_for_sealing/4` calls it, to seal the token to a run; a refresh
+  # that needs no token is `refresh/3`.
+  # refreshed first when that is due (see the module's documentation): `{:ok, token,
+  # expires_at}`, or `{:error, reason}`:
+  #
+  #   * `:sign_in_needed`: the key needs a new sign-in, now or earlier, because the provider
+  #     rejected the refresh for good or Qory Apiary could not store the new sign-in
+  #     (`token_not_stored`), and no call is made until a new login is pasted;
+  #   * `:unavailable`: the access token has expired and could not be refreshed, because a
+  #     call failed for a reason that may pass, another caller's refresh did not end in
+  #     time, `Apiary.Access` does not allow the refresh (`model_key.refresh`), the node is
+  #     stopping (no refresh starts then), or the key cannot be read;
+  #   * `:not_found`: a key that is gone, or that is no login.
+  #
+  # `opts`: `trigger:` (required, `t:trigger/0`), `wait:`, how long in milliseconds a caller
+  # waits for a refresh, whether another caller's or the call it makes itself (10,000), and
+  # `poll:`, how often it looks (250). When the wait ends first, the caller gets the stored
+  # token while it is valid, else `{:error, :unavailable}`, and the call goes on and stores
+  # its result. `now:` fixes the time the due decision reads, for a test. The token is for the
+  # caller's one use: it goes to a run's secrets request and nowhere else.
+  #
+  # `expires_before:` (a time) makes a refresh due also when the access token expires before
+  # it: the background refresh of a key a run's claim found expiring before the end of the
+  # run's time limit (the job `LoginRefreshJob`).
+  #
+  # `recover: true` is a renewal after the model provider returned 401 to the stored token
+  # (`unauthorized_recovery`). The token is then not served as it is, even when it is far
+  # from its expiry: the call refreshes with that reason, at most once per login in 5 minutes
+  # (the last refresh, or the last failed one, counts), and a caller inside those 5 minutes
+  # gets `{:error, :unavailable}`. A caller that waited for another caller's refresh or
+  # failure, begun after this call started, gets that refresh's token, or the same refusal.
+  @doc false
   @spec access_token(Connection.t(), Ecto.UUID.t(), keyword) ::
           {:ok, String.t(), DateTime.t() | nil}
           | {:error, :sign_in_needed | :unavailable | :not_found}
@@ -737,6 +739,21 @@ defmodule Apiary.ModelKeys.Login do
     }
 
     step(if ctx.recover, do: %{ctx | started: now(ctx)}, else: ctx)
+  end
+
+  @doc """
+  Refreshes the sign-in of the key `secret_value_id` of `provider` when that is due, as
+  `access_token/3` does with the same `opts`, and returns no token: `:ok`, or `{:error,
+  reason}` with the reasons of `access_token/3`. For the jobs that refresh in the
+  background.
+  """
+  @spec refresh(Connection.t(), Ecto.UUID.t(), keyword) ::
+          :ok | {:error, :sign_in_needed | :unavailable | :not_found}
+  def refresh(%Connection{} = provider, secret_value_id, opts) do
+    case access_token(provider, secret_value_id, opts) do
+      {:ok, _token, _expires_at} -> :ok
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   defp lease_ms, do: LoginRefresh.call_limit_ms() + 3 * @write_ms + @lease_margin_ms

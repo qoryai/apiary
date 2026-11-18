@@ -438,7 +438,8 @@ defmodule Apiary.ModelKeys do
 
   `opts`: `expires_before:`, the time a run needs a sign-in's access token until, its start
   plus its time limit; a sign-in that expires before it is `blocked`. Without it, only a
-  sign-in that needs a new one is.
+  sign-in that needs a new one is. `decrypt: false` reads the sign-ins' rows alone, so no
+  token is decrypted: the read of a page's render, which has no account claim to check.
   """
   @spec claim_keys(Connection.t(), String.t() | nil, DateTime.t(), keyword) :: [claim_key]
   def claim_keys(provider, named_value_id, now, opts \\ [])
@@ -471,7 +472,12 @@ defmodule Apiary.ModelKeys do
 
     windows = limit_windows(provider)
     rejected = Rejection.live_ids([secret_id])
-    logins = Login.statuses(provider, ids, expires_before: opts[:expires_before])
+
+    logins =
+      Login.statuses(provider, ids,
+        expires_before: opts[:expires_before],
+        decrypt: Keyword.get(opts, :decrypt, true)
+      )
 
     for value <- values do
       key_states = Map.get(states, value.id, [])
@@ -500,6 +506,57 @@ defmodule Apiary.ModelKeys do
   defp blocked(false, :ready), do: nil
   defp blocked(false, :sign_in_needed), do: :sign_in
   defp blocked(false, status), do: status
+
+  ## The gate to a key's value
+
+  @doc """
+  The one place that reveals a model key's value to be sealed to a run's gateway, for the
+  secrets endpoint alone (the secrets request of a run): the key `secret_value_id` of
+  `provider`, a row of `Apiary.Connections` the caller has read and checked, for the run
+  `run`. Returns `{:ok, value, expires_at, value_set_at}`, `expires_at` nil for a key that
+  has none, or `{:error, reason}`.
+
+  A key of a provider whose keys are sign-ins (`Apiary.ModelKeys.Login`) is not revealed:
+  its access token is, refreshed first when that is due, with the time the token expires,
+  and the refresh token never leaves the vault. The token is refused, as
+  `{:error, :sign_in_needed}`, when it has no account id, and no call is made to any
+  provider for that. Any other key is its stored value, read as `Apiary.Secrets` reads it
+  (`{:error, :not_found}` for a key that is gone, `{:error, :unavailable}` for one that
+  cannot be decrypted), and `expires_at` is nil.
+
+  `opts` (for a sign-in): `recover: true`, the renewal after a 401 of the provider to the
+  key, at most once per sign-in in 5 minutes, and `wait:`, the milliseconds a call waits
+  for a refresh. The reasons of a sign-in are those of the access token read of
+  `Apiary.ModelKeys.Login`.
+  """
+  @spec reveal_for_sealing(Connection.t(), Ecto.UUID.t(), Run.t(), keyword) ::
+          {:ok, String.t(), DateTime.t() | nil, DateTime.t() | nil}
+          | {:error, :not_found | :unavailable | :sign_in_needed}
+  def reveal_for_sealing(%Connection{} = provider, secret_value_id, %Run{} = run, opts) do
+    if Login.provider?(provider) do
+      reveal_login(provider, secret_value_id, run, opts)
+    else
+      with {:ok, value, set_at} <-
+             Apiary.Secrets.reveal_key_and_set_at(provider, secret_value_id),
+           do: {:ok, value, nil, set_at}
+    end
+  end
+
+  defp reveal_login(provider, secret_value_id, run, opts) do
+    with {:ok, set_at} <- Login.value_set_at(provider, secret_value_id),
+         {:ok, token, expires_at} <-
+           Login.access_token(provider, secret_value_id,
+             trigger: {:run, run.public_id},
+             recover: Keyword.get(opts, :recover, false),
+             wait: Keyword.fetch!(opts, :wait)
+           ),
+         true <- Login.account?(provider, token) || {:error, :sign_in_needed} do
+      {:ok, token, expires_at, set_at}
+    else
+      :error -> {:error, :not_found}
+      {:error, reason} -> {:error, reason}
+    end
+  end
 
   ## The claim's filter
 
@@ -680,10 +737,11 @@ defmodule Apiary.ModelKeys do
     2. `{:cooldown, provider, until}`: the key that leaves its cooldown first;
     3. `{:sign_in, provider, value_id}`: a sign-in that needs a new one, and
        `{:new_key, provider, value_id}`, a key whose provider rejected its value; each
-       needs a person to give the key a new value.
+       needs a person to give the key a new value. When both kinds are there, the first of
+       them in the order the claim sends the keys (`Apiary.ModelKeys.Order.sent/2`).
 
-  `provider` is the provider's row, `value_id` the key's name. `expires_before:` is as
-  `claim_keys/4` has it. Reads without a lock; no call to any provider.
+  `provider` is the provider's row, `value_id` the key's name. `expires_before:` and
+  `decrypt:` are as `claim_keys/4` has them. Reads without a lock; no call to any provider.
   """
   @spec waiting_reason([Ecto.UUID.t()], DateTime.t(), keyword) ::
           {:refreshing | :restart | :sign_in | :new_key, Connection.t(), String.t()}
@@ -737,7 +795,17 @@ defmodule Apiary.ModelKeys do
         {:cooldown, provider, key.cooldown_until}
 
       true ->
-        case Enum.find(all, fn {_provider, key} -> key.blocked in [:sign_in, :new_key] end) do
+        # The first key a person has to fix, in the order the claim sends the keys
+        # (`Apiary.ModelKeys.Order.sent/2`), the providers in the run's order.
+        needing =
+          for {provider, keys} <- keyed,
+              key <-
+                keys
+                |> Enum.filter(&(&1.blocked in [:sign_in, :new_key]))
+                |> Apiary.ModelKeys.Order.sent(now),
+              do: {provider, key}
+
+        case List.first(needing) do
           {provider, %{blocked: :sign_in} = key} -> {:sign_in, provider, key.value_id}
           {provider, %{blocked: :new_key} = key} -> {:new_key, provider, key.value_id}
           nil -> nil
@@ -929,10 +997,11 @@ defmodule Apiary.ModelKeys do
   value the run does not have (a new value was set since the run's request that sealed it:
   `record/3` reads that as it does for states), and one of a key of a provider whose keys are
   sign-ins, unless no refresh can fix it (`Apiary.ModelKeys.Login.rejectable?/2`): the
-  gateway lists such a key while its renewal is pending, and a refresh that works puts it
-  back. An entry that is older than the key's row keeps the row. The rows are written
-  in the order of the keys' row ids, after the values' rows are locked `FOR SHARE`, as
-  `record/3` does, so a new value and this write take turns. Returns `:ok`.
+  gateway lists such a key while its renewal is pending. A refresh never changes the row;
+  a new sign-in ends the state, as a new value of any key does. An entry that is older
+  than the key's row keeps the row. The rows are written in the order of the keys' row
+  ids, after the values' rows are locked `FOR SHARE`, as `record/3` does, so a new value
+  and this write take turns. Returns `:ok`.
   """
   @spec reject(
           [run_key],
@@ -951,13 +1020,8 @@ defmodule Apiary.ModelKeys do
           do: {key, entry.at}
 
     if marked != [] do
-      logins =
-        if provider,
-          do: Login.rows(provider, Enum.map(marked, &elem(&1, 0).secret_value_id)),
-          else: %{}
-
       rows =
-        for {key, at} <- marked, markable?(logins[key.secret_value_id], at) do
+        for {key, at} <- marked do
           %{
             secret_value_id: key.secret_value_id,
             organisation_id: key.organisation_id,
@@ -967,9 +1031,7 @@ defmodule Apiary.ModelKeys do
         end
         |> Enum.sort_by(& &1.secret_value_id)
 
-      if rows != [] do
-        {:ok, :ok} = Repo.transact(fn -> {:ok, write_rejections(rows, copies)} end)
-      end
+      {:ok, :ok} = Repo.transact(fn -> {:ok, write_rejections(rows, copies, provider)} end)
     end
 
     :ok
@@ -981,8 +1043,11 @@ defmodule Apiary.ModelKeys do
 
   # The rows of the keys whose value the run has (`current?/3`), written after their
   # values' rows are locked in the order of their ids, as `write_states/2` has it, with the
-  # time the value was set.
-  defp write_rejections(rows, copies) do
+  # time the value was set. A sign-in's row is read after that lock, so a refresh, which
+  # writes the value's row too, is either whole before the read or waits for this
+  # transaction: a sign-in that a refresh can still fix (`Login.rejectable?/2`) is not
+  # marked.
+  defp write_rejections(rows, copies, provider) do
     ids = Enum.map(rows, & &1.secret_value_id)
 
     set =
@@ -995,9 +1060,12 @@ defmodule Apiary.ModelKeys do
       )
       |> Map.new()
 
+    logins = if provider, do: Login.rows(provider, ids), else: %{}
+
     kept =
       for row <- rows,
           current?(row, set, copies),
+          markable?(logins[row.secret_value_id], row.rejected_at),
           do: Map.put(row, :value_set_at, set[row.secret_value_id])
 
     if kept != [] do
