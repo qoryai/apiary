@@ -152,11 +152,12 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
         refute has_element?(view, ~s(#work-item-tabs a[aria-current="page"]), "Thread")
       end
 
-      # Open questions wait for answers: the address opens on the Questions tab.
+      # Open questions wait for answers: the address opens on Explore's tab, with the
+      # frame Open questions.
       {:ok, view, _html} = live(conn, page(scope, asked.number))
-      assert has_element?(view, "#work-item-questions-open")
-      refute has_element?(view, "#work-item-explore")
-      assert has_element?(view, ~s(#work-item-tabs a[aria-current="page"]), "Questions")
+      assert has_element?(view, "#work-item-explore-questions-open-form")
+      refute has_element?(view, "#work-item-questions-open")
+      assert has_element?(view, ~s(#work-item-tabs a[aria-current="page"]), "Explore")
     end
 
     test "the crumb links the tab the work item opens on, from another tab", %{

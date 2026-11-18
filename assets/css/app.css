@@ -14476,14 +14476,20 @@
     border-radius: var(--radius-box);
     background-color: var(--color-base-100);
   }
-  .q-xp-opt-pick {
+  /* The box with the field of a criterion's new wording (`q-xp-opt-box`) picks with its
+     radio and its label alone, so only they take the pointer. */
+  .q-xp-opt-pick,
+  .q-xp-opt-box > input,
+  .q-xp-opt-box label {
     cursor: pointer;
   }
-  .q-xp-opt-pick:has(input:checked) {
+  .q-xp-opt-pick:has(input:checked),
+  .q-xp-opt-box:has(input[type="radio"]:checked) {
     border-color: var(--color-primary);
     background-color: var(--q-primary-soft);
   }
-  .q-xp-opt-pick:has(input:focus-visible) {
+  .q-xp-opt-pick:has(input:focus-visible),
+  .q-xp-opt-box:has(input[type="radio"]:focus-visible) {
     outline: 2px solid var(--q-ring);
     outline-offset: 1px;
   }

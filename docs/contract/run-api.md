@@ -358,7 +358,11 @@ Checks, in order, after the checks of every request:
    may have a `criterion`, the id of the acceptance criterion it is about: `ac-` and a
    number from 1 to 9999 with no leading zero, such as `ac-3`. Qory Apiary stores it as
    the run pushed it. Another value, such as `AC-3`, is refused at
-   `#/questions/0/criterion`.
+   `#/questions/0/criterion`. An option of a question with a `criterion` may have a
+   `proposal`, the new wording of that criterion that the run proposes, 1 to 2,000
+   characters with line breaks allowed; the page shows it in a field that a member may
+   edit before answering. For a `proposal` on a question with no `criterion`, the push
+   fails with `422` `invalid_artifact`.
 
    A version of `proposal` has at most 10 files and 5 MiB (5242880 bytes) together:
 

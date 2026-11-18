@@ -116,8 +116,9 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
   end
 
   # A work item at Verify's gate, whose run of Verify pushed what `push` pushes, with the
-  # run of the queue and the work item, then passed.
-  defp at_verify_gate!(scope, push) do
+  # run of the queue and the work item, then passed: at the gate, or, with the state
+  # `:waiting_answers`, with the questions that the run asked still open.
+  defp at_verify_gate!(scope, push, state \\ :at_gate) do
     {:ok, work_item} = WorkItems.take_in(scope, backlog_ticket_fixture(scope).public_id)
     work_item = Repo.get!(WorkItem, work_item.id) |> end_run!(understood_result())
     {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
@@ -140,7 +141,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
           )
       end)
 
-    assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+    assert %WorkItem{stage_id: @verify, stage_state: ^state} = work_item
     work_item
   end
 
@@ -330,7 +331,10 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
 
       assert has_element?(view, "#{parts}-matrix-1 td.q-from-sm", @check)
       assert has_element?(view, "#{parts}-matrix-0 .badge.bg-success-soft", "Met")
-      assert has_element?(view, "#{parts}-matrix-1 .badge.bg-primary-soft", "Needs a person")
+      # A criterion is Met or Not met; another state the run wrote shows as it is, with no
+      # colour.
+      assert has_element?(view, "#{parts}-matrix-1 .badge", "Needs a person")
+      refute has_element?(view, "#{parts}-matrix-1 .badge.bg-primary-soft")
       assert has_element?(view, "#{parts}-matrix-2 .badge.bg-error-soft", "Not met")
 
       assert texts(view, "#{parts}-not-verified li span") == [@ac2, @check]
@@ -408,6 +412,329 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
 
       assert has_element?(view, "#work-item-tab-output-verification", "The check passed.")
       refute has_element?(view, "#work-item-tab-output-verification-parts")
+    end
+  end
+
+  @ac2_text "AC-2 Demo: on a phone, the voucher line fits the payment step."
+  @proposal_ac2 "AC-2 Demo: on a phone, the voucher line wraps to two lines in the payment step."
+
+  # The question of verify-a-ticket about a criterion that cannot be met: its criterion, its
+  # context as two paragraphs, Why and Checked, and the three options the agent writes, the
+  # first with the criterion's new wording (`proposal`).
+  @ac_question %{
+    "question" => "AC-2 can't be met as written",
+    "criterion" => "ac-2",
+    "context" =>
+      "**Why:** The payment step is 320 px wide on a phone.\n\n**Checked:** The pictures of scenario 2.",
+    "options" => [
+      %{
+        "title" => "Change AC-2",
+        "explanation" => "The criterion takes the wording below.",
+        "proposal" => @proposal_ac2,
+        "recommended" => true
+      },
+      %{"title" => "Make it met another way", "explanation" => "Write in the note how."},
+      %{
+        "title" => "Withdraw AC-2",
+        "explanation" => "AC-2 stays in the criteria, marked withdrawn by you."
+      }
+    ]
+  }
+
+  # The run of Verify pushes a matrix with AC-1 Met and AC-2 Not met, and asks `questions`.
+  defp ac_question_run(questions) do
+    fn run, work_item ->
+      verification!(
+        run,
+        work_item,
+        matrix([
+          {"AC-1 Tests: after a reload, the total still includes the voucher.", "Met",
+           "`tests/total.test.ts` passed."},
+          {@ac2_text, "Not met", "The voucher line needs 360 px."}
+        ])
+      )
+
+      registered = Repo.get_by!(Apiary.Runs.Run, dispatch_run_id: run.id)
+
+      Apiary.WorkItemsFixtures.push_output!(
+        run,
+        registered,
+        Apiary.WorkItemsFixtures.questions_result(questions)
+      )
+    end
+  end
+
+  defp waiting_at_verify!(scope, questions \\ [@ac_question]),
+    do: at_verify_gate!(scope, ac_question_run(questions), :waiting_answers)
+
+  defp questions_page(conn, scope, work_item) do
+    {:ok, view, _html} =
+      live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/work/#{work_item.number}/questions")
+
+    view
+  end
+
+  defp answer_of(work_item, id) do
+    {_version, document} = Apiary.Explore.Questions.newest(Repo.get!(WorkItem, work_item.id))
+    Enum.find(document["questions"], &(&1["id"] == id))["answer"]
+  end
+
+  defp send_answers(view, work_item, answers) do
+    view
+    |> element("#work-item-tab-questions-open-form")
+    |> render_submit(%{"number" => "#{work_item.number}", "answers" => answers})
+  end
+
+  describe "a question about a criterion" do
+    test "Change AC-2: with the proposal in a field it labels, on both tabs, and no quote",
+         %{conn: conn, scope: scope} do
+      work_item = waiting_at_verify!(scope)
+
+      for {view, prefix} <- [
+            {tab(conn, scope, work_item), "work-item-tab-questions"},
+            {questions_page(conn, scope, work_item), "work-item-questions"}
+          ] do
+        question = "##{prefix}-question-1"
+        field = "#{prefix}-open-answer-1-1"
+
+        refute has_element?(view, "#{question} blockquote")
+        assert has_element?(view, "#{question} strong", "Why:")
+        assert has_element?(view, "#{question} strong", "Checked:")
+
+        assert texts(view, "#{question} .q-xp-opt-t") == [
+                 "Change AC-2:",
+                 "Make it met another way",
+                 "Withdraw AC-2",
+                 "Give your own option"
+               ]
+
+        # The field is in the option's box, outside the radio's label, and labelled by the
+        # option's words.
+        assert has_element?(
+                 view,
+                 "##{field}-box ##{field}-wording[name='answers[q1][wording]'][aria-labelledby=#{field}-label]",
+                 @proposal_ac2
+               )
+
+        assert has_element?(view, "label##{field}-label[for=#{field}]", "Change AC-2:")
+        # The label is the words alone: its text keeps white space as written.
+        assert view |> element("##{field}-label") |> render() =~ ~r/>Change AC-2:<\/label>\z/
+        refute has_element?(view, "label textarea")
+        assert has_element?(view, "##{field}-box", "Recommended by the agent")
+        refute has_element?(view, "##{field}-wording[aria-invalid]")
+      end
+    end
+
+    test "the label comes from the criterion, not from the option's title", %{
+      conn: conn,
+      scope: scope
+    } do
+      options = List.update_at(@ac_question["options"], 0, &Map.put(&1, "title", "Reword it"))
+      work_item = waiting_at_verify!(scope, [Map.put(@ac_question, "options", options)])
+      view = tab(conn, scope, work_item)
+
+      assert has_element?(view, "#work-item-tab-questions-open-answer-1-1-label", "Change AC-2:")
+      refute render(view) =~ "Reword it"
+
+      send_answers(view, work_item, %{"q1" => %{"option" => "1", "wording" => "AC-2 Tests: new."}})
+
+      confirm_spend(view)
+
+      assert %{"option" => "Reword it", "note" => "Change AC-2: AC-2 Tests: new."} =
+               answer_of(work_item, "q1")
+    end
+
+    test "an option with no proposal has no field, whatever its title", %{
+      conn: conn,
+      scope: scope
+    } do
+      options =
+        Enum.map(@ac_question["options"], &Map.delete(&1, "proposal"))
+        |> List.update_at(0, &Map.put(&1, "explanation", @proposal_ac2))
+
+      work_item = waiting_at_verify!(scope, [Map.put(@ac_question, "options", options)])
+      view = tab(conn, scope, work_item)
+      question = "#work-item-tab-questions-question-1"
+
+      refute has_element?(view, "#{question} textarea[name='answers[q1][wording]']")
+
+      assert texts(view, "#{question} .q-xp-opt-t") == [
+               "Change AC-2",
+               "Make it met another way",
+               "Withdraw AC-2",
+               "Give your own option"
+             ]
+
+      assert has_element?(view, "#{question} .q-xp-opt-e", @proposal_ac2)
+    end
+
+    test "a question with no criterion has no quote and no field", %{conn: conn, scope: scope} do
+      options = Enum.map(@ac_question["options"], &Map.delete(&1, "proposal"))
+
+      question =
+        @ac_question |> Map.delete("criterion") |> Map.put("options", options)
+
+      work_item = waiting_at_verify!(scope, [question])
+      view = tab(conn, scope, work_item)
+
+      refute has_element?(view, "#work-item-tab-questions-question-1 blockquote")
+      refute has_element?(view, "#work-item-tab-questions-question-1 textarea[name$='[wording]']")
+      assert has_element?(view, "#work-item-tab-questions-question-1 .q-xp-opt-t", "Change AC-2")
+    end
+
+    test "the member edits the wording of Change AC-2: the answer stores the edited wording", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = waiting_at_verify!(scope)
+      view = tab(conn, scope, work_item)
+      edited = "AC-2 Demo: on a phone, the voucher line shows as an icon in the payment step."
+
+      send_answers(view, work_item, %{
+        "q1" => %{"option" => "1", "wording" => edited, "note" => "Ask design."}
+      })
+
+      confirm_spend(view)
+
+      assert %{"option" => "Change AC-2", "note" => note} = answer_of(work_item, "q1")
+      assert note == "Change AC-2: #{edited}\n\nAsk design."
+    end
+
+    test "the agent's wording, its line breaks given as CR LF or CR, is the option alone", %{
+      conn: conn,
+      scope: scope
+    } do
+      proposal = "AC-2 Demo: on a phone,\nthe voucher line wraps."
+      options = List.update_at(@ac_question["options"], 0, &Map.put(&1, "proposal", proposal))
+
+      for given <- [
+            " #{proposal}\n",
+            "AC-2 Demo: on a phone,\r\nthe voucher line wraps.",
+            "AC-2 Demo: on a phone,\rthe voucher line wraps."
+          ] do
+        work_item = waiting_at_verify!(scope, [Map.put(@ac_question, "options", options)])
+        view = tab(conn, scope, work_item)
+
+        send_answers(view, work_item, %{"q1" => %{"option" => "1", "wording" => given}})
+        confirm_spend(view)
+
+        assert %{"option" => "Change AC-2"} = answer = answer_of(work_item, "q1")
+        refute Map.has_key?(answer, "note"), inspect(given)
+      end
+    end
+
+    test "a wording that makes the note too long shows its limit on its field, and sends nothing",
+         %{conn: conn, scope: scope} do
+      work_item = waiting_at_verify!(scope)
+      view = tab(conn, scope, work_item)
+      note = String.duplicate("n", 100)
+      field = "#work-item-tab-questions-open-answer-1-1-wording"
+
+      send_answers(view, work_item, %{
+        "q1" => %{"option" => "1", "wording" => String.duplicate("w", 1_990), "note" => note}
+      })
+
+      # 2,000 characters less "Change AC-2: " (13) and the blank line and note (102).
+      assert has_element?(
+               view,
+               "#{field}-error",
+               "Shorten the new wording to at most 1,885 characters, or shorten your note."
+             )
+
+      assert has_element?(
+               view,
+               "#{field}[aria-invalid=true][aria-describedby=#{String.trim_leading(field, "#")}-error]"
+             )
+
+      refute has_element?(view, "#work-item-tab-questions-open-answer-1-error")
+      refute has_element?(view, "#spend-dialog")
+      assert answer_of(work_item, "q1") == nil
+
+      # Focus moves to the wording field, not the note's.
+      focus = view |> element("#work-item-tab-questions-open-focus-1-1[hidden]") |> render()
+      assert focus =~ "#work-item-tab-questions-open-answer-1-1-wording"
+    end
+
+    test "a wording with an invisible character shows the error on its field", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = waiting_at_verify!(scope)
+      view = tab(conn, scope, work_item)
+
+      send_answers(view, work_item, %{"q1" => %{"option" => "1", "wording" => "AC-2​ new."}})
+
+      assert has_element?(
+               view,
+               "#work-item-tab-questions-open-answer-1-1-wording-error",
+               "Remove the control or invisible characters."
+             )
+
+      refute has_element?(view, "#spend-dialog")
+    end
+
+    test "an edit of the wording with no option picked picks Change AC-2", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = waiting_at_verify!(scope)
+      view = tab(conn, scope, work_item)
+      refute has_element?(view, "#work-item-tab-questions-open-answer-1-1[checked]")
+
+      view
+      |> element("#work-item-tab-questions-open-form")
+      |> render_change(%{
+        "_target" => ["answers", "q1", "wording"],
+        "number" => "#{work_item.number}",
+        "answers" => %{"q1" => %{"wording" => "AC-2 Tests: new."}}
+      })
+
+      assert has_element?(view, "#work-item-tab-questions-open-answer-1-1[checked]")
+
+      # An edit of the note picks nothing.
+      other = waiting_at_verify!(scope)
+      view = tab(conn, scope, other)
+
+      view
+      |> element("#work-item-tab-questions-open-form")
+      |> render_change(%{
+        "_target" => ["answers", "q1", "note"],
+        "number" => "#{other.number}",
+        "answers" => %{"q1" => %{"note" => "A note."}}
+      })
+
+      refute has_element?(view, "#work-item-tab-questions-open-answer-1-1[checked]")
+    end
+
+    test "the edited wording is one draft with the Questions tab", %{conn: conn, scope: scope} do
+      work_item = waiting_at_verify!(scope)
+      view = tab(conn, scope, work_item)
+      edited = "AC-2 Demo: the voucher line shows as an icon."
+
+      view
+      |> element("#work-item-tab-questions-open-form")
+      |> render_change(%{
+        "number" => "#{work_item.number}",
+        "answers" => %{"q1" => %{"option" => "1", "wording" => edited}}
+      })
+
+      render_patch(
+        view,
+        ~p"/#{scope.organisation}/#{scope.workspace}/work/#{work_item.number}/questions"
+      )
+
+      assert has_element?(view, "#work-item-questions-open-answer-1-1[checked]")
+      assert has_element?(view, "#work-item-questions-open-answer-1-1-wording", edited)
+    end
+
+    test "the matrix has no link to a question", %{conn: conn, scope: scope} do
+      work_item = waiting_at_verify!(scope)
+      view = tab(conn, scope, work_item)
+
+      assert texts(view, "#work-item-tab-output-verification-parts-matrix-1 td:nth-child(2)") ==
+               ["Not met"]
+
+      refute has_element?(view, "#work-item-tab-output-verification-parts-matrix a")
     end
   end
 

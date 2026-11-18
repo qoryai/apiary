@@ -256,6 +256,23 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert has_element?(view, "#work-item-tabs-ticket[aria-current=page]")
     end
+
+    test "open questions at a stage with no tab: the Questions tab", %{conn: conn, scope: scope} do
+      work_item = waiting!(scope)
+
+      # The work item waits for answers at Build, which runs no workflow in the default
+      # process, so has no tab.
+      {1, _} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_id: @build]
+        )
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      refute has_element?(view, "#work-item-tabs-#{@build}")
+      assert has_element?(view, "#work-item-tabs-questions[aria-current=page]")
+      assert has_element?(view, "#work-item-questions-open-form")
+    end
   end
 
   describe "which stages have a tab" do
@@ -763,16 +780,12 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     } do
       work_item = waiting!(scope, ["A question of Shape?"])
 
-      {:ok, view, html} = live(conn, stage(scope, work_item.number))
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
-      # The questions are on the Questions tab; Shape's tab counts them and links there.
-      refute html =~ "A question of Shape?"
-
-      assert has_element?(
-               view,
-               ~s|#work-item-tab-questions-line a[href="#{questions(scope, work_item.number)}"]|,
-               "Questions tab"
-             )
+      # Shape's tab has the question in its frame Open questions, as the Questions tab
+      # has it, and no line that counts the questions.
+      assert has_element?(view, "#work-item-tab-questions-open", "A question of Shape?")
+      refute has_element?(view, "#work-item-tab-questions-line")
 
       {:ok, questions_view, _html} = live(conn, questions(scope, work_item.number))
       assert has_element?(questions_view, "#work-item-questions-open", "A question of Shape?")
@@ -1634,12 +1647,17 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
   end
 
   describe "the stage card's link to the questions" do
-    test "goes to the Questions tab from any tab", %{conn: conn, scope: scope} do
+    test "goes to the frame Open questions of the waiting stage's tab, from any tab", %{
+      conn: conn,
+      scope: scope
+    } do
       work_item = waiting!(scope, ["A question of Shape?"])
-      to = questions(scope, work_item.number)
+      to = stage(scope, work_item.number) <> "#work-item-tab-questions-open"
 
       for address <- [
             stage(scope, work_item.number, @explore),
+            stage(scope, work_item.number),
+            page(scope, work_item.number, "/questions"),
             page(scope, work_item.number, "/thread")
           ] do
         {:ok, view, _html} = live(conn, address)
