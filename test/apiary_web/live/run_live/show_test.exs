@@ -5941,6 +5941,31 @@ defmodule ApiaryWeb.RunLive.ShowTest do
       assert length(String.split(String.replace(text, ~r/\s+/, " "), words)) - 1 >= 3
     end
 
+    test "write_needs_wall: its words in the header, the rail and the timeline, not the code", %{
+      conn: conn,
+      scope: scope
+    } do
+      run =
+        session_run(scope, %{
+          "state" => "failed",
+          "reason" => "write_needs_wall",
+          "exit_code" => -1
+        })
+
+      {:ok, lv, html} = run_page(conn, scope, run)
+
+      assert words_of(lv, "#run-meta #run-state + #run-reason") == "write run with no wall"
+      assert words_of(lv, "#run-facts #rail-reason") == "write run with no wall"
+
+      text = lv |> render() |> LazyHTML.from_fragment() |> LazyHTML.text()
+
+      assert length(String.split(String.replace(text, ~r/\s+/, " "), "write run with no wall")) -
+               1 >= 3
+
+      refute html =~ "write_needs_wall"
+      refute html =~ "write needs wall"
+    end
+
     test "no end reason's words, nor the Exit row, nor the timeline, say issuer on the page", %{
       conn: conn,
       scope: scope

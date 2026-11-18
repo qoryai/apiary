@@ -24,6 +24,11 @@ msgstr[1] ""
 msgid "#%{number} %{title}"
 msgstr ""
 
+#: lib/apiary_web/components/submission_components.ex
+#, elixir-autogen, elixir-format
+msgid "#%{number} “%{title}”"
+msgstr ""
+
 #: lib/apiary/policy/resolution.ex
 #, elixir-autogen, elixir-format
 msgid "%{above} in %{name}'s policy is held to paths, and %{below} below it has a separate rule in %{name}'s policy."
@@ -440,6 +445,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "%{contact_support}. A read-only run needs a wall, and this machine has none."
 msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{contact_support}. A run that writes needs a wall, and this machine has none."
+msgstr "%{contact_support}. A run that writes to the checkout needs a wall, and this machine has none."
 
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
@@ -1118,6 +1128,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{hours} h %{minutes} m"
+msgstr ""
+
+#: lib/apiary_web/components/submission_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{id} · %{change}"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -2649,6 +2664,13 @@ msgid_plural "%{number} results"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/submission_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} revision"
+msgid_plural "%{number} revisions"
+msgstr[0] "%{number} commit"
+msgstr[1] "%{number} commits"
+
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} rule"
@@ -3697,6 +3719,7 @@ msgid "%{type} is not a standard type, so it needs a definition"
 msgstr ""
 
 #: lib/apiary_web/components/artifact_components.ex
+#: lib/apiary_web/components/submission_components.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
@@ -4508,6 +4531,7 @@ msgstr "A rule on this repository still decides here."
 
 #: lib/apiary_web/activity/describer/core.ex
 #: lib/apiary_web/components/artifact_components.ex
+#: lib/apiary_web/components/submission_components.ex
 #, elixir-autogen, elixir-format
 msgid "A run"
 msgstr ""
@@ -6128,6 +6152,7 @@ msgstr ""
 msgid "Approve this stage?"
 msgstr ""
 
+#: lib/apiary_web/components/submission_components.ex
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Approved"
@@ -6580,6 +6605,16 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Base view: %{view}. The name and the base view cannot change."
 msgstr ""
+
+#: lib/apiary_web/components/submission_components.ex
+#, elixir-autogen, elixir-format
+msgid "Base: the result of Run %{run}"
+msgstr "Base: the head of Run %{run}"
+
+#: lib/apiary_web/components/submission_components.ex
+#, elixir-autogen, elixir-format
+msgid "Base: where the work starts"
+msgstr "Base: where the branch starts"
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
@@ -9293,6 +9328,11 @@ msgstr ""
 msgid "Download the raw bytes"
 msgstr ""
 
+#: lib/apiary_web/components/submission_components.ex
+#, elixir-autogen, elixir-format
+msgid "Draft"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Drop trial"
@@ -10516,6 +10556,11 @@ msgstr ""
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
 msgid "Fix %{filename} to match the format of %{type}: at %{path}, %{error}."
+msgstr ""
+
+#: lib/apiary_web/components/submission_components.ex
+#, elixir-autogen, elixir-format
+msgid "Fix of review finding %{finding}"
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/new.ex
@@ -12587,6 +12632,11 @@ msgstr ""
 msgid "Last used"
 msgstr ""
 
+#: lib/apiary_web/components/submission_components.ex
+#, elixir-autogen, elixir-format
+msgid "Latest"
+msgstr "Head"
+
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Leave %{organisation}"
@@ -13954,6 +14004,11 @@ msgstr ""
 #: lib/apiary_web/live/work_item_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Newest"
+msgstr ""
+
+#: lib/apiary_web/components/submission_components.ex
+#, elixir-autogen, elixir-format
+msgid "Newest first"
 msgstr ""
 
 #: lib/apiary_web/components/integration_components.ex
@@ -17344,6 +17399,11 @@ msgstr ""
 msgid "Recorded the image a prebuild built"
 msgstr ""
 
+#: lib/apiary_web/components/submission_components.ex
+#, elixir-autogen, elixir-format
+msgid "Reference"
+msgstr "Branch"
+
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "Refused"
@@ -18071,6 +18131,11 @@ msgstr ""
 msgid "Review"
 msgstr ""
 
+#: lib/apiary_web/components/submission_components.ex
+#, elixir-autogen, elixir-format
+msgid "Revisions"
+msgstr "Commits"
+
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/live/member_live/index.ex
 #, elixir-autogen, elixir-format
@@ -18248,6 +18313,7 @@ msgstr ""
 #: lib/apiary_web/components/artifact_components.ex
 #: lib/apiary_web/components/overview_components.ex
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/submission_components.ex
 #: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/controllers/jump_controller.ex
 #: lib/apiary_web/live/run_live/show.ex
@@ -19370,6 +19436,11 @@ msgstr "Set a branch, tag or commit that exists. %{url} has no branch %{ref}."
 msgid "Set a wall in the machine's forager.yaml, then start the run again. A read-only run needs a wall, and this machine has none."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Set a wall in the machine's forager.yaml, then start the run again. A run that writes needs a wall, and this machine has none."
+msgstr "Set a wall in the machine's forager.yaml, then start the run again. A run that writes to the checkout needs a wall, and this machine has none."
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Set aside: locked above the workspace"
@@ -20307,6 +20378,11 @@ msgstr ""
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Submission:"
+msgstr ""
+
+#: lib/apiary_web/components/submission_components.ex
+#, elixir-autogen, elixir-format
+msgid "Submissions"
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
@@ -22136,6 +22212,11 @@ msgstr ""
 msgid "The run reloaded its policy: version %{n}."
 msgstr ""
 
+#: lib/apiary_web/components/submission_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run sent no draft to the destination."
+msgstr ""
+
 #: lib/apiary/stages/points.ex
 #, elixir-autogen, elixir-format
 msgid "The run stopped before its verdict."
@@ -23233,6 +23314,7 @@ msgid "Today"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/submission_components.ex
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
 msgid "Today, %{time}"
@@ -25055,6 +25137,7 @@ msgid "Yesterday"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/submission_components.ex
 #: lib/apiary_web/format.ex
 #, elixir-autogen, elixir-format
 msgid "Yesterday, %{time}"
@@ -27585,6 +27668,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "write"
+msgstr ""
+
+#: lib/apiary_web/components/run_components.ex
+#, elixir-autogen, elixir-format
+msgid "write run with no wall"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
