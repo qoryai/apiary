@@ -723,6 +723,283 @@ defmodule Apiary.Stages.SharedRunTest do
     assert length(sessions(run)) == 2
   end
 
+  describe "loops, reruns and feedback in a shared run (A-27)" do
+    # Build with triage-review on new feedback, plan-the-build, then a loop of
+    # implement-changes and review-changes, as one shared run.
+    defp feedback_build do
+      build([
+        %{"workflow" => "triage-review", "when" => %{"feedback" => "new"}},
+        %{"workflow" => "plan-the-build"},
+        loop(workflows(~w(implement-changes review-changes)))
+      ])
+    end
+
+    defp again(text), do: %{"text" => text, "action" => "run_again"}
+
+    # The run stores the verdict `document` during its session.
+    defp verdict_document!(run, document) do
+      {:ok, _version} =
+        Stages.Artifacts.push_json(
+          {:run, run},
+          Repo.get!(WorkItem, run.work_item_id),
+          "verdict",
+          document,
+          stage_id: run.stage_id
+        )
+
+      :ok
+    end
+
+    # The sessions of the loop from implement-changes in session `from`, round 1: each
+    # round's review requests changes, and round 3's stores `last`, which ends the run at
+    # the round limit.
+    defp to_round_limit!(run, from, last) do
+      for round <- 1..3 do
+        implement = from + (round - 1) * 2
+        assert {:session, %{workflow: "review-changes"}} = report(run, implement)
+
+        if round < 3 do
+          :ok = verdict!(run, "changes-requested")
+          next = implement + 2
+
+          assert {:session, %{session: ^next, workflow: "implement-changes"}} =
+                   report(run, implement + 1)
+        else
+          :ok = verdict_document!(run, last)
+          assert report(run, implement + 1) == :end
+        end
+      end
+
+      :ok
+    end
+
+    # The newest run of the work item, claimed as `taken_in!/2` claims the first.
+    defp claimed_newest!(work_item) do
+      run = newest_run(work_item)
+      walk!(run, :read)
+      claim!(run)
+    end
+
+    defp another_round!(scope, work_item, note) do
+      {:ok, work_item} =
+        Stages.resolve_escalation(scope, reload(work_item), :another_round, note,
+          expect_stage: @build
+        )
+
+      work_item
+    end
+
+    test "changes requested start the loop's next round in the same run; round 3 with open findings escalates with them",
+         %{scope: scope} do
+      save!(scope, [feedback_build()])
+
+      # No feedback at the take in: triage-review is passed over.
+      {work_item, run} = taken_in!(scope)
+      assert %DispatchRun{workflow: "plan-the-build", stage_entry: 1} = run
+      assert [%{workflow: "triage-review", reason: "feedback"}] = Stages.skips(work_item)
+
+      :ok = verdict!(run, "passed")
+      assert {:session, %{session: 2, workflow: "implement-changes"}} = report(run, 1)
+
+      findings = [again("The export has no title."), again("The list does not sort by date.")]
+
+      :ok =
+        to_round_limit!(run, 2, %{
+          "verdict" => "changes-requested",
+          "points" => findings
+        })
+
+      assert %WorkItem{stage_state: :escalated, stage_round: 3, loop_entry: 1} =
+               reload(work_item)
+
+      assert runs(work_item) |> Enum.map(& &1.id) == [run.id]
+
+      assert [{4, 2, "implement-changes"}, {6, 3, "implement-changes"}] =
+               for(
+                 s <- sessions(run),
+                 s.workflow == "implement-changes",
+                 s.round > 1,
+                 do: {s.sequence, s.round, s.workflow}
+               )
+
+      assert [%Escalation{cause: :round_limit, points: [point]}] = escalations(work_item)
+
+      assert point == %{
+               "text" =>
+                 "3 of 3 rounds ran, and 2 review findings are still open. " <>
+                   "The export has no title. The list does not sort by date.",
+               "action" => "run_again",
+               "fix" =>
+                 "Read the 2 open findings, then pick Accept as it is or Run another round."
+             }
+    end
+
+    test "Run another round with no comment reruns the failed workflow only", %{scope: scope} do
+      save!(scope, [feedback_build()])
+      {work_item, run} = taken_in!(scope)
+
+      :ok = verdict!(run, "passed")
+      assert {:session, %{workflow: "implement-changes"}} = report(run, 1)
+
+      # The machine of implement-changes' session fails.
+      assert report(run, 2, "failed") == :end
+
+      assert %WorkItem{stage_state: :escalated, stage_entry: 2, loop_entry: 0} =
+               reload(work_item)
+
+      work_item = another_round!(scope, work_item, nil)
+
+      assert [_shared, rerun] = runs(work_item)
+
+      assert %DispatchRun{workflow: "implement-changes", stage_entry: 2, loop_entry: 0} =
+               rerun
+
+      refute Enum.any?(runs(work_item), &(&1.workflow == "triage-review"))
+      assert [%{workflow: "triage-review"}] = Stages.skips(work_item)
+    end
+
+    test "Run another round with a comment starts triage-review; once a run handled the note, it does not start it again",
+         %{scope: scope} do
+      save!(scope, [feedback_build()])
+      {work_item, run} = taken_in!(scope)
+
+      :ok = verdict!(run, "passed")
+      assert {:session, %{workflow: "implement-changes"}} = report(run, 1)
+      :ok = to_round_limit!(run, 2, %{"verdict" => "changes-requested"})
+
+      # The note is feedback: Build starts again at its first entry, round 1.
+      work_item = another_round!(scope, work_item, "Keep the title short.")
+
+      assert %DispatchRun{workflow: "triage-review", stage_entry: 0, round: 1} =
+               newest_run(work_item)
+
+      assert %WorkItem{stage_state: :running, stage_entry: 0, stage_round: 1} = work_item
+      assert [%{kind: :escalation, note: "Keep the title short."}] = Stages.notes(work_item)
+
+      # The new run's sessions: triage-review, plan-the-build, then the loop.
+      second = claimed_newest!(work_item)
+      :ok = verdict!(second, "passed")
+      assert {:session, %{workflow: "plan-the-build"}} = report(second, 1)
+      :ok = verdict!(second, "passed")
+      assert {:session, %{workflow: "implement-changes"}} = report(second, 2)
+      assert report(second, 3, "failed") == :end
+
+      # The note is still open, but the run started after it: a rerun with no comment
+      # runs the failed workflow, not triage-review.
+      assert [%{note: "Keep the title short."}] = Stages.notes(reload(work_item))
+      work_item = another_round!(scope, work_item, nil)
+
+      assert %DispatchRun{workflow: "implement-changes", stage_entry: 2, loop_entry: 0} =
+               newest_run(work_item)
+
+      assert Enum.count(runs(work_item), &(&1.workflow == "triage-review")) == 1
+    end
+
+    test "a triage-review session that stopped runs again on Run another round with no note",
+         %{scope: scope} do
+      save!(scope, [feedback_build()])
+      {work_item, run} = taken_in!(scope)
+
+      :ok = verdict!(run, "passed")
+      assert {:session, %{workflow: "implement-changes"}} = report(run, 1)
+      :ok = to_round_limit!(run, 2, %{"verdict" => "changes-requested"})
+      work_item = another_round!(scope, work_item, "Keep the title short.")
+
+      # triage-review's session, the new run's first, stops: the note is unhandled.
+      second = claimed_newest!(work_item)
+      assert %DispatchRun{workflow: "triage-review", stage_entry: 0} = second
+      assert report(second, 1, "failed") == :end
+      assert %WorkItem{stage_state: :escalated, stage_entry: 0} = reload(work_item)
+
+      work_item = another_round!(scope, work_item, nil)
+
+      assert %DispatchRun{workflow: "triage-review", stage_entry: 0, round: 1} =
+               newest_run(work_item)
+
+      # Its session with a verdict `escalate` handles nothing either.
+      third = claimed_newest!(work_item)
+
+      :ok =
+        verdict_document!(third, %{
+          "verdict" => "escalate",
+          "points" => [again("The note is unclear.")]
+        })
+
+      assert report(third, 1) == :end
+      work_item = another_round!(scope, work_item, nil)
+
+      assert %DispatchRun{workflow: "triage-review", stage_entry: 0, round: 1} =
+               newest_run(work_item)
+
+      assert Enum.count(runs(work_item), &(&1.workflow == "triage-review")) == 3
+    end
+
+    test "a member's answer to an escalation's question starts triage-review", %{scope: scope} do
+      save!(scope, [feedback_build()])
+      {work_item, run} = taken_in!(scope)
+      registered = registered!(scope, run)
+
+      # plan-the-build asks a question and escalates with it.
+      push_output!(run, registered, questions_result(["Which export format?"]))
+
+      :ok =
+        verdict_document!(run, %{
+          "verdict" => "escalate",
+          "points" => [
+            %{"text" => "The format is not chosen.", "action" => "answer", "question" => "q1"}
+          ]
+        })
+
+      assert report(run, 1) == :end
+      assert %WorkItem{stage_state: :waiting_answers, stage_entry: 1} = reload(work_item)
+      assert [%Escalation{cause: :escalate, resolved_at: nil}] = escalations(work_item)
+
+      exited!(run, registered)
+
+      {:ok, _work_item} =
+        WorkItems.answer(scope, reload(work_item), run.attempt, %{"1" => "PDF."})
+
+      assert %DispatchRun{workflow: "triage-review", stage_entry: 0, round: 1} =
+               newest_run(work_item)
+
+      assert %WorkItem{stage_state: :running, stage_entry: 0} = reload(work_item)
+    end
+
+    test "an answer given while no escalation is open is handled by the session that passes after it",
+         %{scope: scope} do
+      save!(scope, [feedback_build()])
+      {work_item, run} = taken_in!(scope)
+      registered = registered!(scope, run)
+
+      # plan-the-build's session asks a question with no escalation.
+      push_output!(run, registered, questions_result(["Which export format?"]))
+      assert report(run, 1) == :end
+      assert %WorkItem{stage_state: :waiting_answers, stage_entry: 1} = reload(work_item)
+      assert escalations(work_item) == []
+      exited!(run, registered)
+
+      # The answer runs plan-the-build again, as the next run's first session.
+      {:ok, _work_item} =
+        WorkItems.answer(scope, reload(work_item), run.attempt, %{"1" => "PDF."})
+
+      second = claimed_newest!(work_item)
+      assert %DispatchRun{workflow: "plan-the-build", stage_entry: 1} = second
+
+      # plan-the-build's session passes and handles the answer; implement-changes stops.
+      :ok = verdict!(second, "passed")
+      assert {:session, %{session: 2, workflow: "implement-changes"}} = report(second, 1)
+      assert report(second, 2, "failed") == :end
+      assert %WorkItem{stage_state: :escalated, stage_entry: 2} = reload(work_item)
+
+      work_item = another_round!(scope, work_item, nil)
+
+      assert %DispatchRun{workflow: "implement-changes", stage_entry: 2, loop_entry: 0} =
+               newest_run(work_item)
+
+      refute Enum.any?(runs(work_item), &(&1.workflow == "triage-review"))
+    end
+  end
+
   test "a member's answer to a question that Verify asked starts verify-a-ticket alone", %{
     scope: scope
   } do

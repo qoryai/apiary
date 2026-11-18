@@ -220,12 +220,17 @@ defmodule Apiary.Stages do
   # caller's transaction: after answers, or a send of the review comments while the
   # questions wait, the same workflow; after an escalation or a run that stopped, another
   # round; at the gate, after a send of the review comments on the stage's outputs, another
-  # round from where the stage's sequence runs again (`Apiary.Stages.Runner.step/4`).
-  # `{:ok, run}`; `{:error, :not_waiting}` when the stage
-  # waits for a workflow; `:not_placed` for a work item the runner did not place.
+  # round from where the stage's sequence runs again (`Apiary.Stages.Runner.step/4`). In a
+  # stage with the condition `{feedback: new}`, another round while a member's feedback is
+  # unhandled, and answers that resolve an open escalation or come with a comment or a
+  # reply, start the stage again at its first entry (`Runner.feedback_entry?/3`).
+  # `{:ok, run}`; `{:ok, nil}` when such feedback starts the stage again and the stage
+  # waits for a workflow, so the member's feedback is kept; `{:error, :not_waiting}` when
+  # any other round waits for a workflow; `:not_placed` for a work item the runner did not
+  # place.
   @doc false
   @spec next_run(Ecto.UUID.t(), pos_integer) ::
-          {:ok, DispatchRun.t()} | {:error, :not_waiting} | :not_placed
+          {:ok, DispatchRun.t() | nil} | {:error, :not_waiting} | :not_placed
   def next_run(id, take_in) when is_binary(id) and is_integer(take_in) do
     in_transaction!()
     work_item = %{lock!(id) | take_in: take_in}
@@ -233,9 +238,25 @@ defmodule Apiary.Stages do
     with {:ok, version, stage} <- placed(work_item) do
       {event, escalation} = next_event(work_item)
       if escalation, do: :ok = resolve!(escalation, :another_round, nil, nil)
-      {work_item, run} = apply_event(work_item, version, stage, event)
+      answer = %{escalation_answer: event == :answered and not is_nil(escalation)}
+      {work_item, run} = apply_event(work_item, version, stage, event, nil, answer)
       tell_now(work_item)
-      if run, do: {:ok, run}, else: {:error, :not_waiting}
+
+      cond do
+        run ->
+          {:ok, run}
+
+        work_item.stage_state == :waiting_workflow and
+            Runner.feedback_entry?(
+              stage,
+              event,
+              Map.merge(facts(work_item, version, stage), answer)
+            ) ->
+          {:ok, nil}
+
+        true ->
+          {:error, :not_waiting}
+      end
     else
       _not_placed -> :not_placed
     end
@@ -1670,7 +1691,11 @@ defmodule Apiary.Stages do
                "stage_id" => stage["id"],
                "artifact_version_id" => artifact_version_id
              }) do
-        {work_item, _run} = apply_event(work_item, version, stage, :request_changes)
+        {work_item, _run} =
+          apply_event(work_item, version, stage, :request_changes, nil, %{
+            feedback_note: not is_nil(note)
+          })
+
         {:ok, work_item}
       end
     end)
@@ -2639,7 +2664,12 @@ defmodule Apiary.Stages do
   # with no stage, stay open.
   @doc false
   @spec notes(WorkItem.t()) :: [map]
-  def notes(%WorkItem{id: id} = work_item) do
+  def notes(%WorkItem{} = work_item),
+    do: work_item |> open_notes() |> Enum.map(&Map.delete(&1, :resolution))
+
+  # open_notes/1 is `notes/1` with the `resolution` of each escalation's note, which
+  # `feedback_new?/2` reads.
+  defp open_notes(%WorkItem{id: id} = work_item) do
     passed = passed_at(id)
 
     decisions =
@@ -2669,7 +2699,8 @@ defmodule Apiary.Stages do
             user_id: e.resolved_by_id,
             note: e.note,
             artifact_version_id: nil,
-            inserted_at: e.resolved_at
+            inserted_at: e.resolved_at,
+            resolution: e.resolution
           }
       )
 
@@ -2815,12 +2846,14 @@ defmodule Apiary.Stages do
   defp enter_locked(work_item, version, stage, forced? \\ false) do
     # A stage entered again is no longer the stage that was passed over: its record of the
     # pass-over goes, and a new pass-over writes a new one. So do the records of the entries
-    # a first attempt passed over.
+    # a first attempt passed over. The records of entries passed over for a condition,
+    # `{feedback: new}` among them, stay.
     Repo.delete_all(
       from s in Skip,
         where:
           s.work_item_id == ^work_item.id and s.stage_id == ^stage["id"] and
-            s.take_in == ^work_item.take_in and (is_nil(s.workflow) or not is_nil(s.reason))
+            s.take_in == ^work_item.take_in and
+            (is_nil(s.workflow) or s.reason == "first_attempt_passed")
     )
 
     now = DateTime.utc_now()
@@ -3504,22 +3537,28 @@ defmodule Apiary.Stages do
 
   # The records of the entries a first attempt passed over (`Runner`), in the stage and the
   # take in, go when the stage runs those entries again: Request changes runs the sequence
-  # from its start, so all of them go. Another round at the end of the sequence runs only
-  # the stage's last loop, so only the records of that loop's body go and the entries before
-  # it, which still do not run, keep theirs. Another round with no loop runs the sequence
-  # from its start.
+  # from its start, so all of them go, and so does feedback that enters the stage again at
+  # its first entry (`Runner.feedback_entry?/3`). Another round at the end of the sequence
+  # runs only the stage's last loop, so only the records of that loop's body go and the
+  # entries before it, which still do not run, keep theirs. Another round with no loop runs
+  # the sequence from its start.
   defp delete_first_attempt_skips(work_item, stage, event, facts) do
     query =
       from s in Skip,
         where:
           s.work_item_id == ^work_item.id and s.stage_id == ^stage["id"] and
-            s.take_in == ^work_item.take_in and not is_nil(s.reason)
+            s.take_in == ^work_item.take_in and s.reason == "first_attempt_passed"
 
-    case {event, List.last(Runner.loops(stage, facts))} do
-      {:request_changes, _loop} ->
+    case {event, Runner.feedback_entry?(stage, event, facts)} do
+      {:request_changes, _feedback} ->
         Repo.delete_all(query)
 
-      {{:another_round, _cause}, loop} ->
+      {_event, true} ->
+        Repo.delete_all(query)
+
+      {{:another_round, _cause}, false} ->
+        loop = List.last(Runner.loops(stage, facts))
+
         if loop && Runner.at_end?(stage, position(work_item)),
           do: Repo.delete_all(from s in query, where: s.stage_entry == ^loop),
           else: Repo.delete_all(query)
@@ -4457,12 +4496,183 @@ defmodule Apiary.Stages do
   defp condition_facts(work_item, version, stage, artifacts, strict? \\ true) do
     facts = %{counted: counted(work_item, version, stage, artifacts), track: track(work_item)}
 
+    facts =
+      if Runner.feedback_stage?(stage),
+        do: Map.merge(facts, feedback_facts(work_item, stage, strict?)),
+        else: facts
+
     case Runner.changed_inputs(stage) do
       [] ->
         facts
 
       types ->
         Map.merge(facts, changed_facts(work_item, version, stage, artifacts, types, strict?))
+    end
+  end
+
+  # feedback_facts/3 is, for the condition `{feedback: new}` (`Apiary.Stages.Runner`),
+  # `feedback`: whether the work item has an open note (`open_notes/1`) that is feedback
+  # (`feedback?/1`) and that no run handled; and `feedback_comment`: the same for a review
+  # comment or a reply alone. A run of an entry with `{feedback: new}` handles each such
+  # note older than its start (`handled_at/5`). A plain answer, given while no escalation
+  # of the work item was open, is the answer a run's question waited for: any run of the
+  # stage handles it.
+  defp feedback_facts(work_item, stage, strict?) do
+    handled = handled_at(work_item, stage, strict?, Runner.feedback_keys(stage), nil)
+
+    unhandled =
+      for note <- open_notes(work_item), feedback?(note), after?(note, handled), do: note
+
+    spans = escalation_spans(work_item)
+    {plain, others} = Enum.split_with(unhandled, &plain_answer?(&1, spans))
+    unhandled = others ++ unhandled_plain(work_item, stage, strict?, plain)
+
+    %{
+      feedback: unhandled != [],
+      feedback_comment: Enum.any?(unhandled, &(&1.kind == :answer and &1[:comment] == true))
+    }
+  end
+
+  defp unhandled_plain(_work_item, _stage, _strict?, []), do: []
+
+  defp unhandled_plain(work_item, stage, strict?, plain) do
+    oldest = plain |> Enum.map(& &1.inserted_at) |> Enum.min(DateTime)
+    handled = handled_at(work_item, stage, strict?, nil, oldest)
+    Enum.filter(plain, &after?(&1, handled))
+  end
+
+  defp after?(_note, nil), do: true
+  defp after?(note, handled), do: DateTime.after?(note.inserted_at, handled)
+
+  # When each escalation of the work item was open: from its start to its resolution, nil
+  # while it is open.
+  defp escalation_spans(work_item) do
+    Repo.all(
+      from e in Escalation,
+        where: e.work_item_id == ^work_item.id,
+        select: {e.inserted_at, e.resolved_at}
+    )
+  end
+
+  # An answer to a question, not a comment or a reply, given while no escalation was open.
+  defp plain_answer?(%{kind: :answer} = note, spans) do
+    note[:comment] != true and
+      not Enum.any?(spans, fn {from, to} ->
+        not DateTime.after?(from, note.inserted_at) and
+          (is_nil(to) or not DateTime.before?(to, note.inserted_at))
+      end)
+  end
+
+  defp plain_answer?(_note, _spans), do: false
+
+  # The notes that are feedback: Request changes and a move with a note; an answer, a
+  # review comment or a reply (kind `answer`), the comment of Run another round among
+  # them; and the note of an escalation resolved otherwise than by an accept.
+  defp feedback?(%{kind: kind, note: note}) when kind in [:request_changes, :move],
+    do: is_binary(note) and String.trim(note) != ""
+
+  defp feedback?(%{kind: :answer}), do: true
+  defp feedback?(%{kind: :escalation, resolution: resolution}), do: resolution != :accept
+  defp feedback?(_note), do: false
+
+  # handled_at/5 is when the newest run that handled feedback started, nil for none: a run
+  # of `stage` at the position of one of `keys` (`{entry, loop_entry, workflow}`, every
+  # position for nil) that started after `since` (any time for nil) and ended with a
+  # verdict `passed` or `changes-requested`. A run that stopped, escalated or gave no
+  # verdict handled nothing. A run's start is when it was queued; in a run of a stage with
+  # `shared_run: true`, each session counts separately, from when it started
+  # (`session_handled_at/4`). A verdict whose file the store cannot read raises with
+  # `strict?`, as `verdict!/1` does, and handles nothing without it.
+  defp handled_at(work_item, stage, strict?, keys, since) do
+    sessions =
+      Repo.all(
+        from s in Session,
+          join: d in DispatchRun,
+          on: d.id == s.dispatch_run_id,
+          where: d.work_item_id == ^work_item.id and d.stage_id == ^stage["id"],
+          order_by: [s.dispatch_run_id, s.sequence],
+          select: {d, s}
+      )
+
+    shared = MapSet.new(sessions, fn {run, _session} -> run.id end)
+
+    ended =
+      from d in DispatchRun,
+        where:
+          d.work_item_id == ^work_item.id and d.stage_id == ^stage["id"] and
+            d.state == :ended and d.end_cause == :run_ended and
+            not is_nil(d.stage_entry)
+
+    runs =
+      for run <- Repo.all(of_workflows(ended, keys)),
+          not MapSet.member?(shared, run.id),
+          at?({run.stage_entry, run.loop_entry, run.workflow}, keys),
+          started_after?(run.queued_at, since),
+          handled?(handled_verdict(run, strict?)),
+          do: run.queued_at
+
+    (runs ++ session_handled_at(sessions, keys, since, strict?))
+    |> Enum.max(DateTime, fn -> nil end)
+  end
+
+  defp of_workflows(query, nil), do: query
+
+  defp of_workflows(query, keys) do
+    workflows = Enum.map(keys, fn {_entry, _loop_entry, workflow} -> workflow end)
+    from d in query, where: d.workflow in ^workflows
+  end
+
+  defp at?(_key, nil), do: true
+  defp at?(key, keys), do: key in keys
+
+  defp started_after?(_at, nil), do: true
+  defp started_after?(at, since), do: DateTime.after?(at, since)
+
+  # The start of each session at a position of `keys`, after `since`, whose step read a
+  # verdict `passed` or `changes-requested` that the session stored: a verdict newer than
+  # the one the session before it saw (`verdict_number`), as the step reads it
+  # (`session_verdict/2`).
+  defp session_handled_at(sessions, keys, since, strict?) do
+    sessions
+    |> Enum.chunk_by(fn {run, _session} -> run.id end)
+    |> Enum.flat_map(fn [{run, _first} | _rest] = chunk ->
+      {times, _seen} =
+        Enum.reduce(chunk, {[], nil}, fn {_run, session}, {times, seen} ->
+          number = session.verdict_number
+          key = {session.stage_entry, session.loop_entry, session.workflow}
+
+          handled =
+            not is_nil(session.response) and is_integer(number) and number != seen and
+              at?(key, keys) and started_after?(session.inserted_at, since) and
+              handled?(session_verdict_at(run, number, strict?))
+
+          {if(handled, do: [session.inserted_at | times], else: times), number || seen}
+        end)
+
+      times
+    end)
+  end
+
+  defp handled?({:verdict, verdict, _points}), do: verdict in [:passed, :changes_requested]
+  defp handled?(_result), do: false
+
+  defp handled_verdict(run, true), do: verdict!(run)
+  defp handled_verdict(run, false), do: reported_verdict(run)
+
+  # The verdict of the version `number` of the verdict named `main` that `run` stored.
+  defp session_verdict_at(run, number, strict?) do
+    with %{} = version <- Artifacts.version_of_run(run, "verdict", "main", number) do
+      case Artifacts.stored_json(version) do
+        {:ok, document} ->
+          document = document || %{}
+          {:verdict, verdict(document["verdict"]), points(document["points"])}
+
+        {:error, :store_unavailable} when strict? ->
+          raise Apiary.Stages.VerdictUnreadable
+
+        {:error, :store_unavailable} ->
+          nil
+      end
     end
   end
 

@@ -615,7 +615,12 @@ The body, at most 64 KiB:
 - `points`: what is wrong or missing, 1 to 20 points. With `escalate`, points are
   required, and a person reads them when the stage escalates. With `changes-requested`,
   points are optional, and each point's `action` is `run_again`; the verdict's page shows
-  them as it shows every other member of the file. With `passed`, a verdict has none.
+  them as it shows every other member of the file. If a `changes-requested` verdict with
+  points ends the last round of a loop, the stage escalates at its round limit with one
+  point. Its text is "3 of 3 rounds ran, and 2 review findings are still open." followed
+  by the `text` of each point, and its fix is "Read the 2 open findings, then pick Accept
+  as it is or Run another round." With no points, the text is "3 of 3 rounds ran." With
+  `passed`, a verdict has none.
   Each point has `text`, one plain sentence on one line of 1 to 500 characters that
   states what is wrong, with no action, and `action`: `answer`, with `question`, the id of
   an open question, or `run_again`, without `question`. A `run_again` point may also have
