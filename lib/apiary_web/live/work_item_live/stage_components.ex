@@ -422,13 +422,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         </.external_link>
       </p>
       <div :if={@page.track && @page.offers == []} id={"#{@id}-track"} class="flex flex-col gap-1">
-        <h3 class="text-sm font-semibold">{gettext("Track")}</h3>
-        <p>
+        <p id={"#{@id}-path"} class="flex items-center gap-2">
+          <span class="text-sm font-semibold">{gettext("Track")}</span>
           <.badge color="success">{@page.track.name}</.badge>
         </p>
         <p :if={@started_no_run} id={"#{@id}-no-run"}>
-          {gettext("%{stage} started no run.", stage: @page.stage.name) <>
-            " " <> gettext("Read the inputs below, then approve.")}
+          {gettext("Read the inputs below, then approve.")}
         </p>
       </div>
       <h3
@@ -457,13 +456,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         types={@page.missing_outputs}
         add_path={@add_path}
       />
-      <p :if={@decides and not @page.confirm_gate} id={"#{@id}-approvers"} class="text-xs opacity-70">
-        <%= case @page.approvers do %>
-          <% :members -> %>
-            {gettext("One approval covers each version. Any member approves.")}
-          <% {:listed, _ids} -> %>
-            {gettext("One approval covers each version. The members this stage lists approve.")}
-        <% end %>
+      <p
+        :if={@decides and not @page.confirm_gate and match?({:listed, _ids}, @page.approvers)}
+        id={"#{@id}-approvers"}
+        class="text-xs opacity-70"
+      >
+        {gettext("Only the members this stage lists can approve.")}
       </p>
       <%= if @page.can_decide and not @page.confirm_gate do %>
         <%= if @asking == :changes and @decides do %>
@@ -539,10 +537,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   def started_no_run?(_page), do: false
 
+  # The questions are on the Questions tab, so the list of outputs leaves them out.
   defp shown_outputs(%{confirm_gate: true, outputs: outputs}),
-    do: Enum.filter(outputs, & &1.version_id)
+    do: Enum.filter(outputs, &(&1.version_id && &1.type != "questions"))
 
-  defp shown_outputs(%{outputs: outputs}), do: outputs
+  defp shown_outputs(%{outputs: outputs}), do: Enum.reject(outputs, &(&1.type == "questions"))
 
   # An output's rows on the gate card: one for the newest version of each of its names
   # (`names`), or one for the output where it has none, its version nil or `main`'s. A
@@ -732,7 +731,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   @doc """
   The block "What the run needs from you": the points of the stage's open escalation, one
   numbered sentence each, followed by the sentence of its action: "Answer question N.",
-  with "question N" linked to the question on the current stage's tab, or "Run another
+  with "question N" linked to the question on the Questions tab, or "Run another
   round.", or the point's fix line in its place. While the stage is escalated, a reader who
   may decide finds the note field and Run another round under the points; they belong to
   the form of the escalation card in the rail (`stage_card/1`). While the stage waits for
@@ -750,8 +749,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     doc: "the path of the tab where the questions are; empty on that tab"
 
   attr :questions_id, :string,
-    default: "work-item-explore-questions",
-    doc: "the id of that tab's questions frame, before `-question-N`"
+    default: "work-item-questions",
+    doc: "the id before `-question-N` of a question on that tab"
 
   attr :scope, :any,
     default: nil,
@@ -1192,9 +1191,10 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   @doc false
   # output_versions/1 is the summary's pieces of the record block at a stage after Explore:
   # "spec v1" for each of the current stage's outputs that has a version, in the stage's
-  # order. An output with no version has no piece, as Explore's proposal and questions do.
+  # order. An output with no version has no piece, as Explore's proposal does. The
+  # questions have none: they are on the Questions tab.
   def output_versions(%{outputs: outputs}) do
-    for %{type: type, version: number} when is_integer(number) <- outputs,
+    for %{type: type, version: number} when is_integer(number) and type != "questions" <- outputs,
         do: version_words(type, number)
   end
 
