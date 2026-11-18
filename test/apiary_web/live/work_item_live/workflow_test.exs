@@ -2735,7 +2735,18 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         update_in(state.socket.assigns.stored_reads, fn reads ->
           Map.put(reads, {:json, submission.public_id}, %{
             "repositories" => [
-              %{"path" => "example/kept", "draft" => %{"url" => "https://forge.example.com/kept"}}
+              %{
+                "system" => "forge.example.com",
+                "path" => "example/kept",
+                "commit" => String.duplicate("b", 40),
+                "draft" => %{
+                  "number" => 7,
+                  "url" => "https://forge.example.com/example/kept/pull/7",
+                  "title" => "Kept",
+                  "state" => "draft",
+                  "action" => "opened"
+                }
+              }
             ]
           })
         end)
@@ -5506,6 +5517,80 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert line(view, "#work-item-needs-point-1") ==
                "The run stopped: the gateway had no model key for the run. Add a model key in Organisation settings › Model providers."
+    end
+  end
+
+  describe "a run that writes and has no wall" do
+    # Qory closed the run `failed` with `write_needs_wall`; the stage runner escalated it
+    # from the stop cause (`Apiary.Stages.StopCause`): the cause, then the fix line in
+    # place of Run another round.
+    @cause "The run stopped: a run that writes to the checkout needs a wall, and this machine has none."
+
+    for {kind, fix} <- [
+          pool: "Set a wall in the machine's forager.yaml, then start the run again.",
+          instance_pool: "Contact support."
+        ] do
+      test "shows its stop cause and the fix line on the work item, on #{kind}", %{
+        conn: conn,
+        scope: scope
+      } do
+        node =
+          case unquote(kind) do
+            :pool -> Apiary.NodesFixtures.pool_fixture(scope)
+            :instance_pool -> Apiary.NodesFixtures.instance_pool_fixture(installed_as: "pool")
+          end
+
+        work_item =
+          scope
+          |> taken_in_fixture()
+          |> end_run!(nil, %{
+            state: "failed",
+            exit_state: "failed",
+            reason: "write_needs_wall",
+            node_id: node.id,
+            outcome_state: nil,
+            outcome_time: nil,
+            outcome_received_at: nil,
+            outcome_digest: nil
+          })
+
+        assert work_item.stage_state == :escalated
+
+        {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+        assert line(view, "#work-item-needs-point-1") == @cause <> " " <> unquote(fix)
+      end
+    end
+  end
+
+  describe "a run that reached its time limit" do
+    # Qory closed the run `cancelled` with `timeout`; the stage runner escalated it from the
+    # stop cause (`Apiary.Stages.StopCause`): the attempt and the stage, and no fix line
+    # (the page shows "Run another round." in its place).
+    test "shows its stop cause with the attempt and the stage on the work item", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> end_run!(nil, %{
+          state: "cancelled",
+          exit_state: "cancelled",
+          exit_code: 124,
+          reason: "timeout",
+          outcome_state: nil,
+          outcome_time: nil,
+          outcome_received_at: nil,
+          outcome_digest: nil
+        })
+
+      assert work_item.stage_state == :escalated
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert line(view, "#work-item-needs-point-1") ==
+               "The run stopped: Attempt 1 reached its time limit, so Explore has no result. Run another round."
     end
   end
 

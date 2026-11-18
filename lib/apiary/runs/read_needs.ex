@@ -50,9 +50,13 @@ defmodule Apiary.Runs.ReadNeeds do
     |> of_run()
   end
 
-  defp installed?(nil), do: false
+  @doc false
+  # installed?/1 is true when `node_id` is a pool with no organisation and no workspace,
+  # the instance's pool; `Apiary.Runs.WriteNeeds` reads it too.
+  @spec installed?(binary | nil) :: boolean
+  def installed?(nil), do: false
 
-  defp installed?(node_id) do
+  def installed?(node_id) do
     Repo.exists?(
       from n in Node,
         where: n.id == ^node_id and n.kind == :pool,

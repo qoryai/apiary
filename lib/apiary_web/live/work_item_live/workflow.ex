@@ -158,7 +158,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       approvable: get(get(status, :gate) || %{}, :approvable?) == true,
       index: for(artifact <- index, not Artifacts.withdrawn?(artifact), do: indexed(artifact)),
       # The newest submission; the work item page fills `drafts` from its document
-      # (`drafts/1`), which it reads once per version.
+      # (`Apiary.Submissions.repositories/1`), which it reads once per version.
       submission: submission(version, index),
       drafts: [],
       earlier: if(at, do: Enum.take(all, at), else: []),
@@ -493,20 +493,6 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     |> Enum.reject(&is_nil/1)
     |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.number}, fn -> nil end)
   end
-
-  # drafts/1 is the drafts of a submission's JSON document (`submission`, read with
-  # `Apiary.Stages.Artifacts.read_json/1`), in the order of its repositories: `%{path:,
-  # url:}` for each repository with a draft link. A document that could not be read, nil,
-  # has none.
-  @doc false
-  @spec drafts(map | nil) :: [%{path: String.t(), url: String.t()}]
-  def drafts(%{"repositories" => repositories}) when is_list(repositories) do
-    for %{"path" => path, "draft" => %{"url" => url}} <- repositories,
-        is_binary(path) and is_binary(url),
-        do: %{path: path, url: url}
-  end
-
-  def drafts(_document), do: []
 
   # The newest version of one name of an output type (`Apiary.Stages.status/2`).
   defp named_output(named),
