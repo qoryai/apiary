@@ -82,11 +82,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   seconds, as `codex` does. The run's lead is 30 seconds longer because the gateway renews
   a run's token 5 minutes before it expires, and a request a few seconds earlier would
   get the same token and make the gateway ask again 30 seconds later. A separate job,
-  every 6 hours, refreshes each sign-in that has not been refreshed for 7 days. A sign-in is not refreshed again within
-  60 seconds of a refresh. The refresh is one HTTPS call to the token address of the
-  provider's catalogue entry, `https://auth.openai.com/oauth/token`, with the refresh
-  token, the client id of the entry and the reason (`proactive_expiry` or `scheduled`);
-  the server needs outbound HTTPS to `auth.openai.com`. A refresh keeps the key's states
+  every 6 hours, refreshes each sign-in that has not been refreshed for 7 days. A sign-in
+  is not refreshed again within 60 seconds of a refresh. The refresh is one HTTPS call to
+  the token address of the provider's catalogue entry,
+  `https://auth.openai.com/oauth/token`, with the refresh token, the client id of the
+  entry and the reason (`proactive_expiry` or `scheduled`); the server needs outbound HTTPS to `auth.openai.com`. A refresh keeps the key's states
   and the copies that runs hold. The call and the write of its result run in a task that
   no caller owns, so the new refresh token is stored even when the caller stops waiting;
   a caller that stops waiting gets the old access token while it is valid. A key renamed
