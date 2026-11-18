@@ -613,6 +613,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
   describe "the runtime" do
     test "is hidden while the list has one runtime, and the choice names none", ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
+      :ok = Runtimes.put_test_list([Enum.find(Runtimes.list(), &(&1.name == "claude"))])
       {:ok, lv, _html} = live(conn, path(scope))
 
       refute has_element?(lv, "#model_choice_runtime")
@@ -626,7 +627,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
     test "with two, is a field; Model lists only the providers that serve the runtime", ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
       second = %{release | name: release.name <> "-second", title: release.title <> " second"}
 
       unserved = %{
@@ -705,7 +706,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
     test "with one runtime, says to add a provider that serves it", ctx do
       %{conn: conn, scope: scope} = ctx
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
       unserved = %{release | model: %{release.model | "formats" => ["no-such-format"]}}
       :ok = Runtimes.put_test_list([unserved])
 
@@ -723,7 +724,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
     test "with two runtimes that no provider serves, says to add a provider", ctx do
       %{conn: conn, scope: scope} = ctx
-      [release] = Runtimes.list()
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
       unserved = %{release | model: %{release.model | "formats" => ["no-such-format"]}}
       other = %{unserved | name: release.name <> "-other", title: release.title <> " other"}
       :ok = Runtimes.put_test_list([unserved, other])

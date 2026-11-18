@@ -27,7 +27,7 @@ defmodule Apiary.ModelChoicesRuntimeTest do
         keys: [%{value_id: "main", value: "sk-ant-runtime-test-0123456789"}]
       })
 
-    [release] = Runtimes.list()
+    release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
 
     %{
       scope: scope,
