@@ -6,24 +6,38 @@
     "system": "code.example.com",
     "path": "acme/shop"
   },
-  "target_version": "0123456789abcdef0123456789abcdef01234567",
   "work_item": {
     "id": "wi_8Kx2mQ4vT9",
     "url": "https://control.example.com/work-items/wi_8Kx2mQ4vT9",
     "title": "Checkout fails on an empty cart"
   },
+  "run_settings": {
+    "runtime": "claude"
+  },
   "workflow": "build",
   "harness_hidden": false,
-  "submit_module": {
-    "source": {
-      "git": "https://code.example.com/example-org/forge-module",
-      "ref": "v1.2.0",
-      "path": "modules/forge-submit"
+  "harness": {
+    "harness": {
+      "name": "shop",
+      "extends": {
+        "git": "https://code.example.com/team/harness",
+        "ref": "v2.4.0",
+        "stack": "software"
+      },
+      "modules": [
+        {
+          "source": {
+            "git": "https://code.example.com/team/harness",
+            "ref": "v2.4.0",
+            "module": "checks"
+          }
+        }
+      ]
     }
   },
   "submit": {
     "type": "code-change",
-    "send": "after_gate"
+    "send": "end_of_run"
   },
   "inputs": {
     "version": 1,
