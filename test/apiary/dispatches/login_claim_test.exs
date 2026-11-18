@@ -248,7 +248,9 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       assert {:ok, :none} = claim(ctx)
       waiting = waiting!(queued, provider)
 
-      assert {:sign_in, _public_id, "main"} = Waiting.reason(waiting)
+      # The run's page reads the sign-in's row alone and decrypts no token, so it cannot
+      # tell the missing claim: the row is still signed in, and the page names the pool.
+      assert {:pool, _name} = Waiting.reason(waiting)
       assert requests() == []
       assert Repo.get_by!(Login, secret_value_id: value(provider, "main").id).state == "signed_in"
     end
@@ -359,69 +361,62 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       assert entry["auth"]["account_header"] == "chatgpt-account-id"
     end
 
-    test "fits runs.model_keys at 6 keys with every member and runs.provider_api at 8192", ctx do
-      provider = provider!(ctx, [{"main", []}])
-      name = fn n -> String.duplicate("k", 62) <> "-#{n}" end
-      time = "2026-11-18T14:00:00Z"
+    test "a claim of 6 keys with every member stays within runs.model_keys and provider_api",
+         ctx do
+      names = for n <- 1..6, do: String.duplicate("k", 56) <> "-#{n}"
+      provider = provider!(ctx, for(name <- names, do: {name, [tag: name]}))
 
-      keys =
-        for n <- 1..6 do
-          first = if n == 1, do: %{"start" => true, "chosen" => true}, else: %{}
-
-          Map.merge(first, %{
-            "id" => Ecto.UUID.generate(),
-            "name" => name.(n),
-            "pause_for_s" => 604_800,
-            "resets_at" => time,
-            "schedule_resets_at" => time,
-            "cooldown_until" => time,
-            "use_up_to_percent" => 99
+      for {name, n} <- Enum.with_index(names, 1) do
+        {:ok, _setting} =
+          put_key_setting(ctx.scope, value(provider, name), %{
+            pause_seconds: 604_800,
+            use_up_to_percent: 99,
+            reset_weekday: 7,
+            reset_time: "23:59:59",
+            reset_time_zone: "Pacific/Kiritimati"
           })
-        end
 
-      auth = %{
-        "scheme" => "bearer",
-        "oauth" => true,
-        "account_header" => String.duplicate("X", 64),
-        "account_claim" => "/" <> String.duplicate("c", 255)
-      }
+        # Five keys are in cooldown, so each has its cooldown time and its reset.
+        if n > 1, do: key_state!(provider, name, until: in_seconds(86_400 * n))
+      end
 
-      api = %{
-        "format" => "openai-responses",
-        "endpoint" => "https://chatgpt.com/backend-api/codex",
-        "auth" => auth,
-        "paths" => for(n <- 1..32, do: "/" <> String.duplicate("p", 200) <> "#{n}"),
-        "use_up_to_windows" => ~w(five_hour seven_day)
-      }
+      queued!(ctx)
+      assert {:ok, %{registered: run}} = claim(ctx)
 
-      assert byte_size(Jason.encode!(api)) <= 8192
+      assert %Run{model_keys: keys} = Repo.get!(Run, run.id)
+      assert length(keys) == 6
+      assert Enum.any?(keys, &Map.has_key?(&1, "cooldown_until"))
+      assert Enum.any?(keys, &Map.has_key?(&1, "schedule_resets_at"))
 
-      pool = Apiary.NodesFixtures.pool_fixture(ctx.scope)
-      %{access_key: key} = Apiary.AccessKeysFixtures.enrolled_key_fixture(ctx.scope, pool)
-
-      %{run: run} =
-        handed_over_fixture(ctx.scope, key, %{
-          provider_connection_id: provider.id,
-          provider_secret_id: provider.secret_id,
-          provider_chain: "organisation",
-          provider_api: api,
-          model_keys: keys,
-          run_settings: %{}
-        })
-
-      assert %Run{model_keys: ^keys, provider_api: ^api} = Repo.get!(Run, run.id)
-
-      size =
-        Repo.one(
-          from r in Run,
-            where: r.id == ^run.id,
-            select: fragment("octet_length(?::text)", r.model_keys)
+      %{rows: [[keys_size, api_size]]} =
+        Repo.query!(
+          "SELECT octet_length(model_keys::text), octet_length(provider_api::text) " <>
+            "FROM runs WHERE id = $1",
+          [Ecto.UUID.dump!(run.id)]
         )
 
-      assert size <= 4096
+      assert keys_size <= 4096
+      assert api_size <= 8192
+    end
 
-      # Past the bounds the checks refuse: a path without its slash, 33 paths, a member the
-      # check does not list.
+    test "the paths and the account members of the real entry keep provider_api within 8192",
+         ctx do
+      provider = provider!(ctx, [{"main", []}])
+      queued!(ctx)
+      assert {:ok, %{registered: run}} = claim(ctx)
+
+      %{rows: [[size]]} =
+        Repo.query!("SELECT octet_length(provider_api::text) FROM runs WHERE id = $1", [
+          Ecto.UUID.dump!(run.id)
+        ])
+
+      assert size <= 8192
+
+      # Past the bounds the check refuses: a path without its slash, 33 paths, an empty
+      # list, a member the check does not list.
+      api = Repo.get!(Run, run.id).provider_api
+      assert Repo.get!(Run, run.id).provider_connection_id == provider.id
+
       for bad <- [
             Map.put(api, "paths", ["backend-api"]),
             Map.put(api, "paths", for(n <- 1..33, do: "/p#{n}")),

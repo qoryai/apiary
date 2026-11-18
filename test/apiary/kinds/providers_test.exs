@@ -210,6 +210,36 @@ defmodule Apiary.Kinds.ProvidersTest do
                    end
     end
 
+    test "load!/1 raises for paths past 256 characters each or 1,536 together", %{tmp_dir: dir} do
+      path = Path.join(dir, "anthropic.json")
+      document = Jason.decode!(description("anthropic"))
+      [api] = document["roles"]["model_provider"]["apis"]
+
+      write = fn paths ->
+        File.write!(
+          path,
+          document
+          |> put_in(["roles", "model_provider", "apis"], [Map.put(api, "paths", paths)])
+          |> Jason.encode!()
+        )
+      end
+
+      fits = for n <- 1..6, do: "/" <> String.duplicate("p", 254) <> "#{n}"
+      write.(["/" <> String.duplicate("p", 255)] ++ Enum.take(fits, 5))
+      assert %Provider{} = Provider.load!(path)
+
+      for paths <- [
+            ["/" <> String.duplicate("p", 256)],
+            fits ++ ["/x"]
+          ] do
+        write.(paths)
+
+        assert_raise ArgumentError, ~r/has paths past 256 characters each/, fn ->
+          Provider.load!(path)
+        end
+      end
+    end
+
     test "load!/1 raises for a URL endpoint the endpoint rule refuses", %{tmp_dir: dir} do
       path = Path.join(dir, "anthropic.json")
       document = Jason.decode!(description("anthropic"))

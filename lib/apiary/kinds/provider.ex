@@ -31,6 +31,14 @@ defmodule Apiary.Kinds.Provider do
   @models_max 200
   @title_max 128
 
+  # The most a run's `provider_api` takes of the paths of an API, so it stays within the
+  # 8192 octets of `runs_provider_api_check` with the largest endpoint, auth, key prefixes
+  # and limit windows the contract allows: each path 1 to 256 characters, and all the paths
+  # of one API together at most 1536 characters (a character is at most 2 octets in the
+  # stored JSON text, and each path takes 4 more for its quotes, comma and space).
+  @path_max 256
+  @paths_max 1_536
+
   @enforce_keys [:name, :title, :description]
   defstruct name: nil,
             title: nil,
@@ -80,22 +88,28 @@ defmodule Apiary.Kinds.Provider do
       {:ok, %Description{name: ^file, program_version: nil, roles: ["model_provider"]} = read} ->
         provider = %{from(read) | sha256: sha256(bytes)}
 
-        case {formats_repeated(provider), addresses_refused(provider), models_refused(provider)} do
-          {[], [], []} ->
+        case {formats_repeated(provider), addresses_refused(provider), models_refused(provider),
+              paths_refused(provider)} do
+          {[], [], [], []} ->
             provider
 
-          {[], [], refused} ->
+          {[], [], [], refused} ->
+            raise ArgumentError,
+                  "#{path} has paths past #{@path_max} characters each, or #{@paths_max} " <>
+                    "together for one API: " <> inspect(refused)
+
+          {[], [], refused, _paths} ->
             raise ArgumentError,
                   "#{path} has more than #{@models_max} models, or a model title longer " <>
                     "than #{@title_max} characters: " <>
                     inspect(refused)
 
-          {[], refused, _models} ->
+          {[], refused, _models, _paths} ->
             raise ArgumentError,
                   "#{path} has an address that Apiary.Kinds.Endpoint refuses: " <>
                     inspect(refused)
 
-          {repeated, _addresses, _models} ->
+          {repeated, _addresses, _models, _paths} ->
             raise ArgumentError,
                   "#{path} has more than one API of the format #{inspect(repeated)}"
         end
@@ -161,6 +175,15 @@ defmodule Apiary.Kinds.Provider do
   defp models_refused(%__MODULE__{models: models}) do
     count = if length(models) > @models_max, do: [{:models, length(models)}], else: []
     count ++ for(%{"title" => t} <- models, String.length(t) > @title_max, do: {:title, t})
+  end
+
+  # The APIs whose `paths` are too long, by `format`: a path past `@path_max` characters, or
+  # all of one API's together past `@paths_max`.
+  defp paths_refused(%__MODULE__{apis: apis}) do
+    for %{"format" => format, "paths" => paths} <- apis,
+        Enum.any?(paths, &(String.length(&1) > @path_max)) or
+          paths |> Enum.map(&String.length/1) |> Enum.sum() > @paths_max,
+        do: format
   end
 
   defp sha256(bytes), do: :sha256 |> :crypto.hash(bytes) |> Base.encode16(case: :lower)

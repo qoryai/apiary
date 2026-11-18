@@ -98,8 +98,8 @@ defmodule Apiary.Dispatches.RunSettings do
   # what its run configuration entry has of it), the provider's chain and the API the run
   # uses (`provider_api`: its `format`, its `endpoint` with a setting resolved to its
   # address, its `auth`, and, when the description lists them, its `paths`, its
-  # `key_prefixes` and its limit windows as `use_up_to_windows`), for the reads that follow the claim. The run
-  # settings take at most 64 KiB encoded; a claim with more fails.
+  # `key_prefixes` and its limit windows as `use_up_to_windows`), for the reads that follow
+  # the claim. The run settings take at most 64 KiB encoded; a claim with more fails.
   #
   # `provider_models` is the description's models (`Apiary.Connections.provider_models/1`),
   # in its order, each with the effort values that both it and the runtime have, then the
@@ -444,23 +444,34 @@ defmodule Apiary.Dispatches.RunSettings do
   # horizon_for/2 is the time a claim at `now` reads a sign-in's access token against for
   # the run `dispatch_run`: `now` and the longest time limit of the run's workflows, read
   # without a lock, for the run's page, which says why the run waits
-  # (`Apiary.Runs.Waiting`). Nil for a run that has no run settings.
+  # (`Apiary.Runs.Waiting`). Nil for a run that has no run settings, and for one whose
+  # workspace or work item is gone or whose limits cannot be read: a page render never
+  # raises, and without a horizon only a sign-in that needs a new one counts.
   @spec horizon_for(DispatchRun.t(), DateTime.t()) :: DateTime.t() | nil
   def horizon_for(
         %DispatchRun{step: @step, workspace_id: workspace_id, work_item_id: id} = run,
         now
-      ) do
-    workspace = Repo.get!(Workspace, workspace_id)
-    target = target(workspace, id)
-    workflow = workflow(run, workspace, target)
+      )
+      when is_binary(workspace_id) and is_binary(id) do
+    with %Workspace{} = workspace <- Repo.get(Workspace, workspace_id) do
+      target = target(workspace, id)
+      workflow = workflow(run, workspace, target)
 
-    limits =
-      Map.new(
-        Enum.uniq(List.wrap(workflow) ++ Apiary.Stages.shared_workflows(run)),
-        &{&1, time_limit(workspace, target, &1)}
+      limits =
+        Map.new(
+          Enum.uniq(List.wrap(workflow) ++ Apiary.Stages.shared_workflows(run)),
+          &{&1, time_limit(workspace, target, &1)}
+        )
+
+      horizon(%{time_limit: workflow && Map.get(limits, workflow), time_limits: limits}, now)
+    end
+  rescue
+    exception ->
+      Logger.warning(
+        "the time limit of a waiting run could not be read: #{inspect(exception.__struct__)}"
       )
 
-    horizon(%{time_limit: workflow && Map.fetch!(limits, workflow), time_limits: limits}, now)
+      nil
   end
 
   def horizon_for(%DispatchRun{}, _now), do: nil
