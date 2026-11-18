@@ -96,6 +96,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   alias ApiaryWeb.RunCancelComponents
   alias ApiaryWeb.RunComponents
   alias ApiaryWeb.SourceComponents
+  alias ApiaryWeb.SubmissionComponents
   alias ApiaryWeb.StagesLive.Words, as: StagesWords
   alias ApiaryWeb.WorkItemLive.StageComponents
 
@@ -2572,6 +2573,12 @@ defmodule ApiaryWeb.WorkItemComponents do
       "the work item's track and the gate that chose it (`ApiaryWeb.WorkItemLive.StageTab.track_line/1`); nil for none"
 
   attr :outputs, :list, default: []
+
+  attr :submissions, :map,
+    default: nil,
+    doc:
+      "the Submissions list in place of the frame of the type it is for (`ApiaryWeb.SubmissionComponents.frame/1`): `%{type:, rows:, names:}`, nil for none"
+
   attr :questions, :list, default: []
 
   attr :waiting, :boolean,
@@ -2732,14 +2739,25 @@ defmodule ApiaryWeb.WorkItemComponents do
           question_numbers={@question_numbers}
         />
       </div>
-      <.output_frame
-        :for={output <- @outputs}
-        id={"#{@id}-output-#{output.type}"}
-        number={@work_item.number}
-        output={output}
-      >
-        {render_slot(@row, output)}
-      </.output_frame>
+      <%= for output <- @outputs do %>
+        <SubmissionComponents.frame
+          :if={@submissions && output.type == @submissions.type}
+          id={"#{@id}-output-#{output.type}"}
+          rows={@submissions.rows}
+          open={output.open}
+          names={@submissions.names}
+          stage_names={@stage_names}
+          now={@now}
+        />
+        <.output_frame
+          :if={!(@submissions && output.type == @submissions.type)}
+          id={"#{@id}-output-#{output.type}"}
+          number={@work_item.number}
+          output={output}
+        >
+          {render_slot(@row, output)}
+        </.output_frame>
+      <% end %>
       <.decisions_frame
         :if={@decisions_frame != []}
         id={"#{@id}-decisions"}
@@ -6327,6 +6345,11 @@ defmodule ApiaryWeb.WorkItemComponents do
       {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
        read_needs_words(facts)}
 
+  defp no_result_words(%{write_needs: %{} = facts}, _earlier),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
+       write_needs_words(facts)}
+
   defp no_result_words(%{outcome: :none}, earlier),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
@@ -6396,6 +6419,22 @@ defmodule ApiaryWeb.WorkItemComponents do
     do:
       gettext(
         "Start the run again. The setup container was not removed, so a process in it could still write the files."
+      )
+
+  # What a person does about a run that writes and has no wall (`Apiary.Runs.WriteNeeds`),
+  # the fix first. A person in an organisation cannot edit the instance pool's
+  # forager.yaml. `Apiary.Stages.StopCause` stores the same words in English.
+  defp write_needs_words(%{installed: true}),
+    do:
+      rich_gettext(
+        "%{contact_support}. A run that writes needs a wall, and this machine has none.",
+        contact_support: ApiaryWeb.Support.rich()
+      )
+
+  defp write_needs_words(_facts),
+    do:
+      gettext(
+        "Set a wall in the machine's forager.yaml, then start the run again. A run that writes needs a wall, and this machine has none."
       )
 
   # What a member does about a run that stopped at a call to an adapter

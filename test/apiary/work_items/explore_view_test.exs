@@ -341,10 +341,33 @@ defmodule Apiary.WorkItems.ExploreViewTest do
                WorkItems.explore(ctx.scope, ctx.work_item)
     end
 
+    test "a run that writes and has no wall: write_needs, and no read_needs", ctx do
+      pool = Apiary.NodesFixtures.pool_fixture(ctx.scope)
+
+      explore_run_fixture(ctx.work_item,
+        run: %{
+          state: "failed",
+          exit_state: "failed",
+          reason: "write_needs_wall",
+          node_id: pool.id,
+          outcome_state: nil,
+          outcome_time: nil,
+          outcome_received_at: nil,
+          outcome_digest: nil
+        }
+      )
+
+      assert %{run: %{read_needs: nil, write_needs: facts}} =
+               WorkItems.explore(ctx.scope, ctx.work_item)
+
+      assert facts == %{code: "write_needs_wall", installed: false}
+    end
+
     test "any other run has no read_needs", ctx do
       explore_run_fixture(ctx.work_item, run: %{state: "failed", reason: "no_longer_needed"})
 
-      assert %{run: %{read_needs: nil}} = WorkItems.explore(ctx.scope, ctx.work_item)
+      assert %{run: %{read_needs: nil, write_needs: nil}} =
+               WorkItems.explore(ctx.scope, ctx.work_item)
     end
 
     test "a run whose harness has no skill for its workflow: the workflow and the harness file of the target",

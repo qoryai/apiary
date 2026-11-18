@@ -65,7 +65,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: workflow_model -->
 - The gate card of a stage starts with the draft of the work item's newest submission,
   one line per repository that has one: “Submission: the draft in example/shop”, a link
-  that opens the draft in a new tab. A submission with no draft shows no line.
+  that opens the draft in a new tab. A submission with no draft, a draft with no number or
+  a link that is not `https` shows no line.
 - The tab of a stage with a `verification` output, such as Verify, shows the run's
   verification as a table of the acceptance criteria with the columns Criterion, State
   and Evidence and the states Met, Not met and Needs a person; the list “Not verified”,
@@ -140,6 +141,39 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `cancelled` and `at`. `cancelled` is true only when a member cancelled that run, not when
   it ended at its time limit, was released or lost its machine. The migration adds the table
   `run_pushed_commits`.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- On the tab of a stage whose outputs include the submission type (`submit.type` of the
+  work item's process version), one frame, Submissions, captioned "Newest first", replaces
+  that type's frame. It has a row for each run that stored a version, newest first: the run
+  as a link to its page, the stage and the time the run ended, the badge Approved where a
+  gate approved the version, then for each repository the Branch (the branch and the head
+  commit), Commits and Draft. The record fold of the stage and the run's Timeline name the
+  type as before.
+- A run's page has the same row under the version list of Save the outputs, for the version
+  of the submission type that the run stored, headed "Submission v<number>". The block
+  shows only to a reader who may read the run.
+- Commits: where a stored submission lists the run's commits (`repositories[].base`,
+  `{commit, commit_url}`, and `repositories[].commits`, `[{commit, step, commit_url}]`, in
+  the order the run made them), the row has a fold, "<n> commits", with the base first
+  ("Base: the head of Run <n>", "Base: the result of Run <n>" outside a software
+  workspace, where an earlier submission of the work item ends at that commit in the
+  same repository; "Base: where the branch starts" where no earlier
+  submission can; the commit alone where a version that is not listed may), then each commit:
+  its short id, a link where the submission has an `https` address for it, the step ("d-2
+  · <text of the change>" for a deliverable of the build plan, read from the Change column
+  of the plan's Deliverables table, or "d-2" alone where the plan has no such row; "Fix of
+  review finding f1" for a fix; nothing for any other step) and the badge Head (Latest outside a software workspace)
+  on the repository's head commit. The newest row's fold is open. A submission with no list shows
+  no Commits line. A fold lists at most 100 commits, the first 100 or the first 99 and the head
+  where the head is a later one, and its count has them all. A commit with another step shows its short id
+  alone. The page reads the newest 50 versions; a stored text is cut to 200 characters, and
+  a submission over 1 MiB shows its row with no repository. A stored value that is not of the form the contract has is left out:
+  a commit that is not 40 or 64 lowercase hex characters, a link that is not `https`.
+- A draft shows its number beside its system's mark, the integration of the workspace's
+  collection for that system, with its title as a link: `#34 “Show delivery dates”`. A
+  submission that records why it sent no draft shows "The run sent no draft to the
+  destination."
 <!-- /feature -->
 - A question in a run's questions may have a `criterion`: the id of the acceptance
   criterion it is about, such as `ac-3`. Qory Apiary stores it with the question and
@@ -1514,8 +1548,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `QORY_RUN_REPOSITORIES`. The more specific level wins, and a lock of a broader level
   holds. The organisation's level is included while the feature `organisation_variables`
   is on. A later change reaches the next run: a run keeps what it received at its start,
-  and its run configuration, and the digest of it, do not change. A run registered outside the workspace's queue, with
-  `qory run register`, receives none. The Variables tab of **Workspace settings › Secrets
+  and its run configuration, and the digest of it, do not change. A run registered
+  outside the workspace's queue, with `qory run register`, receives none. The Variables tab of **Workspace settings › Secrets
   and variables** and its pages read “A run receives these variables when it starts. A
   change reaches the next run.” The organisation's **Variables** page reads “A run
   receives the variables that its workspace and target inherit from this organisation, as
@@ -1545,6 +1579,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   again.” Its work item reads “Remove variables in the workspace's settings, then start the
   run again. The run has more than 126 variables.” or “... The run's variables take more
   than 64 KiB.” A save still allows 128 names.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- A run cannot withdraw a name of the type in `submit.type` of its process version or of
+  its work item's process version: the run API returns `422` `type_not_withdrawable`, with
+  "Push a new version of <type> instead. Qory Apiary reads its newest version as the run's
+  submission, so a run cannot withdraw it.", and stores nothing. Versions stored earlier
+  stay listed. A withdrawal of another custom type is as before.
 <!-- /feature -->
 <!-- feature: factory -->
 - The run configuration of a run with `write` access has two credentials for its target:
@@ -2310,6 +2351,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A read-only run that qory closes shows a line on its run page, such as “read-only run
   with no wall”, in place of its code. Its work item shows the fix, then the cause. On an
   installed pool, “Contact support.” replaces a fix in the machine's forager.yaml.
+<!-- /feature -->
+<!-- feature: factory -->
+- A run that writes (access `write` or `write-no-push`) and that qory closes because it
+  has no wall shows “write run with no wall” on its run page, in place of
+  `write_needs_wall`. Its work item shows the fix, then the cause. On an installed pool,
+  “Contact support.” replaces a fix in the machine's forager.yaml.
+<!-- /feature -->
+<!-- feature: factory -->
+- A run that reaches its time limit shows “Attempt 3 reached its time limit, so Build has
+  no result.” on its work item, after “The run stopped:”. Before, it read “The run ended
+  without a result.”
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - Explore starts on a work item of a software workspace made before the upgrade that
