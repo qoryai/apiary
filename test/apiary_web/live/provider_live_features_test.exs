@@ -60,4 +60,40 @@ defmodule ApiaryWeb.ProviderLiveFeaturesTest do
     assert Enum.drop_while(tabs, &(&1 != "secrets")) ==
              ~w(secrets model work_sources destinations harness runs)
   end
+
+  describe "model_proxies" do
+    # The radios of Provider in the add form, by the provider each sends.
+    defp offered(lv) do
+      lv
+      |> render()
+      |> LazyHTML.from_fragment()
+      |> LazyHTML.query(~s{#new-provider-form input[type=radio][name="provider[provider]"]})
+      |> LazyHTML.attribute("value")
+    end
+
+    defp new_path(scope), do: ~p"/#{scope.organisation}/settings/model-providers/new"
+
+    @tag with_features: Apiary.Features.all() -- [:model_proxies]
+    test "off: the add form leaves out LiteLLM, and a LiteLLM provider added stays listed",
+         %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, new_path(scope))
+      assert offered(lv) == ~w(anthropic claude-subscription deepseek openrouter)
+
+      {:ok, provider} =
+        Apiary.Connections.create_provider(scope, %{
+          provider: "litellm",
+          settings: %{"address" => "https://litellm.example.com"},
+          keys: [%{value_id: "main", value: "sk-litellm-features-0123456789"}]
+        })
+
+      {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/model-providers")
+      assert has_element?(lv, "#provider-#{provider.public_id}-name", provider.name)
+    end
+
+    @tag with_features: Apiary.Features.all()
+    test "on: the add form offers LiteLLM", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, new_path(scope))
+      assert offered(lv) == ~w(anthropic claude-subscription deepseek litellm openrouter)
+    end
+  end
 end

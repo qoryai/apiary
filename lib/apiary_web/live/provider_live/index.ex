@@ -79,7 +79,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
   defp list_title, do: gettext("Model providers")
   defp new_title, do: gettext("New model provider")
 
-  defp first_provider, do: Providers.list() |> hd() |> Map.fetch!(:name)
+  defp first_provider, do: Providers.offered() |> hd() |> Map.fetch!(:name)
 
   # The form of New model provider, from what was sent but the key, with `errors` on its
   # fields; the key's field is always empty.
@@ -485,11 +485,12 @@ defmodule ApiaryWeb.ProviderLive.Index do
   end
 
   @doc false
-  # provider_options/0 is each provider of the catalogue, its description's text under its
-  # title. A subtitle is plain text: the description's backticks and the address that ends
-  # it, which About model providers links to (`terms_url/1`), are left out.
+  # provider_options/0 is each provider of the catalogue that is offered
+  # (`Providers.offered/0`), its description's text under its title. A subtitle is plain
+  # text: the description's backticks and the address that ends it, which About model
+  # providers links to (`terms_url/1`), are left out.
   def provider_options do
-    for provider <- Providers.list() do
+    for provider <- Providers.offered() do
       %{value: provider.name, title: provider.title, subtitle: subtitle(provider)}
     end
   end

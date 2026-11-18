@@ -425,3 +425,40 @@ defmodule Apiary.Kinds.ProvidersTest do
     end
   end
 end
+
+defmodule Apiary.Kinds.ProvidersOfferedTest do
+  # Providers.offered?/1 and offered/0: a provider whose description lists no models, such
+  # as LiteLLM, is offered only with the feature `model_proxies`. Not async: the features
+  # are the whole node's.
+  use Apiary.DataCase, async: false
+
+  alias Apiary.Kinds.Providers
+
+  @tag with_features: Apiary.Features.all() -- [:model_proxies]
+  test "without model_proxies, only a provider whose description lists models is offered" do
+    {:ok, litellm} = Providers.fetch("litellm")
+    assert litellm.models == []
+    refute Providers.offered?(litellm)
+
+    {:ok, anthropic} = Providers.fetch("anthropic")
+    assert Providers.offered?(anthropic)
+
+    assert Providers.offered() == Enum.filter(Providers.list(), &(&1.models != []))
+
+    assert Enum.map(Providers.offered(), & &1.name) ==
+             ~w(anthropic claude-subscription deepseek openrouter)
+  end
+
+  describe "with model_proxies" do
+    # with_model_proxies/1 turns it on over a set without it.
+    @describetag needs: :secrets
+    @describetag with_features: Apiary.Features.all() -- [:model_proxies]
+    setup {Apiary.DataCase, :with_model_proxies}
+
+    test "every provider of the catalogue is offered" do
+      {:ok, litellm} = Providers.fetch("litellm")
+      assert Providers.offered?(litellm)
+      assert Providers.offered() == Providers.list()
+    end
+  end
+end

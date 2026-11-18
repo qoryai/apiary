@@ -19,6 +19,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   documents have the member `largest_prebuilt_image_bytes`, the setting at the claim
   times 1,000,000,000. When the setting is empty, the member is absent. No other run has
   the member. The run contract is vendored at integrations `dbc1ce5`.
+<!-- feature: factory -->
+- Providers whose description lists no models, such as LiteLLM, are hidden where a
+  provider is offered, unless the feature `model_proxies` is on (off by default).
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - An escalation of a work item on a track that is not the first track of the gate that
   recorded it offers the gate's other tracks by name, as **Switch to `<track>`**. A switch
@@ -763,7 +767,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   **Runs**, open whatever the state of its set-up.
 - **Organisation settings › Model providers** lists the organisation's model providers,
   and **New model provider** adds one with its key, and an address for a provider that
-  needs one, such as LiteLLM; no page shows a key once it is saved. Under **Key**: “Qory
+  needs one, such as LiteLLM, which it lists only with the feature `model_proxies` on;
+  no page shows a key once it is saved. Under **Key**: “Qory
   Apiary stores the key encrypted, and nobody can view it again.” The provider is added
   for one workspace, the one in the help beside the form: “After you save, choose the
   model for Main in Workspace settings › Model.” Its key is a secret of that workspace,

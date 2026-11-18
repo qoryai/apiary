@@ -105,6 +105,15 @@ defmodule Apiary.Features do
   # (`defaults/1`), as an instance without the registry's address does not boot with it.
   # No feature needs it. The served documentation is the same with it on or off
   # (`docs: false`): the Install guide lists it, and the docs of its modules are hidden.
+  #
+  # `model_proxies` is the model providers whose description lists no models, such as
+  # LiteLLM, where a provider is offered to choose (`Apiary.Kinds.Providers.offered?/1`),
+  # opt-in. An instance without it leaves them out of every list a person chooses a
+  # provider from, and keeps everything else as it is: the providers already added, the
+  # model choices that use them, and what runs resolve. The lists are on pages that need
+  # `factory` and `secrets`; the feature needs `secrets`, and `security`, which `secrets`
+  # needs, as `closed/1` checks only the needs listed. The served documentation is the
+  # same with it on or off (`docs: false`): the Install guide lists it.
   @core [
     observability: [needs: [], built: true, parts: [:terminal]],
     security: [needs: [:observability], built: true],
@@ -112,6 +121,7 @@ defmodule Apiary.Features do
     path_rules: [needs: [:security], built: true, docs: false],
     factory: [needs: [:observability, :security, :secrets], built: true, docs: true],
     registry: [needs: [:security], built: true, default: false, docs: false],
+    model_proxies: [needs: [:security, :secrets], built: true, default: false, docs: false],
     workflow_model: [
       needs: [:observability, :security, :secrets, :factory],
       built: true,

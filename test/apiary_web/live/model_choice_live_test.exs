@@ -756,3 +756,169 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     end
   end
 end
+
+defmodule ApiaryWeb.ModelChoiceLive.ModelProxiesTest do
+  # Workspace settings › Model leaves out a provider whose description lists no models,
+  # such as LiteLLM, from Model and from a fallback row's Provider, unless the feature
+  # `model_proxies` is on. A saved choice of such a provider stays shown, so a save keeps
+  # it. Not async: the features are the whole node's.
+  use ApiaryWeb.ConnCase, async: false
+
+  import Ecto.Query, only: [from: 2]
+  import Phoenix.LiveViewTest
+
+  alias Apiary.{Connections, Repo}
+  alias Apiary.ModelChoices.ModelChoice
+
+  setup :register_and_log_in_user
+
+  setup %{scope: scope} do
+    %{
+      anthropic: provider!(scope, %{provider: "anthropic"}),
+      litellm:
+        provider!(scope, %{
+          provider: "litellm",
+          settings: %{"address" => "https://litellm.example.com"}
+        })
+    }
+  end
+
+  defp provider!(scope, attrs) do
+    {:ok, provider} =
+      Connections.create_provider(
+        scope,
+        Map.put(attrs, :keys, [%{value_id: "main", value: "sk-model-proxies-0123456789"}])
+      )
+
+    provider
+  end
+
+  defp path(scope), do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/model"
+
+  defp choice(scope) do
+    Repo.one(
+      from c in ModelChoice,
+        where: c.workspace_id == ^scope.workspace.id and is_nil(c.target_id)
+    )
+  end
+
+  # Whether Model has an option of `provider`: its models, or its Another model.
+  defp in_model?(lv, provider) do
+    has_element?(
+      lv,
+      ~s{#model-form input[name="model_choice[model]"][value="#{provider.public_id}"]}
+    )
+  end
+
+  @tag with_features: Apiary.Features.all() -- [:model_proxies]
+  test "off: Model and a fallback row leave out LiteLLM", ctx do
+    %{conn: conn, scope: scope, anthropic: anthropic, litellm: litellm} = ctx
+    {:ok, lv, _html} = live(conn, path(scope))
+
+    assert in_model?(lv, anthropic)
+    refute in_model?(lv, litellm)
+
+    # Anthropic is chosen, and LiteLLM is the one provider left: no row to add.
+    refute has_element?(lv, "#model-fallback-add")
+    assert has_element?(lv, "#model-fallback-none")
+  end
+
+  @tag with_features: Apiary.Features.all() -- [:model_proxies]
+  test "off: with LiteLLM the one provider, Model is not shown and the page says to add one",
+       ctx do
+    %{conn: conn, scope: scope, anthropic: anthropic, litellm: litellm} = ctx
+    {:ok, _provider} = Connections.delete_provider(scope, anthropic)
+    {:ok, lv, _html} = live(conn, path(scope))
+
+    refute in_model?(lv, litellm)
+    assert has_element?(lv, "#model-unserved #model-none")
+    refute has_element?(lv, "#model-other_runtime")
+  end
+
+  @tag with_features: Apiary.Features.all()
+  test "on: Model and a fallback row offer LiteLLM", ctx do
+    %{conn: conn, scope: scope, anthropic: anthropic, litellm: litellm} = ctx
+    {:ok, lv, _html} = live(conn, path(scope))
+
+    assert in_model?(lv, anthropic)
+    assert in_model?(lv, litellm)
+
+    lv |> element("#model-fallback-add") |> render_click()
+
+    assert has_element?(
+             lv,
+             ~s{#model_choice_fallbacks_0_provider option[value="#{litellm.public_id}"][selected]}
+           )
+  end
+
+  @tag with_features: Apiary.Features.all() -- [:model_proxies]
+  test "off: a saved LiteLLM choice stays shown, a save keeps it, and no row offers it", ctx do
+    %{conn: conn, scope: scope, anthropic: anthropic, litellm: litellm} = ctx
+
+    {:ok, _choice} =
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
+        provider: litellm.public_id,
+        model: "claude-opus-5-5"
+      })
+
+    {:ok, lv, _html} = live(conn, path(scope))
+
+    assert has_element?(
+             lv,
+             ~s{#model-form input[name="model_choice[model]"][value="#{litellm.public_id}"][checked]}
+           )
+
+    assert has_element?(lv, ~s{#model_choice_other[value="claude-opus-5-5"]})
+
+    lv |> form("#model-form") |> render_submit()
+    assert has_element?(lv, "#flash-info", "Model saved.")
+    assert %ModelChoice{model_id: "claude-opus-5-5"} = saved = choice(scope)
+    assert saved.connection_id == litellm.id
+
+    # A fallback row is offered Anthropic, not LiteLLM, the chosen provider.
+    lv |> element("#model-fallback-add") |> render_click()
+
+    assert has_element?(
+             lv,
+             ~s{#model_choice_fallbacks_0_provider option[value="#{anthropic.public_id}"][selected]}
+           )
+
+    # Choosing Anthropic for Model takes LiteLLM out of the page's offers.
+    lv
+    |> form("#model-form", model_choice: %{model: "#{anthropic.public_id}/claude-sonnet-5-5"})
+    |> render_change()
+
+    refute has_element?(
+             lv,
+             ~s{#model_choice_fallbacks_0_provider option[value="#{litellm.public_id}"]}
+           )
+  end
+
+  @tag with_features: Apiary.Features.all() -- [:model_proxies]
+  test "off: a saved LiteLLM fallback stays in its row, and a save keeps it", ctx do
+    %{conn: conn, scope: scope, anthropic: anthropic, litellm: litellm} = ctx
+
+    {:ok, _choice} =
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
+        provider: anthropic.public_id,
+        fallbacks: [%{provider: litellm.public_id, model: "claude-opus-5-5"}]
+      })
+
+    {:ok, lv, _html} = live(conn, path(scope))
+
+    assert has_element?(
+             lv,
+             ~s{#model_choice_fallbacks_0_provider option[value="#{litellm.public_id}"][selected]}
+           )
+
+    assert has_element?(lv, ~s{#model_choice_fallbacks_0_other[value="claude-opus-5-5"]})
+
+    lv |> form("#model-form") |> render_submit()
+    assert has_element?(lv, "#flash-info", "Model saved.")
+
+    saved = scope |> choice() |> Repo.preload(fallbacks: :connection)
+
+    assert [{litellm.id, "claude-opus-5-5"}] ==
+             for(f <- saved.fallbacks, do: {f.connection_id, f.model_id})
+  end
+end

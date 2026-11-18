@@ -40,4 +40,15 @@ defmodule ApiaryWeb.ModelChoiceUncheckedTest do
     refute html =~ "again in"
     refute has_element?(lv, "#model-submit")
   end
+
+  # With model_proxies off, the page shows no line at all, as with it on: the provider is
+  # neither one to add again nor one that serves no runtime.
+  @tag with_features: Apiary.Features.all() -- [:model_proxies]
+  test "without model_proxies, shows no line", %{conn: conn, scope: scope} do
+    {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/#{scope.workspace}/settings/model")
+
+    assert has_element?(lv, "#model-unserved")
+    refute has_element?(lv, "#model-unserved p")
+    refute has_element?(lv, "#model-submit")
+  end
 end
