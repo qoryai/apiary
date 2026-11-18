@@ -88,11 +88,16 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
         Artifacts.create_type(scope, scope.workspace, %{"name" => name, "base_view" => view})
     end
 
+    save_process!(scope, ~w(verification demo-video screenshot demo-evidence explainer))
+    :ok
+  end
+
+  # The process Explore, Shape, then Verify, whose outputs are `outputs`, none required.
+  defp save_process!(scope, outputs) do
     [explore | _rest] = Processes.default_document("software")["stages"]
     gate = %{"kind" => "person", "approvers" => "members"}
-    output = &%{"type" => &1, "required" => false}
 
-    {:ok, _version} =
+    {:ok, version} =
       Processes.save(scope, scope.workspace, %{
         "schema" => "qory.process/v1",
         "stages" => [
@@ -102,17 +107,13 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
             "id" => @verify,
             "name" => "Verify",
             "sequence" => [%{"workflow" => "verify-a-ticket"}],
-            "outputs" =>
-              Enum.map(
-                ~w(verification demo-video screenshot demo-evidence explainer),
-                output
-              ),
+            "outputs" => Enum.map(outputs, &%{"type" => &1, "required" => false}),
             "gate" => gate
           }
         ]
       })
 
-    :ok
+    version
   end
 
   # A work item at Verify's gate, whose run of Verify pushed what `push` pushes, with the
@@ -931,8 +932,8 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       view = tab(conn, scope, work_item)
 
       assert texts(view, "#work-item-tab-scenarios h3") == ["Scenario 1: Title of scenario-1"]
-      refute has_element?(view, "#work-item-stage-gate-output-demo-video-scenario-2")
-      assert has_element?(view, "#work-item-stage-gate-output-demo-video-scenario-1")
+      refute has_element?(view, "#work-item-stage-gate-output-demo-video--scenario-2--")
+      assert has_element?(view, "#work-item-stage-gate-output-demo-video--scenario-1--")
 
       view |> form("#work-item-stage-gate-approve") |> render_submit()
 
@@ -1263,15 +1264,15 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
 
       assert ids(view, "#work-item-stage-gate-outputs li") ==
                Enum.map(
-                 ~w(verification demo-video-scenario-1 screenshot-scenario-2
-                    demo-video-scenario-10 demo-evidence-scenario-1 demo-evidence-scenario-2
-                    demo-evidence-scenario-10 explainer),
+                 ~w(verification demo-video--scenario-1-- screenshot--scenario-2--
+                    demo-video--scenario-10-- demo-evidence--scenario-1--
+                    demo-evidence--scenario-2-- demo-evidence--scenario-10-- explainer),
                  &"work-item-stage-gate-output-#{&1}"
                )
 
       assert has_element?(
                view,
-               "#work-item-stage-gate-output-screenshot-scenario-2",
+               "#work-item-stage-gate-output-screenshot--scenario-2--",
                "screenshot scenario-2 v1"
              )
     end
@@ -1562,5 +1563,29 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
 
       assert has_element?(view, "#work-item-tab-output-verification", "The check passed.")
     end
+  end
+
+  test "the questions have a row frame, in the order of the stage's outputs",
+       %{conn: conn, scope: scope} do
+    save_process!(scope, ~w(verification questions explainer))
+
+    work_item =
+      at_verify_gate!(scope, fn run, work_item ->
+        verification!(run, work_item)
+        explainer!(run, work_item)
+
+        push!(run, work_item, "questions", "main", [
+          {"questions.json", Jason.encode!(%{"questions" => []})}
+        ])
+      end)
+
+    assert Enum.any?(Artifacts.list(work_item), &(&1.type == "questions"))
+    view = tab(conn, scope, work_item)
+
+    assert ids(view, "section.q-xp-frame") == [
+             "work-item-tab-output-verification",
+             "work-item-tab-output-questions",
+             "work-item-tab-output-explainer"
+           ]
   end
 end

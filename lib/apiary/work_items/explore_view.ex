@@ -236,12 +236,13 @@ defmodule Apiary.WorkItems.ExploreView do
     end
   end
 
-  # output/3 is version `number` of `work_item`'s artifact of `type` named `main` as the
+  # output/4 is version `number` of `work_item`'s artifact of `type` named `name` as the
   # page shows it (`message`, its Markdown; `version_id`; `images`), nil for none.
   @doc false
-  @spec output(WorkItem.t(), String.t(), pos_integer) :: map | nil
-  def output(%WorkItem{id: id}, type, number) when is_binary(type) and is_integer(number),
-    do: id |> Explore.document(type, number) |> shown_document()
+  @spec output(WorkItem.t(), String.t(), pos_integer, String.t()) :: map | nil
+  def output(%WorkItem{id: id}, type, number, name \\ "main")
+      when is_binary(type) and is_integer(number) and is_binary(name),
+      do: id |> Explore.document(type, number, name) |> shown_document()
 
   # The text of the newest proposal of the current take in, the one version of the
   # proposal that `explore/2` reads from the store: by its number, as the page shows it

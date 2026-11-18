@@ -10,6 +10,8 @@ defmodule Apiary.Artifacts.Version do
   # in, nil for none, and `note` what the writer added, nil for nothing, at most 4,000
   # characters. `withdrawn` is true for a withdrawal, a run's version with no files that
   # withdraws its artifact's name (`Apiary.Artifacts.withdraw/4`), false for every other.
+  # `decision_id` is the id of the person's note that asked for the version, `gd_…` or
+  # `es_…` (`Apiary.Stages.Notes`), nil for none (vault 0261, 624 (a)).
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -29,6 +31,7 @@ defmodule Apiary.Artifacts.Version do
     field :stage_id, :string
     field :note, :string
     field :withdrawn, :boolean, default: false
+    field :decision_id, :string
     field :inserted_at, :utc_datetime_usec
 
     belongs_to :organisation, Apiary.Organisations.Organisation

@@ -4,8 +4,9 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   # The bodies of the run API's four POSTs, read from the raw bytes the request was signed
   # over, each held to its size before it is decoded.
   #
-  # - `push/1`: `{"type", "name"?, "note"?, "files": [{"filename", "content_type",
-  #   "content_base64"}], "withdraw"?}`, at most `max_bytes(:push)` bytes. The file
+  # - `push/1`: `{"type", "name"?, "note"?, "decision"?, "files": [{"filename",
+  #   "content_type", "content_base64"}], "withdraw"?}`, at most `max_bytes(:push)` bytes.
+  #   `decision` is text, the id of a person's note that the caller checks. The file
   #   contents stay base64 here; `decode_files/1` decodes them once the type's limits have
   #   been checked against their decoded sizes (`decoded_size/1`). With `withdraw` true,
   #   `files` may be absent, null or empty, which reads as no files; files sent with it are
@@ -74,6 +75,7 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
              type: String.t(),
              name: String.t(),
              note: String.t() | nil,
+             decision: String.t() | nil,
              files: [map],
              withdraw: boolean
            }}
@@ -83,13 +85,22 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
 
   def push(raw_body) do
     with {:ok, body} <- object(raw_body),
-         :ok <- members(body, ~w(type name note files withdraw)),
+         :ok <- members(body, ~w(type name note decision files withdraw)),
          {:ok, type} <- required(body, "type", &name?/1),
          {:ok, name} <- optional(body, "name", &name?/1, "main"),
          {:ok, note} <- optional(body, "note", &note?/1, nil),
+         {:ok, decision} <- optional(body, "decision", &is_binary/1, nil),
          {:ok, withdraw} <- optional(body, "withdraw", &is_boolean/1, false),
          {:ok, files} <- push_files(body["files"], withdraw) do
-      {:ok, %{type: type, name: name, note: note, files: files, withdraw: withdraw}}
+      {:ok,
+       %{
+         type: type,
+         name: name,
+         note: note,
+         decision: decision,
+         files: files,
+         withdraw: withdraw
+       }}
     end
   end
 

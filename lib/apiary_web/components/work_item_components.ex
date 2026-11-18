@@ -2589,6 +2589,10 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :outputs, :list, default: []
 
+  attr :wrote, :list,
+    default: [],
+    doc: "the versions the stage's runs wrote, `%{type, version}`, for the runs' summary"
+
   attr :suite, :map,
     default: nil,
     doc:
@@ -2658,7 +2662,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   slot :row,
     doc:
-      "an output's body: its artifact rows, for a version with no Markdown, or the verification's or the scenarios' parts; takes its frame (`ApiaryWeb.WorkItemLive.StageTab.frames/2`)"
+      "an output's body: its artifact rows, for a version with no Markdown, or the verification's or the scenarios' parts; takes its frame (`:type`, `:name`, `:kind`; `ApiaryWeb.WorkItemLive.StageTab.frames/1` and `verify_frames/2`)"
 
   attr :cancel, :map,
     default: nil,
@@ -2709,10 +2713,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         groups: Enum.filter(assigns.runs, &(&1[:answered_by] != nil)),
         # The stage with a proposal output has Confirm: a proposal waits for it.
         confirm: assigns.current and assigns.work_item.status == :confirm and "proposal" in types,
-        pieces:
-          StageComponents.output_versions(%{
-            outputs: Enum.map(assigns.outputs, &Map.take(&1, [:type, :version]))
-          })
+        pieces: StageComponents.output_versions(%{outputs: assigns.wrote})
       )
 
     ~H"""
@@ -2769,8 +2770,8 @@ defmodule ApiaryWeb.WorkItemComponents do
       </div>
       <%= for output <- @outputs do %>
         <SubmissionComponents.frame
-          :if={@submissions && output.type == @submissions.type}
-          id={"#{@id}-output-#{output.type}"}
+          :if={submissions_frame?(@submissions, output)}
+          id={"#{@id}-output-#{StageComponents.frame_key(output)}"}
           rows={@submissions.rows}
           open={output.open}
           names={@submissions.names}
@@ -2778,15 +2779,15 @@ defmodule ApiaryWeb.WorkItemComponents do
           now={@now}
         />
         <.output_frame
-          :if={!(@submissions && output.type == @submissions.type)}
-          id={"#{@id}-output-#{output.type}"}
+          :if={!submissions_frame?(@submissions, output)}
+          id={"#{@id}-output-#{StageComponents.frame_key(output)}"}
           number={@work_item.number}
           output={output}
         >
           {render_slot(@row, output)}
         </.output_frame>
         <p
-          :if={@suite && output.type == "build-report"}
+          :if={@suite && output.type == "build-report" && main_frame?(output)}
           id="work-item-suite-line"
           class="mt-3 text-sm"
         >
@@ -2850,6 +2851,16 @@ defmodule ApiaryWeb.WorkItemComponents do
     </div>
     """
   end
+
+  # Whether the Submissions list takes the place of `output`'s frame: the frame of the
+  # submission type with name `main`, the only name the list reads
+  # (`Apiary.Submissions.list_cached/5`).
+  defp submissions_frame?(%{type: type}, %{type: type} = output), do: main_frame?(output)
+  defp submissions_frame?(_submissions, _output), do: false
+
+  # Whether `output` is the frame of name `main`; a frame with no name is, as
+  # `StageComponents.frame_key/1` reads it.
+  defp main_frame?(output), do: Map.get(output, :name, "main") == "main"
 
   # The line under the build report's frame for a full test suite result
   # (`Apiary.Stages.full_suite/3`). The two Standard track lines say "version" in their
@@ -3209,23 +3220,26 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :output, :map,
     required: true,
     doc:
-      "`:type`, `:version`, `:open`, `:read` and `:approval`, the approval it shows, nil " <>
-        "for none (`ApiaryWeb.WorkItemLive.StageTab.approved/3`); `:kind`, `:scenarios` " <>
-        "for the Scenarios frame, `:verification` for a verification the page read as its " <>
-        "parts, whose body is the slot's; `:row` for a frame with its artifact rows and no " <>
-        "text; `:caption`, the words after the icon in place of the version's, nil for those; " <>
-        "and `:accepted`, the member who accepted the stage's escalation as it is, shown " <>
-        "above a text"
+      "`:type`, `:name`, `:version`, `:open`, `:writer`, `:read` and `:approval`, the " <>
+        "approval it shows, nil for none (`ApiaryWeb.WorkItemLive.StageTab.approved/3`); " <>
+        "`:kind`, `:scenarios` for the Scenarios frame, `:verification` for a verification " <>
+        "the page read as its parts, whose body is the slot's; `:row` for a frame with its " <>
+        "artifact rows and no text; `:caption`, the words after the icon in place of the " <>
+        "version's, nil for those; and `:accepted`, the member who accepted the stage's " <>
+        "escalation as it is, shown above a text"
 
   slot :inner_block, doc: "the output's artifact row, for a version with no Markdown"
 
   @doc false
   # output_frame/1 is one output of a stage, in a frame with its version, folded but for the
   # first (`open`). A folded frame's
-  # text is read when it opens (`"open_frame"`, with its type). The frames keep the state the
-  # reader gave them when the page draws again. A frame whose version a gate `none`
-  # approved has the Approved badge and, after a check mark, the version, how it was
-  # approved and when, as Explore's approved Proposal frame has them.
+  # text is read when it opens (`"open_frame"`, with its type and name). The frames keep the
+  # state the reader gave them when the page draws again. A frame whose version a gate
+  # `none` approved has the Approved badge and, after a check mark, the version, how it was
+  # approved and when, as Explore's approved Proposal frame has them. The heading has the
+  # artifact's name after the type where it is not `main`, and a version a person made has
+  # who made it after its number, as the record block's artifact rows have it
+  # (`ApiaryWeb.ArtifactComponents.made_by/1`).
   def output_frame(assigns) do
     read = assigns.output.read
     text? = is_map(read)
@@ -3257,10 +3271,11 @@ defmodule ApiaryWeb.WorkItemComponents do
           phx-click={@output.read == :unread && "open_frame"}
           phx-value-number={@number}
           phx-value-type={@output.type}
+          phx-value-name={@output[:name] || "main"}
         >
           <div class="q-xp-frame-h">
             <.icon name="hero-chevron-right-micro" class="q-xp-chev q-xp-frame-i size-4" />
-            <h2 id={"#{@id}-h"} class="q-xp-frame-t">{@heading}</h2>
+            <h2 id={"#{@id}-h"} class="q-xp-frame-t" phx-no-format>{@heading}<%= if @output[:name] not in [nil, "main"] do %> · {@output.name}<% end %></h2>
             <.badge :if={@approval} color="info" class="q-xp-frame-b">{gettext("Approved")}</.badge>
           </div>
           <p :if={@approval} id={"#{@id}-approval"} class="q-xp-cap">
@@ -3269,10 +3284,8 @@ defmodule ApiaryWeb.WorkItemComponents do
           </p>
           <p :if={!@approval} class="q-xp-cap">
             <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
-            <span>
-              {@output[:caption] ||
-                gettext("Version %{version}", version: Format.number(@output.version))}
-            </span>
+            <span :if={@output[:caption]}>{@output.caption}</span>
+            <span :if={!@output[:caption]} phx-no-format>{gettext("Version %{version}", version: Format.number(@output.version))}<%= if @output[:writer] do %> · {@output.writer}<% end %></span>
           </p>
         </summary>
         <p
