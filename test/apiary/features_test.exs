@@ -123,13 +123,16 @@ defmodule Apiary.FeaturesTest do
       assert Features.parse(nil) == Features.parse(nil, registry: setting)
     end
 
-    test "model_proxies is opt-in and needs security and secrets: on only where a list has it" do
+    test "model_proxies is opt-in and needs factory, as workflow_model does: on only where a list has it" do
       assert :model_proxies in Features.opt_in()
       refute :model_proxies in Features.built()
       refute :model_proxies in Features.documented()
-      assert Features.needs(:model_proxies) == [:security, :secrets]
-      refute :model_proxies in Features.closed(Features.all() -- [:security])
-      refute :model_proxies in Features.closed(Features.all() -- [:secrets])
+      assert Features.needs(:model_proxies) == Features.needs(:workflow_model)
+      assert Features.needs(:model_proxies) == [:observability, :security, :secrets, :factory]
+
+      for need <- [:observability, :security, :secrets, :factory] do
+        refute :model_proxies in Features.closed(Features.all() -- [need]), inspect(need)
+      end
 
       # QORY_REGISTRY turns on the registry alone.
       for value <- [nil, "", "  ", "all", "all-path_rules"],
@@ -138,8 +141,11 @@ defmodule Apiary.FeaturesTest do
         refute :model_proxies in features, inspect({value, setting})
       end
 
+      assert Features.parse("observability,security,secrets,factory,model_proxies") ==
+               {:ok, [:observability, :security, :secrets, :factory, :model_proxies]}
+
       assert Features.parse("observability,security,secrets,model_proxies") ==
-               {:ok, [:observability, :security, :secrets, :model_proxies]}
+               {:error, "model_proxies needs factory, which is left out"}
 
       assert Features.parse("observability,security,model_proxies") ==
                {:error, "model_proxies needs secrets, which is left out"}
@@ -419,7 +425,7 @@ defmodule Apiary.FeaturesTest do
             {[:secrets],
              [:secrets, :factory, :model_proxies, :workflow_model, :organisation_variables]},
             {[:path_rules], [:path_rules]},
-            {[:factory], [:factory, :workflow_model]},
+            {[:factory], [:factory, :model_proxies, :workflow_model]},
             {[:registry], [:registry]},
             {[:security],
              [
@@ -510,7 +516,7 @@ defmodule Apiary.FeaturesTest do
                Enum.filter(Features.enabled(), &(&1 == :path_rules))
 
       assert Features.hidden_of([:factory]) ==
-               Enum.filter(Features.enabled(), &(&1 in [:factory, :workflow_model]))
+               Enum.filter(Features.enabled(), &(&1 in [:factory, :model_proxies, :workflow_model]))
 
       assert Features.hidden_of([:security]) ==
                Enum.filter(

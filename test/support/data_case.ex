@@ -225,7 +225,7 @@ defmodule Apiary.DataCase do
   under, and puts back the features afterwards:
   `setup {Apiary.DataCase, :with_model_proxies}`. For a test of a list that offers a
   provider whose description lists no models, such as LiteLLM. The feature needs
-  `secrets`, so tag the test `needs: :secrets` or a list with it. The features are the
+  `factory`, so tag the test `needs: :factory` or a list with it. The features are the
   whole node's, so the test must not be async.
   """
   def with_model_proxies(tags) do
@@ -236,9 +236,9 @@ defmodule Apiary.DataCase do
 
     enabled = Apiary.Features.enabled()
 
-    if :secrets not in enabled do
+    if :factory not in enabled do
       raise ArgumentError,
-            "Tag the test needs: :secrets. model_proxies needs secrets, and the suite " <>
+            "Tag the test needs: :factory. model_proxies needs factory, and the suite " <>
               "runs without it: #{inspect(enabled)}"
     end
 

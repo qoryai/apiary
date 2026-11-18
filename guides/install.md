@@ -528,8 +528,8 @@ Features: skipped the saved feature <name>, which this release does not have.
 <!-- /feature -->
 <!-- feature: factory -->
 - `model_proxies`: the model providers whose description lists no models, such as
-  LiteLLM, in the lists where you choose a provider. Off by default. Needs `security`
-  and `secrets`.
+  LiteLLM, in the lists where you choose a provider. Off by default. Needs
+  `observability`, `security`, `secrets` and `factory`.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `workflow_model`: changes to the process of each workspace, its stages in order, each

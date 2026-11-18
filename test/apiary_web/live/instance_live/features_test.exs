@@ -188,7 +188,7 @@ defmodule ApiaryWeb.InstanceLive.FeaturesTest do
                "Model proxies (providers with no model list)"
 
       assert text(view, "#feature-model_proxies-needs") ==
-               "Needs Security policy, and Secrets and variables."
+               "Needs Record and runs, Security policy, Secrets and variables, and Work items."
 
       assert text(view, "#feature-model_proxies-sentence") ==
                "Offers model providers whose description lists no models, such as LiteLLM."
@@ -314,7 +314,13 @@ defmodule ApiaryWeb.InstanceLive.FeaturesTest do
 
       toggle(view, :secrets)
 
-      for feature <- [:secrets, :factory, :workflow_model, :organisation_variables] do
+      for feature <- [
+            :secrets,
+            :factory,
+            :model_proxies,
+            :workflow_model,
+            :organisation_variables
+          ] do
         assert has_element?(view, "#feature-#{feature}-switch[aria-checked='false']"),
                inspect(feature)
       end
@@ -331,13 +337,13 @@ defmodule ApiaryWeb.InstanceLive.FeaturesTest do
       toggle(view, :secrets)
       assert has_element?(view, "#feature-secrets-switch[aria-checked='true']")
 
-      for feature <- [:factory, :workflow_model, :organisation_variables] do
+      for feature <- [:factory, :model_proxies, :workflow_model, :organisation_variables] do
         assert has_element?(view, "#feature-#{feature}-switch[aria-checked='false']"),
                inspect(feature)
       end
 
       assert text(view, "#features-preview-factory") ==
-               "Turning off Work items also turns off Process versions."
+               "Turning off Work items also turns off Model proxies (providers with no model list) and Process versions."
 
       # Nothing is saved until Save.
       assert Features.enabled() == before
