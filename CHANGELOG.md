@@ -35,7 +35,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   provider that serves a runtime. A key of a model provider shows **Model and effort per
   tier**, as on Workspace settings › Model, then **Runtime**, as there, and **Save model
   choice**, enabled once every tier has a model and something changed. "Use workspace
-  default" shows no **Runtime**: the default's runtime applies. The save writes
+  default" shows no **Runtime**: the default's runtime applies. A new override starts
+  from the default's runtime: a change of **Key** from the default to a key keeps it while
+  the key's provider works with it. The save writes
   the workflow's model choice at once, with no fallbacks, and makes no version of the
   process; "Use workspace default" saved removes it. A refusal shows under its field, and
   the button is enabled again for the next save. A workflow the saved process does not

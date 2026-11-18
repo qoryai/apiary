@@ -182,13 +182,14 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
 
   @doc """
   The state of a row of `workflow` as its override, or none, has it. The runtime is the
-  override's, or the default's where the override names none, while the key's provider
-  serves it; else the first runtime that provider serves.
+  override's, or the catalogue's default where the override names none, as a run takes it;
+  with no override, the default's. Either while the key's provider serves it; else the
+  first runtime that provider serves.
   """
   @spec saved(map, String.t()) :: map
   def saved(model, workflow) do
     stored = model.overrides[workflow]
-    name = (stored && stored.runtime) || model.runtime.name
+    name = runtime_name(model, stored)
     key = ModelTiers.chosen(keys(model, workflow, name), stored)
     {_runtimes, runtime} = runtimes(model, key, name)
 
@@ -233,7 +234,7 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
     name =
       if is_binary(params["runtime"]),
         do: params["runtime"],
-        else: state.runtime || (stored && stored.runtime) || model.runtime.name
+        else: state.runtime || runtime_name(model, stored)
 
     {_runtimes, runtime} = runtimes(model, ModelTiers.find(keys, value), name)
     key = ModelTiers.find(keys(model, state.workflow, runtime && runtime.name), value)
@@ -269,15 +270,29 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
   end
 
   @doc """
-  Whether the row's Key, runtime or tiers differ from what is saved for its workflow.
+  Whether the row's Key, runtime or tiers differ from what is saved for its workflow. A
+  stored runtime other than the one the row shows, such as one the catalogue no longer
+  has, is a change, so a save can write the one the row shows.
   """
   @spec changed?(map, map) :: boolean
   def changed?(model, state) do
     saved = saved(model, state.workflow)
+    stored = model.overrides[state.workflow]
 
     state.value != saved.value or
-      (state.value != "" and (state.tiers != saved.tiers or state.runtime != saved.runtime))
+      (state.value != "" and
+         (state.tiers != saved.tiers or state.runtime != saved.runtime or
+            (stored != nil and state.runtime != nil and
+               runtime_name(model, stored) != state.runtime)))
   end
+
+  # The runtime of the override `stored`: its own name, or the catalogue's default where
+  # it names none, as a run takes it (`Apiary.ModelChoices.default_runtime/0`); with no
+  # override, the workspace default's, so a new override starts from it.
+  defp runtime_name(model, nil), do: model.runtime.name
+
+  defp runtime_name(_model, %ModelChoice{runtime: runtime}),
+    do: runtime || ModelChoices.default_runtime().name
 
   @doc """
   Saves the row: `:ok` once the override is written, or removed for the default;

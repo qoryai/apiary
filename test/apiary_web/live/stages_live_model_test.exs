@@ -685,13 +685,14 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       assert has_element?(view, "#{@save}[disabled]")
     end
 
-    test "Key lists every key, and a change of Key keeps or moves the runtime", %{
-      conn: conn,
-      path: path,
-      scope: scope,
-      anthropic: anthropic,
-      openrouter: openrouter
-    } do
+    test "Key lists every key; a new override starts from the default's runtime, which a change of Key keeps while the provider serves it",
+         %{
+           conn: conn,
+           path: path,
+           scope: scope,
+           anthropic: anthropic,
+           openrouter: openrouter
+         } do
       {release, bearer} = two_runtimes()
 
       # The workspace default runs the bearer runtime, which Anthropic does not serve.
@@ -769,6 +770,62 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       assert name == narrow.name
       assert tiers["thinking"] == %{"model" => "anthropic/claude-opus-5.5"}
       assert tiers["balanced"] == %{"model" => "anthropic/claude-sonnet-5.5", "effort" => "low"}
+    end
+
+    test "an override that names no runtime shows the catalogue's default, not the workspace default's",
+         %{conn: conn, path: path, scope: scope, openrouter: openrouter} do
+      {release, bearer} = two_runtimes()
+
+      # The workspace default runs the bearer runtime; the override names none, so its
+      # runs take the catalogue's default, the release's runtime.
+      {:ok, _choice} =
+        ModelChoices.put_choice(scope, :workspace, %{
+          provider: openrouter.public_id,
+          key: "openrouter-main",
+          runtime: bearer.name,
+          tiers: @override_tiers
+        })
+
+      override!(scope, openrouter)
+      assert %ModelChoice{runtime: nil} = override(scope)
+
+      {:ok, view, _html} = live(conn, path)
+      assert has_element?(view, ~s{#{@runtime} option[value="#{release.name}"][selected]})
+      assert has_element?(view, "#{@save}[disabled]")
+
+      change_model(view, %{"tiers" => %{"balanced" => %{"effort" => ""}}})
+      save_model(view, %{})
+
+      assert %ModelChoice{runtime: name} = override(scope)
+      assert name in [nil, release.name]
+    end
+
+    test "a stored runtime the catalogue no longer has is a change, and a save writes the one shown",
+         %{conn: conn, path: path, scope: scope, anthropic: anthropic, openrouter: openrouter} do
+      {release, bearer} = two_runtimes()
+      default!(scope, anthropic)
+
+      {:ok, _choice} =
+        ModelChoices.put_choice(scope, {:workspace, @workflow}, %{
+          provider: openrouter.public_id,
+          key: "openrouter-main",
+          runtime: bearer.name,
+          tiers: @override_tiers
+        })
+
+      # The catalogue drops the bearer runtime: the row shows the release's, and Save
+      # model choice is enabled with nothing else changed.
+      :ok = Apiary.Kinds.Runtimes.put_test_list([release])
+      {:ok, view, _html} = live(conn, path)
+
+      assert has_element?(view, "#{@runtime_part}-name", release.title)
+      refute has_element?(view, "#{@save}[disabled]")
+
+      save_model(view, %{})
+
+      # With one runtime in the catalogue, the choice names none.
+      assert %ModelChoice{runtime: nil} = override(scope)
+      assert has_element?(view, "#{@save}[disabled]")
     end
   end
 
@@ -876,6 +933,14 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
              view,
              @line,
              "This workflow uses this key and these models in place of the workspace's."
+           )
+
+    # No runtime is read for the provider, and the override's efforts stay shown.
+    refute has_element?(view, @runtime_part)
+
+    assert has_element?(
+             view,
+             ~s{#stage-entry-0-model-tiers_thinking_effort option[value="high"][selected]}
            )
 
     change_model(view, %{"key" => ""})

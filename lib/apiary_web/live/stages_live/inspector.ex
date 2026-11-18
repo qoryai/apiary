@@ -862,6 +862,7 @@ defmodule ApiaryWeb.StagesLive.Inspector do
       runtimes={@field.runtimes}
       runtime={@field.runtime}
       provider={@field.key.provider.name}
+      errors={@field.runtime_errors}
       disabled={not @field.editable}
     />
     <div :if={@field.button or @field.done} class="grid justify-items-start gap-1.5">
@@ -933,8 +934,14 @@ defmodule ApiaryWeb.StagesLive.Inspector do
       stored = model.overrides[workflow]
       editable = model.editable and not draft_only
 
+      # A refusal of the runtime shows under Runtime where it is shown, else under Key.
+      runtime_fields = if key && runtime, do: [:runtime], else: []
+
+      {runtime_errors, errors} =
+        Enum.split_with(state.errors, fn {field, _error} -> field in runtime_fields end)
+
       {key_errors, tier_errors} =
-        Enum.split_with(state.errors, fn {field, _error} -> field in [:key, :runtime] end)
+        Enum.split_with(errors, fn {field, _error} -> field in [:key, :runtime] end)
 
       %{
         form: "#{id}-model-form",
@@ -946,8 +953,13 @@ defmodule ApiaryWeb.StagesLive.Inspector do
         runtimes: runtimes,
         runtime: runtime,
         tiers: state.tiers,
-        stored: runtime && ModelTiers.accepted(ModelTiers.stored(stored), runtime),
+        stored:
+          if(runtime,
+            do: ModelTiers.accepted(ModelTiers.stored(stored), runtime),
+            else: ModelTiers.stored(stored)
+          ),
         key_errors: for({_field, error} <- key_errors, do: translate_error(error)),
+        runtime_errors: for({_field, error} <- runtime_errors, do: translate_error(error)),
         tier_errors: tier_errors,
         done: state.done,
         editable: editable,
