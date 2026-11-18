@@ -102,7 +102,8 @@
 # push and the calls of its submit step; and 1 to 16 credentials in a run configuration, a
 # secrets request and a sealed plaintext, at most 6 of them API credentials; and
 # `denied-variables.json`, the built-in deny list of variables, with the `forge_tokens` and
-# `model_keys` that a run's variables never carry.
+# `model_keys` that a run's variables never carry; and `usage` of `dev.qory.runtime.result`, the
+# launch's tokens so far, with its `session` and `line`.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
@@ -110,6 +111,7 @@
 ab37683e1673150eeea633036826106de60beb29
 priv/contract/api-format.schema.json
 priv/contract/events/runtime.text.schema.json
+priv/contract/events/runtime.result.schema.json
 priv/contract/events/runtime.tool_result.schema.json
 priv/contract/events/runtime.tool_denied.schema.json
 priv/contract/auth.schema.json
