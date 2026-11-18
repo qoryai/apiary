@@ -659,8 +659,9 @@ defmodule Apiary.Runs.SecretsRequest do
               "be read (#{reason})"
           )
 
-          {:halt,
-           {:error, if(reason == :unavailable, do: :unavailable, else: :credential_unavailable)}}
+          # Only a sign-in that cannot be refreshed now is worth another try by the gateway.
+          retry? = reason == :unavailable and Login.provider?(credential.provider)
+          {:halt, {:error, if(retry?, do: :unavailable, else: :credential_unavailable)}}
       end
     end)
   end
