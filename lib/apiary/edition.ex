@@ -193,9 +193,9 @@ defmodule Apiary.Edition do
   @doc """
   The last sentence of the line under the Artifact types table for a type that the harness
   sets, for the person of `scope` (the organisation and the workspace): the step to change
-  the schema, in place of the core's step in Harness settings. Nil for the core's step. An
-  edition where someone else changes the harness of the workspace returns who. Translated
-  when the callback runs.
+  the schema, in place of the core's step in Harness settings. Nil for the core's step.
+  When someone else changes the harness of the workspace, the callback returns who.
+  Translated when the callback runs.
   """
   @callback schema_change_line(Scope.t()) :: String.t() | nil
 
