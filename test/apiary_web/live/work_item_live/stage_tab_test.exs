@@ -3430,6 +3430,29 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                "The full test suite failed on that commit: 412 passed, 3 failed, 5 skipped, in 6 minutes."
     end
 
+    test "a result with no counts has the minutes on the Standard track, and nothing on the Fast" do
+      none = %{passed: nil, failed: nil, skipped: nil, minutes: 6}
+
+      for {state, word} <- [passed: "passed", failed: "failed"] do
+        standard = Map.merge(counts(state), none)
+
+        assert suite_tab(standard) |> suite_line() ==
+                 "The full test suite #{word} on that commit, in 6 minutes."
+
+        assert suite_tab(%{standard | minutes: 1}) |> suite_line() ==
+                 "The full test suite #{word} on that commit, in 1 minute."
+
+        assert suite_tab(%{standard | minutes: 1.0}) |> suite_line() ==
+                 "The full test suite #{word} on that commit, in 1 minute."
+
+        assert suite_tab(%{standard | minutes: 0.25}) |> suite_line() ==
+                 "The full test suite #{word} on that commit, in 0.25 minutes."
+
+        assert suite_tab(%{standard | fast: true}) |> suite_line() ==
+                 "The full test suite #{word}."
+      end
+    end
+
     test "on the Fast track a passed or failed suite has its counts and no minutes" do
       assert suite_tab(counts(:passed, true)) |> suite_line() ==
                "The full test suite passed: 412 passed, 3 failed, 5 skipped."
@@ -3648,6 +3671,30 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                view,
                "#work-item-suite-line",
                "The full test suite failed on that commit: 409 passed, 3 failed, 3 skipped, in 6 minutes."
+             )
+    end
+
+    test "a verdict with minutes and no counts shows the Fast track line without counts", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = report_gate!(scope, %{"state" => "failed", "minutes" => 2})
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert has_element?(view, "#work-item-suite-line", "The full test suite failed.")
+    end
+
+    test "a verdict with minutes and no counts shows the Standard line with the minutes", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = report_gate!(scope, %{"state" => "passed", "minutes" => 2}, "standard")
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert has_element?(
+               view,
+               "#work-item-suite-line",
+               "The full test suite passed on that commit, in 2 minutes."
              )
     end
 

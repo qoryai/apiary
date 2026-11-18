@@ -3556,6 +3556,37 @@ defmodule Apiary.StagesTest do
       assert suite_of(%{@suite_passed | "passed" => 12.5}) == nil
     end
 
+    test "a result with no counts has the minutes and nil counts" do
+      for state <- ["passed", "failed"] do
+        assert suite_of(%{"state" => state, "minutes" => 6.5}) == %{
+                 state: String.to_existing_atom(state),
+                 passed: nil,
+                 failed: nil,
+                 skipped: nil,
+                 minutes: 6.5,
+                 reason: nil
+               }
+      end
+    end
+
+    test "counts that are there come all three, and are whole numbers" do
+      base = %{"state" => "passed", "minutes" => 1}
+
+      for bad <- [
+            %{"passed" => 1},
+            %{"passed" => 1, "failed" => 0},
+            %{"failed" => 0, "skipped" => 0},
+            %{"passed" => 1, "failed" => 0, "skipped" => nil},
+            %{"passed" => nil, "failed" => nil, "skipped" => nil},
+            %{"passed" => "1", "failed" => 0, "skipped" => 0}
+          ] do
+        assert suite_of(Map.merge(base, bad)) == nil, inspect(bad)
+      end
+
+      # No minutes is no result, with or without counts.
+      assert suite_of(%{"state" => "passed"}) == nil
+    end
+
     test "a result that is not whole is no result" do
       for bad <- [
             %{"state" => "not_run"},

@@ -589,9 +589,10 @@ The body, at most 64 KiB:
   this track, if the gate offers it. A verdict with no `track` proposes none.
 - `full_suite`: optional, for any verdict. The result of the run of the full test suite, as
   the run reports it. `state` is required and is `passed`, `failed` or `not_run`.
-  - With `passed` or `failed`, `passed`, `failed` and `skipped` are required: the counts of
-    tests, each a whole number from 0 to 1,000,000,000. `minutes` is required: how long
-    the run took, a number from 0 to 100,000. `reason` is not allowed.
+  - With `passed` or `failed`, `minutes` is required: how long the run took, a number from 0
+    to 100,000. `passed`, `failed` and `skipped` are the counts of tests, each a whole number
+    from 0 to 1,000,000,000, either all three or none of them: one or two of the three is
+    refused. `reason` is not allowed.
   - With `not_run`, `reason` is required: why the suite did not run, one sentence on one
     line of 1 to 300 characters, as `track.reason` is. The counts and `minutes` are not
     allowed.

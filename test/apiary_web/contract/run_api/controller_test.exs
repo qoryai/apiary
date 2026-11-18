@@ -2554,9 +2554,18 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert [%{files: [%{content: content}]}] = RunApiStubs.pushed()
       assert Jason.decode!(content) == %{"verdict" => "passed", "full_suite" => suite}
 
+      # Minutes alone are a result: the counts come all three or not at all.
+      only_minutes = %{"state" => "passed", "minutes" => 3}
+
+      assert write(ctx, "/verdict", %{"verdict" => "passed", "full_suite" => only_minutes}).status ==
+               201
+
+      assert [_first, %{files: [%{content: content}]}] = RunApiStubs.pushed()
+      assert Jason.decode!(content) == %{"verdict" => "passed", "full_suite" => only_minutes}
+
       # A null is stored as no member.
       assert write(ctx, "/verdict", %{"verdict" => "passed", "full_suite" => nil}).status == 201
-      assert [_first, %{files: [%{content: content}]}] = RunApiStubs.pushed()
+      assert [_first, _second, %{files: [%{content: content}]}] = RunApiStubs.pushed()
       assert Jason.decode!(content) == %{"verdict" => "passed"}
     end
 
@@ -2568,6 +2577,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
             %{"state" => "not_run", "reason" => "No test command.", "passed" => 1},
             Map.merge(counts, %{"state" => "passed", "passed" => -1}),
             Map.merge(counts, %{"state" => "passed", "reason" => "x"}),
+            %{"state" => "passed", "minutes" => 1, "passed" => 1, "failed" => 0},
             %{"state" => "unknown"},
             "passed"
           ] do

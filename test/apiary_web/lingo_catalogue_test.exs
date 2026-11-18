@@ -43,6 +43,8 @@ defmodule ApiaryWeb.LingoCatalogueTest do
     "Set a version that exists. %{url} has no tag or version %{ref}.",
     "Set a version that exists. %{url} has no version %{ref}.",
     "The Qory harness is the harness at %{url}.",
+    "The full test suite failed on that version, in %{minutes} minute.",
+    "The full test suite passed on that version, in %{minutes} minute.",
     "The full test suite failed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minute.",
     "The full test suite passed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minute.",
     "Update from harness version %{commit}",

@@ -2428,8 +2428,8 @@ defmodule Apiary.Stages do
   # skipped:, minutes:, reason:}`; `:none` for a file that has no result (no version, no
   # `full_suite`, or a result that is not whole); `{:error, :store_unavailable}` where the
   # store cannot read the file. `state` is `:passed`, `:failed` or `:not_run`. `:passed` and
-  # `:failed` have the three counts, whole numbers (12.0 is 12), and `minutes`, a number,
-  # with `reason` nil. `:not_run` has `reason` and nil for the others: the reason with white
+  # `:failed` have `minutes`, a number, and the three counts, whole numbers (12.0 is 12), or
+  # nil for all three where the file has none; `reason` is nil. `:not_run` has `reason` and nil for the others: the reason with white
   # space trimmed and one final full stop dropped, which is a line of text, so a reason of no
   # text is no result. The version's file does not change, so `{:ok, _}` and `:none` may be
   # kept by the version's public id; the error may not.
@@ -2488,12 +2488,25 @@ defmodule Apiary.Stages do
   end
 
   defp suite_result(%{"state" => state} = suite) when state in ~w(passed failed) do
-    counts = Enum.map(~w(passed failed skipped), &suite_count(suite[&1]))
+    keys = ~w(passed failed skipped)
     minutes = suite["minutes"]
 
-    if nil not in counts and is_number(minutes) and not Map.has_key?(suite, "reason") do
-      [passed, failed, skipped] = counts
+    # The three counts come together or not at all; a count that is there is a whole number.
+    counts =
+      case Enum.filter(keys, &Map.has_key?(suite, &1)) do
+        [] ->
+          {:ok, [nil, nil, nil]}
 
+        ^keys ->
+          if Enum.all?(keys, &(suite_count(suite[&1]) != nil)),
+            do: {:ok, Enum.map(keys, &suite_count(suite[&1]))}
+
+        _some ->
+          nil
+      end
+
+    with {:ok, [passed, failed, skipped]} <- counts,
+         true <- is_number(minutes) and not Map.has_key?(suite, "reason") do
       %{
         state: String.to_existing_atom(state),
         passed: passed,
@@ -2502,6 +2515,8 @@ defmodule Apiary.Stages do
         minutes: minutes,
         reason: nil
       }
+    else
+      _not_whole -> nil
     end
   end
 

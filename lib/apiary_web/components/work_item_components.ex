@@ -2820,6 +2820,31 @@ defmodule ApiaryWeb.WorkItemComponents do
       else: gettext("The full test suite did not run: %{reason}.", reason: reason)
   end
 
+  # A result with no counts: the Standard track has the minutes, the Fast track nothing.
+  defp suite_words(%{fast: true, state: :passed, passed: nil}),
+    do: gettext("The full test suite passed.")
+
+  defp suite_words(%{fast: true, state: :failed, passed: nil}),
+    do: gettext("The full test suite failed.")
+
+  defp suite_words(%{state: :passed, passed: nil} = suite) do
+    ngettext(
+      "The full test suite passed on that version, in %{minutes} minute.",
+      "The full test suite passed on that version, in %{minutes} minutes.",
+      suite_plural(suite.minutes),
+      minutes: suite_minutes(suite.minutes)
+    )
+  end
+
+  defp suite_words(%{state: :failed, passed: nil} = suite) do
+    ngettext(
+      "The full test suite failed on that version, in %{minutes} minute.",
+      "The full test suite failed on that version, in %{minutes} minutes.",
+      suite_plural(suite.minutes),
+      minutes: suite_minutes(suite.minutes)
+    )
+  end
+
   defp suite_words(%{fast: true, state: :passed} = suite) do
     gettext("The full test suite passed: %{passed} passed, %{failed} failed, %{skipped} skipped.",
       passed: Format.number(suite.passed),

@@ -8,7 +8,7 @@ defmodule Apiary.Artifacts.VerdictSchemaTest do
   alias Apiary.Kinds.Bounds
 
   @path Path.expand("../../../priv/schemas/artifacts/verdict.schema.json", __DIR__)
-  @sha256 "c1f067bc161638f8df68374851617b6c67dde41bb96525ca41a6d7c279c959fb"
+  @sha256 "51cbcb5ee089d2c716b67bee9be27daa15c45388c4a1026e43f8243d425ba934"
 
   test "is the bytes of the verdict schema the hash pins" do
     bytes = File.read!(@path)
@@ -109,9 +109,38 @@ defmodule Apiary.Artifacts.VerdictSchemaTest do
       end
     end
 
-    test "requires the counts and minutes with passed and failed" do
-      for state <- ["passed", "failed"], key <- ~w(passed failed skipped minutes) do
-        refute valid?(with_suite(@passed |> Map.put("state", state) |> Map.delete(key)))
+    test "requires minutes with passed and failed" do
+      for state <- ["passed", "failed"] do
+        refute valid?(with_suite(@passed |> Map.put("state", state) |> Map.delete("minutes")))
+
+        refute valid?(
+                 with_suite(%{"state" => state, "passed" => 1, "failed" => 0, "skipped" => 0})
+               )
+      end
+    end
+
+    test "takes the three counts together, or none of them" do
+      for state <- ["passed", "failed"] do
+        base = %{"state" => state, "minutes" => 1.5}
+
+        # Only minutes, and all three counts with minutes.
+        assert valid?(with_suite(base))
+
+        assert valid?(
+                 with_suite(Map.merge(base, %{"passed" => 3, "failed" => 0, "skipped" => 1}))
+               )
+
+        # One or two of the three is refused.
+        for counts <- [
+              %{"passed" => 3},
+              %{"failed" => 0},
+              %{"skipped" => 1},
+              %{"passed" => 3, "failed" => 0},
+              %{"passed" => 3, "skipped" => 1},
+              %{"failed" => 0, "skipped" => 1}
+            ] do
+          refute valid?(with_suite(Map.merge(base, counts))), inspect(counts)
+        end
       end
     end
 

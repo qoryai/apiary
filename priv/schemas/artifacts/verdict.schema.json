@@ -44,7 +44,7 @@
       }
     },
     "full_suite": {
-      "description": "The result of the run of the full test suite. state is passed, failed or not_run. With passed or failed, passed, failed and skipped are the counts of tests, whole numbers from 0 to 1000000000, and minutes is how long the run took, a number from 0 to 100000, and reason is absent. With not_run, only state and reason are present: reason is why the suite did not run, in one sentence on one line of 1 to 300 characters. A verdict with no full_suite reports no result.",
+      "description": "The result of the run of the full test suite. state is passed, failed or not_run. With passed or failed, minutes is how long the run took, a number from 0 to 100000, and passed, failed and skipped are the counts of tests, whole numbers from 0 to 1000000000, either all three or none of them; reason is absent. With not_run, only state and reason are present: reason is why the suite did not run, in one sentence on one line of 1 to 300 characters. A verdict with no full_suite reports no result.",
       "type": "object",
       "required": ["state"],
       "additionalProperties": false,
@@ -58,7 +58,14 @@
       },
       "if": {"required": ["state"], "properties": {"state": {"const": "not_run"}}},
       "then": {"required": ["reason"], "properties": {"passed": false, "failed": false, "skipped": false, "minutes": false}},
-      "else": {"required": ["passed", "failed", "skipped", "minutes"], "properties": {"reason": false}}
+      "else": {
+        "required": ["minutes"],
+        "properties": {"reason": false},
+        "anyOf": [
+          {"required": ["passed", "failed", "skipped"]},
+          {"not": {"anyOf": [{"required": ["passed"]}, {"required": ["failed"]}, {"required": ["skipped"]}]}}
+        ]
+      }
     },
     "count": {
       "description": "A count: a whole number from 0 to 1000000000.",
