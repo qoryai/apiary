@@ -1771,6 +1771,136 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert has_element?(lv, "#model-none")
     end
   end
+
+  describe "a fallback row whose provider does not fit" do
+    # Coded again, as a save codes it, so the row passes its integrity code.
+    defp change_provider!(provider, changes) do
+      Connections.Connection
+      |> Repo.get!(provider.id)
+      |> Ecto.Changeset.change(changes)
+      |> Apiary.Kinds.Coded.seal()
+      |> Repo.update!()
+    end
+
+    test "a provider that works with no runtime is listed; in a row, a line says to pick another, and Save writes nothing",
+         ctx do
+      %{conn: conn, scope: scope, provider: anthropic} = ctx
+      openrouter = openrouter(scope)
+      _bearer = bearer_only()
+      {:ok, lv, _html} = live(conn, path(scope))
+      choose_provider(lv, openrouter.public_id)
+
+      lv |> element("#model-fallback-add") |> render_click()
+
+      assert has_element?(
+               lv,
+               ~s{#model_choice_fallbacks_0_provider option[value="#{anthropic.public_id}"][selected]}
+             )
+
+      assert has_element?(
+               lv,
+               "#model-fallback-0-line",
+               "Anthropic API key works with no runtime in this version of Qory Apiary. Pick another provider."
+             )
+
+      refute has_element?(lv, "#model-fallback-0-tiers")
+      refute has_element?(lv, "#model-fallback-0-runtime")
+      assert has_element?(lv, "#model-submit[disabled]")
+
+      # A save sent anyway writes nothing, and the line stays under the row's Provider.
+      render_hook(lv, "save", %{
+        "model_choice" => %{
+          "provider" => openrouter.public_id,
+          "tiers" => openrouter_tiers(openrouter),
+          "fallbacks" => %{"0" => %{"provider" => anthropic.public_id, "tiers" => @tiers}}
+        }
+      })
+
+      assert choice(scope) == nil
+      refute has_element?(lv, "#flash-info")
+      assert has_element?(lv, "#model-fallback-0-line")
+    end
+
+    test "a stored row whose provider no longer applies to the workspace says so under its Provider",
+         ctx do
+      %{conn: conn, scope: scope, provider: anthropic} = ctx
+      openrouter = openrouter(scope)
+
+      {:ok, _choice} =
+        ModelChoicesFixtures.put_choice(scope, :workspace, %{
+          provider: anthropic.public_id,
+          tiers: @tiers,
+          fallbacks: [fallback(openrouter)]
+        })
+
+      change_provider!(openrouter, applies_to: "selected")
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      assert has_element?(
+               lv,
+               "#model-fallback-0-line",
+               "Choose another provider: #{openrouter.name} is not used in this workspace."
+             )
+
+      refute has_element?(lv, "#model-fallback-0-tiers")
+    end
+
+    test "a stored row whose provider's settings no longer fit says to add it again", ctx do
+      %{conn: conn, scope: scope, provider: anthropic} = ctx
+      openrouter = openrouter(scope)
+
+      {:ok, _choice} =
+        ModelChoicesFixtures.put_choice(scope, :workspace, %{
+          provider: anthropic.public_id,
+          tiers: @tiers,
+          fallbacks: [fallback(openrouter)]
+        })
+
+      change_provider!(openrouter, settings: ~s({"region":"eu"}))
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      assert has_element?(
+               lv,
+               "#model-fallback-0-line",
+               "Add #{openrouter.name} again in Organisation settings › Model providers: its settings no longer fit this version of Qory Apiary."
+             )
+
+      refute has_element?(lv, "#model-fallback-0-tiers")
+    end
+
+    test "a refusal of a stored row's runtime shows under its Provider while the row shows no Runtime",
+         ctx do
+      %{conn: conn, scope: scope, provider: anthropic} = ctx
+      openrouter = openrouter(scope)
+      [release] = Runtimes.list()
+      second = %{release | name: release.name <> "-second", title: release.title <> " second"}
+      :ok = Runtimes.put_test_list([release, second])
+
+      {:ok, _choice} =
+        ModelChoicesFixtures.put_choice(scope, :workspace, %{
+          provider: anthropic.public_id,
+          runtime: release.name,
+          tiers: @tiers,
+          fallbacks: [fallback(openrouter, nil, second.name)]
+        })
+
+      # The second runtime leaves the catalogue, and the row's provider the workspace.
+      :ok = Runtimes.put_test_list([release])
+      change_provider!(openrouter, applies_to: "selected")
+      {:ok, lv, _html} = live(conn, path(scope))
+      refute has_element?(lv, "#model-fallback-0-runtime")
+
+      lv |> form("#model-form") |> render_submit()
+
+      assert has_element?(
+               lv,
+               "#model_choice_fallbacks_0_provider-error",
+               "Choose one of the offered runtimes: #{second.name} is not one of them."
+             )
+
+      refute has_element?(lv, "#flash-info")
+    end
+  end
 end
 
 defmodule ApiaryWeb.ModelChoiceLive.ModelProxiesTest do

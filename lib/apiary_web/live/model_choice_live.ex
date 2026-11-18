@@ -26,14 +26,20 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # Fallbacks, below Runtime: the providers runs use, in order, while every key of the
   # chosen provider is in cooldown. Each row has Provider, the tiers of its provider, as
   # the choice's, and Runtime, the runtimes its provider serves, with Move up, Move down
-  # and Remove. A row's Provider lists the providers that are offered and serve a
-  # runtime, but the chosen provider and those of the other rows. Add fallback adds a row
-  # of the first provider left. A new row, and a row whose provider changes, starts with
-  # empty tiers and on the choice's runtime where its provider serves it, else on the
-  # first runtime its provider serves. A stored row shows its stored runtime. A change of
-  # a row's Runtime keeps its models, and an effort that runtime does not accept goes back
-  # to Not set. Save writes the rows with the choice; each refusal shows under its row's
-  # field.
+  # and Remove. A row's Provider lists the providers that are offered, also those that
+  # work with no runtime, but the chosen provider and those of the other rows. Add
+  # fallback adds a row of the first provider left that works with a runtime, else of the
+  # first left. A row whose provider works with no runtime shows "<Provider> works with
+  # no runtime in this version of Qory Apiary. Pick another provider." under its
+  # Provider, no tiers and no Runtime, and Save writes nothing while it shows. A stored
+  # row whose provider no longer applies to the workspace, or whose description cannot be
+  # read, shows one line of why under its Provider and no tiers. A new row, and a row
+  # whose provider changes, starts with empty tiers and on the choice's runtime where its
+  # provider serves it, else on the first runtime its provider serves. A stored row shows
+  # its stored runtime. A change of a row's Runtime keeps its models, and an effort that
+  # runtime does not accept goes back to Not set. Save writes the rows with the choice;
+  # each refusal shows under its row's field, a refusal of Runtime under Provider while
+  # the row shows no Runtime.
   #
   # Every member reads it (`connection.read`); owners and admins change it
   # (`model_choice.write`), and anyone else sees the fields disabled, no Save, and one line
@@ -411,15 +417,15 @@ defmodule ApiaryWeb.ModelChoiceLive do
     Map.put(now, "tiers", tiers)
   end
 
-  # The providers a new row may have: those that are offered and serve a runtime, but the
-  # chosen provider and those of the rows but `except`.
+  # The providers a row may have: those that are offered, also those that work with no
+  # runtime, but the chosen provider and those of the rows but `except`.
   defp left(assigns, except \\ nil) do
     taken =
       for {row, i} <- Enum.with_index(assigns.fallbacks), i != except, do: row["provider"]
 
     main = main_provider(assigns)
 
-    for %{provider: provider, offered: true, runtimes: [_ | _]} = entry <- assigns.providers,
+    for %{provider: provider, offered: true} = entry <- assigns.providers,
         provider.public_id not in taken,
         main == nil or provider.id != main.id,
         do: entry
@@ -441,6 +447,53 @@ defmodule ApiaryWeb.ModelChoiceLive do
         offered
     end
   end
+
+  # The line under a row's Provider, nil for none: for a provider that works with no
+  # runtime, "<Provider> works with no runtime in this version of Qory Apiary. Pick
+  # another provider."; for a stored row's provider that no longer applies to the
+  # workspace, the error a save returns for it; for one whose description cannot be
+  # read, the line the choice's Provider shows for such a provider (`unserved_text/2`).
+  # A check that ran out of time or crashed has no line: the next read checks it again.
+  defp row_line(page, row) do
+    case entry_of(page.providers, row["provider"]) do
+      %{unfit: :no_runtime, title: title} -> ModelTiers.no_runtime_line(title)
+      %{} -> nil
+      nil -> unlisted_line(page, page.known[row["provider"]])
+    end
+  end
+
+  defp unlisted_line(_page, nil), do: nil
+
+  defp unlisted_line(page, %Connection{id: id} = provider) do
+    case Enum.find(page.described, fn {described, _read} -> described.id == id end) do
+      nil ->
+        translate_error(
+          {dgettext_noop(
+             "errors",
+             "Choose another provider: %{provider} is not used in this workspace."
+           ), provider: provider.name}
+        )
+
+      {_provider, {:error, :provider_unchecked}} ->
+        nil
+
+      {_provider, {:error, :provider_changed}} ->
+        unserved_text({:changed, provider}, page.current_scope)
+
+      {_provider, {:error, _why}} ->
+        unserved_text({:unknown, provider}, page.current_scope)
+
+      {_provider, {:ok, _description}} ->
+        nil
+    end
+  end
+
+  # Whether a row's provider works with no runtime, so a save writes nothing.
+  defp no_runtime_rows?(page),
+    do:
+      Enum.any?(page.fallbacks, fn row ->
+        match?(%{unfit: :no_runtime}, entry_of(page.providers, row["provider"]))
+      end)
 
   # The errors of the rows sent with a provider the page does not list, by the row's
   # index: "is invalid" on its Provider, the error the workflow's fold returns for one.
@@ -559,12 +612,14 @@ defmodule ApiaryWeb.ModelChoiceLive do
   end
 
   def handle_event("add_fallback", _params, %{assigns: %{writes: true}} = socket) do
-    case left(socket.assigns) do
-      [entry | _rest] ->
+    left = left(socket.assigns)
+
+    case Enum.find(left, &(&1.runtimes != [])) || List.first(left) do
+      %{} = entry ->
         rows = socket.assigns.fallbacks ++ [new_row(socket, entry)]
         {:noreply, assign_fallbacks(socket, rows, %{})}
 
-      [] ->
+      nil ->
         {:noreply, socket}
     end
   end
@@ -616,6 +671,11 @@ defmodule ApiaryWeb.ModelChoiceLive do
       # A provider that works with no runtime, or the saved one whose description cannot
       # be read: its line under Provider says why, and nothing is written.
       provider_line(socket.assigns) != nil ->
+        {:noreply, assign_form(socket, params, [])}
+
+      # A row whose provider works with no runtime: its line under Provider says why,
+      # and nothing is written.
+      no_runtime_rows?(socket.assigns) ->
         {:noreply, assign_form(socket, params, [])}
 
       unknown_rows(rows) != %{} ->
@@ -728,7 +788,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
     do:
       Map.take(
         assigns,
-        ~w(writes fallbacks fallback_errors fallback_stored providers known entry runtime current_scope)a
+        ~w(writes fallbacks fallback_errors fallback_stored providers known described entry runtime current_scope)a
       )
 
   attr :page, :map, required: true, doc: "the page's assigns that `fallback_page/1` takes"
@@ -796,9 +856,23 @@ defmodule ApiaryWeb.ModelChoiceLive do
     entry = entry_of(page.providers, row["provider"])
     runtime = row_runtime(page, row)
 
+    line = row_line(page, row)
+
+    # Runtime's refusals show under Provider while the row shows no Runtime.
+    shown =
+      if runtime && is_nil(line),
+        do: errors,
+        else:
+          for(
+            {field, error} <- errors,
+            do: {if(field == :runtime, do: :provider, else: field), error}
+          )
+
     assigns =
       assign(assigns,
-        form: row_form(row, index, page.fallback_errors),
+        form: row_form(row, index, %{index => shown}),
+        line: line,
+        line_shown: line && not Enum.any?(shown, &match?({:provider, _error}, &1)),
         number: index + 1,
         providers: row_providers(page, row, index),
         entry: row_entry(page, row),
@@ -834,8 +908,16 @@ defmodule ApiaryWeb.ModelChoiceLive do
           options={for provider <- @providers, do: {provider.name, provider.public_id}}
           disabled={!@page.writes}
         />
+        <p
+          :if={@line_shown}
+          id={"model-fallback-#{@index}-line"}
+          class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+        >
+          <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+          <span><.rich text={@line} /></span>
+        </p>
         <ModelTiers.tiers
-          :if={@entry}
+          :if={@entry && is_nil(@line)}
           id={"model-fallback-#{@index}-tiers"}
           name={"model_choice[fallbacks][#{@index}][tiers]"}
           entry={@entry}
@@ -846,7 +928,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
           fit_effort
         />
         <ModelTiers.runtime_part
-          :if={@runtime}
+          :if={@runtime && is_nil(@line)}
           id={"model-fallback-#{@index}-runtime"}
           select_id={"model_choice_fallbacks_#{@index}_runtime"}
           name={"model_choice[fallbacks][#{@index}][runtime]"}
@@ -1001,7 +1083,10 @@ defmodule ApiaryWeb.ModelChoiceLive do
               id="model-submit"
               type="submit"
               variant="primary"
-              disabled={!ModelTiers.complete?(@entry, @tiers) or !rows_complete?(@fallbacks)}
+              disabled={
+                !ModelTiers.complete?(@entry, @tiers) or !rows_complete?(@fallbacks) or
+                  no_runtime_rows?(assigns)
+              }
               loading_text={gettext("Saving")}
             >
               {gettext("Save")}
