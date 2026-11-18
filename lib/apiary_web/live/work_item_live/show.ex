@@ -127,7 +127,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   import ApiaryWeb.WorkItemComponents
 
   alias Apiary.{Access, AccessKeys, Artifacts, Edition, Gateways, Processes, Runs, Stages}
-  alias Apiary.{WorkItems, WorkspaceSetup}
+  alias Apiary.{Submissions, WorkItems, WorkspaceSetup}
   alias Apiary.Runs.Run
   alias Apiary.WorkItems.ExploreView
   alias ApiaryWeb.{ArtifactComponents, HarnessComponents, SpendDialog, UserAuth}
@@ -434,6 +434,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             stage_names={Map.new(@flow.stages, &{&1.id, &1.name})}
             take_ins={@view.take_ins}
             outputs={@frames}
+            submissions={@submissions}
             questions={@view.questions}
             waiting={@view.waiting}
             questions_path={tab_path(@current_scope, @number, :questions)}
@@ -655,6 +656,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            artifacts: [],
            view: nil,
            frames: [],
+           submissions: nil,
+           submission_reads: %{},
            frame_texts: %{},
            stored_reads: %{},
            opened_frames: MapSet.new(),
@@ -2275,10 +2278,52 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           |> verify_frame(socket, reads)
       end)
 
-    assign(socket, frames: anchored(frames), frame_texts: texts, stored_reads: reads)
+    frames = anchored(frames)
+    {submissions, submission_reads} = submissions(socket, frames)
+
+    assign(socket,
+      frames: frames,
+      frame_texts: texts,
+      stored_reads: reads,
+      submissions: submissions,
+      submission_reads: submission_reads
+    )
   end
 
-  defp framed(socket), do: assign(socket, :frames, [])
+  defp framed(socket), do: assign(socket, frames: [], submissions: nil)
+
+  # The Submissions list, in place of the frame of the submission type, on the tab of a
+  # stage that outputs it: `%{type:, rows:, names:}`, nil on any other tab and where the
+  # work item has no submission to list. The rows have the address of their run's page where
+  # the reader may read runs (`Apiary.Submissions.list/4`).
+  defp submissions(%{assigns: %{view: %{stage: stage}, row: row} = assigns} = socket, frames) do
+    reads = assigns.submission_reads
+
+    if frames == [] do
+      {nil, reads}
+    else
+      {type, reads} = Submissions.type_cached(row, reads)
+
+      with true <-
+             is_binary(type) and type in stage.outputs and Enum.any?(frames, &(&1.type == type)),
+           {[_row | _more] = rows, reads} <-
+             Submissions.list_cached(row, type, assigns.artifacts, nil, reads) do
+        scope = scope(socket)
+        ctx = %{scope: scope, readable: View.readable(scope, Enum.map(rows, & &1.workspace_id))}
+
+        rows =
+          Enum.map(rows, fn row ->
+            path = View.run_path(ctx, %{number: row.run, workspace_id: row.workspace_id})
+            Map.put(row, :path, path)
+          end)
+
+        names = Submissions.system_names(assigns.row, Submissions.draft_systems(rows))
+        {%{type: type, rows: rows, names: names}, reads}
+      else
+        _none -> {nil, reads}
+      end
+    end
+  end
 
   # The frames, the verification's with `anchors`: the DOM id of each scenario of the
   # Scenarios frame by its number, which the matrix's Evidence cells link to
@@ -2398,11 +2443,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end
   end
 
-  # The flow with the drafts of the newest submission (`Workflow.drafts/1`), its JSON
+  # The flow with the drafts of the newest submission (`Submissions.repositories/1`), its JSON
   # document read once per version (`stored_json/3`), and `reads`.
   defp with_drafts(%{submission: %{id: id} = version} = flow, reads) do
     reads = stored_json(reads, id, version)
-    {%{flow | drafts: Workflow.drafts(reads[{:json, id}])}, reads}
+    {%{flow | drafts: Submissions.repositories(reads[{:json, id}])}, reads}
   end
 
   defp with_drafts(flow, reads), do: {flow, reads}

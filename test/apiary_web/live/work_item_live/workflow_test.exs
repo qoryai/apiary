@@ -2735,7 +2735,18 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         update_in(state.socket.assigns.stored_reads, fn reads ->
           Map.put(reads, {:json, submission.public_id}, %{
             "repositories" => [
-              %{"path" => "example/kept", "draft" => %{"url" => "https://forge.example.com/kept"}}
+              %{
+                "system" => "forge.example.com",
+                "path" => "example/kept",
+                "commit" => String.duplicate("b", 40),
+                "draft" => %{
+                  "number" => 7,
+                  "url" => "https://forge.example.com/example/kept/pull/7",
+                  "title" => "Kept",
+                  "state" => "draft",
+                  "action" => "opened"
+                }
+              }
             ]
           })
         end)

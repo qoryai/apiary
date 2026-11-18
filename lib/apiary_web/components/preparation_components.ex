@@ -83,7 +83,7 @@ defmodule ApiaryWeb.PreparationComponents do
 
   alias Apiary.ExternalText
   alias Apiary.Runs.Preparation
-  alias ApiaryWeb.{Format, MachineTypeWords, RunPageComponents}
+  alias ApiaryWeb.{Format, MachineTypeWords, RunPageComponents, SubmissionComponents}
   alias Phoenix.LiveView.JS
 
   # The most of a machine log the list shows, in bytes.
@@ -223,6 +223,12 @@ defmodule ApiaryWeb.PreparationComponents do
   attr :run_state, :string, default: nil
   attr :cancelling, :boolean, default: false
   attr :wall, :boolean, default: true
+
+  attr :submissions, :map,
+    default: nil,
+    doc:
+      "the submissions of the versions the run stored (`Apiary.Submissions.for_run/3`), for the Submission block under the version list of Save the outputs; nil for none"
+
   slot :session
 
   def run_list(assigns) do
@@ -327,6 +333,7 @@ defmodule ApiaryWeb.PreparationComponents do
                   preparation={@preparation}
                   alive={@alive}
                   session={@session}
+                  submissions={@submissions}
                 />
               </li>
             </ol>
@@ -360,6 +367,7 @@ defmodule ApiaryWeb.PreparationComponents do
   attr :preparation, :map, required: true
   attr :alive, :boolean, required: true
   attr :session, :list, default: [], doc: "the `session` slot of `run_list/1`"
+  attr :submissions, :map, default: nil, doc: "as `run_list/1`'s"
 
   # A step inside a step, with no start or duration shown: a step of the run, with its output
   # and cause line; a step made of steps, as Prepare the session; Run the agent, with its
@@ -390,9 +398,24 @@ defmodule ApiaryWeb.PreparationComponents do
     ~H"""
     <.flow id={"#{@id}-#{@node.key}"} node={@node} alive={@alive} times={false}>
       <.events lines={@node.events} />
+      <%!-- The submissions the run stored, under the versions of Save the outputs. --%>
+      <SubmissionComponents.block
+        :for={version <- @node.versions}
+        :if={@submissions && @submissions.rows[version.public_id]}
+        id={"#{@id}-#{@node.key}-submission-#{version.number}"}
+        row={@submissions.rows[version.public_id]}
+        type={@submissions.type}
+        names={@submissions.names}
+      />
       <ol :if={@node.children != []} class="q-prep-steps">
         <li :for={child <- @node.children}>
-          <.inner_step id={@id} node={child} preparation={@preparation} alive={@alive} />
+          <.inner_step
+            id={@id}
+            node={child}
+            preparation={@preparation}
+            alive={@alive}
+            submissions={@submissions}
+          />
         </li>
       </ol>
       {if @node.kind == :agent and @node.session != nil,
@@ -1031,6 +1054,7 @@ defmodule ApiaryWeb.PreparationComponents do
       at: nil,
       ended_at: nil,
       events: [],
+      versions: [],
       children: [],
       text: nil,
       open: nil,
@@ -1460,6 +1484,7 @@ defmodule ApiaryWeb.PreparationComponents do
       duration_ms: row.duration_ms,
       ticking: row.ticking,
       events: events,
+      versions: place.versions,
       children: Enum.map(place.pushes, &step_node/1)
     )
   end
