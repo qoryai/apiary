@@ -98,11 +98,11 @@ defmodule Apiary.ModelKeys.Login do
   node stops after the provider returned its response and before the write commits, the
   next refresh uses the stored, replaced refresh token. The provider accepted it in a check
   on 2026-11-18; if it no longer does, the login ends `sign_in_needed` with
-  `refresh_token_reused`. A shutdown of the task supervisor (a deploy) does not stop the task at once: it
-  traps exits, so it writes the result it has within 75 seconds (the lease, `lease_ms/0`),
-  and the task that makes the request ends its request within 20 seconds. A call that the
-  supervisor kills after that is no failure: the task counts none, writes no entry, clears
-  the lease and returns `:unavailable`.
+  `refresh_token_reused`. A shutdown of the task supervisor (a deploy) does not stop the
+  task at once: it traps exits, so it writes the result it has within 75 seconds (the lease,
+  `lease_ms/0`), and the task that makes the request ends its request within 20 seconds. A
+  call that the supervisor kills after that is no failure: the task counts none, writes no
+  entry, clears the lease and returns `:unavailable`.
   """
 
   use Ecto.Schema
@@ -432,7 +432,7 @@ defmodule Apiary.ModelKeys.Login do
 
   @typedoc """
   What starts a refresh: `:schedule`, the sweep, or `{:run, public_id}`, the run that
-  needs the key's access token. The audit entry of the call names it.
+  needs the key's access token. The audit entry of the call contains it.
   """
   @type trigger :: :schedule | {:run, String.t()}
 
@@ -1186,7 +1186,7 @@ defmodule Apiary.ModelKeys.Login do
   end
 
   # Each clause returns `{outcome, entry}`: what the caller gets, and what the entry of the
-  # call says (`record/2`).
+  # call returns (`record/2`).
   defp settle(write, row, {:ok, tokens}, now) do
     rotated? = is_binary(tokens.refresh_token)
     refresh_token = tokens.refresh_token || write.leased.tokens.refresh_token
@@ -1249,7 +1249,7 @@ defmodule Apiary.ModelKeys.Login do
     )
 
     # The person has to act, whether or not a streak of failures that may pass was open: the
-    # line of that streak says the next call is scheduled.
+    # line of that streak shows the next call is scheduled.
     {:sign_in_needed, entry(write, "sign_in_needed", cause)}
   end
 
