@@ -57,9 +57,9 @@ defmodule Apiary.Contract.RuntimeResultFixturesTest do
              output_tokens: 656,
              cache_read_tokens: 136_111,
              cache_write_tokens: 68_908,
-             # 2, 1 and 0 turns: each line's own.
+             # 2, 1 and 0 turns, and 9501, 1490 and 3 ms: each line's own.
              turns: 3,
-             duration_ms: 3,
+             duration_ms: 10_994,
              error: false
            } = session
 

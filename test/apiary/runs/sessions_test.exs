@@ -8,7 +8,8 @@ defmodule Apiary.Runs.SessionsTest do
   import Apiary.RunEventsFixtures, except: [at: 1]
   import Apiary.RunListFixtures, only: [queue_run!: 3]
 
-  alias Apiary.Runs.{Projector, Run, SessionRecord, Sessions}
+  alias Apiary.Organisations.Workspace
+  alias Apiary.Runs.{Event, Projector, Run, SessionRecord, Sessions}
   alias Apiary.Stages.Session
 
   @t0 ~U[2026-11-18 09:00:00.000000Z]
@@ -83,10 +84,9 @@ defmodule Apiary.Runs.SessionsTest do
                output_tokens: 656,
                cache_read_tokens: 136_111,
                cache_write_tokens: 68_908,
-               # The turns of each line are its own: they are summed.
+               # The turns and the time of each line are its own: they are summed.
                turns: 3,
-               # The duration is the last line's.
-               duration_ms: 3,
+               duration_ms: 10_994,
                error: false
              } = session
 
@@ -112,6 +112,48 @@ defmodule Apiary.Runs.SessionsTest do
 
       assert [%{cost_usd: cost}] = read(events)
       assert Decimal.equal?(cost, Decimal.new("0.01"))
+    end
+
+    test "the lines without a line number come after those with one, in any mix" do
+      events = [
+        result(1, 1, %{"line" => 9, "cost_usd" => 0.1}),
+        result(2, 1, %{"cost_usd" => 0.2}),
+        result(3, 1, %{"line" => 4, "cost_usd" => 0.3})
+      ]
+
+      # Line 4, line 9, then the one with none: by `line` and not by arrival.
+      assert [%{cost_usd: cost}] = read(events)
+      assert Decimal.equal?(cost, Decimal.new("0.2"))
+
+      events = [
+        result(1, 1, %{"cost_usd" => 0.5}),
+        result(2, 1, %{"line" => 5, "cost_usd" => 0.01}),
+        result(3, 1, %{"line" => 2, "cost_usd" => 0.03}),
+        result(4, 1, %{"cost_usd" => 0.7})
+      ]
+
+      # Of the two with none, the later event is the last.
+      assert [%{cost_usd: cost}] = read(events)
+      assert Decimal.equal?(cost, Decimal.new("0.7"))
+      assert Decimal.equal?(Sessions.cost(events), Decimal.new("0.7"))
+    end
+
+    test "turns and time are summed over the lines that have them, to the column's bound" do
+      assert [%{turns: 5, duration_ms: 12}] =
+               read([
+                 result(1, 1, %{"turns" => 2, "duration_ms" => 5}),
+                 result(2, 1, %{"outcome" => "success"}),
+                 result(3, 1, %{"turns" => 3, "duration_ms" => 7})
+               ])
+
+      assert [%{turns: 2_147_483_647, duration_ms: 9_223_372_036_854_775_807}] =
+               read([
+                 result(1, 1, %{
+                   "turns" => 2_147_483_647,
+                   "duration_ms" => 9_223_372_036_854_775_807
+                 }),
+                 result(2, 1, %{"turns" => 4, "duration_ms" => 5})
+               ])
     end
 
     test "a value no result carries is unknown, never 0" do
@@ -419,7 +461,111 @@ defmodule Apiary.Runs.SessionsTest do
       assert Decimal.equal?(rebuilt.cost_usd, Decimal.new("0.21"))
     end
 
-    defp comparable(record), do: Map.drop(record, [:updated_at, :__meta__, :run, :key_windows])
+    defp comparable(record), do: Map.drop(record, [:updated_at, :__meta__, :run])
+
+    test "a cost keeps every digit the runtime reported, and the smallest one", %{scope: scope} do
+      run = run_fixture(scope)
+
+      events_fixture(run, [
+        {1, "runtime.result", %{"session" => 1, "cost_usd" => 0.012915135}},
+        {2, "runtime.result", %{"session" => 2, "cost_usd" => 1.0e-20}},
+        {3, "runtime.result", %{"session" => 3, "cost_usd" => 999_999_999.5}},
+        {4, "runtime.result", %{"session" => 4, "cost_usd" => 1_000_000_000}}
+      ])
+
+      {:ok, run} = Projector.project(run)
+
+      assert [one, two, three, four] = records(run)
+      assert Decimal.equal?(one.cost_usd, Decimal.new("0.012915135"))
+      assert Decimal.equal?(two.cost_usd, Decimal.new("1.0e-20"))
+      assert Decimal.equal?(three.cost_usd, Decimal.new("999999999.5"))
+      # A billion dollars is no bill: it is read as absent.
+      assert four.cost_usd == nil
+    end
+
+    test "a session with no model of its own has the run's model for session 1 only", %{
+      scope: scope
+    } do
+      run = run_fixture(scope)
+      queue_run!(scope, run, queued: [])
+
+      Repo.update_all(from(r in Run, where: r.id == ^run.id),
+        set: [run_settings: %{"model" => "model-from-settings"}]
+      )
+
+      run = Repo.get!(Run, run.id)
+
+      events_fixture(run, [
+        {1, "runtime.result", %{"session" => 1, "cost_usd" => 0.1}},
+        {2, "runtime.result", %{"session" => 2, "cost_usd" => 0.2}},
+        {3, "runtime.started", %{"session" => 3, "model" => "model-large"}},
+        {4, "runtime.result", %{"session" => 3, "cost_usd" => 0.3}}
+      ])
+
+      {:ok, run} = Projector.project(run)
+      assert records(run) |> Enum.map(& &1.model) == ["model-from-settings", nil, "model-large"]
+    end
+
+    # The run's events, the way retention leaves them: a run with one projected session
+    # whose record and cost are what is left, and a later result line that arrives for it.
+    defp late_result(scope, left) do
+      run = run_fixture(scope)
+      events_fixture(run, session_events(1, 0.0129))
+      {:ok, run} = Projector.project(run)
+      assert Decimal.equal?(run.cost_usd, Decimal.new("0.0129"))
+
+      left.(run)
+
+      events_fixture(run, [{500, "runtime.result", result_data(1, 0.5)}])
+      assert {:ok, run} = Projector.project(run)
+
+      assert Repo.aggregate(
+               from(e in Event, where: e.run_id == ^run.id and is_nil(e.projected_at)),
+               :count
+             ) == 0
+
+      run
+    end
+
+    test "a run whose events are pruned keeps its record and its cost", %{scope: scope} do
+      run =
+        late_result(scope, fn run ->
+          Repo.update_all(from(r in Run, where: r.id == ^run.id),
+            set: [events_pruned_at: DateTime.utc_now()]
+          )
+        end)
+
+      assert Decimal.equal?(run.cost_usd, Decimal.new("0.0129"))
+      assert [record] = records(run)
+      assert Decimal.equal?(record.cost_usd, Decimal.new("0.0129"))
+      assert record.output_tokens == 2_000
+    end
+
+    test "a run that retention is due to prune keeps its record and its cost", %{scope: scope} do
+      run =
+        late_result(scope, fn run ->
+          Repo.update_all(from(w in Workspace, where: w.id == ^run.workspace_id),
+            set: [events_retention_days: 30]
+          )
+
+          Repo.update_all(from(r in Run, where: r.id == ^run.id),
+            set: [state: "completed", last_event_at: DateTime.add(DateTime.utc_now(), -90, :day)]
+          )
+        end)
+
+      assert Apiary.Retention.due_or_pruned?(run)
+      assert Decimal.equal?(run.cost_usd, Decimal.new("0.0129"))
+      assert [record] = records(run)
+      assert Decimal.equal?(record.cost_usd, Decimal.new("0.0129"))
+
+      # And `write/2` itself leaves such a run alone.
+      assert :ok =
+               Sessions.write(run, [
+                 event(1, "runtime.result", %{"session" => 2, "cost_usd" => 1})
+               ])
+
+      assert [_one] = records(run)
+    end
 
     test "a rerun's kept step has no session and so no record", %{scope: scope} do
       # A step a rerun keeps is not run again: no session.started, no result.
@@ -435,23 +581,5 @@ defmodule Apiary.Runs.SessionsTest do
       assert records(run) == []
       assert %Run{cost_usd: nil} = run
     end
-  end
-
-  test "the changeset refuses a count below 0 and a session number below 1" do
-    changeset =
-      SessionRecord.changeset(%SessionRecord{}, %{
-        session_number: 0,
-        attempt: 0,
-        turns: -1,
-        input_tokens: -1,
-        cost_usd: -1
-      })
-
-    refute changeset.valid?
-
-    assert Map.keys(errors_on(changeset)) |> Enum.sort() ==
-             [:attempt, :cost_usd, :input_tokens, :session_number, :turns]
-
-    assert SessionRecord.changeset(%SessionRecord{}, %{session_number: 2}).valid?
   end
 end

@@ -17,14 +17,15 @@ defmodule Apiary.Runs.Sessions do
   start, has none.
 
   A launch of Claude Code writes several `dev.qory.runtime.result` lines, and each line's
-  `cost_usd` and `usage` count the launch so far (decision 652 (a)). So of the session's
-  lines, the last one by `line`, the number of the line of the session's standard output,
-  or by event `sequence` where the `line` is missing or equal, gives:
+  `cost_usd` and `usage` count the launch so far (decision 652 (a)), but its `turns` and
+  `duration_ms` are those of the line. The lines are in the order of `line`, the number of
+  the line of the session's standard output, with the lines that have none after those
+  that have one, and lines of the same `line` by event `sequence`. So the session has:
 
-    * `cost_usd` and `usage`: the last line that has them, so a last line without a cost
-      leaves the cost of the line before it, a total so far, and not nothing;
-    * `duration_ms`: the last line that has one;
-    * `turns`: the sum over all the lines, because each line counts its own turns;
+    * `cost_usd` and `usage`: those of the last line that has them, so a last line without
+      a cost leaves the cost of the line before it, a total so far, and not nothing;
+    * `turns` and `duration_ms`: the sum over all the lines that have one, to the bound of
+      the column, because each line counts its own turns and time;
     * `error`: true when any line has `is_error` true.
 
   A run's cost (`cost/1`) is the sum, over its sessions, of each session's cost. A value
@@ -34,7 +35,8 @@ defmodule Apiary.Runs.Sessions do
   ## Writing
 
   `write/2` writes the records of a run from all its session events, one statement per
-  pass, in the projector's transaction (`Apiary.Runs.Projector`): it inserts a record or
+  pass, in the projector's transaction (`Apiary.Runs.Projector`), unless retention has
+  deleted the run's events or is due to (`Apiary.Retention.due_or_pruned?/1`): it inserts a record or
   replaces the columns that come from the events and from the run's place in the queue,
   never its `id`, so the key windows that hang on it stay. The write is the same for the
   same events whichever pass writes it. `record_windows/3` writes the key windows of the
@@ -130,8 +132,8 @@ defmodule Apiary.Runs.Sessions do
       ended_at: last_time(events, @session_exited, n),
       model: model(events, n),
       cost_usd: last_value(ordered, & &1.cost),
-      duration_ms: last_value(ordered, & &1.duration_ms),
-      turns: sum_turns(lines),
+      duration_ms: sum(lines, :duration_ms, @int8),
+      turns: sum(lines, :turns, @int4),
       error: Enum.any?(lines, & &1.error?)
     }
     |> Map.merge(
@@ -139,24 +141,20 @@ defmodule Apiary.Runs.Sessions do
     )
   end
 
-  # The lines in the order of the session's output: by `line` where two lines have one and
-  # differ, else by event sequence. The input is in sequence order, and the sort is stable.
-  defp order(lines) do
-    Enum.sort(lines, fn a, b ->
-      if is_integer(a.line) and is_integer(b.line) and a.line != b.line,
-        do: a.line < b.line,
-        else: a.sequence <= b.sequence
-    end)
-  end
+  # The lines in the order of the session's output: by `line`, those with none after those
+  # with one, and by event sequence where the `line` is equal or missing. A total order.
+  defp order(lines), do: Enum.sort_by(lines, &{is_nil(&1.line), &1.line, &1.sequence})
 
   defp last_value(ordered, fun) do
     ordered |> Enum.map(fun) |> Enum.reject(&is_nil/1) |> List.last()
   end
 
-  defp sum_turns(lines) do
-    case for(%{turns: turns} <- lines, is_integer(turns), do: turns) do
+  # The sum of a count over the lines that have it, cut at the column's bound; nil when
+  # no line has one.
+  defp sum(lines, field, bound) do
+    case for(%{^field => count} when is_integer(count) <- lines, do: count) do
       [] -> nil
-      turns -> min(Enum.sum(turns), @int4)
+      counts -> min(Enum.sum(counts), bound)
     end
   end
 
@@ -298,28 +296,25 @@ defmodule Apiary.Runs.Sessions do
   def write(%Run{events_pruned_at: %DateTime{}}, _events), do: :ok
 
   def write(%Run{} = run, events) do
-    case read(events) do
-      [] ->
-        :ok
+    with [_ | _] = sessions <- read(events),
+         false <- Apiary.Retention.due_or_pruned?(run) do
+      context = context(run)
+      now = DateTime.utc_now()
 
-      sessions ->
-        context = context(run)
-        now = DateTime.utc_now()
+      rows =
+        for session <- sessions do
+          base = row(run, context, session.session_number, now)
+          base |> Map.merge(session) |> Map.put(:model, session.model || base.model)
+        end
 
-        rows =
-          for session <- sessions do
-            base = row(run, context, session.session_number, now)
-            base |> Map.merge(session) |> Map.put(:model, session.model || base.model)
-          end
-
-        Repo.insert_all(SessionRecord, rows,
-          on_conflict: {:replace, @replaced},
-          conflict_target: [:run_id, :session_number],
-          log: false
-        )
-
-        :ok
+      Repo.insert_all(SessionRecord, rows,
+        on_conflict: {:replace, @replaced},
+        conflict_target: [:run_id, :session_number],
+        log: false
+      )
     end
+
+    :ok
   end
 
   # What the run's place in the queue gives its sessions: the run of the queue and the
@@ -350,7 +345,7 @@ defmodule Apiary.Runs.Sessions do
       workflow: (session && session.workflow) || (dispatch && dispatch.workflow),
       attempt: dispatch && dispatch.attempt,
       session_number: number,
-      model: model_of(run),
+      model: if(number == 1, do: model_of(run)),
       error: false,
       inserted_at: now,
       updated_at: now
@@ -358,9 +353,9 @@ defmodule Apiary.Runs.Sessions do
   end
 
   # The row of the shared run's sessions that Forager's session `number` is: the row whose
-  # report named it; else, for a session no report ended yet, such as the one open when a
-  # run paused, the newest row with none, when `number` is beyond every reported session;
-  # else the row of that sequence. Nil for a run that is not a shared run.
+  # report named it; else, for a session no report ended yet (the one open when a run
+  # paused), the newest row with none, when `number` is beyond every reported one; else
+  # the row of that sequence. Nil for a run that is not a shared run.
   defp shared_session([], _number), do: nil
 
   defp shared_session(sessions, number) do
@@ -379,7 +374,7 @@ defmodule Apiary.Runs.Sessions do
   end
 
   # The model of the run's first session, from the settings written when it was claimed:
-  # what a session's `dev.qory.runtime.started` did not say.
+  # what session 1's `dev.qory.runtime.started` did not say. Another session has none.
   defp model_of(%Run{run_settings: %{"model" => model}}) when is_binary(model), do: model
   defp model_of(%Run{}), do: nil
 
@@ -389,7 +384,7 @@ defmodule Apiary.Runs.Sessions do
   knows of the session: a gateway's report, or the events.
   """
   @spec ensure(Run.t(), pos_integer) :: Ecto.UUID.t()
-  def ensure(%Run{} = run, number) when is_integer(number) and number >= 1 do
+  def ensure(%Run{} = run, number) when number in 1..@int4 do
     Repo.insert_all(
       SessionRecord,
       [row(run, context(run), number, DateTime.utc_now())],
@@ -414,8 +409,8 @@ defmodule Apiary.Runs.Sessions do
   locked while the windows are read and written, so two reports of one session wait for
   each other. Returns `:ok`.
   """
-  @spec record_windows(Run.t(), pos_integer, [map]) :: :ok
-  def record_windows(%Run{} = run, number, rows) do
+  @spec record_windows(Run.t(), 1..2_147_483_647, [map]) :: :ok
+  def record_windows(%Run{} = run, number, rows) when number in 1..@int4 do
     rows = Enum.filter(rows, &is_integer(&1.utilization))
 
     if rows == [] do
@@ -423,6 +418,9 @@ defmodule Apiary.Runs.Sessions do
     else
       {:ok, :ok} =
         Repo.transact(fn ->
+          # A pass of the projector writes this run's records under this lock: taking it
+          # first keeps a report and a pass from inserting one record in opposite orders.
+          Apiary.Runs.Projector.lock(run.id)
           id = ensure(run, number)
 
           Repo.one!(
