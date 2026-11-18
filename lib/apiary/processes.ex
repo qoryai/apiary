@@ -49,6 +49,32 @@ defmodule Apiary.Processes do
   save keeps a name the harness does not declare; `placement_check/3` lists it, as it
   lists a type the workspace does not have and an input that no earlier stage outputs.
 
+  ## A workflow's overrides
+
+  A workflow's overrides are its model choice in the workspace (level 4 of
+  Apiary.ModelChoices) and its time limit in the workspace (Apiary.TimeLimits). They are
+  kept while the workspace's current version has the workflow, the version of an open
+  work item does, or a run of the workflow has not ended
+  (Apiary.Processes.kept_workflows/1): a work item on an older version can still run it,
+  and a claim reads a queued run's settings, again after a lease lapses. When none of
+  these has it any more, they are deleted (Apiary.Processes.delete_leftovers/2):
+
+    * in the transaction of a save, a make current, a drop of a trial and an assign,
+      under the workspace's row these hold, once before the change and once after it, so
+      a workflow that comes back starts with none;
+    * after a work item is closed or undone, or a run of the workflow ends, by
+      `Apiary.Processes.LeftoversJob`, which that change enqueues in its transaction and
+      which runs once it commits, under the workspace's row: the change holds the work
+      item's row or the run's, which come after the workspace's in the lock order
+      (docs/access.md).
+
+  With the feature `workflow_model` off, a run reads the workflow the Harness page saved,
+  whatever the process has, so no override is a leftover and none of these deletes runs.
+
+  Each delete leaves the audit entry of a removal, `choice_removed`
+  (`model_choice.write`) or `time_limit_removed` (`time_limit.edit`), with
+  `details.cause` `workflow_not_in_use`.
+
   ## Tracks
 
   The document's `tracks` are the tracks a gate can offer, and a gate's `tracks` lists the
@@ -573,6 +599,155 @@ defmodule Apiary.Processes do
     |> Enum.uniq()
   end
 
+  @doc false
+  # kept_workflows/1 is the workflows whose overrides the workspace `workspace` (a
+  # workspace or its id) keeps (the moduledoc): those of its current version, those of
+  # the version of each of its open work items (`:exploring`) that keeps one, and the
+  # workflow of each of its runs that has not ended, as a claim reads a queued run's
+  # settings (`Apiary.Dispatches.RunSettings.hold/1`), and reads them again after a
+  # lease lapses. The one answer to whether an override is kept; read without a lock.
+  @spec kept_workflows(%Workspace{} | Ecto.UUID.t()) :: MapSet.t(String.t())
+  def kept_workflows(%Workspace{} = workspace) do
+    open =
+      from w in WorkItem,
+        where:
+          w.workspace_id == ^workspace.id and w.state == :exploring and
+            not is_nil(w.process_version_id),
+        select: w.process_version_id
+
+    held =
+      Repo.all(
+        from v in Version,
+          where: v.workspace_id == ^workspace.id and v.id in subquery(open),
+          select: v.document
+      )
+
+    running =
+      Repo.all(
+        from r in DispatchRun,
+          # Read through the index on the organisation and the workspace.
+          where:
+            r.organisation_id == ^workspace.organisation_id and
+              r.workspace_id == ^workspace.id,
+          where: r.state != :ended and not is_nil(r.workflow),
+          distinct: true,
+          select: r.workflow
+      )
+
+    for document <- [current(workspace).document | held],
+        %{} = stage <- List.wrap(document["stages"]),
+        workflow <- workflows(stage),
+        is_binary(workflow),
+        into: MapSet.new(running),
+        do: workflow
+  end
+
+  def kept_workflows(id) when is_binary(id), do: kept_workflows(Repo.get!(Workspace, id))
+
+  @doc false
+  # delete_leftovers/2 deletes the overrides of `workspace` that are no longer kept
+  # (`kept_workflows/1`): its model choices of level 4 and its time limits, each with its
+  # audit entry as `scope`. The caller holds the workspace's row `FOR NO KEY UPDATE`, in
+  # its transaction. `:ok`, or `{:error, reason}` of a delete. With the feature
+  # `workflow_model` off, it deletes nothing (the moduledoc).
+  @spec delete_leftovers(Scope.t(), %Workspace{}) :: :ok | {:error, term}
+  def delete_leftovers(%Scope{} = scope, %Workspace{} = workspace) do
+    if Apiary.Stages.on?() do
+      kept = kept_workflows(workspace)
+
+      with :ok <- Apiary.ModelChoices.delete_unkept(scope, workspace, kept),
+           do: Apiary.TimeLimits.delete_unkept(scope, workspace, kept)
+    else
+      :ok
+    end
+  end
+
+  @doc false
+  # delete_leftovers_later/1 enqueues, in the caller's transaction, one
+  # `Apiary.Processes.LeftoversJob` for each workspace of `places`, each a pair of an
+  # organisation's id and a workspace's id: it runs once the transaction commits. With
+  # the feature `workflow_model` off, none.
+  @spec delete_leftovers_later([{Ecto.UUID.t(), Ecto.UUID.t()}]) :: :ok
+  def delete_leftovers_later(places) when is_list(places) do
+    if Apiary.Stages.on?() do
+      for {organisation_id, workspace_id} <- Enum.uniq(places) do
+        {:ok, _job} =
+          Oban.insert(Apiary.Processes.LeftoversJob.for_workspace(organisation_id, workspace_id))
+      end
+    end
+
+    :ok
+  end
+
+  @doc false
+  # delete_leftovers_after_runs/1 enqueues, in the caller's transaction, which ended the
+  # runs of the queue `dispatch_run_ids`, the deletion of the overrides that only those
+  # runs kept (`kept_workflows/1`): one job for each workspace with a run of a workflow
+  # that has an override there. Read without a lock.
+  @spec delete_leftovers_after_runs([Ecto.UUID.t()]) :: :ok
+  def delete_leftovers_after_runs([]), do: :ok
+
+  def delete_leftovers_after_runs(dispatch_run_ids) when is_list(dispatch_run_ids) do
+    if Apiary.Stages.on?() do
+      choice =
+        from c in Apiary.ModelChoices.ModelChoice,
+          where:
+            c.workspace_id == parent_as(:run).workspace_id and is_nil(c.target_id) and
+              c.workflow == parent_as(:run).workflow
+
+      limit =
+        from l in Apiary.TimeLimits.TimeLimit,
+          where:
+            l.workspace_id == parent_as(:run).workspace_id and is_nil(l.target_id) and
+              l.workflow == parent_as(:run).workflow
+
+      Repo.all(
+        from r in DispatchRun,
+          as: :run,
+          where: r.id in ^dispatch_run_ids and not is_nil(r.workflow),
+          where: exists(choice) or exists(limit),
+          distinct: true,
+          select: {r.organisation_id, r.workspace_id}
+      )
+      |> delete_leftovers_later()
+    else
+      :ok
+    end
+  end
+
+  @doc false
+  # delete_leftovers_now/1 deletes the scope's workspace's overrides that are no longer
+  # kept, in a new transaction that takes the rows in the lock order: the organisation's
+  # rows, then the workspace's row `FOR NO KEY UPDATE`. `Apiary.Processes.LeftoversJob`
+  # runs it after a work item closes or is undone, or a run ends. `:ok`;
+  # `{:error, :not_found}` for a workspace gone,
+  # or one that is, or whose organisation is, marked for deletion, as `Apiary.Access`
+  # answers for those; or a delete's error.
+  @spec delete_leftovers_now(Scope.t()) :: :ok | {:error, term}
+  def delete_leftovers_now(%Scope{workspace: %Workspace{} = workspace} = scope) do
+    Repo.transact(fn ->
+      :ok = Access.lock_places(scope)
+
+      held =
+        Repo.one(
+          from w in Workspace,
+            where: w.id == ^workspace.id and w.organisation_id == ^scope.organisation.id,
+            lock: "FOR NO KEY UPDATE"
+        )
+
+      if is_nil(held) or Apiary.Organisations.marked?(scope.organisation) or
+           Apiary.Organisations.marked?(held) do
+        {:error, :not_found}
+      else
+        with :ok <- delete_leftovers(scope, held), do: {:ok, :ok}
+      end
+    end)
+    |> case do
+      {:ok, :ok} -> :ok
+      error -> error
+    end
+  end
+
   ## Reading the versions
 
   @doc """
@@ -743,6 +918,7 @@ defmodule Apiary.Processes do
            :ok <- Access.check(scope, :"process.edit", workspace),
            :ok <- validate(document),
            :ok <- Apiary.MachineTypes.hold(),
+           :ok <- delete_leftovers(scope, workspace),
            {:ok, base} <- base(workspace, Keyword.get(opts, :based_on)),
            :ok <- changed(base, document),
            {:ok, version} <- insert_version(scope, workspace, base, document, trial?, nil),
@@ -750,7 +926,8 @@ defmodule Apiary.Processes do
            {:ok, _entry} <-
              record(scope, workspace, version, if(trial?, do: "save_trial", else: "save"), %{
                based_on: base.number
-             }) do
+             }),
+           :ok <- delete_leftovers(scope, workspace) do
         {:ok, version}
       end
     end)
@@ -798,6 +975,7 @@ defmodule Apiary.Processes do
            :ok <- harness_access(scope, workspace),
            :ok <- validate(document),
            :ok <- Apiary.MachineTypes.hold(),
+           :ok <- delete_leftovers(scope, workspace),
            {:ok, base} <- base(workspace, Keyword.fetch!(opts, :based_on)),
            :ok <- still_current(workspace, base),
            :ok <- changed_at(base, document, template),
@@ -806,7 +984,8 @@ defmodule Apiary.Processes do
              record(scope, workspace, version, if(trial?, do: "save_trial", else: "save"), %{
                based_on: base.number,
                harness_commit: template["commit"]
-             }) do
+             }),
+           :ok <- delete_leftovers(scope, workspace) do
         {:ok, version}
       end
     end)
@@ -980,6 +1159,7 @@ defmodule Apiary.Processes do
       with {:ok, scope, workspace} <- hold(scope, trial),
            :ok <- Access.check(scope, :"process.edit", trial),
            :ok <- Apiary.MachineTypes.hold(),
+           :ok <- delete_leftovers(scope, workspace),
            {:ok, trial} <- held_trial(trial),
            replaced = current_row(workspace, :update),
            _retired = retire_current(workspace),
@@ -988,7 +1168,8 @@ defmodule Apiary.Processes do
            {:ok, _entry} <-
              record(scope, workspace, version, "make_current", %{
                replaced: replaced && replaced.number
-             }) do
+             }),
+           :ok <- delete_leftovers(scope, workspace) do
         {:ok, version}
       end
     end)
@@ -1023,6 +1204,7 @@ defmodule Apiary.Processes do
       with {:ok, scope, workspace} <- hold(scope, trial),
            :ok <- Access.check(scope, :"process.edit", trial),
            :ok <- Apiary.MachineTypes.hold(),
+           :ok <- delete_leftovers(scope, workspace),
            {:ok, trial} <- held_trial(trial),
            current = current_row(workspace, :update) || current(workspace),
            items = trial_items(trial),
@@ -1033,7 +1215,8 @@ defmodule Apiary.Processes do
                set: [process_version_id: current.id, updated_at: DateTime.utc_now()]
              ),
            {:ok, version} <- trial |> Ecto.Changeset.change(status: :dropped) |> Repo.update(),
-           {:ok, _entry} <- record(scope, workspace, version, "drop_trial", %{moved: moved}) do
+           {:ok, _entry} <- record(scope, workspace, version, "drop_trial", %{moved: moved}),
+           :ok <- delete_leftovers(scope, workspace) do
         {:ok, version}
       end
     end)
@@ -1080,6 +1263,7 @@ defmodule Apiary.Processes do
       with {:ok, scope, workspace} <- hold(scope, work_item),
            :ok <- Access.check(scope, :"process.edit", work_item),
            :ok <- Apiary.MachineTypes.hold(),
+           :ok <- delete_leftovers(scope, workspace),
            %WorkItem{} = work_item <- held_item(work_item),
            {:ok, version} <- assignable(version, workspace) do
         before = version_for(work_item)
@@ -1113,6 +1297,7 @@ defmodule Apiary.Processes do
                        number: version.number
                      }
                    }),
+                 :ok <- delete_leftovers(scope, workspace),
                  do: {:ok, assigned}
         end
       else

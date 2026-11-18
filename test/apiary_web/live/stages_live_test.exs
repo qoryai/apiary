@@ -3106,6 +3106,35 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(view, "#stage-entry-0-time-limit-save")
     end
 
+    test "a draft row of a workflow whose time limit is left over shows the default",
+         %{conn: conn, path: path, scope: scope} do
+      # A leftover as one made before limits were deleted: the workflow is in no version.
+      {:ok, _limit} = TimeLimits.put_limit(scope, :workspace, "write-a-brief", 45)
+      {:ok, view, _html} = live(conn, path)
+
+      change_stage(view, %{"sequence" => %{"0" => %{"workflow" => "write-a-brief"}}})
+
+      assert has_element?(
+               view,
+               "#stage-entry-0-time-limit-line",
+               "Time limit: 180 minutes (default)"
+             )
+
+      refute has_element?(view, ~s{#{@field}[value="45"]})
+
+      # Saved, the workflow is back in the process with no limit.
+      view |> element("#stages-save") |> render_click()
+      refute Map.has_key?(limit(scope), "write-a-brief")
+
+      {:ok, view, _html} = live(conn, path)
+
+      assert has_element?(
+               view,
+               "#stage-entry-0-time-limit-line",
+               "Time limit: 180 minutes (default)"
+             )
+    end
+
     test "a row the stage does not show, or a workflow the saved process does not have, saves nothing",
          %{conn: conn, path: path, scope: scope} do
       {:ok, view, _html} = live(conn, path)

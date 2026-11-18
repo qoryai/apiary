@@ -1758,7 +1758,10 @@ defmodule Apiary.Connections do
       # the row `FOR SHARE` until it commits (`Apiary.Dispatches.RunSettings`), so a run
       # it registers is read here, and a claim that comes after reads the provider as
       # deleted.
+      # A workflow's choice whose workspace no longer keeps the workflow goes with the
+      # provider (`ModelChoices.delete_leftovers_using/2`).
       with :ok <- not_used(ModelChoices.places_using(current), live_runs(current)),
+           :ok <- ModelChoices.delete_leftovers_using(scope, current),
            {:ok, deleted} <- delete_with_keys(scope, current),
            {:ok, _entry} <-
              Audit.record(Repo, scope, :"provider.write", deleted, %{

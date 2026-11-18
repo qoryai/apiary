@@ -28,6 +28,18 @@ defmodule Apiary.ModelChoices do
   # `target_id`, and `name`, the place's name. Its `before` and `after` are the choice's
   # fields, its fallbacks among them, each with its provider's public id.
   #
+  # A workflow's choice in a workspace (level 4) is deleted with no action asked when the
+  # workspace no longer keeps the workflow (`Apiary.Processes.kept_workflows/1`): by the
+  # change that leaves it unused, a save of the process, the close of a work item or the
+  # end of a run (`delete_unkept/3`); by the deletion of its provider
+  # (`delete_leftovers_using/2`); or by the deletion or renaming of its key
+  # (`delete_leftovers_using_key/3`). Its entry is `choice_removed`, as the scope of that
+  # change, with `details.cause` `workflow_not_in_use`; such a delete takes the
+  # workspace's row `FOR NO KEY UPDATE`, the provider's row `FOR UPDATE`, or the
+  # provider's row and its key's secret's row `FOR UPDATE`, then the choice's row
+  # `FOR UPDATE`. With the feature `workflow_model` off, no choice is a leftover
+  # (`Apiary.Processes`).
+  #
   # Everything here needs the features `factory` and `secrets`, shown to the scope: with
   # either off, every function answers `{:error, :not_found}`.
   #
@@ -526,6 +538,56 @@ defmodule Apiary.ModelChoices do
           {:error, :not_found}
       end
     end)
+  end
+
+  @doc false
+  # delete_unkept/3 deletes the model choices of level 4 of `workspace` whose workflow is
+  # not in `kept`, the workflows the workspace keeps
+  # (`Apiary.Processes.kept_workflows/1`), each with a `choice_removed` entry as `scope`,
+  # with `details.cause` `workflow_not_in_use`. It asks no action: the change that leaves
+  # the workflow unused, a save of the process, the close of a work item or the end of a
+  # run, is the cause. The caller holds the workspace's row `FOR NO KEY UPDATE`, in its transaction.
+  @spec delete_unkept(Scope.t(), Workspace.t(), MapSet.t(String.t())) :: :ok | {:error, term}
+  def delete_unkept(%Scope{} = scope, %Workspace{} = workspace, %MapSet{} = kept) do
+    organisation = Repo.get!(Organisation, workspace.organisation_id)
+
+    from(c in ModelChoice,
+      where:
+        c.workspace_id == ^workspace.id and is_nil(c.target_id) and not is_nil(c.workflow) and
+          c.chain == "organisation" and c.workflow not in ^MapSet.to_list(kept),
+      order_by: c.id,
+      lock: "FOR UPDATE"
+    )
+    |> Repo.all()
+    |> Enum.reduce_while(:ok, fn choice, :ok ->
+      at = %{
+        level: 4,
+        chain: "organisation",
+        organisation: organisation,
+        workspace: workspace,
+        target: nil,
+        workflow: choice.workflow,
+        action: :"model_choice.write"
+      }
+
+      case delete_leftover(scope, at, choice) do
+        {:ok, _entry} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp delete_leftover(scope, at, choice) do
+    choice = Repo.preload(choice, fallbacks: :connection)
+    before = audited(choice)
+
+    with {:ok, deleted} <- Repo.delete(choice) do
+      details =
+        %{change: "choice_removed", level: 4, name: place_name(at), workflow: at.workflow}
+        |> Map.put(:cause, "workflow_not_in_use")
+
+      Audit.record(Repo, scope, at.action, deleted, %{before: before, details: details})
+    end
   end
 
   # A write at one place, in one transaction under the locks of the moduledoc: `fun` of
@@ -1428,45 +1490,161 @@ defmodule Apiary.ModelChoices do
   # `t:named_place/0`, the organisation's default first, then by workspace, target and
   # workflow. Read without a lock: the caller holds the provider's row `FOR UPDATE`, so no
   # save of a choice of it runs meanwhile.
+  #
+  # A workflow's choice in a workspace (level 4) that the workspace no longer keeps
+  # (`Apiary.Processes.kept_workflows/1`) is left out: `delete_leftovers_using/2` deletes
+  # it with the provider.
   @spec places_using(Connection.t()) :: [named_place]
-  def places_using(%Connection{id: id}) do
-    named(
-      from c in ModelChoice,
-        where:
-          c.connection_id == ^id or
-            c.id in subquery(
-              from f in Fallback, where: f.connection_id == ^id, select: f.model_choice_id
-            )
-    )
+  def places_using(%Connection{} = provider) do
+    provider
+    |> using()
+    |> named()
   end
+
+  @doc false
+  # delete_leftovers_using/2 deletes the choices of level 4 that use the model provider
+  # `provider`, as their provider or as a fallback, and whose workspace no longer keeps
+  # their workflow (`Apiary.Processes.kept_workflows/1`), each with a `choice_removed`
+  # entry as `scope`, with `details.cause` `workflow_not_in_use`. A deletion of the
+  # provider calls it, under the provider's row `FOR UPDATE`, in its transaction.
+  @spec delete_leftovers_using(Scope.t(), Connection.t()) :: :ok | {:error, term}
+  def delete_leftovers_using(%Scope{} = scope, %Connection{} = provider),
+    do: delete_leftovers_of(scope, using(provider))
+
+  @doc false
+  # delete_leftovers_using_key/3 deletes the choices of level 4 that chose the key
+  # `value_id` of the secret with the row id `secret_id` and whose workspace no longer
+  # keeps their workflow, as `delete_leftovers_using/2` deletes a provider's. A deletion
+  # or a renaming of the key calls it, under the secret's row `FOR UPDATE`, in its
+  # transaction, once nothing else uses the key (`Apiary.Secrets.Usage`).
+  @spec delete_leftovers_using_key(Scope.t(), Ecto.UUID.t(), String.t() | nil) ::
+          :ok | {:error, term}
+  def delete_leftovers_using_key(%Scope{} = scope, secret_id, value_id)
+      when is_binary(value_id),
+      do: delete_leftovers_of(scope, using_key(secret_id, value_id))
+
+  # A choice chooses a key by its value id: a value with none is no provider's key.
+  def delete_leftovers_using_key(%Scope{}, _secret_id, nil), do: :ok
+
+  defp delete_leftovers_of(scope, query) do
+    if Apiary.Stages.on?(), do: delete_leftovers_read(scope, query), else: :ok
+  end
+
+  defp delete_leftovers_read(scope, query) do
+    choices =
+      Repo.all(
+        from c in query,
+          where: not is_nil(c.workspace_id) and is_nil(c.target_id) and not is_nil(c.workflow),
+          order_by: c.id,
+          lock: "FOR UPDATE"
+      )
+
+    kept = kept_by_workspace(choices)
+
+    choices
+    |> Enum.filter(&leftover?(&1, kept))
+    |> Enum.reduce_while(:ok, fn choice, :ok ->
+      workspace = Repo.get!(Workspace, choice.workspace_id)
+
+      at = %{
+        level: 4,
+        organisation: nil,
+        workspace: workspace,
+        target: nil,
+        workflow: choice.workflow,
+        action: :"model_choice.write"
+      }
+
+      case delete_leftover(scope, at, choice) do
+        {:ok, _entry} -> {:cont, :ok}
+        {:error, reason} -> {:halt, {:error, reason}}
+      end
+    end)
+  end
+
+  defp using(%Connection{id: id}) do
+    from c in ModelChoice,
+      where:
+        c.connection_id == ^id or
+          c.id in subquery(
+            from f in Fallback, where: f.connection_id == ^id, select: f.model_choice_id
+          )
+  end
+
+  # The workflows each workspace of `choices` keeps, by the workspace's id, for the
+  # choices of level 4 among them.
+  defp kept_by_workspace(choices) do
+    ids =
+      for %ModelChoice{workspace_id: id, target_id: nil, workflow: workflow} <- choices,
+          is_binary(id) and is_binary(workflow),
+          uniq: true,
+          do: id
+
+    Map.new(ids, &{&1, Apiary.Processes.kept_workflows(&1)})
+  end
+
+  # Whether `choice` is a workflow's choice in a workspace (level 4) whose workspace no
+  # longer keeps the workflow; `kept` is `kept_by_workspace/1` of the choices read.
+  defp leftover?(%ModelChoice{workspace_id: id, target_id: nil, workflow: workflow}, kept)
+       when is_binary(id) and is_binary(workflow),
+       do: not MapSet.member?(Map.fetch!(kept, id), workflow)
+
+  defp leftover?(%ModelChoice{}, _kept), do: false
 
   @doc false
   # key_places/1 is the places of the choices, at levels 2 to 6, that use a key of the
   # secret with the row id `secret_id`, by its value id, each a `t:named_place/0`, for
   # `Apiary.Secrets.Usage`.
+  #
+  # A workflow's choice in a workspace (level 4) that the workspace no longer keeps is
+  # left out: `delete_leftovers_using_key/3` deletes it with the key.
   @spec key_places(Ecto.UUID.t()) :: [named_place]
   def key_places(secret_id) do
-    named(
-      from c in ModelChoice,
-        join: p in Connection,
-        on: p.id == c.connection_id,
-        where: p.secret_id == ^secret_id and not is_nil(c.value_id)
+    from(c in ModelChoice,
+      join: p in Connection,
+      on: p.id == c.connection_id,
+      where: p.secret_id == ^secret_id and not is_nil(c.value_id)
     )
+    |> named()
   end
 
+  # The choices that chose the key `value_id` of the secret `secret_id`, with no join, so
+  # a lock on what it reads locks no provider's row.
+  defp using_key(secret_id, value_id) do
+    from c in ModelChoice,
+      where:
+        c.value_id == ^value_id and
+          c.connection_id in subquery(
+            from p in Connection, where: p.secret_id == ^secret_id, select: p.id
+          )
+  end
+
+  # The places of the choices `query` reads that are no leftover (`leftover?/2`). With the
+  # feature `workflow_model` off, none is.
   defp named(query) do
-    Repo.all(
-      from c in query,
-        left_join: w in Workspace,
-        on: w.id == c.workspace_id,
-        left_join: t in Target,
-        on: t.id == c.target_id,
-        select: %{
-          choice: c,
-          workspace: w.name,
-          target: fragment("? || '/' || ?", t.system, t.path)
-        }
-    )
+    rows =
+      Repo.all(
+        from c in query,
+          left_join: w in Workspace,
+          on: w.id == c.workspace_id,
+          left_join: t in Target,
+          on: t.id == c.target_id,
+          select: %{
+            choice: c,
+            workspace: w.name,
+            target: fragment("? || '/' || ?", t.system, t.path)
+          }
+      )
+
+    rows =
+      if Apiary.Stages.on?() do
+        kept = kept_by_workspace(Enum.map(rows, & &1.choice))
+        Enum.reject(rows, &leftover?(&1.choice, kept))
+      else
+        rows
+      end
+
+    rows
     |> Enum.map(fn %{choice: choice} = row ->
       %{
         level: ModelChoice.level(choice),

@@ -905,12 +905,15 @@ defmodule Apiary.Dispatches.RunEnd do
   # The run of the queue ended with `cause`, and `detail` kept on it, its live dispatch
   # with the cause, a stale one not yet ended `run_ended`, and the slot freed once where
   # no machine is left (`Apiary.Dispatches.Slots`). Its workspace's queue changed,
-  # whether or not the slot was freed.
+  # whether or not the slot was freed. Its end may leave its workflow's overrides unused
+  # (`Apiary.Processes.delete_leftovers_after_runs/1`).
   defp end_locked(%DispatchRun{id: id, workspace_id: workspace_id}, cause, now, detail) do
     {1, _rows} =
       Repo.update_all(from(r in DispatchRun, where: r.id == ^id),
         set: [state: :ended, end_cause: cause, end_detail: detail, updated_at: now]
       )
+
+    :ok = Apiary.Processes.delete_leftovers_after_runs([id])
 
     {_count, _rows} =
       Repo.update_all(

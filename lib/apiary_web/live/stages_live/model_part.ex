@@ -20,9 +20,7 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
-  use Gettext, backend: ApiaryWeb.Gettext
-
-  alias Apiary.{Connections, ModelChoices}
+  alias Apiary.{Connections, ModelChoices, Organisations, Processes}
   alias Apiary.Accounts.Scope
   alias Apiary.Connections.Connection
   alias Apiary.Kinds.{Providers, Runtime, Runtimes}
@@ -44,9 +42,14 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
          {:ok, providers} <- Connections.list_providers(scope) do
       at_workspace = for %ModelChoice{workspace_id: ^workspace_id} = c <- choices, do: c
 
+      # Only the overrides the workspace keeps (`Apiary.Processes.kept_workflows/1`): a
+      # workflow that comes back after its override was left over starts from the default.
+      kept = Processes.kept_workflows(scope.workspace)
+
       overrides =
         for %ModelChoice{target_id: nil, workflow: workflow} = choice <- at_workspace,
             is_binary(workflow),
+            MapSet.member?(kept, workflow),
             into: %{},
             do: {workflow, choice}
 
@@ -87,31 +90,46 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
 
   defp default(_workspace, _organisation, _scope), do: :none
 
-  defp label(%ModelChoice{connection: provider, value_id: value_id}) do
-    case value_id || provider.default_value_id do
-      nil -> provider.name
-      key -> gettext("%{provider} · %{key}", provider: provider.name, key: key)
-    end
-  end
+  defp label(%ModelChoice{connection: provider, value_id: value_id}),
+    do: ModelTiers.key_label(provider, value_id || provider.default_value_id)
 
   # The providers that apply to the workspace, with their descriptions: each that serves
-  # a runtime and is offered, and the provider of an override, whichever it is.
+  # a runtime and is offered, and the provider of an override, whichever it is. The
+  # provider of an override whose description cannot be read stays, not offered and with
+  # no runtimes and no models, so its row shows the override's key and can remove it.
   defp entries(providers, workspace_id, overrides) do
     stored = for {_workflow, choice} <- overrides, into: MapSet.new(), do: choice.connection_id
 
     for provider <- providers,
         applies?(provider, workspace_id),
-        {:ok, description} <- [Connections.provider(provider)],
-        runtimes = Providers.runtimes(description),
-        offered <- [Providers.offered?(description) and runtimes != []],
-        offered or MapSet.member?(stored, provider.id),
-        do: %{
-          provider: provider,
-          runtimes: runtimes,
-          models_by: Map.new(runtimes, &{&1.name, ModelChoices.suggestions(provider, &1)}),
-          free: Connections.provider_models(description) == [],
-          offered: offered
-        }
+        entry <- entry(provider, MapSet.member?(stored, provider.id)),
+        do: entry
+  end
+
+  defp entry(provider, stored?) do
+    case Connections.provider(provider) do
+      {:ok, description} ->
+        runtimes = Providers.runtimes(description)
+        offered = Providers.offered?(description) and runtimes != []
+
+        if offered or stored?,
+          do: [
+            %{
+              provider: provider,
+              runtimes: runtimes,
+              models_by: Map.new(runtimes, &{&1.name, ModelChoices.suggestions(provider, &1)}),
+              free: Connections.provider_models(description) == [],
+              offered: offered
+            }
+          ],
+          else: []
+
+      {:error, _reason} when stored? ->
+        [%{provider: provider, runtimes: [], models_by: %{}, free: false, offered: false}]
+
+      {:error, _reason} ->
+        []
+    end
   end
 
   defp applies?(%Connection{applies_to: "all"}, _workspace_id), do: true
@@ -286,10 +304,12 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
     end
   end
 
+  # No override to remove is what the save asked for, while the workspace is still in use;
+  # a workspace gone, or marked for deletion, is `{:error, :not_found}`.
   defp write(scope, _model, state, nil) do
     case ModelChoices.delete_choice(scope, {:workspace, state.workflow}) do
       {:ok, _choice} -> :ok
-      {:error, :not_found} -> :ok
+      {:error, :not_found} -> if workspace_in_use?(scope), do: :ok, else: {:error, :not_found}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -309,6 +329,9 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
       {:error, reason} -> {:error, reason}
     end
   end
+
+  defp workspace_in_use?(%Scope{workspace: %{id: id}} = scope),
+    do: Enum.any?(Organisations.list_workspaces(scope), &(&1.id == id))
 
   defp refused(state, errors),
     do: %{

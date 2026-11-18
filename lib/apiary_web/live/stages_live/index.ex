@@ -356,15 +356,7 @@ defmodule ApiaryWeb.StagesLive.Index do
          true <- saveable?(socket.assigns, params) || :not_saveable,
          state = model_state(socket.assigns, params),
          :ok <- ModelPart.save(scope, model, state, params) do
-      model = ModelPart.load(scope)
-      workflow = params["workflow"]
-
-      rows =
-        socket.assigns.model_rows
-        |> Map.reject(fn {_row, state} -> state.workflow == workflow end)
-        |> Map.put(params["row"], %{ModelPart.saved(model, workflow) | done: true})
-
-      {:noreply, assign(socket, model: model, model_rows: rows)}
+      {:noreply, saved_model(socket, params)}
     else
       :not_saveable ->
         {:noreply, socket}
@@ -534,11 +526,18 @@ defmodule ApiaryWeb.StagesLive.Index do
   ## Time limits
 
   # The workspace's time limits by workflow, the limits of its targets left out; nil
-  # where time limits are not shown (`Apiary.TimeLimits.list_limits/1`).
+  # where time limits are not shown (`Apiary.TimeLimits.list_limits/1`). Only the limits
+  # the workspace keeps (`Apiary.Processes.kept_workflows/1`): a leftover's workflow that
+  # a draft adds again starts with none, as the save deletes the leftover.
   defp saved_limits(scope) do
     case TimeLimits.list_limits(scope) do
       {:ok, limits} ->
-        for %{target_id: nil} = limit <- limits, into: %{}, do: {limit.workflow, limit.minutes}
+        kept = Processes.kept_workflows(scope.workspace)
+
+        for %{target_id: nil} = limit <- limits,
+            MapSet.member?(kept, limit.workflow),
+            into: %{},
+            do: {limit.workflow, limit.minutes}
 
       {:error, :not_found} ->
         nil
@@ -650,6 +649,26 @@ defmodule ApiaryWeb.StagesLive.Index do
 
   defp put_model_row(socket, row, state),
     do: update(socket, :model_rows, &Map.put(&1, row, state))
+
+  # After a save: the choices read again, every row of the workflow at its saved state,
+  # and the saved row marked as just saved. No model part where the choices are no longer
+  # shown.
+  defp saved_model(socket, params) do
+    case ModelPart.load(socket.assigns.current_scope) do
+      nil ->
+        assign(socket, model: nil, model_rows: %{})
+
+      model ->
+        workflow = params["workflow"]
+
+        rows =
+          socket.assigns.model_rows
+          |> Map.reject(fn {_row, state} -> state.workflow == workflow end)
+          |> Map.put(params["row"], %{ModelPart.saved(model, workflow) | done: true})
+
+        assign(socket, model: model, model_rows: rows)
+    end
+  end
 
   # What the inspector shows of the workflows' model choices, nil where they are not shown.
   defp model(%{model: nil}), do: nil
