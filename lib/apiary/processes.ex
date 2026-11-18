@@ -52,17 +52,24 @@ defmodule Apiary.Processes do
   ## A workflow's overrides
 
   A workflow's overrides are its model choice in the workspace (level 4 of
-  `Apiary.ModelChoices`) and its time limit in the workspace (`Apiary.TimeLimits`). They
-  are kept while the workspace's current version has the workflow, or the version of an
-  open work item does (`kept_workflows/1`): a work item on an older version can still run
-  it. When neither has it any more, they are deleted (`delete_leftovers/2`): in the
-  transaction of a save, a make current, a drop of a trial and an assign, under the
-  workspace's row these hold; and, for a work item that is closed or undone, by
-  `Apiary.Processes.LeftoversJob`, which the close or the undo enqueues in its
-  transaction and which runs once it commits, under the workspace's row, since the close
-  holds the work item's row, which comes after the workspace's in the lock order
-  (docs/access.md). Each delete leaves the entry of `Apiary.ModelChoices` or
-  `Apiary.TimeLimits` for a removal, with `details.cause` `workflow_not_in_use`.
+  Apiary.ModelChoices) and its time limit in the workspace (Apiary.TimeLimits). They are
+  kept while the workspace's current version has the workflow, or the version of an open
+  work item does (Apiary.Processes.kept_workflows/1): a work item on an older version can
+  still run it. When neither has it any more, they are deleted
+  (Apiary.Processes.delete_leftovers/2):
+
+    * in the transaction of a save, a make current, a drop of a trial and an assign,
+      under the workspace's row these hold, once before the change and once after it, so
+      a workflow that comes back starts with none;
+    * for a work item that is closed, undone, or taken in onto the current version from
+      another, by `Apiary.Processes.LeftoversJob`, which that change enqueues in its
+      transaction and which runs once it commits, under the workspace's row: the change
+      holds the work item's row, which comes after the workspace's in the lock order
+      (docs/access.md).
+
+  Each delete leaves the audit entry of a removal, `choice_removed`
+  (`model_choice.write`) or `time_limit_removed` (`time_limit.edit`), with
+  `details.cause` `workflow_not_in_use`.
 
   ## Tracks
 
@@ -634,9 +641,9 @@ defmodule Apiary.Processes do
 
   @doc false
   # delete_leftovers_now/1 deletes the scope's workspace's overrides that are no longer
-  # kept, in a transaction of its own under the lock order: the organisation's rows, then
-  # the workspace's row `FOR NO KEY UPDATE`. `Apiary.Processes.LeftoversJob` runs it after
-  # a work item closes. `:ok`, `{:error, :not_found}` for a workspace gone, or a delete's
+  # kept, in a new transaction that takes the rows in the lock order: the organisation's
+  # rows, then the workspace's row `FOR NO KEY UPDATE`. `Apiary.Processes.LeftoversJob`
+  # runs it after a work item closes. `:ok`, `{:error, :not_found}` for a workspace gone, or a delete's
   # error.
   @spec delete_leftovers_now(Scope.t()) :: :ok | {:error, term}
   def delete_leftovers_now(%Scope{workspace: %Workspace{} = workspace} = scope) do
@@ -831,6 +838,7 @@ defmodule Apiary.Processes do
            :ok <- Access.check(scope, :"process.edit", workspace),
            :ok <- validate(document),
            :ok <- Apiary.MachineTypes.hold(),
+           :ok <- delete_leftovers(scope, workspace),
            {:ok, base} <- base(workspace, Keyword.get(opts, :based_on)),
            :ok <- changed(base, document),
            {:ok, version} <- insert_version(scope, workspace, base, document, trial?, nil),
@@ -887,6 +895,7 @@ defmodule Apiary.Processes do
            :ok <- harness_access(scope, workspace),
            :ok <- validate(document),
            :ok <- Apiary.MachineTypes.hold(),
+           :ok <- delete_leftovers(scope, workspace),
            {:ok, base} <- base(workspace, Keyword.fetch!(opts, :based_on)),
            :ok <- still_current(workspace, base),
            :ok <- changed_at(base, document, template),
@@ -1070,6 +1079,7 @@ defmodule Apiary.Processes do
       with {:ok, scope, workspace} <- hold(scope, trial),
            :ok <- Access.check(scope, :"process.edit", trial),
            :ok <- Apiary.MachineTypes.hold(),
+           :ok <- delete_leftovers(scope, workspace),
            {:ok, trial} <- held_trial(trial),
            replaced = current_row(workspace, :update),
            _retired = retire_current(workspace),
@@ -1114,6 +1124,7 @@ defmodule Apiary.Processes do
       with {:ok, scope, workspace} <- hold(scope, trial),
            :ok <- Access.check(scope, :"process.edit", trial),
            :ok <- Apiary.MachineTypes.hold(),
+           :ok <- delete_leftovers(scope, workspace),
            {:ok, trial} <- held_trial(trial),
            current = current_row(workspace, :update) || current(workspace),
            items = trial_items(trial),
@@ -1172,6 +1183,7 @@ defmodule Apiary.Processes do
       with {:ok, scope, workspace} <- hold(scope, work_item),
            :ok <- Access.check(scope, :"process.edit", work_item),
            :ok <- Apiary.MachineTypes.hold(),
+           :ok <- delete_leftovers(scope, workspace),
            %WorkItem{} = work_item <- held_item(work_item),
            {:ok, version} <- assignable(version, workspace) do
         before = version_for(work_item)

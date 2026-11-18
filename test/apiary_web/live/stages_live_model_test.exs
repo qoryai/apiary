@@ -452,6 +452,14 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
              @line,
              "Save the stage first to set this workflow's model choice."
            )
+
+    # Saved, the workflow is back in the process with no override.
+    view |> element("#stages-save") |> render_click()
+    assert override(scope, "write-a-brief") == nil
+
+    {:ok, view, _html} = live(conn, path)
+    assert {"", "Use workspace default", true} in key_options(view)
+    refute has_element?(view, "#{@key}[disabled]")
   end
 
   test "an admin made a member while the page is open saves nothing, and sees the fields disabled",

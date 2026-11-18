@@ -148,6 +148,7 @@ defmodule Apiary.Processes.LeftoversTest do
     assert @workflow in Processes.kept_workflows(scope.workspace)
     assert {4, %ModelChoice{workflow: @workflow}} = RunSettings.choice_in_effect(queued)
 
+    %{id: choice_id} = choice(scope)
     {:ok, _closed} = WorkItems.close(scope, Repo.reload!(work_item))
 
     # The close leaves the delete to the job, which runs once it commits.
@@ -163,6 +164,36 @@ defmodule Apiary.Processes.LeftoversTest do
 
     assert choice(scope) == nil
     assert time_limit(scope) == nil
+
+    # The job deletes as the instance.
+    assert [%Entry{actor_kind: :instance, actor_id: nil} = entry] = removals(choice_id)
+    assert entry.details["change"] == "choice_removed"
+  end
+
+  test "a take in onto the current version of a work item on an older one deletes what only it kept",
+       %{scope: scope, provider: provider} do
+    override!(scope, provider)
+    work_item = open_item!(scope)
+    explore!(scope, ["shape-a-ticket"])
+    assert %ModelChoice{} = choice(scope)
+
+    {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(Repo.reload!(work_item), 1) end)
+    assert Repo.reload!(work_item).process_version_id == Processes.current(scope.workspace).id
+
+    assert %{failure: 0} = Oban.drain_queue(queue: :default)
+    assert choice(scope) == nil
+    assert time_limit(scope) == nil
+  end
+
+  test "a workflow that comes back to the process starts with no override",
+       %{scope: scope, provider: provider} do
+    # A leftover as one made before overrides were deleted: the workflow is in no version.
+    override!(scope, provider, "write-a-brief")
+
+    explore!(scope, [@workflow, "write-a-brief"])
+
+    assert choice(scope, "write-a-brief") == nil
+    assert time_limit(scope, "write-a-brief") == nil
   end
 
   test "a renamed workflow's overrides go with its old name", %{scope: scope, provider: provider} do
