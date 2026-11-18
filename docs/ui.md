@@ -1624,6 +1624,7 @@ needs becomes a component, or an attribute of one, not a copy.
   receives the variables that its workspace and target inherit from this organisation, as
   they are when it starts. A later change reaches the next run." and the line that Qory
   Apiary keeps the variables and works out what each workspace and target inherits.
+  A software workspace reads "repository" for "target" in both sentences.
   The guides say it so: A run receives the variables when it starts. It receives no secrets.
 - **`<.button>`** has the variants `primary`, `default`, `ghost`, `danger`,
   `danger-ghost` and `link`, and renders a link styled as a button when given `navigate`,
