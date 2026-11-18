@@ -244,7 +244,7 @@ place:
   input confirms the spend. Focus stays in the dialog; Cancel, Escape and a click outside
   close it, change nothing and keep what was typed on the page, and focus goes back to
   the button that opened it. An act that starts a run only in some states (Confirm,
-  Approve, Request changes, Accept as it is, Move back, Check again, Add version) opens
+  Approve, Request changes, Accept as it is, Move back, Check again) opens
   the dialog only where it starts one, and acts at once otherwise.
 
 - **A form is a page** of its section at a separate path, never a dialog over a list:

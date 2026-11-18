@@ -131,14 +131,12 @@ Returns `200` with the work item snapshot:
 ```
 
 - `inputs` contains each input of the current stage with the version that the gate of
-  the stage that made it approved, or a version a person added; `version` is null when
-  there is none. A person's change to an approved output comes first. A change is a
-  version that has a `decision` (`POST artifacts`) or that a person uploaded, in any
-  stage, that no approval lists, and whose number is higher than that of every version
-  of its artifact that an approval lists. A withdrawal, a version of a withdrawn name and
-  a version by a run that a member cancelled are never a change. A person's version of the
-  type in `submit.type` of the work item's process version is not a change: no approval
-  lists it, `outputs` leaves it out, and runs read the run's version. Each name's change is
+  the stage that made it approved; `version` is null when there is none. A person's
+  change to an approved output comes first. A change is a version that has a `decision`
+  (`POST artifacts`), in any stage, that no approval lists, and whose number is higher
+  than that of every version of its artifact that an approval lists. A withdrawal, a
+  version of a withdrawn name and a version by a run that a member cancelled are never a
+  change. Each name's change is
   its highest-numbered one, and the input is the newest of those by time. Every later run
   reads that version in place of the approved one, until an approval lists it. Where an
   approval lists several versions of one name, the input is the highest-numbered one.
@@ -159,7 +157,7 @@ Returns `200` with the work item snapshot:
   a stage after it, and only for the take in of the move. A stage that the work item left
   twice counts by its newer move. An entry is left out when an input above it already has
   that version. The key `from` is present on these entries, and no approval lists such
-  a version, unless a person made it: that is a change.
+  a version.
 - After a run of a stage returns the work item to an earlier stage (the `return` key of a
   workflow entry), `inputs` ends with the newest `verdict` and then the newest
   `verification` made in the stage that returned it, each as
@@ -171,8 +169,7 @@ Returns `200` with the work item snapshot:
   and a decision in another stage end nothing. A later return lists the newer versions. No
   approval lists them, and `notes` does not.
 - `outputs` contains each output of the current stage with the version its gate shows
-  and its check: `passed`, `missing` or `not_checked`. For the type in `submit.type`,
-  only a run's version passes the check. The version is the newest one
+  and its check: `passed`, `missing` or `not_checked`. The version is the newest one
   made in the stage, or a higher-numbered version of that artifact that a person's
   approval lists or that is a change, which every later run reads, also after a move
   back to the stage.
@@ -275,9 +272,6 @@ none; `newest_version` is the number of the newest version, leaving out versions
 run a member cancelled, and null when a run a member cancelled wrote every version.
 `changed_after_approval` is true when that newest version is
 newer than the approved one and was made in a stage other than the work item's stage.
-For the type in `submit.type` of the work item's process version, `changed_after_approval`
-compares the newest version a run wrote in place of `newest_version`, as a person's
-version of that type is not a change.
 A version
 written by a run has `"writer": {"kind": "run", "run_id": "..."}`, with the `run_id` of
 the answer to the redemption of the run code; a version written
@@ -613,8 +607,7 @@ Checks, in order, after the checks of every request:
 5. Under the work item's lock, with the check of a run that ended, by the newest version
    of the name, leaving out versions by a run a member cancelled: one that a member
    approved at a gate, `422` `type_not_withdrawable`, checked before the rest; none, `409`
-   `no_version`; a withdrawal, `409` `already_withdrawn`; a version a person uploaded,
-   `409` `person_version`. A run withdraws only a name whose newest version a run wrote.
+   `no_version`; a withdrawal, `409` `already_withdrawn`.
 6. A `decision`, as check 8 of a push: `422` `unknown_decision`.
 
 No version is stored for a refused withdrawal.
@@ -885,7 +878,6 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 | `409` | `inputs_invalid` | | A ticket value that breaks Explore's input rules |
 | `409` | `no_version` | `type`, `message` | A withdrawal of a name that has no version outside cancelled runs |
 | `409` | `already_withdrawn` | `type`, `message` | A withdrawal of a name whose newest version is a withdrawal |
-| `409` | `person_version` | `type`, `message` | A withdrawal of a name whose newest version a person uploaded |
 | `410` | `ticket_gone` | | The work item's ticket is no longer kept |
 | `413` | `payload_too_large` | | A body over its size |
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type, or hides the standard type |
@@ -926,8 +918,6 @@ The messages:
   version outside cancelled runs."
 - `already_withdrawn`: "Leave demo-script/scenario-2 as it is. Its newest version, v3, is
   already a withdrawal."
-- `person_version`: "Leave demo-script/scenario-2 to a member. Its newest version, v2, is
-  a version by dana, and a run withdraws only a name whose newest version a run wrote."
 - `type_not_withdrawable`: "Push a new version of questions instead. Qory Apiary reads
   questions, review-comments, verdict and proposal itself, so a run cannot withdraw
   them."
