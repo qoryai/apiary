@@ -402,6 +402,20 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       assert %{run: %{workflow_gap: nil}} = WorkItems.explore(ctx.scope, ctx.work_item)
     end
 
+    test "a question's criterion is on its row, nil for a question that names none", ctx do
+      explore_run_fixture(ctx.work_item,
+        result:
+          questions_result([
+            "Which basket?",
+            %{"question" => "Check the delivery dates.", "options" => [], "criterion" => "ac-2"}
+          ])
+      )
+
+      assert %{questions: [first, second]} = WorkItems.explore(ctx.scope, ctx.work_item)
+      assert %{number: 1, criterion: nil} = first
+      assert %{number: 2, criterion: "ac-2"} = second
+    end
+
     test "a question reopened twice: the run map of each run that wrote or reopened it counts it in `asked` and lists it in `questions`, with the answer given at that run",
          ctx do
       item = reopened_twice!(ctx.scope, ctx.work_item)
