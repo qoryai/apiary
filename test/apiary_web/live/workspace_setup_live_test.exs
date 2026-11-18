@@ -3935,7 +3935,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         key_gone:
           @no_run_lead <>
             "The model provider chosen for this workspace has no key. Choose another " <>
-            "provider on the Model step, or add a key to it in Organisation settings › " <>
+            "provider on the Model step, or add a key to that provider in Organisation settings › " <>
             "Model providers, then press Run the test.",
         model_gone:
           @no_run_lead <>

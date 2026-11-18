@@ -330,7 +330,7 @@ defmodule Apiary.Stages.StopCause do
   defp lines(%DispatchRun{end_cause: :key_gone}, n, _ctx),
     do:
       {"The run did not start, because the chosen model provider has no key.",
-       "Owners and admins of #{n.workspace} choose another provider on the set-up step Model, or add a key to it in Organisation settings › Model providers."}
+       "Owners and admins of #{n.workspace} choose another provider on the set-up step Model, or add a key to that provider in Organisation settings › Model providers."}
 
   defp lines(%DispatchRun{end_cause: :model_gone}, n, _ctx),
     do:

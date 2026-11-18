@@ -14,8 +14,8 @@ defmodule ApiaryWeb.StagesLive.Inspector do
   #
   # With `model` given, each workflow's fold has its model choice after the time limit
   # (`ApiaryWeb.StagesLive.ModelPart`), its fields in a separate form per row too: Provider,
-  # "Use workspace default" or a key, the line of what the workflow uses, and with a key
-  # the tiers (`ApiaryWeb.ModelTiers`) and Save model choice.
+  # "Use workspace default" or a provider, the line of what the workflow uses, and with a
+  # provider the tiers (`ApiaryWeb.ModelTiers`) and Save model choice.
   @moduledoc false
 
   use ApiaryWeb, :html

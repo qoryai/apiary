@@ -498,8 +498,8 @@ replaces the navigation it is in.
   its last newline included.
 - **Workspace settings › Model** (`/settings/model`, `ApiaryWeb.ModelChoiceLive`) has
   Provider, each model provider by its name, whose keys runs take. A provider that works
-  with no runtime shows under Provider "DeepSeek works with no runtime in this version of
-  Qory Apiary. Pick another provider.", and Save writes nothing while it shows. The part
+  with no runtime shows under Provider "<Provider> works with no runtime in this version
+  of Qory Apiary. Pick another provider.", and Save writes nothing while it shows. The part
   Fallbacks (`#model-fallbacks`) is under Provider, the tiers and Runtime: the line "When
   every key of Northwind Claude is in cooldown, runs use these, in order, from the next
   run.", then one row for each fallback, in order, from the second on with a rule above

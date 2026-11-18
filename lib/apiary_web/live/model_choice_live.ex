@@ -344,7 +344,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # (`ApiaryWeb.ModelTiers.sent/5`): a change of the runtime keeps the models, and an
   # effort the runtime does not accept goes back to Not set. A row sent with a provider
   # the page does not list, which no select of the page offers, is marked `"unknown"`,
-  # and a save refuses it (`unknown_rows/1`). With no rows sent, the rows are as they
+  # and a save returns "is invalid" on its Provider for it (`unknown_rows/1`). With no rows sent, the rows are as they
   # were: a form without them, or with them off for a reader.
   defp sent_rows(socket, %{"fallbacks" => %{} = sent}) do
     old = socket.assigns.fallbacks
@@ -442,8 +442,8 @@ defmodule ApiaryWeb.ModelChoiceLive do
     end
   end
 
-  # The refusals of the rows sent with a provider the page does not list, by the row's
-  # index: "is invalid" on its Provider, as the workflow's fold refuses one.
+  # The errors of the rows sent with a provider the page does not list, by the row's
+  # index: "is invalid" on its Provider, the error the workflow's fold returns for one.
   defp unknown_rows(rows) do
     for {%{"unknown" => true}, i} <- Enum.with_index(rows),
         into: %{},
@@ -608,7 +608,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
     socket = assign_fallbacks(socket, rows, %{})
 
     cond do
-      # No provider, or one sent that no select of the page offers: refused under
+      # No provider, or one sent that no select of the page offers: "is invalid" under
       # Provider, and nothing is written.
       socket.assigns.entry == nil or unknown_provider?(socket, params) ->
         {:noreply, assign_form(socket, params, provider: {"is invalid", []})}
@@ -687,7 +687,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
         )
   end
 
-  # Whether `line` is of the saved choice's provider, whose line shows under Key.
+  # Whether `line` is of the saved choice's provider, whose line shows under Provider.
   defp saved_line?({_cause, %Connection{id: id}}, %ModelChoice{connection_id: id}), do: true
   defp saved_line?(_line, _choice), do: false
 

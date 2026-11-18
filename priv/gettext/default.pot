@@ -21644,7 +21644,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "The model provider chosen for this workspace has no key. Choose another provider on the Model step, or add a key to it in Organisation settings › Model providers, then press Run the test."
+msgid "The model provider chosen for this workspace has no key. Choose another provider on the Model step, or add a key to that provider in Organisation settings › Model providers, then press Run the test."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex

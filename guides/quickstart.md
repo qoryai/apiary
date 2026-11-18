@@ -336,9 +336,9 @@ later.
    there first.” You can change the list later in **Workspace settings › Destinations**,
    which shows the same cards and chooser. Unticking a repository there also stops its
    tickets.
-3. **Model.** **Which models do runs in Main use?** has three fields. In **Key**, keep
-   **Add a key**, the one option while Main has no model provider to reuse. In
-   **Provider**, choose the provider of your key, such as **Anthropic API key**; **About
+3. **Model.** **Which models do runs in Main use?** has three fields. In the first
+   **Provider**, keep **Add a key**, the one option while Main has no model provider to
+   reuse. In the **Provider** under it, choose the provider of your key, such as **Anthropic API key**; **About
    this step**, beside the form, shows where to get a key for the provider you choose.
    Paste the key in **Key**. For LiteLLM, which **Provider** lists only with the feature
    `model_proxies` on, also enter the proxy's https address in **Address**, such as

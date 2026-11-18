@@ -32,8 +32,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   after the time limit. "Use workspace default", the default, shows the line "Uses the
   workspace default: <Provider>.", or the organisation's default, or "No default is set.
   Set one in Workspace settings › Model." **Provider** lists every model provider, by its
-  name. A provider that works with no runtime shows “DeepSeek works with no runtime in
-  this version of Qory Apiary. Pick another provider.” under **Provider**, and **Save
+  name. A provider that works with no runtime shows “<Provider> works with no runtime
+  in this version of Qory Apiary. Pick another provider.” under **Provider**, and **Save
   model choice** stays disabled. A model provider shows **Model and effort per tier**, as
   on Workspace settings › Model, then **Runtime**, as there, and **Save model choice**,
   enabled once every tier has a model and something changed. "Use workspace default"
@@ -653,8 +653,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   tickets. Owners and admins choose; owners, admins and members read the settings pages.
 - **Model**, “Which models do runs in Main use?”, has three fields. **Provider** lists each
   model provider with a key that reaches the workspace, by its name, then **Add a key**.
-  A provider that works with no runtime shows “DeepSeek works with no runtime in this
-  version of Qory Apiary. Pick another provider.” under **Provider**, and **Continue** is
+  A provider that works with no runtime shows “<Provider> works with no runtime in
+  this version of Qory Apiary. Pick another provider.” under **Provider**, and **Continue** is
   disabled.
   **Add a key** is the one option where there is no provider to reuse. It opens
   **Provider**, **Key**, and an address for a provider that needs one, as **Organisation
@@ -841,8 +841,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   also one that works with no runtime. A change of **Provider** keeps the runtime while
   the new provider works with it, else takes the first that does. A change of
   **Runtime** keeps the models, and an effort the runtime does not accept goes back to
-  “Not set”. A provider that works with no runtime shows “DeepSeek works with no runtime
-  in this version of Qory Apiary. Pick another provider.” under **Provider**, and
+  “Not set”. A provider that works with no runtime shows “<Provider> works with no
+  runtime in this version of Qory Apiary. Pick another provider.” under **Provider**, and
   **Save** writes nothing until another provider is chosen. A saved choice whose
   provider's settings no longer fit keeps its provider in **Provider**, with the line of
   why under it; no other provider is chosen in its place, and **Save** writes nothing

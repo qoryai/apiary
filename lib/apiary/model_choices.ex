@@ -1379,7 +1379,8 @@ defmodule Apiary.ModelChoices do
   end
 
   defp check_fallback({changeset, checked, taken}, fallback, index, provider, at) do
-    # The runtime is one of the catalogue: `validate_fallbacks/2` refused any other.
+    # The runtime is one of the catalogue: `validate_fallbacks/2` returned an error for any
+    # other.
     {:ok, runtime} = Runtimes.fetch(fallback.runtime)
 
     row =
