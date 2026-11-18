@@ -139,8 +139,9 @@ defmodule Apiary.Processes do
   `:shared_run_differs` for the first workflow entry of a stage with `shared_run: true`
   that differs from the stage's first entry in its access level or its machine type, with
   `:access` or `:machine` as `detail`, one error for each of the two, and
-  `{:access, workflow, level}` in place of `:access` where the harness's level for
-  `workflow` lowers its entry's (`shared_access/2`);
+  `{:access, workflow, level, other}` in place of `:access` where the harness's level for
+  `workflow` lowers its entry's, `other` the level the other entry runs with
+  (`shared_access/2`);
   `:unchanged` for a save of the document of the version it starts from.
   """
   @type error :: %{path: String.t(), error: atom, detail: term}
@@ -448,7 +449,7 @@ defmodule Apiary.Processes do
   the harness can change a level after the save.
   """
   @spec shared_access(map, %{String.t() => :read | :write_no_push | :write}) ::
-          :ok | {:error, :access | {:access, String.t(), String.t()}}
+          :ok | {:error, :access | {:access, String.t(), String.t(), String.t()}}
   def shared_access(stage, levels) when is_map(stage) and is_map(levels) do
     case shared_entries(stage, "#") do
       [{first, _path} | rest] ->
@@ -465,19 +466,23 @@ defmodule Apiary.Processes do
   end
 
   # The detail of a difference between `first` and `entry`: `:machine`; for the access,
-  # `{:access, workflow, level}` for the first of `entry` and `first` whose workflow's
-  # level in the harness lowers its entry's, else `:access`.
+  # `{:access, workflow, level, other}` for the first of `entry` and `first` whose
+  # workflow's level in the harness lowers its entry's, with the level the other of the
+  # two runs with, else `:access`.
   defp detail(:machine, _first, _entry, _levels), do: :machine
 
   defp detail(:access, first, entry, levels) do
-    case Enum.find([entry, first], &harness_lowered?(&1, levels)) do
-      nil ->
-        :access
-
-      %{"workflow" => workflow} ->
-        {:access, workflow, level_text(Map.fetch!(levels, workflow))}
+    cond do
+      harness_lowered?(entry, levels) -> access_detail(entry, first, levels)
+      harness_lowered?(first, levels) -> access_detail(first, entry, levels)
+      true -> :access
     end
   end
+
+  defp access_detail(%{"workflow" => workflow}, other, levels),
+    do:
+      {:access, workflow, level_text(Map.fetch!(levels, workflow)),
+       level_text(effective_access(other, levels))}
 
   defp harness_lowered?(%{"workflow" => workflow} = entry, levels) do
     case Map.fetch(levels, workflow) do

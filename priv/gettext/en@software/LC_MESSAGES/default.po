@@ -11069,22 +11069,12 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "Give every workflow in %{stage} the same access. %{workflow} runs with %{level} access, because its harness sets %{level}."
-msgstr ""
-
-#: lib/apiary_web/live/stages_live/words.ex
-#, elixir-autogen, elixir-format
 msgid "Give every workflow in %{stage} the same access. The workflows of %{stage} run one after the other on one machine."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Give every workflow in %{stage} the same machine type. The workflows of %{stage} run one after the other on one machine."
-msgstr ""
-
-#: lib/apiary_web/components/work_item_components.ex
-#, elixir-autogen, elixir-format
-msgid "Give every workflow in the stage the same access on the Stages page, then run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
@@ -13656,6 +13646,16 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Move %{name} from %{from} to %{to}. Its settings and argument are kept."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Move %{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it %{other} access, then run the round again. %{workflow} runs with %{level} access, because its harness sets %{level}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Move %{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it %{other} access, then run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
@@ -18606,6 +18606,11 @@ msgstr ""
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "Run the agent"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex

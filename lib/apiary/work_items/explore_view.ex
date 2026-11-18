@@ -761,6 +761,10 @@ defmodule Apiary.WorkItems.ExploreView do
       # The session after which a run of a stage with `shared_run: true` ended, when the
       # input of its next session could not be formed (`Apiary.Stages.ended_after_session/1`).
       ended_after_session: ended_after_session(step.dispatch_run),
+      # For a run that ended before it started as its stage's workflows would run with
+      # different access, the difference as the harness declares the levels now
+      # (`Apiary.Stages.shared_access/1`); nil for none.
+      shared_access: shared_access(step.dispatch_run),
       adapter_failure: adapter_failure(step.dispatch_run),
       harness_failure: harness_failure(step.dispatch_run),
       workflow_gap: workflow_gap(step, work_item),
@@ -809,6 +813,15 @@ defmodule Apiary.WorkItems.ExploreView do
        do: Apiary.Stages.ended_after_session(dispatch_run)
 
   defp ended_after_session(_dispatch_run), do: nil
+
+  defp shared_access(%{end_cause: :shared_access_differs} = dispatch_run) do
+    case Apiary.Stages.shared_access(dispatch_run) do
+      {:error, %{detail: detail}} -> detail
+      :ok -> nil
+    end
+  end
+
+  defp shared_access(_dispatch_run), do: nil
 
   defp confirmed_result(
          %{take_in: take_in, attempt: attempt},

@@ -953,10 +953,10 @@ defmodule Apiary.ProcessesTest do
       {:error, [error]} = Processes.validate(shared(), levels)
 
       assert {error.path, error.detail} ==
-               {"#/stages/0/sequence/1", {:access, "plan-the-build", "read"}}
+               {"#/stages/0/sequence/1", {:access, "plan-the-build", "read", "write"}}
 
       assert ApiaryWeb.StagesLive.Words.refusal(error, shared()) ==
-               "Give every workflow in Build the same access. plan-the-build runs with read access, because its harness sets read."
+               "Move plan-the-build to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access, then run the round again. plan-the-build runs with read access, because its harness sets read."
 
       # The entries' access lowers the others to read: every workflow reads.
       read = %{"access" => "read"}
@@ -1626,7 +1626,7 @@ defmodule Apiary.ProcessesTest do
               [
                 %{
                   error: :shared_run_differs,
-                  detail: {:access, "write-acceptance-checks", "read"}
+                  detail: {:access, "write-acceptance-checks", "read", "write"}
                 }
               ]} =
                Processes.save(

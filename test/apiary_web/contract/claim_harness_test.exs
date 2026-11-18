@@ -676,13 +676,16 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       work_item = Repo.get!(WorkItems.WorkItem, work_item.id)
       assert work_item.stage_state == :escalated
 
-      assert [%{points: [%{"text" => text}]}] =
+      assert [%{points: [%{"text" => text, "fix" => fix}]}] =
                Repo.all(
                  from e in Apiary.Stages.Escalation, where: e.work_item_id == ^work_item.id
                )
 
       assert text ==
                "The run stopped: it did not start, because the workflows of Build would run with different access: implement-changes runs with read access, because its harness sets read."
+
+      assert fix ==
+               "Move implement-changes to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access, then run the round again."
     end
 
     test "of Explore, whose entry is a loop, has no full_suite with write access", ctx do

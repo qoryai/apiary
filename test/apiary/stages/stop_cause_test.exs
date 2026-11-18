@@ -209,13 +209,11 @@ defmodule Apiary.Stages.StopCauseTest do
                "Contact support."
   end
 
-  test "a shared stage whose access no longer differs names no workflow", %{
-    work_item: work_item,
-    ws: ws
-  } do
+  test "a shared stage whose access no longer differs names no workflow, and runs the round again",
+       %{work_item: work_item} do
     assert text(:shared_access_differs, work_item) ==
              "The run did not start, because the workflows of the stage would run with different access.\n" <>
-               "Owners and admins of #{ws} give every workflow in the stage the same access on the Stages page, then run the round again."
+               "Run the round again."
   end
 
   test "a harness with no walk row, and an unknown cause, show the code with a description",

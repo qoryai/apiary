@@ -2901,6 +2901,32 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       end)
     end
 
+    test "a run whose shared stage's workflows would run with different access names the workflow to move" do
+      for {detail, body} <- [
+            {{:access, "implement-changes", "read", "write"},
+             "Move implement-changes to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access, then run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."},
+            {nil,
+             "Run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."}
+          ] do
+        r =
+          run(%{
+            id: nil,
+            path: nil,
+            state: :failed,
+            outcome: :error,
+            end_cause: :shared_access_differs,
+            shared_access: detail,
+            proposal: nil,
+            started_at: nil,
+            ended_at: ago(3600),
+            duration: nil
+          })
+
+        html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+        assert texts(html, "#work-item-explore-none p") == ["The run did not start.", body]
+      end
+    end
+
     test "a run of a shared stage that ended after a session says after which, with the fix" do
       for {cause, fix} <- [
             {:ticket_gone,

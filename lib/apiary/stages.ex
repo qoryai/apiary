@@ -477,7 +477,11 @@ defmodule Apiary.Stages do
   @doc false
   @spec shared_access(DispatchRun.t()) ::
           :ok
-          | {:error, %{stage: String.t(), detail: :access | {:access, String.t(), String.t()}}}
+          | {:error,
+             %{
+               stage: String.t(),
+               detail: :access | {:access, String.t(), String.t(), String.t()}
+             }}
   def shared_access(%DispatchRun{} = run) do
     with %{} = stage <- shared_stage(run),
          workspace = Repo.get!(Workspace, run.workspace_id),

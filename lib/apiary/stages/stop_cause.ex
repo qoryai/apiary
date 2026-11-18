@@ -461,20 +461,22 @@ defmodule Apiary.Stages.StopCause do
       {"The run did not start, because it writes and has no work item to take its branch from.",
        "Contact support."}
 
-  defp lines(%DispatchRun{end_cause: :shared_access_differs} = run, n, _ctx) do
+  defp lines(%DispatchRun{end_cause: :shared_access_differs} = run, _n, _ctx) do
     {stage, detail} = shared_access(run)
 
-    cause =
-      case detail do
-        {:access, workflow, level} ->
-          "The run did not start, because the workflows of #{stage} would run with different access: #{workflow} runs with #{level} access, because its harness sets #{level}."
+    case detail do
+      {:access, workflow, level, other} ->
+        {"The run did not start, because the workflows of #{stage} would run with different access: #{workflow} runs with #{level} access, because its harness sets #{level}.",
+         shared_access_fix(workflow, other)}
 
-        _other ->
-          "The run did not start, because the workflows of #{stage} would run with different access."
-      end
+      :access ->
+        {"The run did not start, because the workflows of #{stage} would run with different access.",
+         "Move one of the workflows to a separate stage in Workspace settings › Workflows, then run the round again."}
 
-    {cause,
-     "Owners and admins of #{n.workspace} give every workflow in #{stage} the same access on the Stages page, then run the round again."}
+      nil ->
+        {"The run did not start, because the workflows of #{stage} would run with different access.",
+         "Run the round again."}
+    end
   end
 
   defp lines(%DispatchRun{end_cause: cause}, n, _ctx),
@@ -761,6 +763,13 @@ defmodule Apiary.Stages.StopCause do
         {(stage && stage["name"]) || "the stage", nil}
     end
   end
+
+  # The fix for a run whose stage's workflows would run with different access, because
+  # the harness sets `workflow` a lower level than `other`, the level the other workflows
+  # of the stage run with.
+  defp shared_access_fix(workflow, other),
+    do:
+      "Move #{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it #{other} access, then run the round again."
 
   defp names(%WorkItem{} = work_item) do
     workspace = Repo.get!(Workspace, work_item.workspace_id)
