@@ -657,7 +657,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   this version of Qory Apiary. Pick another provider.” under **Provider**, and **Continue** is
   disabled.
   **Add a key** is the one option where there is no provider to reuse. It opens
-  **Provider**, **Key**, and an address for a provider that needs one, as **Organisation
+  **Kind of provider**, **Key**, and an address for a provider that needs one, as **Organisation
   settings › Model providers** does. It adds the provider for the workspace: its key is a
   secret of the workspace, and the provider reaches that workspace alone. Under **Key**:
   “Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it

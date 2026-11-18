@@ -4491,6 +4491,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
     assert has_element?(lv, "#set-up-model-everywhere[type=checkbox]")
     refute has_element?(lv, "#set-up-model-everywhere[checked]")
+    assert has_element?(lv, "#set-up-model-add", "Kind of provider")
 
     assert has_element?(
              lv,

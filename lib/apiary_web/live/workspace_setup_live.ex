@@ -71,8 +71,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     (`Apiary.Adapters.Collections.subscribe/1`) and reads the step again on each change;
   #   * Model, with the features `factory` and `secrets`: three choices. Provider: each
   #     model provider of the organisation with a key that reaches the workspace (applies to
-  #     every workspace or lists it), by its name, to reuse, and Add a key, whose
-  #     Provider, Key and, for a provider that needs one, Address add a model provider for
+  #     every workspace or lists it), by its name, to reuse, and Add a key, whose Kind
+  #     of provider, Key and, for a provider that needs one, Address add a model provider for
   #     the workspace (`Apiary.Connections.create_provider/3` with `:workspace`): the key
   #     is a secret of the workspace, and the provider reaches that workspace alone. Where
   #     the edition shows it (`c:Apiary.Edition.scope_setting?/1`), Add a key has the
@@ -2338,11 +2338,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
           <span>{@no_runtime}</span>
         </p>
+        <p
+          :if={@fallback_refusal}
+          id="set-up-model-fallback-refused"
+          class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+        >
+          <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+          <span><.rich text={@fallback_refusal} /></span>
+        </p>
         <div :if={@source == :add} id="set-up-model-add" class="grid gap-4 ps-6">
           <.input
             field={@form[:provider]}
             type="choice"
-            label={gettext("Provider")}
+            label={gettext("Kind of provider")}
             options={ProviderPage.provider_options()}
           />
           <.input

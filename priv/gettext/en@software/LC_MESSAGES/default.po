@@ -12360,6 +12360,11 @@ msgstr ""
 msgid "Kind"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "Kind of provider"
+msgstr ""
+
 #: lib/apiary_web/live/backlog_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Label"
