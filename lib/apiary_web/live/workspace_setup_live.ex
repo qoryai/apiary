@@ -85,16 +85,22 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     no provider to reuse, Add a key alone, open. Runtime, the runtimes the
   #     provider serves (`Apiary.Kinds.Providers.serve/2`), as text where there is one.
   #     Then the tiers (`ApiaryWeb.ModelTiers.tiers/1`, each tier's name and line above
-  #     its fields): a Model and an Effort for each tier, from the models suggested for
-  #     the provider and runtime (`Apiary.ModelChoices.suggestions/2`), or a text field
-  #     Model for a provider whose description lists no models. A change of Key or
-  #     Provider empties the tiers; when the step opens, the workspace's choice fills
-  #     them. Continue, enabled once every tier has a model, saves the workspace's
-  #     choice (level 5, `Apiary.ModelChoices.put_choice/4`) with the provider, the key
-  #     of the workspace's choice where it is still one of that provider's keys, else the
-  #     provider's default key, the runtime and the tiers, the Thinking tier's model and effort as the
-  #     choice's (`ApiaryWeb.ModelTiers.attrs/2`); with the choice unchanged it saves
-  #     nothing and goes on. The line under the form shows where to change the
+  #     its fields, under a heading `h2`): a Model and an Effort for each tier, from the
+  #     models suggested for the provider and runtime
+  #     (`Apiary.ModelChoices.suggestions/2`), or a text field Model for a provider whose
+  #     description lists no models; for a provider whose description cannot be read, a
+  #     line that says so in their place. A change of Key or Provider empties the tiers;
+  #     when the step opens, the workspace's choice fills them. A tier whose model id or
+  #     effort breaks the save's rules (`Apiary.ModelChoices.tier_errors/1`) shows the
+  #     refusal on its field. Continue, enabled once every tier has a model and no tier
+  #     is refused, saves the workspace's choice (level 5,
+  #     `Apiary.ModelChoices.put_choice/4`) with the provider, the key of the
+  #     workspace's choice where it is still one of that provider's keys, else the
+  #     provider's default key, the runtime the form shows, and the tiers, the Thinking
+  #     tier's model and effort as the choice's (`ApiaryWeb.ModelTiers.attrs/2`). Add a
+  #     key adds the provider and saves the choice in one transaction, so a refused
+  #     choice adds no provider and no key. With the choice unchanged it saves nothing
+  #     and goes on. The line under the form shows where to change the
   #     models and the key: Workspace settings for a key that is a secret of the workspace,
   #     Organisation settings for one of the organisation, and the models alone for one of
   #     the organisation where the edition shows no organisation secrets
@@ -225,6 +231,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     ModelChoices,
     Organisations,
     Runs,
+    Repo,
     WorkItems,
     WorkspaceSetup
   }
@@ -1049,9 +1056,32 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       runtime: runtime,
       key: key,
       tiers: tiers,
-      tier_errors: Keyword.get(opts, :tier_errors, [])
+      tier_errors:
+        Enum.uniq_by(
+          Keyword.get(opts, :tier_errors, []) ++ tier_refusals(tiers),
+          fn {field, {message, _bindings}} -> {field, message} end
+        )
     )
   end
+
+  # The refusals a save gives the tiers' model ids and efforts
+  # (`Apiary.ModelChoices.tier_errors/1`), each on its tier's field
+  # (`ApiaryWeb.ModelTiers.field_errors/2`); a tier with no model is left out, as
+  # Continue waits for it.
+  defp tier_refusals(tiers) do
+    sent =
+      for {tier, %{"model" => model} = set} <- tiers, model != "", into: %{} do
+        if set["effort"] in ["", nil],
+          do: {tier, %{"model" => model}},
+          else: {tier, %{"model" => model, "effort" => set["effort"]}}
+      end
+
+    sent |> ModelChoices.tier_errors() |> ModelTiers.field_errors(tiers)
+  end
+
+  # Whether Continue is enabled: a key, every tier with a model, and no tier whose model
+  # id or effort a save refuses.
+  defp continues?(key, tiers), do: ModelTiers.complete?(key, tiers) and tier_refusals(tiers) == []
 
   # The tiers when the step opens: those of the workspace's choice, `stored`
   # (`ApiaryWeb.ModelTiers.stored/1`), while `key` is of its provider, also where the
@@ -1328,9 +1358,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         {:noreply,
          socket |> load_step() |> put_flash(:error, gettext("Nothing was changed. Try again."))}
 
-      # A tier without a model: Continue is disabled, and nothing is saved, so Add a key
-      # adds no provider.
-      not ModelTiers.complete?(key, tiers) ->
+      # A tier without a model, or one whose model id or effort a save refuses: Continue
+      # is disabled, and nothing is saved, so Add a key adds no provider.
+      not continues?(key, tiers) ->
         {:noreply, formed}
 
       unchanged?(formed.assigns) ->
@@ -1677,30 +1707,39 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp unchanged?(_assigns), do: false
 
   # Saves the workspace's choice of the provider of `source`, which Add a key adds first,
-  # with the key and the tiers of the form, `socket`.
+  # with the key, the runtime and the tiers of the form, `socket`. The provider and the
+  # choice are written in one transaction: a refused choice adds no provider and no key.
   defp save_model(socket, scope, source, params) do
-    %{key: key, tiers: tiers, choice: choice} = socket.assigns
+    %{key: key, tiers: tiers, choice: choice, runtime: runtime} = socket.assigns
 
-    case model_provider(source, scope, socket.assigns.flow, params) do
-      {:ok, provider} ->
-        # After a refusal of the choice, the form shows the provider as one to reuse.
-        params = Map.put(params, "source", provider.public_id)
+    saved =
+      Repo.transact(fn ->
+        with {:ok, provider} <- model_provider(source, scope, socket.assigns.flow, params) do
+          key =
+            if source == :add,
+              do: ModelTiers.entry(provider, provider.default_value_id, key.models, key.free),
+              else: key
 
-        key =
-          if source == :add,
-            do: ModelTiers.entry(provider, provider.default_value_id, key.models, key.free),
-            else: key
+          attrs =
+            key
+            |> ModelTiers.attrs(tiers)
+            |> Map.put(:runtime, runtime && runtime.name)
+            |> default_key(choice, key)
 
-        attrs =
-          key
-          |> ModelTiers.attrs(tiers)
-          |> Map.put(:runtime, params["runtime"])
-          |> default_key(choice, key)
-
-        case ModelChoices.put_choice(scope, :workspace, attrs) do
-          {:ok, _choice} -> {:noreply, go_on(socket)}
-          {:error, reason} -> {:noreply, model_refused(load_step(socket), params, reason, tiers)}
+          case ModelChoices.put_choice(scope, :workspace, attrs) do
+            {:ok, _choice} -> {:ok, provider}
+            {:error, reason} -> {:error, {:choice, reason}}
+          end
         end
+      end)
+
+    case saved do
+      {:ok, _provider} ->
+        {:noreply, go_on(socket)}
+
+      # Rolled back: Add a key stays chosen, with what was sent.
+      {:error, {:choice, reason}} ->
+        {:noreply, model_refused(load_step(socket), params, reason, tiers)}
 
       {:error, {:serves, error}} ->
         {:noreply, assign_model_form(socket, params, provider: error)}
@@ -2351,8 +2390,18 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           tiers={@tiers}
           stored={@stored}
           errors={@tier_errors}
+          heading="h2"
           stacked
         />
+        <p
+          :if={!@key and @source != :add}
+          id="set-up-model-unread"
+          class="text-[13.5px]/5 text-muted"
+        >
+          {gettext("The models of %{provider} could not be read. Try again later.",
+            provider: @source.name
+          )}
+        </p>
         <p id="set-up-model-later" class="text-[13px]/5 text-muted">
           {later_line(@source, @everywhere, @organisation_secrets)}
         </p>
@@ -2363,7 +2412,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             type="submit"
             variant="primary"
             size="md"
-            disabled={!ModelTiers.complete?(@key, @tiers)}
+            disabled={!continues?(@key, @tiers)}
             loading_text={gettext("Saving")}
           >
             {gettext("Continue")}

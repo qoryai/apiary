@@ -644,16 +644,20 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   settings › Model**, has a **Model** and an **Effort** for each of Thinking, Balanced and
   Light, from the provider's suggested models; with the feature `model_proxies` on, a
   provider whose description lists no models, such as LiteLLM, shows **Model per tier**,
-  with a text field per tier and no **Effort**. A change of **Key** or **Provider**
-  empties the tiers. **Continue**, enabled once every tier has a model, saves the
+  with a text field per tier and no **Effort**; a workspace's choice of such a provider
+  shows the same with the feature off. A change of **Key** or **Provider** empties the
+  tiers. A tier whose model id or effort a save refuses shows the refusal under its field.
+  **Continue**, enabled once every tier has a model and no tier is refused, saves the
   workspace's model choice: the provider, the key the workspace's choice has while the
-  provider still has it, else its default key, and the tiers, with the Thinking tier's
-  model and effort as the choice's; with nothing changed it saves nothing. **Workspace
-  settings › Model** shows that choice. Where the edition shows “Available to every
-  workspace in Acme”, two workspaces can reuse one key and choose different models. The
-  step is done once the workspace has a model choice whose provider reaches the workspace
-  and has a key. Owners and admins fill it in. For a Claude subscription, **About models**
-  shows `claude setup-token` on a separate line, with **Copy command**.
+  provider still has it, else its default key, the runtime the step shows, and the tiers,
+  with the Thinking tier's model and effort as the choice's; with nothing changed it saves
+  nothing. Add a key adds the provider and saves the choice together: when the save of the
+  choice is refused, no provider and no key are added. **Workspace settings › Model**
+  shows that choice. Where the edition shows “Available to every workspace in Acme”, two
+  workspaces can reuse one key and choose different models. The step is done once the
+  workspace has a model choice whose provider reaches the workspace and has a key. Owners
+  and admins fill it in. For a Claude subscription, **About models** shows `claude
+  setup-token` on a separate line, with **Copy command**.
 - **Harness**, “Which harness do runs in Main use?”, sets the harness of the
   workspace's runs. **About harnesses** explains what a harness is, which harness a run
   uses, and the versions. The choices are two: **Qory harness**, with **Version**,

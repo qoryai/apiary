@@ -21671,6 +21671,11 @@ msgstr ""
 msgid "The model provider %{name}"
 msgstr ""
 
+#: lib/apiary_web/live/workspace_setup_live.ex
+#, elixir-autogen, elixir-format
+msgid "The models of %{provider} could not be read. Try again later."
+msgstr ""
+
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
 msgid "The models runs in %{workspace} use: one key, and a model and an effort for each tier. A workflow can choose another key and models in its settings on the Workflows page. If %{workspace} sets none, its runs use the models of %{organisation}."

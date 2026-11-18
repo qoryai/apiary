@@ -114,10 +114,7 @@ defmodule ApiaryWeb.ModelTiers do
     }
   end
 
-  # The provider of a key entry: its `provider_ref`, or, for an entry made without one,
-  # its provider's row id.
   defp ref(%{provider_ref: ref}), do: ref
-  defp ref(%{provider: provider}), do: provider.id
 
   @doc "The options of a Key `choice` input for `keys`."
   @spec key_options([map]) :: [map]
@@ -374,6 +371,11 @@ defmodule ApiaryWeb.ModelTiers do
     default: nil,
     doc: "what each field's id starts with; by default `name` with its brackets as `_`"
 
+  attr :heading, :string,
+    default: "h3",
+    values: ~w(h2 h3),
+    doc: "the element of the section's heading, by the page's heading levels"
+
   attr :stacked, :boolean,
     default: false,
     doc: "whether each tier's name and line stay above its fields at every width"
@@ -424,9 +426,9 @@ defmodule ApiaryWeb.ModelTiers do
     ~H"""
     <section id={@id} class="q-sect" aria-labelledby={"#{@id}-h"}>
       <header>
-        <h3 id={"#{@id}-h"}>
+        <.dynamic_tag tag_name={@heading} id={"#{@id}-h"}>
           {if @free, do: gettext("Model per tier"), else: gettext("Model and effort per tier")}
-        </h3>
+        </.dynamic_tag>
       </header>
       <div :if={@head_errors != []} class="grid gap-1 px-4 pt-3">
         <.tier_error :for={{message, i} <- Enum.with_index(@head_errors)} id={"#{@id}-error-#{i}"}>

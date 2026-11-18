@@ -4377,6 +4377,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert key_options(lv) == [{"Add a key", true}]
     assert has_element?(lv, "#set-up-model-add input[type=password][name='model[key]']")
     assert words(lv, "#set-up-model-tiers-h") == "Model and effort per tier"
+    # The page's heading is h1, so the tiers' heading is h2.
+    assert has_element?(lv, "h2#set-up-model-tiers-h")
 
     # Each tier shows its name and the line under it (`ModelTiers.line/1`).
     lines = %{
@@ -4686,13 +4688,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert Repo.preload(choice, :fallbacks, force: true).fallbacks == []
   end
 
-  test "Continue is disabled until every tier has a model, and a save sent before saves nothing",
+  test "Continue is disabled until every tier has a model, and Add a key sent before adds nothing",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
-    provider = provider!(scope, "anthropic", "main")
-    [model | _rest] = models(provider)
+    [model | _rest] = models("anthropic")
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
+    assert key_options(lv) == [{"Add a key", true}]
     refute continue?(lv)
 
     for tier <- ModelTiers.shown(),
@@ -4708,10 +4710,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     lv |> form("#set-up-model-form", model: %{tiers: two}) |> render_change()
     refute continue?(lv)
 
+    # A valid key and two tiers, sent past the disabled Continue: no provider, no key.
     render_click(lv, "save_model", %{
-      "model" => %{"source" => provider.public_id, "tiers" => two}
+      "model" => %{
+        "source" => "add",
+        "provider" => "anthropic",
+        "key" => @key,
+        "runtime" => "claude",
+        "tiers" => two
+      }
     })
 
+    assert {:ok, []} = Connections.list_providers(scope)
+    assert {:ok, []} = Apiary.Secrets.list_provider_keys(scope, :workspace)
     assert {[], []} = choices(scope)
     refute WorkspaceSetup.model_key?(scope.workspace)
 
@@ -4770,6 +4781,71 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
              Map.new(chosen, fn {tier, model} -> {tier, {model.id, List.last(model.effort)}} end)
 
     assert {choice.model_id, choice.effort} == {a.id, List.last(a.effort)}
+  end
+
+  test "a choice that names no key keeps naming none when Continue saves changed tiers",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    provider = provider!(scope, "anthropic", "main")
+
+    {:ok, stored} =
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{provider: provider.public_id})
+
+    assert stored.value_id == nil
+    [_first, second | _rest] = models(provider)
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    lv |> form("#set-up-model-form", model: %{tiers: tiers(second)}) |> render_submit()
+    assert_patch(lv, ~p"/#{organisation}/main/set-up/harness")
+
+    assert {[choice], []} = choices(scope)
+    assert choice.value_id == nil
+    assert saved_tiers(choice) == Map.new(ModelTiers.shown(), &{&1, {second, nil}})
+  end
+
+  test "a runtime sent that the catalogue does not have: Continue saves the runtime the step shows",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    provider = provider!(scope, "anthropic", "main")
+    [model | _rest] = models(provider)
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    lv |> form("#set-up-model-form", model: %{tiers: tiers(model)}) |> render_change()
+
+    render_click(lv, "save_model", %{
+      "model" => %{
+        "source" => provider.public_id,
+        "runtime" => "forged",
+        "tiers" => tiers(model)
+      }
+    })
+
+    assert_patch(lv, ~p"/#{organisation}/main/set-up/harness")
+    {:ok, runtime} = ModelChoices.runtime(nil)
+    assert {[choice], []} = choices(scope)
+    assert choice.runtime == runtime.name
+  end
+
+  test "a provider whose description cannot be read: a line in place of the tiers, and Continue disabled",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    provider = provider!(scope, "anthropic", "main")
+
+    {1, _} =
+      Repo.update_all(
+        from(c in Apiary.Connections.Connection, where: c.id == ^provider.id),
+        set: [provider_kind: "retired"]
+      )
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert {"#{provider.name} · every workspace", true} in key_options(lv)
+    refute has_element?(lv, "#set-up-model-tiers")
+
+    assert words(lv, "#set-up-model-unread") ==
+             "The models of #{provider.name} could not be read. Try again later."
+
+    refute continue?(lv)
   end
 
   test "a stored key that is gone: the tiers stay, and Continue saves the provider's default key",
@@ -6325,6 +6401,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelProxiesTest do
     )
   end
 
+  defp words(lv, selector) do
+    lv
+    |> element(selector)
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.split()
+    |> Enum.join(" ")
+  end
+
   defp values(lv, name) do
     lv
     |> render()
@@ -6431,6 +6517,39 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelProxiesTest do
     choice = workspace_choice(ctx)
     assert choice.connection_id == added.id
     assert choice.tiers == @add_litellm["model"]["tiers"]
+  end
+
+  @tag with_features: Apiary.Features.all()
+  test "on: Add a key with LiteLLM and a model id a save refuses shows the refusal on that tier, and adds no provider and no key",
+       ctx do
+    {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.organisation}/main/set-up/model")
+    lv |> form("#set-up-model-form", model: %{source: "add"}) |> render_change()
+    lv |> form("#set-up-model-form", model: %{provider: "litellm"}) |> render_change()
+
+    long = String.duplicate("m", 201)
+
+    for bad <- ["proxy large", long] do
+      sent = put_in(@add_litellm, ["model", "tiers", "balanced", "model"], bad)
+      render_click(lv, "choose_model", sent)
+
+      assert words(lv, "#model_tiers_balanced_model-error") ==
+               "Use 1 to 200 ASCII letters, digits and punctuation with no space, starting with a letter or a digit."
+
+      refute has_element?(lv, "#model_tiers_thinking_model-error")
+      assert has_element?(lv, "#set-up-continue[disabled]")
+
+      render_click(lv, "save_model", sent)
+
+      assert {:ok, providers} = Connections.list_providers(ctx.scope)
+
+      assert Enum.sort(Enum.map(providers, & &1.id)) ==
+               Enum.sort([ctx.anthropic.id, ctx.litellm.id])
+
+      assert {:ok, []} = Apiary.Secrets.list_provider_keys(ctx.scope, :workspace)
+
+      assert Repo.all(from c in ModelChoice, where: c.workspace_id == ^ctx.scope.workspace.id) ==
+               []
+    end
   end
 
   @tag with_features: Apiary.Features.all()

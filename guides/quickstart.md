@@ -344,9 +344,10 @@ later.
    `model_proxies` on, also enter the proxy's https address in **Address**, such as
    `https://litellm.example.com`. **Runtime** shows **Claude
    Code**. Under **Model and effort per tier**, choose a **Model** for each of
-   **Thinking**, **Balanced** and **Light**, and an **Effort** where the model has one,
-   then select **Continue**, which is enabled once every tier has a model. The key is a
-   secret of Main: **Workspace settings › Secrets and
+   **Thinking**, **Balanced** and **Light**, and an **Effort** where the model has one.
+   For LiteLLM the section is **Model per tier**: type a model id in each tier's
+   **Model**, with no **Effort**. Then select **Continue**, which is enabled once every
+   tier has a model. The key is a secret of Main: **Workspace settings › Secrets and
    variables** lists it, masked, and you replace it there. Only owners and admins add a
    model key.
 4. **Harness.** **Which harness do runs in Main use?** has two choices:

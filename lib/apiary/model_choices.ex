@@ -986,15 +986,21 @@ defmodule Apiary.ModelChoices do
       else: changeset
   end
 
-  # Each tier's form, in the order of `page_tiers/0`, then any key that is no tier: one
-  # refusal for each refused tier, on `tiers`, with the tier's name (`tier`) and the field
-  # it is about (`field`, `:model` or `:effort`).
-  defp validate_tiers(changeset) do
-    validate_change(changeset, :tiers, fn :tiers, tiers ->
-      tiers
-      |> Enum.sort_by(fn {tier, _entry} -> Enum.find_index(page_tiers(), &(&1 == tier)) || 3 end)
-      |> Enum.flat_map(fn {tier, entry} -> tier_error(tier, entry) end)
-    end)
+  # Each tier's form, as `tier_errors/1` checks it.
+  defp validate_tiers(changeset),
+    do: validate_change(changeset, :tiers, fn :tiers, tiers -> tier_errors(tiers) end)
+
+  @doc false
+  # tier_errors/1 is the refusals a save gives the form of `tiers`, a map of tiers, before
+  # it reads a provider: each tier in the order of `page_tiers/0`, then any key that is no
+  # tier, with one refusal for each refused tier, `{:tiers, {message, bindings}}`, with
+  # the tier's name (`tier`) and the field it is about (`field`, `:model` or `:effort`).
+  # A form checks the tiers with it before a save, with the save's rules.
+  @spec tier_errors(map) :: [{:tiers, {String.t(), keyword}}]
+  def tier_errors(tiers) when is_map(tiers) do
+    tiers
+    |> Enum.sort_by(fn {tier, _entry} -> Enum.find_index(page_tiers(), &(&1 == tier)) || 3 end)
+    |> Enum.flat_map(fn {tier, entry} -> tier_error(tier, entry) end)
   end
 
   defp tier_error(tier, entry) do
