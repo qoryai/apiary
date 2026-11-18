@@ -19,8 +19,12 @@ defmodule Apiary.Runs.Transcript do
   all, and when they are fewer than `max_chunks/0`: a gap in `offset`, a larger file, or
   as many chunks, cannot be restored, and is never served. `check/2` checks it from the
   chunks' offsets and lengths alone, and returns the highest sequence it checked, so the
-  digest (`digest/3`) and the bytes sent (`stream/3`) are of the chunks it checked. The
-  run's last chunk, by sequence, has the session id and the path a continuation resumes.
+  digest (`digest/3`) and the bytes sent (`stream/3`) are of the chunks it checked. A
+  continuation resumes the session id and the path of the last chunk, by sequence, of the
+  session that paused (`last/2`, `Apiary.Runs.Run`'s `paused_session`), not of the run's
+  newest chunk: of a run paused in session 2 of 3, session 2's, even when chunks of
+  session 1 arrived after it. A paused session with no chunk has none, and the
+  continuation starts a new session.
 
   **The paused run.** A run of the queue that continues a paused run, which the end of
   the paused run queues, reads the transcript of that run alone, and only while it is the
@@ -152,21 +156,25 @@ defmodule Apiary.Runs.Transcript do
   defp text?(_value, _max), do: false
 
   @doc """
-  The session id and the path of the last chunk of the run `run_id`, by sequence:
-  `%{session_id: id, path: path}`, or nil for a run with none.
+  The session id and the path of the last chunk, by sequence, of the session number
+  `session` of the run `run_id`, or of any session of the run when `session` is nil:
+  `%{session_id: id, path: path}`, or nil when there is no such chunk.
   """
-  @spec last(Ecto.UUID.t()) :: %{session_id: String.t(), path: String.t()} | nil
-  def last(run_id) do
-    Repo.one(
-      from(c in SessionChunk,
-        where: c.run_id == ^run_id,
-        order_by: [desc: c.sequence],
-        limit: 1,
-        select: %{session_id: c.session_id, path: c.path}
-      ),
-      log: false
+  @spec last(Ecto.UUID.t(), pos_integer | nil) ::
+          %{session_id: String.t(), path: String.t()} | nil
+  def last(run_id, session \\ nil) do
+    from(c in SessionChunk,
+      where: c.run_id == ^run_id,
+      order_by: [desc: c.sequence],
+      limit: 1,
+      select: %{session_id: c.session_id, path: c.path}
     )
+    |> of_session(session)
+    |> Repo.one(log: false)
   end
+
+  defp of_session(query, nil), do: query
+  defp of_session(query, session), do: from(c in query, where: c.session == ^session)
 
   @doc """
   The check of the transcript of the run `run_id` at `path` (the moduledoc), from the
@@ -319,15 +327,18 @@ defmodule Apiary.Runs.Transcript do
   @doc """
   The `resume` of the run of the queue `continuation` at its claim, which the claim
   stores with the run (`runs.resume`): the paused run's id, the session id and the path
-  of its last chunk, and `runs` (`continued_runs/1`), while that run is the paused run it
-  continues and its transcript there passes `check/2`; nil for any other run, so the
-  continuation starts a new session.
+  of the last chunk of the session that paused (`last/2` with the paused run's
+  `paused_session`), and `runs` (`continued_runs/1`), while that run is the paused run it
+  continues and its transcript there passes `check/2`; nil for any other run, and when
+  the session that paused has no chunk, so the continuation starts a new session. A
+  paused run with no `paused_session`, whose sessions sent no paused
+  `dev.qory.session.exited`, resumes its last chunk of any session.
   """
   @spec resume_at_claim(map) :: map | nil
   def resume_at_claim(%DispatchRun{continues_id: paused_id} = continuation)
       when is_binary(paused_id) do
     with %Run{} = paused <- paused_run(continuation),
-         %{session_id: session_id, path: path} <- last(paused.id),
+         %{session_id: session_id, path: path} <- last(paused.id, paused.paused_session),
          true <- resumable_path?(path, session_id),
          {:ok, _file} <- check(paused.id, path) do
       %{

@@ -104,10 +104,10 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # For a run of a workspace's queue that continues a paused run, whose transcript could
   # be restored at its claim: `resume`, as the claim stored it (`runs.resume`,
   # `Apiary.Runs.Transcript.resume/1`), the paused run's id, the session id and the path
-  # of its transcript's last chunk, and the paused runs it continues where the claim
-  # stored them, the same in each document. Any other run gains no such member, and
-  # starts a new session. A `resume` the stored document has is dropped,
-  # so only Qory Apiary sets it.
+  # of the last transcript chunk of the session that paused, and the paused runs it
+  # continues where the claim stored them, the same in each document. Any other run
+  # gains no such member, and starts a new session. A `resume` the stored document has
+  # is dropped, so only Qory Apiary sets it.
   #
   # The members come after the document's last member, in the schema's order:
   # `variables`, `credentials`, `model_credential`, `stack_hosts`, `resume`,
