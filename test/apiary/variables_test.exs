@@ -32,10 +32,10 @@ defmodule Apiary.VariablesTest do
     variable
   end
 
-  # The refusal of too many names, as the settings page shows it: the cause, then the fix.
-  @too_many "would raise a target's variables above 126. " <>
-              "Remove variables until this level has at most 126. " <>
-              "A run takes at most 126 variables."
+  # The refusal of too many names, as the settings page shows it: the fix, then the cause.
+  @too_many "Remove variables at any level until each target has at most 126. " <>
+              "A run takes at most 126 variables, " <>
+              "and this save would raise a target's variables above 126."
 
   defp resolve!(scope, holder) do
     {:ok, resolution} = Variables.resolve(scope, holder)

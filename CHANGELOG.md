@@ -1625,10 +1625,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   again.” Its work item reads “Remove variables in the workspace's settings, then start the
   run again. The run has more than 126 variables.” or “... The run's variables take more
   than 64 KiB.” A save of a variable is refused where it would leave a workspace or a
-  repository with more than 126 variables, all levels together, and says “would raise a
-  repository's variables above 126. Remove variables until this level has at most 126. A
-  run takes at most 126 variables.” Before, a save allowed 128 names. The claim still
-  refuses a run whose variables pass either limit, such as variables saved before.
+  repository with more than 126 variables, all levels together, and says “Remove variables
+  at any level until each repository has at most 126. A run takes at most 126 variables,
+  and this save would raise a repository's variables above 126.” Before, a save allowed
+  128 names. The claim still refuses a run whose variables pass either limit, such as
+  variables saved before.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - A run cannot withdraw a name of the type in `submit.type` of its process version or of

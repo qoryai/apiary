@@ -114,9 +114,9 @@ defmodule ApiaryPro.OrganisationVariablesRacesTest do
     # Each alone is within the 126 names; the second sees the first, and is refused.
     assert {:error, changeset} = Task.await(ours.task)
 
-    assert {"would raise a target's variables above %{limit}. " <>
-              "Remove variables until this level has at most %{limit}. " <>
-              "A run takes at most %{limit} variables.", [limit: 126]} =
+    assert {"Remove variables at any level until each target has at most %{limit}. " <>
+              "A run takes at most %{limit} variables, " <>
+              "and this save would raise a target's variables above %{limit}.", [limit: 126]} =
              changeset.errors[:name]
 
     assert deadlocks() == before
@@ -153,9 +153,9 @@ defmodule ApiaryPro.OrganisationVariablesRacesTest do
 
     assert {:error, changeset} = Task.await(ours.task)
 
-    assert {"would raise a target's variables above %{limit}. " <>
-              "Remove variables until this level has at most %{limit}. " <>
-              "A run takes at most %{limit} variables.", [limit: 126]} =
+    assert {"Remove variables at any level until each target has at most %{limit}. " <>
+              "A run takes at most %{limit} variables, " <>
+              "and this save would raise a target's variables above %{limit}.", [limit: 126]} =
              changeset.errors[:name]
 
     assert deadlocks() == before

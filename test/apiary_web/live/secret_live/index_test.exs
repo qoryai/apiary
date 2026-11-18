@@ -1155,8 +1155,9 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       assert has_element?(
                lv,
                "#variable_name-error",
-               "would raise a repository's variables above 126." <>
-                 " Remove variables until this level has at most 126. A run takes at most 126 variables."
+               "Remove variables at any level until each repository has at most 126." <>
+                 " A run takes at most 126 variables, and this save would raise a repository's" <>
+                 " variables above 126."
              )
 
       refute render(lv) =~ "a target&#39;s variables"

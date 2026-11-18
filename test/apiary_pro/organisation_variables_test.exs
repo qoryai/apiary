@@ -94,12 +94,13 @@ defmodule ApiaryPro.OrganisationVariablesTest do
     end)
   end
 
-  # The refusal of too many names, as the settings page shows it: the cause, then the fix.
+  # The refusal of too many names, as the settings page shows it: the fix, then the cause.
   defp too_many(workspace \\ nil) do
     in_workspace = if workspace, do: " in #{workspace}", else: ""
 
-    "would raise a target's variables#{in_workspace} above 126. " <>
-      "Remove variables until this level has at most 126. A run takes at most 126 variables."
+    "Remove variables at any level until each target has at most 126. " <>
+      "A run takes at most 126 variables, " <>
+      "and this save would raise a target's variables#{in_workspace} above 126."
   end
 
   describe "reading" do

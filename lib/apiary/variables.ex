@@ -661,7 +661,7 @@ defmodule Apiary.Variables do
       :name,
       dgettext_noop(
         "errors",
-        "would raise a target's variables above %{limit}. Remove variables until this level has at most %{limit}. A run takes at most %{limit} variables."
+        "Remove variables at any level until each target has at most %{limit}. A run takes at most %{limit} variables, and this save would raise a target's variables above %{limit}."
       ),
       limit: Resolution.max_names()
     )

@@ -31,6 +31,16 @@ msgstr ""
 msgid "Name the host."
 msgstr ""
 
+#: lib/apiary_pro/organisation_variables.ex
+#, elixir-autogen, elixir-format
+msgid "Remove variables at any level until each target has at most %{limit}. A run takes at most %{limit} variables, and this save would raise a target's variables above %{limit}."
+msgstr ""
+
+#: lib/apiary_pro/organisation_variables.ex
+#, elixir-autogen, elixir-format
+msgid "Remove variables at any level until each target has at most %{limit}. A run takes at most %{limit} variables, and this save would raise a target's variables in %{workspace} above %{limit}."
+msgstr ""
+
 #: lib/apiary_pro/organisation_policy/rule.ex
 #, elixir-autogen, elixir-format
 msgid "already has a rule here"
@@ -138,17 +148,7 @@ msgstr ""
 
 #: lib/apiary_pro/organisation_variables.ex
 #, elixir-autogen, elixir-format
-msgid "would raise a target's variables above %{limit}. Remove variables until this level has at most %{limit}. A run takes at most %{limit} variables."
-msgstr ""
-
-#: lib/apiary_pro/organisation_variables.ex
-#, elixir-autogen, elixir-format
 msgid "would raise a target's variables above 64 KiB"
-msgstr ""
-
-#: lib/apiary_pro/organisation_variables.ex
-#, elixir-autogen, elixir-format
-msgid "would raise a target's variables in %{workspace} above %{limit}. Remove variables until this level has at most %{limit}. A run takes at most %{limit} variables."
 msgstr ""
 
 #: lib/apiary_pro/organisation_variables.ex

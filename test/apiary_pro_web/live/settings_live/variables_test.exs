@@ -515,8 +515,9 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
       assert has_element?(
                lv,
                "#variable-form",
-               "would raise a repository's variables in #{ctx.scope.workspace.name} above 126." <>
-                 " Remove variables until this level has at most 126. A run takes at most 126 variables."
+               "Remove variables at any level until each repository has at most 126." <>
+                 " A run takes at most 126 variables, and this save would raise a repository's" <>
+                 " variables in #{ctx.scope.workspace.name} above 126."
              )
 
       # And the organisation's own 126, with no workspace to blame.
@@ -531,8 +532,9 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
       assert has_element?(
                lv,
                "#variable-form",
-               "would raise a repository's variables above 126." <>
-                 " Remove variables until this level has at most 126. A run takes at most 126 variables."
+               "Remove variables at any level until each repository has at most 126." <>
+                 " A run takes at most 126 variables, and this save would raise a repository's" <>
+                 " variables above 126."
              )
     end
 
