@@ -2576,7 +2576,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :suite, :map,
     default: nil,
     doc:
-      "the full test suite result shown under the build report's frame: `Apiary.Stages.full_suite_read/1` with `fast`, whether the work item is on the track `fast-track`; nil for no line"
+      "the full test suite result shown under the build report's frame: the `{result, reads}` of `Apiary.Stages.full_suite/3` with `fast`, whether the work item is on the track `fast-track`; nil for no line"
 
   attr :questions, :list, default: []
 
@@ -2808,7 +2808,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   # The line under the build report's frame for a full test suite result
-  # (`Apiary.Stages.full_suite_read/1`). The two Standard track lines say "version" in their
+  # (`Apiary.Stages.full_suite/3`). The two Standard track lines say "version" in their
   # source text and "commit" in the software domain's catalogue. The track `fast-track` has
   # no minutes. Minutes are shown as `Format.number/1` shows a number: 4 for 4.0, 4.5 for
   # 4.5. A suite that did not run shows its reason as the run sent it, trimmed and without

@@ -3677,7 +3677,7 @@ defmodule Apiary.StagesTest do
 
       assert {%{passed: 120}, _reads} = Stages.full_suite(artifacts, 1)
 
-      # With no verdict of its own, the report has no result.
+      # With no verdict of run-a, the report has no result.
       artifacts = [artifact("build-report", [report(1, "run-a")]), artifact("verdict", [newer])]
       assert {nil, %{}} = Stages.full_suite(artifacts, 1)
     end
@@ -3701,6 +3701,40 @@ defmodule Apiary.StagesTest do
       # A version that was never read, with a file the store cannot read, is read again.
       artifacts = [artifact("build-report", [report(1, "run-a")]), artifact("verdict", [gone])]
       assert {nil, %{}} = Stages.full_suite(artifacts, 1)
+    end
+
+    test "a newest verdict the store cannot read gives no result, and no older one" do
+      newest = verdict_with(@suite_passed, run_id: "run-a", number: 2)
+      older = verdict_with(%{@suite_passed | "passed" => 7}, run_id: "run-a", number: 1)
+      [file] = newest.files
+      unreadable = %{newest | files: [%{file | store_key: String.duplicate("0", 64)}]}
+
+      artifacts = [
+        artifact("build-report", [report(1, "run-a")]),
+        artifact("verdict", [unreadable, older])
+      ]
+
+      # The older result is not shown in place of the newest, and the failed version is not
+      # kept, so the next call reads it again.
+      assert {nil, reads} = Stages.full_suite(artifacts, 1)
+      assert reads == %{}
+      refute Map.has_key?(reads, unreadable.public_id)
+    end
+
+    test "a version kept as having no result is not read again" do
+      none = stored_verdict(%{"verdict" => "passed"}, run_id: "run-a", number: 1)
+      [file] = none.files
+      unreadable = %{none | files: [%{file | store_key: String.duplicate("0", 64)}]}
+
+      artifacts = [
+        artifact("build-report", [report(1, "run-a")]),
+        artifact("verdict", [unreadable])
+      ]
+
+      # Read, the file is an error; the kept :none stands in for the read.
+      assert {nil, %{}} = Stages.full_suite(artifacts, 1)
+      reads = %{unreadable.public_id => :none}
+      assert {nil, ^reads} = Stages.full_suite(artifacts, 1, reads)
     end
 
     test "a verdict of a run a member cancelled is skipped" do

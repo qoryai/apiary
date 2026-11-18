@@ -2424,7 +2424,7 @@ defmodule Apiary.Stages do
 
   @doc false
   # full_suite_read/1 is the full test suite result in the file of the verdict version
-  # `version` (`full_suite_version/2`): `{:ok, result}` with `%{state:, passed:, failed:,
+  # `version` (one of `full_suite_versions/2`): `{:ok, result}` with `%{state:, passed:, failed:,
   # skipped:, minutes:, reason:}`; `:none` for a file that has no result (no version, no
   # `full_suite`, or a result that is not whole); `{:error, :store_unavailable}` where the
   # store cannot read the file. `state` is `:passed`, `:failed` or `:not_run`. `:passed` and

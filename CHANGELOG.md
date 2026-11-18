@@ -49,7 +49,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   same without "on that commit" and the minutes. For a suite that did not run it reads "The
   full test suite did not run: <reason>.", where the reason is the one the run sent with
   white space trimmed and one final full stop dropped, and the line ends in a full stop
-  unless the reason ends in "?" or "!". A verdict with no `full_suite` has no line.
+  unless the reason ends in "?" or "!". A run with no verdict that has a `full_suite` has no line.
 <!-- /feature -->
 - A run's verdict may have the optional member `full_suite`, the result of the full test
   suite: `state` (`passed`, `failed` or `not_run`); with `passed` or `failed`, the counts
