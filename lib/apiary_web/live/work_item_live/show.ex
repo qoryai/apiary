@@ -434,6 +434,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             stage_names={Map.new(@flow.stages, &{&1.id, &1.name})}
             take_ins={@view.take_ins}
             outputs={@frames}
+            suite={@suite}
             submissions={@submissions}
             questions={@view.questions}
             waiting={@view.waiting}
@@ -656,6 +657,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            artifacts: [],
            view: nil,
            frames: [],
+           suite: nil,
+           suite_reads: %{},
            submissions: nil,
            submission_reads: %{},
            frame_texts: %{},
@@ -2280,17 +2283,20 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
     frames = anchored(frames)
     {submissions, submission_reads} = submissions(socket, frames)
+    {suite, suite_reads} = suite(assigns, frames)
 
     assign(socket,
       frames: frames,
       frame_texts: texts,
       stored_reads: reads,
       submissions: submissions,
-      submission_reads: submission_reads
+      submission_reads: submission_reads,
+      suite: suite,
+      suite_reads: suite_reads
     )
   end
 
-  defp framed(socket), do: assign(socket, frames: [], submissions: nil)
+  defp framed(socket), do: assign(socket, frames: [], suite: nil, submissions: nil)
 
   # The Submissions list, in place of the frame of the submission type, on the tab of a
   # stage that outputs it: `%{type:, rows:, names:}`, nil on any other tab and where the
@@ -2322,6 +2328,20 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       else
         _none -> {nil, reads}
       end
+    end
+  end
+
+  # The full test suite result under the build report's frame, from the newest verdict with a
+  # result of the run that wrote the shown report version (`Stages.full_suite/3`), and only
+  # where the tab has that frame. Returns it and the reads kept so far (`suite_reads`, a verdict
+  # version's read by its public id, as `frame_texts` keeps a frame's text).
+  defp suite(assigns, frames) do
+    with %{version: number} <- Enum.find(frames, &(&1.type == "build-report")),
+         {%{} = suite, reads} <- Stages.full_suite(assigns.artifacts, number, assigns.suite_reads) do
+      {Map.put(suite, :fast, StageTab.fast_track?(assigns.flow)), reads}
+    else
+      {nil, reads} -> {nil, reads}
+      _no_report -> {nil, assigns.suite_reads}
     end
   end
 
