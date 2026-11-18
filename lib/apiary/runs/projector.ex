@@ -346,7 +346,8 @@ defmodule Apiary.Runs.Projector do
       {events, run} ->
         sequences = Enum.map(events, &elem(&1, 1))
         run = advance(run)
-        # The events' types are not read here: the write finds out whether the run has any.
+        # The events' types are not read here. `Sessions.write/1` reads them and writes no
+        # record for a run with no session events.
         {:ok, {run, {Enum.min(sequences), Enum.max(sequences), length(events), true}}}
     end
   end
