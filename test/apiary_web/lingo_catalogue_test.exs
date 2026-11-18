@@ -10,10 +10,12 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   # branch, tag or commit, the version's name among them, why a read of the Qory
   # harness failed, what a switch to another track and Run another round do on an
   # escalation (the build report, the commit and the ticket), the branch of a run that
-  # writes, what a person reads at a gate whose stage started no run (the build report),
-  # and what Shape's tab says of a Shape that did not run (the criterion).
+  # writes, the wall of a run that writes (the checkout), what a person reads at a gate
+  # whose stage started no run (the build report), and what Shape's tab says of a Shape
+  # that did not run (the criterion).
   @software_sentences [
     "%{contact_support} to correct the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
+    "%{contact_support}. A run that writes needs a wall, and this machine has none.",
     "%{contact_support}. Reading the harness from %{url} failed: the source has no version %{ref}.",
     "%{number} revision",
     "%{person}, updated from harness version %{commit}, %{date}",
@@ -47,6 +49,7 @@ defmodule ApiaryWeb.LingoCatalogueTest do
     "Set a version that exists in the workspace's harness settings. %{url} has no %{ref}.",
     "Set a version that exists. %{url} has no tag or version %{ref}.",
     "Set a version that exists. %{url} has no version %{ref}.",
+    "Set a wall in the machine's forager.yaml, then start the run again. A run that writes needs a wall, and this machine has none.",
     "The Qory harness is the harness at %{url}.",
     "Update from harness version %{commit}",
     "Updated from harness version %{commit}, %{date}",

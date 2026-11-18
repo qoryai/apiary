@@ -6329,6 +6329,11 @@ defmodule ApiaryWeb.WorkItemComponents do
       {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
        read_needs_words(facts)}
 
+  defp no_result_words(%{write_needs: %{} = facts}, _earlier),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
+       write_needs_words(facts)}
+
   defp no_result_words(%{outcome: :none}, earlier),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run ended without a result."),
@@ -6398,6 +6403,22 @@ defmodule ApiaryWeb.WorkItemComponents do
     do:
       gettext(
         "Start the run again. The setup container was not removed, so a process in it could still write the files."
+      )
+
+  # What a person does about a run that writes and has no wall (`Apiary.Runs.WriteNeeds`),
+  # the fix first. A person in an organisation cannot edit the instance pool's
+  # forager.yaml. `Apiary.Stages.StopCause` stores the same words in English.
+  defp write_needs_words(%{installed: true}),
+    do:
+      rich_gettext(
+        "%{contact_support}. A run that writes needs a wall, and this machine has none.",
+        contact_support: ApiaryWeb.Support.rich()
+      )
+
+  defp write_needs_words(_facts),
+    do:
+      gettext(
+        "Set a wall in the machine's forager.yaml, then start the run again. A run that writes needs a wall, and this machine has none."
       )
 
   # What a member does about a run that stopped at a call to an adapter

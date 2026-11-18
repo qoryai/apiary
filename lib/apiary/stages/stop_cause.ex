@@ -20,8 +20,10 @@ defmodule Apiary.Stages.StopCause do
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Processes
+  alias Apiary.Processes.Version
   alias Apiary.Repo
-  alias Apiary.Runs.{ReadNeeds, Run, Target}
+  alias Apiary.Runs.{ReadNeeds, Run, Target, WriteNeeds}
   alias Apiary.Targets
   alias Apiary.WorkItems.WorkItem
 
@@ -72,8 +74,8 @@ defmodule Apiary.Stages.StopCause do
   # fix, where a point says the cause in other words after "The run stopped:";
   # `{:then, cause, fix}` for a cause whose second sentence follows on the same line;
   # `{:lines, cause, fix}` for a run that ended before it started; and
-  # `{:fix_first, fix, cause}` for a read-only run that could not go on, whose text has the
-  # fix first.
+  # `{:fix_first, fix, cause}` for a read-only run that could not go on, or a run that writes
+  # and has no wall, whose text has the fix first.
   #
   # A run a member cancelled (`Apiary.Runs.Cancel`) stopped because they did, whatever it
   # ended by: "<person> cancelled it.", after "The run stopped:".
@@ -103,7 +105,8 @@ defmodule Apiary.Stages.StopCause do
   # A run that sent no result: qory closed it with `workflow_not_in_harness` when the
   # harness it composed has no skill for the run's workflow (`Apiary.Harnesses.WorkflowGap`),
   # and with a `read_needs_*` reason when a read-only run could not go on
-  # (`Apiary.Runs.ReadNeeds`).
+  # (`Apiary.Runs.ReadNeeds`), or `write_needs_wall` when a run that writes has no wall
+  # (`Apiary.Runs.WriteNeeds`), or `timeout` when it reached its time limit.
   defp stopped_split(%DispatchRun{end_cause: :run_ended} = run, %WorkItem{} = work_item, _context) do
     case WorkflowGap.of_dispatch_run(run, work_item) do
       %{} = facts -> workflow_gap(facts, work_item)
@@ -201,10 +204,61 @@ defmodule Apiary.Stages.StopCause do
 
   ## The causes
 
+  # The registered run is read once; ReadNeeds and WriteNeeds read their facts from it.
   defp no_gap(run, work_item) do
-    case ReadNeeds.of_dispatch_run(run) do
+    registered = registered_run(run)
+
+    case ReadNeeds.of_run(registered) do
       %{} = facts -> read_needs(facts, work_item)
-      nil -> {:one, "The run ended without a result."}
+      nil -> no_read_needs(registered, run, work_item)
+    end
+  end
+
+  defp no_read_needs(registered, run, work_item) do
+    case WriteNeeds.of_run(registered) do
+      %{} = facts -> write_needs(facts, work_item)
+      nil -> timed_out_or_no_result(registered, run, work_item)
+    end
+  end
+
+  # The reason and the node of the dispatch run's registered run; nil for none.
+  defp registered_run(%DispatchRun{id: id}) do
+    Repo.one(
+      from r in Run.registered(),
+        where: r.dispatch_run_id == ^id,
+        select: map(r, [:reason, :node_id])
+    )
+  end
+
+  # A run whose registered run ended with the reason `timeout` reached its time limit. The
+  # words follow "Attempt 2 ended with an error, so Build has no result"
+  # (`ApiaryWeb.WorkItemComponents`); no fix, only another round helps.
+  defp timed_out_or_no_result(%{reason: "timeout"}, run, work_item),
+    do:
+      {:one,
+       "Attempt #{run.attempt} reached its time limit, so #{stage_name(run, work_item)} has no result."}
+
+  defp timed_out_or_no_result(_registered, _run, _work_item),
+    do: {:one, "The run ended without a result."}
+
+  # The name of the stage the run was in, from the process version the run started under,
+  # else the work item's; "the stage" for a run placed in no stage or no version. Only the
+  # version's document is read.
+  defp stage_name(run, work_item) do
+    stage_id = run.stage_id || work_item.stage_id
+
+    document =
+      case run.process_version_id || work_item.process_version_id do
+        id when is_binary(id) ->
+          Repo.one(from v in Version, where: v.id == ^id, select: v.document)
+
+        nil ->
+          nil
+      end
+
+    case document && Processes.stage(document, stage_id) do
+      %{"name" => name} when is_binary(name) and name != "" -> name
+      _none -> "the stage"
     end
   end
 
@@ -245,6 +299,20 @@ defmodule Apiary.Stages.StopCause do
     do:
       {:fix_first, "Start the run again.",
        "The setup container was not removed, so a process in it could still write the files."}
+
+  # What a person does about a run that writes and has no wall. The target's copy is a
+  # checkout in a software workspace. A person in an organisation cannot edit the
+  # forager.yaml of the instance's pool, so that pool's run has "Contact support.".
+  defp write_needs(%{installed: installed}, work_item) do
+    workspace = Repo.get!(Workspace, work_item.workspace_id)
+    what = if Domain.name(workspace) == "software", do: " to the checkout", else: ""
+    cause = "A run that writes#{what} needs a wall, and this machine has none."
+
+    if installed,
+      do: {:fix_first, "Contact support.", cause},
+      else:
+        {:fix_first, "Set a wall in the machine's forager.yaml, then start the run again.", cause}
+  end
 
   # The words of `ApiaryWeb.HarnessComponents.workflow_gap_words/1`, stored once in
   # English: the target is a repository in a software workspace.

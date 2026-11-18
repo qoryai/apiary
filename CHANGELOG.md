@@ -2312,6 +2312,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   with no wall”, in place of its code. Its work item shows the fix, then the cause. On an
   installed pool, “Contact support.” replaces a fix in the machine's forager.yaml.
 <!-- /feature -->
+<!-- feature: factory -->
+- A run that writes (access `write` or `write-no-push`) and that qory closes because it
+  has no wall shows “write run with no wall” on its run page, in place of
+  `write_needs_wall`. Its work item shows the fix, then the cause. On an installed pool,
+  “Contact support.” replaces a fix in the machine's forager.yaml.
+<!-- /feature -->
+<!-- feature: factory -->
+- A run that reaches its time limit shows “Attempt 3 reached its time limit, so Build has
+  no result.” on its work item, after “The run stopped:”. Before, it read “The run ended
+  without a result.”
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - Explore starts on a work item of a software workspace made before the upgrade that
   added `workspaces.qory_stack`. This covers a work item taken in after this upgrade, and
