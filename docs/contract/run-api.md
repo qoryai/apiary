@@ -169,7 +169,8 @@ Returns `200` with the work item snapshot:
   `ticket`.
 - `notes` contains what people wrote on the work item and the gaps of failed checks,
   oldest first. `kind` is `request_changes`, a request for changes at the gate of the
-  stage `stage_id`, which may point at one version in `artifact_version_id`; `move`, a
+  stage `stage_id`, whose `note` is never empty, and which may point at one version in
+  `artifact_version_id`; `move`, a
   move of the work item out of the stage `stage_id`, not one that resolves an escalation
   (a move back or a switch of track), which the escalation's entry stands for;
   `escalation`, an escalation that a person resolved with a note; `answer`, an answer to a run's questions, a review comment
@@ -615,7 +616,14 @@ The body, at most 64 KiB:
 - `points`: what is wrong or missing, 1 to 20 points. With `escalate`, points are
   required, and a person reads them when the stage escalates. With `changes-requested`,
   points are optional, and each point's `action` is `run_again`; the verdict's page shows
-  them as it shows every other member of the file. With `passed`, a verdict has none.
+  them as it shows every other member of the file. If a `changes-requested` verdict with
+  points ends the last round of a loop, the stage escalates at its round limit with one
+  point. Its text is "3 of 3 rounds ran, and 2 review findings are still open." followed
+  by the `text` of each point, and its fix is "Read the 2 open findings, then pick Accept
+  as it is or Run another round." With no points, the text is "3 of 3 rounds ran." The
+  stage runner writes this point, and the limit of one sentence and 500 characters below
+  does not apply to it: with points, its text is more than one sentence and can be
+  longer than 500 characters. With `passed`, a verdict has none.
   Each point has `text`, one plain sentence on one line of 1 to 500 characters that
   states what is wrong, with no action, and `action`: `answer`, with `question`, the id of
   an open question, or `run_again`, without `question`. A `run_again` point may also have

@@ -3199,6 +3199,20 @@ msgid_plural "%{ran} of %{count} rounds ran."
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
+msgid "%{ran} of %{limit} round ran, and 1 review finding is still open."
+msgid_plural "%{ran} of %{limit} round ran, and %{count} review findings are still open."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
+msgid "%{ran} of %{limit} rounds ran, and 1 review finding is still open."
+msgid_plural "%{ran} of %{limit} rounds ran, and %{count} review findings are still open."
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "%{rate}, bursts of %{burst}"
@@ -3978,12 +3992,22 @@ msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "%{workflow} did not run: a member wrote new feedback."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "%{workflow} did not run: it does not run on %{track}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{workflow} did not run: it runs on %{track} only."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{workflow} did not run: no member wrote new feedback."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -5165,6 +5189,11 @@ msgstr ""
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
 msgid "Add a model provider that serves %{runtime} in %{place}. None of the model providers of %{organisation} serves %{runtime}."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Add a note that says what to change."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -13793,6 +13822,11 @@ msgstr ""
 msgid "Move `changed: true` to a workflow entry: only an entry has runs to compare with."
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Move `feedback: new` to a workflow entry: only an entry starts a run."
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/show.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
@@ -17449,6 +17483,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Read the machine log under %{step} for the cause."
 msgstr ""
+
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
+msgid "Read the open finding, then pick Accept as it is or Run another round."
+msgid_plural "Read the %{count} open findings, then pick Accept as it is or Run another round."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format

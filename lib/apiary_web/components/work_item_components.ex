@@ -3028,6 +3028,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   # input, its condition on a track, else what the record of the skip says.
   defp why_skipped(nil, condition), do: condition
   defp why_skipped(%{reason: "first_attempt_passed"} = skip, _condition), do: skip_words(skip)
+  defp why_skipped(%{reason: "feedback"} = skip, _condition), do: skip_words(skip)
   defp why_skipped(%{input: type} = skip, _condition) when is_binary(type), do: skip_words(skip)
   defp why_skipped(%{track: track} = skip, nil) when is_binary(track), do: skip_words(skip)
   defp why_skipped(_skip, condition), do: condition
@@ -6008,7 +6009,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :skip, :map,
     required: true,
     doc:
-      "`%{workflow:, input:, track:, negated:}` (and `changed:`, true for a condition on a change), or `%{workflow:, reason:, cause_entry:}`"
+      "`%{workflow:, input:, track:, negated:}` (and `changed:`, true for a condition on a change), or `%{workflow:, reason:, cause_entry:}`, `reason` `feedback` with `negated` for `{feedback: new}`"
 
   # A workflow entry the runner passed over: its workflow, then why it did not run.
   defp skip_row(assigns) do
@@ -6026,6 +6027,18 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp skip_words(%{reason: "first_attempt_passed", cause_entry: entry}),
     do: gettext("Did not run, because %{entry} passed on its first attempt.", entry: entry)
+
+  defp skip_words(%{reason: "feedback", negated: true} = skip),
+    do:
+      gettext("%{workflow} did not run: a member wrote new feedback.",
+        workflow: skip.workflow
+      )
+
+  defp skip_words(%{reason: "feedback"} = skip),
+    do:
+      gettext("%{workflow} did not run: no member wrote new feedback.",
+        workflow: skip.workflow
+      )
 
   defp skip_words(%{track: track} = skip) when is_binary(track) do
     if skip.negated,
