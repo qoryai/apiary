@@ -2424,15 +2424,16 @@ defmodule Apiary.Stages do
 
   @doc false
   # full_suite_read/1 is the full test suite result in the file of the verdict version
-  # `version` (one of `full_suite_versions/2`): `{:ok, result}` with `%{state:, passed:, failed:,
-  # skipped:, minutes:, reason:}`; `:none` for a file that has no result (no version, no
-  # `full_suite`, or a result that is not whole); `{:error, :store_unavailable}` where the
-  # store cannot read the file. `state` is `:passed`, `:failed` or `:not_run`. `:passed` and
-  # `:failed` have `minutes`, a number, and the three counts, whole numbers (12.0 is 12), or
-  # nil for all three where the file has none; `reason` is nil. `:not_run` has `reason` and nil for the others: the reason with white
-  # space trimmed and one final full stop dropped, which is a line of text, so a reason of no
-  # text is no result. The version's file does not change, so `{:ok, _}` and `:none` may be
-  # kept by the version's public id; the error may not.
+  # `version` (one of `full_suite_versions/2`): `{:ok, result}` with `%{state:, passed:,
+  # failed:, skipped:, minutes:, reason:}`; `:none` for a file that has no result (no
+  # version, no `full_suite`, or a result that is not whole); `{:error, :store_unavailable}`
+  # where the store cannot read the file. `state` is `:passed`, `:failed` or `:not_run`.
+  # `:passed` and `:failed` have `minutes`, a number, and the three counts, whole numbers
+  # (12.0 is 12), or nil for all three where the file has none; `reason` is nil. `:not_run`
+  # has `reason` and nil for the others: the reason with white space trimmed and one final
+  # full stop dropped, which is a line of text, so a reason of no text is no result. The
+  # version's file does not change, so `{:ok, _}` and `:none` may be kept by the version's
+  # public id; the error may not.
   @spec full_suite_read(map | nil) ::
           {:ok,
            %{

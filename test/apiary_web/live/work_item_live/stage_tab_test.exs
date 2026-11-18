@@ -3430,6 +3430,16 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                "The full test suite failed on that commit: 412 passed, 3 failed, 5 skipped, in 6 minutes."
     end
 
+    test "counts of 0 are shown as 0, not left out as absent counts" do
+      zero = %{passed: 0, failed: 0, skipped: 0, minutes: 6}
+
+      assert suite_tab(Map.merge(counts(:passed), zero)) |> suite_line() ==
+               "The full test suite passed on that commit: 0 passed, 0 failed, 0 skipped, in 6 minutes."
+
+      assert suite_tab(Map.merge(counts(:failed, true), zero)) |> suite_line() ==
+               "The full test suite failed: 0 passed, 0 failed, 0 skipped."
+    end
+
     test "a result with no counts has the minutes on the Standard track, and nothing on the Fast" do
       none = %{passed: nil, failed: nil, skipped: nil, minutes: 6}
 

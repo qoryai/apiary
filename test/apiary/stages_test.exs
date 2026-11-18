@@ -3569,6 +3569,26 @@ defmodule Apiary.StagesTest do
       end
     end
 
+    test "counts of 0 are counts, not absent counts" do
+      assert %{passed: 0, failed: 0, skipped: 0, minutes: 2} =
+               suite_of(%{
+                 "state" => "passed",
+                 "passed" => 0,
+                 "failed" => 0,
+                 "skipped" => 0,
+                 "minutes" => 2
+               })
+
+      assert %{passed: 0, failed: 0, skipped: 0} =
+               suite_of(%{
+                 "state" => "failed",
+                 "passed" => 0.0,
+                 "failed" => 0.0,
+                 "skipped" => 0.0,
+                 "minutes" => 2
+               })
+    end
+
     test "counts that are there come all three, and are whole numbers" do
       base = %{"state" => "passed", "minutes" => 1}
 
