@@ -1780,15 +1780,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   defp model_refused(socket, _params, _reason, _tiers),
     do: put_flash(socket, :error, gettext("Nothing was changed. Try again."))
 
-  # The line for the first refusal of a stored fallback, nil for none: "A fallback on the
-  # Model page cannot be saved: <the refusal>. Change it in Workspace settings › Model.",
-  # the place a link to that page.
+  # The line for the first refusal of a stored fallback, nil for none: "Change a fallback
+  # in Workspace settings › Model. <the refusal>", the place a link to that page.
   defp fallback_refusal(_flow, []), do: nil
 
   defp fallback_refusal(flow, [{:fallbacks, error} | _rest]) do
     rich_gettext(
-      "A fallback on the Model page cannot be saved: %{refusal}. Change it in %{place}.",
-      refusal: error |> translate_error() |> String.trim_trailing("."),
+      "Change a fallback in %{place}. %{refusal}",
+      refusal: translate_error(error),
       place:
         {:link, ~p"/#{flow.organisation}/#{flow.workspace}/settings/model",
          gettext("Workspace settings › Model")}

@@ -4994,9 +4994,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert has_element?(
              lv,
              "#set-up-model-fallback-refused",
-             "A fallback on the Model page cannot be saved: Choose another provider: " <>
-               "#{openrouter.name} is not used in this workspace. Change it in " <>
-               "Workspace settings › Model."
+             "Change a fallback in Workspace settings › Model. Choose another provider: " <>
+               "#{openrouter.name} is not used in this workspace."
            )
 
     assert has_element?(
