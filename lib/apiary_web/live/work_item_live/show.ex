@@ -2284,9 +2284,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   # The output frames of the tab of `stage`: on a tab whose stage has a `verification`
   # output (`StageTab.verify?/1`), the verification, the Scenarios frame and the row frames
-  # of the newest versions the take in's runs wrote (`StageTab.verify_frames/2`); on any
-  # other tab, one frame for each version an approval of the stage records
-  # (`StageTab.frames/1`).
+  # of the newest versions the take in's runs wrote, with the versions a person made that an
+  # approval of the stage records (`StageTab.verify_frames/3`); on any other tab, one frame
+  # for each version an approval of the stage records (`StageTab.frames/1`).
   defp output_frames(assigns, stage) do
     if StageTab.verify?(stage) do
       newest =
@@ -2294,7 +2294,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         |> ExploreView.newest_outputs(stage.id, stage.outputs)
         |> StageTab.newest(assigns.view.artifacts, assigns.row.take_in)
 
-      StageTab.verify_frames(stage, newest)
+      StageTab.verify_frames(stage, newest, recorded(assigns, stage.id))
     else
       assigns |> recorded(stage.id) |> StageTab.frames()
     end
@@ -2326,17 +2326,18 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp approver(_socket, frame), do: frame
 
-  # A frame's key among the texts the page read: its type, name and version; for the Scenarios
-  # frame, the stage, the take in and the newest version of each name of the types its
-  # scenarios are read from, so a new version of any of them reads them again.
-  defp read_key(%{kind: :scenarios}, %{view: view, artifacts: artifacts, row: row}) do
+  # A frame's key among the texts the page read: its type, name and version; for the
+  # Scenarios frame, the stage, the take in, the newest version of each name of the types
+  # its scenarios are read from and the versions a person made that it shows (`persons`), so
+  # a new version of any of them reads them again.
+  defp read_key(%{kind: :scenarios} = frame, %{view: view, artifacts: artifacts, row: row}) do
     ids =
       for artifact <- artifacts,
           artifact.type in ["verification", "demo-evidence", "demo-script" | VerifyTab.media()],
           %{public_id: id} <- [Artifacts.newest_counted(artifact)],
           do: id
 
-    {:scenarios, view.stage.id, row.take_in, Enum.sort(ids)}
+    {:scenarios, view.stage.id, row.take_in, Enum.sort(ids), frame.persons}
   end
 
   defp read_key(%{type: type, name: name, version: version}, _assigns),
@@ -2344,10 +2345,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   # A verification is read as its parts (`VerifyTab.verification/1`), else, as any other
   # output, as Markdown. The scenarios are those of the verified commit, that of the
-  # stage's verification, where it has one (`VerifyTab.scenarios/5`). `reads` is what the
+  # stage's verification, where it has one (`VerifyTab.scenarios/6`). `reads` is what the
   # page read from the store before (`stored_reads`), by version: a version never
   # changes, so each is read once. Each clause returns the read and `reads`.
-  defp read_output(%{assigns: assigns}, {:scenarios, stage_id, take_in, _ids}, reads) do
+  defp read_output(%{assigns: assigns}, {:scenarios, stage_id, take_in, _ids, persons}, reads) do
     {commit, reads} = verified_commit(assigns, stage_id, take_in, reads)
 
     reads =
@@ -2361,7 +2362,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         stage_id,
         take_in,
         commit,
-        &Map.get(reads, {:json, &1.public_id})
+        &Map.get(reads, {:json, &1.public_id}),
+        persons
       )
 
     {{:scenarios, scenarios}, reads}
@@ -2532,13 +2534,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   # The artifacts of `type` that a frame of the tab lists, `main` first and then by name
-  # (`Apiary.Artifacts.name_order/1`): `main`, and each other name with a version that a
-  # run of the take in wrote at the stage (`StageTab.of_take_in/2`), so an earlier take
-  # in's names stay off the tab.
-  defp named(artifacts, type, view, row) do
+  # (`Apiary.Artifacts.name_order/1`): `main`, each other name with a version that a run of
+  # the take in wrote at the stage (`StageTab.of_take_in/2`), so an earlier take in's names
+  # stay off the tab, and each `{type, name}` of `persons`.
+  defp named(artifacts, type, view, row, persons \\ []) do
     taken =
       for artifact <- StageTab.of_take_in(view.artifacts, row.take_in),
-          into: MapSet.new(),
+          into: MapSet.new(persons),
           do: {artifact.type, artifact.name}
 
     artifacts
@@ -2547,12 +2549,15 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   # The artifacts a frame's row lists: on the tab of a stage with a `verification` output,
-  # those of the frame's type (`named/4`); elsewhere, the artifact of the frame's type and
-  # name.
+  # those of the frame's type (`named/5`), with the names of the versions a person made that
+  # the frame shows (`persons`); elsewhere, the artifact of the frame's type and name.
   defp row_artifacts(artifacts, output, view, row) do
-    if StageTab.verify?(view.stage),
-      do: named(artifacts, output.type, view, row),
-      else: Enum.filter(artifacts, &(&1.type == output.type and &1.name == output.name))
+    if StageTab.verify?(view.stage) do
+      persons = for person <- Map.get(output, :persons, []), do: {person.type, person.name}
+      named(artifacts, output.type, view, row, persons)
+    else
+      Enum.filter(artifacts, &(&1.type == output.type and &1.name == output.name))
+    end
   end
 
   # The words of the artifact rows in a frame: on the tab of a stage with a `verification`

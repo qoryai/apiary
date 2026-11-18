@@ -86,8 +86,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Explainer, show the version and the artifact rows only, and a row names the artifact
   as the gate card does, such as “demo video scenario-1 v1”. The gate card lists the
   films and pictures together, in scenario order.
-- An output frame on a stage's tab lists the artifact row of each name of its type,
-  `main` first, and an output with only other names has a frame too.
+- On that tab, an output frame lists the artifact row of each name of its type, `main`
+  first, and an output with only other names has a frame too.
 - A run's page shows a withdrawal as “Withdrew demo script scenario-2 (version 3)” in
   place of “Pushed”, and a version page's History shows it in place of “Version 3”,
   with the artifact in the plain form of the gate card (the type with spaces, then the
@@ -158,13 +158,21 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   a person's approval lists it, it is the approved version for every later run, also after
   a move back to a stage at or before that approval; the gate of that stage then shows and
   approves it, in `outputs` of `GET work-item` and on the stage's tab of the work item
-  page. The stage's tab has a frame for every version that an approval at its gate
-  records: one that only a person uploaded, one of an earlier take in, and a change. A
-  frame of an artifact not named `main` has the name after the type in its heading. A
-  person's version has the caption "Version <n> · <the member's short name>". Once the
-  work item has left a stage that a person approved, the stage's tab shows a frame for
-  each version that approval recorded. In a stage that started no run, the input frames
-  follow the output frames, folded. On the stage card, each output's version at the gate
+  page. An approval at a gate records a version of each name of each output type, and
+  the gate card lists each name on a row of its own. The tab of a stage with no
+  `verification` output has a frame for every version that an approval at its gate
+  records: one for each name of a type, one that only a person uploaded, one of an
+  earlier take in, and a change. A frame of an artifact not named `main` has the name
+  after the type in its heading. A person's version has the caption "Version <n> · <the
+  member's short name>". Once the work item has left a stage that a person approved, the
+  stage's tab shows a frame for each version that approval recorded. On the tab of a
+  stage with a `verification` output, the frames stay those of the Verify tab, and each
+  version a person made that an approval would record is added: a film or picture is an
+  entry of the Scenarios frame, with its name as the title and that caption, and the
+  frame's count of scenarios includes it; a version of another type is a row in its
+  type's frame, whose caption has the member's short name where that version is the
+  frame's highest. In a stage that started no run, the input frames follow the output
+  frames, folded. On the stage card, each output's version at the gate
   links to that version's page, and the gate also links every further version that an
   approval would record. In `GET artifacts`, each version has `decision` and
   `decision_at`, the time of that note.
