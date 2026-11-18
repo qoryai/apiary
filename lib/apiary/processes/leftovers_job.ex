@@ -2,14 +2,16 @@ defmodule Apiary.Processes.LeftoversJob do
   @moduledoc """
   Deletes the overrides of one workspace that are no longer kept, its workflows' model
   choices and time limits (Apiary.Processes.delete_leftovers_now/1), as the instance.
-  A close or an undo of a work item, or its take in onto the current version while it is
-  on another, enqueues it in its transaction, so it runs once that commits, under the
-  workspace's row: the change holds the work item's row, which comes after the
-  workspace's in the lock order (docs/access.md).
+  A close or an undo of a work item, or the end of a run of a workflow that has an
+  override, enqueues it in its transaction, so it runs once that commits, under the
+  workspace's row: the change holds the work item's row or the run's, which come after
+  the workspace's in the lock order (docs/access.md).
 
-  Each such change enqueues one job, which reads the work items when it runs. A second
-  run of a job finds nothing more to delete. A job whose workspace is gone has nothing
-  to do and completes (`c:Apiary.Job.scope_gone/1`).
+  Each such change enqueues one job, which reads the work items and the runs when it
+  runs. A second run of a job finds nothing more to delete. A job whose workspace is gone
+  has nothing to do and completes (`c:Apiary.Job.scope_gone/1`); one whose workspace or
+  organisation is marked for deletion deletes nothing and is cancelled, as `Apiary.Job`
+  cancels such a job.
   """
   use Apiary.Job,
     scope: :workspace,
@@ -27,13 +29,7 @@ defmodule Apiary.Processes.LeftoversJob do
     do: new(%{"organisation_id" => organisation_id, "workspace_id" => workspace_id})
 
   @impl Apiary.Job
-  def perform(%Scope{} = scope, %Oban.Job{}) do
-    case Apiary.Processes.delete_leftovers_now(scope) do
-      :ok -> :ok
-      {:error, :not_found} -> :ok
-      {:error, reason} -> {:error, reason}
-    end
-  end
+  def perform(%Scope{} = scope, %Oban.Job{}), do: Apiary.Processes.delete_leftovers_now(scope)
 
   @impl Apiary.Job
   def scope_gone(%Oban.Job{}), do: :ok

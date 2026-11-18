@@ -1037,17 +1037,14 @@ defmodule Apiary.WorkItems do
   @doc false
   # delete_leftovers_later/1 enqueues, in the caller's transaction, the deletion of the
   # overrides that the workspaces of `work_items` no longer keep once they are closed or
-  # undone (`Apiary.Processes.LeftoversJob`): it runs once the transaction commits.
+  # undone (`Apiary.Processes.delete_leftovers_later/1`): it runs once the transaction
+  # commits.
   @spec delete_leftovers_later([WorkItem.t()]) :: :ok
-  def delete_leftovers_later(work_items) do
-    for {organisation_id, workspace_id} <-
-          Enum.uniq(Enum.map(work_items, &{&1.organisation_id, &1.workspace_id})) do
-      {:ok, _job} =
-        Oban.insert(Apiary.Processes.LeftoversJob.for_workspace(organisation_id, workspace_id))
-    end
-
-    :ok
-  end
+  def delete_leftovers_later(work_items),
+    do:
+      Apiary.Processes.delete_leftovers_later(
+        Enum.map(work_items, &{&1.organisation_id, &1.workspace_id})
+      )
 
   @doc false
   # close_for_adapter/2 closes, as the instance, every live work item whose ticket came

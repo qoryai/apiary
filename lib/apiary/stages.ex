@@ -207,11 +207,6 @@ defmodule Apiary.Stages do
     version = Processes.current(Repo.get!(Workspace, work_item.workspace_id))
     [first | _rest] = version.document["stages"]
     :ok = close_open(work_item, :close, nil, nil)
-
-    # A live work item moved off another version may leave its workflows unused.
-    if work_item.state == :exploring and work_item.process_version_id not in [nil, version.id],
-      do: :ok = WorkItems.delete_leftovers_later([work_item])
-
     {work_item, run} = enter_locked(%{work_item | process_version_id: version.id}, version, first)
     tell_now(work_item)
     {:ok, run}
