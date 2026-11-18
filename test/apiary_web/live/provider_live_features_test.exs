@@ -76,13 +76,13 @@ defmodule ApiaryWeb.ProviderLiveFeaturesTest do
 
     @tag with_features: Apiary.Features.all() -- [:model_proxies]
     test "off: the add form leaves out LiteLLM, and a LiteLLM provider added stays listed",
-         %{conn: conn, scope: scope} do
+         %{conn: conn, scope: scope} = ctx do
       {:ok, lv, _html} = live(conn, new_path(scope))
       assert offered(lv) == ~w(anthropic claude-subscription deepseek openrouter)
 
       # Added while the feature was on: with it off, a LiteLLM provider is not added.
       provider =
-        Apiary.ConnectionsFixtures.provider_added_with_model_proxies!(scope, %{
+        Apiary.ConnectionsFixtures.provider_added_with_model_proxies!(ctx, scope, %{
           provider: "litellm",
           settings: %{"address" => "https://litellm.example.com"},
           keys: [%{value_id: "main", value: "sk-litellm-features-0123456789"}]
@@ -136,9 +136,9 @@ defmodule ApiaryWeb.ProviderLiveFeaturesTest do
 
     @tag with_features: Apiary.Features.all() -- [:model_proxies]
     test "off: a LiteLLM provider added before stays, and its edit is not refused",
-         %{scope: scope} do
+         %{scope: scope} = ctx do
       provider =
-        Apiary.ConnectionsFixtures.provider_added_with_model_proxies!(scope, %{
+        Apiary.ConnectionsFixtures.provider_added_with_model_proxies!(ctx, scope, %{
           provider: "litellm",
           settings: %{"address" => "https://litellm.example.com"},
           keys: [%{value_id: "main", value: "sk-litellm-features-0123456789"}]

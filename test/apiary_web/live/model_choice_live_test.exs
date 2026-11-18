@@ -772,12 +772,13 @@ defmodule ApiaryWeb.ModelChoiceLive.ModelProxiesTest do
 
   setup :register_and_log_in_user
 
-  setup %{scope: scope} do
+  setup %{scope: scope} = ctx do
     %{
       anthropic: provider!(scope, %{provider: "anthropic"}),
       # Added while the feature was on: with it off, a LiteLLM provider is not added.
       litellm:
         Apiary.ConnectionsFixtures.provider_added_with_model_proxies!(
+          ctx,
           scope,
           with_key(%{
             provider: "litellm",

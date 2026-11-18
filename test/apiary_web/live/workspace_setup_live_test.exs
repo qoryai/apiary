@@ -5979,13 +5979,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelProxiesTest do
   alias Apiary.{Connections, Repo}
   alias Apiary.ModelChoices.ModelChoice
 
-  setup %{conn: conn} do
+  setup %{conn: conn} = ctx do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
     anthropic = provider!(scope, %{provider: "anthropic"})
 
     # Added while the feature was on: with it off, a LiteLLM provider is not added.
     litellm =
       Apiary.ConnectionsFixtures.provider_added_with_model_proxies!(
+        ctx,
         scope,
         with_key(%{
           provider: "litellm",

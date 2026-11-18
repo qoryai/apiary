@@ -11,21 +11,15 @@ defmodule Apiary.ConnectionsFixtures do
   alias Apiary.Runs.Target
 
   @doc """
-  provider_added_with_model_proxies!/2 is a model provider added for `scope` with `attrs`,
-  as `Apiary.Connections.create_provider/2` takes them, while the feature `model_proxies`
-  is on: a provider whose description lists no models, such as LiteLLM, added before the
-  feature was turned off. The feature is on for that one call, and the features are put
-  back after it. The features are the whole node's, so the test must not be async.
+  provider_added_with_model_proxies!/3 is a model provider added for `scope` with
+  `attrs`, as `Apiary.Connections.create_provider/2` takes them, while the feature
+  `model_proxies` is on: a provider whose description lists no models, such as LiteLLM,
+  added before the feature was turned off. `tags` is the test's context. The feature is
+  on for that one call (`Apiary.DataCase.model_proxies_on!/1`, which raises for an async
+  test or with `factory` off), and the features are put back after it.
   """
-  def provider_added_with_model_proxies!(scope, attrs) do
-    previous = Application.get_env(:apiary, :features)
-    enabled = Apiary.Features.enabled()
-
-    Application.put_env(
-      :apiary,
-      :features,
-      Enum.filter(Apiary.Features.all(), &(&1 in [:model_proxies | enabled]))
-    )
+  def provider_added_with_model_proxies!(tags, scope, attrs) do
+    previous = Apiary.DataCase.model_proxies_on!(tags)
 
     try do
       {:ok, provider} = Apiary.Connections.create_provider(scope, attrs)

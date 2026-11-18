@@ -229,9 +229,23 @@ defmodule Apiary.DataCase do
   whole node's, so the test must not be async.
   """
   def with_model_proxies(tags) do
+    previous = model_proxies_on!(tags)
+    on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+    :ok
+  end
+
+  @doc """
+  model_proxies_on!/1 turns the `model_proxies` feature on beside the features the suite
+  runs under, and returns the features as they were, for the caller to put back with
+  `Application.put_env(:apiary, :features, previous)`. `tags` is the test's context.
+  Raises for an async test, as the features are the whole node's, and where `factory`
+  is off, as `model_proxies` needs it. `with_model_proxies/1` and
+  `Apiary.ConnectionsFixtures.provider_added_with_model_proxies!/3` call it.
+  """
+  def model_proxies_on!(tags) do
     if tags[:async] do
       raise ArgumentError,
-            "with_model_proxies changes the whole node, so the test must not be async"
+            "Make the test sync: model_proxies changes the whole node's features"
     end
 
     enabled = Apiary.Features.enabled()
@@ -250,8 +264,7 @@ defmodule Apiary.DataCase do
       Enum.filter(Apiary.Features.all(), &(&1 in [:model_proxies | enabled]))
     )
 
-    on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
-    :ok
+    previous
   end
 
   @doc """
