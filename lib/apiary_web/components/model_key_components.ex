@@ -579,22 +579,6 @@ defmodule ApiaryWeb.ModelKeyComponents do
         time: time
       )
 
-  @doc """
-  The label of the field that takes a login key, on every form that has one (Add key, Edit
-  key, New model provider, the set-up's Model step, Add value and Change value of a
-  secret): Sign-in.
-  """
-  @spec sign_in_label() :: String.t()
-  def sign_in_label, do: gettext("Sign-in")
-
-  @doc "The hint of the field that takes a login key, as `sign_in_label/0` is its label."
-  @spec sign_in_hint() :: String.t()
-  def sign_in_hint do
-    gettext(
-      "Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it again. Run codex login with a separate CODEX_HOME, and don't use that login anywhere else."
-    )
-  end
-
   @doc "Whether `login`, a key's sign-in as `login/2` has it, is one that needs a new sign-in."
   @spec sign_in_needed?(login | nil) :: boolean
   def sign_in_needed?({:sign_in_needed, _rejected, _help}), do: true
@@ -613,9 +597,6 @@ defmodule ApiaryWeb.ModelKeyComponents do
   defp capitalise(<<first::utf8, rest::binary>>), do: String.upcase(<<first::utf8>>) <> rest
   defp capitalise(text), do: text
 
-  defp sign_in_help(%Connection{provider_kind: "openai-subscription"}),
-    do: gettext("Run codex login --device-auth and replace the key.")
-
   defp sign_in_help(%Connection{}), do: nil
 
   @doc """
@@ -629,11 +610,12 @@ defmodule ApiaryWeb.ModelKeyComponents do
     assigns = assign(assigns, :refreshed, refreshed)
 
     ~H"""
-    <span id={@id} class="text-[13px]/5">
+    <span id={@id} class="grid text-[13px]/5">
       <span :if={@refreshed} class="font-medium">
         {gettext("Signed in. Last refresh %{time}.", time: @refreshed)}
       </span>
       <span :if={!@refreshed} class="font-medium">{gettext("Signed in.")}</span>
+      <span class="text-muted">{stored_line()}</span>
     </span>
     """
   end
@@ -649,4 +631,182 @@ defmodule ApiaryWeb.ModelKeyComponents do
     </span>
     """
   end
+
+  ## Sign in with ChatGPT
+
+  # The line under a signed-in key's state.
+  defp stored_line, do: gettext("Qory Apiary stores the sign-in encrypted, and no page shows it.")
+
+  @doc """
+  The device sign-in of a key's form (`ApiaryWeb.ModelKeyDevice`), in the place of the
+  field that took a pasted login: by the state of `device`,
+
+    * `:idle`: the button Sign in with ChatGPT with its hint; for a key that needs a new
+      sign-in (`login`, as `login/2` has it), the heading and the reason above it;
+    * `:starting`: the button, off, until the provider sends a code;
+    * `:code`: the page to open, the code with Copy, until when it works, a spinner with
+      what Qory Apiary waits for, and Cancel, which stops the sign-in;
+    * `:signed_in`: the state of a new sign-in;
+    * `:expired`, `:off`, `:failed`: the fix, the cause and the button.
+
+  `errors` are the form's errors on the sign-in, as sentences. `key` is the value id of the
+  key a button in a list row starts the sign-in for, nil on a form.
+  """
+  attr :id, :string, required: true
+
+  attr :device, :any,
+    required: true,
+    doc: "the sign-in as `ApiaryWeb.ModelKeyDevice` has it, or nil"
+
+  attr :login, :any, default: nil
+  attr :errors, :list, default: []
+  attr :key, :string, default: nil
+  attr :hint, :boolean, default: true, doc: "whether the button has its hint"
+
+  # A provider with no device sign-in has no button: its errors alone show.
+  def sign_in_with_chatgpt(%{device: nil} = assigns) do
+    ~H"""
+    <div :if={@errors != []} id={@id} class="grid gap-1">
+      <p
+        :for={{message, index} <- Enum.with_index(@errors)}
+        id={"#{@id}-error-#{index + 1}"}
+        class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+      >
+        <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+        {message}
+      </p>
+    </div>
+    """
+  end
+
+  def sign_in_with_chatgpt(%{device: %{state: :code}} = assigns) do
+    ~H"""
+    <div id={@id} class="grid gap-2 text-[13.5px]/5">
+      <p id={"#{@id}-open"}>
+        <.rich text={
+          rich_gettext("Open %{address} and enter this code.",
+            address: {:part, :address}
+          )
+        }>
+          <:part name={:address}>
+            <a
+              href={@device.verification_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="q-link"
+            >
+              {address(@device.verification_url)}
+            </a>
+          </:part>
+        </.rich>
+      </p>
+      <div class="flex items-center gap-3">
+        <code
+          id={"#{@id}-code"}
+          class="rounded-selector border border-line bg-surface px-3 py-2 font-mono text-xl tracking-wider"
+        >
+          {@device.user_code}
+        </code>
+        <.copy_button id={"#{@id}-copy"} target={"##{@id}-code"} />
+      </div>
+      <p id={"#{@id}-until"} class="text-muted">
+        {gettext("The code works until %{time}.", time: Format.time(@device.expires_at))}
+      </p>
+      <div class="flex items-center gap-3">
+        <span class="loading loading-spinner loading-xs text-faint" aria-hidden="true" />
+        <span id={"#{@id}-waiting"}>
+          {gettext("Waiting for you to approve the sign-in on OpenAI's page.")}
+        </span>
+        <.button id={"#{@id}-cancel"} type="button" size="xs" phx-click="device_cancel">
+          {gettext("Cancel")}
+        </.button>
+      </div>
+    </div>
+    """
+  end
+
+  def sign_in_with_chatgpt(%{device: %{state: :signed_in}} = assigns) do
+    ~H"""
+    <div id={@id} class="grid text-[13px]/5">
+      <span id={"#{@id}-state"} class="font-medium">{gettext("Signed in.")}</span>
+      <span class="text-muted">{stored_line()}</span>
+    </div>
+    """
+  end
+
+  def sign_in_with_chatgpt(%{device: %{state: state}} = assigns)
+      when state in [:expired, :off, :failed] do
+    ~H"""
+    <div id={@id} class="grid justify-items-start gap-1.5 text-[13px]/5">
+      <span id={"#{@id}-fix"} class="text-error">
+        <%= if @device.state == :off do %>
+          <.rich text={
+            rich_gettext(
+              "Turn on %{label} in ChatGPT's security settings, or ask your ChatGPT workspace admin to turn it on.",
+              label: {:b, "Enable device code sign-in for Codex"}
+            )
+          } />
+        <% else %>
+          {gettext("Click Sign in with ChatGPT for a new code.")}
+        <% end %>
+      </span>
+      <span :if={@device.state == :expired} id={"#{@id}-cause"} class="text-muted">
+        {gettext("The code expired before the sign-in was approved.")}
+      </span>
+      <span :if={@device.state == :off} id={"#{@id}-cause"} class="text-muted">
+        {gettext(
+          "OpenAI returned no code, because device code sign-in for Codex is off for this ChatGPT account."
+        )}
+      </span>
+      <.sign_in_button id={@id} key={@key} />
+    </div>
+    """
+  end
+
+  def sign_in_with_chatgpt(assigns) do
+    ~H"""
+    <div id={@id} class="grid justify-items-start gap-1.5">
+      <span :if={sign_in_needed?(@login)} id={"#{@id}-needed"} class="grid text-[13px]/5">
+        <span class="font-medium text-error">{gettext("Needs a new sign-in")}</span>
+        <span class="text-muted">{elem(@login, 1)}</span>
+      </span>
+      <.sign_in_button id={@id} key={@key} disabled={@device.state == :starting} />
+      <p :if={@hint} id={"#{@id}-hint"} class="text-[12.5px]/[18px] text-muted">
+        {gettext(
+          "Qory Apiary signs in to ChatGPT for this key. You enter a code on OpenAI's page, and you paste nothing."
+        )}
+      </p>
+      <p
+        :for={{message, index} <- Enum.with_index(@errors)}
+        id={"#{@id}-error-#{index + 1}"}
+        class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+      >
+        <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+        {message}
+      </p>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :key, :string, default: nil
+  attr :disabled, :boolean, default: false
+
+  defp sign_in_button(assigns) do
+    ~H"""
+    <.button
+      id={"#{@id}-start"}
+      type="button"
+      phx-click="device_sign_in"
+      phx-value-key={@key}
+      disabled={@disabled}
+    >
+      {gettext("Sign in with ChatGPT")}
+    </.button>
+    """
+  end
+
+  # A page's address without its scheme, as the person reads it.
+  defp address("https://" <> address), do: address
+  defp address(address), do: address
 end

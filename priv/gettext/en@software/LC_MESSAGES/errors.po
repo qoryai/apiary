@@ -203,16 +203,6 @@ msgstr ""
 msgid "Name the host."
 msgstr ""
 
-#: lib/apiary/model_keys/login.ex
-#, elixir-autogen, elixir-format
-msgid "Paste the whole auth.json that codex login wrote."
-msgstr ""
-
-#: lib/apiary/model_keys/login.ex
-#, elixir-autogen, elixir-format
-msgid "Paste the whole auth.json that codex login wrote. This text has no refresh token."
-msgstr ""
-
 #: lib/apiary/kinds/endpoint.ex
 #, elixir-autogen, elixir-format
 msgid "Percent-encode %{character} in the path, or remove it."
@@ -463,6 +453,11 @@ msgstr ""
 #: lib/apiary/organisations/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "is already the slug of another organisation"
+msgstr ""
+
+#: lib/apiary/connections.ex
+#, elixir-autogen, elixir-format
+msgid "is invalid"
 msgstr ""
 
 #: lib/apiary/organisations/slug.ex

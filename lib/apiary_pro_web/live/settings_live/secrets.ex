@@ -55,7 +55,7 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
   alias Apiary.Secrets.{Secret, Value}
   alias ApiaryPro.{OrganisationSecrets, OrganisationVariables}
   alias ApiaryProWeb.SettingsLive.SecretsAndVariables
-  alias ApiaryWeb.{People, SettingsComponents, UserAuth}
+  alias ApiaryWeb.{ModelKeyComponents, ModelKeyDevice, People, SettingsComponents, UserAuth}
   alias ApiaryWeb.SecretLive.Query
 
   # The acts that are a page of the section; the deletions ask to confirm on their row.
@@ -673,7 +673,13 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
         class="font-mono"
         phx-mounted={!@unnamed && JS.focus()}
       />
-      <.value_field form={@form} login={Apiary.ModelKeys.Login.provider?(@provider)} />
+      <ModelKeyComponents.sign_in_with_chatgpt
+        :if={Apiary.ModelKeys.Login.provider?(@provider)}
+        id="secret-sign-in"
+        device={@device}
+        errors={Enum.map(@form[:value].errors, &ApiaryWeb.CoreComponents.translate_error/1)}
+      />
+      <.value_field :if={!Apiary.ModelKeys.Login.provider?(@provider)} form={@form} />
       <.page_form_foot id="secret-save" cancel={list_path(@current_scope, @query)} cancel_by="patch">
         <.button variant="primary" type="submit" loading_text={gettext("Saving")}>
           {gettext("Add value")}
@@ -686,10 +692,16 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
   defp form_page(%{act: :change_value} = assigns) do
     ~H"""
     <.form for={@form} id="secret-form" phx-submit="set_value" class="grid gap-4" novalidate>
+      <ModelKeyComponents.sign_in_with_chatgpt
+        :if={Apiary.ModelKeys.Login.provider?(@provider)}
+        id="secret-sign-in"
+        device={@device}
+        errors={Enum.map(@form[:value].errors, &ApiaryWeb.CoreComponents.translate_error/1)}
+      />
       <.value_field
+        :if={!Apiary.ModelKeys.Login.provider?(@provider)}
         form={@form}
         label={gettext("New value")}
-        login={Apiary.ModelKeys.Login.provider?(@provider)}
         focus
       />
       <.page_form_foot id="secret-save" cancel={list_path(@current_scope, @query)} cancel_by="patch">
@@ -867,30 +879,18 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
   attr :label, :string, default: nil
   attr :focus, :boolean, default: false, doc: "whether the field takes the focus as it mounts"
   attr :disabled, :boolean, default: false, doc: "off while its choice is not taken"
-  attr :login, :boolean, default: false, doc: "whether it takes a model key's login"
 
   # The value of a secret: written, sent once, and never rendered back. The field's value
-  # is always empty, whatever the form holds. For a model key that is a login, the field is
-  # the Sign-in, whatever its label, and its hint says what to paste.
+  # is always empty, whatever the form holds.
   defp value_field(assigns) do
     ~H"""
     <.input
       field={@form[:value]}
       type="textarea"
       value=""
-      label={
-        cond do
-          @login -> ApiaryWeb.ModelKeyComponents.sign_in_label()
-          @label -> @label
-          true -> gettext("Value")
-        end
-      }
+      label={@label || gettext("Value")}
       rows="4"
-      hint={
-        if @login,
-          do: ApiaryWeb.ModelKeyComponents.sign_in_hint(),
-          else: gettext("Stored encrypted. Nobody sees it again once it is saved.")
-      }
+      hint={gettext("Stored encrypted. Nobody sees it again once it is saved.")}
       autocomplete="off"
       spellcheck="false"
       class="font-mono"
@@ -1068,6 +1068,7 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
 
     socket =
       socket
+      |> ModelKeyDevice.attach()
       |> assign(
         query: %Query{},
         act: nil,
@@ -1206,6 +1207,7 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
 
     socket =
       socket
+      |> ModelKeyDevice.for_provider(nil)
       |> assign(act: nil, secret: nil, provider: nil, value: nil, form: nil, refusal: nil)
       |> then(&if(action == :index, do: assign(&1, :query, query(params)), else: &1))
       |> open(action, params)
@@ -1277,22 +1279,26 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
 
   defp open(socket, :add_value, %{"id" => id}) do
     with_secret(socket, id, nil, fn socket, secret, _value ->
-      assign(socket,
+      socket
+      |> assign(
         act: :add_value,
         secret: secret,
         form: value_form(Ecto.Changeset.change(%Value{}))
       )
+      |> device()
     end)
   end
 
   defp open(socket, :change_value, %{"id" => id} = params) do
     with_secret(socket, id, {:value, params["value_id"]}, fn socket, secret, value ->
-      assign(socket,
+      socket
+      |> assign(
         act: :change_value,
         secret: secret,
         value: value,
         form: value_form(Ecto.Changeset.change(%Value{}))
       )
+      |> device()
     end)
   end
 
@@ -1426,6 +1432,31 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
   defp rows?(_rows), do: false
 
   # The search is the URL's `q`, sent as the reader types.
+  # The device sign-in of the form of a model provider's key whose keys are logins.
+  defp device(%{assigns: %{provider: %Connection{} = provider}} = socket),
+    do:
+      ModelKeyDevice.for_provider(
+        socket,
+        Apiary.ModelKeys.Login.provider?(provider) && provider.provider_kind
+      )
+
+  defp device(socket), do: socket
+
+  # `params` with the sign-in of a provider whose keys are logins as its value: the form
+  # sends no value for it, and a value it sent is dropped.
+  defp sign_in(params, %{assigns: %{provider: %Connection{} = provider}} = socket) do
+    if Apiary.ModelKeys.Login.provider?(provider) do
+      case ModelKeyDevice.login(socket) do
+        {:ok, login} -> Map.put(params, "value", login)
+        :error -> Map.delete(params, "value")
+      end
+    else
+      params
+    end
+  end
+
+  defp sign_in(params, _socket), do: params
+
   defp handle("find", %{"q" => q}, socket) do
     query = %{socket.assigns.query | q: String.trim(q)}
 
@@ -1496,7 +1527,7 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
        )
        when is_map(params) do
     %{current_scope: scope, secret: secret, provider: provider} = socket.assigns
-    params = Map.take(params, ~w(value_id value first_value_id))
+    params = params |> Map.take(~w(value_id value first_value_id)) |> sign_in(socket)
 
     added =
       if provider,
@@ -1529,6 +1560,7 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
        )
        when is_map(params) do
     %{current_scope: scope, secret: secret, value: value, provider: provider} = socket.assigns
+    params = sign_in(params, socket)
 
     set =
       if provider,

@@ -23,7 +23,10 @@ defmodule ApiaryWeb.ProviderLive.Index do
   #
   # A key is write-only: the page never renders it nor keeps it in an assign. Its field
   # is left out of the page's patches (`phx-update="ignore"`), so a change of the provider
-  # keeps what was typed, and each save renders a new, empty field.
+  # keeps what was typed, and each save renders a new, empty field. For a provider whose
+  # keys are logins (`Apiary.ModelKeys.Login`) the field is the button Sign in with ChatGPT
+  # (`ApiaryWeb.ModelKeyDevice`), and the sign-in is kept with the form until Save; a
+  # change of the provider stops it.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -37,7 +40,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
   alias Apiary.{Access, Connections, ModelKeys}
   alias Apiary.Kinds.{Provider, Providers}
   alias ApiaryWeb.IntegrationLive.Common
-  alias ApiaryWeb.{ModelKeyComponents, SettingsComponents, UserAuth}
+  alias ApiaryWeb.{ModelKeyComponents, ModelKeyDevice, SettingsComponents, UserAuth}
 
   # The value id of the key that New model provider adds.
   @key_id "key-1"
@@ -52,6 +55,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
 
     {:ok,
      socket
+     |> ModelKeyDevice.attach()
      |> assign(
        sections: SettingsComponents.sections(scope, :organisation),
        providers: providers,
@@ -91,18 +95,28 @@ defmodule ApiaryWeb.ProviderLive.Index do
 
     params = Enum.reduce(errors, params, fn {field, _}, p -> Map.put_new(p, "#{field}", "") end)
 
-    assign(socket,
+    chosen = chosen(params["provider"])
+
+    socket
+    |> ModelKeyDevice.for_provider(login_kind(chosen))
+    |> assign(
       form: to_form(params, as: :provider, errors: errors),
-      chosen: chosen(params["provider"])
+      chosen: chosen
     )
   end
 
   @doc false
   # login?/1 is whether the keys of `chosen`, a catalogue provider or nil, are logins
-  # (`Apiary.ModelKeys.Login`): the form's field is the Sign-in. The set-up's Model step
+  # (`Apiary.ModelKeys.Login`): the form has the button Sign in with ChatGPT in place of the
+  # Key field. The set-up's Model step
   # calls it too.
   def login?(%Provider{name: name}), do: Apiary.ModelKeys.Login.provider?(name)
   def login?(_chosen), do: false
+
+  @doc false
+  # login_kind/1 is the catalogue name of `chosen` when its keys are logins, else nil: what
+  # `ApiaryWeb.ModelKeyDevice.for_provider/2` takes. The set-up's Model step calls it too.
+  def login_kind(chosen), do: if(login?(chosen), do: chosen.name)
 
   defp chosen(name) do
     case Providers.fetch(name) do
@@ -136,7 +150,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
 
     attrs = %{
       "provider" => params["provider"],
-      "keys" => [%{"value_id" => @key_id, "value" => params["key"] || ""}],
+      "keys" => [%{"value_id" => @key_id, "value" => key_value(socket, params)}],
       "settings" => Map.new(address_names(params["provider"]), &{&1, params[&1] || ""})
     }
 
@@ -176,6 +190,19 @@ defmodule ApiaryWeb.ProviderLive.Index do
 
   def handle_event(event, _params, socket) when event in ~w(choose create),
     do: {:noreply, socket}
+
+  # The value of the key: the sign-in of a provider whose keys are logins, nothing until the
+  # person has signed in, else the Key.
+  defp key_value(socket, params) do
+    if login?(socket.assigns.chosen) do
+      case ModelKeyDevice.login(socket) do
+        {:ok, login} -> login
+        :error -> ""
+      end
+    else
+      params["key"] || ""
+    end
+  end
 
   @doc false
   # field_errors/1 is the errors of a refused provider, each on the field it is about: the
@@ -286,17 +313,20 @@ defmodule ApiaryWeb.ProviderLive.Index do
             label={gettext("Provider")}
             options={provider_options()}
           />
+          <ModelKeyComponents.sign_in_with_chatgpt
+            :if={login?(@chosen)}
+            id="new-provider-sign-in"
+            device={@device}
+            errors={Enum.map(@form[:key].errors, &ApiaryWeb.CoreComponents.translate_error/1)}
+          />
           <.input
+            :if={!login?(@chosen)}
             field={@form[:key]}
             id={"new-provider-key-#{@attempt}"}
             type="password"
             value={nil}
-            label={if login?(@chosen), do: ModelKeyComponents.sign_in_label(), else: gettext("Key")}
-            hint={
-              if login?(@chosen),
-                do: ModelKeyComponents.sign_in_hint(),
-                else: gettext("Qory Apiary stores the key encrypted, and nobody can view it again.")
-            }
+            label={gettext("Key")}
+            hint={gettext("Qory Apiary stores the key encrypted, and nobody can view it again.")}
             autocomplete="new-password"
             spellcheck="false"
             phx-update="ignore"
