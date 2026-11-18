@@ -1,8 +1,9 @@
 defmodule Apiary.ModelKeys.LoginRefreshStoppingTest do
   # A node that is stopping (`:init.get_status/0` returns `{:stopping, _}`) starts no refresh:
-  # a real deploy gives the tasks about 5 seconds, less than a call and its writes need. The
-  # state is the whole node's, so these tests are not async and set the test function
-  # `stopping:` of `Apiary.ModelKeys.Login`, which the real check is replaced by.
+  # a refresh that starts during the stop can be killed at 40 seconds after the SIGTERM,
+  # before its call and its writes end. The state is the whole node's, so these tests are
+  # not async and set the test function `stopping:` of `Apiary.ModelKeys.Login`, which
+  # replaces the real check.
   use Apiary.DataCase, async: false
 
   import Apiary.ModelKeysFixtures
@@ -50,7 +51,8 @@ defmodule Apiary.ModelKeys.LoginRefreshStoppingTest do
     end)
   end
 
-  test "a due refresh takes no lease and makes no call; a valid token is served", %{scope: scope} do
+  test "a due refresh takes no lease and makes no call, and serves a valid token",
+       %{scope: scope} do
     {provider, id} = login!(scope, 60)
     stub!()
     stopping!(true)

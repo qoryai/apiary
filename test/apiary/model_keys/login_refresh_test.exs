@@ -806,7 +806,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
     # A document past a value's size: the key returns `:too_large` for it.
     defp oversized(tag), do: %{new_tokens(tag) | "access_token" => String.duplicate("a", 17_000)}
 
-    test "makes the login need a sign-in at once, and no call uses the spent token",
+    test "makes the login need a sign-in at once, and no call uses the replaced token",
          %{scope: scope} do
       {provider, tokens} = subscription!(scope, expires_in: 60)
       big = oversized("big")

@@ -397,7 +397,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     refute log =~ fresh["access_token"]
   end
 
-  test "a write that fails twice needs a new sign-in, and no call uses the spent token", ctx do
+  test "a write that fails twice needs a new sign-in, and no call uses the replaced token", ctx do
     id = key_id(ctx.provider, "main")
     old = tokens!(ctx.provider, id)
     fresh = answer("lost")
@@ -463,17 +463,30 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
 
   test "the HTTP task has a 20 s shutdown time and the refresh task the lease's 75 s", ctx do
     id = key_id(ctx.provider, "main")
-    stub_held!(answer("times"))
+    test = self()
+    held = answer("times")
+
+    # The stub runs in the HTTP task. The first of its callers is the task that started it,
+    # the refresh task.
+    Req.Test.stub(LoginRefresh, fn conn ->
+      send(test, {:held, self(), hd(Process.get(:"$callers"))})
+
+      receive do
+        :go -> :ok
+      after
+        5_000 -> :ok
+      end
+
+      Req.Test.json(conn, held)
+    end)
 
     caller = start(fn -> refresh(ctx.provider, id) end)
-    assert_receive {:request, http}, 5_000
+    assert_receive {:held, http, refresh_task}, 5_000
 
     # The supervisor's record of each child: `{start, restart, shutdown, type, modules}`.
     children = :sys.get_state(LoginRefresh.supervisor()).children
     assert {_start, :temporary, 20_000, :worker, _modules} = children[http]
-
-    assert [{_start, :temporary, 75_000, :worker, _modules}] =
-             for({pid, child} <- children, pid != http, do: child)
+    assert {_start, :temporary, 75_000, :worker, _modules} = children[refresh_task]
 
     assert Login.lease_seconds() * 1000 == 75_000
     send(http, :go)
@@ -511,6 +524,70 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     assert [%{details: %{"outcome" => "refreshed"}}] = entries(ctx.provider)
   end
 
+  test "a stop between the response and the write leaves the login signed in, and the next " <>
+         "refresh uses the stored refresh token",
+       ctx do
+    id = key_id(ctx.provider, "main")
+    old = tokens!(ctx.provider, id)
+    test = self()
+    lost = answer("lost")
+
+    # The first refresh: the response comes, and the write waits for a lock that a change of
+    # the key holds. The stub runs in the HTTP task, whose first caller is the refresh task.
+    Req.Test.stub(LoginRefresh, fn conn ->
+      send(test, {:answered, hd(Process.get(:"$callers"))})
+      Req.Test.json(conn, lost)
+    end)
+
+    {held, holder} =
+      hold(fn ->
+        Repo.one(
+          from s in Apiary.Secrets.Secret,
+            where: s.id == ^ctx.provider.secret_id,
+            lock: "FOR UPDATE",
+            select: s.id
+        )
+      end)
+
+    caller = start(fn -> refresh(ctx.provider, id) end)
+    assert_receive {:answered, refresh_task}, 5_000
+    waiting!(holder)
+
+    # The node stops: the refresh task ends before it writes.
+    Process.exit(refresh_task, :kill)
+    assert Task.await(caller.task, 10_000) == {:error, :unavailable}
+    commit(held)
+
+    assert tokens!(ctx.provider, id) == old
+    assert %Login{state: "signed_in", lease_id: lease_id} = Repo.get!(Login, id)
+    assert is_binary(lease_id)
+
+    # The lease lapses. The next refresh sends the stored refresh token, and the provider
+    # accepts it, as it did in a check on 2026-11-18.
+    Repo.update_all(from(l in Login, where: l.secret_value_id == ^id),
+      set: [lease_until: DateTime.add(DateTime.utc_now(), -1)]
+    )
+
+    next = answer("next")
+
+    Req.Test.stub(LoginRefresh, fn conn ->
+      {:ok, raw, conn} = Plug.Conn.read_body(conn)
+      send(test, {:sent, Jason.decode!(raw)["refresh_token"]})
+      Req.Test.json(conn, next)
+    end)
+
+    assert {:ok, access, _at} = refresh(ctx.provider, id)
+    assert_received {:sent, sent}
+    assert sent == old.refresh_token
+    assert access == next["access_token"]
+
+    assert %Login{state: "signed_in", sign_in_cause: nil, failures: 0, lease_id: nil} =
+             Repo.get!(Login, id)
+
+    assert tokens!(ctx.provider, id).refresh_token == next["refresh_token"]
+    assert [%{details: %{"outcome" => "refreshed"}}] = entries(ctx.provider)
+  end
+
   test "the mark that needs a new sign-in is written like the first two writes", ctx do
     id = key_id(ctx.provider, "main")
     old = tokens!(ctx.provider, id)
@@ -534,8 +611,9 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     for secret <- [fresh["refresh_token"], fresh["access_token"], old.refresh_token],
         do: refute(log =~ secret)
 
-    # The lease stays until it lapses; the next refresh then calls with the spent refresh
-    # token, and the provider says it was used: the login needs a new sign-in.
+    # The lease stays until it lapses; the next refresh then sends the stored, replaced
+    # refresh token. Here the provider rejects it with `refresh_token_reused`: the login
+    # needs a new sign-in.
     assert %Login{state: "signed_in", lease_id: lease_id} = Repo.get!(Login, id)
     assert is_binary(lease_id)
 

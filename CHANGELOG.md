@@ -98,26 +98,30 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   is dropped. A new refresh token that the key cannot store, such as one past the size of a
   value, is written once more at once; if that fails too, the key shows **Needs a new
   sign-in** with the cause `token_not_stored` and the line “Qory Apiary could not save the
-  new sign-in on <time>.”, because the stored token is spent. A node that is stopping starts
-  no refresh and takes no lease, and a caller gets the stored token while it is valid, else
-  no token. A refresh that is already running gets the task supervisor's grace time when the
-  node stops: up to 20 seconds for the call and up to 75 seconds for the write. A deploy
-  that gives less ends the refresh, and a call that is ended before OpenAI returns a
-  response counts as no failure, writes no Activity line and leaves the key as it was. The
-  deploy recipe is not changed. When OpenAI rejects the refresh token for good (an expired,
-  used or revoked token, `invalid_grant`, or a 401), the key shows **Needs a new sign-in**,
-  with the time of the rejection, and no further call is made until a new sign-in is pasted.
-  When a call fails for a reason that may pass (a 5xx or 429 answer, a timeout, a network
-  error or an answer that is no refresh), the next call is made 30 seconds later at the
-  earliest, then twice as long for each failure in a row, up to 10 minutes, and the key
-  keeps its access token while that token is valid. The organisation's Activity has one line
-  when a key's refresh starts to fail and one when it works again: “Qory Apiary refreshed
-  the sign-in of the key … of …”. The failure line has the cause in words and the code in
-  brackets: “Sign in again on the key … of …” for a refusal that stays, and, for a failure
-  that may pass, the time of the next call. The failed calls between the two leave no line.
-  An organisation without the `secrets` feature, or marked for deletion, makes no call. No
-  Activity line contains a token or a part of OpenAI's answer. Nothing sends the access
-  token to a run yet.
+  new sign-in on <time>.”, because the stored refresh token is replaced. A node that is
+  stopping starts no refresh and takes no lease, and a caller gets the stored token while it
+  is valid, else no token. A refresh that is already running when the node stops has 40
+  seconds from the SIGTERM with the grace that a deploy has (the endpoint stops for 20
+  seconds, Oban for 15, then the process is killed); the 75 seconds that the write is
+  allowed apply only with a longer grace. The call ends within 20 seconds. A call that is
+  ended before OpenAI returns a response counts as no failure, writes no Activity line and
+  leaves the key as it was. After a stop between OpenAI's response and the write, the next
+  refresh uses the stored, replaced refresh token; OpenAI accepted it in a check on
+  2026-11-18, and if it no longer does, the key shows **Needs a new sign-in** with the cause
+  `refresh_token_reused`. The deploy recipe is not changed. When OpenAI rejects the refresh
+  token for good (an expired, used or revoked token, `invalid_grant`, or a 401), the key
+  shows **Needs a new sign-in**, with the time of the rejection, and no further call is made
+  until a new sign-in is pasted. When a call fails for a reason that may pass (a 5xx or 429
+  answer, a timeout, a network error or an answer that is no refresh), the next call is made
+  30 seconds later at the earliest, then twice as long for each failure in a row, up to 10
+  minutes, and the key keeps its access token while that token is valid. The organisation's
+  Activity has one line when a key's refresh starts to fail and one when it works again:
+  “Qory Apiary refreshed the sign-in of the key … of …”. The failure line has the cause in
+  words and the code in brackets: “Sign in again on the key … of …” for a refusal that
+  stays, and, for a failure that may pass, the time of the next call. The failed calls
+  between the two leave no line. An organisation without the `secrets` feature, or marked
+  for deletion, makes no call. No Activity line contains a token or a part of OpenAI's
+  answer. Nothing sends the access token to a run yet.
 <!-- /feature -->
 <!-- feature: factory -->
 - A work item has a **Questions** tab, before **Thread**, once an agent has asked a

@@ -45,7 +45,10 @@ defmodule Apiary.ModelKeys.Login do
     1. The caller calls `Apiary.Access` with `model_key.refresh`. When that returns an
        error, as it does for an instance without the `secrets` feature, the refresh makes
        no call and writes no entry.
-    2. It takes the login's lease, one conditional `UPDATE` of `lease_id` and
+    2. On a node that is stopping (`:init.get_status/0` returns `{:stopping, _}`) the refresh
+       takes no lease and makes no call: the caller gets the stored token while it is valid,
+       else `:unavailable`. Otherwise it takes the login's lease, one conditional `UPDATE`
+       of `lease_id` and
        `lease_until` (75 seconds, by the database's clock, `clock_timestamp()`) that
        succeeds only for a `signed_in` login with no live lease and no `retry_at` in the
        future. A lease past `lease_until` is taken over. The same transaction reads the
@@ -90,15 +93,16 @@ defmodule Apiary.ModelKeys.Login do
   that cannot be read, or a write that raises) is written once more at once, from the
   task's memory. When that fails too, the login is `sign_in_needed` with the cause
   `token_not_stored`, and no call is made with the stored refresh token, which the
-  provider has spent. The mark is written like the tokens, and logged when it fails; when
-  even that cannot be written, the lease lapses after 75 seconds and the next refresh gets
-  `refresh_token_reused` from the provider. The same happens when the node stops after the
-  provider returned its response and before the write commits: the login ends in that
-  state. A shutdown of the task supervisor (a deploy) does not
-  stop the task at once: it traps exits, so it writes the result it has within 75 seconds
-  (the lease, `lease_ms/0`), and the task that makes the request ends its request within 20 seconds.
-  A call that the supervisor kills after that is no failure: the task counts none, writes
-  no entry, clears the lease and returns `:unavailable`.
+  provider has replaced. The mark is written like the tokens, and logged when it fails;
+  when even that cannot be written, the lease lapses after 75 seconds. Then, and when the
+  node stops after the provider returned its response and before the write commits, the
+  next refresh uses the stored, replaced refresh token. The provider accepted it in a check
+  on 2026-11-18; if it no longer does, the login ends `sign_in_needed` with
+  `refresh_token_reused`. A shutdown of the task supervisor (a deploy) does not stop the task at once: it
+  traps exits, so it writes the result it has within 75 seconds (the lease, `lease_ms/0`),
+  and the task that makes the request ends its request within 20 seconds. A call that the
+  supervisor kills after that is no failure: the task counts none, writes no entry, clears
+  the lease and returns `:unavailable`.
   """
 
   use Ecto.Schema
@@ -443,8 +447,8 @@ defmodule Apiary.ModelKeys.Login do
       (`token_not_stored`), and no call is made until a new login is pasted;
     * `:unavailable`: the access token has expired and could not be refreshed, because a
       call failed for a reason that may pass, another caller's refresh did not end in
-      time, `Apiary.Access` does not allow the refresh (`model_key.refresh`), or the key cannot be
-      read;
+      time, `Apiary.Access` does not allow the refresh (`model_key.refresh`), the node is
+      stopping (no refresh starts then), or the key cannot be read;
     * `:not_found`: a key that is gone, or that is no login.
 
   `opts`: `trigger:` (required, `t:trigger/0`), `wait:`, how long in milliseconds a caller
@@ -484,8 +488,10 @@ defmodule Apiary.ModelKeys.Login do
 
   # Whether the node is stopping: `:init.get_status/0` returns `{:stopping, _}` from the moment
   # `:init.stop/0` runs (what `System.stop/0` and a SIGTERM to the release call), before any
-  # application stops. A real deploy then gives the tasks about 5 seconds (the endpoint 20,
-  # Oban 15, then a kill at 40), less than a refresh needs, so a stopping node starts none.
+  # application stops. A deploy ends the node at 40 seconds after the SIGTERM at the latest
+  # (the endpoint stops for 20 seconds, Oban for 15, then the process is killed), so a
+  # refresh that starts during the stop can be killed before its call and its writes end
+  # (up to 90 seconds). A stopping node therefore starts none.
   # `stopping:` in this module's settings is a function for a test.
   defp stopping? do
     case Application.get_env(:apiary, __MODULE__, [])[:stopping] do
@@ -542,8 +548,8 @@ defmodule Apiary.ModelKeys.Login do
   page is short and no part of the list is left to wrap to, or after `max_pages` pages (20):
   then it logs a warning with the number of logins read and the cap. A pass that starts
   after `cursor` and reaches the end of the list with fewer than `limit` keys goes on from
-  the oldest login, up to `cursor`, and then returns no cursor. `after_page:` is a function that the pass calls with the
-  number of each page after it is read, for a test.
+  the oldest login, up to `cursor`, and then returns no cursor. `after_page:` is a function
+  that the pass calls with the number of each page after it is read, for a test.
   """
   @spec sweep_pass(pos_integer, {DateTime.t(), Ecto.UUID.t()} | nil, keyword) ::
           {[{Connection.t(), Ecto.UUID.t()}], {DateTime.t(), Ecto.UUID.t()} | nil}
@@ -568,7 +574,8 @@ defmodule Apiary.ModelKeys.Login do
   end
 
   # Reads one page after `cursor` and keeps the logins of the organisations that may be
-  # refreshed (`allowed` has the answers read so far).
+  # refreshed (`allowed` maps an organisation id to the result of the Access check made for it
+  # so far in this pass).
   defp sweep_page(%{pages_left: 0} = pass, cursor, _allowed, kept) do
     Logger.warning(
       "model key sign-in sweep: stopped after #{pass.read} logins read in #{pass.max_pages} " <>
@@ -1079,17 +1086,17 @@ defmodule Apiary.ModelKeys.Login do
   # that fails twice leaves the login `sign_in_needed` with the cause `token_not_stored`.
   defp commit(ctx, leased, reason, result) do
     if rotated?(result) do
-      # The provider has spent the stored refresh token: the new one is in `result`, in this
+      # The provider has replaced the stored refresh token: the new one is in `result`, in this
       # process, and nowhere else. A write that fails, or raises, is tried once more at
       # once; if that fails too, the login needs a new sign-in (`token_not_stored`).
       with :store_failed <- attempt(ctx, leased, reason, result),
            :store_failed <- attempt(ctx, leased, reason, result),
            :store_failed <- attempt(ctx, leased, reason, {:permanent, "token_not_stored"}) do
         # Not even the mark could be written (the database is down). The login stays
-        # `signed_in` with the lease, which lapses after 75 seconds; the next refresh then
-        # calls the provider with the stored refresh token, which is spent, and gets
-        # `refresh_token_reused`: the login ends `sign_in_needed` with that cause. The caller
-        # gets the stored access token while it is valid.
+        # `signed_in` with the lease, which lapses after 75 seconds. The next refresh then
+        # uses the stored, replaced refresh token; the provider accepted it in a check on
+        # 2026-11-18, and if it no longer does, the login ends `sign_in_needed` with
+        # `refresh_token_reused`. The caller gets the stored access token while it is valid.
         :failed
       end
     else
