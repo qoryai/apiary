@@ -1015,9 +1015,7 @@ defmodule Apiary.ModelKeysTest do
       value = ctx.values["main"]
       run = keys_run(ctx, value)
 
-      # A session of no run: the record's foreign key is refused, the report is taken.
-      ghost = %{run | id: Ecto.UUID.generate()}
-
+      # Session 0 is no session: `record_windows/3` refuses it, the report is taken.
       log =
         ExUnit.CaptureLog.capture_log(fn ->
           assert :ok =
@@ -1025,11 +1023,28 @@ defmodule Apiary.ModelKeysTest do
                      [key(value)],
                      [item(utilization: 4)],
                      DateTime.utc_now(),
-                     {ghost, 1}
+                     {run, 0}
                    )
         end)
 
       assert log =~ "a session's key windows were not kept"
+      assert [%State{utilization: 4}] = states(value)
+    end
+
+    test "a run that is gone keeps no windows and the states are written", ctx do
+      value = ctx.values["main"]
+      run = keys_run(ctx, value)
+      ghost = %{run | id: Ecto.UUID.generate()}
+
+      assert :ok =
+               ModelKeys.record(
+                 [key(value)],
+                 [item(utilization: 4)],
+                 DateTime.utc_now(),
+                 {ghost, 1}
+               )
+
+      assert windows(run) == []
       assert [%State{utilization: 4}] = states(value)
     end
   end
