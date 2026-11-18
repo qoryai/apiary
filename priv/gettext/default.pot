@@ -3144,7 +3144,6 @@ msgid "%{provider} has %{number} keys, the most it can have. Delete a key to add
 msgstr ""
 
 #: lib/apiary_web/components/model_tiers.ex
-#: lib/apiary_web/live/stages_live/model_part.ex
 #, elixir-autogen, elixir-format
 msgid "%{provider} · %{key}"
 msgstr ""

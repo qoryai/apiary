@@ -19,7 +19,9 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
 
   alias Apiary.{Connections, Dispatches, ModelChoices, Processes, Repo, Stacks}
   alias Apiary.Dispatches.RunSettings
+  alias Apiary.Kinds.Coded
   alias Apiary.ModelChoices.ModelChoice
+  alias ApiaryWeb.StagesLive.Inspector
 
   @moduletag with_features: Apiary.Features.all() -- [:model_proxies]
 
@@ -120,6 +122,18 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       &{hd(LazyHTML.attribute(&1, "value")), String.trim(LazyHTML.text(&1)),
        LazyHTML.attribute(&1, "selected") != []}
     )
+  end
+
+  # The workspace's process with Explore's sequence set to `sequence`, saved.
+  defp explore_sequence!(scope, sequence) do
+    document = Processes.current(scope.workspace).document
+
+    stages =
+      for stage <- document["stages"] do
+        if stage["name"] == "Explore", do: Map.put(stage, "sequence", sequence), else: stage
+      end
+
+    {:ok, _version} = Processes.save(scope, scope.workspace, Map.put(document, "stages", stages))
   end
 
   # Whether `first` comes before `second` in the page's markup.
@@ -436,10 +450,12 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
 
     refute has_element?(view, @key)
 
+    # The row's key as the page builds it, so only the member's rights stop the save.
+    stage = Processes.current(scope.workspace).document["stages"] |> hd()
+
     render_hook(view, "model_save", %{
       "model" => %{
-        "row" =>
-          "#{Processes.default_document("software")["stages"] |> hd() |> Map.fetch!("id")}/stage-entry-0",
+        "row" => Inspector.time_limit_key(stage["id"], "stage-entry-0"),
         "workflow" => @workflow,
         "key" => key(openrouter, "openrouter-main"),
         "tiers" => @override_tiers
@@ -447,6 +463,120 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     })
 
     assert override(scope) == nil
+  end
+
+  test "a row in a loop has ids and a form of its row, and a save updates every row of the workflow",
+       %{conn: conn, path: path, scope: scope, anthropic: anthropic, openrouter: openrouter} do
+    default!(scope, anthropic)
+
+    explore_sequence!(scope, [
+      %{"workflow" => @workflow},
+      %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => @workflow}]}}
+    ])
+
+    {:ok, view, _html} = live(conn, path)
+
+    assert has_element?(
+             view,
+             ~s{select#stage-entry-1-0-model-key[name="model[key]"][form="stage-entry-1-0-model-form"]}
+           )
+
+    assert has_element?(view, "#stage-entry-1-0-model-line", "Uses the workspace default")
+
+    view
+    |> element("#stage-entry-1-0-model-form")
+    |> render_change(%{"model" => %{"key" => key(openrouter, "openrouter-main")}})
+
+    assert has_element?(
+             view,
+             ~s{select#stage-entry-1-0-model-tiers_thinking_model[form="stage-entry-1-0-model-form"]}
+           )
+
+    # The first row stays at its saved state until the save.
+    refute has_element?(view, @tiers_id)
+
+    view
+    |> element("#stage-entry-1-0-model-form")
+    |> render_change(%{"model" => %{"tiers" => @override_tiers}})
+
+    view |> element("#stage-entry-1-0-model-form") |> render_submit(%{"model" => %{}})
+
+    assert override(scope).connection_id == openrouter.id
+    assert has_element?(view, "#stage-entry-1-0-model-saved", "Saved.")
+
+    # The other row of the workflow shows the saved override, not marked as just saved.
+    assert {key(openrouter, "openrouter-main"), "#{openrouter.name} · openrouter-main", true} in key_options(
+             view
+           )
+
+    assert has_element?(
+             view,
+             ~s{#stage-entry-0-model-tiers_balanced_effort option[value="low"][selected]}
+           )
+
+    refute has_element?(view, @saved)
+  end
+
+  test "a row whose workflow changes in the draft after an unsaved Key shows the new workflow's choice",
+       %{conn: conn, path: path, scope: scope, anthropic: anthropic, openrouter: openrouter} do
+    default!(scope, anthropic)
+    explore_sequence!(scope, [%{"workflow" => @workflow}, %{"workflow" => "shape-a-ticket"}])
+    {:ok, view, _html} = live(conn, path)
+
+    change_model(view, %{"key" => key(openrouter, "openrouter-main")})
+    assert has_element?(view, @tiers_id)
+
+    view
+    |> form("#stage-form")
+    |> render_change(%{"stage" => %{"sequence" => %{"0" => %{"workflow" => "shape-a-ticket"}}}})
+
+    assert {"", "Use workspace default", true} in key_options(view)
+    refute has_element?(view, @tiers_id)
+    refute has_element?(view, @save)
+
+    assert has_element?(
+             view,
+             @line,
+             "Uses the workspace default: #{anthropic.name} · anthropic-main."
+           )
+
+    assert override(scope) == nil
+    assert override(scope, "shape-a-ticket") == nil
+  end
+
+  test "an override whose provider can no longer be read keeps its key, and a save of the default removes it",
+       %{conn: conn, path: path, scope: scope, anthropic: anthropic, openrouter: openrouter} do
+    default!(scope, anthropic)
+    override!(scope, openrouter)
+
+    # Settings that no longer fit OpenRouter's entry: its description cannot be read.
+    Apiary.Connections.Connection
+    |> Repo.get!(openrouter.id)
+    |> Ecto.Changeset.change(settings: ~s({"region":"eu"}))
+    |> Coded.seal()
+    |> Repo.update!()
+
+    assert {:error, :provider_changed} =
+             Connections.provider(Repo.get!(Apiary.Connections.Connection, openrouter.id))
+
+    {:ok, view, _html} = live(conn, path)
+
+    assert {key(openrouter, "openrouter-main"), "#{openrouter.name} · openrouter-main", true} in key_options(
+             view
+           )
+
+    assert has_element?(
+             view,
+             @line,
+             "This workflow uses this key and these models in place of the workspace's."
+           )
+
+    change_model(view, %{"key" => ""})
+    refute has_element?(view, "#{@save}[disabled]")
+    save_model(view, %{"key" => ""})
+
+    assert override(scope) == nil
+    assert has_element?(view, @saved, "Saved.")
   end
 
   describe "the feature model_proxies" do
