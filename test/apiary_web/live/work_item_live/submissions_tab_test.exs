@@ -589,15 +589,39 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
       version
     end
 
+    # A person's version of the submission type, as one stored before `Apiary.Artifacts.push/5`
+    # refused a person's push of the type that `submit` sets (`unknown_type`): the push runs
+    # while the process versions have no `submit`, and they get it back after.
     defp person_submission!(scope, work_item) do
-      person_version!(
-        scope,
-        work_item,
-        "submission",
-        "submission.json",
-        "application/json",
-        Jason.encode!(%{"ref" => "by-hand"})
-      )
+      template =
+        Repo.one(
+          from v in ProcessVersion,
+            where: v.workspace_id == ^scope.workspace.id,
+            select: v.template,
+            limit: 1
+        )
+
+      templates!(scope, Map.delete(template, "submit"))
+
+      version =
+        person_version!(
+          scope,
+          work_item,
+          "submission",
+          "submission.json",
+          "application/json",
+          Jason.encode!(%{"ref" => "by-hand"})
+        )
+
+      templates!(scope, template)
+      version
+    end
+
+    defp templates!(scope, template) do
+      {_n, _rows} =
+        Repo.update_all(from(v in ProcessVersion, where: v.workspace_id == ^scope.workspace.id),
+          set: [template: template]
+        )
     end
 
     defp at_gate!(work_item) do
@@ -636,15 +660,7 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
       %{one: one, two: two} = two_runs!(work_item)
       work_item = at_gate!(work_item)
 
-      submission =
-        person_version!(
-          ctx.scope,
-          work_item,
-          "submission",
-          "submission.json",
-          "application/json",
-          Jason.encode!(%{"ref" => "by-hand"})
-        )
+      submission = person_submission!(ctx.scope, work_item)
 
       notes =
         person_version!(ctx.scope, work_item, "notes", "notes.md", "text/markdown", "## By hand")
@@ -724,15 +740,7 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
           held = Repo.get!(WorkItem, run.work_item_id)
           ran = submission!(run, held, repository())
 
-          person =
-            person_version!(
-              ctx.scope,
-              held,
-              "submission",
-              "submission.json",
-              "application/json",
-              Jason.encode!(%{"ref" => "by-hand"})
-            )
+          person = person_submission!(ctx.scope, held)
 
           verdict = %{"verdict" => "passed"}
           opts = [stage_id: run.stage_id]
