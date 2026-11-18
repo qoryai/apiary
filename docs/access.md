@@ -659,9 +659,9 @@ sign-in of a model key whose provider has an `oauth_refresh`, such as an OpenAI
 subscription's, in any organisation with the `secrets` feature on
 (`model_key.refresh`, checked on the organisation by `Apiary.ModelKeys.Login` before it
 takes a login's lease: when the check fails, the refresh makes no call and writes no
-entry). A release command
-that makes a password link acts in that role too (`account.password_link`). Any other scope
-without a person may nothing, whatever it carries.
+entry). A release command that makes a password link acts in that role too
+(`account.password_link`). Any other scope without a person may nothing, whatever it
+carries.
 
 An action taken on the strength of something other than a role, signing up, accepting an
 invitation with its token, or a release command run on the release's machine, is in the

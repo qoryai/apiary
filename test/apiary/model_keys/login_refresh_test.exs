@@ -358,7 +358,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       assert [%Entry{details: %{"outcome" => "refreshed"}}] = trail(provider)
     end
 
-    test "a due refresh in an organisation marked for deletion is not allowed by Access: no call, no entry",
+    test "a due refresh in an organisation marked for deletion makes no call and no entry",
          %{scope: scope} do
       {provider, tokens} = subscription!(scope, expires_in: 60)
       stub!(new_tokens("refused"))
@@ -446,7 +446,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       assert %Login{lease_id: nil, lease_until: nil} = row(provider)
     end
 
-    test "the lease lasts 60 seconds by the database's clock", %{scope: scope} do
+    test "the lease lasts 75 seconds by the database's clock", %{scope: scope} do
       {provider, _tokens} = subscription!(scope, expires_in: 60)
       test = self()
 
@@ -458,7 +458,8 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       assert {:ok, _access, _at} = token(provider)
       assert_received {:during, %Login{lease_id: lease_id, lease_until: lease_until}}
       assert is_binary(lease_id)
-      assert DateTime.diff(lease_until, DateTime.utc_now()) in 55..60
+      assert DateTime.diff(lease_until, DateTime.utc_now()) in 70..75
+      assert Login.lease_seconds() == 75
     end
 
     test "a call that comes in while the lease is held by a refresh that fails takes the old token",
@@ -659,7 +660,8 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
     end
   end
 
-  # Waits until `fun` is true, 5 seconds at most: for what a task that is linked to no caller writes.
+  # Waits until `fun` is true, 5 seconds at most: for what a task that is linked to no caller
+  # writes.
   defp eventually(fun, left \\ 250) do
     cond do
       fun.() -> :ok
@@ -758,7 +760,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
   end
 
   describe "a refresh right after a refresh" do
-    test "that answered a token already past its exp waits 60 seconds", %{scope: scope} do
+    test "that returned a token already past its exp is held 60 seconds", %{scope: scope} do
       {provider, _tokens} = subscription!(scope, expires_in: -60)
       past = new_tokens("past", expires_in: -30)
       stub!(past)
@@ -1703,6 +1705,30 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       assert {[{swept, id}], _cursor} = Login.sweep_pass(1, cursor)
       assert swept.id == provider.id
       assert id == value(provider).id
+    end
+
+    test "a pass that reaches the end goes on from the oldest login, each login once",
+         %{scope: scope} do
+      {_refused_provider, provider} = paged_logins!(scope)
+
+      # Start after `main`: `b` and `c` are left, then the pass wraps to `r1`, `r2` and `main`.
+      {[{_p, first}], cursor} = Login.sweep_pass(1, nil, max_pages: 3)
+      assert first == value(provider, "main").id
+
+      {swept, nil} = Login.sweep_pass(5, cursor)
+
+      assert Enum.map(swept, &elem(&1, 1)) ==
+               Enum.map(~w(b c main), &value(provider, &1).id)
+
+      # The pages of the wrap count in the cap: one page is read, and the pass stops there.
+      log =
+        capture_log(fn ->
+          send(self(), {:pass, Login.sweep_pass(5, cursor, max_pages: 1)})
+        end)
+
+      assert_received {:pass, {capped, nil}}
+      assert Enum.map(capped, &elem(&1, 1)) == Enum.map(~w(b c), &value(provider, &1).id)
+      assert log =~ "stopped after 2 logins read in 1 pages"
     end
 
     test "a pass that reads every login logs no warning and leaves no position", %{scope: scope} do

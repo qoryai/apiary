@@ -10,7 +10,7 @@ defmodule Apiary.ModelKeys.LoginRefresh do
   adapter. The URL and the client id come from the catalogue entry alone, never from a
   person's input or a stored value, and `Apiary.Kinds.Endpoint.check/1` checks the URL
   at every call. The call verifies TLS against the operating system's certificate
-  authorities (and the file `SSL_CERT_FILE` names, as an adapter call does), follows no
+  authorities (and the file at the path in `SSL_CERT_FILE`, as an adapter call does), follows no
   redirect, is not retried, and stops after 15 seconds (5 to connect, 10 for each read) in
   a separate task. It keeps at most 64 KiB of the answer. The user agent is `qory-apiary`.
 
@@ -44,6 +44,11 @@ defmodule Apiary.ModelKeys.LoginRefresh do
   # supervisor stops (a deploy): the call's limit, 15 seconds, and 5 more. Then the task is
   # killed and the call counts as `:shutdown`.
   @shutdown_ms 20_000
+
+  @doc false
+  # The limit of a call in milliseconds, for the lease of a refresh (`Apiary.ModelKeys.Login`).
+  @spec call_limit_ms() :: pos_integer
+  def call_limit_ms, do: @total_timeout
   @max_answer 65_536
   @user_agent "qory-apiary"
   @named_codes ~w(refresh_token_expired refresh_token_reused refresh_token_invalidated)

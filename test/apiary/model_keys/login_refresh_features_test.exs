@@ -1,7 +1,7 @@
 defmodule Apiary.ModelKeys.LoginRefreshFeaturesTest do
-  # An instance without `secrets`: `Apiary.Access` does not allow `model_key.refresh`, so a refresh
-  # that is due makes no call and writes no entry, and the caller gets the stored token
-  # while it is valid. Not async: the features are the whole node's.
+  # An instance without `secrets`: `Apiary.Access` does not allow `model_key.refresh`, so a
+  # refresh that is due makes no call and writes no entry, and the caller gets the stored
+  # token while it is valid. Not async: the features are the whole node's.
   use Apiary.DataCase, async: false
 
   import Apiary.ModelKeysFixtures

@@ -35,9 +35,10 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
   setup_all :drop_test_database_objects
   setup :setup_races
 
-  # Three tests add what makes the database return an error, outside the sandbox: a constraint on
-  # the trail, and a trigger on the values or on the logins. A run that crashed before its `on_exit` left them
-  # in place, and every later test in the database would meet them: dropped here first.
+  # Three tests add what makes the database return an error, outside the sandbox: a
+  # constraint on the trail, and a trigger on the values or on the logins. A run that crashed
+  # before its `on_exit` left them in place, and every later test in the database would meet
+  # them: dropped here first.
   defp drop_test_database_objects(_context) do
     :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
     drop_test_database_objects()
@@ -458,6 +459,25 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     assert access == fresh["access_token"]
     assert tokens!(ctx.provider, id).refresh_token == fresh["refresh_token"]
     assert %Login{lease_id: nil, failures: 0} = Repo.get!(Login, id)
+  end
+
+  test "the HTTP task has a 20 s shutdown time and the refresh task the lease's 75 s", ctx do
+    id = key_id(ctx.provider, "main")
+    stub_held!(answer("times"))
+
+    caller = start(fn -> refresh(ctx.provider, id) end)
+    assert_receive {:request, http}, 5_000
+
+    # The supervisor's record of each child: `{start, restart, shutdown, type, modules}`.
+    children = :sys.get_state(LoginRefresh.supervisor()).children
+    assert {_start, :temporary, 20_000, :worker, _modules} = children[http]
+
+    assert [{_start, :temporary, 75_000, :worker, _modules}] =
+             for({pid, child} <- children, pid != http, do: child)
+
+    assert Login.lease_seconds() * 1000 == 75_000
+    send(http, :go)
+    assert {:ok, _access, _at} = Task.await(caller.task, 10_000)
   end
 
   test "a call that the supervisor kills counts no failure, writes no entry, frees the lease",

@@ -87,14 +87,36 @@ defmodule Apiary.ModelKeys.LoginSweepPositionTest do
     assert_received {:swept, [{_provider, id}]}
     assert id == ctx.allowed
 
-    # Nothing is left after the allowed login: the position is dropped.
-    pass(1)
-    assert_received {:swept, []}
-    assert :persistent_term.get(@position, :none) == :none
-
-    # The next pass starts at the oldest login again.
+    # Nothing is left after the allowed login, so the pass goes on from the oldest login
+    # (the wrap): one page of that is the empty one, then 19 of the refused logins.
     log = pass(1)
     assert_received {:swept, []}
-    assert log =~ "stopped after 20 logins read in 20 pages"
+    assert log =~ "stopped after 19 logins read in 20 pages"
+
+    # The next pass goes on after the 19th and reaches the allowed login again, which
+    # is still due in this test.
+    pass(1)
+    assert_received {:swept, [{_provider, id}]}
+    assert id == ctx.allowed
+    assert :persistent_term.get(@position, nil) != nil
+  end
+
+  test "a pass that reads to the end from the oldest login drops the position", ctx do
+    # Only the allowed login is due.
+    Repo.update_all(
+      from(l in Login, where: l.secret_value_id != ^ctx.allowed),
+      set: [state: "sign_in_needed", sign_in_cause: "invalid_grant"]
+    )
+
+    :persistent_term.put(
+      @position,
+      {DateTime.utc_now() |> DateTime.add(-100 * @day), Ecto.UUID.generate()}
+    )
+
+    # Started after a login older than all: reads the allowed login, then the end.
+    pass(5)
+    assert_received {:swept, [{_provider, id}]}
+    assert id == ctx.allowed
+    assert :persistent_term.get(@position, :none) == :none
   end
 end

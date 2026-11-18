@@ -46,7 +46,7 @@ defmodule Apiary.ModelKeys.Login do
        error, as it does for an instance without the `secrets` feature, the refresh makes
        no call and writes no entry.
     2. It takes the login's lease, one conditional `UPDATE` of `lease_id` and
-       `lease_until` (60 seconds, by the database's clock, `clock_timestamp()`) that
+       `lease_until` (75 seconds, by the database's clock, `clock_timestamp()`) that
        succeeds only for a `signed_in` login with no live lease and no `retry_at` in the
        future. A lease past `lease_until` is taken over. The same transaction reads the
        key's value, so the tokens it sends are those of the `generation` the lease read.
@@ -91,12 +91,12 @@ defmodule Apiary.ModelKeys.Login do
   task's memory. When that fails too, the login is `sign_in_needed` with the cause
   `token_not_stored`, and no call is made with the stored refresh token, which the
   provider has spent. The mark is written like the tokens, and logged when it fails; when
-  even that cannot be written, the lease lapses after 60 seconds and the next refresh gets
+  even that cannot be written, the lease lapses after 75 seconds and the next refresh gets
   `refresh_token_reused` from the provider. The same happens when the node stops after the
   provider returned its response and before the write commits: the login ends in that
   state. A shutdown of the task supervisor (a deploy) does not
-  stop the task at once: it traps exits, so it writes the result it has within 60 seconds
-  (`@shutdown_ms`), and the task that makes the request ends its request within 20 seconds.
+  stop the task at once: it traps exits, so it writes the result it has within 75 seconds
+  (the lease, `lease_ms/0`), and the task that makes the request ends its request within 20 seconds.
   A call that the supervisor kills after that is no failure: the task counts none, writes
   no entry, clears the lease and returns `:unavailable`.
   """
@@ -155,11 +155,12 @@ defmodule Apiary.ModelKeys.Login do
   # A run's request refreshes earlier, `@run_lead_seconds` before the `exp` (`lead_seconds/1`).
   @lead_seconds 300
   @run_lead_seconds 330
-  # The time the task supervisor gives the task of a refresh to end when the supervisor
-  # stops (a deploy), 60 seconds: the call's limit (15 seconds, `LoginRefresh`) and three
-  # writes of at most 15 seconds each (the `Repo` timeout), the two tries of the new tokens
-  # and the mark `token_not_stored`. The lease, 60 seconds, ends about then.
-  @shutdown_ms 60_000
+  # The lease of a refresh and the time the task supervisor gives the refresh task to end
+  # when the supervisor stops (`lease_ms/0`): the call's limit (`LoginRefresh.call_limit_ms/0`,
+  # 15 seconds), three writes of at most 15 seconds each (the `Repo` timeout: the two tries of
+  # the new tokens and the mark `token_not_stored`) and a margin of 15 seconds, 75 seconds.
+  @write_ms 15_000
+  @lease_margin_ms 15_000
   # The least time between a refresh and the next one (`decide/3`).
   @gap_seconds 60
   # The pages of logins that one pass of the sweep reads at most (`sweep_due/2`).
@@ -169,7 +170,6 @@ defmodule Apiary.ModelKeys.Login do
   @age_days 8
   @sweep_age_days 7
   @day 86_400
-  @lease_seconds 60
   @wait_ms 10_000
   @poll_ms 250
   @backoff_seconds 30
@@ -475,6 +475,25 @@ defmodule Apiary.ModelKeys.Login do
     })
   end
 
+  defp lease_ms, do: LoginRefresh.call_limit_ms() + 3 * @write_ms + @lease_margin_ms
+
+  @doc false
+  # The lease of a refresh in seconds (`lease_ms/0`), for a test.
+  @spec lease_seconds() :: pos_integer
+  def lease_seconds, do: div(lease_ms(), 1000)
+
+  # Whether the node is stopping: `:init.get_status/0` returns `{:stopping, _}` from the moment
+  # `:init.stop/0` runs (what `System.stop/0` and a SIGTERM to the release call), before any
+  # application stops. A real deploy then gives the tasks about 5 seconds (the endpoint 20,
+  # Oban 15, then a kill at 40), less than a refresh needs, so a stopping node starts none.
+  # `stopping:` in this module's settings is a function for a test.
+  defp stopping? do
+    case Application.get_env(:apiary, __MODULE__, [])[:stopping] do
+      fun when is_function(fun, 0) -> fun.()
+      _none -> match?({:stopping, _}, :init.get_status())
+    end
+  end
+
   @doc """
   The keys whose sign-in the sweep refreshes: at most `limit` of them, oldest first, each
   as `{provider, secret_value_id}`, from `sweep_pass/3`. A key is one whose login is
@@ -483,19 +502,20 @@ defmodule Apiary.ModelKeys.Login do
   lets the instance refresh in (`model_key.refresh`: not marked for deletion, `secrets`
   on).
 
-  `Apiary.Access` cannot be asked in a query, so a pass reads the due logins page by page
-  and skips those of an organisation that Access does not allow. A pass reads at most 20
-  pages and starts where the last pass of this node stopped, so that logins of refused
-  organisations ahead of an allowed login cost a bounded number of queries in each pass,
-  and the allowed login is reached after `ceil(refused logins / (20 * limit))` passes at
-  most. The position is kept in memory, in `:persistent_term`, on each node (the setting
-  `sweep_position: false` of this module turns it off, for tests); a restart of the node
-  starts the next pass at the oldest login. The position is dropped when a pass reaches the
-  end of the due logins.
+  A query cannot call `Apiary.Access`, so a pass reads the due logins page by page and
+  skips those of an organisation that Access does not allow. A pass reads at most 20 pages
+  and starts after the last login that the last pass of this node read. Logins of refused
+  organisations ahead of an allowed login then cost at most 20 queries in a pass, and the
+  allowed login is reached after `ceil(refused logins / (20 * limit))` passes at most. A
+  pass that reaches the end of the due logins before it has `limit` keys goes on from the
+  oldest login, up to the login it started after. The position is kept in memory, in
+  `:persistent_term`, on each node, and is lost when the node restarts: the next pass then
+  starts at the oldest login. The setting `sweep_position: false` of this module disables
+  it, for tests. A node that is stopping returns no keys (`stopping?/0`).
   """
   @spec sweep_due(pos_integer) :: [{Connection.t(), Ecto.UUID.t()}]
   def sweep_due(limit) when is_integer(limit) and limit > 0 do
-    if Features.on?(:secrets) do
+    if Features.on?(:secrets) and not stopping?() do
       if Application.get_env(:apiary, __MODULE__, [])[:sweep_position] == false do
         sweep_pass(limit, nil) |> elem(0)
       else
@@ -519,8 +539,10 @@ defmodule Apiary.ModelKeys.Login do
   The logins are read `limit` at a time, each page after the last login of the one before
   (its time of last refresh, then its key's id), so a login that changes between two pages
   is neither skipped nor listed twice. The pass stops when `limit` keys are kept, when a
-  page is short, or after `max_pages` pages (20): then it logs a warning with the number
-  of logins read and the cap. `after_page:` is a function that the pass calls with the
+  page is short and no part of the list is left to wrap to, or after `max_pages` pages (20):
+  then it logs a warning with the number of logins read and the cap. A pass that starts
+  after `cursor` and reaches the end of the list with fewer than `limit` keys goes on from
+  the oldest login, up to `cursor`, and then returns no cursor. `after_page:` is a function that the pass calls with the
   number of each page after it is read, for a test.
   """
   @spec sweep_pass(pos_integer, {DateTime.t(), Ecto.UUID.t()} | nil, keyword) ::
@@ -533,6 +555,8 @@ defmodule Apiary.ModelKeys.Login do
         limit: limit,
         max_pages: max_pages,
         pages_left: max_pages,
+        start: cursor,
+        wrapped: false,
         number: 0,
         read: 0,
         after_page: Keyword.get(opts, :after_page, fn _number -> :ok end)
@@ -555,7 +579,7 @@ defmodule Apiary.ModelKeys.Login do
   end
 
   defp sweep_page(pass, cursor, allowed, kept) do
-    page = sweep_candidates(pass.limit, cursor)
+    page = sweep_candidates(pass.limit, cursor, if(pass.wrapped, do: pass.start))
 
     pass = %{
       pass
@@ -586,9 +610,17 @@ defmodule Apiary.ModelKeys.Login do
       end)
 
     cond do
-      filled_by -> {Enum.reverse(kept), cursor(filled_by)}
-      length(page) < pass.limit -> {Enum.reverse(kept), nil}
-      true -> sweep_page(pass, page |> List.last() |> cursor(), allowed, kept)
+      filled_by ->
+        {Enum.reverse(kept), cursor(filled_by)}
+
+      length(page) < pass.limit and pass.start != nil and not pass.wrapped ->
+        sweep_page(%{pass | wrapped: true}, nil, allowed, kept)
+
+      length(page) < pass.limit ->
+        {Enum.reverse(kept), nil}
+
+      true ->
+        sweep_page(pass, page |> List.last() |> cursor(), allowed, kept)
     end
   end
 
@@ -597,10 +629,13 @@ defmodule Apiary.ModelKeys.Login do
   @doc false
   # `limit` due logins after `cursor` (nil: from the start), as `{{provider, id}, at}`, `at`
   # being the time the order reads: the last refresh, else the sign-in.
-  @spec sweep_candidates(pos_integer, {DateTime.t(), Ecto.UUID.t()} | nil) :: [
-          {{Connection.t(), Ecto.UUID.t()}, DateTime.t()}
-        ]
-  def sweep_candidates(limit, cursor) do
+  # `until`, when it is not nil, is the position of the last login that may be read.
+  @spec sweep_candidates(
+          pos_integer,
+          {DateTime.t(), Ecto.UUID.t()} | nil,
+          {DateTime.t(), Ecto.UUID.t()} | nil
+        ) :: [{{Connection.t(), Ecto.UUID.t()}, DateTime.t()}]
+  def sweep_candidates(limit, cursor, until \\ nil) do
     oldest = DateTime.add(db_now(), -@sweep_age_days * @day)
 
     Repo.all(
@@ -618,6 +653,7 @@ defmodule Apiary.ModelKeys.Login do
             (is_nil(l.retry_at) or l.retry_at < fragment("clock_timestamp()")) and
             (is_nil(l.lease_until) or l.lease_until < fragment("clock_timestamp()")),
         where: ^after_cursor(cursor),
+        where: ^up_to(until),
         order_by: [asc: coalesce(l.refreshed_at, l.signed_in_at), asc: l.secret_value_id],
         limit: ^limit,
         select: {{c, l.secret_value_id}, coalesce(l.refreshed_at, l.signed_in_at)}
@@ -631,6 +667,16 @@ defmodule Apiary.ModelKeys.Login do
       [l],
       coalesce(l.refreshed_at, l.signed_in_at) > ^at or
         (coalesce(l.refreshed_at, l.signed_in_at) == ^at and l.secret_value_id > ^id)
+    )
+  end
+
+  defp up_to(nil), do: dynamic(true)
+
+  defp up_to({at, id}) do
+    dynamic(
+      [l],
+      coalesce(l.refreshed_at, l.signed_in_at) < ^at or
+        (coalesce(l.refreshed_at, l.signed_in_at) == ^at and l.secret_value_id <= ^id)
     )
   end
 
@@ -805,11 +851,18 @@ defmodule Apiary.ModelKeys.Login do
 
   ## The lease
 
+  # A node that is stopping takes no lease and makes no call (`stopping?/0`); the caller gets
+  # the stored token while it is valid, else `:unavailable`, as when Access does not allow the
+  # refresh.
   defp lease(ctx) do
-    case take_lease(ctx) do
-      {:ok, leased} -> refresh(ctx, leased)
-      :none -> wait(ctx)
-      {:error, reason} -> {:error, reason}
+    if stopping?() do
+      while_valid(serve(ctx), now(ctx))
+    else
+      case take_lease(ctx) do
+        {:ok, leased} -> refresh(ctx, leased)
+        :none -> wait(ctx)
+        {:error, reason} -> {:error, reason}
+      end
     end
   end
 
@@ -834,7 +887,7 @@ defmodule Apiary.ModelKeys.Login do
             set: [
               lease_id: ^lease_id,
               lease_until:
-                fragment("clock_timestamp() + ? * interval '1 second'", ^@lease_seconds)
+                fragment("clock_timestamp() + ? * interval '1 second'", ^lease_seconds())
             ]
           ],
           select: l
@@ -902,19 +955,19 @@ defmodule Apiary.ModelKeys.Login do
   # refresh token is stored even when the caller is gone: killed, or out of time. The caller
   # waits for the task until its deadline (`wait:`), and then returns the old token while it
   # is valid, else `:unavailable`; the task goes on, commits, and the next caller reads
-  # the new token. The lease (60 seconds) outlives the call (15 seconds at most) and its
-  # write.
+  # the new token. The lease (75 seconds) outlives the call (15 seconds at most) and its
+  # writes.
   defp unlinked(ctx, leased, reason) do
     task =
       Task.Supervisor.async_nolink(
         LoginRefresh.supervisor(),
         fn ->
-          # A stop of the supervisor (a deploy) then arrives as a message, and the task
-          # writes the result it holds within `@shutdown_ms`.
+          # The stop signal of the supervisor (a deploy) is then a message in the task's
+          # mailbox, and the task writes the result it has within `lease_ms/0`.
           Process.flag(:trap_exit, true)
           call_and_commit(ctx, leased, reason)
         end,
-        shutdown: @shutdown_ms
+        shutdown: lease_ms()
       )
 
     case Task.yield(task, remaining(ctx)) || Task.ignore(task) do
@@ -1033,7 +1086,7 @@ defmodule Apiary.ModelKeys.Login do
            :store_failed <- attempt(ctx, leased, reason, result),
            :store_failed <- attempt(ctx, leased, reason, {:permanent, "token_not_stored"}) do
         # Not even the mark could be written (the database is down). The login stays
-        # `signed_in` with the lease, which lapses after 60 seconds; the next refresh then
+        # `signed_in` with the lease, which lapses after 75 seconds; the next refresh then
         # calls the provider with the stored refresh token, which is spent, and gets
         # `refresh_token_reused`: the login ends `sign_in_needed` with that cause. The caller
         # gets the stored access token while it is valid.
