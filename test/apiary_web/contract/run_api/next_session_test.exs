@@ -633,7 +633,8 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
     @tag :contract
     test "is the workflow's runtime with its model where that runtime uses the run's API",
          ctx do
-      [release] = Runtimes.list()
+      # The default runtime and a copy of it under another name: it uses the same API.
+      release = ModelChoices.default_runtime()
       second = %{release | name: release.name <> "-second", title: release.title <> " second"}
       :ok = Runtimes.put_test_list([release, second])
 
