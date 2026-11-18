@@ -907,6 +907,11 @@ defmodule Apiary.Artifacts.Format do
         "the object has the key #{key} twice"
       )
 
+  # How `Apiary.Artifacts.SchemaError.first/2` reads an `allOf`, by standard type.
+  defp unwrap("mockup"), do: true
+  defp unwrap("questions"), do: :conditions
+  defp unwrap(_name), do: false
+
   # The document of a standard type is checked in the caller's process: its bounds, the
   # schema file's and `@standard_limits`, are checked before JSV reads it.
   defp structured(%Type{standard: true, name: name, schema_path: path}, document)
@@ -920,7 +925,7 @@ defmodule Apiary.Artifacts.Format do
           once(name, document)
 
         {:error, %JSV.ValidationError{} = error} ->
-          {:error, {:schema, SchemaError.first(error, unwrap: name == "mockup")}}
+          {:error, {:schema, SchemaError.first(error, unwrap: unwrap(name))}}
       end
     else
       {:error, {:schema, refused(:limits)}}
