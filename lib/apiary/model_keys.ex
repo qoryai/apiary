@@ -428,6 +428,9 @@ defmodule Apiary.ModelKeys do
 
     windows = limit_windows(provider)
 
+    # A key that needs a new value, after a provider refused it, is to be left out here,
+    # so that `Apiary.ModelKeys.Order` never picks it and the next key becomes the start
+    # key. That state does not exist yet; the filter of `values` goes here once it does.
     for value <- values do
       key_states = Map.get(states, value.id, [])
       setting = Map.get(settings, value.id)

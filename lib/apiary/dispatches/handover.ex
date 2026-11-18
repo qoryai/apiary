@@ -204,9 +204,18 @@ defmodule Apiary.Dispatches.Handover do
   # row, the gateway's row `FOR SHARE`, the records a lapse needs, the run of the queue it
   # took, and the dispatch it wrote): the rows of the model providers an explore run's
   # choices name `FOR SHARE`, then the rows of their keys' secrets `FOR SHARE`
-  # (`Apiary.Dispatches.RunSettings`), then the run record `FOR UPDATE`, updated. A change of a
-  # provider or of its keys locks nothing of the queue, so it and a claim take turns at
-  # the provider's row alone. Nothing else is locked: not the pool's connection, its
+  # (`Apiary.Dispatches.RunSettings`), then the run record `FOR UPDATE`, updated, then
+  # the run's key rows inserted (`run_model_keys`), whose foreign keys take the provider
+  # and secret rows `FOR KEY SHARE`, already held. A change of a provider or of its keys
+  # locks nothing of the queue, so it and a claim take turns at the provider's row alone.
+  # A provider's deletion (`Apiary.Connections.delete_provider/2`) takes the organisation
+  # `FOR SHARE` and the integrations lock, neither of which a claim takes, then the
+  # provider `FOR UPDATE`; both take the provider's row before its secret's. The one
+  # existing `runs` row a claim locks is its queued run, which has no key until the claim
+  # writes them, and the deletion's set-null writes touch only rows of ended runs, as a
+  # live run fails the deletion: so no deadlock, and only the deletion waits, at the
+  # provider's row. The check of a continuation's report window reads key states without
+  # a lock and writes nothing. Nothing else is locked: not the pool's connection, its
   # collection, the work item or the workspace.
 
   import Ecto.Query, only: [from: 2]

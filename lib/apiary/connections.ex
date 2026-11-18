@@ -1731,8 +1731,10 @@ defmodule Apiary.Connections do
       # The model choices and the runs that use the provider and may still read its keys
       # (`live_runs/1`), read without a lock under the provider's row lock. A claim holds
       # the row `FOR SHARE` until it commits (`Apiary.Dispatches.RunSettings`), so a run
-      # it registers is read here, and a claim that comes after reads the provider as
-      # deleted.
+      # it registers, with its key rows, is read here, and the deletion fails
+      # `provider_in_use`; a claim that comes after reads the provider as deleted. The
+      # claim takes neither the organisation's lock nor the integrations lock that this
+      # deletion takes before the provider (`Apiary.Dispatches.Handover`).
       with :ok <- not_used(ModelChoices.places_using(current), live_runs(current)),
            {:ok, deleted} <- delete_with_keys(scope, current),
            {:ok, _entry} <-
