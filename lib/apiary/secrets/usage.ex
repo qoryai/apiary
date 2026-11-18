@@ -8,8 +8,9 @@ defmodule Apiary.Secrets.Usage do
   A model provider (`Apiary.Connections`) uses the secret it links, of the organisation or
   of a workspace, whose values are its keys, and by its value id the value that is its
   default key: a use of kind `:model_provider`. A model choice that chose one of those keys uses that value: a
-  use of kind `:model_choice`. Nothing else uses a secret; a test adds further uses
-  (`uses/2`).
+  use of kind `:model_choice`. A workflow's choice in a workspace that the workspace no
+  longer keeps is no use: it goes with the key (`Apiary.Processes`). Nothing else uses a
+  secret; a test adds further uses (`uses/2`).
 
   A use names what uses the secret, for the refusal to say: its `kind` and `id`, a
   `name` to show, and the `value_id` it takes, nil for a secret's one value.
