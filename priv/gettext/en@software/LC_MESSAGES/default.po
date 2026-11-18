@@ -3143,6 +3143,11 @@ msgstr ""
 msgid "%{provider} has %{number} keys, the most it can have. Delete a key to add another."
 msgstr ""
 
+#: lib/apiary_web/components/model_tiers.ex
+#, elixir-autogen, elixir-format
+msgid "%{provider} · %{key}"
+msgstr ""
+
 #: lib/apiary/stages/points.ex
 #, elixir-autogen, elixir-format
 msgid "%{ran} of %{count} round ran."
@@ -7410,6 +7415,11 @@ msgstr "Choose a harness with a process for this type of workspace. The harness 
 msgid "Choose a machine type from the list."
 msgstr ""
 
+#: lib/apiary_web/components/model_tiers.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a model"
+msgstr ""
+
 #: lib/apiary_web/live/harness_live.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a source"
@@ -8547,6 +8557,11 @@ msgstr ""
 msgid "Default model"
 msgstr ""
 
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "Default models"
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Define it"
@@ -9399,6 +9414,7 @@ msgstr ""
 msgid "Effective policy"
 msgstr ""
 
+#: lib/apiary_web/components/model_tiers.ex
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
 msgid "Effort"
@@ -12303,6 +12319,7 @@ msgstr ""
 #: lib/apiary_web/live/adapter_live/access_key.ex
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #: lib/apiary_web/live/integration_live/definition.ex
+#: lib/apiary_web/live/model_choice_live.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/provider_live/index.ex
 #: lib/apiary_web/live/provider_live/key.ex
@@ -13397,6 +13414,7 @@ msgstr ""
 msgid "Mode set to %{mode}"
 msgstr ""
 
+#: lib/apiary_web/components/model_tiers.ex
 #: lib/apiary_web/components/preparation_components.ex
 #: lib/apiary_web/components/set_up_components.ex
 #: lib/apiary_web/components/settings_components.ex
@@ -13405,9 +13423,19 @@ msgstr ""
 msgid "Model"
 msgstr ""
 
+#: lib/apiary_web/components/model_tiers.ex
+#, elixir-autogen, elixir-format
+msgid "Model and effort per tier"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Model choice changed"
+msgstr ""
+
+#: lib/apiary_web/components/model_tiers.ex
+#, elixir-autogen, elixir-format
+msgid "Model per tier"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -14938,6 +14966,7 @@ msgstr ""
 msgid "Not seen for %{days}"
 msgstr ""
 
+#: lib/apiary_web/components/model_tiers.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
@@ -16339,6 +16368,11 @@ msgstr ""
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Plain text on one line, shown to every member."
+msgstr ""
+
+#: lib/apiary_web/components/model_tiers.ex
+#, elixir-autogen, elixir-format
+msgid "Plans and reviews: the most capable model."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -18630,6 +18664,11 @@ msgstr ""
 msgid "Runs use the pool's default image: this target no longer has an environment set."
 msgstr "Runs use the pool's default image: this repository no longer has an environment set."
 
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "Runs use this key and these models when their workflow sets none."
+msgstr ""
+
 #: lib/apiary_web/live/target_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Runs wait until this target's environment image is built."
@@ -19774,6 +19813,11 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Signed up and created the organisation"
+msgstr ""
+
+#: lib/apiary_web/components/model_tiers.ex
+#, elixir-autogen, elixir-format
+msgid "Simple, scripted steps: the cheapest model."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -21111,11 +21155,6 @@ msgstr ""
 msgid "The default gateway for workspaces in %{organisation} that don't set one."
 msgstr ""
 
-#: lib/apiary_web/live/model_choice_live.ex
-#, elixir-autogen, elixir-format
-msgid "The default model for runs in %{workspace}. A workflow or a target can set another model for its runs. If %{workspace} sets none, its runs use the model of %{organisation}."
-msgstr "The default model for runs in %{workspace}. A workflow or a repository can set another model for its runs. If %{workspace} sets none, its runs use the model of %{organisation}."
-
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "The default: %{variable} is empty"
@@ -21617,6 +21656,11 @@ msgstr ""
 #: lib/apiary_web/components/host_components.ex
 #, elixir-autogen, elixir-format
 msgid "The model provider %{name}"
+msgstr ""
+
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "The models runs in %{workspace} use: one key, and a model and an effort for each tier. A workflow can choose another key and models in its settings on the Workflows page. If %{workspace} sets none, its runs use the models of %{organisation}."
 msgstr ""
 
 #: lib/apiary_web/live/settings_live.ex
@@ -24778,6 +24822,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
 msgid "Write, no push"
+msgstr ""
+
+#: lib/apiary_web/components/model_tiers.ex
+#, elixir-autogen, elixir-format
+msgid "Writes and runs most steps."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

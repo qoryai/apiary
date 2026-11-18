@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.ModelChoiceLiveTest do
-  # Workspace settings › Model (`ApiaryWeb.ModelChoiceLive`): the Model field and its
-  # suggestions, Another model with any model id, the effort, each refusal under its field,
-  # who may save, and a saved choice that a run's settings then use.
+  # Workspace settings › Model (`ApiaryWeb.ModelChoiceLive`): Key, the tiers of the key's
+  # provider (`ApiaryWeb.ModelTiers`), Save once every tier has a model, each refusal
+  # under its field, who may save, the fallbacks, and a saved choice that a run's settings
+  # then use.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -15,6 +16,13 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
   alias Apiary.ModelChoices.ModelChoice
 
   @moduletag needs: [:factory, :secrets]
+
+  # The tiers a test sets: each tier's model and effort, of the Anthropic description.
+  @tiers %{
+    "thinking" => %{"model" => "claude-opus-5-5", "effort" => "high"},
+    "balanced" => %{"model" => "claude-sonnet-5-5", "effort" => "medium"},
+    "light" => %{"model" => "claude-haiku-5-5", "effort" => "low"}
+  }
 
   setup :register_and_log_in_user
 
@@ -40,13 +48,40 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
   defp option(provider, model \\ nil),
     do: if(model, do: "#{provider.public_id}/#{model}", else: provider.public_id)
 
-  # A software workspace says repository for target (`docs/lingo.md`).
-  test "offers the suggested models, the default first, then Another model", ctx do
+  defp key(provider, value_id \\ "key-1"), do: "#{provider.public_id}/#{value_id}"
+
+  # Sets each tier of `tiers` through the form: the models first, then the efforts, as
+  # an Effort is disabled until its tier has a model.
+  defp set_tiers(lv, tiers) do
+    models = Map.new(tiers, fn {tier, set} -> {tier, %{model: set["model"]}} end)
+    lv |> form("#model-form", model_choice: %{tiers: models}) |> render_change()
+
+    efforts =
+      for {tier, %{"effort" => effort}} <- tiers, effort not in ["", nil], into: %{} do
+        {tier, %{effort: effort}}
+      end
+
+    if efforts != %{},
+      do: lv |> form("#model-form", model_choice: %{tiers: efforts}) |> render_change()
+
+    lv
+  end
+
+  defp saved_tiers(scope), do: choice(scope).tiers
+
+  test "has Default models: Key, each key as provider · key, and the tiers", ctx do
     %{conn: conn, scope: scope, provider: provider} = ctx
-    {:ok, lv, html} = live(conn, path(scope))
+    {:ok, lv, _html} = live(conn, path(scope))
 
     assert has_element?(lv, "h1", "Model")
     assert has_element?(lv, ~s{#settings-tab-model[aria-current="page"]})
+    assert has_element?(lv, "#model-default-title", "Default models")
+
+    assert has_element?(
+             lv,
+             "#model-default-line",
+             "Runs use this key and these models when their workflow sets none."
+           )
 
     assert has_element?(lv, "aside#page-context > h2#page-context-h", ~r/\AAbout models\z/)
     refute has_element?(lv, ".q-settings-head-sub")
@@ -54,80 +89,189 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     assert has_element?(
              lv,
              "#page-context #model-line",
-             "The default model for runs in #{scope.workspace.name}. A workflow or a repository can set another model for its runs. If #{scope.workspace.name} sets none, its runs use the model of #{scope.organisation.name}."
+             "The models runs in #{scope.workspace.name} use: one key, and a model and an effort for each tier. A workflow can choose another key and models in its settings on the Workflows page. If #{scope.workspace.name} sets none, its runs use the models of #{scope.organisation.name}."
            )
 
-    suggestions = ModelChoices.suggestions(provider, ModelChoices.default_runtime())
-    titles = Enum.map(suggestions, & &1.title)
+    # Key is a choice with no search, its one key chosen.
+    assert has_element?(lv, "button#model_choice_key", "#{provider.name} · key-1")
+    refute has_element?(lv, "#model_choice_key-search")
 
-    assert hd(suggestions).id == Connections.default_model(provider)
+    assert has_element?(
+             lv,
+             ~s{#model_choice_key-options input[value="#{key(provider)}"][checked]}
+           )
 
-    # Read as text, so a title with `&` or `'` compares unescaped.
-    options =
-      html
-      |> LazyHTML.from_document()
-      |> LazyHTML.query("#model_choice_model-options .q-pick-t")
-      |> Enum.map(&LazyHTML.text/1)
-
-    assert Enum.take(options, length(titles) + 1) == titles ++ ["Another model"]
+    assert has_element?(lv, "#model-tiers-h", "Model and effort per tier")
+    refute has_element?(lv, "#model_choice_model")
     refute has_element?(lv, "#model_choice_other")
   end
 
-  test "Model is a choice with search: each model's title over its id, then Another model",
+  test "each tier is a group with its name and line, and Model lists the suggestions", ctx do
+    %{conn: conn, scope: scope, provider: provider} = ctx
+    {:ok, lv, html} = live(conn, path(scope))
+    suggestions = ModelChoices.suggestions(provider, ModelChoices.default_runtime())
+
+    names =
+      html
+      |> LazyHTML.from_document()
+      |> LazyHTML.query("#model-tiers fieldset > legend > span > span:first-child")
+      |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
+
+    assert names == ["Thinking", "Balanced", "Light"]
+
+    for {tier, line} <- [
+          {"thinking", "Plans and reviews: the most capable model."},
+          {"balanced", "Writes and runs most steps."},
+          {"light", "Simple, scripted steps: the cheapest model."}
+        ] do
+      assert has_element?(
+               lv,
+               ~s{fieldset#model-tiers-#{tier}[aria-describedby="model-tiers-#{tier}-line"]}
+             )
+
+      assert has_element?(lv, "#model-tiers-#{tier}-line", line)
+
+      # Each field has its label, tied to it.
+      assert has_element?(lv, ~s{label[for="model_choice_tiers_#{tier}_model"]}, "Model")
+      assert has_element?(lv, ~s{label[for="model_choice_tiers_#{tier}_effort"]}, "Effort")
+
+      assert has_element?(
+               lv,
+               ~s{select#model_choice_tiers_#{tier}_model[name="model_choice[tiers][#{tier}][model]"]}
+             )
+
+      # No choice saved: no model, and Effort disabled until the tier has one.
+      assert has_element?(
+               lv,
+               ~s{#model_choice_tiers_#{tier}_model option[value=""][selected]},
+               "Choose a model"
+             )
+
+      assert has_element?(lv, "#model_choice_tiers_#{tier}_effort[disabled]")
+    end
+
+    options =
+      html
+      |> LazyHTML.from_document()
+      |> LazyHTML.query("#model_choice_tiers_thinking_model option")
+      |> Enum.map(&LazyHTML.text/1)
+
+    assert options == ["Choose a model" | Enum.map(suggestions, & &1.title)]
+  end
+
+  test "a tier's model offers its effort values", ctx do
+    %{conn: conn, scope: scope} = ctx
+    {:ok, lv, _html} = live(conn, path(scope))
+
+    set_tiers(lv, %{"thinking" => %{"model" => "claude-sonnet-5-5"}})
+    refute has_element?(lv, "#model_choice_tiers_thinking_effort[disabled]")
+
+    for effort <- ~w(low medium high xhigh max) do
+      assert has_element?(lv, ~s{#model_choice_tiers_thinking_effort option[value="#{effort}"]})
+    end
+
+    assert has_element?(lv, "#model_choice_tiers_balanced_effort[disabled]")
+  end
+
+  test "Save stays disabled until every tier has a model", ctx do
+    %{conn: conn, scope: scope} = ctx
+    {:ok, lv, _html} = live(conn, path(scope))
+
+    assert has_element?(lv, "#model-submit[disabled]")
+
+    set_tiers(lv, Map.take(@tiers, ["thinking", "balanced"]))
+    assert has_element?(lv, "#model-submit[disabled]")
+
+    set_tiers(lv, Map.take(@tiers, ["light"]))
+    refute has_element?(lv, "#model-submit[disabled]")
+    assert has_element?(lv, "#model-submit")
+
+    # A save sent all the same, with a tier left out, is refused under that tier.
+    render_hook(lv, "save", %{
+      "model_choice" => %{
+        "key" => key(ctx.provider),
+        "tiers" => %{@tiers | "light" => %{"model" => "", "effort" => ""}}
+      }
+    })
+
+    assert has_element?(
+             lv,
+             "#model_choice_tiers_light_model-error",
+             "Choose a model for each tier: Light has none."
+           )
+
+    assert choice(scope) == nil
+  end
+
+  test "a save writes the key, each tier, and the Thinking tier as the choice's model", ctx do
+    %{conn: conn, scope: scope, provider: provider} = ctx
+    {:ok, lv, _html} = live(conn, path(scope))
+
+    lv |> set_tiers(@tiers) |> form("#model-form") |> render_submit()
+
+    assert render(lv) =~ "Model saved."
+
+    assert %ModelChoice{value_id: "key-1", model_id: "claude-opus-5-5", effort: "high"} =
+             saved = choice(scope)
+
+    assert saved.connection_id == provider.id
+    assert saved_tiers(scope) == @tiers
+  end
+
+  test "opened again, the page shows the saved key and tiers", ctx do
+    %{conn: conn, scope: scope} = ctx
+    {:ok, lv, _html} = live(conn, path(scope))
+    lv |> set_tiers(@tiers) |> form("#model-form") |> render_submit()
+
+    {:ok, again, _html} = live(conn, path(scope))
+
+    for {tier, %{"model" => model, "effort" => effort}} <- @tiers do
+      assert has_element?(
+               again,
+               ~s{#model_choice_tiers_#{tier}_model option[value="#{model}"][selected]}
+             )
+
+      assert has_element?(
+               again,
+               ~s{#model_choice_tiers_#{tier}_effort option[value="#{effort}"][selected]}
+             )
+    end
+
+    refute has_element?(again, "#model-submit[disabled]")
+  end
+
+  test "a key chosen is checked and shown on the button; another key keeps the tiers", ctx do
+    %{conn: conn, scope: scope, provider: provider} = ctx
+
+    {:ok, _provider} =
+      Connections.add_provider_key(scope, provider, %{
+        value_id: "key-2",
+        value: "sk-ant-model-page-second-0123456789"
+      })
+
+    {:ok, lv, _html} = live(conn, path(scope))
+    set_tiers(lv, @tiers)
+
+    lv |> form("#model-form", model_choice: %{key: key(provider, "key-2")}) |> render_change()
+
+    assert has_element?(
+             lv,
+             ~s{#model_choice_key-options input[value="#{key(provider, "key-2")}"][checked]}
+           )
+
+    assert has_element?(lv, "button#model_choice_key .q-pick-t", "#{provider.name} · key-2")
+
+    assert has_element?(
+             lv,
+             ~s{#model_choice_tiers_light_model option[value="claude-haiku-5-5"][selected]}
+           )
+
+    lv |> form("#model-form") |> render_submit()
+    assert %ModelChoice{value_id: "key-2"} = choice(scope)
+  end
+
+  test "with two providers, Key lists each provider's keys; another provider empties the tiers",
        ctx do
-    %{conn: conn, scope: scope, provider: provider} = ctx
-    {:ok, lv, _html} = live(conn, path(scope))
-
-    [first | _rest] =
-      suggestions = ModelChoices.suggestions(provider, ModelChoices.default_runtime())
-
-    assert has_element?(lv, "button#model_choice_model", first.title)
-    refute has_element?(lv, "select#model_choice_model")
-
-    assert has_element?(
-             lv,
-             "#model_choice_model-0[value='#{option(provider, first.id)}'][checked]"
-           )
-
-    assert has_element?(lv, "#model_choice_model-0-s.mono", first.id)
-
-    other = length(suggestions)
-
-    assert has_element?(
-             lv,
-             "label[for=model_choice_model-#{other}][data-keep=true]",
-             "Another model"
-           )
-
-    assert has_element?(lv, "#model_choice_model-#{other}-s", "A model id this list leaves out.")
-
-    # One provider: no heading. The search is there whatever the count.
-    refute has_element?(lv, "#model_choice_model-options .q-pick-group")
-    assert has_element?(lv, "#model_choice_model-search[aria-label='Find a model']")
-
-    assert has_element?(
-             lv,
-             ~s(#model_choice_model-choice[data-found="%{shown} of %{total} models"])
-           )
-  end
-
-  test "a model chosen is checked and shown on the button", ctx do
-    %{conn: conn, scope: scope, provider: provider} = ctx
-    {:ok, lv, _html} = live(conn, path(scope))
-    radio = "#model_choice_model-options input[type=radio]"
-
-    # Not the default, which the page checks when it opens.
-    second = provider |> ModelChoices.suggestions(ModelChoices.default_runtime()) |> Enum.at(1)
-    value = option(provider, second.id)
-
-    lv |> form("#model-form", model_choice: %{model: value}) |> render_change()
-
-    assert has_element?(lv, ~s{#{radio}[value="#{value}"][checked]})
-    refute has_element?(lv, ~s{#{radio}[checked]:not([value="#{value}"])})
-    assert has_element?(lv, "button#model_choice_model .q-pick-t", second.title)
-  end
-
-  test "with two providers, Model groups the models under each provider's name", ctx do
     %{conn: conn, scope: scope, provider: provider} = ctx
 
     {:ok, second} =
@@ -138,85 +282,101 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
     {:ok, lv, _html} = live(conn, path(scope))
 
-    headings =
+    titles =
       lv
       |> render()
       |> LazyHTML.from_fragment()
-      |> LazyHTML.query("#model_choice_model-options .q-pick-group")
+      |> LazyHTML.query("#model_choice_key-options .q-pick-t")
       |> Enum.map(&(&1 |> LazyHTML.text() |> String.trim()))
 
-    assert Enum.sort(headings) == Enum.sort([provider.name, second.name])
+    assert Enum.sort(titles) ==
+             Enum.sort(["#{provider.name} · key-1", "#{second.name} · key-1"])
+
+    set_tiers(lv, @tiers)
+    lv |> form("#model-form", model_choice: %{key: key(second)}) |> render_change()
+
+    for tier <- ~w(thinking balanced light) do
+      assert has_element?(lv, ~s{#model_choice_tiers_#{tier}_model option[value=""][selected]})
+      assert has_element?(lv, "#model_choice_tiers_#{tier}_effort[disabled]")
+    end
+
+    [first | _rest] = ModelChoices.suggestions(second, ModelChoices.default_runtime())
+    assert has_element?(lv, ~s{#model_choice_tiers_thinking_model option[value="#{first.id}"]})
+
+    refute has_element?(
+             lv,
+             ~s{#model_choice_tiers_thinking_model option[value="claude-opus-5-5"]}
+           )
+
+    assert has_element?(lv, "#model-submit[disabled]")
 
     assert has_element?(
              lv,
-             ~s{#model_choice_model-options input[value="#{option(second)}"]}
+             "#model-fallbacks-line",
+             "When every key of #{second.name} is in cooldown"
            )
   end
 
-  # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
-  @tag :a11_item3
-  test "saves a model of the list with an effort", ctx do
+  test "a refused save shows the refusal under its field, and nothing is saved", ctx do
     %{conn: conn, scope: scope, provider: provider} = ctx
+
+    {:ok, _provider} =
+      Connections.add_provider_key(scope, provider, %{
+        value_id: "key-2",
+        value: "sk-ant-model-page-second-0123456789"
+      })
+
     {:ok, lv, _html} = live(conn, path(scope))
+    set_tiers(lv, @tiers)
+    lv |> form("#model-form", model_choice: %{key: key(provider, "key-2")}) |> render_change()
 
-    # A suggested model with effort values, from the list, so a new file changes no test.
-    %{id: id, effort: effort} =
-      provider
-      |> ModelChoices.suggestions(ModelChoices.default_runtime())
-      |> Enum.filter(&(&1.effort != []))
-      |> List.last()
+    # The key is renamed while the page is open.
+    {:ok, provider} = Connections.get_provider(scope, provider.public_id)
+    {:ok, _provider} = Connections.rename_provider_key(scope, provider, "key-2", "key-3")
 
-    effort = List.last(effort)
+    lv |> form("#model-form") |> render_submit()
 
-    lv
-    |> form("#model-form", model_choice: %{model: option(provider, id)})
-    |> render_change()
+    assert has_element?(
+             lv,
+             "#model_choice_key-error",
+             "Choose one of #{provider.name}'s keys: key-2 is not one of them."
+           )
 
-    lv
-    |> form("#model-form", model_choice: %{model: option(provider, id), effort: effort})
-    |> render_submit()
-
-    assert %ModelChoice{model_id: ^id, effort: ^effort} = choice(scope)
-    assert render(lv) =~ "Model saved."
-  end
-
-  # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
-  @tag :a11_item3
-  test "saves a model off the list through Another model", ctx do
-    %{conn: conn, scope: scope, provider: provider} = ctx
-    {:ok, lv, _html} = live(conn, path(scope))
-
-    lv |> form("#model-form", model_choice: %{model: option(provider)}) |> render_change()
-    assert has_element?(lv, "#model_choice_other")
-    refute has_element?(lv, "#model_choice_effort")
-
-    lv
-    |> form("#model-form", model_choice: %{model: option(provider), other: "claude-next-1"})
-    |> render_submit()
-
-    assert %ModelChoice{model_id: "claude-next-1", effort: nil} = choice(scope)
-
-    # Opened again, the page shows the id it saved under Another model.
-    {:ok, again, _html} = live(conn, path(scope))
-    assert has_element?(again, ~s{#model_choice_other[value="claude-next-1"]})
-  end
-
-  test "refuses a bad model id under Another model", ctx do
-    %{conn: conn, scope: scope, provider: provider} = ctx
-    {:ok, lv, _html} = live(conn, path(scope))
-
-    lv |> form("#model-form", model_choice: %{model: option(provider)}) |> render_change()
-
-    html =
-      lv
-      |> form("#model-form", model_choice: %{model: option(provider), other: "bad id"})
-      |> render_submit()
-
-    assert html =~
-             "Use 1 to 200 ASCII letters, digits and punctuation with no space, starting with a letter or a digit."
-
-    assert has_element?(lv, ~s{#model_choice_other[aria-invalid="true"]})
+    refute has_element?(lv, "#model-tiers [id$='-error']")
     assert choice(scope) == nil
+  end
+
+  test "a refused tier effort shows under that tier's Effort", ctx do
+    %{conn: conn, scope: scope} = ctx
+
+    # The runtime's effort values no longer have the stored one: the page keeps a
+    # stored effort, and the save refuses it.
+    {:ok, _choice} =
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        tiers: @tiers
+      })
+
+    [release] = Runtimes.list()
+    :ok = Runtimes.put_test_list([%{release | effort_values: ~w(low medium)}])
+
+    {:ok, lv, _html} = live(conn, path(scope))
+
+    assert has_element?(
+             lv,
+             ~s{#model_choice_tiers_thinking_effort option[value="high"][selected]}
+           )
+
+    lv |> form("#model-form") |> render_submit()
+
+    assert has_element?(
+             lv,
+             "#model_choice_tiers_thinking_effort-error",
+             "Choose one of claude-opus-5-5's effort values: low, medium."
+           )
+
+    assert has_element?(lv, ~s{#model_choice_tiers_thinking_effort[aria-invalid="true"]})
+    refute has_element?(lv, "#model_choice_tiers_balanced_effort-error")
   end
 
   test "a member sees the fields disabled, no Save, and who changes them", ctx do
@@ -224,7 +384,8 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     %{user: user} = member_fixture(scope, :member)
     {:ok, lv, _html} = live(log_in_user(build_conn(), user), path(scope))
 
-    assert has_element?(lv, "#model_choice_model[disabled]")
+    assert has_element?(lv, "#model_choice_key[disabled]")
+    assert has_element?(lv, "#model_choice_tiers_thinking_model[disabled]")
     refute has_element?(lv, "#model-submit")
     assert has_element?(lv, "#model-who", "Only owners and admins change this.")
   end
@@ -238,18 +399,13 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     refute has_element?(lv, "#model-form")
   end
 
-  # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
-  @tag :a11_item3
   test "a saved choice is what a run's settings then use", ctx do
-    %{conn: conn, scope: scope, provider: provider} = ctx
+    %{conn: conn, scope: scope} = ctx
     place = handover_place_fixture(scope, allow_secrets: true)
     {:ok, lv, _html} = live(conn, path(scope))
 
-    lv
-    |> form("#model-form",
-      model_choice: %{model: option(provider, "claude-sonnet-5-5"), effort: "low"}
-    )
-    |> render_submit()
+    tiers = %{@tiers | "thinking" => %{"model" => "claude-sonnet-5-5", "effort" => "low"}}
+    lv |> set_tiers(tiers) |> form("#model-form") |> render_submit()
 
     work_item = work_item_fixture(scope)
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
@@ -263,6 +419,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
     settings = documents.run_settings |> Jason.encode!() |> Jason.decode!()
     assert %{"model" => "claude-sonnet-5-5", "effort" => "low"} = settings
+    assert %{"light" => %{"model" => "claude-haiku-5-5"}} = settings["tiers"]
   end
 
   describe "Fallbacks" do
@@ -307,22 +464,17 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
              )
     end
 
-    test "Add fallback adds a row of a provider left, with the chosen model where it has it",
-         ctx do
+    test "Add fallback adds a row of a provider left, with the Thinking tier's model", ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
       {:ok, subscription} = add_provider(scope, "claude-subscription")
       {:ok, deepseek} = add_provider(scope, "deepseek")
       {:ok, lv, _html} = live(conn, path(scope))
 
-      lv
-      |> form("#model-form",
-        model_choice: %{model: option(provider, "claude-sonnet-5-5"), effort: "low"}
-      )
-      |> render_change()
+      set_tiers(lv, %{"thinking" => %{"model" => "claude-sonnet-5-5", "effort" => "low"}})
 
       lv |> element("#model-fallback-add") |> render_click()
 
-      # The first provider left, by name, with the same model and effort.
+      # The first provider left, by name, with the Thinking tier's model and effort.
       assert has_element?(
                lv,
                ~s{#model_choice_fallbacks_0_provider option[value="#{subscription.public_id}"][selected]}
@@ -373,12 +525,15 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
              )
     end
 
-    # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
-    @tag :a11_item3
     test "Save keeps the rows in their order; Move up, Move down and Remove change them", ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
       {:ok, subscription} = add_provider(scope, "claude-subscription")
       {:ok, deepseek} = add_provider(scope, "deepseek")
+
+      # Every tier on the provider's default model, with no effort.
+      {:ok, _} =
+        Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{provider: provider.public_id})
+
       {:ok, lv, _html} = live(conn, path(scope))
       main = Connections.default_model(provider)
       deepseek_first = Connections.default_model(deepseek)
@@ -429,8 +584,6 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       end
     end
 
-    # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
-    @tag :a11_item3
     test "a save that chooses a row's provider drops that row and saves the others", ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
       {:ok, subscription} = add_provider(scope, "claude-subscription")
@@ -444,14 +597,12 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
       {:ok, lv, _html} = live(conn, path(scope))
 
-      # The chosen provider becomes the first row's.
+      # The Key's provider becomes the first row's.
       lv
-      |> form("#model-form",
-        model_choice: %{model: option(subscription, "claude-sonnet-5-5")}
-      )
+      |> form("#model-form", model_choice: %{key: key(subscription, "main")})
       |> render_change()
 
-      lv |> form("#model-form") |> render_submit()
+      lv |> set_tiers(@tiers) |> form("#model-form") |> render_submit()
 
       assert has_element?(lv, "#flash-info", "Model saved.")
       assert choice(scope).connection_id == subscription.id
@@ -459,8 +610,6 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert deepseek_id == deepseek.public_id
     end
 
-    # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
-    @tag :a11_item3
     test "a refused row shows the refusal under its field, and nothing is saved", ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
       {:ok, subscription} = add_provider(scope, "claude-subscription")
@@ -476,9 +625,14 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
       # The first row's provider is chosen, so that row is dropped; the second row's
       # refusal shows under the second row.
+      lv
+      |> form("#model-form", model_choice: %{key: key(subscription, "main")})
+      |> render_change()
+
       render_hook(lv, "save", %{
         "model_choice" => %{
-          "model" => option(subscription, "claude-sonnet-5-5"),
+          "key" => key(subscription, "main"),
+          "tiers" => @tiers,
           "fallbacks" => %{
             "0" => %{
               "provider" => subscription.public_id,
@@ -503,8 +657,6 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert choice(scope).connection_id == deepseek.id
     end
 
-    # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
-    @tag :a11_item3
     test "a provider in two rows shows the error under the second row, and nothing is saved",
          ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
@@ -513,7 +665,8 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
       render_hook(lv, "save", %{
         "model_choice" => %{
-          "model" => option(provider, "claude-sonnet-5-5"),
+          "key" => key(provider),
+          "tiers" => @tiers,
           "fallbacks" => %{
             "0" => %{
               "provider" => subscription.public_id,
@@ -547,9 +700,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       lv |> element("#model-fallback-add") |> render_click()
       {:ok, _membership} = Apiary.Organisations.set_member_level(scope, membership.id, :member)
 
-      lv
-      |> form("#model-form", model_choice: %{model: option(provider)})
-      |> render_submit()
+      lv |> set_tiers(@tiers) |> form("#model-form") |> render_submit()
 
       assert has_element?(lv, "#flash-error", "Only owners and admins change this.")
       assert choice(scope) == nil
@@ -568,7 +719,8 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
       render_hook(lv, "save", %{
         "model_choice" => %{
-          "model" => option(provider),
+          "key" => key(provider),
+          "tiers" => @tiers,
           "fallbacks" => %{"0" => %{"provider" => subscription.public_id}}
         }
       })
@@ -576,8 +728,6 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert choice(scope) == nil
     end
 
-    # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
-    @tag :a11_item3
     test "a sent row with another organisation's provider is refused, and nothing is saved",
          ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
@@ -590,7 +740,8 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
       render_hook(lv, "save", %{
         "model_choice" => %{
-          "model" => option(provider),
+          "key" => key(provider),
+          "tiers" => @tiers,
           "fallbacks" => %{
             "0" => %{
               "provider" => foreign.public_id,
@@ -627,24 +778,18 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
   end
 
   describe "the runtime" do
-    # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
-    @tag :a11_item3
     test "is hidden while the list has one runtime, and the choice names none", ctx do
-      %{conn: conn, scope: scope, provider: provider} = ctx
+      %{conn: conn, scope: scope} = ctx
       {:ok, lv, _html} = live(conn, path(scope))
 
       refute has_element?(lv, "#model_choice_runtime")
 
-      lv
-      |> form("#model-form", model_choice: %{model: option(provider, "claude-haiku-5-5")})
-      |> render_submit()
+      lv |> set_tiers(@tiers) |> form("#model-form") |> render_submit()
 
-      assert %ModelChoice{runtime: nil, model_id: "claude-haiku-5-5"} = choice(scope)
+      assert %ModelChoice{runtime: nil, model_id: "claude-opus-5-5"} = choice(scope)
     end
 
-    # The page saves no tiers; a workspace save needs every tier. A-11 item 3 adds them.
-    @tag :a11_item3
-    test "with two, is a field; Model lists only the providers that serve the runtime", ctx do
+    test "with two, is a field; Key lists only the providers that serve the runtime", ctx do
       %{conn: conn, scope: scope, provider: provider} = ctx
       [release] = Runtimes.list()
       second = %{release | name: release.name <> "-second", title: release.title <> " second"}
@@ -666,7 +811,8 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       |> form("#model-form", model_choice: %{runtime: unserved.name})
       |> render_change()
 
-      refute has_element?(lv, "#model_choice_model")
+      refute has_element?(lv, "#model_choice_key")
+      refute has_element?(lv, "#model-tiers")
       refute has_element?(lv, "#model-submit")
 
       assert has_element?(
@@ -683,14 +829,15 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
       assert has_element?(
                lv,
-               ~s{#model_choice_model-options input[value="#{option(provider, "claude-opus-5-5")}"]}
+               ~s{#model_choice_key-options input[value="#{key(provider)}"][checked]}
              )
 
-      lv
-      |> form("#model-form",
-        model_choice: %{runtime: second.name, model: option(provider, "claude-opus-5-5")}
-      )
-      |> render_submit()
+      assert has_element?(
+               lv,
+               ~s{#model_choice_tiers_thinking_model option[value="claude-opus-5-5"]}
+             )
+
+      lv |> set_tiers(@tiers) |> form("#model-form") |> render_submit()
 
       assert %ModelChoice{model_id: "claude-opus-5-5", runtime: name} = choice(scope)
       assert name == second.name
@@ -759,9 +906,10 @@ end
 
 defmodule ApiaryWeb.ModelChoiceLive.ModelProxiesTest do
   # Workspace settings › Model leaves out a provider whose description lists no models,
-  # such as LiteLLM, from Model and from a fallback row's Provider, unless the feature
-  # `model_proxies` is on. A saved choice of such a provider stays shown, so a save keeps
-  # it. Not async: the features are the whole node's.
+  # such as LiteLLM, from Key and from a fallback row's Provider, unless the feature
+  # `model_proxies` is on. With it on, such a provider's tiers take any model id as text.
+  # A saved choice of such a provider stays shown, so a save keeps it. Not async: the
+  # features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
   import Ecto.Query, only: [from: 2]
@@ -769,6 +917,13 @@ defmodule ApiaryWeb.ModelChoiceLive.ModelProxiesTest do
 
   alias Apiary.{Connections, Repo}
   alias Apiary.ModelChoices.ModelChoice
+
+  # Tiers of LiteLLM, which takes any model id and no effort.
+  @free_tiers %{
+    "thinking" => %{"model" => "claude-opus-5-5"},
+    "balanced" => %{"model" => "claude-sonnet-5-5"},
+    "light" => %{"model" => "claude-haiku-5-5"}
+  }
 
   setup :register_and_log_in_user
 
@@ -805,21 +960,23 @@ defmodule ApiaryWeb.ModelChoiceLive.ModelProxiesTest do
     )
   end
 
-  # Whether Model has an option of `provider`: its models, or its Another model.
-  defp in_model?(lv, provider) do
+  defp key(provider), do: "#{provider.public_id}/main"
+
+  # Whether Key has an option of `provider`'s key.
+  defp in_key?(lv, provider) do
     has_element?(
       lv,
-      ~s{#model-form input[name="model_choice[model]"][value="#{provider.public_id}"]}
+      ~s{#model-form input[name="model_choice[key]"][value="#{key(provider)}"]}
     )
   end
 
   @tag with_features: Apiary.Features.all() -- [:model_proxies]
-  test "off: Model and a fallback row leave out LiteLLM", ctx do
+  test "off: Key and a fallback row leave out LiteLLM", ctx do
     %{conn: conn, scope: scope, anthropic: anthropic, litellm: litellm} = ctx
     {:ok, lv, _html} = live(conn, path(scope))
 
-    assert in_model?(lv, anthropic)
-    refute in_model?(lv, litellm)
+    assert in_key?(lv, anthropic)
+    refute in_key?(lv, litellm)
 
     # Anthropic is chosen, and LiteLLM is the one provider left: no row to add.
     refute has_element?(lv, "#model-fallback-add")
@@ -827,24 +984,26 @@ defmodule ApiaryWeb.ModelChoiceLive.ModelProxiesTest do
   end
 
   @tag with_features: Apiary.Features.all() -- [:model_proxies]
-  test "off: with LiteLLM the one provider, Model is not shown and the page says to add one",
+  test "off: with LiteLLM the one provider, Key is not shown and the page says to add one",
        ctx do
     %{conn: conn, scope: scope, anthropic: anthropic, litellm: litellm} = ctx
     {:ok, _provider} = Connections.delete_provider(scope, anthropic)
     {:ok, lv, _html} = live(conn, path(scope))
 
-    refute in_model?(lv, litellm)
+    refute in_key?(lv, litellm)
+    refute has_element?(lv, "#model_choice_key")
+    refute has_element?(lv, "#model-tiers")
     assert has_element?(lv, "#model-unserved #model-none")
     refute has_element?(lv, "#model-other_runtime")
   end
 
   @tag with_features: Apiary.Features.all()
-  test "on: Model and a fallback row offer LiteLLM", ctx do
+  test "on: Key and a fallback row offer LiteLLM", ctx do
     %{conn: conn, scope: scope, anthropic: anthropic, litellm: litellm} = ctx
     {:ok, lv, _html} = live(conn, path(scope))
 
-    assert in_model?(lv, anthropic)
-    assert in_model?(lv, litellm)
+    assert in_key?(lv, anthropic)
+    assert in_key?(lv, litellm)
 
     lv |> element("#model-fallback-add") |> render_click()
 
@@ -854,31 +1013,88 @@ defmodule ApiaryWeb.ModelChoiceLive.ModelProxiesTest do
            )
   end
 
+  @tag with_features: Apiary.Features.all()
+  test "on: a provider with no model list gets a text field per tier, and no Effort", ctx do
+    %{conn: conn, scope: scope, litellm: litellm} = ctx
+    {:ok, lv, _html} = live(conn, path(scope))
+
+    lv |> form("#model-form", model_choice: %{key: key(litellm)}) |> render_change()
+
+    assert has_element?(lv, "#model-tiers-h", "Model per tier")
+
+    for tier <- ~w(thinking balanced light) do
+      assert has_element?(
+               lv,
+               ~s{input#model_choice_tiers_#{tier}_model[type="text"][name="model_choice[tiers][#{tier}][model]"]}
+             )
+
+      assert has_element?(lv, ~s{label[for="model_choice_tiers_#{tier}_model"]}, "Model")
+      refute has_element?(lv, "#model_choice_tiers_#{tier}_effort")
+    end
+
+    assert has_element?(lv, "#model-submit[disabled]")
+
+    lv |> form("#model-form", model_choice: %{tiers: @free_tiers}) |> render_change()
+    refute has_element?(lv, "#model-submit[disabled]")
+
+    lv |> form("#model-form") |> render_submit()
+    assert has_element?(lv, "#flash-info", "Model saved.")
+
+    assert %ModelChoice{model_id: "claude-opus-5-5", effort: nil, tiers: tiers} =
+             saved = choice(scope)
+
+    assert saved.connection_id == litellm.id
+    assert tiers == @free_tiers
+  end
+
+  @tag with_features: Apiary.Features.all()
+  test "on: a bad model id is refused above the tiers, and nothing is saved", ctx do
+    %{conn: conn, scope: scope, litellm: litellm} = ctx
+    {:ok, lv, _html} = live(conn, path(scope))
+
+    lv |> form("#model-form", model_choice: %{key: key(litellm)}) |> render_change()
+    tiers = %{@free_tiers | "balanced" => %{"model" => "bad id"}}
+    lv |> form("#model-form", model_choice: %{tiers: tiers}) |> render_change()
+    lv |> form("#model-form") |> render_submit()
+
+    assert has_element?(
+             lv,
+             "#model-tiers-error-0",
+             "Use 1 to 200 ASCII letters, digits and punctuation with no space, starting with a letter or a digit."
+           )
+
+    assert has_element?(lv, ~s{#model_choice_tiers_balanced_model[value="bad id"]})
+    assert choice(scope) == nil
+  end
+
   @tag with_features: Apiary.Features.all() -- [:model_proxies]
-  test "off: a saved LiteLLM choice stays shown, a save keeps it, and no row offers it", ctx do
+  test "off: a saved LiteLLM choice shows its key and tiers, a save keeps it, and no row offers it",
+       ctx do
     %{conn: conn, scope: scope, anthropic: anthropic, litellm: litellm} = ctx
 
     {:ok, _choice} =
       Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
         provider: litellm.public_id,
-        model: "claude-opus-5-5"
+        key: "main",
+        tiers: @free_tiers
       })
 
     {:ok, lv, _html} = live(conn, path(scope))
 
     assert has_element?(
              lv,
-             ~s{#model-form input[name="model_choice[model]"][value="#{litellm.public_id}"][checked]}
+             ~s{#model-form input[name="model_choice[key]"][value="#{key(litellm)}"][checked]}
            )
 
-    assert has_element?(lv, ~s{#model_choice_other[value="claude-opus-5-5"]})
+    assert has_element?(lv, "button#model_choice_key", "#{litellm.name} · main")
+    assert has_element?(lv, ~s{#model_choice_tiers_thinking_model[value="claude-opus-5-5"]})
 
     lv |> form("#model-form") |> render_submit()
     assert has_element?(lv, "#flash-info", "Model saved.")
-    assert %ModelChoice{model_id: "claude-opus-5-5"} = saved = choice(scope)
+    assert %ModelChoice{tiers: @free_tiers} = saved = choice(scope)
     assert saved.connection_id == litellm.id
 
-    # A fallback row is offered Anthropic, not LiteLLM, the chosen provider.
+    # A fallback row is offered Anthropic, not LiteLLM, the Key's provider.
     lv |> element("#model-fallback-add") |> render_click()
 
     assert has_element?(
@@ -886,10 +1102,8 @@ defmodule ApiaryWeb.ModelChoiceLive.ModelProxiesTest do
              ~s{#model_choice_fallbacks_0_provider option[value="#{anthropic.public_id}"][selected]}
            )
 
-    # Choosing Anthropic for Model takes LiteLLM out of the page's offers.
-    lv
-    |> form("#model-form", model_choice: %{model: "#{anthropic.public_id}/claude-sonnet-5-5"})
-    |> render_change()
+    # Choosing Anthropic for Key takes LiteLLM out of the page's offers.
+    lv |> form("#model-form", model_choice: %{key: key(anthropic)}) |> render_change()
 
     refute has_element?(
              lv,

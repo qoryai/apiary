@@ -1,28 +1,28 @@
 defmodule ApiaryWeb.ModelChoiceLive do
   # Workspace settings › Model, `/:org/:workspace/settings/model`, with the features
-  # `factory` and `secrets`: the workspace's model choice (level 5, `Apiary.ModelChoices`).
+  # `factory` and `secrets`: the workspace's model choice (level 5, `Apiary.ModelChoices`),
+  # under Default models.
   #
   # Runtime, a select of the runtime catalogue (`Apiary.Kinds.Runtimes`), shown only while
   # the catalogue has more than one; with one, the choice names none and its runs use that
-  # one (`Apiary.ModelChoices.default_runtime/0`). Model: a choice of the models the page
-  # suggests (`Apiary.ModelChoices.suggestions/2`) for each model provider of the
-  # organisation that applies to the workspace, serves the chosen runtime
-  # (`Apiary.Kinds.Providers.serve/2`) and is offered (`Apiary.Kinds.Providers.offered?/1`)
-  # or is the saved choice's, grouped by provider where there are several, each
-  # provider's list ending with Another model, which opens a text field for any model id.
-  # With none, one line per cause says what to do instead (`unserved/3`). Effort shows
-  # where the chosen model has effort values to choose from. With no choice saved, the first provider's first
-  # model is selected. Save writes the choice (`Apiary.ModelChoices.put_choice/4`), keeping
-  # the key and the tiers the place had while its provider stays the same; each refusal
+  # one (`Apiary.ModelChoices.default_runtime/0`). Key: each key of each model provider of
+  # the organisation that applies to the workspace, serves the chosen runtime
+  # (`Apiary.Kinds.Providers.serve/2`) and is offered (`Apiary.Kinds.Providers.offered?/1`),
+  # as "<Provider> · <key>"; the saved choice's key stays listed while it is not offered.
+  # With none, one line per cause says what to do instead (`unserved/3`). Then the tiers
+  # of the key's provider, Thinking, Balanced and Light, each a Model and an Effort, as
+  # `ApiaryWeb.ModelTiers` draws them. With no choice saved, the first key is chosen and
+  # the tiers are empty. Save is enabled once every tier has a model; it writes the key,
+  # the tiers and the fallbacks (`Apiary.ModelChoices.put_choice/4`), and each refusal
   # shows its text under the field it is about.
   #
-  # Fallbacks, below them: the providers runs use, in order, while every key of the chosen
-  # provider is in cooldown, each a row of Provider, Model, Another model and Effort as
-  # above, with Move up, Move down and Remove. Add fallback adds a row of the first
-  # provider left: one that applies to the workspace, serves the chosen runtime and is
-  # offered, and is neither the chosen provider nor in a row. A new row's model, and a
-  # row's model after its provider changes, is the chosen model where the provider has a
-  # model of the same id, else the provider's first. Save writes the rows with the choice; each refusal
+  # Fallbacks, below the tiers: the providers runs use, in order, while every key of the
+  # Key's provider is in cooldown, each a row of Provider, Model, Another model and Effort,
+  # with Move up, Move down and Remove. Add fallback adds a row of the first provider
+  # left: one that applies to the workspace, serves the chosen runtime and is offered, and
+  # is neither the Key's provider nor in a row. A new row's model, and a row's model after
+  # its provider changes, is the Thinking tier's where the provider has a model of the
+  # same id, else the provider's first. Save writes the rows with the choice; each refusal
   # shows under its row's field.
   #
   # Every member reads it (`connection.read`); owners and admins change it
@@ -42,7 +42,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
   alias Apiary.Connections.Connection
   alias Apiary.Kinds.{Providers, Runtime, Runtimes}
   alias Apiary.ModelChoices.ModelChoice
-  alias ApiaryWeb.{SettingsComponents, UserAuth}
+  alias ApiaryWeb.{ModelTiers, SettingsComponents, UserAuth}
 
   @impl true
   def mount(_params, _session, socket) do
@@ -82,12 +82,24 @@ defmodule ApiaryWeb.ModelChoiceLive do
       choice: choice
     )
     |> assign_runtime(runtime)
-    |> then(&assign_form(&1, choice_params(choice, &1.assigns.providers), []))
+    |> assign_key(choice)
     |> then(&assign_fallbacks(&1, fallback_rows(choice, &1.assigns.providers), %{}))
   end
 
-  # The runtime the form has chosen, and the providers that serve it and are offered
-  # (`Apiary.Kinds.Providers.offered?/1`), each with its suggestions; `described` is each
+  # The key of the saved choice and its tiers, or the first key with no tiers.
+  defp assign_key(socket, choice) do
+    keys = socket.assigns.keys
+    key = ModelTiers.chosen(keys, choice) || List.first(keys)
+
+    socket
+    |> assign(key: key, tiers: ModelTiers.params(choice, key), stored: ModelTiers.stored(choice))
+    |> assign_form(%{}, [])
+  end
+
+  # The runtime the form has chosen, the providers that serve it and are offered
+  # (`Apiary.Kinds.Providers.offered?/1`), each with its suggestions and whether its
+  # description lists no models (`free`), and their keys (`ApiaryWeb.ModelTiers.keys/2`);
+  # `described` is each
   # applicable provider with its description, or why it has none
   # (`Apiary.Connections.provider/1`). The provider of the saved choice stays listed while
   # it is not offered, so a save keeps it unless the person chooses another; a new
@@ -106,10 +118,16 @@ defmodule ApiaryWeb.ModelChoiceLive do
           do: %{
             provider: provider,
             models: ModelChoices.suggestions(provider, runtime),
+            free: Connections.provider_models(description) == [],
             offered: offered
           }
 
-    assign(socket, runtime: runtime, providers: providers, described: described)
+    assign(socket,
+      runtime: runtime,
+      providers: providers,
+      described: described,
+      keys: ModelTiers.keys(providers, socket.assigns.choice)
+    )
   end
 
   # Why no provider serves the chosen runtime, as the lines the page shows: each provider
@@ -161,54 +179,10 @@ defmodule ApiaryWeb.ModelChoiceLive do
     end)
   end
 
-  # The form's values for `choice`: its provider's model, or Another model with its id;
-  # with no choice, or one of a provider not listed, the first provider's first model.
-  defp choice_params(%ModelChoice{} = choice, providers) do
-    case Enum.find(providers, &(&1.provider.id == choice.connection_id)) do
-      nil ->
-        choice_params(nil, providers)
-
-      %{provider: provider, models: models} ->
-        model_id = choice.model_id || Connections.default_model(provider)
-
-        if Enum.any?(models, &(&1.id == model_id)),
-          do: %{"model" => option(provider, model_id), "effort" => choice.effort || ""},
-          else: %{"model" => option(provider, nil), "other" => model_id || "", "effort" => ""}
-    end
-  end
-
-  defp choice_params(nil, [%{provider: provider, models: models} | _rest]) do
-    case models do
-      [%{id: id} | _] -> %{"model" => option(provider, id)}
-      [] -> %{"model" => option(provider, nil)}
-    end
-  end
-
-  defp choice_params(nil, []), do: %{}
-
   # An option's value: the provider's public id, then a slash and the model id; the
   # provider's public id alone for its Another model. A public id has no slash.
   defp option(%Connection{public_id: id}, nil), do: id
   defp option(%Connection{public_id: id}, model_id), do: id <> "/" <> model_id
-
-  # What an option's value chose: `{provider, model}`, `{provider, :other}`, or nil.
-  defp chosen(value, providers) when is_binary(value) do
-    {id, model_id} =
-      case String.split(value, "/", parts: 2) do
-        [id, model_id] -> {id, model_id}
-        [id] -> {id, :other}
-      end
-
-    case Enum.find(providers, &(&1.provider.public_id == id)) do
-      nil -> nil
-      %{models: models} = entry -> {entry, find_model(models, model_id)}
-    end
-  end
-
-  defp chosen(_value, _providers), do: nil
-
-  defp find_model(_models, :other), do: :other
-  defp find_model(models, model_id), do: Enum.find(models, &(&1.id == model_id))
 
   ## Fallbacks
 
@@ -245,18 +219,13 @@ defmodule ApiaryWeb.ModelChoiceLive do
   defp assign_fallbacks(socket, rows, errors),
     do: assign(socket, fallbacks: rows, fallback_errors: errors)
 
-  # The row for `provider`: the chosen model where the provider has a model of the same
-  # id, else its first, else Another model; with the chosen effort where that model has it.
+  # The row for `provider`: the Thinking tier's model where the provider has a model of
+  # the same id, else its first, else Another model; with the Thinking tier's effort where
+  # that model has it.
   defp new_row(socket, %Connection{} = provider) do
     models = models_of(socket.assigns.providers, provider)
-    params = socket.assigns.form.params
-
-    same =
-      case socket.assigns.chosen do
-        {_entry, %{id: id}} -> Enum.find(models, &(&1.id == id))
-        {_entry, :other} -> Enum.find(models, &(&1.id == blank_to_nil(params["other"])))
-        nil -> nil
-      end
+    thinking = socket.assigns.tiers["thinking"] || %{}
+    same = Enum.find(models, &(&1.id == thinking["model"]))
 
     case same || List.first(models) do
       nil ->
@@ -268,7 +237,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
         }
 
       model ->
-        effort = if params["effort"] in model.effort, do: params["effort"], else: ""
+        effort = if thinking["effort"] in model.effort, do: thinking["effort"], else: ""
 
         %{
           "provider" => provider.public_id,
@@ -313,7 +282,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
   defp sent_rows(socket, _params), do: socket.assigns.fallbacks
 
   # The providers a new row may have: those that serve the chosen runtime and are offered,
-  # but the chosen provider and those of the rows but `except`.
+  # but the Key's provider and those of the rows but `except`.
   defp left(assigns, except \\ nil) do
     taken =
       for {row, i} <- Enum.with_index(assigns.fallbacks), i != except, do: row["provider"]
@@ -326,7 +295,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
         do: provider
   end
 
-  defp main_provider(%{chosen: {%{provider: provider}, _model}}), do: provider
+  defp main_provider(%{key: %{provider: provider}}), do: provider
   defp main_provider(_assigns), do: nil
 
   # A row's providers: those `left/2` offers it, with the row's provider, in the order of
@@ -409,22 +378,27 @@ defmodule ApiaryWeb.ModelChoiceLive do
     )
   end
 
+  # The form of Runtime and Key, with `errors`, those of `ModelTiers.field_errors/2`: each
+  # on Runtime or Key, the tiers' as `tier_errors`.
   defp assign_form(socket, params, errors) do
+    {tier_errors, field_errors} =
+      Enum.split_with(errors, fn {field, _error} -> field == :tiers or is_tuple(field) end)
+
     params =
-      errors
-      |> Enum.reduce(params, fn {field, _}, p -> Map.put_new(p, "#{field}", "") end)
+      params
+      |> Map.take(["runtime", "key"])
       |> Map.put("runtime", socket.assigns.runtime.name)
+      |> Map.put("key", (socket.assigns.key && socket.assigns.key.value) || "")
 
     assign(socket,
-      form: to_form(params, as: :model_choice, errors: errors),
-      chosen: chosen(params["model"], socket.assigns.providers)
+      form: to_form(params, as: :model_choice, errors: field_errors),
+      tier_errors: tier_errors
     )
   end
 
-  @impl true
-  # A change of the runtime lists the providers that serve it, and keeps the chosen model
-  # while its provider is one of them.
-  def handle_event("choose", %{"model_choice" => params}, socket) do
+  # The runtime, the key and the tiers as the form sent them. A key the page does not
+  # list, or one of a provider the runtime lost, gives the first key and empty tiers.
+  defp take_sent(socket, params) do
     socket =
       with name when name != socket.assigns.runtime.name <- params["runtime"],
            {:ok, runtime} <- Runtimes.fetch(name) do
@@ -433,12 +407,20 @@ defmodule ApiaryWeb.ModelChoiceLive do
         _same -> socket
       end
 
-    params =
-      if chosen(params["model"], socket.assigns.providers),
-        do: params,
-        else: Map.merge(params, choice_params(nil, socket.assigns.providers))
+    %{keys: keys, key: before, tiers: old, stored: stored} = socket.assigns
+    sent = if is_binary(params["key"]), do: ModelTiers.find(keys, params["key"])
+    before = before && ModelTiers.find(keys, before.value)
+    key = sent || before || List.first(keys)
+    tiers = ModelTiers.sent(key, before, old, params["tiers"], stored)
 
-    socket = assign_form(socket, params, [])
+    assign(socket, key: key, tiers: tiers)
+  end
+
+  @impl true
+  # A change of the runtime lists the providers that serve it and their keys, and keeps
+  # the chosen key while it is one of them.
+  def handle_event("choose", %{"model_choice" => params}, socket) do
+    socket = socket |> take_sent(params) |> assign_form(params, [])
     {:noreply, assign_fallbacks(socket, sent_rows(socket, params), %{})}
   end
 
@@ -487,26 +469,22 @@ defmodule ApiaryWeb.ModelChoiceLive do
 
   def handle_event("save", %{"model_choice" => params}, %{assigns: %{writes: true}} = socket) do
     scope = socket.assigns.current_scope
+    socket = take_sent(socket, params)
     rows = sent_rows(socket, params)
     socket = assign_fallbacks(socket, rows, %{})
 
-    case chosen(params["model"], socket.assigns.providers) do
+    case socket.assigns.key do
       nil ->
-        {:noreply, assign_form(socket, params, model: {"is invalid", []})}
+        {:noreply, assign_form(socket, params, key: {"is invalid", []})}
 
-      {%{provider: provider}, model} ->
-        model_id = if model == :other, do: blank_to_nil(params["other"]), else: model && model.id
-        effort = if model == :other, do: nil, else: blank_to_nil(params["effort"])
-
+      key ->
         attrs =
-          %{
+          key
+          |> ModelTiers.attrs(socket.assigns.tiers)
+          |> Map.merge(%{
             runtime: if(runtimes?(socket.assigns.runtimes), do: socket.assigns.runtime.name),
-            provider: provider.public_id,
-            model: model_id,
-            effort: effort,
             fallbacks: fallback_attrs(socket.assigns, rows)
-          }
-          |> Map.merge(kept(socket.assigns.choice, provider))
+          })
 
         case ModelChoices.put_choice(scope, :workspace, attrs) do
           {:ok, _choice} ->
@@ -523,7 +501,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
 
             {:noreply,
              socket
-             |> assign_form(params, field_errors(main, model))
+             |> assign_form(params, ModelTiers.field_errors(main, socket.assigns.tiers))
              |> assign_fallbacks(rows, fallback_field_errors(socket.assigns, rows, fallbacks))}
 
           {:error, :not_found} ->
@@ -540,12 +518,6 @@ defmodule ApiaryWeb.ModelChoiceLive do
 
   def handle_event(_event, _params, socket), do: {:noreply, socket}
 
-  # The key and the tiers of the place's choice, kept while its provider stays the same.
-  defp kept(%ModelChoice{connection_id: id} = choice, %Connection{id: id}),
-    do: %{key: choice.value_id, tiers: choice.tiers}
-
-  defp kept(_choice, _provider), do: %{}
-
   defp blank_to_nil(value) when is_binary(value) do
     case String.trim(value) do
       "" -> nil
@@ -554,19 +526,6 @@ defmodule ApiaryWeb.ModelChoiceLive do
   end
 
   defp blank_to_nil(_value), do: nil
-
-  # Each refusal on the field it is about: the model's under Another model when that is
-  # chosen, the effort's under Effort, every other under Model.
-  defp field_errors(errors, model) do
-    for {field, error} <- errors do
-      case field do
-        :model when model == :other -> {:other, error}
-        :effort -> {:effort, error}
-        :runtime -> {:runtime, error}
-        _other -> {:model, error}
-      end
-    end
-  end
 
   defp who_changes(scope) do
     if Access.reader(scope),
@@ -579,15 +538,8 @@ defmodule ApiaryWeb.ModelChoiceLive do
         )
   end
 
-  # The choice's options: each provider's models, its title over its id, then its Another
-  # model, which a search keeps in view, in a group named after the provider where there
-  # are several.
-  defp options([%{provider: provider, models: models}]), do: provider_options(provider, models)
-
-  defp options(providers),
-    do:
-      for(%{provider: p, models: models} <- providers, do: {p.name, provider_options(p, models)})
-
+  # A fallback row's model options: the provider's models, each its title over its id,
+  # then its Another model, which a search keeps in view.
   defp provider_options(provider, models),
     do:
       for(
@@ -649,19 +601,16 @@ defmodule ApiaryWeb.ModelChoiceLive do
       {:link, ~p"/#{scope.organisation}/settings/model-providers",
        gettext("Organisation settings › Model providers")}
 
-  defp efforts({_entry, %{effort: [_ | _] = effort}}), do: effort
-  defp efforts(_chosen), do: []
-
   # What the Fallbacks part reads of the page's assigns.
   defp fallback_page(assigns),
     do:
       Map.take(
         assigns,
-        ~w(writes fallbacks fallback_errors providers known chosen runtime current_scope)a
+        ~w(writes fallbacks fallback_errors providers known key runtime current_scope)a
       )
 
   attr :page, :map, required: true, doc: "the page's assigns that `fallback_page/1` takes"
-  attr :provider, Connection, required: true, doc: "the chosen provider"
+  attr :provider, Connection, required: true, doc: "the Key's provider"
 
   # The Fallbacks part: its line, a row per fallback, Add fallback, or what to add first.
   defp fallbacks(%{page: page} = assigns) do
@@ -862,6 +811,12 @@ defmodule ApiaryWeb.ModelChoiceLive do
           class="q-form"
           novalidate
         >
+          <div id="model-default-head" class="grid gap-1">
+            <h2 id="model-default-title" class="q-part-h">{gettext("Default models")}</h2>
+            <p id="model-default-line" class="text-[13.5px]/5 text-muted">
+              {gettext("Runs use this key and these models when their workflow sets none.")}
+            </p>
+          </div>
           <.input
             :if={runtimes?(@runtimes)}
             field={@form[:runtime]}
@@ -880,33 +835,21 @@ defmodule ApiaryWeb.ModelChoiceLive do
             </p>
           </div>
           <.input
-            :if={@providers != []}
-            field={@form[:model]}
+            :if={@keys != []}
+            field={@form[:key]}
             type="choice"
-            label={gettext("Model")}
-            options={options(@providers)}
-            search
-            search_label={gettext("Find a model")}
-            found={gettext("%{shown} of %{total} models", shown: "%{shown}", total: "%{total}")}
+            label={gettext("Key")}
+            options={ModelTiers.key_options(@keys)}
             disabled={!@writes}
           />
-          <.input
-            :if={match?({_, :other}, @chosen)}
-            field={@form[:other]}
-            type="text"
-            label={gettext("Another model")}
-            autocomplete="off"
-            spellcheck="false"
-            class="font-mono"
-            disabled={!@writes}
-          />
-          <.input
-            :if={efforts(@chosen) != []}
-            field={@form[:effort]}
-            type="select"
-            label={gettext("Effort")}
-            prompt={gettext("Not set")}
-            options={efforts(@chosen)}
+          <ModelTiers.tiers
+            :if={@key}
+            id="model-tiers"
+            name="model_choice[tiers]"
+            key={@key}
+            tiers={@tiers}
+            stored={@stored}
+            errors={@tier_errors}
             disabled={!@writes}
           />
           <.fallbacks
@@ -916,10 +859,11 @@ defmodule ApiaryWeb.ModelChoiceLive do
           />
           <SettingsComponents.save id="model-save">
             <.button
-              :if={@writes and @providers != []}
+              :if={@writes and @keys != []}
               id="model-submit"
               type="submit"
               variant="primary"
+              disabled={!ModelTiers.complete?(@key, @tiers)}
               loading_text={gettext("Saving")}
             >
               {gettext("Save")}
@@ -932,7 +876,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
         <:context about={gettext("About models")}>
           <p id="model-line">
             {gettext(
-              "The default model for runs in %{workspace}. A workflow or a target can set another model for its runs. If %{workspace} sets none, its runs use the model of %{organisation}.",
+              "The models runs in %{workspace} use: one key, and a model and an effort for each tier. A workflow can choose another key and models in its settings on the Workflows page. If %{workspace} sets none, its runs use the models of %{organisation}.",
               workspace: @current_scope.workspace.name,
               organisation: @current_scope.organisation.name
             )}
