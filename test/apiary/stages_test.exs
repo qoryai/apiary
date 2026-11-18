@@ -6426,6 +6426,35 @@ defmodule Apiary.StagesTest do
 
       refute Map.has_key?(read, :from)
     end
+
+    test "a verification that a move back already lists is not listed again by a return",
+         %{scope: scope} do
+      ordered_process!(scope, false, [])
+      work_item = take_in!(scope)
+      work_item = end_run!(work_item, verdict("passed"))
+      work_item = end_run!(work_item, passing("# First"))
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+      first = newest_id(work_item, "verification")
+
+      # A person moves the work item back to Build; Verify's second run makes no
+      # verification, so its newest one is still the first.
+      {:ok, _moved} = Stages.move(scope, work_item, @build, nil, expect_stage: @verify)
+      work_item = reload(work_item) |> through_build!() |> returned_by(nil)
+      assert length(versions(work_item, "verification")) == 1
+      assert newest_id(work_item, "verification") == first
+
+      assert typed(work_item) == [
+               {"verdict", :move},
+               {"verification", :move},
+               {"verdict", :return}
+             ]
+
+      assert [^first] =
+               for(
+                 %{type: "verification", version: %{id: id}} <- Stages.inputs(work_item),
+                 do: id
+               )
+    end
   end
 
   describe "a work item that is not live" do
