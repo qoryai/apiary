@@ -75,17 +75,23 @@ defmodule ApiaryWeb.ModelTiers do
   defp key_entry(%Connection{} = provider, value_id, models, free) do
     %{
       value: if(value_id, do: provider.public_id <> "/" <> value_id, else: provider.public_id),
-      label:
-        if(value_id,
-          do: gettext("%{provider} · %{key}", provider: provider.name, key: value_id),
-          else: provider.name
-        ),
+      label: key_label(provider, value_id),
       provider: provider,
       value_id: value_id,
       models: models,
       free: free
     }
   end
+
+  @doc """
+  The label of a key of `provider`: "<Provider> · <key>" for the value id `value_id`,
+  the provider's name for nil.
+  """
+  @spec key_label(Connection.t(), String.t() | nil) :: String.t()
+  def key_label(%Connection{name: name}, nil), do: name
+
+  def key_label(%Connection{name: name}, value_id),
+    do: gettext("%{provider} · %{key}", provider: name, key: value_id)
 
   @doc "The options of a Key `choice` input for `keys`."
   @spec key_options([map]) :: [map]
