@@ -6,26 +6,34 @@ defmodule Apiary.Runs.SessionWindowsRacesTest do
   # is visible to every other test while they run, and they delete it again before they
   # end.
   #
-  # The rule under test: a report takes the run's projection lock
-  # (`Apiary.Runs.Projector.lock/1`) before it writes the session's record, as a pass of
-  # the projector does, so the two take turns on the run, and neither inserts the record
-  # of a session the other has half written. The report's rows are those
-  # `Apiary.ModelKeys.record/4` keeps and hands to `record_windows/3`.
+  # The rules under test. A report takes the run's projection lock
+  # (`Apiary.Runs.Projector.lock/1`) before it writes the session's record, as the write
+  # after a pass does (`Apiary.Runs.Sessions.write/1`), so the two take turns on the run,
+  # and neither inserts the record of a session the other has half written. The report's
+  # rows are those `Apiary.ModelKeys.record/4` keeps and hands to `record_windows/3`.
+  # Both writes lock the work item, the run of the queue and the run, `FOR KEY SHARE`, in
+  # the order the end of a run locks them (`Apiary.Dispatches.RunEnd`), and a pass is
+  # over when they start: an end that holds the work item, and then locks the run of the
+  # queue and the run, deadlocks with neither.
   use ExUnit.Case, async: false
 
   import Ecto.Query
   import Apiary.Races
-  import Apiary.RunEventsFixtures, only: [run_fixture: 1, t0: 0]
+  import Apiary.RunEventsFixtures, only: [events_fixture: 2, run_fixture: 1, t0: 0]
 
+  import Apiary.RunListFixtures, only: [queue_run!: 3]
+
+  alias Apiary.Dispatches.RunEnd
   alias Apiary.Repo
-  alias Apiary.Runs.{Projector, SessionKeyWindow, SessionRecord, Sessions}
+  alias Apiary.Runs.{Event, Projector, Run, SessionKeyWindow, SessionRecord, Sessions}
+  alias Apiary.WorkItems.WorkItem
 
   setup_all :clean_up_leftovers
   setup :setup_races
 
   setup do
     owner = sign_up()
-    %{run: run_fixture(owner.scope)}
+    %{scope: owner.scope, run: run_fixture(owner.scope)}
   end
 
   defp rows(utilization, minute) do
@@ -68,26 +76,16 @@ defmodule Apiary.Runs.SessionWindowsRacesTest do
   } do
     before = deadlocks()
 
-    events = [
-      %{
-        type: "dev.qory.session.started",
-        sequence: 1,
-        time: t0(),
-        data: %{"session" => 1, "runtime" => "claude"}
-      },
-      %{
-        type: "dev.qory.runtime.result",
-        sequence: 2,
-        time: t0(),
-        data: %{"session" => 1, "cost_usd" => 0.25}
-      }
-    ]
+    events_fixture(run, [
+      {1, "session.started", %{"session" => 1, "runtime" => "claude"}},
+      {2, "runtime.result", %{"session" => 1, "cost_usd" => 0.25}}
+    ])
 
     # The pass holds the lock with the record written and not committed.
     {held, held_pid} =
       hold(fn ->
         Projector.lock(run.id)
-        Sessions.write(run, events)
+        Sessions.write(run.id)
       end)
 
     assert held.result == :ok
@@ -105,6 +103,106 @@ defmodule Apiary.Runs.SessionWindowsRacesTest do
     assert Decimal.equal?(record.cost_usd, Decimal.new("0.25"))
     assert [%SessionKeyWindow{session_record_id: id}] = Repo.all(SessionKeyWindow)
     assert id == record.id
+    assert deadlocks() == before
+  end
+
+  # A run of the queue with a work item of an adapter that outlives the organisation:
+  # `on_exit` deletes it after the organisation.
+  defp queued!(scope, run) do
+    work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+
+    on_exit(fn ->
+      :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
+
+      Repo.delete_all(
+        from o in Apiary.Organisations.Organisation, where: o.id == ^scope.organisation.id
+      )
+
+      Repo.delete_all(from n in Apiary.Nodes.Node, where: n.id == ^work_item.adapter_id)
+      Ecto.Adapters.SQL.Sandbox.checkin(Repo)
+    end)
+
+    queue_run!(scope, run, work_item: work_item, queued: [])
+  end
+
+  # The first lock of the end of a run (`Apiary.Dispatches.RunEnd`): its work item,
+  # `FOR UPDATE`. Run inside a held transaction. A pass of the projector takes none of the
+  # queue's rows but its run's own, and so is not held by this lock.
+  defp lock_work_item(queued) do
+    Repo.one(
+      from w in WorkItem, where: w.id == ^queued.work_item_id, select: w.id, lock: "FOR UPDATE"
+    )
+
+    :ok
+  end
+
+  # The rest of the end: the run of the queue, then the run, `FOR UPDATE`.
+  defp lock_queue_run_and_run(queued, run) do
+    RunEnd.lock(queued.id)
+    Repo.one(from r in Run, where: r.id == ^run.id, select: r.id, lock: "FOR UPDATE")
+    :ok
+  end
+
+  defp unprojected(run),
+    do:
+      Repo.aggregate(
+        from(e in Event, where: e.run_id == ^run.id and is_nil(e.projected_at)),
+        :count
+      )
+
+  test "a pass commits, and the records wait for the end, which then locks the run", %{
+    scope: scope,
+    run: run
+  } do
+    before = deadlocks()
+    queued = queued!(scope, run)
+
+    events_fixture(run, [
+      {1, "session.started", %{"session" => 1, "runtime" => "claude"}},
+      {2, "runtime.result", %{"session" => 1, "cost_usd" => 0.25}}
+    ])
+
+    # The end holds the work item.
+    {held, held_pid} = hold(fn -> lock_work_item(queued) end)
+
+    ours = start(fn -> Projector.project(run) end)
+    await_blocked(ours.backend, held_pid)
+
+    # The pass has committed without waiting for the end: the events are projected, the run
+    # has its cost, and only the records wait.
+    assert unprojected(run) == 0
+    assert Decimal.equal?(Repo.get!(Run, run.id).cost_usd, Decimal.new("0.25"))
+    assert records(run) == []
+
+    # The end goes on to lock the run of the queue and the run, which the records' write
+    # does not hold while it waits for the work item.
+    assert :ok = continue(held, fn -> lock_queue_run_and_run(queued, run) end)
+    commit(held)
+
+    assert {:ok, _run} = Task.await(ours.task)
+    assert [%SessionRecord{session_number: 1, work_item_id: work_item_id}] = records(run)
+    assert work_item_id == queued.work_item_id
+    assert deadlocks() == before
+  end
+
+  test "a report's window waits for the end in the same order, and the end locks the run", %{
+    scope: scope,
+    run: run
+  } do
+    before = deadlocks()
+    queued = queued!(scope, run)
+
+    {held, held_pid} = hold(fn -> lock_work_item(queued) end)
+
+    ours = start(fn -> Sessions.record_windows(run, 1, rows(7, 0)) end)
+    await_blocked(ours.backend, held_pid)
+
+    assert :ok = continue(held, fn -> lock_queue_run_and_run(queued, run) end)
+    commit(held)
+
+    assert Task.await(ours.task) == :ok
+    assert [%SessionRecord{session_number: 1}] = records(run)
+    assert [%SessionKeyWindow{}] = Repo.all(SessionKeyWindow)
     assert deadlocks() == before
   end
 

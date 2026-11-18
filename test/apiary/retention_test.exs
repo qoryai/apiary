@@ -192,7 +192,8 @@ defmodule Apiary.RetentionTest do
       scope: scope
     } do
       scope = retain(scope, events_retention_days: 90)
-      old = old_run(scope, 91)
+      # The run is young when the gateway reports, and ages after.
+      old = old_run(scope, 10)
 
       :ok =
         Sessions.record_windows(old, 1, [
@@ -200,9 +201,12 @@ defmodule Apiary.RetentionTest do
             secret_value_id: Ecto.UUID.generate(),
             window: "five_hour",
             utilization: 11,
-            observed_at: days_ago(91)
+            observed_at: days_ago(10)
           }
         ])
+
+      Repo.update_all(from(r in Run, where: r.id == ^old.id), set: [last_event_at: days_ago(91)])
+      old = Repo.get!(Run, old.id)
 
       records = Repo.all(from r in SessionRecord, where: r.run_id == ^old.id, order_by: r.id)
       windows = Repo.all(SessionKeyWindow)

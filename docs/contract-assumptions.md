@@ -1832,12 +1832,15 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   have the same cost (`Apiary.Runs.Sessions`). Runs projected before decision 652 (a) keep
   the cost they were given, the sum of their lines, until they are rebuilt.
 - A session's record (`session_records`, `Apiary.Runs.SessionRecord`) is written, one for
-  each session number of a run, in the pass that projects one of the session's
+  each session number of a run, after the pass that projected one of the session's
   `dev.qory.session.started`, `dev.qory.runtime.started`, `dev.qory.runtime.result` or
-  `dev.qory.session.exited`, and again by every later pass, to the same row. It has a row
-  for a session with a start that is not `bare` or with a result; a session with no runtime,
-  and a refused join, which has an exit and no start, have none. Its work item, target,
-  stage, workflow and attempt come from Qory Apiary, not from the events: the attempt is
+  `dev.qory.session.exited` has committed, in a transaction of its own, and again after
+  every later such pass, to the same row. The write holds the run's projection lock and,
+  `FOR KEY SHARE`, the run's work item, run of the queue and run, in the order the end of a
+  run locks them, so the end and the write never wait for each other. It has a row for a
+  session with a start that is not `bare` or with a result; a session with no runtime, and a
+  refused join, which has an exit and no start, have none. Its work item, target, stage,
+  workflow and attempt come from Qory Apiary, not from the events: the attempt is
   `dispatch_runs.attempt`, so the run that continues a paused run has the paused run's
   attempt plus 1, while the paused run keeps its record as attempt 1; the stage and workflow
   are those of the run of the queue, and, for a shared run, those of the row of
@@ -1858,13 +1861,15 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   report that Qory Apiary does not store as a key's state, for a window or a key it does not
   keep or a value the run no longer has, is not counted, and neither is an item with no
   utilization. A report with no `session`, or with one above 2,147,483,647, changes no
-  session's windows. A report that names a session the run never started makes an empty
-  record for it, with its windows, and the session's events fill the record when they come.
-  The gateway sends a report when a session starts and when it ends, so the first and the
-  last are the utilization at the start and at the end, and the reports between them can
-  only move the last. A report that arrives after the run ended is counted as for the
-  states, within 60 seconds of the end. A share is only comparable within one key: one
-  percent of a large subscription is more than one percent of a small one.
+  session's windows. So does a report for a run that retention has deleted the events of, or
+  is due to delete, which the report finds out under the run's projection lock; the write
+  takes the same locks as the records' write. A report that names a session the run never
+  started makes an empty record for it, with its windows, and the session's events fill the
+  record when they come. The gateway sends a report when a session starts and when it ends,
+  so the first and the last are the utilization at the start and at the end, and the reports
+  between them can only move the last. A report that arrives after the run ended is counted
+  as for the states, within 60 seconds of the end. A share is only comparable within one
+  key: one percent of a large subscription is more than one percent of a small one.
 - The optional `peak_memory_bytes` and `cpu_time_ms` of `dev.qory.session.exited` are
   the enclosure's peak memory, in bytes, and its CPU time, in milliseconds, measured
   inside the enclosure, and Forager's contract marks them as not for limits or billing.

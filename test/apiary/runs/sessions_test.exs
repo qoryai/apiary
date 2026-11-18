@@ -9,11 +9,12 @@ defmodule Apiary.Runs.SessionsTest do
   import Apiary.RunListFixtures, only: [queue_run!: 3]
 
   alias Apiary.Organisations.Workspace
-  alias Apiary.Runs.{Event, Projector, Run, SessionRecord, Sessions}
+  alias Apiary.Runs.{Event, Projector, Run, SessionKeyWindow, SessionRecord, Sessions}
   alias Apiary.Stages.Session
 
   @t0 ~U[2026-11-18 09:00:00.000000Z]
   @build "st_6ns22c4pav"
+  @key_id "5d7e3a10-2f4b-4c6d-8e90-1a2b3c4d5e6f"
 
   defp at(seconds), do: DateTime.add(@t0, seconds, :second)
 
@@ -382,8 +383,25 @@ defmodule Apiary.Runs.SessionsTest do
       events =
         for session <- 1..6, event <- session_events(session, session / 100), do: event
 
-      events_fixture(run, events)
+      # The run's target is the repository its `run.started` names.
+      events_fixture(run, [{1, "run.started", started_data()} | events])
       {:ok, run} = Projector.project(run)
+      assert is_binary(run.target_id)
+
+      # The reports of the gateway at the start and the end of two sessions.
+      for {session, minute, utilization} <- [{2, 0, 10}, {2, 30, 30}, {5, 0, 50}, {5, 20, 20}] do
+        observed = DateTime.add(@t0, minute * 60, :second)
+
+        assert :ok =
+                 Sessions.record_windows(run, session, [
+                   %{
+                     secret_value_id: @key_id,
+                     window: "five_hour",
+                     utilization: utilization,
+                     observed_at: observed
+                   }
+                 ])
+      end
 
       records = records(run)
       assert Enum.map(records, & &1.session_number) == [1, 2, 3, 4, 5, 6]
@@ -400,19 +418,46 @@ defmodule Apiary.Runs.SessionsTest do
                  attempt: 1,
                  turns: 4,
                  duration_ms: 60_000,
+                 input_tokens: 10,
                  output_tokens: 2_000,
+                 cache_read_tokens: 3_000,
+                 cache_write_tokens: 400,
                  model: "model-large",
                  error: false
                } = record
 
         assert dispatch_run_id == queued.id
         assert work_item_id == queued.work_item_id
+        assert record.target_id == run.target_id
         assert record.started_at == at(record.session_number * 100)
         assert record.ended_at == at(record.session_number * 100 + 60)
+        assert Decimal.equal?(record.cost_usd, Decimal.from_float(record.session_number / 100))
       end
 
       # 0.01 + ... + 0.06
       assert Decimal.equal?(run.cost_usd, Decimal.new("0.21"))
+
+      windows =
+        Repo.all(
+          from w in SessionKeyWindow,
+            join: r in SessionRecord,
+            on: r.id == w.session_record_id,
+            where: r.run_id == ^run.id,
+            order_by: r.session_number,
+            select:
+              {r.session_number, w.key_id, w.window, w.first_utilization, w.last_utilization,
+               w.share}
+        )
+        |> Enum.map(fn {n, key, window, first, last, share} ->
+          {n, key, window, Decimal.to_integer(first), Decimal.to_integer(last),
+           Decimal.to_integer(share)}
+        end)
+
+      # The second session's window rose by 20; the fifth's reset, and fell by 30.
+      assert windows == [
+               {2, @key_id, "five_hour", 10, 30, 20},
+               {5, @key_id, "five_hour", 50, 20, -30}
+             ]
     end
 
     test "a session of a run the queue started takes its place from the run of the queue", %{
@@ -559,11 +604,9 @@ defmodule Apiary.Runs.SessionsTest do
       assert [record] = records(run)
       assert Decimal.equal?(record.cost_usd, Decimal.new("0.0129"))
 
-      # And `write/2` itself leaves such a run alone.
-      assert :ok =
-               Sessions.write(run, [
-                 event(1, "runtime.result", %{"session" => 2, "cost_usd" => 1})
-               ])
+      # And `write/1` itself leaves such a run alone.
+      events_fixture(run, [{600, "runtime.result", %{"session" => 2, "cost_usd" => 1}}])
+      assert :ok = Sessions.write(run.id)
 
       assert [_one] = records(run)
     end

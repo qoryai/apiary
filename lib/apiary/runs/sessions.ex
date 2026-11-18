@@ -9,9 +9,10 @@ defmodule Apiary.Runs.Sessions do
   `data`, and give the same answer for the events of a run whether they were projected in
   one pass or in many, and in a rebuild.
 
-  A session is a Forager session number (`session` of the event, from 1). A result, or a
-  `dev.qory.runtime.started`, with no `session` belongs to session 1, as in a record
-  written before Forager sent the number on every runtime event. A session has a record
+  A session is a Forager session number (`session` of the event, from 1). `session` is
+  optional in the schema of `dev.qory.runtime.result`
+  (`priv/contract/events/runtime.result.schema.json`), so a result with no `session`
+  belongs to session 1, and so does a `dev.qory.runtime.started` with none. A session has a record
   when it has a start that is not bare (`bare` is Forager's mark of a session with no
   runtime, which measures nothing) or a result. A refused join, which has an exit and no
   start, has none.
@@ -34,9 +35,10 @@ defmodule Apiary.Runs.Sessions do
 
   ## Writing
 
-  `write/2` writes the records of a run from all its session events, one statement per
-  pass, in the projector's transaction (`Apiary.Runs.Projector`), unless retention has
-  deleted the run's events or is due to (`Apiary.Retention.due_or_pruned?/1`): it inserts a record or
+  `write/1` writes the records of a run from all its session events, in a transaction of
+  its own after the projector's pass has committed (`Apiary.Runs.Projector`), unless
+  retention has deleted the run's events or is due to (`Apiary.Retention.due_or_pruned?/1`,
+  asked under the run's projection lock): it inserts a record or
   replaces the columns that come from the events and from the run's place in the queue,
   never its `id`, so the key windows that hang on it stay. The write is the same for the
   same events whichever pass writes it. `record_windows/3` writes the key windows of the
@@ -50,9 +52,10 @@ defmodule Apiary.Runs.Sessions do
   import Ecto.Query
 
   alias Apiary.Dispatches.DispatchRun
-  alias Apiary.Repo
-  alias Apiary.Runs.{Event, Run, SessionKeyWindow, SessionRecord}
+  alias Apiary.{Repo, Retention}
+  alias Apiary.Runs.{Event, Projector, Run, SessionKeyWindow, SessionRecord}
   alias Apiary.Stages.Session
+  alias Apiary.WorkItems.WorkItem
 
   @session_started "dev.qory.session.started"
   @session_exited "dev.qory.session.exited"
@@ -287,33 +290,72 @@ defmodule Apiary.Runs.Sessions do
   ## Writing
 
   @doc """
-  Writes the record of each session `read/1` finds in `events`, for `run`, which has the
-  place the run holds now: its organisation, workspace, target and the run of the queue it
-  belongs to. A run whose events were deleted is left as it is: its records are what is
-  left. Returns `:ok`.
+  Writes the record of each session of the run `run_id`, from all its session events
+  (`events/1`), in a transaction that holds the run's projection lock
+  (`Apiary.Runs.Projector.lock/1`) and, to check the records' foreign keys, the places in
+  the order the end of a run takes them (`lock_places/1`). It is the projector's to call
+  after a pass has committed, and once for a run's passes: the same events give the same
+  rows, so a rebuild writes the rows of the first projection again. A run that is gone,
+  whose events retention has deleted, or is due to delete, is left as it is: its records
+  are what is left. Returns `:ok`.
   """
-  @spec write(Run.t(), [event]) :: :ok
-  def write(%Run{events_pruned_at: %DateTime{}}, _events), do: :ok
+  @spec write(Ecto.UUID.t()) :: :ok
+  def write(run_id) when is_binary(run_id) do
+    {:ok, :ok} =
+      Repo.transact(fn ->
+        Projector.lock(run_id)
 
-  def write(%Run{} = run, events) do
-    with [_ | _] = sessions <- read(events),
-         false <- Apiary.Retention.due_or_pruned?(run) do
-      context = context(run)
-      now = DateTime.utc_now()
+        with %Run{} = run <- lock_places(run_id),
+             false <- Retention.due_or_pruned?(run),
+             [_ | _] = sessions <- read(events(run_id)) do
+          context = context(run)
+          now = DateTime.utc_now()
 
-      rows =
-        for session <- sessions do
-          run |> row(context, session.session_number, now) |> Map.merge(session)
+          rows =
+            for session <- sessions do
+              run |> row(context, session.session_number, now) |> Map.merge(session)
+            end
+
+          Repo.insert_all(SessionRecord, rows,
+            on_conflict: {:replace, @replaced},
+            conflict_target: [:run_id, :session_number],
+            log: false
+          )
         end
 
-      Repo.insert_all(SessionRecord, rows,
-        on_conflict: {:replace, @replaced},
-        conflict_target: [:run_id, :session_number],
-        log: false
-      )
-    end
+        {:ok, :ok}
+      end)
 
     :ok
+  end
+
+  # Locks, `FOR KEY SHARE`, what a record's foreign keys check, in the order the end of a
+  # run locks them (`Apiary.Dispatches.RunEnd`): the work item, the run of the queue, then
+  # the run. Postgres takes these locks on its own when it checks the keys, in the order of
+  # the columns, the run first, and a record that took them so would wait for a lock the
+  # end holds while the end waits for the lock the record holds on the run. Returns the
+  # run as it is, nil for a run that is gone.
+  defp lock_places(run_id) do
+    with %Run{} = run <- Repo.get(Run, run_id) do
+      dispatch = run.dispatch_run_id && Repo.get(DispatchRun, run.dispatch_run_id)
+
+      if dispatch && dispatch.work_item_id do
+        Repo.one(
+          from w in WorkItem,
+            where: w.id == ^dispatch.work_item_id,
+            select: w.id,
+            lock: "FOR KEY SHARE"
+        )
+      end
+
+      if dispatch do
+        Repo.one(
+          from d in DispatchRun, where: d.id == ^dispatch.id, select: d.id, lock: "FOR KEY SHARE"
+        )
+      end
+
+      Repo.one(from r in Run, where: r.id == ^run_id, lock: "FOR KEY SHARE")
+    end
   end
 
   # What the run's place in the queue gives its sessions: the run of the queue and the
@@ -371,13 +413,11 @@ defmodule Apiary.Runs.Sessions do
     end
   end
 
-  @doc """
-  The id of the record of session `number` of `run`, written with the run's place and no
-  event's values when it is not there yet. The record is written by the first thing that
-  knows of the session: a gateway's report, or the events.
-  """
-  @spec ensure(Run.t(), pos_integer) :: Ecto.UUID.t()
-  def ensure(%Run{} = run, number) when number in 1..@int4 do
+  # The id of the record of session `number` of `run`, written with the run's place and no
+  # event's values when it is not there yet. The record is written by the first thing that
+  # knows of the session: a gateway's report, or the events. Runs in the transaction of
+  # `record_windows/3`, after the places are locked.
+  defp ensure(%Run{} = run, number) do
     Repo.insert_all(
       SessionRecord,
       [row(run, context(run), number, DateTime.utc_now())],
@@ -411,49 +451,57 @@ defmodule Apiary.Runs.Sessions do
     else
       {:ok, :ok} =
         Repo.transact(fn ->
-          # A pass of the projector writes this run's records under this lock: taking it
-          # first keeps a report and a pass from inserting one record in opposite orders.
-          Apiary.Runs.Projector.lock(run.id)
-          id = ensure(run, number)
+          # The projector writes this run's records under this lock: a report takes it
+          # first, then asks under it whether the run is still one to write to.
+          Projector.lock(run.id)
 
-          Repo.one!(
-            from(r in SessionRecord, where: r.id == ^id, lock: "FOR UPDATE", select: r.id)
-          )
-
-          stored =
-            Repo.all(from w in SessionKeyWindow, where: w.session_record_id == ^id)
-            |> Map.new(&{{&1.key_id, &1.window}, &1})
-
-          now = DateTime.utc_now()
-
-          windows =
-            for row <- rows do
-              stored
-              |> Map.get({row.secret_value_id, row.window})
-              |> window(row, %{
-                id: Ecto.UUID.generate(),
-                organisation_id: run.organisation_id,
-                workspace_id: run.workspace_id,
-                session_record_id: id,
-                key_id: row.secret_value_id,
-                window: row.window,
-                inserted_at: now,
-                updated_at: now
-              })
-            end
-
-          Repo.insert_all(SessionKeyWindow, windows,
-            on_conflict:
-              {:replace,
-               ~w(first_utilization first_observed_at last_utilization last_observed_at share updated_at)a},
-            conflict_target: [:session_record_id, :key_id, :window]
-          )
-
-          {:ok, :ok}
+          with %Run{} = run <- lock_places(run.id),
+               false <- Retention.due_or_pruned?(run) do
+            {:ok, count_windows(run, number, rows)}
+          else
+            _gone_or_kept -> {:ok, :ok}
+          end
         end)
 
       :ok
     end
+  end
+
+  defp count_windows(%Run{} = run, number, rows) do
+    id = ensure(run, number)
+
+    Repo.one!(from(r in SessionRecord, where: r.id == ^id, lock: "FOR UPDATE", select: r.id))
+
+    stored =
+      Repo.all(from w in SessionKeyWindow, where: w.session_record_id == ^id)
+      |> Map.new(&{{&1.key_id, &1.window}, &1})
+
+    now = DateTime.utc_now()
+
+    windows =
+      for row <- rows do
+        stored
+        |> Map.get({row.secret_value_id, row.window})
+        |> window(row, %{
+          id: Ecto.UUID.generate(),
+          organisation_id: run.organisation_id,
+          workspace_id: run.workspace_id,
+          session_record_id: id,
+          key_id: row.secret_value_id,
+          window: row.window,
+          inserted_at: now,
+          updated_at: now
+        })
+      end
+
+    Repo.insert_all(SessionKeyWindow, windows,
+      on_conflict:
+        {:replace,
+         ~w(first_utilization first_observed_at last_utilization last_observed_at share updated_at)a},
+      conflict_target: [:session_record_id, :key_id, :window]
+    )
+
+    :ok
   end
 
   # The window with `row`'s report counted in: the first of a window, else the earlier or

@@ -38,10 +38,11 @@ defmodule Apiary.Runs.Projector do
   which this server never receives. A step exit folded later sets the step's state
   as the exit says.
 
-  A session's record (`Apiary.Runs.SessionRecord`) is written, or replaced, in the pass that
-  folds one of the run's `dev.qory.session.started`, `dev.qory.session.exited`,
-  `dev.qory.runtime.started` or `dev.qory.runtime.result` events, from all the run's events
-  of those types (`Apiary.Runs.Sessions`). A rebuild does not delete the records: the key
+  A session's record (`Apiary.Runs.SessionRecord`) is written, or replaced, after the pass
+  that folded one of the run's `dev.qory.session.started`, `dev.qory.session.exited`,
+  `dev.qory.runtime.started` or `dev.qory.runtime.result` events has committed, in a
+  transaction of its own, from all the run's events of those types
+  (`Apiary.Runs.Sessions`). A rebuild does not delete the records: the key
   windows that hang on them come from the gateway's reports, not from the events, and the
   records stay when retention deletes the events. A run whose events retention has deleted,
   or is due to delete (`Apiary.Retention.due_or_pruned?/1`), keeps its records and its cost:
@@ -115,6 +116,7 @@ defmodule Apiary.Runs.Projector do
 
       {:ok, run, {first, last}} ->
         touch_heartbeat(run)
+        write_sessions(run, first, last)
         if built == :store_built, do: record_built(run, first, last)
         end_handed_over(run)
         end_refused(run)
@@ -383,7 +385,6 @@ defmodule Apiary.Runs.Projector do
       upsert_connections(run, fold.connections)
       upsert_steps(run, fold.steps)
       insert_target_writes(run, fold.target_writes)
-      if session_events, do: Sessions.write(run, session_events)
       if Enum.any?(events, &(&1.type in @ending)), do: end_open_steps(run)
       mark_projected(Enum.map(events, & &1.id))
 
@@ -511,6 +512,28 @@ defmodule Apiary.Runs.Projector do
   # the run's sessions are written from all of them (`Apiary.Runs.Sessions`).
   defp session_events(%Run{id: id}, events) do
     if session_pass?(events), do: Sessions.events(id)
+  end
+
+  # The records of the run's sessions, after the passes have committed, for events that
+  # folded a session's start, runtime, result or exit: written in a transaction that holds
+  # the run's projection lock and no row of the run, so the pass never waits for what the
+  # end of a run holds (`Apiary.Runs.Sessions.write/1`). A failure is logged by the run's
+  # id and the exception's module, and the events stay projected: the next pass that folds a
+  # session event, or a rebuild, writes the records again.
+  defp write_sessions(%Run{id: id}, first, last) do
+    if Repo.exists?(
+         from e in Event,
+           where:
+             e.run_id == ^id and e.sequence >= ^first and e.sequence <= ^last and
+               e.type in ^Sessions.types()
+       ),
+       do: Sessions.write(id)
+
+    :ok
+  rescue
+    error ->
+      Logger.error("session records not written run=#{id} error=#{inspect(error.__struct__)}")
+      :ok
   end
 
   defp session_pass?(events), do: Enum.any?(events, &(&1.type in Sessions.types()))
