@@ -621,6 +621,11 @@ defmodule Apiary.ModelChoicesTest do
   end
 
   describe "the tiers" do
+    test "are named Thinking, Balanced and Light, in the order the pages show them" do
+      assert Enum.map(Enum.reverse(Resolution.tiers()), &ModelChoices.tier_name/1) ==
+               ~w(Thinking Balanced Light)
+    end
+
     test "need a provider at every level", %{scope: scope, target: target} do
       for place <- [:organisation, :workspace, {:workspace, "hello"}, target, {target, "hello"}] do
         assert %{provider: ["can't be blank"]} =
@@ -633,27 +638,27 @@ defmodule Apiary.ModelChoicesTest do
     test "are all needed at levels 4, 5 and 6: the first missing one is refused", ctx do
       %{scope: scope, provider: provider} = ctx
       # The pages show the tiers from the last of `Resolution.tiers/0` to the first, and
-      # the error names the first missing tier in that order.
+      # the error names the first missing tier in that order, as the pages name it.
       [light, middle, thinking] = Resolution.tiers()
 
       for place <- [:organisation, :workspace, {:workspace, "hello"}] do
         two = Map.delete(every_tier(@model), middle)
 
         assert errors(ModelChoices.put_choice(scope, place, attrs(provider, %{tiers: two}))) ==
-                 %{tiers: ["Choose a model for each tier: #{middle} has none."]}
+                 %{tiers: ["Choose a model for each tier: Balanced has none."]}
 
         for none <- [%{}, nil] do
           assert errors(ModelChoices.put_choice(scope, place, attrs(provider, %{tiers: none}))) ==
-                   %{tiers: ["Choose a model for each tier: #{thinking} has none."]}
+                   %{tiers: ["Choose a model for each tier: Thinking has none."]}
         end
 
         assert errors(ModelChoices.put_choice(scope, place, Map.delete(attrs(provider), :tiers))) ==
-                 %{tiers: ["Choose a model for each tier: #{thinking} has none."]}
+                 %{tiers: ["Choose a model for each tier: Thinking has none."]}
 
         one = Map.take(every_tier(@model), [light])
 
         assert errors(ModelChoices.put_choice(scope, place, attrs(provider, %{tiers: one}))) ==
-                 %{tiers: ["Choose a model for each tier: #{thinking} has none."]}
+                 %{tiers: ["Choose a model for each tier: Thinking has none."]}
 
         assert {:ok, %ModelChoice{tiers: tiers}} =
                  ModelChoices.put_choice(scope, place, attrs(provider))
@@ -664,19 +669,19 @@ defmodule Apiary.ModelChoicesTest do
 
     test "leave out a tier with a blank model, and a blank effort, as a form posts them", ctx do
       %{scope: scope, provider: provider, target: target} = ctx
-      [light, middle, thinking] = Resolution.tiers()
+      [light, middle, _thinking] = Resolution.tiers()
       blank = %{"model" => "", "effort" => ""}
 
       for place <- [:organisation, :workspace, {:workspace, "hello"}] do
         posted = Map.put(every_tier(@model), middle, blank)
 
         assert errors(ModelChoices.put_choice(scope, place, attrs(provider, %{tiers: posted}))) ==
-                 %{tiers: ["Choose a model for each tier: #{middle} has none."]}
+                 %{tiers: ["Choose a model for each tier: Balanced has none."]}
 
         all_blank = Map.new(Resolution.tiers(), &{&1, blank})
 
         assert errors(ModelChoices.put_choice(scope, place, attrs(provider, %{tiers: all_blank}))) ==
-                 %{tiers: ["Choose a model for each tier: #{thinking} has none."]}
+                 %{tiers: ["Choose a model for each tier: Thinking has none."]}
 
         # A tier with a model and a blank effort is saved with no effort.
         posted = Map.put(every_tier(@model), light, %{"model" => @model, "effort" => ""})
@@ -763,7 +768,7 @@ defmodule Apiary.ModelChoicesTest do
 
       assert errors(
                ModelChoices.put_choice(scope, :workspace, attrs(provider, %{tiers: missing}))
-             ) == %{tiers: ["Choose a model for each tier: #{thinking} has none."]}
+             ) == %{tiers: ["Choose a model for each tier: Thinking has none."]}
 
       assert Repo.aggregate(ModelChoice, :count) == 0
     end

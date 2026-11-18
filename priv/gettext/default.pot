@@ -6517,6 +6517,12 @@ msgstr ""
 msgid "Backlog"
 msgstr ""
 
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgctxt "model tier"
+msgid "Balanced"
+msgstr ""
+
 #: lib/apiary_web/live/artifact_live/types.ex
 #, elixir-autogen, elixir-format
 msgid "Base view"
@@ -12583,6 +12589,12 @@ msgstr ""
 #: lib/apiary_web/components/layouts.ex
 #: lib/apiary_web/components/settings_components.ex
 #, elixir-autogen, elixir-format
+msgid "Light"
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgctxt "model tier"
 msgid "Light"
 msgstr ""
 
@@ -22506,6 +22518,12 @@ msgstr ""
 
 #: lib/apiary_web/components/transcript_components.ex
 #, elixir-autogen, elixir-format
+msgid "Thinking"
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgctxt "model tier"
 msgid "Thinking"
 msgstr ""
 

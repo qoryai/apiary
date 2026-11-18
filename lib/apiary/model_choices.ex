@@ -55,7 +55,8 @@ defmodule Apiary.ModelChoices do
   #     the description lists no model; a model of another provider is refused. Each
   #     tier's effort is checked as `effort` is. Both checks go through the tiers in the
   #     order the pages show them (`tiers/0` reversed, `thinking` first), and the first
-  #     tier refused is the one named;
+  #     tier refused is the one named. A missing tier is named as the pages name it
+  #     (`tier_name/1`);
   #   * `fallbacks`: a list of the providers runs use, in order, while every key of the
   #     choice's provider is in cooldown, each a map of `provider`, `model` and `effort`.
   #     A workflow's choice (levels 2 and 4) has none: runs use the fallbacks of the
@@ -173,6 +174,14 @@ defmodule Apiary.ModelChoices do
   @spec runtime(String.t() | nil) :: {:ok, Runtime.t()} | :error
   def runtime(nil), do: {:ok, default_runtime()}
   def runtime(name), do: Runtimes.fetch(name)
+
+  @doc false
+  # tier_name/1 is the name the pages show for `tier`, one of `Resolution.tiers/0`, in
+  # sentence case and in the process's locale. A refusal that names a tier uses it too.
+  @spec tier_name(String.t()) :: String.t()
+  def tier_name("thinking"), do: pgettext("model tier", "Thinking")
+  def tier_name("balanced"), do: pgettext("model tier", "Balanced")
+  def tier_name("light"), do: pgettext("model tier", "Light")
 
   ## Reading
 
@@ -827,7 +836,8 @@ defmodule Apiary.ModelChoices do
   defp page_tiers, do: Enum.reverse(Resolution.tiers())
 
   # At levels 4, 5 and 6, a tier map with every tier: the first missing one, in the order
-  # of `page_tiers/0`, is refused, unless the tier map is refused already.
+  # of `page_tiers/0`, is refused by its name (`tier_name/1`), unless the tier map is
+  # refused already.
   defp every_tier(changeset, level) when level in [4, 5, 6] do
     tiers = get_field(changeset, :tiers) || %{}
     missing = Enum.reject(page_tiers(), &Map.has_key?(tiers, &1))
@@ -839,7 +849,7 @@ defmodule Apiary.ModelChoices do
           changeset,
           :tiers,
           dgettext_noop("errors", "Choose a model for each tier: %{tier} has none."),
-          tier: hd(missing)
+          tier: tier_name(hd(missing))
         )
   end
 
