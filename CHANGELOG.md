@@ -222,6 +222,19 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   then compares the levels again and ends such a run before it starts, with the end
   cause `shared_access_differs` and the outcome error. Owners and admins see
   an escalation with the save's fix and "then run the round again" after it.
+- A save of a stage with `shared_run: true` fails when its workflows, their fallbacks
+  included, use more than 6 model providers, with "Use at most 6 model providers in one
+  stage. Its workflows use 7: Northwind, …", as one run takes keys of at most 6. It also
+  fails when a workflow has no model choice and the stage's runs can start on a provider
+  that the default runtime cannot use, with "Choose a model for workflow review. Without
+  one it runs on Claude Code, and this stage's runs can start on Northwind, which Claude
+  Code cannot use." Update from harness shows the same lines, and making a workspace from
+  a template shows the line alone, checked against the organisation's default. The claim
+  checks both again, as a changed default provider, a cleared model choice or a harness
+  change can break them after the save, and ends such a run before it starts, with the
+  end cause `too_many_providers` or `model_choice_missing` and the outcome error. The work
+  item and the stop line show the same fix while the fault remains, and "Run the round
+  again." once it is gone.
 - `full_suite` is `true` only for a session of an entry with access `write` that is in a
   loop or has `first_attempt`, whether the stage has `shared_run` or not. A run with
   access `read` or `write-no-push`, and a run of Explore, gets `false` for every session.
@@ -1760,16 +1773,19 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   runtime of its workflow, or on the run's runtime where `model_choice` is the run's
   `run_settings`. The claim keeps the result for each workflow of the stage, so a
   model choice saved after the claim changes nothing for the run. `model_choice` has the
-  choice's model where its provider is the run's and its runtime uses the run's API; the
-  model of the choice's fallback where the run's provider is that choice's fallback, as
-  when the claim took the fallback; and the run's `run_settings` where the choice's
-  provider, key or model is no longer valid, or its runtime is no longer in the
-  catalogue. It has `runtime` alone where the choice's provider is another provider or
-  its runtime uses another API, where the run has no provider's key, and, with the default
-  runtime, where the workflow resolves to no model choice at any level, or its choice's
-  provider was removed: the session uses that runtime's default model. The answer has no
-  `model_credential`: a run takes the keys of one provider, and each session joins with
-  the group of the run's start key.
+  choice's model on its provider where that provider has a key out of cooldown, else on
+  its first fallback with one, else on its provider; and the run's `run_settings` where
+  the choice's runtime, key or model is no longer valid, or its runtime is no longer in
+  the catalogue. It has `runtime` alone where its runtime uses another API of a provider
+  that an earlier session uses, where its provider has no key or the run has no start
+  key, and, with the default runtime, where the workflow resolves to no model choice at
+  any level: the session uses that runtime's default model. A choice whose provider was
+  removed ends the claim `provider_gone`. A run takes the keys of each provider its
+  sessions run on, at most 6 across them: the start key's provider's keys, then one key
+  of each other provider, then the rest, each kept as a row of `run_model_keys`. For a
+  session on a provider other than the start key's, the answer has `model_credential`,
+  the key that session starts on; without it, the session joins the group of the run's
+  start key.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
 - A run receives the variables of its workspace. When a claim registers a run, Qory
@@ -2525,6 +2541,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Fixed
 
+<!-- feature: factory, secrets -->
+- A Codex run that Forager ends `paused` with `model_key_switch`, as its key is out while
+  another key of the run is usable, is Paused, where it read as failed. The run that
+  continues it resumes the session that paused, once 60 seconds have passed after the
+  exit, so that the run's model keys report is recorded first. A paused run waits for the
+  keys of the provider of the session that paused, and its Paused line shows that
+  provider.
+<!-- /feature -->
+
 <!-- feature: factory -->
 - When an Explore run ends at its time limit, the work item page reads that the time
   limit was reached, where it read that the run was cancelled. The header and the step
@@ -2766,6 +2791,22 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Migrations
 
 <!-- feature: factory, secrets -->
+- `run_model_keys` (20261118162100): a new table, one row for each model key a run's
+  claim stored, at most 6 per run, with its foreign keys to `runs`,
+  `organisation_connections` and `secrets`, and its indexes and checks. It changes no
+  existing table.
+- `runs` (20261118162200): the columns `provider_secret_id`, `provider_chain`,
+  `provider_api` and `model_keys` and their checks are dropped; `provider_connection_id`
+  stays. No run's keys are copied, so a run claimed before the upgrade and still running
+  has no keys to fetch, and its secrets requests fail. Rolled back, the columns come back,
+  filled from the key rows of each run's start key's provider.
+- `dispatch_runs` (20261118162300): a nullable column `report_wait_until`, the end of the
+  report window of a run that continues a run paused with `model_key_switch`. It changes
+  no row.
+- `dispatch_runs` and `dispatches` (20261118162000): the checks on `end_cause` and on
+  `dispatch_runs.result_outcome` take the causes `model_choice_missing` and
+  `too_many_providers`. Each new check scans its table as it is added, under a lock that
+  blocks reads and writes. It changes no row.
 - `runs` (20261118151000): a nullable column `paused_session`, the number of the session
   where a run paused at its keys' limit. It changes no row.
 <!-- /feature -->

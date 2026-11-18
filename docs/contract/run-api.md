@@ -777,19 +777,25 @@ of the run contract. A next session of the same stage:
   target's choice, the workflow's choice at the workspace, the workspace's (Workspace
   settings › Model), and the organisation's default. The claim keeps the result, so a
   model choice saved after the claim changes nothing for the run.
-- `model_choice` has the choice's model where the choice's provider is the run's and its
-  runtime uses the same API of that provider as the run, so the run's keys serve it; or
-  the model of the choice's fallback, where the run's provider is that choice's fallback,
-  as when the claim took the fallback.
-- `model_choice` is the run's `run_settings` where the choice's provider, key or model is
-  no longer valid, or its runtime is no longer in the catalogue.
-- `model_choice` has `runtime` alone where the choice's provider is another provider, or
-  its runtime uses another API of the run's provider, or where the run has no provider's
-  key; and the catalogue's default runtime alone where the workflow resolves to no model
-  choice at any level, or its choice's provider was removed. The session uses the default
-  model of that runtime.
-- `model_credential` is left out: a run takes the keys of one provider, so each session
-  joins with the group of the run's start key, the credentials of that provider.
+- `model_choice` has the choice's model on the choice's provider where that provider has a
+  key out of cooldown at the claim; else the model of the choice's first fallback that
+  has one; else the choice's model on its provider, whose keys are all in cooldown. A
+  choice on the provider of the run's start key whose runtime uses the same API of that
+  provider as the run joins the group of the run's start key.
+- `model_choice` is the run's `run_settings` where the choice's runtime, key or model is
+  no longer valid, or its runtime is no longer in the catalogue. A choice whose provider
+  was removed, or no longer fits the catalogue, ends the claim `provider_gone`.
+- `model_choice` has `runtime` alone where its runtime uses another API of a provider that
+  an earlier session of the run uses, where its provider has no key, or where the run has
+  no start key; and the catalogue's default runtime alone where the workflow resolves to
+  no model choice at any level. The session uses the default model of that runtime.
+- `model_credential`, for a session on a provider other than that of the run's start key,
+  is the credential name of the key the session starts on: that provider's first key out
+  of cooldown, else its first key. The run's `credentials` have at most 6 keys across the
+  providers of its sessions: the start key's provider's keys, at most 6 less the number
+  of other providers; then one key of each other provider, in session order; then the
+  other providers' remaining keys. Where `model_credential` is left out, the session joins
+  the group of the run's start key.
 
 Or the end of the run, where the stage runs no further workflow in this run: an
 escalation, open questions, the gate, or the next stage, whose run is queued as any run:
