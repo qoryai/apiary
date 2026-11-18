@@ -439,8 +439,8 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     assert has_element?(lv, ~s{#model_choice_tiers_balanced_model option[value="#{default}"]})
   end
 
-  test "a forged provider is not saved: the save keeps the page's provider", ctx do
-    %{conn: conn, scope: scope, provider: provider} = ctx
+  test "a forged provider is refused under Provider, and nothing is saved", ctx do
+    %{conn: conn, scope: scope} = ctx
     %{scope: other} = sign_up_fixture()
 
     {:ok, foreign} =
@@ -453,8 +453,8 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
     for forged <- [foreign.public_id, "x"] do
       render_hook(lv, "save", %{"model_choice" => %{"provider" => forged, "tiers" => @tiers}})
-      assert %ModelChoice{} = saved = choice(scope)
-      assert saved.connection_id == provider.id
+      assert has_element?(lv, "#model_choice_provider-error", "is invalid")
+      assert choice(scope) == nil
     end
   end
 
@@ -899,10 +899,10 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert choice(scope) == nil
     end
 
-    test "a sent row with another organisation's provider keeps the row's provider, and no fallback of it is saved",
+    test "a sent row with another organisation's provider is refused under its Provider, and nothing is saved",
          ctx do
       %{conn: conn, scope: scope} = ctx
-      {:ok, subscription} = add_provider(scope, "claude-subscription")
+      {:ok, _subscription} = add_provider(scope, "claude-subscription")
       %{scope: other} = sign_up_fixture()
       {:ok, foreign} = add_provider(other, "claude-subscription")
       {:ok, lv, _html} = live(conn, path(scope))
@@ -917,8 +917,8 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
         }
       })
 
-      assert [{0, provider_id, _runtime, _tiers}] = fallbacks(scope)
-      assert provider_id == subscription.public_id
+      assert has_element?(lv, "#model_choice_fallbacks_0_provider-error", "is invalid")
+      assert choice(scope) == nil
       refute fallbacks_of_provider?(other, foreign)
     end
 

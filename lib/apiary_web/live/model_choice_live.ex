@@ -342,8 +342,10 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # `new_row/2`. A row of the same provider takes the runtime sent while the provider
   # serves it, and the tiers sent, fitted to the provider and that runtime
   # (`ApiaryWeb.ModelTiers.sent/5`): a change of the runtime keeps the models, and an
-  # effort the runtime does not accept goes back to Not set. With no rows sent, the rows
-  # are as they were: a form without them, or with them off for a reader.
+  # effort the runtime does not accept goes back to Not set. A row sent with a provider
+  # the page does not list, which no select of the page offers, is marked `"unknown"`,
+  # and a save refuses it (`unknown_rows/1`). With no rows sent, the rows are as they
+  # were: a form without them, or with them off for a reader.
   defp sent_rows(socket, %{"fallbacks" => %{} = sent}) do
     old = socket.assigns.fallbacks
     page = socket.assigns
@@ -363,8 +365,16 @@ defmodule ApiaryWeb.ModelChoiceLive do
       entry = entry_of(page.providers, provider)
 
       cond do
+        entry == nil and was != nil and was["provider"] == provider ->
+          was
+
         entry == nil ->
-          was || %{"provider" => provider, "runtime" => nil, "tiers" => ModelTiers.blank()}
+          %{
+            "provider" => provider,
+            "runtime" => nil,
+            "tiers" => ModelTiers.blank(),
+            "unknown" => true
+          }
 
         was == nil or was["provider"] != provider ->
           new_row(socket, entry)
@@ -431,6 +441,20 @@ defmodule ApiaryWeb.ModelChoiceLive do
         offered
     end
   end
+
+  # The refusals of the rows sent with a provider the page does not list, by the row's
+  # index: "is invalid" on its Provider, as the workflow's fold refuses one.
+  defp unknown_rows(rows) do
+    for {%{"unknown" => true}, i} <- Enum.with_index(rows),
+        into: %{},
+        do: {i, [{:provider, {"is invalid", []}}]}
+  end
+
+  # Whether the form sent a provider that the page does not list.
+  defp unknown_provider?(socket, %{"provider" => sent}) when is_binary(sent),
+    do: ModelTiers.find(socket.assigns.entries, sent) == nil
+
+  defp unknown_provider?(_socket, _params), do: false
 
   # Whether every row has a model in every tier.
   defp rows_complete?(rows), do: Enum.all?(rows, &ModelTiers.complete?(&1, &1["tiers"]))
@@ -584,13 +608,21 @@ defmodule ApiaryWeb.ModelChoiceLive do
     socket = assign_fallbacks(socket, rows, %{})
 
     cond do
-      socket.assigns.entry == nil ->
+      # No provider, or one sent that no select of the page offers: refused under
+      # Provider, and nothing is written.
+      socket.assigns.entry == nil or unknown_provider?(socket, params) ->
         {:noreply, assign_form(socket, params, provider: {"is invalid", []})}
 
       # A provider that works with no runtime, or the saved one whose description cannot
       # be read: its line under Provider says why, and nothing is written.
       provider_line(socket.assigns) != nil ->
         {:noreply, assign_form(socket, params, [])}
+
+      unknown_rows(rows) != %{} ->
+        {:noreply,
+         socket
+         |> assign_form(params, [])
+         |> assign_fallbacks(rows, unknown_rows(rows))}
 
       true ->
         attrs =
