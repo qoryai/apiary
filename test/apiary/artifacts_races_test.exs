@@ -12,6 +12,10 @@ defmodule Apiary.ArtifactsRacesTest do
   # A switch of a standard type (`Apiary.Artifacts.switch_type/4`) holds the workspace
   # `FOR NO KEY UPDATE`, so it runs before or after such a push or a change of the
   # process.
+  #
+  # `update_type/3` and `delete_type/2` take the same lock before the type's row, so a
+  # change of the process that makes the type one that its `submit` sets
+  # (`Apiary.Artifacts.submit_types/1`) takes turns with them.
   use ExUnit.Case, async: false
 
   import Ecto.Query
@@ -217,5 +221,61 @@ defmodule Apiary.ArtifactsRacesTest do
     commit(held)
 
     assert {:error, :current_process} = Task.await(switch.task, 15_000)
+  end
+
+  # A process save that sets `submission` as the version's submit type, held open with the
+  # workspace, and a change of the type that starts after it: the change waits for the
+  # save, then finds the type set by the harness. Without the workspace lock the change
+  # does not wait, and `await_blocked/2` fails.
+  defp change_type(:delete, scope, type), do: Artifacts.delete_type(scope, type)
+
+  defp change_type(:update, scope, type),
+    do: Artifacts.update_type(scope, type, %{"size_limit" => 1000})
+
+  for name <- [:delete, :update] do
+    @tag needs: :workflow_model
+    test "a #{name} of the type that the process's submit sets waits for a process save, and is then refused",
+         %{scope: scope} do
+      type =
+        Artifacts.type(scope.workspace, "submission") ||
+          elem(
+            Artifacts.create_type(scope, scope.workspace, %{
+              "name" => "submission",
+              "base_view" => "structured",
+              "json_schema" => %{"type" => "object"}
+            }),
+            1
+          )
+
+      document = Processes.default_document("software")
+      [first | rest] = document["stages"]
+      output = %{"type" => "explainer", "required" => true}
+      first = Map.update!(first, "outputs", &(&1 ++ [output]))
+
+      {held, holder} =
+        hold(fn ->
+          Processes.save(scope, scope.workspace, %{document | "stages" => [first | rest]})
+        end)
+
+      assert {:ok, %Processes.Version{id: version_id}} = held.result
+
+      change = start(fn -> change_type(unquote(name), scope, type) end)
+      await_blocked(change.backend, holder)
+
+      submit = %{"type" => "submission", "send" => "end_of_run"}
+      record = %{"source" => "qory", "commit" => String.duplicate("a", 40), "submit" => submit}
+
+      assert {1, _rows} =
+               continue(held, fn ->
+                 Repo.update_all(from(v in Processes.Version, where: v.id == ^version_id),
+                   set: [template: record]
+                 )
+               end)
+
+      commit(held)
+
+      assert {:error, :set_by_harness} = Task.await(change.task, 15_000)
+      assert %Type{} = Repo.get!(Type, type.id)
+    end
   end
 end

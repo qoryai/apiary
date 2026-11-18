@@ -92,7 +92,7 @@ defmodule Apiary.Processes do
 
   alias Apiary.{Access, Audit, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Dispatches.{DispatchRun, HarnessReads}
   alias Apiary.Harnesses.Qory
   alias Apiary.Kinds.{Bounds, Schema}
   alias Apiary.Lingo.Domain
@@ -816,14 +816,68 @@ defmodule Apiary.Processes do
   @doc false
   # with_submit/2 is `record`, the `template` a version keeps, with `submit`, the submit
   # step of `template`, a template as `Apiary.Harnesses.Reader.template/1` reads it,
-  # where it has one (`Apiary.Processes.Version`).
+  # where it has one (`Apiary.Processes.Version`). A record of a harness repository also
+  # has `submit_schema`, the JSON Schema of the submit type in `template`, because the
+  # instance keeps no files of a harness repository (`submit_schema/2`).
   @spec with_submit(map, map) :: map
   def with_submit(record, template) do
     case Map.get(template, :submit) do
-      %{} = submit -> Map.put(record, "submit", submit)
+      %{} = submit ->
+        record
+        |> Map.put("submit", submit)
+        |> with_submit_schema(submit["type"], template)
+
+      nil ->
+        record
+    end
+  end
+
+  defp with_submit_schema(%{"source" => "repository"} = record, type, template) do
+    case entry_schema(submit_entry(template.artifact_types, type)) do
+      %{} = schema -> Map.put(record, "submit_schema", schema)
       nil -> record
     end
   end
+
+  defp with_submit_schema(record, _type, _template), do: record
+
+  defp submit_entry(listed, type) when is_list(listed),
+    do: Enum.find(listed, &(&1["name"] == type and &1["base_view"] == "structured"))
+
+  defp submit_entry(_listed, _type), do: nil
+
+  defp entry_schema(%{"json_schema" => %{} = schema}), do: schema
+  defp entry_schema(_entry), do: nil
+
+  @doc false
+  # submit_schema/2 is `{:ok, schema}`, the JSON Schema of the type `type` in the harness
+  # commit that the run `run` composes, where `type` is the `submit.type` of its process
+  # version and the run composes that version's commit (`HarnessReads.version_commit/2`).
+  # A Qory harness record reads it from the files kept for the commit
+  # (`Apiary.Harnesses.Qory.template/1`); a harness repository's record keeps it
+  # (`with_submit/2`). `:none` otherwise: the caller then checks the workspace's type.
+  @spec submit_schema(DispatchRun.t(), String.t()) :: {:ok, map} | :none
+  def submit_schema(%DispatchRun{process_version_id: version_id} = run, type) do
+    with %{"submit" => %{"type" => ^type}} = record <- harness_template(version_id),
+         {:ok, commit} <- HarnessReads.version_commit(run, record),
+         %{} = schema <- recorded_schema(record, commit, type) do
+      {:ok, schema}
+    else
+      _none -> :none
+    end
+  end
+
+  defp recorded_schema(%{"source" => "qory"}, commit, type) do
+    case Qory.template(commit) do
+      %{artifact_types: listed} -> entry_schema(submit_entry(listed, type))
+      nil -> nil
+    end
+  end
+
+  defp recorded_schema(%{"source" => "repository", "submit_schema" => schema}, _commit, _type),
+    do: schema
+
+  defp recorded_schema(_record, _commit, _type), do: nil
 
   @doc """
   copy_template/4 inserts version 1 of `workspace`, made from a template of a harness

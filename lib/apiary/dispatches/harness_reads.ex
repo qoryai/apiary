@@ -202,6 +202,28 @@ defmodule Apiary.Dispatches.HarnessReads do
   defp failed_lately?(%RunHarness{updated_at: at}, now),
     do: DateTime.diff(now, at) < @again_seconds
 
+  @doc false
+  # version_commit/2 is `{:ok, commit}` where the run `run` composes the commit of
+  # `template`, the harness record of its process version
+  # (`Apiary.Processes.harness_template/1`): its walk's base follows a branch of the
+  # harness that `template` is of (`process_commit/4`), from a harness setting. `:none` for
+  # a base at a tag or a commit, a record of another harness, a walk from a file or of the
+  # built-in harness, and a run with no resolved walk: the claim may have read another
+  # commit for those.
+  @spec version_commit(DispatchRun.t(), map | nil) :: {:ok, String.t()} | :none
+  def version_commit(%DispatchRun{id: id}, template) do
+    walk =
+      Repo.one(from h in RunHarness, where: h.dispatch_run_id == ^id and h.state == :resolved)
+
+    with %RunHarness{origin: :setting, document: %{"extends" => %{"git" => git} = base}} <- walk,
+         commit when is_binary(commit) <-
+           process_commit(walk, git, base["ref"] || Qory.default_branch(), template) do
+      {:ok, commit}
+    else
+      _none -> :none
+    end
+  end
+
   # What a claim reads for `walk`, of a run whose process version has the harness record
   # `template` (nil for none): `{:commit, commit}` for a base that follows a branch of the
   # harness `template` records (the moduledoc), with that record's commit;

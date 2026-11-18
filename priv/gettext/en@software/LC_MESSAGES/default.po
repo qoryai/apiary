@@ -11302,6 +11302,11 @@ msgstr ""
 msgid "Harness fetches of this workspace"
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/types.ex
+#, elixir-autogen, elixir-format
+msgid "Harness settings"
+msgstr ""
+
 #: lib/apiary_web/components/host_components.ex
 #, elixir-autogen, elixir-format
 msgid "Harness sources"
@@ -18960,6 +18965,11 @@ msgstr ""
 msgid "Runs of this target start in the pool's default image."
 msgstr "Runs of this repository start in the pool's default image."
 
+#: lib/apiary_web/live/artifact_live/types.ex
+#, elixir-autogen, elixir-format
+msgid "Runs of this workspace store their result as a %{name} version, checked against the schema in the harness version that each run uses. So %{name} cannot be edited or deleted here."
+msgstr "Runs of this workspace store their result as a %{name} version, checked against the schema in the harness commit that each run uses. So %{name} cannot be edited or deleted here."
+
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Runs on %{tracks} only."
@@ -19646,6 +19656,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Set by a target too"
 msgstr "Set by a repository too"
+
+#: lib/apiary_web/live/artifact_live/types.ex
+#, elixir-autogen, elixir-format
+msgid "Set by the harness"
+msgstr ""
 
 #: lib/apiary_web/live/instance_live/features.ex
 #: lib/apiary_web/live/instance_live/mail_form.ex
@@ -23496,6 +23511,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/configuration.ex
 #, elixir-autogen, elixir-format
 msgid "To change a value without a field, whoever runs Qory Apiary changes the setting named beside it and starts it again."
+msgstr ""
+
+#: lib/apiary_web/live/artifact_live/types.ex
+#, elixir-autogen, elixir-format
+msgid "To change the schema, change it in the harness, then choose Update from harness in %{harness}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

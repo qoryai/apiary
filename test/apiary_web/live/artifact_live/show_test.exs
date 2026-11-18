@@ -62,6 +62,33 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
     error -> Plug.Exception.status(error)
   end
 
+  # The workspace's `submission` takes any object.
+  defp any_submission!(ctx) do
+    {1, _rows} =
+      Repo.update_all(
+        from(t in Artifacts.Type,
+          where: t.workspace_id == ^ctx.scope.workspace.id and t.name == "submission"
+        ),
+        set: [json_schema: %{"type" => "object"}]
+      )
+
+    :ok
+  end
+
+  # The workspace's current process version has `submission` as its submit type: the type
+  # that the harness sets.
+  defp set_by_harness!(ctx) do
+    version = Processes.current(ctx.scope.workspace)
+    submit = %{"type" => "submission", "send" => "end_of_run"}
+
+    {1, _rows} =
+      Repo.update_all(from(v in Processes.Version, where: v.id == ^version.id),
+        set: [template: Map.put(version.template || %{}, "submit", submit)]
+      )
+
+    :ok
+  end
+
   defp pushed!(ctx, type, files, opts \\ []) do
     files = Enum.map(files, fn {filename, bytes} -> %{filename: filename, binary: bytes} end)
     {:ok, version} = Artifacts.push({:run, ctx.run}, ctx.work_item, type, files, opts)
@@ -897,6 +924,24 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       end
     end
 
+    test "has no Add a version for the type that the process's submit sets", ctx do
+      any_submission!(ctx)
+      submission = pushed!(ctx, "submission", [{"submission.json", ~s({"summary": "Done"})}])
+      proposal = pushed!(ctx, "proposal", [{"proposal.md", "# Proposal"}])
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, submission))
+      assert has_element?(view, "#artifact-add")
+
+      set_by_harness!(ctx)
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, submission))
+      refute has_element?(view, "#artifact-add")
+      refute render(view) =~ "Add a version"
+
+      {:ok, view, _html} = live(ctx.conn, page(ctx, proposal))
+      assert has_element?(view, "#artifact-add")
+    end
+
     test "is not found for another work item's version or another workspace", ctx do
       version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
       other = work_item_fixture(ctx.scope)
@@ -1098,6 +1143,32 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
         view
         |> element("#artifact-form")
         |> render_submit(%{artifact: %{type: "questions", name: "main", note: ""}})
+
+      assert html =~ "Choose a type from the list."
+      assert Artifacts.list(ctx.work_item) == []
+    end
+
+    test "lists the type that the process's submit sets only where no version sets it, and refuses a push of it",
+         ctx do
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "submission"))
+      assert has_element?(view, ~s(#artifact-form option[value="submission"]))
+
+      set_by_harness!(ctx)
+
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "submission"))
+      refute has_element?(view, ~s(#artifact-form option[value="submission"]))
+      assert has_element?(view, ~s(#artifact-form option[value="explainer"]))
+
+      view
+      |> file_input("#artifact-form", :files, [
+        %{name: "submission.json", content: ~s({"summary": "Done"}), type: "application/json"}
+      ])
+      |> render_upload("submission.json")
+
+      html =
+        view
+        |> element("#artifact-form")
+        |> render_submit(%{artifact: %{type: "submission", name: "main", note: ""}})
 
       assert html =~ "Choose a type from the list."
       assert Artifacts.list(ctx.work_item) == []
