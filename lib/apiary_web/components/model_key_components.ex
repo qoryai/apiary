@@ -552,8 +552,9 @@ defmodule ApiaryWeb.ModelKeyComponents do
     * `{:signed_in, refreshed}`: "Signed in. Last refresh 2026-11-12 10:04.", `refreshed`
       nil until the first refresh;
     * `{:sign_in_needed, rejected, help}`: the heading "Needs a new sign-in", "OpenAI
-      rejected it on 2026-11-12 10:04." and, for a provider that has one, what to do
-      (`help`, else nil).
+      rejected it on 2026-11-12 10:04." ("Qory Apiary could not save the new sign-in on
+      2026-11-12 10:04." for a rotated sign-in that Qory Apiary could not store) and, for a
+      provider that has one, what to do (`help`, else nil).
   """
   @spec login(Login.t() | nil, Connection.t()) :: login | nil
   def login(nil, _provider), do: nil
@@ -562,14 +563,21 @@ defmodule ApiaryWeb.ModelKeyComponents do
     do: {:signed_in, refreshed_at && Format.datetime(refreshed_at)}
 
   def login(%Login{state: "sign_in_needed"} = login, %Connection{} = provider) do
-    rejected =
+    time = Format.datetime(login.last_failure || login.updated_at)
+    {:sign_in_needed, cause_line(login.sign_in_cause, provider, time), sign_in_help(provider)}
+  end
+
+  # A sign-in that the provider rejected says so. For a rotated sign-in that Qory Apiary
+  # could not store, Qory Apiary failed, and the line says that.
+  defp cause_line("token_not_stored", _provider, time),
+    do: gettext("Qory Apiary could not save the new sign-in on %{time}.", time: time)
+
+  defp cause_line(_cause, provider, time),
+    do:
       gettext("%{vendor} rejected it on %{time}.",
         vendor: capitalise(vendor(provider)),
-        time: Format.datetime(login.last_failure || login.updated_at)
+        time: time
       )
-
-    {:sign_in_needed, rejected, sign_in_help(provider)}
-  end
 
   @doc """
   The label of the field that takes a login key, on every form that has one (Add key, Edit

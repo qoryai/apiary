@@ -469,9 +469,12 @@ defmodule Apiary.Adapters.Calls do
   defp transport_opts([]), do: []
   defp transport_opts(tls), do: [transport_opts: tls]
 
-  # The answer's body, kept only up to `max_bytes`: a declared length over it, or a body
-  # that grows past it, stops the read.
-  defp collect(max_bytes) do
+  # collect/1 is the `into:` of a request that keeps the answer's body only up to
+  # `max_bytes`: a declared length over it, or a body that grows past it, stops the read and
+  # marks the response `:too_large` (`Req.Response.get_private/2`). `Apiary.ModelKeys.LoginRefresh`
+  # reads its answer the same way.
+  @doc false
+  def collect(max_bytes) do
     fn {:data, data}, {request, response} ->
       body = if is_binary(response.body), do: response.body, else: ""
 

@@ -24,6 +24,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # model provider. The entries stored before the split are under `connection.write`.
   @connection_writes [:"connection.write", :"provider.write", :"runtime.write"]
   @choice_writes [:"model_choice.write" | @connection_writes]
+  @sign_in_causes Apiary.ModelKeys.Login.causes()
 
   @impl true
   def label(:"organisation.create"), do: gettext("Organisation created")
@@ -151,8 +152,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   # `dispatch.prebuilt` any more: the filter offers neither, and their labels and words
   # stay for the entries stored before.
   @impl true
-  def offered?(_scope, action) when action in [:"provider.write", :"runtime.write"],
-    do: false
+  def offered?(_scope, action)
+      when action in [:"provider.write", :"runtime.write", :"model_key.refresh"],
+      do: false
 
   def offered?(scope, action) do
     case Access.shown_as(action) do
@@ -327,6 +329,101 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   def sentence(:"work_item.take_in", entry, names) do
     items = SourceComponents.items(names[:item_nouns][entry.subject_id])
     gettext("Took in one of the Backlog's %{items} as a work item", items: items)
+  end
+
+  # The refresh of the sign-in of a model key (`Apiary.ModelKeys.Login`): the entry is the
+  # provider's, by the instance. The key is named by its value id and the provider by the
+  # name it had then, as the entry's details have them. A call that did not end in a new
+  # sign-in says its cause in words and, in brackets, the fixed word the details have
+  # (`model_key_cause/1`); it is never a part of the provider's answer. The line of a refusal
+  # that stays starts "Sign in again"; the line of a failure that may pass has the time of
+  # the next call.
+  # The filter does not offer the action.
+  def sentence(
+        :"model_key.refresh",
+        %{details: %{"outcome" => "refreshed", "value_id" => key, "provider" => provider}},
+        _names
+      )
+      when is_binary(key) and is_binary(provider) do
+    gettext("Qory Apiary refreshed the sign-in of the key %{key} of %{provider}",
+      key: key,
+      provider: provider
+    )
+  end
+
+  def sentence(
+        :"model_key.refresh",
+        %{
+          details: %{
+            "outcome" => "sign_in_needed",
+            "value_id" => key,
+            "provider" => provider,
+            "cause" => cause
+          }
+        },
+        _names
+      )
+      when is_binary(key) and is_binary(provider) and cause in @sign_in_causes do
+    gettext(
+      "Sign in again on the key %{key} of %{provider}: Qory Apiary could not refresh its sign-in, because %{reason} (%{code})",
+      key: key,
+      provider: provider,
+      reason: model_key_cause(cause),
+      code: cause
+    )
+  end
+
+  def sentence(
+        :"model_key.refresh",
+        %{
+          details: %{
+            "outcome" => "failed",
+            "value_id" => key,
+            "provider" => provider,
+            "cause" => "bad_endpoint"
+          }
+        },
+        _names
+      )
+      when is_binary(key) and is_binary(provider) do
+    gettext(
+      "Qory Apiary could not refresh the sign-in of the key %{key} of %{provider}: the refresh address in the description of %{provider} is not on the allowed list (bad_endpoint). Ask the author of that description to correct it",
+      key: key,
+      provider: provider
+    )
+  end
+
+  def sentence(
+        :"model_key.refresh",
+        %{
+          details:
+            %{
+              "outcome" => "failed",
+              "value_id" => key,
+              "provider" => provider,
+              "cause" => cause
+            } = details
+        },
+        _names
+      )
+      when is_binary(key) and is_binary(provider) and is_binary(cause) do
+    case {model_key_cause(cause), details["retry_at"]} do
+      {nil, _retry_at} ->
+        nil
+
+      {reason, retry_at} when is_binary(retry_at) ->
+        gettext(
+          "Qory Apiary could not refresh the sign-in of the key %{key} of %{provider}: %{reason} (%{code}). It tries again at %{time}",
+          key: key,
+          provider: provider,
+          reason: reason,
+          code: cause,
+          time: expiry(retry_at)
+        )
+
+      {_reason, _no_retry_at} ->
+        nil
+    end
   end
 
   # A run's work credential, sent to its gateway or refused (`Apiary.Runs.WorkCredential`):
@@ -841,6 +938,36 @@ defmodule ApiaryWeb.Activity.Describer.Core do
 
   defp access_word("write"), do: gettext("write")
   defp access_word(_read), do: gettext("read")
+
+  # The words of a cause of a refresh that did not end in a new sign-in
+  # (`Apiary.ModelKeys.Login.causes/0` and `Apiary.ModelKeys.LoginRefresh`); nil for a word
+  # that is none of them.
+  defp model_key_cause("refresh_token_expired"), do: gettext("the saved sign-in has expired")
+
+  defp model_key_cause("refresh_token_reused"),
+    do: gettext("this sign-in's refresh token was already used, for example by another program")
+
+  defp model_key_cause("refresh_token_invalidated"), do: gettext("OpenAI ended this sign-in")
+  defp model_key_cause("invalid_grant"), do: gettext("OpenAI no longer accepts this sign-in")
+
+  defp model_key_cause("refresh_unauthorized"),
+    do: gettext("OpenAI returned HTTP 401 to the refresh")
+
+  defp model_key_cause("token_not_stored"),
+    do: gettext("Qory Apiary could not save the new sign-in")
+
+  defp model_key_cause("timeout"), do: gettext("the refresh request to OpenAI timed out")
+  defp model_key_cause("network"), do: gettext("Qory Apiary could not connect to OpenAI")
+
+  defp model_key_cause("bad_response"),
+    do: gettext("OpenAI's response to the refresh was not in the expected form")
+
+  defp model_key_cause("http_" <> status) do
+    if String.match?(status, ~r/\A\d{3}\z/),
+      do: gettext("OpenAI returned HTTP %{status} to the refresh", status: status)
+  end
+
+  defp model_key_cause(_cause), do: nil
 
   # The expiry in UTC, to the minute.
   defp expiry(expires_at) do

@@ -456,7 +456,7 @@ defmodule Apiary.RuntimeConfigTest do
   end
 
   describe "Oban's crontab" do
-    test "is the application's: the core's daily sweeps, its purge of seen requests, its read of the Qory harness and its sweep of lapsed claims, then the edition's jobs" do
+    test "is the application's: the core's daily sweeps, its purge of seen requests, its read of the Qory harness, its sweep of lapsed claims and its refresh of old sign-ins, then the edition's jobs" do
       oban = Application.get_env(:apiary, Oban)
 
       assert Enum.map(oban[:crontab], &elem(&1, 1)) ==
@@ -466,7 +466,8 @@ defmodule Apiary.RuntimeConfigTest do
                  Apiary.Deletion.PurgeSweep,
                  Apiary.Adapters.SeenRequestsPurge,
                  Apiary.Harnesses.QoryRefresh,
-                 Apiary.Dispatches.Sweep
+                 Apiary.Dispatches.Sweep,
+                 Apiary.ModelKeys.LoginSweep
                ] ++ Enum.map(Apiary.Edition.crontab(), &elem(&1, 1))
 
       for {expression, _worker} <- oban[:crontab] do

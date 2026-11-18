@@ -350,6 +350,66 @@ defmodule ApiaryWeb.ProviderLoginTest do
       refute_in_assigns(lv, tokens)
     end
 
+    test "shows the state a refresh leaves, and no token", ctx do
+      %{conn: conn, scope: scope} = ctx
+      tokens = login_tokens(expires_in: 60)
+      fresh = login_tokens(tag: "page")
+      provider = subscription!(scope, tokens)
+      value = key_value!(provider, "main")
+      path = "#{base(scope)}/#{provider.public_id}"
+      plain = Repo.get!(Apiary.Connections.Connection, provider.id)
+
+      Req.Test.stub(Apiary.ModelKeys.LoginRefresh, fn conn ->
+        Req.Test.json(conn, %{
+          "access_token" => fresh.access_token,
+          "refresh_token" => fresh.refresh_token
+        })
+      end)
+
+      log =
+        capture_log(fn ->
+          assert {:ok, _access, _at} =
+                   Login.access_token(plain, value.id, trigger: {:run, "run-1"})
+        end)
+
+      {:ok, lv, html} = live(conn, path)
+      assert text(lv, "#provider-key-main-login") =~ ~r/\ASigned in\. Last refresh .*\.\z/
+
+      for text <- [html, log],
+          token <- [
+            tokens.access_token,
+            tokens.refresh_token,
+            fresh.access_token,
+            fresh.refresh_token
+          ],
+          do: refute(text =~ token)
+
+      refute_in_assigns(lv, tokens)
+      refute_in_assigns(lv, fresh)
+
+      Repo.update_all(from(l in Login, where: l.secret_value_id == ^value.id),
+        set: [
+          access_expires_at: DateTime.add(DateTime.utc_now(), 60),
+          refreshed_at: DateTime.add(DateTime.utc_now(), -120)
+        ]
+      )
+
+      Req.Test.stub(Apiary.ModelKeys.LoginRefresh, fn conn ->
+        conn |> Plug.Conn.put_status(401) |> Req.Test.json(%{"error" => "refresh_token_reused"})
+      end)
+
+      assert Login.access_token(plain, value.id, trigger: {:run, "run-2"}) ==
+               {:error, :sign_in_needed}
+
+      {:ok, lv, html} = live(conn, path)
+
+      assert text(lv, "#provider-key-main-login") =~
+               ~r/\ANeeds a new sign-inOpenAI rejected it on .*\.Run codex login --device-auth and replace the key\.\z/
+
+      refute html =~ "refresh_token_reused"
+      refute_tokens(html, fresh)
+    end
+
     test "shows a key that needs a new sign-in with what to do, in place of its state", ctx do
       %{conn: conn, scope: scope} = ctx
       provider = subscription!(scope)
@@ -372,6 +432,43 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
       refute has_element?(lv, "#provider-key-main-state")
       refute html =~ "refresh_token_reused"
+    end
+
+    test "says Qory Apiary could not save a new sign-in for token_not_stored only", ctx do
+      %{conn: conn, scope: scope} = ctx
+      tokens = login_tokens()
+      provider = subscription!(scope, tokens)
+      value = key_value!(provider, "main")
+      help = Regex.escape("Run codex login --device-auth and replace the key.")
+
+      assert length(Login.causes()) == 6
+
+      for cause <- Login.causes() do
+        Repo.update_all(from(l in Login, where: l.secret_value_id == ^value.id),
+          set: [
+            state: "sign_in_needed",
+            sign_in_cause: cause,
+            last_failure: ~U[2026-11-12 10:04:00.000000Z]
+          ]
+        )
+
+        {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+        line = text(lv, "#provider-key-main-login")
+
+        if cause == "token_not_stored" do
+          assert line =~
+                   ~r/\ANeeds a new sign-inQory Apiary could not save the new sign-in on [^.]*2026[^.]*\.#{help}\z/
+
+          refute line =~ "rejected it"
+        else
+          assert line =~ ~r/\ANeeds a new sign-inOpenAI rejected it on .*2026.*\.#{help}\z/
+          refute line =~ "Qory Apiary could not save"
+        end
+
+        refute_tokens(html, tokens)
+        refute_in_assigns(lv, tokens)
+        refute html =~ cause
+      end
     end
 
     test "shows no sign-in for a key of another provider", ctx do

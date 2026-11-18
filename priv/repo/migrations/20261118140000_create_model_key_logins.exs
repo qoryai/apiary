@@ -8,15 +8,20 @@ defmodule Apiary.Repo.Migrations.CreateModelKeyLogins do
   #
   #   * `account_id`: the account the sign-in is of, from the pasted login;
   #   * `access_expires_at`: when the access token expires, read from the token without
-  #     checking its signature, to time the refresh;
+  #     checking its signature, to time the refresh; nil for a token whose `exp` cannot be
+  #     read, which is then refreshed 8 days after the last refresh;
   #   * `signed_in_at`: when the login was pasted; `refreshed_at`: when it was last
   #     refreshed, nil until the first refresh;
   #   * `state`: `signed_in`, or `sign_in_needed` once the provider rejected the refresh
-  #     for good; `sign_in_cause` is then the reason, one of the five the check lists
+  #     for good; `sign_in_cause` is then the reason, one of the six the check lists
   #     (`Apiary.ModelKeys.Login.causes/0`), and nil otherwise; a new cause needs a
   #     migration that replaces the check;
   #   * `failures`, `retry_at` and `last_failure`: the refreshes that failed since the
   #     last good one, when the next may start, and when the last one failed;
+  #   * `failing_since`: when the first of the refreshes that failed since the last good
+  #     one failed, nil while none is failing; the Activity page has one line for the
+  #     failure that opens such a streak and one for the refresh that ends it, and none
+  #     for the attempts between;
   #   * `generation`: 1 for the first login of the key, plus 1 for each login pasted
   #     over it, so a refresh that started before it is dropped;
   #   * `lease_id` and `lease_until`: the process that refreshes the login, and until
@@ -41,7 +46,7 @@ defmodule Apiary.Repo.Migrations.CreateModelKeyLogins do
           primary_key: true
 
       add :account_id, :text, null: false
-      add :access_expires_at, :utc_datetime_usec, null: false
+      add :access_expires_at, :utc_datetime_usec
       add :signed_in_at, :utc_datetime_usec, null: false
       add :refreshed_at, :utc_datetime_usec
       add :state, :text, null: false, default: "signed_in"
@@ -49,6 +54,7 @@ defmodule Apiary.Repo.Migrations.CreateModelKeyLogins do
       add :failures, :integer, null: false, default: 0
       add :retry_at, :utc_datetime_usec
       add :last_failure, :utc_datetime_usec
+      add :failing_since, :utc_datetime_usec
       add :generation, :integer, null: false, default: 1
       add :lease_id, :binary_id
       add :lease_until, :utc_datetime_usec
@@ -67,7 +73,7 @@ defmodule Apiary.Repo.Migrations.CreateModelKeyLogins do
              OR (state = 'sign_in_needed' AND sign_in_cause IS NOT NULL
                  AND sign_in_cause IN ('refresh_token_expired', 'refresh_token_reused',
                                        'refresh_token_invalidated', 'invalid_grant',
-                                       'refresh_unauthorized'))
+                                       'refresh_unauthorized', 'token_not_stored'))
              """
            )
 

@@ -139,8 +139,8 @@ defmodule Apiary.Kinds.Provider do
     Enum.uniq(formats -- Enum.uniq(formats))
   end
 
-  # Every URL endpoint and every default of an address setting that the endpoint rule
-  # refuses, each with its refusal.
+  # Every URL endpoint, every `oauth_refresh` URL and every default of an address setting
+  # that the endpoint rule does not accept, each with the reason.
   defp addresses_refused(%__MODULE__{} = provider) do
     endpoint = for %{"endpoint" => address} <- provider.apis, is_binary(address), do: address
 
@@ -149,7 +149,9 @@ defmodule Apiary.Kinds.Provider do
           {:ok, default} <- [setting_default(provider, name)],
           do: default
 
-    for address <- Enum.uniq(endpoint ++ defaults),
+    refresh = for %{"oauth_refresh" => %{"url" => url}} <- provider.apis, do: url
+
+    for address <- Enum.uniq(endpoint ++ refresh ++ defaults),
         {:error, refusal} <- [Endpoint.check(address)],
         do: {address, refusal}
   end

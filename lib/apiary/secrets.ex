@@ -1120,6 +1120,13 @@ defmodule Apiary.Secrets do
 
   def reveal_key_and_set_at(_provider, _secret_value_id), do: {:error, :not_found}
 
+  # reveal_key_row/2 is `reveal_row/2` with the time the value was set.
+  defp reveal_key_row(provider, secret_value_id) do
+    with {:ok, plaintext, %Value{value_set_at: value_set_at}} <-
+           reveal_row(provider, secret_value_id),
+         do: {:ok, plaintext, value_set_at}
+  end
+
   # reveal_login/2 is the plaintext of the key `secret_value_id` of `provider`, a provider
   # whose API has `oauth_refresh`: the document of its login, for `Apiary.ModelKeys.Login`
   # alone, which sends the refresh token to the provider. `{:error, :not_found}` for a
@@ -1128,17 +1135,50 @@ defmodule Apiary.Secrets do
   @doc false
   @spec reveal_login(Connection.t(), Ecto.UUID.t()) ::
           {:ok, binary} | {:error, :not_found | :unavailable}
-  def reveal_login(%Connection{provider_kind: kind} = provider, secret_value_id) do
+  def reveal_login(%Connection{} = provider, secret_value_id) do
+    with {:ok, plaintext, _snapshot} <- reveal_login_snapshot(provider, secret_value_id),
+         do: {:ok, plaintext}
+  end
+
+  # reveal_login_snapshot/2 is `reveal_login/2` with what a refresh starts from:
+  # `{:ok, plaintext, %{value_id:, value_set_at:}}`, read from the same row, so
+  # `write_refreshed_key/4` can tell that the value is still the one the refresh used: no
+  # new value was pasted since. `value_id` is the key's name when the refresh started; a
+  # rename changes it, and the write reads the name again.
+  @doc false
+  @spec reveal_login_snapshot(Connection.t(), Ecto.UUID.t()) ::
+          {:ok, binary, %{value_id: String.t(), value_set_at: DateTime.t() | nil}}
+          | {:error, :not_found | :unavailable}
+  def reveal_login_snapshot(%Connection{provider_kind: kind} = provider, secret_value_id) do
     with true <- Login.provider?(kind),
-         {:ok, plaintext, _value_set_at} <- reveal_key_row(provider, secret_value_id) do
-      {:ok, plaintext}
+         {:ok, plaintext, %Value{} = row} <- reveal_row(provider, secret_value_id) do
+      {:ok, plaintext, %{value_id: row.value_id, value_set_at: row.value_set_at}}
     else
       false -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
     end
   end
 
-  defp reveal_key_row(
+  # login_value_id/2 is the value id (the key's name) the key `secret_value_id` of
+  # `provider` has now, or nil for a key that is gone: for the audit entry of a refresh,
+  # which names the key as it is named when the entry is written. The caller holds the
+  # secret's lock, so a rename cannot run between this read and the entry.
+  @doc false
+  @spec login_value_id(Connection.t(), Ecto.UUID.t()) :: String.t() | nil
+  def login_value_id(%Connection{} = provider, secret_value_id) do
+    with {:ok, row_id} <- cast_row_id(secret_value_id),
+         {query, _secret_id, _workspace_id} <- provider_values(provider),
+         {%Value{value_id: value_id}, _data_key} when is_binary(value_id) <-
+           Repo.one(where(query, [v], v.id == ^row_id)) do
+      value_id
+    else
+      _gone -> nil
+    end
+  end
+
+  # reveal_row/2 is the plaintext of the key `secret_value_id` of `provider` and its row,
+  # whatever the provider's kind.
+  defp reveal_row(
          %Connection{organisation_id: organisation_id, secret_id: secret_row_id} = provider,
          secret_value_id
        )
@@ -1150,35 +1190,46 @@ defmodule Apiary.Secrets do
            Repo.one(where(query, [v], v.id == ^row_id)),
          {:ok, plaintext} <-
            decrypt_for_sealing(row, data_key, organisation_id, workspace_id, secret_id) do
-      {:ok, plaintext, row.value_set_at}
+      {:ok, plaintext, row}
     else
       {:error, :unavailable} -> {:error, :unavailable}
       _gone -> {:error, :not_found}
     end
   end
 
-  defp reveal_key_row(_provider, _secret_value_id), do: {:error, :not_found}
+  defp reveal_row(_provider, _secret_value_id), do: {:error, :not_found}
 
-  # write_refreshed_key/3 stores `plaintext`, a refreshed login's document, as the value of
+  # write_refreshed_key/4 stores `plaintext`, a refreshed login's document, as the value of
   # the key `secret_value_id` of `provider`, for `Apiary.ModelKeys.Login` alone: the
-  # instance's write, with no scope. It encrypts under the key's data key and the value id
-  # the row has now, so a rename since the refresh started is safe, and changes the
-  # ciphertext and nonce only: `value_set_at` stays, so the key's states and the copies
-  # that runs hold stay (`Apiary.ModelKeys.keep_copies/2`), as a new value would clear
-  # them; `updated_at` and `updated_by_id` stay too, as no person changed the value. The
-  # caller holds the locks of the lock order of docs/access.md in a transaction: the
-  # organisation `FOR SHARE`, the keys' secret `FOR UPDATE`, then the login's row.
-  # `:ok`, or `{:error, reason}`: `:not_found` for a provider whose keys are not logins
-  # and for a key that is gone, `:unavailable` as `reveal_login/2` has it, `:too_large`
-  # for a document past a value's size, `:invalid` for a text that is no login's document
-  # (`Apiary.ModelKeys.Login.document?/1`).
+  # instance's write, with no scope. It writes only if no new value was pasted since the
+  # refresh started: the row's `value_set_at` must be the one in `from`, as
+  # `reveal_login_snapshot/2` returned it, compared in the update itself. A key that is gone
+  # is dropped too. A rename does not drop the result: it encrypts the value again under the
+  # key's new name, so this write reads the name the row has now, which the caller's lock on
+  # the secret keeps from changing, and encrypts under it, so that a rename while the call
+  # ran never loses the rotated refresh token. It encrypts under the key's data key and
+  # changes the ciphertext and nonce only: `value_set_at` stays, so the key's states and the
+  # copies that runs hold stay (`Apiary.ModelKeys.keep_copies/2`), as a new value would
+  # clear them; `updated_at` and `updated_by_id` stay too, as no person changed the value.
+  # The caller holds the locks of the lock order of docs/access.md in a transaction: the
+  # organisation `FOR SHARE`, the keys' secret `FOR UPDATE`, then the login's row. `:ok`, or
+  # `{:error, reason}`: `:not_found` for a provider whose keys are not logins and for a key
+  # that is gone, `:changed` for a value pasted since, `:unavailable` as `reveal_login/2` has
+  # it, `:too_large` for a document past a value's size, `:invalid` for a text that is no
+  # login's document (`Apiary.ModelKeys.Login.document?/1`).
   @doc false
-  @spec write_refreshed_key(Connection.t(), Ecto.UUID.t(), binary) ::
-          :ok | {:error, :not_found | :unavailable | :too_large | :invalid}
+  @spec write_refreshed_key(
+          Connection.t(),
+          Ecto.UUID.t(),
+          binary,
+          %{value_set_at: DateTime.t() | nil}
+        ) ::
+          :ok | {:error, :not_found | :changed | :unavailable | :too_large | :invalid}
   def write_refreshed_key(
         %Connection{organisation_id: organisation_id, secret_id: secret_row_id} = provider,
         secret_value_id,
-        plaintext
+        plaintext,
+        %{value_set_at: value_set_at}
       )
       when is_binary(organisation_id) and is_binary(secret_row_id) and
              is_binary(secret_value_id) and is_binary(plaintext) and
@@ -1192,14 +1243,22 @@ defmodule Apiary.Secrets do
            Repo.one(where(query, [v], v.id == ^row_id)) || {:error, :not_found},
          {:ok, key} <- unwrap(data_key) do
       aad = value_aad(organisation_id, workspace_id, secret_id, value_id)
-      {nonce, ciphertext} = Cipher.encrypt(key, aad, plaintext)
+      {new_nonce, ciphertext} = Cipher.encrypt(key, aad, plaintext)
 
       case Repo.update_all(
-             from(v in Value, where: v.id == ^row_id and v.value_id == ^value_id),
-             set: [nonce: nonce, ciphertext: ciphertext]
+             from(v in Value,
+               where:
+                 v.id == ^row_id and v.value_id == ^value_id and
+                   fragment(
+                     "? IS NOT DISTINCT FROM ?",
+                     v.value_set_at,
+                     type(^value_set_at, :utc_datetime_usec)
+                   )
+             ),
+             set: [nonce: new_nonce, ciphertext: ciphertext]
            ) do
         {1, _rows} -> :ok
-        {0, _rows} -> {:error, :not_found}
+        {0, _rows} -> {:error, :changed}
       end
     else
       {:error, :key_unavailable} -> {:error, :unavailable}
@@ -1208,7 +1267,8 @@ defmodule Apiary.Secrets do
     end
   end
 
-  def write_refreshed_key(_provider, _secret_value_id, _plaintext), do: {:error, :not_found}
+  def write_refreshed_key(_provider, _secret_value_id, _plaintext, _from),
+    do: {:error, :not_found}
 
   defp cast_row_id(id) do
     case Ecto.UUID.cast(id) do

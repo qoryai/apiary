@@ -150,6 +150,7 @@ defmodule Apiary.AuditChanges do
       :"collection.assign",
       :"collection.set_backlog",
       :"collection.move",
+      :"model_key.refresh",
       :"dispatch.release",
       :"dispatch.machine_end",
       :"target.set_further_repositories",
@@ -671,6 +672,34 @@ defmodule Apiary.AuditChanges do
       actor: :instance,
       subject: {"collection", collection.id},
       before: before
+    }
+  end
+
+  # The instance refreshes the sign-in of a model key of an OpenAI subscription whose access
+  # token is about to expire, in the trail of the organisation, about the provider; the
+  # entry keeps no token.
+  def make(:"model_key.refresh", %{scope: scope}) do
+    {provider, value, _tokens} = login_provider(scope, 60)
+    fresh = Apiary.ModelKeysFixtures.login_tokens(tag: "fresh")
+
+    Req.Test.stub(Apiary.ModelKeys.LoginRefresh, fn conn ->
+      Req.Test.json(conn, %{
+        "access_token" => fresh.access_token,
+        "refresh_token" => fresh.refresh_token
+      })
+    end)
+
+    before = entries()
+
+    {:ok, _access, _expires_at} =
+      Apiary.ModelKeys.Login.access_token(provider, value.id, trigger: {:run, "run-1"})
+
+    %{
+      scope: Scope.for_instance(scope.organisation),
+      actor: :instance,
+      subject: {"connection", provider.id},
+      before: before,
+      secret: fresh.refresh_token
     }
   end
 
@@ -1371,6 +1400,25 @@ defmodule Apiary.AuditChanges do
     {:ok, _ended} = Adapters.Connections.end_connection(key_scope, theirs.public_id)
     before = entries()
     {before, Collections.post_listing(key_scope, listed(theirs, "second"))}
+  end
+
+  # A refresh of a sign-in that is due, in an organisation marked for deletion, which
+  # `Apiary.Access` does not allow (`model_key.refresh`), makes no call and records nothing.
+  def refuse(:"model_key.refresh", %{scope: scope}) do
+    {provider, value, _tokens} = login_provider(scope, -60)
+
+    Repo.update_all(
+      from(o in Apiary.Organisations.Organisation, where: o.id == ^provider.organisation_id),
+      set: [
+        deletion_marked_at: DateTime.utc_now(),
+        purge_after: DateTime.add(DateTime.utc_now(), 30 * 86_400),
+        purge_trigger: "grace_period"
+      ]
+    )
+
+    Req.Test.stub(Apiary.ModelKeys.LoginRefresh, &Req.Test.json(&1, %{}))
+    before = entries()
+    {before, Apiary.ModelKeys.Login.access_token(provider, value.id, trigger: {:run, "run-1"})}
   end
 
   # A node's key declares no adapter.
@@ -2149,5 +2197,19 @@ defmodule Apiary.AuditChanges do
     end)
 
     Application.put_env(:apiary, :installed_nodes, %{pool: "pool", gateway: nil, url: nil})
+  end
+
+  # A model provider of an OpenAI subscription with one key, a login whose access token
+  # expires in `expires_in` seconds: `{provider, the key's value row, the tokens}`.
+  defp login_provider(scope, expires_in) do
+    tokens = Apiary.ModelKeysFixtures.login_tokens(expires_in: expires_in)
+
+    {:ok, provider} =
+      Apiary.Connections.create_provider(scope, %{
+        provider: "openai-subscription",
+        keys: [%{value_id: "main", value: Apiary.ModelKeysFixtures.login_paste(tokens: tokens)}]
+      })
+
+    {provider, Apiary.ModelKeysFixtures.key_value!(provider, "main"), tokens}
   end
 end

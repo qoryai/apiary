@@ -13,14 +13,17 @@ defmodule Apiary.Application do
   # (`Apiary.Adapters.SeenRequestsPurge`); every five minutes, the read of the newest
   # commit of the Qory harness's `main` (`Apiary.Harnesses.QoryRefresh`); then, every
   # minute, the sweep of the claims of node pools whose lease lapsed
-  # (`Apiary.Dispatches.Sweep`). The edition's follow (`Apiary.Edition.crontab/0`).
+  # (`Apiary.Dispatches.Sweep`); and every six hours, the refresh of the sign-ins of
+  # model keys that no run has refreshed for 7 days (`Apiary.ModelKeys.LoginSweep`). The
+  # edition's follow (`Apiary.Edition.crontab/0`).
   @crontab [
     {"40 2 * * *", Apiary.Audit.PruneSweep},
     {"50 2 * * *", Apiary.Organisations.InvitationSweep},
     {"20 3 * * *", Apiary.Deletion.PurgeSweep},
     {"*/10 * * * *", Apiary.Adapters.SeenRequestsPurge},
     {"*/5 * * * *", Apiary.Harnesses.QoryRefresh},
-    {"* * * * *", Apiary.Dispatches.Sweep}
+    {"* * * * *", Apiary.Dispatches.Sweep},
+    {"25 */6 * * *", Apiary.ModelKeys.LoginSweep}
   ]
 
   @doc """
@@ -124,6 +127,9 @@ defmodule Apiary.Application do
       {Task.Supervisor, name: Apiary.Runs.TaskSupervisor},
       # Each attempt of a call to an adapter, bounded in time (`Apiary.Adapters.Calls`).
       {Task.Supervisor, name: Apiary.Adapters.Calls.Supervisor},
+      # Each call that refreshes a model key's sign-in, bounded in time
+      # (`Apiary.ModelKeys.LoginRefresh`).
+      {Task.Supervisor, name: Apiary.ModelKeys.LoginRefresh.supervisor()},
       # The time of each call to an adapter, later than the one before
       # (`Apiary.Adapters.CallClock`).
       Apiary.Adapters.CallClock,
