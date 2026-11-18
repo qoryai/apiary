@@ -114,7 +114,8 @@ defmodule Apiary.Processes do
   the document, `#/stages/1/name` for the name of the second stage), and why. `:too_large` for a document over the limits; `:schema` for one the
   schema refuses, with the schema's keyword as `detail`; `:duplicate_stage_id` and
   `:duplicate_stage_name` for the second stage with an id or a name another stage has
-  (names compared trimmed and without case); `:condition_input` for a condition
+  (names compared trimmed and without case); `:return_not_earlier` for a workflow entry's
+  `return` whose stage is not one before the entry's stage; `:condition_input` for a condition
   `{input: T}`, or `{input: T, changed: true}`, in `when` or `unless` on a stage, an input,
   an output, a loop or a workflow entry, where `T` is no output of an earlier stage, with
   `T` as `detail`;
@@ -310,7 +311,7 @@ defmodule Apiary.Processes do
 
   @doc """
   validate/1 checks `document` against the schema (`priv/schemas/process/v1.schema.json`)
-  and the rules it cannot say: every stage id and every stage name once, every track id
+  and the rules it cannot say: every stage id and every stage name once, the stage of each workflow entry's `return` before the entry's stage, every track id
   once, each track a gate offers declared, the input of each condition an output of an earlier
   stage, the track of each condition one that an earlier gate offers, and one condition on an item,
   `when` or `unless`. `:ok`, or
@@ -327,6 +328,7 @@ defmodule Apiary.Processes do
         case JSV.validate(document, root(), cast: false) do
           {:ok, _document} ->
             case duplicates(document["stages"]) ++
+                   returns_not_earlier(document["stages"]) ++
                    track_errors(document) ++ condition_errors(document["stages"]) do
               [] -> :ok
               errors -> {:error, errors}
@@ -361,6 +363,20 @@ defmodule Apiary.Processes do
     end)
     |> elem(0)
     |> Enum.reverse()
+  end
+
+  # The return key of each workflow entry (choice 10) is set to a stage before the
+  # entry's stage; a key in a loop's body fails the schema.
+  defp returns_not_earlier(stages) do
+    for {stage, index} <- Enum.with_index(stages),
+        earlier = MapSet.new(Enum.take(stages, index), & &1["id"]),
+        {%{"return" => %{"stage" => stage_id}}, at} <- Enum.with_index(stage["sequence"] || []),
+        not MapSet.member?(earlier, stage_id),
+        do: %{
+          path: "#/stages/#{index}/sequence/#{at}/return/stage",
+          error: :return_not_earlier,
+          detail: nil
+        }
   end
 
   # The refusals of tracks: a track id declared twice (`:duplicate_track_id`), a gate that

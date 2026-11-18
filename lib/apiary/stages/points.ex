@@ -5,10 +5,11 @@ defmodule Apiary.Stages.Points do
   # question in `question`, or `run_again`. The page adds the action's sentence. A
   # `run_again` point may have `fix`, a line that the page shows in place of the action's
   # sentence. A run writes points in its verdict. For the causes the stage runner sets
-  # itself (`round_limit`, `check_failed`, `run_stopped`), this module writes `run_again`
-  # points in the default locale's words (`ApiaryWeb.Lingo.default_locale/0`) whatever the
-  # calling process's locale. A stopped run's point has `fix`, the stop cause's fix line,
-  # where the cause has one.
+  # itself (`round_limit`, `check_failed`, `run_stopped`, `return_limit`), this module
+  # writes `run_again` points in the default locale's words
+  # (`ApiaryWeb.Lingo.default_locale/0`) whatever the calling process's locale. A stopped
+  # run's point has `fix`, the stop cause's fix line, where the cause has one, and the
+  # point of a return limit has `fix` with the count of returns.
   @moduledoc false
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -46,6 +47,37 @@ defmodule Apiary.Stages.Points do
         end)
       )
     end
+  end
+
+  # return_limit/3 is the point of an entry whose run asked for changes after `returns`
+  # returns of the work item from the stage `stage` to the earlier stage `to`, the most its
+  # return key allows (`Apiary.Stages.Runner`). The member's action comes first, in
+  # `text`, and the count after it, in `fix`, which the page shows after the text in place
+  # of "Run another round." (the user's ruling of 2026-11-16: the action, then the count
+  # of returns, then the findings, which are the verdict's points after this one).
+  @doc false
+  @spec return_limit(non_neg_integer, String.t(), String.t()) :: [t]
+  def return_limit(returns, stage, to) do
+    text =
+      default(fn ->
+        gettext(
+          "Pick Move back to return the work item to %{to} once more, or pick Accept as it is.",
+          to: to
+        )
+      end)
+
+    count =
+      default(fn ->
+        ngettext(
+          "%{stage}'s run asked for changes again after %{count} return to %{to}, the most that %{stage} allows.",
+          "%{stage}'s run asked for changes again after %{count} returns to %{to}, the most that %{stage} allows.",
+          returns,
+          stage: stage,
+          to: to
+        )
+      end)
+
+    [run_again(text) |> Map.put("fix", count)]
   end
 
   # no_verdict/0 is the point of a run outside a loop that ended with no verdict
