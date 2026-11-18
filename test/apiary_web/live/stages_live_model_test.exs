@@ -408,11 +408,11 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     assert override(scope, "write-a-brief") == nil
   end
 
-  test "a draft row of a workflow whose override is left over shows Use workspace default",
+  test "a draft row of a workflow with an override shows Use workspace default, and its save keeps the override",
        %{conn: conn, path: path, scope: scope, anthropic: anthropic, openrouter: openrouter} do
     default!(scope, anthropic)
 
-    # A leftover as one made before overrides were deleted: the workflow is in no version.
+    # An override set while the workflow is in no version.
     {:ok, _choice} =
       ModelChoices.put_choice(scope, {:workspace, "write-a-brief"}, %{
         provider: openrouter.public_id,
@@ -434,12 +434,13 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
              "Save the stage first to set this workflow's model choice."
            )
 
-    # Saved, the workflow is back in the process with no override.
+    # Saved, the workflow is in the process, which keeps its override.
     view |> element("#stages-save") |> render_click()
-    assert override(scope, "write-a-brief") == nil
+    assert override(scope, "write-a-brief").connection_id == openrouter.id
 
     {:ok, view, _html} = live(conn, path)
-    assert {"", "Use workspace default", true} in provider_options(view)
+    id = openrouter.public_id
+    assert Enum.any?(provider_options(view), &match?({^id, _label, true}, &1))
     refute has_element?(view, "#{@provider}[disabled]")
   end
 
