@@ -132,7 +132,7 @@ defmodule Apiary.ModelKeys.LoginsMigrationTest do
 
     assert Login.causes() ==
              ~w(refresh_token_expired refresh_token_reused refresh_token_invalidated
-                invalid_grant refresh_unauthorized)
+                invalid_grant refresh_unauthorized token_not_stored)
 
     for cause <- Login.causes() do
       assert {1, _} =
