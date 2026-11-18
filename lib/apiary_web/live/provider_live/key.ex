@@ -60,6 +60,8 @@ defmodule ApiaryWeb.ProviderLive.Key do
          key: key,
          subscription: subscription,
          login: Login.provider?(provider),
+         new_key:
+           key && ModelKeyComponents.new_key(ModelKeys.rejections(provider)[key.id], provider),
          limit_windows: ModelKeys.limit_windows(provider),
          chosen: chosen(provider, subscription),
          sections: SettingsComponents.sections(scope, :organisation),
@@ -361,13 +363,23 @@ defmodule ApiaryWeb.ProviderLive.Key do
             class="font-mono"
             required
           />
+          <ModelKeyComponents.new_key_state
+            :if={match?({:new_key, _line}, @new_key)}
+            id="key-new-key"
+            state={@new_key}
+            provider={@provider}
+          />
           <.input
             field={@form[:key]}
             id={"key-value-#{@attempt}"}
             type="password"
             value={nil}
             label={key_label(@live_action, @login)}
-            hint={key_hint(@live_action, @login)}
+            hint={
+              if match?({:new_key, _line}, @new_key),
+                do: ModelKeyComponents.new_key_hint(),
+                else: key_hint(@live_action, @login)
+            }
             autocomplete="new-password"
             spellcheck="false"
             phx-update="ignore"

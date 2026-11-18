@@ -6,7 +6,8 @@ defmodule ApiaryWeb.ProviderLive.Show do
   # window, or In cooldown until a time, and where that time comes from, a window at the
   # key's Use up to percentage included. A key of a provider whose keys are logins
   # (`Apiary.ModelKeys.Login`) has its sign-in too (`ModelKeyComponents.login/2`): Signed
-  # in, or Needs a new sign-in, which replaces its state. Times are in the reader's time
+  # in, or Needs a new sign-in, which replaces its state. A key whose provider rejected
+  # its value has Needs a new key (`ModelKeyComponents.new_key/2`) in its place. Times are in the reader's time
   # zone. A key is write-only: the page shows neither the key nor a part of
   # it. Every member reads it (`connection.read`); a provider the organisation does not
   # have is not found.
@@ -39,6 +40,7 @@ defmodule ApiaryWeb.ProviderLive.Show do
         percents = ModelKeys.use_up_to_percents(provider)
         windows = ModelKeys.limit_windows(provider)
         logins = Login.by_key(provider)
+        rejections = ModelKeys.rejections(provider)
 
         {:ok,
          assign(socket,
@@ -53,10 +55,18 @@ defmodule ApiaryWeb.ProviderLive.Show do
                    windows
                  )
 
+               login = ModelKeyComponents.login(Map.get(logins, key.id), provider)
+               new_key = ModelKeyComponents.new_key(Map.get(rejections, key.id), provider)
+
                %{
                  value_id: key.value_id,
                  state: state,
-                 login: ModelKeyComponents.login(Map.get(logins, key.id), provider)
+                 login:
+                   if(ModelKeyComponents.sign_in_needed?(login),
+                     do: login,
+                     else: new_key || login
+                   ),
+                 new_key: if(match?({:new_key, _line}, new_key), do: new_key)
                }
              end,
            writes: Access.can?(scope, :"provider.write", scope.organisation),
@@ -118,9 +128,15 @@ defmodule ApiaryWeb.ProviderLive.Show do
                 {key.value_id}
               </span>
               <ModelKeyComponents.state_line
-                :if={!ModelKeyComponents.sign_in_needed?(key.login)}
+                :if={!ModelKeyComponents.sign_in_needed?(key.login) and !key.new_key}
                 id={"provider-key-#{key.value_id}-state"}
                 state={key.state}
+              />
+              <ModelKeyComponents.new_key_state
+                :if={key.new_key}
+                id={"provider-key-#{key.value_id}-new-key"}
+                state={key.new_key}
+                provider={@provider}
               />
               <ModelKeyComponents.login_line
                 :if={key.login}

@@ -10,14 +10,16 @@ defmodule Apiary.ModelKeys.Report do
   is checked and not stored or used; and `keys`, at most 66, each item a key's state in
   one window (`credential`, `window`, `status`, `resets_at`, `utilization`,
   `cooldown_until`, `source` and `observed_at`), with `cooldown_until` when the status is
-  `rejected` and without it otherwise. A `resets_at` or a `cooldown_until` more than
+  `rejected` and without it otherwise; and `unauthorized`, optional, 1 to 6 items, each a
+  key the model provider returned 401 to (`credential`, `at`, the gateway's clock when the
+  401 arrived), each credential once. A `resets_at` or a `cooldown_until` more than
   `max_reset_days/0` days after the item's `observed_at` is taken as that bound: the
   contract's README bounds a window's reset at 31 days after the provider's response
   arrived, and a cooldown ends at a reset. A member the schema does not define, a member
   twice, and a value of the wrong form are
   `{:error, :invalid_request, name}`, where `name` is the member and never a value. An
   `observed_at` more than `max_skew_seconds/0` after the server's clock is refused as
-  `observed_at`, as the contract's README has it: such a row would stay newer than every later report. Whether `time`
+  `observed_at`, as the contract's README has it: such a row would stay newer than every later report. An `at` of `unauthorized` that late is refused as `unauthorized.at`. Whether `time`
   is within `max_skew_seconds/0` of the server's clock is the caller's to ask
   (`fresh?/2`).
 
@@ -45,8 +47,12 @@ defmodule Apiary.ModelKeys.Report do
        alone (`Apiary.ModelKeys.run_keys/1`): an item of a credential the run does not
        have, and an item of a window outside the contract's list
        (`Apiary.ModelKeys.State.windows/0`), is left out, and the report is taken all the
-       same. `{:ok, body}`, the answer `{"version":1,"keys":[…]}` with the
-       newest state of each key of the run and window, under the run's credential names.
+       same, and so are the keys of `unauthorized` (`Apiary.ModelKeys.reject/4`): each
+       key of the run in it needs a new value from then until a new value, which no page
+       names; a key whose provider's keys are sign-ins, and whose sign-in a refresh may
+       still renew, is not marked. `{:ok, body}`, the answer `{"version":1,"keys":[…]}`
+       with the newest state of each key of the run and window, under the run's credential
+       names.
 
   No key value is read or written here, and a log line has no part of the body.
   """
@@ -58,11 +64,13 @@ defmodule Apiary.ModelKeys.Report do
   alias Apiary.{Access, ModelKeys, Repo}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
+  alias Apiary.Connections.Connection
   alias Apiary.ModelKeys.State
   alias Apiary.Runs.{Batch, Event, ProviderCredential, Registration, Run, RunKey, Sender}
 
   @required ~w(version run_id time keys)
-  @members @required ++ ~w(session)
+  @members @required ++ ~w(session unauthorized)
+  @unauthorized_members ~w(credential at)
   @required_item ~w(credential window status source observed_at)
   @item_members @required_item ++ ~w(resets_at utilization cooldown_until)
   @credential ~r/\A[a-z0-9][a-z0-9_.-]{0,63}\z/
@@ -78,7 +86,7 @@ defmodule Apiary.ModelKeys.Report do
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
 
   @typedoc "A report as `parse/3` read it."
-  @type t :: %{time: DateTime.t(), keys: [map]}
+  @type t :: %{time: DateTime.t(), keys: [map], unauthorized: [map]}
 
   @doc "The most seconds a report's `time` may be from the server's clock."
   @spec max_skew_seconds() :: pos_integer
@@ -102,8 +110,9 @@ defmodule Apiary.ModelKeys.Report do
          :ok <- check(whole_seconds?(fields["time"]), "time"),
          :ok <- check(session?(fields), "session"),
          {:ok, time} <- time(fields["time"], "time"),
-         {:ok, keys} <- keys(fields["keys"], now) do
-      {:ok, %{time: time, keys: keys}}
+         {:ok, keys} <- keys(fields["keys"], now),
+         {:ok, unauthorized} <- unauthorized(fields["unauthorized"], now) do
+      {:ok, %{time: time, keys: keys, unauthorized: unauthorized}}
     end
   end
 
@@ -151,6 +160,42 @@ defmodule Apiary.ModelKeys.Report do
   end
 
   defp keys(_items, _now), do: invalid("keys")
+
+  # `unauthorized`, absent for none: 1 to 6 items, each credential once.
+  defp unauthorized(nil, _now), do: {:ok, []}
+
+  defp unauthorized([_ | _] = items, now) when length(items) <= 6 do
+    items
+    |> Enum.reduce_while({:ok, []}, fn item, {:ok, acc} ->
+      case unauthorized_item(item, now) do
+        {:ok, item} -> {:cont, {:ok, [item | acc]}}
+        refusal -> {:halt, refusal}
+      end
+    end)
+    |> case do
+      {:ok, items} ->
+        items = Enum.reverse(items)
+
+        if length(Enum.uniq_by(items, & &1.credential)) == length(items),
+          do: {:ok, items},
+          else: invalid("unauthorized")
+
+      refusal ->
+        refusal
+    end
+  end
+
+  defp unauthorized(_items, _now), do: invalid("unauthorized")
+
+  defp unauthorized_item(item, now) do
+    with {:ok, fields} <-
+           object(item, @unauthorized_members, @unauthorized_members, "unauthorized"),
+         :ok <- check(credential?(fields["credential"]), "unauthorized.credential"),
+         {:ok, at} <- time(fields["at"], "unauthorized.at"),
+         :ok <- check(not later?(at, now), "unauthorized.at") do
+      {:ok, %{credential: fields["credential"], at: at}}
+    end
+  end
 
   defp item(item, now) do
     with {:ok, fields} <- object(item, @required_item, @item_members, "keys"),
@@ -233,11 +278,11 @@ defmodule Apiary.ModelKeys.Report do
       cond do
         Sender.live?(run, now) ->
           keys = ModelKeys.run_keys(run, features)
-          :ok = ModelKeys.record(keys, report.keys, now)
+          record(run, keys, report, now)
           {:ok, body(ModelKeys.run_states(keys, now))}
 
         just_ended?(run, now) ->
-          :ok = ModelKeys.record(ModelKeys.run_keys(run, features), report.keys, now)
+          record(run, ModelKeys.run_keys(run, features), report, now)
           {:error, :gone}
 
         true ->
@@ -248,6 +293,18 @@ defmodule Apiary.ModelKeys.Report do
     exception ->
       Logger.error("a model keys report could not be taken: #{inspect(exception.__struct__)}")
       {:error, :unavailable}
+  end
+
+  # The report's states, then its `unauthorized` keys.
+  defp record(run, keys, report, now) do
+    :ok = ModelKeys.record(keys, report.keys, now)
+
+    if report.unauthorized != [] do
+      provider = run.provider_connection_id && Repo.get(Connection, run.provider_connection_id)
+      :ok = ModelKeys.reject(keys, report.unauthorized, provider, now)
+    end
+
+    :ok
   end
 
   @doc """
