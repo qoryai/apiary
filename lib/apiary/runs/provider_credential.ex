@@ -12,7 +12,10 @@ defmodule Apiary.Runs.ProviderCredential do
   #
   # Each entry has, in the schema's order: `name`, the key's credential name as the run
   # keeps it; `format`, `endpoint` and `auth` of the API the run uses
-  # (`runs.provider_api`), the same for every key; `key_prefixes` when the API has them;
+  # (`runs.provider_api`), the same for every key, `auth` with `account_header` and
+  # `account_claim` for an API whose keys are sign-ins that name the account; `paths`, the
+  # paths of the endpoint's host the gateway sets the key on, when the API has them;
+  # `key_prefixes` when the API has them;
   # and, as the claim wrote them, `resets_at`, `schedule_resets_at`, `pause_for_s`,
   # `cooldown_until`, `chosen` and `use_up_to_percent`, each where the run keeps it. A key
   # with `use_up_to_percent` also has `use_up_to_windows`, the provider's limit windows,
@@ -65,7 +68,7 @@ defmodule Apiary.Runs.ProviderCredential do
         }
 
   # The order the contract's `auth.schema.json` lists its members in.
-  @auth_members ~w(scheme header username oauth)
+  @auth_members ~w(scheme header username oauth account_header account_claim)
   # The members a run keeps for each key, in the order of the contract's `api_credential`.
   @key_members ~w(resets_at schedule_resets_at pause_for_s cooldown_until chosen
                   use_up_to_percent)
@@ -314,6 +317,12 @@ defmodule Apiary.Runs.ProviderCredential do
         _none -> []
       end
 
+    paths =
+      case api["paths"] do
+        [_ | _] = paths -> [{"paths", paths}]
+        _none -> []
+      end
+
     kept = for member <- @key_members, Map.has_key?(key, member), do: {member, key[member]}
 
     # `use_up_to_percent` and `use_up_to_windows` go together, or neither does.
@@ -332,7 +341,7 @@ defmodule Apiary.Runs.ProviderCredential do
         {"format", format},
         {"endpoint", endpoint},
         {"auth", Jason.OrderedObject.new(auth)}
-      ] ++ prefixes ++ kept
+      ] ++ paths ++ prefixes ++ kept
     )
   end
 
