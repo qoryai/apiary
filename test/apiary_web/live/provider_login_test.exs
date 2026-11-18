@@ -457,7 +457,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
         if cause == "token_not_stored" do
           assert line =~
-                   ~r/\ANeeds a new sign-inQory Apiary could not save the new sign-in on [^.]*2026[^.]*\. Sign in again\.#{help}\z/
+                   ~r/\ANeeds a new sign-inQory Apiary could not save the new sign-in on [^.]*2026[^.]*\.#{help}\z/
 
           refute line =~ "rejected it"
         else

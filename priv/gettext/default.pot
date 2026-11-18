@@ -17185,7 +17185,7 @@ msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary could not save the new sign-in on %{time}. Sign in again."
+msgid "Qory Apiary could not save the new sign-in on %{time}."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex

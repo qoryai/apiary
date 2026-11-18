@@ -553,8 +553,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
       nil until the first refresh;
     * `{:sign_in_needed, rejected, help}`: the heading "Needs a new sign-in", "OpenAI
       rejected it on 2026-11-12 10:04." ("Qory Apiary could not save the new sign-in on
-      2026-11-12 10:04. Sign in again." for a rotated sign-in that Qory Apiary could not
-      store) and, for a provider that has one, what to do (`help`, else nil).
+      2026-11-12 10:04." for a rotated sign-in that Qory Apiary could not store) and, for a provider that has one, what to do (`help`, else nil).
   """
   @spec login(Login.t() | nil, Connection.t()) :: login | nil
   def login(nil, _provider), do: nil
@@ -570,8 +569,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
   # A sign-in that the provider rejected says so. For a rotated sign-in that Qory Apiary
   # could not store, Qory Apiary failed, and the line says that.
   defp cause_line("token_not_stored", _provider, time),
-    do:
-      gettext("Qory Apiary could not save the new sign-in on %{time}. Sign in again.", time: time)
+    do: gettext("Qory Apiary could not save the new sign-in on %{time}.", time: time)
 
   defp cause_line(_cause, provider, time),
     do:
