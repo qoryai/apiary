@@ -1702,13 +1702,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the fix first: "set submit.type to a structured type of artifact_types: mockup is a
   standard type".
 - A run that runs a workflow with write access has `submit: {type, send}` in its run
-  documents, from its process version, where the version has one. A forge's adapter may
-  declare `submit_module` in its start-up: the harness module, pinned to a full commit,
-  that contains the forge's program that opens the draft pull request. Such a run then
-  also has `submit_module`, and the module's host is in the run's `stack_hosts`. A run
-  starts with `submit` alone where no adapter declares one. A start-up whose
-  `submit_module` breaks the run contract, or whose `git` is not an https address, gets
-  400 `invalid_request`, and nothing is stored.
+  documents, from its process version, where the version has one.
 - A run that stores a version of its submission type, `submit.type` of its process
   version, adds a `watch` entry to the change feed of the adapter of the work item's
   target collection: the work item's public id and its page, `url`, as in a `work_item`
@@ -2892,12 +2886,6 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   No row is written, and no existing table changes. Rolling back drops it.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
-- `nodes` (20261116120000): a nullable column `submit_module`, the harness module with
-  the submit program that an adapter's latest start-up declares, with a check that it is
-  null or, on an adapter, a JSON object; the check scans `nodes` under a lock that blocks
-  reads and writes. It changes no row: Apiary stores the module that each adapter
-  declares at its next start-up.
-  Rolling back drops `nodes.submit_module`.
 - `stage_skips` (20261116110000): a new table, the workflow entries that the stage runner
   passed over because their `when` condition was not met, with the organisation keys and a
   foreign key to `work_items` and `process_versions`. It changes no existing table.

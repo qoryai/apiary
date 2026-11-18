@@ -187,13 +187,6 @@ defmodule Apiary.Nodes.Node do
     # never cast.
     field :source_apply, {:array, :map}
     field :egress_hosts, {:array, :string}
-    # An adapter's alone (`nodes_submit_module_check`): the harness module that contains
-    # the submit program of the forge it reads, as its latest start-up declared it
-    # (`submit_module`, checked by `Apiary.Adapters.Wire.declaration/1`); nil while it
-    # declares none, and before its first start. Set at each start
-    # (`submit_module_changeset/2`) and never cast. A claim writes it to the documents of
-    # each run with a submit step on a target of the adapter (`Apiary.Dispatches.Handover`).
-    field :submit_module, :map
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -515,21 +508,6 @@ defmodule Apiary.Nodes.Node do
     |> check_constraint(:source_access, name: :nodes_source_access_check)
     |> check_constraint(:source_apply, name: :nodes_source_apply_check)
     |> check_constraint(:source_guide, name: :nodes_source_guide_check)
-  end
-
-  @doc false
-  # The changeset of the harness module with the submit program that an adapter's start-up
-  # declares, nil for none. `Apiary.Adapters.declare/2` calls it at each start, so a start
-  # without one clears the one an earlier start declared.
-  @spec submit_module_changeset(Ecto.Changeset.t(), map | nil) :: Ecto.Changeset.t()
-  def submit_module_changeset(
-        %Ecto.Changeset{data: %__MODULE__{kind: :adapter}} = changeset,
-        module
-      )
-      when is_map(module) or is_nil(module) do
-    changeset
-    |> change(submit_module: module)
-    |> check_constraint(:submit_module, name: :nodes_submit_module_check)
   end
 
   @doc false

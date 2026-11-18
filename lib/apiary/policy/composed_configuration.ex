@@ -91,9 +91,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # host (`Apiary.Harnesses.RunHarness`, `pins`): `stack_hosts`, the hosts the run's stack
   # proxy allows for qory's fetch of the harness sources before the first session joins
   # (`stack_hosts/1`). The hosts come from every source in `pins`, not from the walk's
-  # `harness_links`, and from the source of the `submit_module` in the documents the claim
-  # sent the run (`runs.run_documents`), whose module qory fetches too, and go in no
-  # `egress` list. More than 32 hosts, the most the
+  # `harness_links`, and go in no `egress` list. More than 32 hosts, the most the
   # contract takes, compose no document, as more than 64 entries in `allow_first` do. A
   # run with no walk, or whose walk pinned no such source, gains no such member.
   #
@@ -121,7 +119,6 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
   require Logger
 
-  alias Apiary.Adapters.Wire
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.RunHarness
   alias Apiary.Policy.{Grammar, Render, RunConfiguration}
@@ -495,7 +492,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
         registry: RunAccess.member(run),
         work: RunCredentials.work(run),
         push: RunCredentials.push(run),
-        stack_hosts: stack_hosts((pins || []) ++ submit_source(run)),
+        stack_hosts: stack_hosts(pins),
         resume: Transcript.resume(run),
         harness_hidden: hidden?
       }
@@ -528,22 +525,6 @@ defmodule Apiary.Policy.ComposedConfiguration do
 
       _none ->
         {false, []}
-    end
-  end
-
-  # The source of the `submit_module` in the documents the claim sent `run`
-  # (`runs.run_documents`, as encoded), `[%{"git" => url}]`, as a pin of a harness walk
-  # has its `git`; `[]` for none. The claim writes `submit_module`, then `submit`, then
-  # `inputs` (`ApiaryWeb.Contract.DispatchAnswer`), so the scan stops at the first of
-  # `submit` and `inputs` (`Wire.member_value/3`), with or without a module, and never
-  # reads the input, the documents' largest member.
-  defp submit_source(run) do
-    with documents when is_binary(documents) <- Map.get(run, :run_documents),
-         {:ok, raw} <- Wire.member_value(documents, "submit_module", ["submit", "inputs"]),
-         {:ok, %{"source" => %{"git" => git}}} when is_binary(git) <- Jason.decode(raw) do
-      [%{"git" => git}]
-    else
-      _none -> []
     end
   end
 
