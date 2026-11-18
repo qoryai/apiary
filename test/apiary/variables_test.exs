@@ -32,6 +32,11 @@ defmodule Apiary.VariablesTest do
     variable
   end
 
+  # The refusal of too many names, as the settings page shows it: the cause, then the fix.
+  @too_many "would raise a target's variables above 126. " <>
+              "Remove variables until this level has at most 126. " <>
+              "A run takes at most 126 variables."
+
   defp resolve!(scope, holder) do
     {:ok, resolution} = Variables.resolve(scope, holder)
     resolution
@@ -329,22 +334,23 @@ defmodule Apiary.VariablesTest do
   end
 
   describe "limits" do
-    test "a holder has at most 128 names", %{scope: scope, site: site} do
-      for i <- 1..120, do: set!(scope, :workspace, "W#{i}", "")
+    test "a holder has at most 126 names, the most a run takes", %{scope: scope, site: site} do
+      assert Resolution.max_names() == 126
+      for i <- 1..118, do: set!(scope, :workspace, "W#{i}", "")
       for i <- 1..8, do: set!(scope, site, "T#{i}", "")
 
       # The repository is full: the workspace cannot add a name it would take.
       assert {:error, changeset} =
-               Variables.create_variable(scope, :workspace, %{name: "W121", value: ""})
+               Variables.create_variable(scope, :workspace, %{name: "W119", value: ""})
 
-      assert error(changeset, :name) == "would raise a target's variables above 128"
+      assert error(changeset, :name) == @too_many
 
       assert {:error, _} = Variables.create_variable(scope, site, %{name: "T9", value: ""})
 
       # Overriding a name adds none.
       assert {:ok, _} = Variables.create_variable(scope, site, %{name: "W1", value: "own"})
-      assert Resolution.size(resolve!(scope, site)).names == 128
-      assert Repo.aggregate(from(v in Variable, where: v.name == "W121"), :count) == 0
+      assert Resolution.size(resolve!(scope, site)).names == 126
+      assert Repo.aggregate(from(v in Variable, where: v.name == "W119"), :count) == 0
     end
 
     test "a holder has at most 64 KiB of names and values", %{scope: scope, site: site} do
@@ -433,20 +439,20 @@ defmodule Apiary.VariablesTest do
       assert deleted_entries() == 0
     end
 
-    test "a locked one is refused as its unlock is, on the names, for a repository past 128",
+    test "a locked one is refused as its unlock is, on the names, for a repository past 126",
          %{scope: scope, site: site} do
-      for i <- 1..119, do: set!(scope, :workspace, "W#{i}", "")
+      for i <- 1..117, do: set!(scope, :workspace, "W#{i}", "")
       locked = set!(scope, :workspace, "LOCKED", "")
       set!(scope, site, "LOCKED", "own")
       {:ok, locked} = Variables.lock_variable(scope, locked)
       for i <- 1..8, do: set!(scope, site, "T#{i}", "")
       around_checks!(scope, site, ["T9"])
 
-      # The value set aside takes back the name the workspace gives up, still 129, and is
-      # 3 bytes longer than the workspace's: larger, and past 128.
+      # The value set aside takes back the name the workspace gives up, still 127, and is
+      # 3 bytes longer than the workspace's: larger, and past 126.
       assert {:error, unlock} = Variables.unlock_variable(scope, locked)
       assert {:error, %Ecto.Changeset{} = changeset} = Variables.delete_variable(scope, locked)
-      assert error(changeset, :name) == "would raise a target's variables above 128"
+      assert error(changeset, :name) == @too_many
       assert changeset.errors == unlock.errors
       assert Repo.reload!(locked).locked
       assert deleted_entries() == 0
@@ -491,27 +497,27 @@ defmodule Apiary.VariablesTest do
       assert deleted_entries() == 0
     end
 
-    test "a repository past 128 names is brought back by deletions that take a name away",
+    test "a repository past 126 names is brought back by deletions that take a name away",
          %{scope: scope, site: site} do
-      for i <- 1..118, do: set!(scope, :workspace, "W#{i}", "")
+      for i <- 1..116, do: set!(scope, :workspace, "W#{i}", "")
       plain = set!(scope, :workspace, "PLAIN", "")
       set!(scope, :workspace, "BIG", String.duplicate("b", 100))
       big = set!(scope, site, "BIG", "x")
       for i <- 1..8, do: set!(scope, site, "T#{i}", "")
       [_t9, _t10, own] = around_checks!(scope, site, ["T9", "T10", "T11"])
-      assert Resolution.size(resolve!(scope, site)).names == 131
+      assert Resolution.size(resolve!(scope, site)).names == 129
 
       # Its own BIG keeps the name when deleted, and gives back the workspace's longer
-      # value: larger, and still past 128.
+      # value: larger, and still past 126.
       assert {:error, %Ecto.Changeset{} = changeset} = Variables.delete_variable(scope, big)
-      assert error(changeset, :name) == "would raise a target's variables above 128"
+      assert error(changeset, :name) == @too_many
       assert Repo.reload!(big)
 
       # An unlocked workspace variable and one of the repository's own each take a name
       # away and add no byte: let through, though it is still past.
       assert {:ok, _} = Variables.delete_variable(scope, plain)
       assert {:ok, _} = Variables.delete_variable(scope, own)
-      assert Resolution.size(resolve!(scope, site)).names == 129
+      assert Resolution.size(resolve!(scope, site)).names == 127
       assert deleted_entries() == 2
     end
 

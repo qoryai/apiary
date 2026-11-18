@@ -94,6 +94,14 @@ defmodule ApiaryPro.OrganisationVariablesTest do
     end)
   end
 
+  # The refusal of too many names, as the settings page shows it: the cause, then the fix.
+  defp too_many(workspace \\ nil) do
+    in_workspace = if workspace, do: " in #{workspace}", else: ""
+
+    "would raise a target's variables#{in_workspace} above 126. " <>
+      "Remove variables until this level has at most 126. A run takes at most 126 variables."
+  end
+
   describe "reading" do
     test "the owners, the admins and the readers read them; a member does not", ctx do
       create!(ctx.owner, "LOG_LEVEL", "info")
@@ -299,12 +307,12 @@ defmodule ApiaryPro.OrganisationVariablesTest do
   end
 
   describe "the limits" do
-    test "the organisation's own: at most 128 names", ctx do
+    test "the organisation's own: at most 126 names", ctx do
       now = DateTime.utc_now()
 
       Repo.insert_all(
         Variable,
-        for n <- 1..128 do
+        for n <- 1..126 do
           %{
             id: Ecto.UUID.generate(),
             organisation_id: ctx.organisation.id,
@@ -320,11 +328,11 @@ defmodule ApiaryPro.OrganisationVariablesTest do
       assert {:error, changeset} =
                OrganisationVariables.create(ctx.owner, %{name: "ONE_MORE", value: "x"})
 
-      assert error(changeset, :name) == "would raise a target's variables above 128"
+      assert error(changeset, :name) == too_many()
     end
 
     test "a workspace's: its own names and the organisation's together", ctx do
-      own!(ctx.platform, nil, for(n <- 1..127, do: {"OWN_#{n}", "x"}))
+      own!(ctx.platform, nil, for(n <- 1..125, do: {"OWN_#{n}", "x"}))
 
       assert %Variable{} = create!(ctx.owner, "LOG_LEVEL", "info")
 
@@ -334,7 +342,7 @@ defmodule ApiaryPro.OrganisationVariablesTest do
       assert {:error, changeset} =
                OrganisationVariables.create(ctx.owner, %{name: "REGION", value: "eu-west-1"})
 
-      assert error(changeset, :name) == "would raise a target's variables in Platform above 128"
+      assert error(changeset, :name) == too_many("Platform")
       assert {:error, :not_found} = find("REGION", ctx)
     end
 
@@ -411,7 +419,7 @@ defmodule ApiaryPro.OrganisationVariablesTest do
     end
 
     test "a workspace marked for deletion that may be restored is checked", ctx do
-      own!(ctx.platform, nil, for(n <- 1..127, do: {"OWN_#{n}", "x"}))
+      own!(ctx.platform, nil, for(n <- 1..125, do: {"OWN_#{n}", "x"}))
       own!(ctx.platform, nil, [{"log_level", "debug"}])
       {:ok, _} = Apiary.Deletion.delete_workspace(ctx.owner, ctx.platform.id, ctx.platform.slug)
 
@@ -424,7 +432,7 @@ defmodule ApiaryPro.OrganisationVariablesTest do
       assert {:error, changeset} =
                OrganisationVariables.create(ctx.owner, %{name: "REGION", value: "eu-west-1"})
 
-      assert error(changeset, :name) == "would raise a target's variables in Platform above 128"
+      assert error(changeset, :name) == too_many("Platform")
       assert {:ok, []} = OrganisationVariables.list(ctx.owner)
 
       # Restored, it is within the limits and the spellings of the organisation's.
@@ -442,7 +450,7 @@ defmodule ApiaryPro.OrganisationVariablesTest do
       Application.put_env(:apiary, :features, Features.all() -- [:organisation_variables])
 
       owner = Apiary.Access.reload(owner)
-      own!(ctx.main, nil, for(n <- 1..126, do: {"OWN_#{n}", "x"}))
+      own!(ctx.main, nil, for(n <- 1..124, do: {"OWN_#{n}", "x"}))
 
       # Longer than the organisation's "info", so deleting it makes Main no larger: the
       # core refuses a deletion that makes a holder larger and leaves it over a limit.
@@ -450,10 +458,10 @@ defmodule ApiaryPro.OrganisationVariablesTest do
                Variables.create_variable(owner, :workspace, %{name: "LOG_LEVEL", value: "debug"})
 
       assert {:ok, last} =
-               Variables.create_variable(owner, :workspace, %{name: "OWN_127", value: "x"})
+               Variables.create_variable(owner, :workspace, %{name: "OWN_125", value: "x"})
 
       # Switched on again, nothing is checked: Main spells Log_Level otherwise, and with
-      # REGION its names are 129.
+      # REGION its names are 127.
       Application.put_env(:apiary, :features, Features.all())
 
       owner = Apiary.Access.reload(owner)
@@ -471,7 +479,7 @@ defmodule ApiaryPro.OrganisationVariablesTest do
       assert {:error, changeset} =
                OrganisationVariables.update(owner, log_level, %{value: "debug"})
 
-      assert error(changeset, :name) == "would raise a target's variables in Main above 128"
+      assert error(changeset, :name) == too_many("Main")
 
       assert {:ok, _} = Variables.delete_variable(owner, last)
       assert {:ok, _} = OrganisationVariables.update(owner, log_level, %{value: "debug"})

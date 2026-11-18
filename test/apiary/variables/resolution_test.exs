@@ -79,11 +79,11 @@ defmodule Apiary.Variables.ResolutionTest do
     assert Resolution.values(resolution) == %{"OK" => "x"}
   end
 
-  test "the limits are 128 names and 65536 bytes of names and values" do
-    full = Resolution.resolve([{:workspace, for(i <- 1..128, do: v("N#{i}", ""))}])
+  test "the limits are 126 names and 65536 bytes of names and values" do
+    full = Resolution.resolve([{:workspace, for(i <- 1..126, do: v("N#{i}", ""))}])
     assert Resolution.check_limits(full) == :ok
 
-    over = Resolution.resolve([{:workspace, for(i <- 1..129, do: v("N#{i}", ""))}])
+    over = Resolution.resolve([{:workspace, for(i <- 1..127, do: v("N#{i}", ""))}])
     assert Resolution.check_limits(over) == {:error, :too_many_names}
 
     exact = Resolution.resolve([{:workspace, [v("A", String.duplicate("x", 65_535))]}])

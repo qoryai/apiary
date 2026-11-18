@@ -33,15 +33,10 @@ defmodule Apiary.Runs.RunVariables do
 
   # The contract's rules for any variable (`run-configuration.schema.json`).
   @name ~r/\A[A-Za-z_][A-Za-z0-9_]{0,127}\z/
-  @max_names 128
   @max_value 4096
   @value_refused ["\0", "\r", "\n"]
 
   @type variables :: %{required(String.t()) => String.t()}
-
-  # The run configuration takes 128 names in all: the two above, and the rest. A person
-  # sees only the rest, so a run takes at most 126 of them.
-  @own_names 2
 
   @typedoc "Why the variables a workspace sets cannot go into a run (`with_resolved/2`)."
   @type resolved_refusal ::
@@ -135,9 +130,9 @@ defmodule Apiary.Runs.RunVariables do
     end
   end
 
-  @doc "The most variables a person's levels give a run: 126, the contract's 128 less its two names."
+  @doc "The most variables a person's levels give a run: 126, the number a save keeps a holder within."
   @spec max_resolved() :: pos_integer
-  def max_resolved, do: @max_names - @own_names
+  def max_resolved, do: Apiary.Variables.Resolution.max_names()
 
   @doc """
   with_resolved/2 is the variables of a run: `own`, what `for_target/2` made (nil for a run

@@ -26,10 +26,10 @@ and variables, on the **Variables** tab.
 organisation, as they are when it starts.** Qory Apiary keeps the variables, checks them
 and resolves them at every level, for each workspace and repository, and puts the result
 in the run's configuration when the run starts. A later change reaches the next run, and a
-run already started keeps what it received. A run takes at most 126 variables of all
-levels together, and 64 KiB of names and values: a run over either does not start, and its
-work item says why, for a run of a work item. A name that Forager leaves out of every run,
-such as `PATH` or a name ending in `_PROXY`, is not given to a run.
+run already started keeps what it received. A prebuild receives none of them. A run takes at most 126 variables from all
+levels together, and 64 KiB of names and values. A run over either limit does not start,
+and its work item shows why. A run never receives a variable named PATH, a name ending in
+_PROXY, or another name on the deny list.
 
 ## Three levels
 
@@ -60,7 +60,7 @@ sentences:
 - A name beginning `QORY_`, whatever its case, is reserved for Forager, and refused.
 - A value is one line of text, at most 4096 bytes; it may be empty.
 - A write at any level that would raise one workspace's or one repository's variables
-  above 128, or above 64 KiB of names and values, counting every level that reaches it,
+  above 126, or above 64 KiB of names and values, counting every level that reaches it,
   is refused. A change
   of the organisation's that would take
   the organisation's variables alone, a workspace or a repository over either limit is

@@ -20,7 +20,7 @@ defmodule ApiaryPro.OrganisationVariables do
     bytes of one line (`ApiaryPro.OrganisationVariables.Variable`, with the core's
     sentences); and a write at either level, the organisation's or a workspace's, is
     refused where it would raise one holder's set of variables, the resolution of the
-    organisation's variables alone, a workspace's or a repository's, above 128 names or
+    organisation's variables alone, a workspace's or a repository's, above 126 names or
     64 KiB of names and values.
 
   The limits and the one spelling are checked on every write, at either level, and on
@@ -441,7 +441,10 @@ defmodule ApiaryPro.OrganisationVariables do
         refuse(
           changeset,
           :name,
-          dgettext_noop("errors", "would raise a target's variables above %{limit}"),
+          dgettext_noop(
+            "errors",
+            "would raise a target's variables above %{limit}. Remove variables until this level has at most %{limit}. A run takes at most %{limit} variables."
+          ),
           limit: Resolution.max_names()
         )
 
@@ -523,7 +526,10 @@ defmodule ApiaryPro.OrganisationVariables do
     refuse(
       changeset,
       :name,
-      dgettext_noop("errors", "would raise a target's variables in %{workspace} above %{limit}"),
+      dgettext_noop(
+        "errors",
+        "would raise a target's variables in %{workspace} above %{limit}. Remove variables until this level has at most %{limit}. A run takes at most %{limit} variables."
+      ),
       workspace: workspace.name,
       limit: Resolution.max_names()
     )

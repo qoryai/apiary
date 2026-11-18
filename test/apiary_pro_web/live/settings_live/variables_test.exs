@@ -469,7 +469,7 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
 
       Repo.insert_all(
         Variable,
-        for n <- 1..127 do
+        for n <- 1..125 do
           %{
             id: Ecto.UUID.generate(),
             organisation_id: ctx.scope.organisation.id,
@@ -482,7 +482,7 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
         end
       )
 
-      # Main's own name, and the organisation's 127: one more is over in Main.
+      # Main's own name, and the organisation's 125: one more is over in Main.
       own!(ctx.scope.workspace, nil, "OWN", "x")
       {:ok, lv, _html} = live(ctx.conn, list_path(ctx.scope) <> "/new")
 
@@ -493,10 +493,11 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
       assert has_element?(
                lv,
                "#variable-form",
-               "would raise a repository's variables in #{ctx.scope.workspace.name} above 128"
+               "would raise a repository's variables in #{ctx.scope.workspace.name} above 126." <>
+                 " Remove variables until this level has at most 126. A run takes at most 126 variables."
              )
 
-      # And the organisation's own 128, with no workspace to blame.
+      # And the organisation's own 126, with no workspace to blame.
       Repo.delete_all(Variables.Variable)
       create!(ctx.scope, "ONE_MORE", "x")
       {:ok, lv, _html} = live(ctx.conn, list_path(ctx.scope) <> "/new")
@@ -505,7 +506,12 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
       |> form("#variable-form", variable: %{name: "TWO_MORE", value: "x"})
       |> render_submit()
 
-      assert has_element?(lv, "#variable-form", "would raise a repository's variables above 128")
+      assert has_element?(
+               lv,
+               "#variable-form",
+               "would raise a repository's variables above 126." <>
+                 " Remove variables until this level has at most 126. A run takes at most 126 variables."
+             )
     end
 
     test "the back end's refusal naming a workspace shows under its field", ctx do

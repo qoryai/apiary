@@ -1143,24 +1143,25 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
     test "a new variable over a repository's limit of names is refused in its own words",
          %{conn: conn, scope: scope} do
       site = target!(scope, "acme/site")
-      for i <- 1..120, do: variable!(scope, :workspace, "W#{i}", "")
+      for i <- 1..118, do: variable!(scope, :workspace, "W#{i}", "")
       for i <- 1..8, do: variable!(scope, site, "T#{i}", "")
       {:ok, lv, _html} = live(conn, variables_path(scope, "/new"))
 
       lv
-      |> form("#variable-form", variable: %{name: "W121", value: "x"})
+      |> form("#variable-form", variable: %{name: "W119", value: "x"})
       |> render_submit()
 
       # The context's refusal, as a software workspace reads it, under the name.
       assert has_element?(
                lv,
                "#variable_name-error",
-               "would raise a repository's variables above 128"
+               "would raise a repository's variables above 126." <>
+                 " Remove variables until this level has at most 126. A run takes at most 126 variables."
              )
 
       refute render(lv) =~ "a target&#39;s variables"
       assert {:ok, variables} = Variables.list_variables(scope, :workspace)
-      assert length(variables) == 120
+      assert length(variables) == 118
     end
 
     test "changes a value, locks and unlocks, saying what the lock does to the repositories",

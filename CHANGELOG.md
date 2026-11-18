@@ -1549,7 +1549,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   holds. The organisation's level is included while the feature `organisation_variables`
   is on. A later change reaches the next run: a run keeps what it received at its start,
   and its run configuration, and the digest of it, do not change. A run registered
-  outside the workspace's queue, with `qory run register`, receives none. The Variables tab of **Workspace settings › Secrets
+  outside the workspace's queue, with `qory run register`, receives none, and a prebuild
+  receives none of the workspace's variables, because its image is shared by the
+  organisation's workspaces. The Variables tab of **Workspace settings › Secrets
   and variables** and its pages read “A run receives these variables when it starts. A
   change reaches the next run.” The organisation's **Variables** page reads “A run
   receives the variables that its workspace and target inherit from this organisation, as
@@ -1578,7 +1580,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   variables on the Variables page of the workspace or its organisation, then start the run
   again.” Its work item reads “Remove variables in the workspace's settings, then start the
   run again. The run has more than 126 variables.” or “... The run's variables take more
-  than 64 KiB.” A save still allows 128 names.
+  than 64 KiB.” A save of a variable is refused where it would leave a workspace or a
+  repository with more than 126 variables, all levels together, and says “would raise a
+  repository's variables above 126. Remove variables until this level has at most 126. A
+  run takes at most 126 variables.” Before, a save allowed 128 names. The claim still
+  refuses a run whose variables pass either limit, such as variables saved before.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - A run cannot withdraw a name of the type in `submit.type` of its process version or of
@@ -2503,12 +2509,6 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   previous image runs get no workspace access at the next upgrade, because the adoption
   covers only organisations it has not adopted. That member reaches no workspace, and
   the members of that workspace do not reach it, until they are added to it.
-<!-- feature: factory, secrets -->
-- After the upgrade, the variables of each workspace, target and organisation reach every
-  run that starts, a prebuild too, where none did before. Members check the values they
-  stored in **Workspace settings › Secrets and variables** and on the organisation's
-  **Variables** page before the first run starts.
-<!-- /feature -->
 - Upgrade every Qory Gateway before you upgrade Qory Apiary, to a gateway built with
   qoryai/forager#52 or later. A gateway built before it returns an error for each batch
   that contains one of the three image codes `image_access_denied`, `image_rate_limited`

@@ -23,17 +23,18 @@ defmodule Apiary.Variables.Resolution do
   `values/1` maps each name to its value, `%{NAME => value}`. A run receives its workspace's
   and its repository's resolution, less the names Forager leaves out of a run
   (`Apiary.Variables.for_run/2`), in its run configuration's `variables`. A holder's
-  resolved variables are at most #{128} names and #{65_536} bytes of names and values
-  (`check_limits/1`), the limits of the run configuration's `variables`
-  (`priv/contract/run-configuration.schema.json`); `Apiary.Variables` refuses a save that
-  would take any holder over them. The run configuration also has the run's two names,
-  `QORY_RUN_SYSTEM` and `QORY_RUN_REPOSITORIES`, so the claim that
-  registers a run refuses one whose resolution has more than 126 names.
+  resolved variables are at most 126 names and #{65_536} bytes of names and values
+  (`check_limits/1`). The run configuration's `variables` take 128 names and 64 KiB
+  (`priv/contract/run-configuration.schema.json`), and 2 of the names are the run's own,
+  `QORY_RUN_SYSTEM` and `QORY_RUN_REPOSITORIES`, so a run takes at most 126 of a holder's.
+  `Apiary.Variables` refuses a save that would take any holder over them, and the claim
+  that registers a run refuses a run whose levels together pass them.
   """
 
   alias Apiary.Variables.{Denied, Variable}
 
-  @max_names 128
+  # 128 names in the run configuration, less the run's two.
+  @max_names 126
   @max_bytes 65_536
 
   @typedoc "A level of the chain."
@@ -53,7 +54,7 @@ defmodule Apiary.Variables.Resolution do
 
   defstruct entries: []
 
-  @doc "The most names a holder's resolution has."
+  @doc "The most names a holder's resolution has, and a run takes: 126."
   @spec max_names() :: pos_integer
   def max_names, do: @max_names
 

@@ -747,7 +747,7 @@ msgstr ""
 
 #: lib/apiary/variables.ex
 #, elixir-autogen, elixir-format
-msgid "would raise a target's variables above %{limit}"
+msgid "would raise a target's variables above %{limit}. Remove variables until this level has at most %{limit}. A run takes at most %{limit} variables."
 msgstr ""
 
 #: lib/apiary/variables.ex

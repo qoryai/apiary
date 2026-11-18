@@ -65,9 +65,10 @@ defmodule Apiary.Dispatches.Handover do
   #      variables of the target, and of the further paths its runs also read where the
   #      workspace's domain has a label for them (`Apiary.Targets.further_repositories/1`),
   #      that break the domain's rules (`Apiary.Lingo.Domain.run_variables/3`) end it
-  #      `variables_invalid`, as do the variables of its workspace and target
-  #      (`Apiary.Variables.for_run/2`) when they are more than 126, or take more than
-  #      64 KiB, with the count or the size kept as `end_detail`; an explore run whose
+  #      `variables_invalid`, as do the variables of a run that is not a prebuild, from its
+  #      workspace and target (`Apiary.Variables.for_run/2`), when they are more than 126,
+  #      or take more than 64 KiB, with the count or the size kept as `end_detail`; a
+  #      prebuild gets none of them, and no refusal for them; an explore run whose
   #      work item's ticket is no longer kept, `ticket_gone`; one whose input cannot be
   #      formed (`Apiary.Dispatches.Inputs`), or
   #      whose work item has no target in a domain that requires one
@@ -110,9 +111,10 @@ defmodule Apiary.Dispatches.Handover do
   # target's (`Apiary.Lingo.Domain.target_labels/1`) and, where the domain has one and
   # gives the run variables, the label of its paths (`Apiary.Lingo.Domain.paths_label/1`)
   # with its QORY_RUN_REPOSITORIES as the value, `about` the step and, for an explore run,
-  # its work item, its run variables (`registration_variables`: the domain's, and the
-  # variables of its workspace and target as they are at the claim,
-  # `Apiary.Variables.for_run/2`; none where there are none), for a continuation of a
+  # its work item, its run variables (`registration_variables`: the domain's, and for a
+  # run that is not a prebuild the variables of its workspace and target as they are at
+  # the claim, `Apiary.Variables.for_run/2`; none where there are none), for a
+  # continuation of a
   # paused run its `resume`
   # (`Apiary.Runs.Transcript.resume_at_claim/1`), its registration digest the SHA-256 of
   # the claim's body, with no heartbeat interval, no answer digest and no contract version
@@ -1108,7 +1110,8 @@ defmodule Apiary.Dispatches.Handover do
 
     with {:variables, {:ok, own}} <-
            {:variables, Domain.run_variables(workspace, target, picked)},
-         {:resolved, {:ok, variables}} <- {:resolved, resolved(workspace, target, own)},
+         {:resolved, {:ok, variables}} <-
+           {:resolved, resolved(dispatch_run, workspace, target, own)},
          {:inputs, {:ok, inputs}} <- {:inputs, inputs.(domain)} do
       about = about(dispatch_run, work_item)
       :ok = About.validate(about)
@@ -1141,8 +1144,12 @@ defmodule Apiary.Dispatches.Handover do
 
   # The run's variables: `own`, its two names (nil without a target or in a domain that
   # sets none), and what its workspace and target resolve to (`Apiary.Variables.for_run/2`),
-  # read now and kept with the run, within the contract's limits.
-  defp resolved(workspace, target, own) do
+  # read now and kept with the run, within the contract's limits. A prebuild has `own`
+  # only: its image is shared by the organisation's workspaces, so no workspace's value
+  # goes into it, and it is never refused for their count or size.
+  defp resolved(%DispatchRun{step: @prebuild}, _workspace, _target, own), do: {:ok, own}
+
+  defp resolved(_dispatch_run, workspace, target, own) do
     row = target && target_row(workspace, target)
     RunVariables.with_resolved(own, Variables.for_run(workspace, row))
   end

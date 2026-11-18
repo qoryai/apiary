@@ -5,14 +5,15 @@ defmodule Apiary.Dispatches.HandoverVariablesTest do
   # (`runs.registration_variables`) beside the run's two names; a name Forager leaves out
   # of a run is not given; and a run that takes more than 126 of them, or more than 64 KiB
   # of names and values, does not start, with the count or the size kept as the end's
-  # detail.
+  # detail. A prebuild's image is shared by the organisation's workspaces, so a prebuild
+  # has its two names alone and is never refused for the variables.
   # Not async: the features are the whole node's, and some tests turn one off.
   use Apiary.DataCase, async: false
 
   import ExUnit.CaptureLog
   import Ecto.Query, only: [from: 2]
   import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1, walked_claim: 3]
-  import Apiary.NodesFixtures, only: [collection_fixture: 1]
+  import Apiary.NodesFixtures, only: [collection_fixture: 2]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
@@ -213,17 +214,32 @@ defmodule Apiary.Dispatches.HandoverVariablesTest do
                Map.merge(@own, %{"NODE_ENV" => "development", "EXTRA" => "later"})
     end
 
-    test "of a prebuild are its workspace's and target's too", ctx do
-      workspace!(ctx, "NODE_ENV", "production")
-      collection = collection_fixture(ctx.scope)
+    test "of a prebuild are the run's two names alone: no level's variable reaches it", ctx do
+      # The prebuild's image is shared by the organisation's workspaces, so no workspace's
+      # value goes into it, while a run of a work item gets them.
+      organisation!(ctx, "ORG_ONLY", "from the organisation")
+      workspace!(ctx, "WORKSPACE_ONLY", "from the workspace")
+      target!(ctx, "TARGET_ONLY", "from the target")
+      {_work_item, _queued} = queued!(ctx)
 
-      {:ok, _run} =
+      assert claimed!(ctx) ==
+               Map.merge(@own, %{
+                 "ORG_ONLY" => "from the organisation",
+                 "WORKSPACE_ONLY" => "from the workspace",
+                 "TARGET_ONLY" => "from the target"
+               })
+
+      collection =
+        collection_fixture(ctx.scope,
+          target_system: ctx.target.system,
+          target_path: ctx.target.path
+        )
+
+      {:ok, prebuild} =
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
 
-      {:ok, %{registered: registered}} = claim(ctx)
-
-      assert %{"NODE_ENV" => "production", "QORY_RUN_SYSTEM" => _} =
-               Repo.get!(Run, registered.id).registration_variables
+      assert claimed!(ctx) == @own
+      assert queue_run!(prebuild).state == :claimed
     end
   end
 
@@ -364,23 +380,25 @@ defmodule Apiary.Dispatches.HandoverVariablesTest do
       refute log =~ "secretvalue"
     end
 
-    test "127 variables end a prebuild too, with the count kept and no outcome", ctx do
+    test "a prebuild is not refused for variables: 127 are set and it starts with none of them",
+         ctx do
       rows!(ctx, names(127))
-      collection = collection_fixture(ctx.scope)
+
+      collection =
+        collection_fixture(ctx.scope,
+          target_system: ctx.target.system,
+          target_path: ctx.target.path
+        )
 
       {:ok, prebuild} =
         Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
 
-      log = capture_log(fn -> assert claim(ctx) == {:ok, :none} end)
+      log = capture_log(fn -> assert claimed!(ctx) == @own end)
 
-      assert %DispatchRun{
-               state: :ended,
-               end_cause: :variables_invalid,
-               end_detail: "names_127",
-               result_outcome: nil
-             } = queue_run!(prebuild)
+      assert %DispatchRun{state: :claimed, end_cause: nil, end_detail: nil} =
+               queue_run!(prebuild)
 
-      assert log =~ "names=127"
+      refute log =~ "variables_invalid"
     end
 
     test "names left out of the run do not count toward the 126", ctx do
