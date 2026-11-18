@@ -474,8 +474,9 @@ defmodule Apiary.Runs.Run do
 
   @doc """
   The states of a run that paused: its gateway ended it with the reason
-  `model_key_limit`, as every model key it had was at its limit, and its work goes on in
-  the run that continues it, which the end of the paused run queues. Not a failure, and
+  `model_key_limit`, as every model key it had was at its limit, or `model_key_switch`,
+  as a Codex session's key was out while another key of the run is usable, and its work
+  goes on in the run that continues it, which the end of the paused run queues. Not a failure, and
   never a person's cancel.
   """
   def paused_states, do: ~w(paused)

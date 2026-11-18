@@ -200,6 +200,12 @@ defmodule Apiary.Dispatches.DispatchRun do
     # of those cooldowns, nil for every other run. No changeset casts them.
     belongs_to :continues, __MODULE__
     field :paused_until, :utc_datetime_usec
+    # On a run that continues a run whose exit paused it with `model_key_switch`, the end
+    # of the window after that exit in which Qory Apiary still records the paused run's
+    # model keys report (`Apiary.ModelKeys.Report.after_exit_seconds/0`): a claim takes the
+    # run only once it has passed (`Apiary.Dispatches.requeue_for_pause/3`). Nil for every
+    # other run. No changeset casts it.
+    field :report_wait_until, :utc_datetime_usec
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace

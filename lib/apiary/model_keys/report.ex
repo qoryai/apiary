@@ -70,6 +70,13 @@ defmodule Apiary.ModelKeys.Report do
   # The gateway sends its last report within 10 s of the run's end, sometimes before its
   # `dev.qory.run.exited`: a report this long after the run's end is still stored.
   @after_exit_seconds 60
+
+  @doc false
+  # after_exit_seconds/0 is the time after a run's end in which its model keys report is
+  # still stored, 60 seconds. The run that continues a run paused with `model_key_switch`
+  # waits this long after the exit (`Apiary.Dispatches.requeue_for_pause/3`).
+  @spec after_exit_seconds() :: pos_integer
+  def after_exit_seconds, do: @after_exit_seconds
   # The contract's bound on `resets_at`: at most 31 days after the provider's response
   # arrived.
   @max_reset_days 31
