@@ -11,6 +11,31 @@ defmodule Apiary.ConnectionsFixtures do
   alias Apiary.Runs.Target
 
   @doc """
+  provider_added_with_model_proxies!/2 is a model provider added for `scope` with `attrs`,
+  as `Apiary.Connections.create_provider/2` takes them, while the feature `model_proxies`
+  is on: a provider whose description lists no models, such as LiteLLM, added before the
+  feature was turned off. The feature is on for that one call, and the features are put
+  back after it. The features are the whole node's, so the test must not be async.
+  """
+  def provider_added_with_model_proxies!(scope, attrs) do
+    previous = Application.get_env(:apiary, :features)
+    enabled = Apiary.Features.enabled()
+
+    Application.put_env(
+      :apiary,
+      :features,
+      Enum.filter(Apiary.Features.all(), &(&1 in [:model_proxies | enabled]))
+    )
+
+    try do
+      {:ok, provider} = Apiary.Connections.create_provider(scope, attrs)
+      provider
+    after
+      Application.put_env(:apiary, :features, previous)
+    end
+  end
+
+  @doc """
   ready_release!/3 is a ready release of `description` (decoded), found for `scope` at
   `source`, a GitHub repository.
   """

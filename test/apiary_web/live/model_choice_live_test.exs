@@ -775,23 +775,25 @@ defmodule ApiaryWeb.ModelChoiceLive.ModelProxiesTest do
   setup %{scope: scope} do
     %{
       anthropic: provider!(scope, %{provider: "anthropic"}),
+      # Added while the feature was on: with it off, a LiteLLM provider is not added.
       litellm:
-        provider!(scope, %{
-          provider: "litellm",
-          settings: %{"address" => "https://litellm.example.com"}
-        })
+        Apiary.ConnectionsFixtures.provider_added_with_model_proxies!(
+          scope,
+          with_key(%{
+            provider: "litellm",
+            settings: %{"address" => "https://litellm.example.com"}
+          })
+        )
     }
   end
 
   defp provider!(scope, attrs) do
-    {:ok, provider} =
-      Connections.create_provider(
-        scope,
-        Map.put(attrs, :keys, [%{value_id: "main", value: "sk-model-proxies-0123456789"}])
-      )
-
+    {:ok, provider} = Connections.create_provider(scope, with_key(attrs))
     provider
   end
+
+  defp with_key(attrs),
+    do: Map.put(attrs, :keys, [%{value_id: "main", value: "sk-model-proxies-0123456789"}])
 
   defp path(scope), do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/model"
 

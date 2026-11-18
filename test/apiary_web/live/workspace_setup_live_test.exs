@@ -5983,11 +5983,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelProxiesTest do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
     anthropic = provider!(scope, %{provider: "anthropic"})
 
+    # Added while the feature was on: with it off, a LiteLLM provider is not added.
     litellm =
-      provider!(scope, %{
-        provider: "litellm",
-        settings: %{"address" => "https://litellm.example.com"}
-      })
+      Apiary.ConnectionsFixtures.provider_added_with_model_proxies!(
+        scope,
+        with_key(%{
+          provider: "litellm",
+          settings: %{"address" => "https://litellm.example.com"}
+        })
+      )
 
     %{
       conn: log_in_user(conn, user),
@@ -5999,14 +6003,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelProxiesTest do
   end
 
   defp provider!(scope, attrs) do
-    {:ok, provider} =
-      Connections.create_provider(
-        scope,
-        Map.put(attrs, :keys, [%{value_id: "main", value: "sk-set-up-proxies-0123456789"}])
-      )
-
+    {:ok, provider} = Connections.create_provider(scope, with_key(attrs))
     provider
   end
+
+  defp with_key(attrs),
+    do: Map.put(attrs, :keys, [%{value_id: "main", value: "sk-set-up-proxies-0123456789"}])
 
   # Key's values, then Provider's under Add a key.
   defp offers(ctx) do
@@ -6065,6 +6067,40 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelProxiesTest do
     assert {keys, providers} = offers(ctx)
     assert Enum.sort(keys) == Enum.sort([ctx.anthropic.public_id, ctx.litellm.public_id, "add"])
     refute "litellm" in providers
+  end
+
+  # Add a key with LiteLLM, sent as a request past the step's list.
+  @add_litellm %{
+    "model" => %{
+      "source" => "add",
+      "provider" => "litellm",
+      "key" => "sk-set-up-proxies-added-0123456789",
+      "address" => "https://litellm.example.com"
+    }
+  }
+
+  @tag with_features: Apiary.Features.all() -- [:model_proxies]
+  test "off: Add a key with LiteLLM is refused, and nothing is stored", ctx do
+    {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.organisation}/main/set-up/model")
+    render_click(lv, "choose_model", @add_litellm)
+    html = render_click(lv, "save_model", @add_litellm)
+
+    assert html =~ "Turn on the feature Model proxies to add LiteLLM: it lists no models."
+    assert {:ok, providers} = Connections.list_providers(ctx.scope)
+
+    assert Enum.sort(Enum.map(providers, & &1.id)) ==
+             Enum.sort([ctx.anthropic.id, ctx.litellm.id])
+  end
+
+  @tag with_features: Apiary.Features.all()
+  test "on: Add a key with LiteLLM stores the provider", ctx do
+    {:ok, lv, _html} = live(ctx.conn, ~p"/#{ctx.organisation}/main/set-up/model")
+    render_click(lv, "choose_model", @add_litellm)
+    render_click(lv, "save_model", @add_litellm)
+
+    assert {:ok, providers} = Connections.list_providers(ctx.scope)
+    assert [added] = Enum.reject(providers, &(&1.id in [ctx.anthropic.id, ctx.litellm.id]))
+    assert added.provider_kind == "litellm"
   end
 
   @tag with_features: Apiary.Features.all()

@@ -22,7 +22,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   of integrations `b22085a` applied on top.
 <!-- feature: factory -->
 - Providers whose description lists no models, such as LiteLLM, are hidden where a
-  provider is offered, unless the feature `model_proxies` is on (off by default).
+  provider is offered, unless the feature `model_proxies` is on (off by default). With
+  it off, a request that adds one is refused with "Turn on the feature Model proxies to
+  add LiteLLM: it lists no models."; a provider added before stays, and its edits are
+  not refused.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - An escalation of a work item on a track that is not the first track of the gate that

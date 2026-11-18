@@ -4,6 +4,7 @@ defmodule ApiaryWeb.ProviderLiveFeaturesTest do
   # not found. Not async: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
 
   setup :register_and_log_in_user
@@ -79,8 +80,9 @@ defmodule ApiaryWeb.ProviderLiveFeaturesTest do
       {:ok, lv, _html} = live(conn, new_path(scope))
       assert offered(lv) == ~w(anthropic claude-subscription deepseek openrouter)
 
-      {:ok, provider} =
-        Apiary.Connections.create_provider(scope, %{
+      # Added while the feature was on: with it off, a LiteLLM provider is not added.
+      provider =
+        Apiary.ConnectionsFixtures.provider_added_with_model_proxies!(scope, %{
           provider: "litellm",
           settings: %{"address" => "https://litellm.example.com"},
           keys: [%{value_id: "main", value: "sk-litellm-features-0123456789"}]
@@ -94,6 +96,59 @@ defmodule ApiaryWeb.ProviderLiveFeaturesTest do
     test "on: the add form offers LiteLLM", %{conn: conn, scope: scope} do
       {:ok, lv, _html} = live(conn, new_path(scope))
       assert offered(lv) == ~w(anthropic claude-subscription deepseek litellm openrouter)
+    end
+
+    @litellm %{
+      "provider" => "litellm",
+      "key" => "sk-litellm-features-0123456789",
+      "address" => "https://litellm.example.com"
+    }
+
+    # The secrets that keep providers' keys (`Apiary.Connections.create_provider/3`).
+    defp key_secrets do
+      Apiary.Repo.aggregate(
+        from(s in Apiary.Secrets.Secret, where: like(s.name, "MODEL_PROVIDER_%")),
+        :count
+      )
+    end
+
+    @tag with_features: Apiary.Features.all() -- [:model_proxies]
+    test "off: LiteLLM sent past the add form is refused, and nothing is stored",
+         %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, new_path(scope))
+      html = render_click(lv, "create", %{"provider" => @litellm})
+
+      assert html =~ "Turn on the feature Model proxies to add LiteLLM: it lists no models."
+      assert Apiary.Connections.list_providers(scope) == {:ok, []}
+      assert key_secrets() == 0
+    end
+
+    @tag with_features: Apiary.Features.all()
+    test "on: LiteLLM sent with the add form is stored", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, new_path(scope))
+
+      assert {:error, {:live_redirect, _to}} =
+               render_click(lv, "create", %{"provider" => @litellm})
+
+      assert {:ok, [%{provider_kind: "litellm"}]} = Apiary.Connections.list_providers(scope)
+      assert key_secrets() == 1
+    end
+
+    @tag with_features: Apiary.Features.all() -- [:model_proxies]
+    test "off: a LiteLLM provider added before stays, and its edit is not refused",
+         %{scope: scope} do
+      provider =
+        Apiary.ConnectionsFixtures.provider_added_with_model_proxies!(scope, %{
+          provider: "litellm",
+          settings: %{"address" => "https://litellm.example.com"},
+          keys: [%{value_id: "main", value: "sk-litellm-features-0123456789"}]
+        })
+
+      assert {:ok, %{name: "Team proxy"}} =
+               Apiary.Connections.update_provider(scope, provider, %{name: "Team proxy"})
+
+      assert {:ok, [%{id: id}]} = Apiary.Connections.list_providers(scope)
+      assert id == provider.id
     end
   end
 end

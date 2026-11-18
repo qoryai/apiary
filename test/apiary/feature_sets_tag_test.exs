@@ -12,7 +12,7 @@ defmodule Apiary.FeatureSetsTagTest do
   # the person's level, so the refusals tests stay untagged. The others set the features
   # for a test, a module or the suite, and put them back; the audit changes unset
   # QORY_FEATURES for a save of the instance's features, and put it back.
-  @helpers ~w(access_case.ex audit_changes.ex data_case.ex refusals_rows.ex pro/refusals_rows.ex test_setup.ex)
+  @helpers ~w(access_case.ex audit_changes.ex data_case.ex fixtures/connections_fixtures.ex refusals_rows.ex pro/refusals_rows.ex test_setup.ex)
 
   # The edition's reads, beside the core's: the features of an organisation, and the parts a grant
   # offers and shows. `of/2` with a second argument is no read.

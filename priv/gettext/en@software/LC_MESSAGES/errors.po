@@ -254,6 +254,11 @@ msgstr ""
 msgid "Together with %{target}, these come to %{bytes} characters; the most is 256."
 msgstr ""
 
+#: lib/apiary/connections.ex
+#, elixir-autogen, elixir-format
+msgid "Turn on the feature Model proxies to add %{provider}: it lists no models."
+msgstr ""
+
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Use 1 to 200 ASCII letters, digits and punctuation with no space, starting with a letter or a digit."
