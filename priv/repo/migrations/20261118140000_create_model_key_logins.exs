@@ -18,6 +18,10 @@ defmodule Apiary.Repo.Migrations.CreateModelKeyLogins do
   #     migration that replaces the check;
   #   * `failures`, `retry_at` and `last_failure`: the refreshes that failed since the
   #     last good one, when the next may start, and when the last one failed;
+  #   * `failing_since`: when the first of the refreshes that failed since the last good
+  #     one failed, nil while none is failing; the Activity page has one line for the
+  #     failure that opens such a streak and one for the refresh that ends it, and none
+  #     for the attempts between;
   #   * `generation`: 1 for the first login of the key, plus 1 for each login pasted
   #     over it, so a refresh that started before it is dropped;
   #   * `lease_id` and `lease_until`: the process that refreshes the login, and until
@@ -50,6 +54,7 @@ defmodule Apiary.Repo.Migrations.CreateModelKeyLogins do
       add :failures, :integer, null: false, default: 0
       add :retry_at, :utc_datetime_usec
       add :last_failure, :utc_datetime_usec
+      add :failing_since, :utc_datetime_usec
       add :generation, :integer, null: false, default: 1
       add :lease_id, :binary_id
       add :lease_until, :utc_datetime_usec

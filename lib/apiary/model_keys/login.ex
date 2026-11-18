@@ -66,11 +66,16 @@ defmodule Apiary.ModelKeys.Login do
        under the name the key has when the outcome is written, so the rotated refresh
        token is not lost. A refresh changes no `value_set_at`, so the key's states and the
        runs' copies stay.
-    6. A call that ends in a new sign-in, a refusal that stays or a failure that may pass
-       leaves an entry `model_key.refresh` in the organisation's trail, by the instance,
-       written after the outcome is stored: an entry that cannot be written is logged and
-       costs nothing else. A result that is dropped, and a new refresh token that could
-       not be stored while the old one is still good, leave no entry.
+    6. The Activity page has an entry `model_key.refresh` (by the instance, in the
+       organisation's trail, written after the outcome is stored; one that cannot be
+       written is logged and costs nothing else) for a refresh that works, for the first
+       failure of a streak (`failing_since` is nil), and for a refusal that stays. The
+       failures that follow the first one while the streak is open leave no entry: the
+       row has their count (`failures`) and the time of the last (`last_failure`). The
+       refresh that works while a streak is open ends it and leaves the entry of a
+       refresh that works. A login pasted over the key ends the streak with no entry. A
+       result that is dropped, and a new refresh token that could not be stored while the
+       old one is still good, leave no entry and open no streak.
 
   A caller that does not get the lease while another process holds it reads the row every
   250 ms for up to 10 seconds and returns the new token when the lease ends. After a
@@ -164,6 +169,7 @@ defmodule Apiary.ModelKeys.Login do
     field :failures, :integer, default: 0
     field :retry_at, :utc_datetime_usec
     field :last_failure, :utc_datetime_usec
+    field :failing_since, :utc_datetime_usec
     field :generation, :integer, default: 1
     field :lease_id, :binary_id
     field :lease_until, :utc_datetime_usec
@@ -316,6 +322,7 @@ defmodule Apiary.ModelKeys.Login do
       failures: 0,
       retry_at: nil,
       last_failure: nil,
+      failing_since: nil,
       lease_id: nil,
       lease_until: nil,
       updated_at: now
@@ -913,6 +920,7 @@ defmodule Apiary.ModelKeys.Login do
           failures: 0,
           retry_at: nil,
           last_failure: nil,
+          failing_since: nil,
           lease_id: nil,
           lease_until: nil,
           updated_at: now
@@ -941,38 +949,44 @@ defmodule Apiary.ModelKeys.Login do
       failures: row.failures + 1,
       retry_at: nil,
       last_failure: now,
+      failing_since: row.failing_since || now,
       lease_id: nil,
       lease_until: nil,
       updated_at: now
     )
 
+    # The person has to act, whether or not a streak of failures that may pass was open: the
+    # line of that streak says the next call is scheduled.
     {:sign_in_needed, entry(write, "sign_in_needed", cause)}
   end
 
   defp settle(write, row, {:transient, cause}, now), do: failed(write, row, cause, now)
 
   # A failure that may pass: the next call waits 30 seconds, doubling for each failure in a
-  # row, at most 10 minutes.
+  # row, at most 10 minutes. The first failure of a streak (`failing_since` nil) leaves the
+  # entry, with the time of the next call as it is scheduled now; the failures after it
+  # leave none, and the row carries their count. A failed store of a refresh token that the
+  # provider kept leaves no entry and opens no streak: there is nothing for the person to do.
   defp failed(write, row, cause, now) do
     failures = row.failures + 1
     wait = min(@backoff_seconds * Integer.pow(2, min(failures - 1, 10)), @backoff_max_seconds)
     retry_at = DateTime.add(now, wait)
+    silent? = cause == "not_stored"
+    opens? = is_nil(row.failing_since) and not silent?
 
-    update_row(row,
-      failures: failures,
-      retry_at: retry_at,
-      last_failure: now,
-      lease_id: nil,
-      lease_until: nil,
-      updated_at: now
+    update_row(
+      row,
+      [
+        failures: failures,
+        retry_at: retry_at,
+        last_failure: now,
+        lease_id: nil,
+        lease_until: nil,
+        updated_at: now
+      ] ++ if(opens?, do: [failing_since: now], else: [])
     )
 
-    # A refresh token that the provider kept is still good, so a failed store leaves no
-    # entry: there is nothing for the person to do.
-    entry =
-      if cause == "not_stored", do: nil, else: entry(write, "failed", cause, retry_at: retry_at)
-
-    {:failed, entry}
+    {:failed, if(opens?, do: entry(write, "failed", cause, retry_at: retry_at))}
   end
 
   # The provider rotated the refresh token and the new one could not be stored: the stored

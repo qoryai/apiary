@@ -889,6 +889,180 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
     end
   end
 
+  describe "a streak of failures" do
+    # Each failing attempt is made after the wait of the one before.
+    defp fail_again!(provider, status \\ 503, opts \\ []) do
+      set_login!(provider, retry_at: -1)
+      stub!({status, %{}})
+      token(provider, opts)
+    end
+
+    defp outcomes(provider),
+      do: Enum.map(trail(provider), &{&1.details["outcome"], &1.details["cause"]})
+
+    test "the first failure leaves one entry, the failures after it leave none", %{scope: scope} do
+      {provider, tokens} = subscription!(scope, expires_in: 100)
+      stub!({503, %{}})
+      assert {:ok, access, _at} = token(provider)
+      assert access == tokens.access_token
+
+      assert %Login{failures: 1, failing_since: %DateTime{}, retry_at: first_retry} =
+               row(provider)
+
+      for _again <- 1..5, do: assert({:ok, _access, _at} = fail_again!(provider))
+
+      assert %Login{failures: 6, failing_since: %DateTime{}} = login = row(provider)
+      assert length(requests()) == 6
+      assert login.retry_at != first_retry
+
+      # The entry's retry time is the one scheduled at the first failure.
+      assert [%Entry{details: %{"outcome" => "failed", "cause" => "http_503"} = details}] =
+               trail(provider)
+
+      assert details["retry_at"] == DateTime.to_iso8601(first_retry)
+    end
+
+    test "a refresh that works ends the streak with the entry of a refresh that works",
+         %{scope: scope} do
+      {provider, _tokens} = subscription!(scope, expires_in: 100)
+      stub!({503, %{}})
+      token(provider)
+      fail_again!(provider)
+
+      set_login!(provider, retry_at: -1)
+      stub!(new_tokens("recovered"))
+      assert {:ok, _access, _at} = token(provider)
+
+      assert %Login{failures: 0, failing_since: nil, retry_at: nil, last_failure: nil} =
+               row(provider)
+
+      assert outcomes(provider) == [{"failed", "http_503"}, {"refreshed", nil}]
+    end
+
+    test "a second streak leaves a new failure entry", %{scope: scope} do
+      {provider, _tokens} = subscription!(scope, expires_in: 100)
+      stub!({503, %{}})
+      token(provider)
+      fail_again!(provider)
+      set_login!(provider, retry_at: -1)
+      stub!(new_tokens("between", expires_in: 100))
+      assert {:ok, _access, _at} = token(provider)
+
+      # The refreshed token is within the lead again, a minute on.
+      set_login!(provider, refreshed_at: -120)
+      fail_again!(provider, 500)
+      fail_again!(provider, 500)
+
+      assert outcomes(provider) == [
+               {"failed", "http_503"},
+               {"refreshed", nil},
+               {"failed", "http_500"}
+             ]
+    end
+
+    test "a login pasted over the key ends the streak with no entry", %{scope: scope} do
+      {provider, _tokens} = subscription!(scope, expires_in: 100)
+      stub!({503, %{}})
+      token(provider)
+      assert %Login{failing_since: %DateTime{}} = row(provider)
+
+      {:ok, _} =
+        Connections.update_provider_key(scope, plain(provider), "main", %{
+          "value_id" => "main",
+          "value" => login_paste(tag: "pasted", expires_in: 100)
+        })
+
+      assert %Login{failing_since: nil, failures: 0, retry_at: nil} = row(provider)
+      assert outcomes(provider) == [{"failed", "http_503"}]
+
+      # A failure of the new login opens a streak of its own.
+      stub!({503, %{}})
+      token(provider)
+      assert outcomes(provider) == [{"failed", "http_503"}, {"failed", "http_503"}]
+    end
+
+    test "the sweep's failures and a run's count in one streak", %{scope: scope} do
+      {provider, _tokens} = subscription!(scope, expires_in: 100)
+      stub!({503, %{}})
+
+      assert {:ok, _access, _at} = token(provider, trigger: :schedule)
+      fail_again!(provider, 503, trigger: {:run, "run-1"})
+      fail_again!(provider, 503, trigger: :schedule)
+
+      assert [%Entry{details: %{"trigger" => "schedule", "outcome" => "failed"}}] =
+               trail(provider)
+
+      assert length(requests()) == 3
+      set_login!(provider, retry_at: -1)
+      stub!(new_tokens("sweep-recovered"))
+      assert {:ok, _access, _at} = token(provider, trigger: {:run, "run-2"})
+
+      assert [
+               %Entry{details: %{"trigger" => "schedule", "outcome" => "failed"}},
+               %Entry{details: %{"trigger" => "run", "outcome" => "refreshed"}}
+             ] = trail(provider)
+    end
+
+    test "a refusal that stays leaves its entry even in a streak that may pass",
+         %{scope: scope} do
+      {provider, _tokens} = subscription!(scope, expires_in: 100)
+      stub!({503, %{}})
+      token(provider)
+      set_login!(provider, retry_at: -1)
+      stub!({401, %{"error" => "refresh_token_expired"}})
+      assert token(provider) == {:error, :sign_in_needed}
+
+      assert outcomes(provider) == [
+               {"failed", "http_503"},
+               {"sign_in_needed", "refresh_token_expired"}
+             ]
+
+      assert %Login{state: "sign_in_needed", failing_since: %DateTime{}} = row(provider)
+
+      # A paste of a new login ends it, and no call is made before.
+      {:ok, _} =
+        Connections.update_provider_key(scope, plain(provider), "main", %{
+          "value_id" => "main",
+          "value" => login_paste(tag: "again")
+        })
+
+      assert %Login{state: "signed_in", failing_since: nil} = row(provider)
+      assert length(trail(provider)) == 2
+    end
+
+    test "no token is in the log, the row or an entry of a streak", %{scope: scope} do
+      {provider, tokens} = subscription!(scope, expires_in: 100)
+      fresh = new_tokens("quiet")
+
+      log =
+        capture_log(fn ->
+          stub!(
+            {503, %{"refresh_token" => "rt-in-an-answer", "access_token" => "at-in-an-answer"}}
+          )
+
+          token(provider)
+          fail_again!(provider)
+          set_login!(provider, retry_at: -1)
+          stub!(fresh)
+          token(provider)
+        end)
+
+      text =
+        inspect(row(provider), limit: :infinity) <>
+          inspect(trail(provider), limit: :infinity) <> log
+
+      for secret <-
+            secrets_of(tokens) ++
+              [
+                fresh["access_token"],
+                fresh["refresh_token"],
+                "rt-in-an-answer",
+                "at-in-an-answer"
+              ],
+          do: refute(text =~ secret)
+    end
+  end
+
   describe "a failure that may pass" do
     for {name, status, body, cause} <- [
           {"a 500", 500, %{"error" => "server_error"}, "http_500"},
