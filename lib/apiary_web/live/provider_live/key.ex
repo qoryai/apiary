@@ -21,7 +21,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
   #
   # A key is write-only: the page never renders it nor keeps it in an assign. Its field,
   # Key or New value, is left out of the page's patches (`phx-update="ignore"`), and each
-  # save renders a new, empty field. The tokens of a sign-in are in its own process, never
+  # save renders a new, empty field. The tokens of a sign-in are in the process of the sign-in, never
   # in an assign.
   #
   # The module reference leaves out this module of the `factory` feature.

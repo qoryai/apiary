@@ -287,7 +287,7 @@ defmodule Apiary.ModelKeys.DeviceSignIn do
       :ok
     end
 
-    defp device(kind, own) do
+    defp device(kind, catalogued) do
       stubbed =
         if :persistent_term.get(@stubbed, false) do
           Enum.find_value([self() | Process.get(:"$callers", [])], fn
@@ -296,7 +296,7 @@ defmodule Apiary.ModelKeys.DeviceSignIn do
           end)
         end
 
-      stubbed || own
+      stubbed || catalogued
     end
 
     defp caller_device(pid, kind) when is_pid(pid) do

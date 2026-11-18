@@ -200,7 +200,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
       refute_tokens(html, tokens)
       refute_in_assigns(lv, tokens)
 
-      # The device's own assign has the user code and nothing else of the sign-in.
+      # The device assign has the user code and nothing else of the sign-in.
       assert Map.keys(device_of(lv)) |> Enum.sort() ==
                ~w(expires_at key kind pid ref state user_code verification_url)a
     end
