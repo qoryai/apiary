@@ -1206,6 +1206,43 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       assert has_element?(view, "#work-item-tab-output-explainer-row", "explainer notes v1")
     end
 
+    test "with no run's film or picture, a person's picture has the Scenarios frame",
+         %{conn: conn, scope: scope} do
+      work_item = at_verify_gate!(scope, &verification!(&1, &2))
+      upload!(scope, work_item, "screenshot", "phone-check", picture("phone-check"))
+      view = tab(conn, scope, work_item)
+      short = ApiaryWeb.People.short(scope.user.email)
+
+      assert has_element?(view, "#work-item-tab-output-screenshot-h", "Scenarios")
+      assert has_element?(view, "#work-item-tab-output-screenshot-s", "Version 1 · 1 scenario")
+      assert texts(view, "#work-item-tab-scenarios h3") == ["phone-check"]
+
+      assert has_element?(
+               view,
+               "#work-item-tab-scenarios-screenshot--phone-check---caption",
+               "Version 1 · #{short}"
+             )
+    end
+
+    test "a person's change of a type that is not Verify's output is a row frame after them",
+         %{conn: conn, scope: scope} do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{"name" => "notes", "base_view" => "file"})
+
+      work_item = at_verify_gate!(scope, &verification!(&1, &2))
+      upload!(scope, work_item, "notes", "main", words("Notes by hand."))
+      view = tab(conn, scope, work_item)
+      short = ApiaryWeb.People.short(scope.user.email)
+
+      assert ids(view, "section.q-xp-frame") == [
+               "work-item-tab-output-verification",
+               "work-item-tab-output-notes"
+             ]
+
+      assert has_element?(view, "#work-item-tab-output-notes-s", "Version 1 · #{short}")
+      assert has_element?(view, "#work-item-tab-output-notes-row", "notes v1")
+    end
+
     test "a person's picture alone has the Scenarios frame, open, then the inputs, folded" do
       stage = %{outputs: ~w(verification demo-video screenshot explainer)}
       version = %{public_id: "av_phone", number: 1, writer: :person, user: nil}

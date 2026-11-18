@@ -159,7 +159,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   a move back to a stage at or before that approval; the gate of that stage then shows and
   approves it, in `outputs` of `GET work-item` and on the stage's tab of the work item
   page. An approval at a gate records a version of each name of each output type, and
-  the gate card lists each name on a row of its own. The tab of a stage with no
+  the gate card lists one row for each name. The tab of a stage with no
   `verification` output has a frame for every version that an approval at its gate
   records: one for each name of a type, one that only a person uploaded, one of an
   earlier take in, and a change. A frame of an artifact not named `main` has the name

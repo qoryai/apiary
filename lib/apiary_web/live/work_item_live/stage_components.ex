@@ -425,8 +425,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         # version is not shown as missing.
         shown: shown,
         drafts: Map.get(assigns.page, :drafts, []),
-        # The other versions the approval records, each on a line of its own. The
-        # questions are on the Questions tab.
+        # The other versions the approval records, one line for each. The questions are
+        # on the Questions tab.
         others:
           Enum.reject(
             assigns.recorded,
