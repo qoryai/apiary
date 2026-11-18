@@ -14,7 +14,8 @@ defmodule Apiary.Repo.Migrations.KeepARecordOfEachSessionOfARun do
   #   and `dev.qory.session.exited`, null until the event is projected;
   # - `duration_ms`, `turns`, the four token counts, `cost_usd` and `error` come from the
   #   session's `dev.qory.runtime.result` events, null where no result carried the value
-  #   (unknown, never 0), and `model` from its `dev.qory.runtime.started`.
+  #   (unknown, never 0), and `model` from its `dev.qory.runtime.started`. `cost_usd` has
+  #   no precision, as `runs.cost_usd` has none.
   #
   # `session_key_windows`: for each session, key and limit window the first and the last
   # utilization that the gateway's key reports gave while the session ran, in whole percent,
@@ -85,7 +86,7 @@ defmodule Apiary.Repo.Migrations.KeepARecordOfEachSessionOfARun do
       add :output_tokens, :bigint
       add :cache_read_tokens, :bigint
       add :cache_write_tokens, :bigint
-      add :cost_usd, :decimal, precision: 15, scale: 6
+      add :cost_usd, :decimal
       add :model, :text
       add :error, :boolean, null: false, default: false
 

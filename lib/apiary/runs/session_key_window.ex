@@ -14,8 +14,6 @@ defmodule Apiary.Runs.SessionKeyWindow do
   """
   use Ecto.Schema
 
-  import Ecto.Changeset
-
   @typedoc "One key's window in one session."
   @type t :: %__MODULE__{}
 
@@ -35,33 +33,5 @@ defmodule Apiary.Runs.SessionKeyWindow do
     belongs_to :session_record, Apiary.Runs.SessionRecord
 
     timestamps(type: :utc_datetime_usec)
-  end
-
-  @fields ~w(key_id window first_utilization first_observed_at last_utilization
-             last_observed_at share)a
-
-  @doc """
-  The changeset of a window of a session record: the key and the window are required, each
-  utilization is 0 to 100 and the share -100 to 100; the record's ids are the caller's to
-  put.
-  """
-  @spec changeset(t, map) :: Ecto.Changeset.t()
-  def changeset(%__MODULE__{} = window, attrs) do
-    window
-    |> cast(attrs, @fields)
-    |> validate_required([:key_id, :window])
-    |> validate_format(:window, ~r/\A[a-z][a-z0-9_]{0,63}\z/)
-    |> validate_number(:first_utilization,
-      greater_than_or_equal_to: 0,
-      less_than_or_equal_to: 100
-    )
-    |> validate_number(:last_utilization, greater_than_or_equal_to: 0, less_than_or_equal_to: 100)
-    |> validate_number(:share, greater_than_or_equal_to: -100, less_than_or_equal_to: 100)
-    |> unique_constraint(:window,
-      name: :session_key_windows_session_record_id_key_id_window_index
-    )
-    |> check_constraint(:window, name: :session_key_windows_window_check)
-    |> check_constraint(:first_utilization, name: :session_key_windows_utilization_check)
-    |> check_constraint(:share, name: :session_key_windows_share_check)
   end
 end
