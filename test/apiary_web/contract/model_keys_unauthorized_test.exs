@@ -1,5 +1,6 @@
 defmodule ApiaryWeb.Contract.ModelKeysUnauthorizedTest do
-  # The `unauthorized` list of a gateway's model keys report (`POST /v1/runs/<run_id>/model-keys`):
+  # The `unauthorized` list of a gateway's model keys report
+  # (`POST /v1/runs/<run_id>/model-keys`):
   # each key of the run it names needs a new value from then on (`Apiary.ModelKeys.Rejection`),
   # until a person saves one, and the report is refused when the list is not as the contract
   # has it. The run is one of a workspace's queue, claimed with a model provider and attached
@@ -10,6 +11,7 @@ defmodule ApiaryWeb.Contract.ModelKeysUnauthorizedTest do
   import Ecto.Query, only: [from: 2]
   import Apiary.ContractFixtures
   import Apiary.OrganisationsFixtures
+  import Apiary.DebugLog
   import Apiary.SealedRunsFixtures
 
   alias Apiary.{Connections, ModelKeys, Policy, Repo}
@@ -163,5 +165,129 @@ defmodule ApiaryWeb.Contract.ModelKeysUnauthorizedTest do
 
       assert rows() == []
     end
+  end
+
+  test "an unauthorized that is null is refused, as is one that is not a list", ctx do
+    for bad <- [nil, "x", 5, %{}] do
+      conn = post_report(ctx, report(ctx, bad))
+      assert conn.status == 400, inspect(bad)
+    end
+
+    assert rows() == []
+  end
+
+  describe "the time of a 401" do
+    test "from before the run started marks nothing, at the epoch or a day early", ctx do
+      started = Repo.get!(Apiary.Runs.Run, ctx.run.id).registered_at
+
+      for at <- [
+            "1970-01-01T00:00:00Z",
+            started
+            |> DateTime.add(-86_400)
+            |> DateTime.truncate(:second)
+            |> DateTime.to_iso8601()
+          ] do
+        conn = post_report(ctx, report(ctx, [entry(name(ctx, 1), at)]))
+        assert conn.status == 200, at
+        assert rows() == []
+      end
+
+      # The gateway's clock may be 5 minutes behind: a 401 at that bound marks the key.
+      near = started |> DateTime.add(-120) |> DateTime.truncate(:second) |> DateTime.to_iso8601()
+      assert post_report(ctx, report(ctx, [entry(name(ctx, 1), near)])).status == 200
+      assert [_row] = rows()
+    end
+  end
+
+  describe "a run that ended" do
+    setup ctx do
+      Repo.delete_all(from(e in Apiary.Runs.Event, where: e.run_id == ^ctx.run.id))
+
+      ended = fn seconds_ago ->
+        Apiary.RunEventsFixtures.event_fixture(ctx.run, 1, "run.exited", %{},
+          received_at: DateTime.add(DateTime.utc_now(), -seconds_ago, :second)
+        )
+
+        {1, _} =
+          Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^ctx.run.id),
+            set: [state: "completed"]
+          )
+      end
+
+      %{ended: ended}
+    end
+
+    test "marks a key when its last report comes within 60 s of the exit, and not later", ctx do
+      ctx.ended.(61)
+      assert post_report(ctx, report(ctx, [entry(name(ctx, 1))])).status == 410
+      assert rows() == []
+
+      Repo.delete_all(from(e in Apiary.Runs.Event, where: e.run_id == ^ctx.run.id))
+      ctx.ended.(59)
+      assert post_report(ctx, report(ctx, [entry(name(ctx, 1))])).status == 410
+      assert [_row] = rows()
+    end
+  end
+
+  describe "two reports at once" do
+    test "for two keys mark both, and for one key keep the later time", ctx do
+      first = name(ctx, 1)
+      second = name(ctx, 2)
+      older = now_z(-60)
+      newer = now_z(-10)
+
+      both =
+        for body <- [report(ctx, [entry(first, older)]), report(ctx, [entry(second, older)])] do
+          Task.async(fn -> post_report(ctx, body).status end)
+        end
+
+      assert Enum.map(both, &Task.await(&1, 30_000)) == [200, 200]
+      assert length(rows()) == 2
+
+      same =
+        for at <- [older, newer, older, newer] do
+          Task.async(fn -> post_report(ctx, report(ctx, [entry(first, at)])).status end)
+        end
+
+      assert Enum.map(same, &Task.await(&1, 30_000)) == [200, 200, 200, 200]
+
+      assert %{rejected_at: at} =
+               Enum.find(rows(), &(&1.secret_value_id == key_named(ctx, 1).secret_value_id))
+
+      assert DateTime.compare(at, elem(DateTime.from_iso8601(newer), 1)) == :eq
+    end
+
+    test "and a new value saved at the same time leave no key that counts as marked", ctx do
+      first = key_named(ctx, 1)
+      value = Repo.get!(Value, first.secret_value_id)
+
+      save =
+        Task.async(fn ->
+          Connections.update_provider_key(ctx.scope, ctx.provider, value.value_id, %{
+            value_id: value.value_id,
+            value: "sk-ant-fixture-raced-0123456789"
+          })
+        end)
+
+      report = Task.async(fn -> post_report(ctx, report(ctx, [entry(name(ctx, 1))])).status end)
+
+      assert {:ok, _provider} = Task.await(save, 30_000)
+      assert Task.await(report, 30_000) == 200
+
+      # The report either came first and the new value cleared it, or its key's value had
+      # changed (the run's copy is the old one) and it marked nothing.
+      assert ModelKeys.rejections(ctx.provider) == %{}
+    end
+  end
+
+  test "no log line of any level has a key's value, and the page shows none", ctx do
+    secret = "sk-ant-fixture-main-0123456789"
+
+    {conn, log} =
+      with_debug_log(fn -> post_report(ctx, report(ctx, [entry(name(ctx, 1))])) end)
+
+    assert conn.status == 200
+    refute_secrets(log, [secret, "sk-ant-fixture-spare-0123456789"])
+    refute_secrets(conn.resp_body, [secret])
   end
 end

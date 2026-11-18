@@ -283,6 +283,39 @@ defmodule Apiary.ModelKeys.RejectionTest do
     end
   end
 
+  describe "when keys of two providers need a person" do
+    test "the reason is the first key in the run's order of providers", ctx do
+      now = DateTime.utc_now()
+      :ok = ModelKeys.reject([key(ctx.values["main"])], [unauthorized()], ctx.provider, now)
+
+      :ok =
+        ModelKeys.reject(
+          [key(ctx.values["spare"], "model-2")],
+          [unauthorized("model-2")],
+          ctx.provider,
+          now
+        )
+
+      {:ok, login} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "openai-subscription",
+          keys: [%{value_id: "login", value: login_paste()}]
+        })
+
+      Repo.update_all(Login,
+        set: [state: "sign_in_needed", sign_in_cause: "refresh_token_expired"]
+      )
+
+      assert {:new_key, %Connection{}, name} =
+               ModelKeys.waiting_reason([ctx.provider.id, login.id], now)
+
+      assert name in ["main", "spare"]
+
+      assert {:sign_in, %Connection{}, "login"} =
+               ModelKeys.waiting_reason([login.id, ctx.provider.id], now)
+    end
+  end
+
   describe "a key of a provider whose keys are sign-ins" do
     setup ctx do
       {:ok, provider} =
@@ -295,7 +328,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
       %{subscription: provider, login: value}
     end
 
-    test "is not marked while a refresh can renew it, and is after a 401 on a token under 5 minutes old",
+    test "is marked only after a 401 on a token under 5 minutes old, not before",
          ctx do
       login = Repo.get!(Login, ctx.login.id)
 

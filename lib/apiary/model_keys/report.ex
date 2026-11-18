@@ -19,8 +19,10 @@ defmodule Apiary.ModelKeys.Report do
   twice, and a value of the wrong form are
   `{:error, :invalid_request, name}`, where `name` is the member and never a value. An
   `observed_at` more than `max_skew_seconds/0` after the server's clock is refused as
-  `observed_at`, as the contract's README has it: such a row would stay newer than every later report. An `at` of `unauthorized` that late is refused as `unauthorized.at`. Whether `time`
-  is within `max_skew_seconds/0` of the server's clock is the caller's to ask
+  `observed_at`, as the contract's README has it: such a row would stay newer than every
+  later report. An `at` of `unauthorized` that late is refused as `unauthorized.at`, and an
+  `at` more than `max_skew_seconds/0` before the run was registered marks nothing. Whether
+  `time` is within `max_skew_seconds/0` of the server's clock is the caller's to ask
   (`fresh?/2`).
 
   `answer/5` takes the report for the run, in order:
@@ -48,9 +50,11 @@ defmodule Apiary.ModelKeys.Report do
        have, and an item of a window outside the contract's list
        (`Apiary.ModelKeys.State.windows/0`), is left out, and the report is taken all the
        same, and so are the keys of `unauthorized` (`Apiary.ModelKeys.reject/4`): each
-       key of the run in it needs a new value from then until a new value, which no page
-       names; a key whose provider's keys are sign-ins, and whose sign-in a refresh may
-       still renew, is not marked. `{:ok, body}`, the answer `{"version":1,"keys":[…]}`
+       key of the run in it needs a new value from then until a new value; a key whose
+       provider's keys are sign-ins, and whose sign-in a refresh may still renew, is not
+       marked. A run's gateway can mark any key of the run, and a key belongs to the whole
+       organisation (or to the provider), so a run marks the key for every run that uses it
+       (the plan accepts this). `{:ok, body}`, the answer `{"version":1,"keys":[…]}`
        with the newest state of each key of the run and window, under the run's credential
        names.
 
@@ -111,7 +115,7 @@ defmodule Apiary.ModelKeys.Report do
          :ok <- check(session?(fields), "session"),
          {:ok, time} <- time(fields["time"], "time"),
          {:ok, keys} <- keys(fields["keys"], now),
-         {:ok, unauthorized} <- unauthorized(fields["unauthorized"], now) do
+         {:ok, unauthorized} <- unauthorized(fields, now) do
       {:ok, %{time: time, keys: keys, unauthorized: unauthorized}}
     end
   end
@@ -161,10 +165,15 @@ defmodule Apiary.ModelKeys.Report do
 
   defp keys(_items, _now), do: invalid("keys")
 
-  # `unauthorized`, absent for none: 1 to 6 items, each credential once.
-  defp unauthorized(nil, _now), do: {:ok, []}
+  # `unauthorized`, absent for none (a member that is there with the value null is no
+  # absence): 1 to 6 items, each credential once.
+  defp unauthorized(fields, now) do
+    if Map.has_key?(fields, "unauthorized"),
+      do: unauthorized_items(fields["unauthorized"], now),
+      else: {:ok, []}
+  end
 
-  defp unauthorized([_ | _] = items, now) when length(items) <= 6 do
+  defp unauthorized_items([_ | _] = items, now) when length(items) <= 6 do
     items
     |> Enum.reduce_while({:ok, []}, fn item, {:ok, acc} ->
       case unauthorized_item(item, now) do
@@ -185,7 +194,7 @@ defmodule Apiary.ModelKeys.Report do
     end
   end
 
-  defp unauthorized(_items, _now), do: invalid("unauthorized")
+  defp unauthorized_items(_items, _now), do: invalid("unauthorized")
 
   defp unauthorized_item(item, now) do
     with {:ok, fields} <-
@@ -295,16 +304,27 @@ defmodule Apiary.ModelKeys.Report do
       {:error, :unavailable}
   end
 
-  # The report's states, then its `unauthorized` keys.
+  # The report's states, then its `unauthorized` keys, those whose 401 came after the run
+  # started: the run's key cannot have got a 401 before its run was registered, and an `at`
+  # from before that (a clock at the epoch) marks nothing.
   defp record(run, keys, report, now) do
     :ok = ModelKeys.record(keys, report.keys, now)
 
-    if report.unauthorized != [] do
-      provider = run.provider_connection_id && Repo.get(Connection, run.provider_connection_id)
-      :ok = ModelKeys.reject(keys, report.unauthorized, provider, now)
-    end
+    case Enum.filter(report.unauthorized, &after_start?(&1.at, run)) do
+      [] ->
+        :ok
 
-    :ok
+      entries ->
+        provider = run.provider_connection_id && Repo.get(Connection, run.provider_connection_id)
+        :ok = ModelKeys.reject(keys, entries, provider, now)
+    end
+  end
+
+  # The run was registered at its claim; the gateway's clock may be `@max_skew_seconds` off.
+  defp after_start?(_at, %Run{registered_at: nil}), do: true
+
+  defp after_start?(at, %Run{registered_at: started}) do
+    DateTime.diff(at, started, :second) >= -@max_skew_seconds
   end
 
   @doc """

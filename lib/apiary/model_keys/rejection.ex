@@ -1,7 +1,7 @@
 defmodule Apiary.ModelKeys.Rejection do
   @moduledoc """
   A model key that needs a new value because its provider returned 401 to a request that
-  carried it: the state `new_key_needed`, which no page names. A gateway's model keys
+  carried it: the state `new_key_needed`, whose name no page shows. A gateway's model keys
   report lists such a key in `unauthorized` (`Apiary.ModelKeys.Report`), and the key then
   has one row here, by the value's row id (`secret_values.id`).
 
