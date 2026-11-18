@@ -98,7 +98,7 @@ defmodule ApiaryPro.OrganisationVariablesRacesTest do
   test "two writes of the organisation's take turns, and the second sees the first", ctx do
     before = deadlocks()
     owner = ctx.owner
-    names!(owner, 127)
+    names!(owner, 125)
 
     {write, write_pid} =
       hold(fn -> OrganisationVariables.create(owner, %{name: "ONE_MORE", value: "x"}) end)
@@ -111,10 +111,12 @@ defmodule ApiaryPro.OrganisationVariablesRacesTest do
     await_blocked(ours.backend, write_pid)
     commit(write)
 
-    # Each alone is within the 128 names; the second sees the first, and is refused.
+    # Each alone is within the 126 names; the second sees the first, and is refused.
     assert {:error, changeset} = Task.await(ours.task)
 
-    assert {"would raise a target's variables above %{limit}", [limit: 128]} =
+    assert {"Remove variables at any level until each target has at most %{limit}. " <>
+              "A run takes at most %{limit} variables, " <>
+              "and this change would raise a target's variables above %{limit}.", [limit: 126]} =
              changeset.errors[:name]
 
     assert deadlocks() == before
@@ -123,7 +125,7 @@ defmodule ApiaryPro.OrganisationVariablesRacesTest do
   test "two writes of an organisation with no workspace in use take turns all the same", ctx do
     before = deadlocks()
     owner = ctx.owner
-    names!(owner, 127)
+    names!(owner, 125)
 
     # Its only workspace marked, and its purge started: no workspace orders the writes,
     # which the owner makes in the organisation, in no workspace.
@@ -151,7 +153,9 @@ defmodule ApiaryPro.OrganisationVariablesRacesTest do
 
     assert {:error, changeset} = Task.await(ours.task)
 
-    assert {"would raise a target's variables above %{limit}", [limit: 128]} =
+    assert {"Remove variables at any level until each target has at most %{limit}. " <>
+              "A run takes at most %{limit} variables, " <>
+              "and this change would raise a target's variables above %{limit}.", [limit: 126]} =
              changeset.errors[:name]
 
     assert deadlocks() == before

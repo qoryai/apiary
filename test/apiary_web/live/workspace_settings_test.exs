@@ -121,11 +121,16 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
          %{conn: conn, scope: scope} do
       # The section is the page on both its tabs, Secrets and Variables, as the breadcrumb
       # says; it is the parent on a page under them.
-      for {rest, current} <- [
-            {"/secrets", "page"},
-            {"/variables", "page"},
-            {"/secrets/new", "true"},
-            {"/variables/new", "true"}
+      secrets_words = "A run receives only its security policy."
+
+      variables_words =
+        "A run receives these variables when it starts. A change reaches the next run."
+
+      for {rest, current, words} <- [
+            {"/secrets", "page", secrets_words},
+            {"/variables", "page", variables_words},
+            {"/secrets/new", "true", secrets_words},
+            {"/variables/new", "true", variables_words}
           ] do
         {:ok, lv, _html} = live(conn, settings_path(scope, rest))
 
@@ -135,7 +140,7 @@ defmodule ApiaryWeb.WorkspaceSettingsTest do
                ),
                rest
 
-        assert has_element?(lv, "#not-on-runs", "A run receives only its security policy.")
+        assert has_element?(lv, "#not-on-runs", words)
       end
     end
   end

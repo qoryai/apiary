@@ -3030,7 +3030,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     test "a run that ended at its handover, before it started: what to fix and why, here and in the folds" do
       for {cause, body} <- [
             {:variables_invalid,
-             "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."},
+             "Fix the variables in the workspace or its organisation, then run Explore again. One of the run's variables breaks a variable rule."},
             {:ticket_gone,
              "If the ticket is still in the Backlog, take it in again from there. Qory Apiary no longer has this work item's ticket."},
             {:inputs_invalid,
