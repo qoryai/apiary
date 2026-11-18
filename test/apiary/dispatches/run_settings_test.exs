@@ -130,6 +130,10 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   # A tier map with `entry` on every tier.
   defp all_tiers(entry), do: Map.new(Resolution.tiers(), &{&1, entry})
 
+  # A fallback of `provider` with `tiers`, on the runtime named `runtime`.
+  defp fallback(provider, tiers, runtime \\ @runtime),
+    do: %{provider: provider.public_id, runtime: runtime, tiers: tiers}
+
   defp models(efforts) do
     for id <- ~w(claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5 claude-fable-5-1),
         do: %{"id" => id, "effort" => efforts}
@@ -239,14 +243,13 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       choose!(ctx.scope, target, %{
         provider: ctx.provider.public_id,
-        key: "spare",
         model: "claude-sonnet-5-5"
       })
 
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
 
       assert %{"model" => "claude-sonnet-5-5"} = settings(handed)
-      assert value_ids(Repo.get!(Run, handed.run.id)) == ["spare", "main"]
+      assert value_ids(Repo.get!(Run, handed.run.id)) == ["main", "spare"]
     end
 
     test "keeps the provider and the API the run uses on the run", ctx do
@@ -282,7 +285,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
     test "has no endpoint, no key, no secret id and no value id", ctx do
       %{provider: provider} = ctx
-      choose!(ctx.scope, :workspace, %{provider: provider.public_id, key: "spare"})
+      choose!(ctx.scope, :workspace, %{provider: provider.public_id})
 
       {result, log} = with_log(fn -> handover!(ctx) end)
       {{:ok, handed}, _queued, _dispatch} = result
@@ -456,30 +459,28 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       refute encoded =~ "sk-ant"
     end
 
-    test "send a named key in cooldown after the free keys, chosen, never as the start key",
-         ctx do
+    test "send a key in cooldown after the free keys, never as the start key", ctx do
       pid = ctx.provider.public_id
-      choose!(ctx.scope, :workspace, %{provider: pid, key: "spare"})
+      choose!(ctx.scope, :workspace, %{provider: pid})
       until = in_seconds(3600)
-      state!(ctx.provider, "spare", until: until)
+      state!(ctx.provider, "main", until: until)
 
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
       [start, cooling] = Repo.get!(Run, handed.run.id).model_keys
 
       assert start == %{
-               "id" => value!(ctx.provider, "main").id,
+               "id" => value!(ctx.provider, "spare").id,
                "name" => "#{pid}-1",
                "start" => true,
                "pause_for_s" => 60
              }
 
       assert cooling == %{
-               "id" => value!(ctx.provider, "spare").id,
+               "id" => value!(ctx.provider, "main").id,
                "name" => "#{pid}-2",
                "pause_for_s" => 60,
                "resets_at" => DateTime.to_iso8601(until),
-               "cooldown_until" => DateTime.to_iso8601(until),
-               "chosen" => true
+               "cooldown_until" => DateTime.to_iso8601(until)
              }
     end
 
@@ -503,7 +504,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                for(n <- 1..6, do: "#{many.public_id}-#{n}")
     end
 
-    test "come from the first fallback with a free key, with its model and effort, while every key of the provider is in cooldown",
+    test "come from the first fallback with a free key, with its runtime and tiers, while every key of the provider is in cooldown",
          ctx do
       {:ok, cooling} =
         Connections.create_provider(ctx.scope, %{
@@ -523,8 +524,8 @@ defmodule Apiary.Dispatches.RunSettingsTest do
         provider: ctx.provider.public_id,
         model: "claude-opus-5-5",
         fallbacks: [
-          %{provider: cooling.public_id, model: "claude-opus-5-5", effort: "max"},
-          %{provider: free.public_id, model: "claude-sonnet-5-5", effort: "high"}
+          fallback(cooling, all_tiers(%{"model" => "claude-opus-5-5", "effort" => "max"})),
+          fallback(free, all_tiers(%{"model" => "claude-sonnet-5-5", "effort" => "high"}))
         ]
       })
 
@@ -535,10 +536,14 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       assert queued.model_provider_ids == [ctx.provider.id, cooling.id, free.id]
 
-      assert %{"model" => "claude-sonnet-5-5", "effort" => "high", "tiers" => tiers} =
-               settings(handed)
+      assert %{
+               "runtime" => @runtime,
+               "model" => "claude-sonnet-5-5",
+               "effort" => "high",
+               "tiers" => tiers
+             } = settings(handed)
 
-      # The fallback's model and effort on every tier.
+      # The fallback's tiers, its thinking tier as the run's model and effort.
       assert tiers == all_tiers(%{"model" => "claude-sonnet-5-5", "effort" => "high"})
 
       free_id = free.id
@@ -550,6 +555,71 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert key["id"] == value!(free, "main").id
       assert key["pause_for_s"] == 60
       refute Map.has_key?(key, "chosen")
+    end
+
+    test "come from a fallback on another runtime, with that runtime, an API it takes and the fallback's tiers",
+         ctx do
+      [release] = Runtimes.list()
+
+      # A runtime that takes only a bearer key: the API of the choice's provider, with its
+      # x-api-key header, is not one it takes; OpenRouter's is.
+      bearer = %{
+        release
+        | name: release.name <> "-bearer",
+          title: release.title <> " bearer",
+          model_keys: Enum.filter(release.model_keys, &(&1["auth"] == %{"scheme" => "bearer"}))
+      }
+
+      :ok = Runtimes.put_test_list([release, bearer])
+      {:ok, anthropic} = Providers.fetch("anthropic")
+      assert {:error, _refusal} = Providers.api(anthropic, bearer)
+
+      {:ok, router} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "openrouter",
+          keys: [%{value_id: "main", value: "sk-or-fallback-0123456789"}]
+        })
+
+      tiers = %{
+        "light" => "anthropic/claude-haiku-5.5",
+        "balanced" => "anthropic/claude-sonnet-5.5",
+        "thinking" => %{"model" => "anthropic/claude-opus-5.5", "effort" => "high"}
+      }
+
+      choose!(ctx.scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        runtime: release.name,
+        tiers: all_tiers("claude-opus-5-5"),
+        fallbacks: [fallback(router, tiers, bearer.name)]
+      })
+
+      # While a key of the choice's provider is free, the run uses it on its runtime.
+      {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
+      assert %{"runtime" => runtime, "model" => "claude-opus-5-5"} = settings(handed)
+      assert runtime == release.name
+
+      # With every key in cooldown, the run takes the fallback.
+      for key <- ["main", "spare"], do: state!(ctx.provider, key, until: in_seconds(3600))
+      {{:ok, handed}, queued, _dispatch} = handover!(ctx, %{external_ref: "acme/shop#14"})
+
+      assert queued.model_provider_ids == [ctx.provider.id, router.id]
+
+      assert %{
+               "runtime" => runtime,
+               "model" => "anthropic/claude-opus-5.5",
+               "effort" => "high",
+               "tiers" => sent
+             } = settings(handed)
+
+      assert runtime == bearer.name
+      assert sent == tiers
+
+      run = Repo.get!(Run, handed.run.id)
+      assert run.provider_connection_id == router.id
+      assert run.run_settings["runtime"] == bearer.name
+      assert run.provider_api["format"] in Runtimes.formats(bearer)
+      assert run.provider_api["auth"] == %{"scheme" => "bearer"}
+      assert run.provider_api["endpoint"] == "https://openrouter.ai/api"
     end
 
     test "leave the run waiting while every key of the provider and its fallbacks is in cooldown",
@@ -637,8 +707,8 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       ended!(queued, dispatch, :secrets_not_allowed)
     end
 
-    test "are never built with a start key in cooldown or two chosen keys", ctx do
-      choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id, key: "main"})
+    test "are never built with a start key in cooldown, and none is chosen", ctx do
+      choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id})
 
       for {cooled, n} <- Enum.with_index([[], ["main"], ["spare"]]) do
         for key <- ["main", "spare"], do: state!(ctx.provider, key, until: in_seconds(-1))
@@ -650,7 +720,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
         [start | _rest] = keys = Repo.get!(Run, handed.run.id).model_keys
 
         refute Map.has_key?(start, "cooldown_until"), inspect(cooled)
-        assert Enum.count(keys, &(&1["chosen"] == true)) == 1, inspect(cooled)
+        refute Enum.any?(keys, &Map.has_key?(&1, "chosen")), inspect(cooled)
       end
     end
   end
@@ -677,7 +747,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
     defp unique, do: System.unique_integer([:positive])
 
-    test "use the override's key and tiers while one of its keys is free", ctx do
+    test "use the override's provider and tiers while one of its keys is free", ctx do
       override!(ctx, ctx.override, all_tiers("claude-sonnet-5-5"))
 
       choose!(ctx.scope, :workspace, %{
@@ -694,14 +764,13 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert tiers == all_tiers("claude-sonnet-5-5")
     end
 
-    test "fall to the workspace default, with its key and tiers, while every key of the override is in cooldown",
+    test "fall to the workspace default, with its provider and tiers, while every key of the override is in cooldown",
          ctx do
       override!(ctx, ctx.override, all_tiers("claude-sonnet-5-5"))
       [_light, middle, _thinking] = Resolution.tiers()
 
       choose!(ctx.scope, :workspace, %{
         provider: ctx.provider.public_id,
-        key: "spare",
         tiers: %{
           "thinking" => %{"model" => "claude-opus-5-5", "effort" => "high"},
           middle => "claude-sonnet-5-5",
@@ -718,8 +787,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       run = Repo.get!(Run, handed.run.id)
       assert run.provider_connection_id == ctx.provider.id
-      assert value_ids(run) == ["spare", "main"]
-      assert Enum.find(run.model_keys, & &1["chosen"])["id"] == value!(ctx.provider, "spare").id
+      assert value_ids(run) == ["main", "spare"]
 
       assert %{"model" => "claude-opus-5-5", "effort" => "high", "tiers" => tiers} =
                settings(handed)
@@ -743,13 +811,17 @@ defmodule Apiary.Dispatches.RunSettingsTest do
         organisation_id: ctx.scope.organisation.id,
         model_choice_id: override.id,
         connection_id: unread.id,
-        position: 0
+        position: 0,
+        runtime: @runtime,
+        tiers: all_tiers("claude-opus-5-5")
       })
 
       choose!(ctx.scope, :workspace, %{
         provider: ctx.provider.public_id,
         tiers: all_tiers("claude-opus-5-5"),
-        fallbacks: [%{provider: free.public_id, model: "claude-haiku-5-5", effort: "low"}]
+        fallbacks: [
+          fallback(free, all_tiers(%{"model" => "claude-haiku-5-5", "effort" => "low"}))
+        ]
       })
 
       for {provider, key} <- [
@@ -797,7 +869,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       choose!(ctx.scope, :workspace, %{
         provider: ctx.provider.public_id,
         tiers: all_tiers("claude-opus-5-5"),
-        fallbacks: [%{provider: free.public_id, model: "claude-haiku-5-5"}]
+        fallbacks: [fallback(free, all_tiers("claude-haiku-5-5"))]
       })
 
       for key <- ["main", "spare"], do: state!(ctx.provider, key, until: in_seconds(3600))
@@ -823,8 +895,8 @@ defmodule Apiary.Dispatches.RunSettingsTest do
         provider: ctx.provider.public_id,
         tiers: all_tiers("claude-opus-5-5"),
         fallbacks: [
-          %{provider: ctx.override.public_id, model: "claude-opus-5-5"},
-          %{provider: free.public_id, model: "claude-haiku-5-5"}
+          fallback(ctx.override, all_tiers("claude-opus-5-5")),
+          fallback(free, all_tiers("claude-haiku-5-5"))
         ]
       })
 
@@ -904,7 +976,9 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       choose!(ctx.scope, :workspace, %{
         provider: ctx.provider.public_id,
-        fallbacks: [%{provider: other.public_id, model: "claude-opus-5-5", effort: "high"}]
+        fallbacks: [
+          fallback(other, all_tiers(%{"model" => "claude-opus-5-5", "effort" => "high"}))
+        ]
       })
 
       assert provider_ids(ctx.queued) == [ctx.provider.id, other.id]
@@ -1228,7 +1302,6 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       resolution = %Resolution{
         connection_id: loaded.id,
-        value_id: "main",
         model_id: "claude-opus-5-5",
         effort: "max",
         level: 5
@@ -1291,10 +1364,12 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       end
     end
 
-    test "ends key_gone for a key the provider no longer has", ctx do
+    test "ends key_gone for a provider with no key", ctx do
+      no_key = %{ctx.loaded | secret: %{ctx.loaded.secret | values: []}}
+
       assert RunSettings.form(
-               %{ctx.resolution | value_id: "gone"},
-               ctx.loaded,
+               ctx.resolution,
+               no_key,
                {:ok, ctx.description},
                ctx.runtime,
                ctx.scope.workspace.id

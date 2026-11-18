@@ -4,7 +4,8 @@ defmodule Apiary.Processes.LeftoversTest do
   # workflow, or a run of it has not ended, and deleted when none of these has it any
   # more: at a save, a make current, a drop of a trial and an assign, and, through
   # `Apiary.Processes.LeftoversJob`, once a work item closes or is undone or a run ends.
-  # A model provider or a key used only by such a leftover can be deleted.
+  # A model provider used only by such a leftover can be deleted. A choice uses no key: a
+  # key of its provider is deleted and renamed as any other, and deletes no leftover.
   use Apiary.DataCase, async: true
   use Oban.Testing, repo: Apiary.Repo
 
@@ -46,7 +47,6 @@ defmodule Apiary.Processes.LeftoversTest do
     {:ok, _choice} =
       ModelChoices.put_choice(scope, {:workspace, workflow}, %{
         provider: provider.public_id,
-        key: "main",
         tiers: @tiers
       })
 
@@ -58,7 +58,6 @@ defmodule Apiary.Processes.LeftoversTest do
     {:ok, choice} =
       ModelChoices.put_choice(scope, {:workspace, workflow}, %{
         provider: provider.public_id,
-        key: "main",
         tiers: @tiers
       })
 
@@ -139,7 +138,6 @@ defmodule Apiary.Processes.LeftoversTest do
     {:ok, _default} =
       ModelChoices.put_choice(scope, :workspace, %{
         provider: provider.public_id,
-        key: "main",
         tiers: @tiers
       })
 
@@ -261,7 +259,6 @@ defmodule Apiary.Processes.LeftoversTest do
     {:ok, _choice} =
       ModelChoices.put_choice(scope, {:workspace, "gone-workflow"}, %{
         provider: provider.public_id,
-        key: "main",
         tiers: @tiers
       })
 
@@ -287,7 +284,6 @@ defmodule Apiary.Processes.LeftoversTest do
       {:ok, _default} =
         ModelChoices.put_choice(scope, :workspace, %{
           provider: provider.public_id,
-          key: "main",
           tiers: @tiers
         })
 
@@ -404,48 +400,28 @@ defmodule Apiary.Processes.LeftoversTest do
       %{provider: Repo.reload!(provider)}
     end
 
-    defp on_spare!(scope, provider, workflow) do
-      {:ok, _choice} =
-        ModelChoices.put_choice(scope, {:workspace, workflow}, %{
-          provider: provider.public_id,
-          key: "spare",
-          tiers: @tiers
-        })
-
-      choice(scope, workflow)
-    end
-
-    test "used only by a leftover is not in use, and its deletion deletes the leftover",
+    test "of a provider that only a leftover chooses is deleted, and the leftover stays",
          %{scope: scope, provider: provider} do
-      %{id: choice_id} = on_spare!(scope, provider, "gone-workflow")
+      %{id: choice_id} = on!(scope, provider, "gone-workflow")
 
-      assert ModelChoices.key_places(provider.secret_id) == []
       assert {:ok, _provider} = Connections.delete_provider_key(scope, provider, "spare")
 
-      assert choice(scope, "gone-workflow") == nil
-      assert [%Entry{action: "model_choice.write"} = entry] = removals(choice_id)
-      assert entry.actor_id == scope.user.id
+      assert %ModelChoice{id: ^choice_id} = choice(scope, "gone-workflow")
+      assert removals(choice_id) == []
     end
 
-    test "used only by a leftover can be renamed, and the leftover goes",
+    test "of a provider that a kept override chooses is renamed and deleted",
          %{scope: scope, provider: provider} do
-      on_spare!(scope, provider, "gone-workflow")
+      %{id: choice_id} = on!(scope, provider, @workflow)
 
       assert {:ok, _provider} =
                Connections.rename_provider_key(scope, provider, "spare", "other")
 
-      assert choice(scope, "gone-workflow") == nil
-    end
+      provider = Repo.reload!(provider)
+      assert {:ok, _provider} = Connections.delete_provider_key(scope, provider, "other")
 
-    test "used by a kept override is still in use", %{scope: scope, provider: provider} do
-      on_spare!(scope, provider, @workflow)
-
-      assert [%{level: 4, workflow: @workflow}] = ModelChoices.key_places(provider.secret_id)
-
-      assert {:error, %Ecto.Changeset{}} =
-               Connections.delete_provider_key(scope, provider, "spare")
-
-      assert %ModelChoice{} = choice(scope)
+      assert %ModelChoice{id: ^choice_id} = choice(scope)
+      assert removals(choice_id) == []
     end
   end
 
@@ -558,7 +534,9 @@ defmodule Apiary.Processes.LeftoversTest do
       organisation_id: scope.organisation.id,
       model_choice_id: id,
       connection_id: fallback.id,
-      position: 0
+      position: 0,
+      runtime: ModelChoices.default_runtime().name,
+      tiers: @tiers
     })
 
     %{id: choice_id} = choice(scope, "gone-workflow")

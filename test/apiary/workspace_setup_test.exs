@@ -576,10 +576,7 @@ defmodule Apiary.WorkspaceSetupTest do
       refute done?.(main)
 
       {:ok, _} =
-        ModelChoicesFixtures.put_choice(scope, :workspace, %{
-          provider: provider.public_id,
-          key: "main"
-        })
+        ModelChoicesFixtures.put_choice(scope, :workspace, %{provider: provider.public_id})
 
       assert done?.(main)
       assert WorkspaceSetup.model_key?(main)

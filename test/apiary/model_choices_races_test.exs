@@ -107,7 +107,10 @@ defmodule Apiary.ModelChoicesRacesTest do
     end
 
     defp with_fallback(ctx),
-      do: Map.put(choice(ctx.provider), :fallbacks, [%{provider: ctx.fallback.public_id}])
+      do:
+        Map.put(choice(ctx.provider), :fallbacks, [
+          ModelChoicesFixtures.fallback_attrs(ctx.fallback)
+        ])
 
     test "the choice saved first: the deletion waits, and is refused", ctx do
       {first, first_pid} =

@@ -50,8 +50,8 @@ defmodule Apiary.Stages.StopCauseTest do
   test "a cause of the model choice names the owners and admins and Workspace settings › Model",
        %{work_item: work_item, ws: ws} do
     assert text(:key_gone, work_item) ==
-             "The run did not start, because the chosen model provider no longer has the chosen key.\n" <>
-               "Owners and admins of #{ws} choose another key on the set-up step Model."
+             "The run did not start, because the chosen model provider has no key.\n" <>
+               "Owners and admins of #{ws} add a key to the provider in Organisation settings › Model providers, or choose another provider in Workspace settings › Model."
 
     assert text(:provider_gone, work_item) ==
              "The run did not start, because the model provider of its model choice was removed, or no longer applies to #{ws}.\n" <>
@@ -107,12 +107,13 @@ defmodule Apiary.Stages.StopCauseTest do
                "Contact support with work item #12."
   end
 
-  test "a missing or removed model key links the set-up step Model", %{work_item: work_item} do
+  test "a missing model key, or a provider with no key, links the set-up step Model",
+       %{work_item: work_item} do
     run = %DispatchRun{state: :ended, end_cause: :run_refused, end_detail: "model_key_missing"}
     assert StopCause.set_up_step(run) == :model
     assert StopCause.set_up_step(%DispatchRun{end_cause: :key_gone}) == :model
     assert StopCause.set_up_step(%DispatchRun{end_cause: :provider_gone}) == nil
-    assert text(:key_gone, work_item) =~ "on the set-up step Model."
+    assert text(:key_gone, work_item) =~ "the chosen model provider has no key."
   end
 
   test "a gateway without stored secrets names the gateway and who adds a key, by its level",

@@ -55,6 +55,19 @@ defmodule Apiary.ModelChoicesFixtures do
   end
 
   @doc """
+  fallback_attrs/3 is a fallback of `provider` as a save of
+  `Apiary.ModelChoices.put_choice/4` sends it: on the runtime named `runtime`, the
+  catalogue's default (`Apiary.ModelChoices.default_runtime/0`) where it is nil, with
+  `tiers`, or every tier on the provider's default model (`every_tier/2`) where it is nil.
+  """
+  def fallback_attrs(%Connection{} = provider, tiers \\ nil, runtime \\ nil),
+    do: %{
+      provider: provider.public_id,
+      runtime: runtime || Apiary.ModelChoices.default_runtime().name,
+      tiers: tiers || every_tier(provider)
+    }
+
+  @doc """
   put_choice/4 is `Apiary.ModelChoices.put_choice/4` with `attrs` as `tiered/2` gives them.
   """
   def put_choice(scope, place, attrs, chain \\ "organisation"),

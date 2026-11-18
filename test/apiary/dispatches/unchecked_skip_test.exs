@@ -152,7 +152,7 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
     {:ok, _choice} =
       ModelChoicesFixtures.put_choice(scope, place, %{
         provider: cooling.public_id,
-        fallbacks: [%{provider: fallback.public_id, model: nil, effort: nil}]
+        fallbacks: [ModelChoicesFixtures.fallback_attrs(fallback)]
       })
 
     key_state!(cooling, "main", until: in_seconds(5 * 3600))
@@ -286,7 +286,7 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
     {:ok, _choice} =
       ModelChoicesFixtures.put_choice(scope, :workspace, %{
         provider: good.public_id,
-        fallbacks: [%{provider: stopping.public_id, model: nil, effort: nil}]
+        fallbacks: [ModelChoicesFixtures.fallback_attrs(stopping)]
       })
 
     run = queued!(scope)
@@ -314,7 +314,7 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
     {:ok, _choice} =
       ModelChoicesFixtures.put_choice(scope, target, %{
         provider: good.public_id,
-        fallbacks: [%{provider: stopping.public_id, model: nil, effort: nil}]
+        fallbacks: [ModelChoicesFixtures.fallback_attrs(stopping)]
       })
 
     second = queued!(scope, %{target_system: target.system, target_path: target.path})
@@ -341,7 +341,7 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
     {:ok, _choice} =
       ModelChoicesFixtures.put_choice(scope, :workspace, %{
         provider: cooling.public_id,
-        fallbacks: [%{provider: stopping.public_id, model: nil, effort: nil}]
+        fallbacks: [ModelChoicesFixtures.fallback_attrs(stopping)]
       })
 
     key_state!(cooling, "main", until: in_seconds(5 * 3600))

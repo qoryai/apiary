@@ -1,8 +1,8 @@
 defmodule Apiary.Processes.LeftoversFeatureOffTest do
   # With the feature `workflow_model` off, a run reads the workflow the Harness page saved,
   # whatever the process has, so no workflow's override in a workspace is a leftover:
-  # a close and the job delete none, and a provider or a key that such an override uses
-  # is still in use. A save of the process is refused with the feature off.
+  # a close and the job delete none, and a provider that such an override uses is still
+  # in use. A save of the process is refused with the feature off.
   #
   # Not async: the module switches the instance's features, which are the whole node's.
   use Apiary.DataCase, async: false
@@ -43,7 +43,6 @@ defmodule Apiary.Processes.LeftoversFeatureOffTest do
     {:ok, _choice} =
       ModelChoices.put_choice(scope, {:workspace, @workflow}, %{
         provider: provider.public_id,
-        key: "spare",
         tiers: @tiers
       })
 
@@ -104,16 +103,16 @@ defmodule Apiary.Processes.LeftoversFeatureOffTest do
     assert %TimeLimit{minutes: 45} = time_limit(scope)
   end
 
-  test "its provider and its key are still in use", %{scope: scope, provider: provider} do
+  test "its provider is still in use; a key of the provider is renamed and deleted",
+       %{scope: scope, provider: provider} do
     assert [%{level: 4, workflow: @workflow}] = ModelChoices.places_using(provider)
     assert {:error, {:model_in_use, [_place]}} = Connections.delete_provider(scope, provider)
 
-    assert [%{level: 4, workflow: @workflow}] = ModelChoices.key_places(provider.secret_id)
-    assert {:error, %Ecto.Changeset{}} = Connections.delete_provider_key(scope, provider, "spare")
+    assert {:ok, _provider} = Connections.rename_provider_key(scope, provider, "spare", "other")
+    provider = Repo.reload!(provider)
+    assert {:ok, _provider} = Connections.delete_provider_key(scope, provider, "other")
 
-    assert {:error, %Ecto.Changeset{}} =
-             Connections.rename_provider_key(scope, provider, "spare", "other")
-
-    assert %ModelChoice{value_id: "spare"} = choice(scope)
+    assert %ModelChoice{connection_id: provider_id} = choice(scope)
+    assert provider_id == provider.id
   end
 end

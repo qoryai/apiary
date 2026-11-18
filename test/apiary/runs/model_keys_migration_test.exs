@@ -18,7 +18,7 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ModelChoicesFixtures, ModelKeys, Repo}
+  alias Apiary.{Connections, Dispatches, ModelChoicesFixtures, Repo}
   alias Apiary.Runs.{ProviderCredential, Run}
   alias Apiary.Secrets.Value
 
@@ -50,11 +50,11 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
         ]
       })
 
+    # The default key goes first in a run's keys.
+    {:ok, provider} = Connections.put_default_key(scope, provider, "spare")
+
     {:ok, _choice} =
-      ModelChoicesFixtures.put_choice(scope, :workspace, %{
-        provider: provider.public_id,
-        key: "spare"
-      })
+      ModelChoicesFixtures.put_choice(scope, :workspace, %{provider: provider.public_id})
 
     %{scope: scope, key: key, provider: provider}
   end
@@ -91,7 +91,7 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
 
     assert :ok = Ecto.Migrator.down(Repo, @version, @migration, @options)
 
-    # Down: the value id of the run's first key, the one its choice names.
+    # Down: the value id of the run's first key, the provider's default.
     assert provider_value_id(run.id) == "spare"
 
     # A run whose key was renamed since: up finds no key of that value id.

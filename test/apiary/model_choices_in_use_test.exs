@@ -1,6 +1,7 @@
 defmodule Apiary.ModelChoicesInUseTest do
-  # What stops a model provider or one of its keys from being removed
-  # while a model choice uses it, and the words of the refusal. The live runs that use a
+  # What stops a model provider from being removed while a model choice uses it, and the
+  # words of the refusal. A choice uses no key: a key of its provider is removed and
+  # renamed as any other. The live runs that use a
   # provider are not read yet: a run keeps its provider only once the handover writes it.
   use Apiary.DataCase, async: true
 
@@ -31,12 +32,7 @@ defmodule Apiary.ModelChoicesInUseTest do
   end
 
   defp attrs(provider),
-    do: %{provider: provider.public_id, key: "spare", model: @model, effort: "high"}
-
-  defp errors(result) do
-    assert {:error, %Ecto.Changeset{} = changeset} = result
-    errors_on(changeset)
-  end
+    do: %{provider: provider.public_id, model: @model, effort: "high"}
 
   describe "while a choice uses a provider" do
     setup ctx do
@@ -87,25 +83,17 @@ defmodule Apiary.ModelChoicesInUseTest do
       assert {:ok, _} = Connections.delete_provider(scope, provider)
     end
 
-    test "a key is not removed or renamed while a choice names it (T34)", %{
+    test "a key of a choice's provider is renamed and removed", %{
       scope: scope,
       provider: provider
     } do
-      assert %{value_id: [message]} =
-               errors(Connections.delete_provider_key(scope, provider, "spare"))
+      assert {:ok, _} = Connections.rename_provider_key(scope, provider, "spare", "other")
+      provider = Repo.get!(Connection, provider.id)
+      assert {:ok, _} = Connections.delete_provider_key(scope, provider, "other")
 
-      assert message ==
-               "Change the model choices that use the key spare first: github.example/acme/shop, hello runs."
-
-      assert %{value_id: [^message]} =
-               errors(Connections.rename_provider_key(scope, provider, "spare", "other"))
-
-      # A key no choice names is removed; the provider's default key is kept by the rule of
-      # `Apiary.Connections.delete_provider_key/3`.
-      assert {:ok, _} =
-               Connections.add_provider_key(scope, provider, %{value_id: "third", value: "z"})
-
-      assert {:ok, _} = Connections.delete_provider_key(scope, provider, "third")
+      # The choices stay, with the provider.
+      assert length(ModelChoices.places_using(provider)) == 2
+      assert Repo.get(Connection, provider.id)
     end
 
     test "a provider that a choice has as a fallback is not removed", %{scope: scope} do
@@ -124,7 +112,7 @@ defmodule Apiary.ModelChoicesInUseTest do
       {:ok, _} =
         Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
           provider: main.public_id,
-          fallbacks: [%{provider: fallback.public_id}]
+          fallbacks: [Apiary.ModelChoicesFixtures.fallback_attrs(fallback)]
         })
 
       assert [%{level: 5}] = ModelChoices.places_using(fallback)
@@ -147,7 +135,7 @@ defmodule Apiary.ModelChoicesInUseTest do
     test "a listing of five and more names five and counts the rest", %{provider: provider} do
       places =
         for n <- 1..7,
-            do: %{level: 3, workspace: "W", target: "t#{n}", workflow: nil, value_id: nil}
+            do: %{level: 3, workspace: "W", target: "t#{n}", workflow: nil}
 
       words = ModelChoices.in_use_words(provider.name, places)
       assert words =~ "t1, t2, t3, t4, t5 and 2 more."

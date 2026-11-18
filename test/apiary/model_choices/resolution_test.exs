@@ -15,7 +15,6 @@ defmodule Apiary.ModelChoices.ResolutionTest do
 
   @providers %{
     @alpha => %{
-      default_value_id: "main",
       default_model_id: "big",
       models: [
         %{model_id: "big", effort: ["low", "high"]},
@@ -26,15 +25,13 @@ defmodule Apiary.ModelChoices.ResolutionTest do
       suggested: ["suggested"]
     },
     @beta => %{
-      default_value_id: "team",
       default_model_id: "other",
       models: [%{model_id: "other", effort: nil}]
     },
     # A provider whose description lists no model.
-    @gamma => %{default_value_id: "main", default_model_id: nil, models: []},
+    @gamma => %{default_model_id: nil, models: []},
     # A provider whose description lists no effort values.
     @delta => %{
-      default_value_id: "main",
       default_model_id: "plain",
       models: [%{model_id: "plain", effort: nil}]
     }
@@ -93,11 +90,11 @@ defmodule Apiary.ModelChoices.ResolutionTest do
     end
   end
 
-  describe "the provider, the key, the model and the effort" do
+  describe "the provider, the model and the effort" do
     test "come from the most specific level that chose a provider" do
-      choices = for level <- 2..6, do: at(level, model_id: "level#{level}", value_id: "k#{level}")
+      choices = for level <- 2..6, do: at(level, model_id: "level#{level}")
 
-      assert %{level: 2, model_id: "level2", value_id: "k2"} = resolved(input(choices))
+      assert %{level: 2, model_id: "level2"} = resolved(input(choices))
 
       for level <- 2..6 do
         rest = Enum.filter(choices, &(ModelChoice.level(&1) >= level))
@@ -111,11 +108,6 @@ defmodule Apiary.ModelChoices.ResolutionTest do
 
       assert %{level: 5, model_id: "mid"} =
                resolved(input([only_tiers, at(5, model_id: "mid")]))
-    end
-
-    test "take a choice without a key from the provider's default key" do
-      assert %{value_id: "main"} = resolved(input([at(5)]))
-      assert %{value_id: "spare"} = resolved(input([at(5, value_id: "spare")]))
     end
 
     test "take a choice without a model from the provider's default model, with no effort" do
@@ -361,12 +353,12 @@ defmodule Apiary.ModelChoices.ResolutionTest do
   end
 
   describe "the default step" do
-    test "is the workspace's choice under a workflow's override, with its key and tiers" do
-      override = at(4, connection_id: @beta, value_id: "team", tiers: all_tiers("other"))
+    test "is the workspace's choice under a workflow's override, with its runtime and tiers" do
+      override = at(4, connection_id: @beta, runtime: "first", tiers: all_tiers("other"))
 
       workspace =
         at(5,
-          value_id: "spare",
+          runtime: "second",
           tiers: %{"thinking" => %{"model" => "big", "effort" => "low"}, "light" => "small"}
         )
 
@@ -374,13 +366,13 @@ defmodule Apiary.ModelChoices.ResolutionTest do
 
       resolution = resolved(input([override, workspace, organisation]))
 
-      assert %{level: 4, connection_id: @beta, value_id: "team", model_id: "other"} = resolution
+      assert %{level: 4, connection_id: @beta, runtime: "first", model_id: "other"} = resolution
       assert resolution.tiers == all_tiers(%{"model" => "other"})
 
       assert %Resolution{
                level: 5,
                connection_id: @alpha,
-               value_id: "spare",
+               runtime: "second",
                model_id: "big",
                effort: "low",
                default: nil
@@ -408,14 +400,14 @@ defmodule Apiary.ModelChoices.ResolutionTest do
     test "follows the order under an override of the target's workflow: the target's choice first" do
       override = at(2, connection_id: @beta)
       workspace_override = at(4, connection_id: @gamma)
-      choices = [override, workspace_override, at(3, value_id: "k3"), at(5, value_id: "k5")]
+      choices = [override, workspace_override, at(3, runtime: "third"), at(5, runtime: "fifth")]
 
-      assert %{default: %{level: 3, value_id: "k3"}} = resolved(input(choices))
+      assert %{default: %{level: 3, runtime: "third"}} = resolved(input(choices))
       assert %{default: %{level: 5}} = resolved(input([override, at(5), at(6)]))
     end
 
     test "comes from a level below the override: a locked level 4 falls to 5, never to 3" do
-      choices = [at(4, locked: true, connection_id: @beta), at(3, value_id: "k3"), at(5)]
+      choices = [at(4, locked: true, connection_id: @beta), at(3), at(5)]
       assert %{level: 4, default: %{level: 5}} = resolved(input(choices))
 
       # An override at level 2 with a provider at level 4 and none at level 3.
@@ -432,15 +424,38 @@ defmodule Apiary.ModelChoices.ResolutionTest do
     end
 
     test "has the fallbacks: fallbacks stored on the override are not read" do
-      override = at(4, connection_id: @beta, fallbacks: [fallback(0, @gamma)])
-      workspace = at(5, fallbacks: [fallback(0, @delta), fallback(1, @beta)])
+      override =
+        at(4,
+          connection_id: @beta,
+          fallbacks: [fallback(0, @gamma, runtime: "first", tiers: all_tiers("any"))]
+        )
+
+      workspace =
+        at(5,
+          fallbacks: [
+            fallback(0, @delta, runtime: "first", tiers: all_tiers("plain")),
+            fallback(1, @beta, runtime: "second", tiers: all_tiers("other"))
+          ]
+        )
 
       resolution = resolved(input([override, workspace]))
       assert resolution.fallbacks == []
 
       assert resolution.default.fallbacks == [
-               %{connection_id: @delta, model_id: "plain", effort: nil},
-               %{connection_id: @beta, model_id: "other", effort: nil}
+               %{
+                 connection_id: @delta,
+                 runtime: "first",
+                 tiers: all_tiers(%{"model" => "plain"}),
+                 model_id: "plain",
+                 effort: nil
+               },
+               %{
+                 connection_id: @beta,
+                 runtime: "second",
+                 tiers: all_tiers(%{"model" => "other"}),
+                 model_id: "other",
+                 effort: nil
+               }
              ]
 
       # With no default step, an override has no fallbacks.
@@ -480,36 +495,89 @@ defmodule Apiary.ModelChoices.ResolutionTest do
   end
 
   describe "the fallbacks" do
-    test "come from the choice in effect, in their order, each with its model and effort" do
+    test "come from the choice in effect, in their order, each with its runtime and tiers" do
       choice =
         at(5,
           fallbacks: [
-            fallback(1, @gamma, model_id: "custom", effort: "high"),
-            fallback(0, @beta)
+            fallback(1, @gamma, runtime: "second", tiers: all_tiers("custom")),
+            fallback(0, @beta, runtime: "first", tiers: all_tiers("other"))
           ]
         )
 
       # A level below with other fallbacks is not read.
-      below = at(6, fallbacks: [fallback(0, @gamma)])
+      below = at(6, fallbacks: [fallback(0, @gamma, runtime: "first", tiers: all_tiers("x"))])
 
       assert resolved(input([choice, below])).fallbacks == [
-               %{connection_id: @beta, model_id: "other", effort: nil},
-               %{connection_id: @gamma, model_id: "custom", effort: "high"}
+               %{
+                 connection_id: @beta,
+                 runtime: "first",
+                 tiers: all_tiers(%{"model" => "other"}),
+                 model_id: "other",
+                 effort: nil
+               },
+               %{
+                 connection_id: @gamma,
+                 runtime: "second",
+                 tiers: all_tiers(%{"model" => "custom"}),
+                 model_id: "custom",
+                 effort: nil
+               }
              ]
     end
 
-    test "take the provider's default model, with no effort, for a fallback without a model" do
-      choice = at(5, fallbacks: [fallback(0, @beta), fallback(1, @gamma)])
+    test "leave out a tier that does not go with the fallback's provider, and have no model without a thinking tier" do
+      tiers = %{"thinking" => "big", "balanced" => "other", "light" => "other"}
+      choice = at(5, fallbacks: [fallback(0, @beta, runtime: "first", tiers: tiers)])
 
-      assert resolved(input([choice])).fallbacks == [
-               %{connection_id: @beta, model_id: "other", effort: nil},
-               %{connection_id: @gamma, model_id: nil, effort: nil}
-             ]
+      assert [fallback] = resolved(input([choice])).fallbacks
+
+      assert fallback == %{
+               connection_id: @beta,
+               runtime: "first",
+               tiers: %{"balanced" => %{"model" => "other"}, "light" => %{"model" => "other"}},
+               model_id: nil,
+               effort: nil
+             }
+    end
+
+    test "keep the effort values that the fallback's runtime offers" do
+      tiers = all_tiers(%{"model" => "big", "effort" => "high"})
+
+      choice =
+        at(5,
+          connection_id: @beta,
+          runtime: "first",
+          fallbacks: [
+            fallback(0, @alpha, runtime: "second", tiers: tiers),
+            fallback(1, @delta, runtime: "first", tiers: all_tiers("plain"))
+          ]
+        )
+
+      efforts = %{"first" => ["high"], "second" => ["low", "high"]}
+      in_put = Map.put(input([choice]), :effort_values, efforts)
+
+      assert [%{connection_id: @alpha, tiers: kept, model_id: "big", effort: "high"}, _delta] =
+               resolved(in_put).fallbacks
+
+      assert kept == tiers
+
+      # The fallback's runtime offers no "high": its tiers with "high" are left out.
+      in_put = Map.put(input([choice]), :effort_values, %{efforts | "second" => ["low"]})
+
+      assert [%{connection_id: @alpha, tiers: %{}, model_id: nil, effort: nil}, _delta] =
+               resolved(in_put).fallbacks
     end
 
     test "leave out a fallback whose provider is gone, and fallbacks that were not read" do
       gone = "00000000-0000-0000-0000-0000000000c9"
-      choice = at(5, fallbacks: [fallback(0, gone), fallback(1, @beta)])
+
+      choice =
+        at(5,
+          fallbacks: [
+            fallback(0, gone, runtime: "first", tiers: all_tiers("x")),
+            fallback(1, @beta, runtime: "first", tiers: all_tiers("other"))
+          ]
+        )
 
       assert [%{connection_id: @beta}] = resolved(input([choice])).fallbacks
       assert resolved(input([at(5)])).fallbacks == []
@@ -517,11 +585,19 @@ defmodule Apiary.ModelChoices.ResolutionTest do
   end
 
   describe "fallback/3" do
-    test "puts the fallback's model and effort on the run and on every tier" do
+    test "gives the step the fallback's provider, runtime and tiers, and its thinking tier as the run's model" do
+      fallback_tiers = %{
+        "thinking" => %{"model" => "big", "effort" => "high"},
+        "balanced" => "mid",
+        "light" => "small"
+      }
+
       choice =
         at(5,
-          tiers: all_tiers("small"),
-          fallbacks: [fallback(0, @beta, model_id: "other", effort: "high")]
+          connection_id: @beta,
+          runtime: "first",
+          tiers: all_tiers("other"),
+          fallbacks: [fallback(0, @alpha, runtime: "second", tiers: fallback_tiers)]
         )
 
       in_put = input([choice])
@@ -529,38 +605,59 @@ defmodule Apiary.ModelChoices.ResolutionTest do
       [first] = resolution.fallbacks
 
       assert %Resolution{
-               connection_id: @beta,
-               value_id: "team",
-               model_id: "other",
+               runtime: "second",
+               connection_id: @alpha,
+               model_id: "big",
                effort: "high",
                level: 5,
+               default: nil,
                fallbacks: []
              } = fallen = Resolution.fallback(in_put, resolution, first)
 
-      assert fallen.tiers == all_tiers(%{"model" => "other", "effort" => "high"})
+      assert fallen.tiers == %{
+               "thinking" => %{"model" => "big", "effort" => "high"},
+               "balanced" => %{"model" => "mid"},
+               "light" => %{"model" => "small"}
+             }
     end
 
-    test "of the default step keeps the default step's level and runtime" do
+    test "of the default step keeps the default step's level, with the fallback's runtime" do
       override = at(4, connection_id: @beta, runtime: "first")
-      workspace = at(5, runtime: "second", fallbacks: [fallback(0, @delta)])
+
+      workspace =
+        at(5,
+          runtime: "second",
+          fallbacks: [fallback(0, @delta, runtime: "third", tiers: all_tiers("plain"))]
+        )
+
       in_put = input([override, workspace])
       %{default: default} = resolved(in_put)
 
-      assert %Resolution{level: 5, runtime: "second", connection_id: @delta} =
+      assert %Resolution{level: 5, runtime: "third", connection_id: @delta, model_id: "plain"} =
                fallen = Resolution.fallback(in_put, default, hd(default.fallbacks))
 
       assert fallen.tiers == all_tiers(%{"model" => "plain"})
     end
 
-    test "has no tiers for a fallback with no model" do
-      choice = at(5, tiers: all_tiers("small"), fallbacks: [fallback(0, @gamma)])
+    test "has no model where the fallback's thinking tier does not go with its provider" do
+      tiers = %{"thinking" => "not-listed", "balanced" => "other", "light" => "other"}
+
+      choice =
+        at(5,
+          tiers: all_tiers("small"),
+          fallbacks: [fallback(0, @beta, runtime: "first", tiers: tiers)]
+        )
+
       in_put = input([choice])
       resolution = resolved(in_put)
 
-      assert %{model_id: nil, tiers: tiers} =
+      assert %{model_id: nil, effort: nil, tiers: fallen_tiers} =
                Resolution.fallback(in_put, resolution, hd(resolution.fallbacks))
 
-      assert tiers == %{}
+      assert fallen_tiers == %{
+               "balanced" => %{"model" => "other"},
+               "light" => %{"model" => "other"}
+             }
     end
   end
 

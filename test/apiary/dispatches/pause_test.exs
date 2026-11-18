@@ -38,6 +38,10 @@ defmodule Apiary.Dispatches.PauseTest do
   }
   @path "~/.claude/projects/-workspace/5f2c9a1e.jsonl"
 
+  # The catalogue's runtime, read from the list rather than named here: a claim with no
+  # model choice runs on it.
+  @runtime hd(Apiary.Kinds.Runtimes.list()).name
+
   setup do
     %{scope: scope} = sign_up_fixture()
     pool = pool_fixture(scope)
@@ -57,7 +61,7 @@ defmodule Apiary.Dispatches.PauseTest do
         "auth" => %{"scheme" => "x-api-key"}
       },
       model_keys: [],
-      run_settings: %{}
+      run_settings: %{"runtime" => @runtime}
     }
 
     %{scope: scope, key: key, provider: provider, given: given}
@@ -606,7 +610,7 @@ defmodule Apiary.Dispatches.PauseTest do
       }
 
       queued = run_of(dispatch_run.work_item_id, 2)
-      assert Transcript.resume_at_claim(queued) == resume
+      assert Transcript.resume_at_claim(queued, @runtime) == resume
 
       # The claim stores it, and each run configuration reads what it stored.
       %{run: continuation} = handed_over(ctx.scope, ctx.key, queued, %{})
@@ -631,7 +635,37 @@ defmodule Apiary.Dispatches.PauseTest do
 
       # The paused run itself, and a run that continues nothing, resume nothing.
       assert Transcript.resume(Repo.get!(Run, run.id)) == nil
-      assert Transcript.resume_at_claim(dispatch_run) == nil
+      assert Transcript.resume_at_claim(dispatch_run, @runtime) == nil
+    end
+
+    test "is resumed only by a continuation on the paused run's runtime", ctx do
+      other = @runtime <> "-second"
+      given = %{ctx.given | run_settings: %{"runtime" => other}}
+
+      %{dispatch_run: dispatch_run, run: run} =
+        handed_over_fixture(ctx.scope, ctx.key, given)
+
+      event_fixture(run, 3, "session.transcript", chunk(0, "{\"a\":1}\n"))
+      exit!(run, @paused)
+
+      queued = run_of(dispatch_run.work_item_id, 2)
+
+      # The same runtime resumes the transcript.
+      assert %{"run_id" => run_id, "session_id" => "5f2c9a1e", "path" => @path} =
+               Transcript.resume_at_claim(queued, other)
+
+      assert run_id == run.node_run_id
+
+      # Another runtime, or none, starts a new session.
+      assert Transcript.resume_at_claim(queued, @runtime) == nil
+      assert Transcript.resume_at_claim(queued, nil) == nil
+
+      # The claim of the continuation has no model choice, so it runs on the catalogue's
+      # runtime: it stores no resume.
+      %{run: continuation} = handed_over(ctx.scope, ctx.key, queued, %{})
+      assert continuation.run_settings["runtime"] == @runtime
+      assert continuation.resume == nil
+      assert Transcript.resume(continuation) == nil
     end
 
     test "lists the paused runs a continuation continues, oldest first", ctx do
@@ -695,7 +729,7 @@ defmodule Apiary.Dispatches.PauseTest do
       assert %Run{} = Transcript.paused_run(queued)
       other = workspace_fixture(ctx.scope.organisation)
       assert Transcript.paused_run(%{queued | workspace_id: other.id}) == nil
-      assert Transcript.resume_at_claim(%{queued | workspace_id: other.id}) == nil
+      assert Transcript.resume_at_claim(%{queued | workspace_id: other.id}, @runtime) == nil
     end
 
     test "a gap in its offsets is never resumed, and the log line has no byte of it", ctx do
@@ -711,7 +745,7 @@ defmodule Apiary.Dispatches.PauseTest do
       log =
         capture_log(fn ->
           assert Transcript.check(run.id, @path) == {:error, :gap}
-          assert Transcript.resume_at_claim(queued) == nil
+          assert Transcript.resume_at_claim(queued, @runtime) == nil
         end)
 
       assert log =~ "transcript not restorable run=#{run.id} reason=gap"
