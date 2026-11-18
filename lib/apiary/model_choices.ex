@@ -46,7 +46,7 @@ defmodule Apiary.ModelChoices do
   #     description's models (`Connections.provider_models/1`) or any other id. With a
   #     model of the description, the effort is one of its offered effort values; with any
   #     other id, the choice sets no effort;
-  #   * `tiers`: tiers among `light`, `fast` and `thinking`, each a model id, or a map of
+  #   * `tiers`: tiers among `light`, `balanced` and `thinking`, each a model id, or a map of
   #     `model` and `effort`; with a provider, each tier as `model` and `effort` are;
   #   * `fallbacks`: a list of the providers runs use, in order, while every key of the
   #     choice's provider is in cooldown, each a map of `provider`, `model` and `effort`,
@@ -902,7 +902,7 @@ defmodule Apiary.ModelChoices do
       tier not in Resolution.tiers() ->
         [
           tiers:
-            {dgettext_noop("errors", "Use light, fast or thinking: %{tier} is not a tier."),
+            {dgettext_noop("errors", "Use light, balanced or thinking: %{tier} is not a tier."),
              tier: to_string(tier)}
         ]
 

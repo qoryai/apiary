@@ -65,7 +65,7 @@ defmodule Apiary.ModelChoices.ResolutionTest do
       five = at(5, model_id: "big")
       four = at(4, model_id: "small")
       locked = %{five | locked: true}
-      no_provider = at(2, connection_id: nil, tiers: %{"fast" => "small"})
+      no_provider = at(2, connection_id: nil, tiers: %{"balanced" => "small"})
 
       assert {4, ^four} = Resolution.in_effect(input([five, four, no_provider]))
       assert {5, ^locked} = Resolution.in_effect(input([locked, four]))
@@ -92,7 +92,7 @@ defmodule Apiary.ModelChoices.ResolutionTest do
     end
 
     test "skip a level that sets only tiers" do
-      only_tiers = at(2, connection_id: nil, tiers: %{"fast" => %{"model" => "small"}})
+      only_tiers = at(2, connection_id: nil, tiers: %{"balanced" => %{"model" => "small"}})
 
       assert %{level: 5, model_id: "mid"} =
                resolved(input([only_tiers, at(5, model_id: "mid")]))
@@ -156,7 +156,9 @@ defmodule Apiary.ModelChoices.ResolutionTest do
     test "resolve to none where no choice has a provider" do
       assert Resolution.resolve(input([])) == :none
 
-      assert Resolution.resolve(input([at(5, connection_id: nil, tiers: %{"fast" => "small"})])) ==
+      assert Resolution.resolve(
+               input([at(5, connection_id: nil, tiers: %{"balanced" => "small"})])
+             ) ==
                :none
     end
 
@@ -180,7 +182,7 @@ defmodule Apiary.ModelChoices.ResolutionTest do
     end
 
     test "that sets no provider leaves the provider to the next level" do
-      locked = at(5, connection_id: nil, locked: true, tiers: %{"fast" => "small"})
+      locked = at(5, connection_id: nil, locked: true, tiers: %{"balanced" => "small"})
       assert %{level: 2, model_id: "mid"} = resolved(input([locked, at(2, model_id: "mid")]))
     end
 
@@ -193,75 +195,82 @@ defmodule Apiary.ModelChoices.ResolutionTest do
     test "are each the most specific entry that goes with the provider" do
       choices = [
         at(2, tiers: %{"light" => "small"}),
-        at(3, tiers: %{"light" => "mid", "fast" => %{"model" => "big", "effort" => "low"}}),
-        at(5, tiers: %{"thinking" => "big", "fast" => "small"})
+        at(3, tiers: %{"light" => "mid", "balanced" => %{"model" => "big", "effort" => "low"}}),
+        at(5, tiers: %{"thinking" => "big", "balanced" => "small"})
       ]
 
       resolution = resolved(input(choices))
 
       assert resolution.tiers == %{
                "light" => %{"model" => "small"},
-               "fast" => %{"model" => "big", "effort" => "low"},
+               "balanced" => %{"model" => "big", "effort" => "low"},
                "thinking" => %{"model" => "big"}
              }
 
-      assert resolution.tier_levels == %{"light" => 2, "fast" => 3, "thinking" => 5}
+      assert resolution.tier_levels == %{"light" => 2, "balanced" => 3, "thinking" => 5}
     end
 
     test "leave out a tier that no level maps" do
-      assert %{tiers: tiers} = resolved(input([at(5, tiers: %{"fast" => "small"})]))
-      assert tiers == %{"fast" => %{"model" => "small"}}
+      assert %{tiers: tiers} = resolved(input([at(5, tiers: %{"balanced" => "small"})]))
+      assert tiers == %{"balanced" => %{"model" => "small"}}
       assert %{tiers: %{}} = resolved(input([at(5)]))
     end
 
     test "take a model the provider does not list, with no effort" do
-      choices = [at(2, tiers: %{"fast" => "not-listed", "light" => "small"})]
+      choices = [at(2, tiers: %{"balanced" => "not-listed", "light" => "small"})]
       assert %{tiers: tiers} = resolved(input(choices))
-      assert tiers == %{"fast" => %{"model" => "not-listed"}, "light" => %{"model" => "small"}}
 
-      choices = [at(5, connection_id: @gamma, tiers: %{"fast" => "team-small"})]
-      assert %{tiers: %{"fast" => %{"model" => "team-small"}}} = resolved(input(choices))
+      assert tiers == %{
+               "balanced" => %{"model" => "not-listed"},
+               "light" => %{"model" => "small"}
+             }
+
+      choices = [at(5, connection_id: @gamma, tiers: %{"balanced" => "team-small"})]
+      assert %{tiers: %{"balanced" => %{"model" => "team-small"}}} = resolved(input(choices))
     end
 
     test "skip a level whose effort does not go with its model, then read the next level" do
       choices = [
         at(2,
           tiers: %{
-            "fast" => %{"model" => "not-listed", "effort" => "low"},
+            "balanced" => %{"model" => "not-listed", "effort" => "low"},
             "light" => %{"model" => "mid", "effort" => "low"}
           }
         ),
-        at(5, tiers: %{"fast" => "small", "light" => "small"})
+        at(5, tiers: %{"balanced" => "small", "light" => "small"})
       ]
 
       assert %{tiers: tiers, tier_levels: levels} = resolved(input(choices))
-      assert tiers == %{"fast" => %{"model" => "small"}, "light" => %{"model" => "small"}}
-      assert levels == %{"fast" => 5, "light" => 5}
+      assert tiers == %{"balanced" => %{"model" => "small"}, "light" => %{"model" => "small"}}
+      assert levels == %{"balanced" => 5, "light" => 5}
     end
 
     test "go with the resolved provider's models, whatever provider a level chose" do
       choices = [
-        at(2, connection_id: @beta, tiers: %{"fast" => %{"model" => "big", "effort" => "low"}}),
+        at(2,
+          connection_id: @beta,
+          tiers: %{"balanced" => %{"model" => "big", "effort" => "low"}}
+        ),
         at(5, model_id: "mid")
       ]
 
       assert %{connection_id: @beta, tiers: %{}} = resolved(input(choices))
 
-      choices = [at(2, connection_id: @beta, tiers: %{"fast" => "other"})]
-      assert %{tiers: %{"fast" => %{"model" => "other"}}} = resolved(input(choices))
+      choices = [at(2, connection_id: @beta, tiers: %{"balanced" => "other"})]
+      assert %{tiers: %{"balanced" => %{"model" => "other"}}} = resolved(input(choices))
     end
 
     test "of a lock win over the levels below, tier by tier" do
       choices = [
-        at(5, locked: true, tiers: %{"fast" => "mid"}),
-        at(2, tiers: %{"fast" => "small", "light" => "small"}),
+        at(5, locked: true, tiers: %{"balanced" => "mid"}),
+        at(2, tiers: %{"balanced" => "small", "light" => "small"}),
         at(3, tiers: %{"thinking" => "big"})
       ]
 
       assert %{tiers: tiers} = resolved(input(choices))
 
       assert tiers == %{
-               "fast" => %{"model" => "mid"},
+               "balanced" => %{"model" => "mid"},
                "light" => %{"model" => "small"},
                "thinking" => %{"model" => "big"}
              }

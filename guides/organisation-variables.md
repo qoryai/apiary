@@ -22,9 +22,14 @@ policy, and with none they add nothing to the workspaces' security policy.
 The organisation's variables are in its settings, under Organisation settings › Secrets
 and variables, on the **Variables** tab.
 
-**A run receives only its security policy.** Qory Apiary keeps the variables, checks them
-and resolves them at every level, for each workspace and repository, and the configuration
-Qory Apiary returns when a run registers does not contain them.
+**A run receives the variables that its workspace and target inherit from the
+organisation, as they are when it starts.** Qory Apiary keeps the variables, checks them
+and resolves them at every level, for each workspace and repository, and puts the result
+in the run's configuration when the run starts. A later change reaches the next run, and a
+run already started keeps what it received. A prebuild receives none of them. A run takes at most 126 variables from all
+levels together, and 64 KiB of names and values. A run over either limit does not start,
+and its work item shows why. A run never receives a variable named PATH, a name ending in
+_PROXY, or another name on the deny list.
 
 ## Three levels
 
@@ -55,7 +60,7 @@ sentences:
 - A name beginning `QORY_`, whatever its case, is reserved for Forager, and refused.
 - A value is one line of text, at most 4096 bytes; it may be empty.
 - A write at any level that would raise one workspace's or one repository's variables
-  above 128, or above 64 KiB of names and values, counting every level that reaches it,
+  above 126, or above 64 KiB of names and values, counting every level that reaches it,
   is refused. A change
   of the organisation's that would take
   the organisation's variables alone, a workspace or a repository over either limit is

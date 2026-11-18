@@ -1187,7 +1187,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
          %{conn: conn, scope: scope} do
       for {cause, body} <- [
             {:variables_invalid,
-             "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."},
+             "Fix the variables in the workspace or its organisation, then run Explore again. One of the run's variables breaks a variable rule."},
             {:ticket_gone,
              "If the ticket is still in the Backlog, take it in again from there. Qory Apiary no longer has this work item's ticket."},
             {:inputs_invalid,
@@ -1217,6 +1217,26 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
         {:ok, _view, html} = live(conn, page(scope, work_item.number, "/thread"))
         refute html =~ "ended with an error"
+      end
+    end
+
+    test "a run that ended because its variables are too many, or too large, says which",
+         %{conn: conn, scope: scope} do
+      for {detail, body} <- [
+            {"names_129",
+             "Remove variables in the workspace or its organisation, then start the run again. The run has more than 126 variables."},
+            {"bytes_70000",
+             "Remove variables in the workspace or its organisation, then start the run again. The run's variables take more than 64 KiB."},
+            {nil,
+             "Fix the variables in the workspace or its organisation, then run Explore again. One of the run's variables breaks a variable rule."}
+          ] do
+        work_item = work_item_fixture(scope)
+        explore_run_fixture(work_item, end_cause: :variables_invalid, end_detail: detail)
+
+        {:ok, view, _html} = live(conn, page(scope, work_item.number, "/explore"))
+
+        assert has_element?(view, "#work-item-explore-none-h", "The run did not start.")
+        assert has_element?(view, "#work-item-explore-none p", body)
       end
     end
 

@@ -12,7 +12,8 @@ defmodule ApiaryWeb.PageComponents do
     `sections` and `section`).
   - `page_form/1` and `page_form_foot/1`: a create or edit form as a separate page, never
     a dialog, with Cancel back to where it was opened from.
-  - `not_on_runs/1`: the one plain line a page over data no run receives says.
+  - `not_on_runs/1`: the one plain line a page over secrets, variables or integrations says
+    of what a run receives.
   - `context_column/1`: a form with its context, headed "About" and the page's topic, in a
     column beside it.
 
@@ -343,10 +344,11 @@ defmodule ApiaryWeb.PageComponents do
   end
 
   @doc """
-  not_on_runs/1 is the one plain line a page over data no run receives says, once, near
-  its top: a workspace's secrets, variables and integrations. The page gives its words
-  (`inner_block`), saying what a run receives ("A run receives only its security
-  policy."): such a page never says that runs receive what it holds.
+  not_on_runs/1 is the one plain line a page over a workspace's secrets, variables or
+  integrations says, once, near its top. The page gives its words (`inner_block`),
+  saying what a run receives: the Secrets tab and the integration pages, "A run receives
+  only its security policy."; the Variables tab, that a run receives its variables when
+  it starts. No page says that runs receive a secret.
   """
   attr :id, :string, default: "not-on-runs"
   attr :class, :any, default: nil

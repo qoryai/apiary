@@ -6415,6 +6415,24 @@ defmodule ApiaryWeb.WorkItemComponents do
          "Add a model key in Organisation settings › Model providers. The gateway had no model key for the run."
        )}
 
+  # A run whose variables are more than it takes, or take more than it takes: the claim
+  # kept which, as the end's detail (`Apiary.Dispatches.Handover`).
+  defp no_result_words(%{end_cause: :variables_invalid, end_detail: "names_" <> _}, _earlier),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run did not start."),
+       gettext(
+         "Remove variables in the workspace or its organisation, then start the run again. The run has more than %{limit} variables.",
+         limit: Apiary.Variables.Resolution.max_names()
+       )}
+
+  defp no_result_words(%{end_cause: :variables_invalid, end_detail: "bytes_" <> _}, _earlier),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run did not start."),
+       gettext(
+         "Remove variables in the workspace or its organisation, then start the run again. The run's variables take more than %{limit}.",
+         limit: "#{div(Apiary.Variables.Resolution.max_bytes(), 1024)} KiB"
+       )}
+
   # A run of a stage with `shared_run: true` that ended after a session, as the input of
   # its next session could not be formed.
   defp no_result_words(%{end_cause: cause, ended_after_session: session}, _earlier)
@@ -6830,7 +6848,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp unstarted_words(:variables_invalid),
     do:
       gettext(
-        "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."
+        "Fix the variables in the workspace or its organisation, then run Explore again. One of the run's variables breaks a variable rule."
       )
 
   defp unstarted_words(:ticket_gone),

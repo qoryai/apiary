@@ -1669,6 +1669,54 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+<!-- feature: factory, secrets -->
+- A run receives the variables of its workspace. When a claim registers a run, Qory
+  Apiary resolves the variables of the organisation, the workspace, and the target (a
+  repository, in a software workspace) as they are then, and sends them in the run
+  configuration's `variables` and, for a run with a target, beside `QORY_RUN_SYSTEM` and
+  `QORY_RUN_REPOSITORIES`. The more specific level wins, and a lock of a broader level
+  holds. The organisation's level is included while the feature `organisation_variables`
+  is on. A later change reaches the next run: a run keeps what it received at its start,
+  and its run configuration, and the digest of it, do not change. A run registered
+  outside the workspace's queue, with `qory run register`, receives none, and a prebuild
+  receives none of the workspace's variables, because its image is shared by the
+  organisation's workspaces. The Variables tab of **Workspace settings › Secrets
+  and variables** and its pages read “A run receives these variables when it starts. A
+  change reaches the next run.” The organisation's **Variables** page reads “A run
+  receives the variables that its workspace and target inherit from this organisation, as
+  they are when it starts. A later change reaches the next run.” The Secrets tab and the
+  integration pages still read “A run receives only its security policy.”
+<!-- /feature -->
+<!-- feature: factory, secrets -->
+- Forager's deny list, `denied-variables.json`, is vendored, and a run receives no
+  variable of a name on it, whatever the case: its names, such as `PATH`, `HOME` and
+  `BUN_OPTIONS`, its patterns, `*_PROXY` and `QORY_*`, its forge tokens, such as
+  `GH_TOKEN`, and its model keys, such as `ANTHROPIC_API_KEY`. A save of such a name still
+  works, except a name beginning `QORY_`, which stays refused, and the form and the list
+  say “GH_TOKEN is on Forager's deny list.” and “On Forager's deny list”, which they could
+  not show before. A connection's placeholder may still take the name of a forge token.
+  The names and patterns of the list are now refused on save for a placeholder, in a tool
+  role's `placeholders` of an integration's description and in a service declaration's
+  `name`: `PATH`, `HOME`, `DOCKER_HOST` and a name ending in `_PROXY` are examples. Before,
+  only a name beginning `QORY_` was refused there.
+<!-- /feature -->
+<!-- feature: factory, secrets -->
+- A run takes at most 126 variables and 64 KiB of names and values, which the run
+  configuration's limit of 128 names leaves after its two names. A run whose workspace and
+  target set more does not start. Its stop cause reads “The run did not start: it has 129
+  variables, and a run takes at most 126.” or “The run did not start: its variables take
+  65 KiB, and a run takes at most 64 KiB.”, then “Owners and admins of <workspace> remove
+  variables on the Variables page of the workspace or its organisation, then start the run
+  again.” Its work item reads “Remove variables in the workspace or its organisation, then
+  start the run again. The run has more than 126 variables.” or “... The run's variables
+  take more than 64 KiB.” A save of a variable is refused where it would leave a workspace or a
+  repository with more than 126 variables, all levels together, and says “Remove variables
+  at any level until each repository has at most 126. A run takes at most 126 variables,
+  and this change would raise a repository's variables above 126.” Before, a save allowed
+  128 names. The claim still refuses a run whose variables pass either limit, such as
+  variables saved before.
+- The tier `fast` is now `balanced`.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - A run cannot withdraw a name of the type in `submit.type` of its process version or of
   its work item's process version: the run API returns `422` `type_not_withdrawable`, with
@@ -2632,6 +2680,23 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `organisations`, `workspaces`, `memberships`, `invitations` and `users`, and change no
   existing table. Among them are `workspace_access`, `feature_grants`,
   `organisation_policies`, `organisation_variables` and `instance_sign_up`.
+<!-- feature: factory -->
+- `dispatch_runs` (20261118110000): the check on `end_detail` takes the cause
+  `variables_invalid`, with a code such as `names_129` or `bytes_70000`, the count or the
+  size of the variables a run did not start for. The new check scans the table as it is
+  added, under a lock that blocks reads and writes. It changes no row. Rolling back sets
+  `end_detail` to NULL on the runs ended `variables_invalid`, and their work items then
+  read that one of the run's variables breaks its rule.
+<!-- /feature -->
+<!-- feature: factory, secrets -->
+- `model_choices` and `model_choice_fallbacks` (20261118120000): the function
+  `model_choice_tiers_valid`, which the check `model_choices_tiers_check` calls, accepts
+  the tier `balanced` in place of `fast`. The migration deletes each model choice whose
+  tier map has `fast`, with its fallbacks, and moves no data. The delete scans
+  `model_choices`; the function change locks no table. The migration is short. Rolling
+  back restores the function with `fast` and deletes each model choice whose tier map
+  has `balanced`, with its fallbacks.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - `stage_skips` (20261118100000): a column `changed`, false by default, true for the record
   of a condition `{input: <type>, changed: true}`. It is not null with a constant default,

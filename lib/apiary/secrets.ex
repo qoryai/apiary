@@ -1,8 +1,8 @@
 defmodule Apiary.Secrets do
   @moduledoc """
   Stored secrets, of a workspace or of an organisation: values kept by name, encrypted at
-  rest, and never shown again once saved. A run receives none of them: it receives only its
-  security policy.
+  rest, and never shown again once saved. A run receives none of them. Its variables
+  are `Apiary.Variables`.
 
   A secret (`Apiary.Secrets.Secret`) has a name, unique in the workspace whatever its
   case, a public id (`sec_…`), a note on what it is used for, and either one value or
