@@ -904,9 +904,10 @@ most 6 keys across them: the start key's provider's keys, at most 6 less the num
 other providers; then one key of each other provider, in session order; then the other
 providers' remaining keys. The run keeps them in `run_model_keys`, one row per key. Each
 key is an API credential named `<provider's public id>-<n>`, `n` from 1 for each
-provider, with its provider's `format`, `endpoint` and `auth`, so each provider's keys
-form one key group (the Forager contract, Several model keys). Two providers with the
-same `format`, `endpoint` and `auth` form one key group for the gateway. A save of a stage
+provider, with its provider's `format`, `endpoint` and `auth`, and `group`, the
+provider's public id, so each provider's keys form one key group, which the gateway
+rotates, cools and stops apart from every other group (the Forager contract, Several
+model keys). A save of a stage
 with `shared_run: true` fails, and its claim ends `too_many_providers`, where its
 workflows, fallbacks included, use more than 6 providers. The claim orders the provider's keys at
 its clock: the key chosen in the model choice, while it is out of cooldown; then the keys
