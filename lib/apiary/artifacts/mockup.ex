@@ -4,8 +4,7 @@ defmodule Apiary.Artifacts.Mockup do
   # version page shows in a sandboxed frame (`ApiaryWeb.ArtifactMockupController`). The
   # rules are the mockup contract that the Qory harness's pack step checks too: every rule
   # is an allowlist, and what it does not list is refused. A version without
-  # `screens.json`, and every version a person adds, is pictures, checked as an image type
-  # (`Apiary.Artifacts.Format`).
+  # `screens.json` is pictures, checked as an image type (`Apiary.Artifacts.Format`).
   #
   # The version:
   #

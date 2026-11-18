@@ -3220,7 +3220,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :output, :map,
     required: true,
     doc:
-      "`:type`, `:name`, `:version`, `:open`, `:writer`, `:read` and `:approval`, the " <>
+      "`:type`, `:name`, `:version`, `:open`, `:read` and `:approval`, the " <>
         "approval it shows, nil for none (`ApiaryWeb.WorkItemLive.StageTab.approved/3`); " <>
         "`:kind`, `:scenarios` for the Scenarios frame, `:verification` for a verification " <>
         "the page read as its parts, whose body is the slot's; `:row` for a frame with its " <>
@@ -3237,9 +3237,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   # state the reader gave them when the page draws again. A frame whose version a gate
   # `none` approved has the Approved badge and, after a check mark, the version, how it was
   # approved and when, as Explore's approved Proposal frame has them. The heading has the
-  # artifact's name after the type where it is not `main`, and a version a person made has
-  # who made it after its number, as the record block's artifact rows have it
-  # (`ApiaryWeb.ArtifactComponents.made_by/1`).
+  # artifact's name after the type where it is not `main`.
   def output_frame(assigns) do
     read = assigns.output.read
     text? = is_map(read)
@@ -3285,7 +3283,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           <p :if={!@approval} class="q-xp-cap">
             <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
             <span :if={@output[:caption]}>{@output.caption}</span>
-            <span :if={!@output[:caption]} phx-no-format>{gettext("Version %{version}", version: Format.number(@output.version))}<%= if @output[:writer] do %> · {@output.writer}<% end %></span>
+            <span :if={!@output[:caption]} phx-no-format>{gettext("Version %{version}", version: Format.number(@output.version))}</span>
           </p>
         </summary>
         <p

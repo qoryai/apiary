@@ -2302,7 +2302,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert [%{number: 2}] = RunApiStubs.pushed()
     end
 
-    test "refuses a name with no version, files, a withdrawal and a person's upload", ctx do
+    test "refuses a name with no version, files and a withdrawal", ctx do
       conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-2"))
       assert signed_answer?(conn)
 
@@ -2344,29 +2344,6 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                    "withdrawal."
              }
 
-      # A run's version, then a person's upload on top of it.
-      store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-1")
-
-      {:ok, _upload} =
-        Apiary.Artifacts.push(
-          {:person, ctx.scope},
-          ctx.work_item,
-          "screenshot",
-          [file("one.png", "image/png", @png <> "b")],
-          name: "scenario-1"
-        )
-
-      conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-1"))
-
-      assert json_response(conn, 409) == %{
-               "error" => "person_version",
-               "type" => "screenshot",
-               "message" =>
-                 "Leave screenshot/scenario-1 to a member. Its newest version, v2, is a " <>
-                   "version by #{Inputs.person_name(ctx.scope.user.id)}, and a run withdraws " <>
-                   "only a name whose newest version a run wrote."
-             }
-
       # Only the one withdrawal was stored.
       assert [%{number: 2, withdrawn: true}] = RunApiStubs.pushed()
 
@@ -2375,7 +2352,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
             into: %{},
             do: {artifact["name"], artifact["newest_version"]}
 
-      assert numbers == %{"scenario-1" => 2, "scenario-2" => 2}
+      assert numbers == %{"scenario-2" => 2}
     end
 
     test "refuses each type Qory Apiary reads itself, before the files", ctx do

@@ -46,9 +46,9 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      then files with it `422` `withdrawal_with_files`, then what
   #      `Apiary.Artifacts.withdraw/4` returns under the work item's lock: a name whose
   #      newest version a person approved at a gate `422` `type_not_withdrawable`, a name
-  #      with no version `409` `no_version`, a name whose newest version is a withdrawal
-  #      `409` `already_withdrawn`, and one whose newest version a person wrote `409`
-  #      `person_version`, then a `decision` as for a push, `422` `unknown_decision`.
+  #      with no version `409` `no_version`, and a name whose newest version is a
+  #      withdrawal `409` `already_withdrawn`, then a `decision` as for a push, `422`
+  #      `unknown_decision`.
   #
   # A file is sent from the store, with `send_file` or in chunks, and signed over the
   # SHA-256 Qory Apiary computed from its bytes when it stored them. It is served as a
@@ -68,7 +68,6 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   alias Apiary.Artifacts.Format
   alias Apiary.Dispatches.RunEnd
-  alias Apiary.Dispatches.Inputs
   alias Apiary.PublicId
   alias Apiary.Runs.PushedCommit
   alias ApiaryWeb.Contract.Configuration
@@ -995,16 +994,6 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       message:
         "Leave #{type}/#{name} as it is. Its newest version, v#{number}, is already a " <>
           "withdrawal."
-    )
-  end
-
-  defp write_error(conn, {:error, {:withdraw, {:person, number, user_id}, type, name}}) do
-    error(conn, 409, "person_version",
-      type: type,
-      message:
-        "Leave #{type}/#{name} to a member. Its newest version, v#{number}, is a version " <>
-          "by #{Inputs.person_name(user_id)}, and a run withdraws only a name whose newest " <>
-          "version a run wrote."
     )
   end
 

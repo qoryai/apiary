@@ -245,13 +245,14 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
         ]
       }
 
-      for push <- [
-            &Apiary.Artifacts.push({:person, member.scope}, reload(work_item), &1, &2),
-            &Apiary.Stages.add_version(member.scope, reload(work_item), &1, &2)
-          ] do
-        assert push.("review-comments", [ReviewComments.file(forged)]) ==
-                 {:error, {:unknown_type, "review-comments"}}
-      end
+      assert Apiary.Artifacts.push(
+               {:person, member.scope},
+               reload(work_item),
+               "review-comments",
+               [
+                 ReviewComments.file(forged)
+               ]
+             ) == {:error, {:unknown_type, "review-comments"}}
 
       assert [^comment] = review_comments(work_item)
     end

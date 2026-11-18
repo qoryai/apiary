@@ -10,10 +10,9 @@ defmodule Apiary.WorkflowEndToEndTest do
   #   1. Take in: Explore's run is queued under process version 1.
   #   2. The run reads its work item, pushes a proposal, and ends; Explore reaches its
   #      gate.
-  #   3. Dana saves version 2, in which Shape has a required output and Build has a loop
-  #      and an output, and assigns the work item to it. Dana confirms Explore; Shape, with
-  #      no workflow, is at its gate. Approving Shape is refused until Dana adds acceptance
-  #      criteria; she adds them and approves Shape; Build is entered.
+  #   3. Dana saves version 2, in which Build reads the proposal and has a loop and an
+  #      output, and assigns the work item to it. Dana confirms Explore; Shape, with no
+  #      workflow, is at its gate. Dana approves Shape; Build is entered.
   #   4. A Build run pushes an explainer and gives `changes-requested`; the second round
   #      gives `passed`. The Exists check passes, and Build is at its gate.
   #   5. Dana requests changes; the next run stops, and Build escalates (`run_stopped`).
@@ -89,8 +88,7 @@ defmodule Apiary.WorkflowEndToEndTest do
     ctx |> step_1() |> step_2()
   end
 
-  test "3. Shape's gate refuses approval until acceptance criteria are added; then Build starts",
-       ctx do
+  test "3. Shape's gate is approved; then Build starts with the approved proposal", ctx do
     ctx |> step_1() |> step_2() |> step_3()
   end
 
@@ -217,12 +215,10 @@ defmodule Apiary.WorkflowEndToEndTest do
     Map.put(ctx, :work_item, work_item)
   end
 
-  # 3. Dana saves version 2, whose Build reads acceptance criteria and runs a loop of
-  # capture-demo that must write an explainer, and assigns the work item to it. Dana
-  # confirms Explore's proposal at its gate: Shape, with no workflow, waits at its gate
-  # while its required output, acceptance criteria, is missing. Approving Shape is refused
-  # with `outputs_missing`. Dana adds the criteria through `Stages.add_version/5` and
-  # approves Shape: Build is entered with its input.
+  # 3. Dana saves version 2, whose Build reads the proposal and runs a loop of capture-demo
+  # that must write an explainer, and assigns the work item to it. Dana confirms
+  # Explore's proposal at its gate: Shape, with no workflow and no output, waits at its
+  # gate. Dana approves Shape: Build is entered with its input.
   defp step_3(ctx) do
     %{scope: scope} = ctx
 
@@ -248,37 +244,9 @@ defmodule Apiary.WorkflowEndToEndTest do
 
     assert proposal_id == proposal.public_id
 
-    # Shape has no workflow and a required output, so it waits at its gate and the gate
-    # cannot be approved. The refusal writes no decision.
-    status = Stages.status(work_item, scope)
-    assert status.missing_outputs == ["acceptance-criteria"]
-    assert [%{type: "acceptance-criteria", required: true, check: :missing}] = status.outputs
-    refute status.gate.approvable?
-
-    assert {:error, {:outputs_missing, ["acceptance-criteria"]}} =
-             Stages.approve(scope, work_item, "Agreed with the Web shop team.",
-               expect_stage: @shape
-             )
-
-    assert_place(reload(work_item), @shape, :at_gate, 1)
-    assert decisions(work_item, @shape) == []
-
-    {:ok, criteria} =
-      Stages.add_version(scope, work_item, "acceptance-criteria", [
-        %{
-          filename: "criteria.md",
-          content_type: "text/markdown",
-          binary: "# Acceptance criteria\n\n- A gift card pays part of an order.\n"
-        }
-      ])
-
-    assert %{number: 1, writer: :person, stage_id: @shape} = criteria
-
-    # The version is stored: the gate still waits, and now accepts the approval.
-    assert_place(reload(work_item), @shape, :at_gate, 1)
+    # Shape has no workflow and no output, so it waits at its gate for a person.
     status = Stages.status(work_item, scope)
     assert status.missing_outputs == []
-    assert [%{type: "acceptance-criteria", check: :passed}] = status.outputs
     assert status.gate.approvable?
 
     {:ok, _work_item} =
@@ -287,9 +255,7 @@ defmodule Apiary.WorkflowEndToEndTest do
     work_item = reload(work_item)
     assert_place(work_item, @build, :running, 1)
 
-    assert [%GateDecision{kind: :approve, versions: versions}] = decisions(work_item, @shape)
-
-    assert criteria.public_id in versions
+    assert [%GateDecision{kind: :approve}] = decisions(work_item, @shape)
 
     assert %DispatchRun{
              state: :waiting,
@@ -300,10 +266,10 @@ defmodule Apiary.WorkflowEndToEndTest do
 
     assert run.process_version_id == v2.id
 
-    Map.merge(ctx, %{work_item: work_item, v2: v2, criteria: criteria})
+    Map.merge(ctx, %{work_item: work_item, v2: v2, proposal: proposal})
   end
 
-  # 4. Build's first run reads the approved criteria, pushes an explainer and gives
+  # 4. Build's first run reads the approved proposal, pushes an explainer and gives
   # `changes-requested`: the loop's ring of one workflow starts round 2. The second run
   # pushes the next explainer and gives `passed`: the loop ends, the Exists check of the
   # explainer passes, and Build waits at its gate.
@@ -328,9 +294,9 @@ defmodule Apiary.WorkflowEndToEndTest do
 
     assert snapshot["inputs"] == [
              %{
-               "type" => "acceptance-criteria",
+               "type" => "proposal",
                "required" => true,
-               "version" => %{"id" => ctx.criteria.public_id, "number" => 1}
+               "version" => %{"id" => ctx.proposal.public_id, "number" => 1}
              }
            ]
 
@@ -391,20 +357,20 @@ defmodule Apiary.WorkflowEndToEndTest do
 
     assert {second_id, first_id} == {second.run_id, run.run_id}
 
-    # The acceptance criteria are the version Shape's gate approved, written by Dana.
-    criteria = artifact(index, "acceptance-criteria")
+    # The proposal is the version Explore's gate approved, written by Explore's run.
+    proposal = artifact(index, "proposal")
 
     assert %{
-             "stage_id" => @shape,
+             "stage_id" => @explore,
              "approved_version" => approved,
              "newest_version" => 1,
              "changed_after_approval" => false,
              "versions" => [
-               %{"number" => 1, "writer" => %{"kind" => "person"}, "approvals" => [_]}
+               %{"number" => 1, "writer" => %{"kind" => "run"}, "approvals" => [_]}
              ]
-           } = criteria
+           } = proposal
 
-    assert approved == ctx.criteria.public_id
+    assert approved == ctx.proposal.public_id
 
     Map.merge(ctx, %{work_item: work_item, explainer_id: hd(explainer["versions"])["id"]})
   end
@@ -738,16 +704,13 @@ defmodule Apiary.WorkflowEndToEndTest do
     """
   end
 
-  # Version 2: Shape must output acceptance criteria; Build reads them, runs a loop of
+  # Version 2: Build reads the proposal, runs a loop of
   # capture-demo, at most 3 rounds, and must output an explainer.
   defp build_document(document) do
     update_stage(document, fn
-      %{"id" => @shape} = stage ->
-        Map.put(stage, "outputs", [%{"type" => "acceptance-criteria", "required" => true}])
-
       %{"id" => @build} = stage ->
         Map.merge(stage, %{
-          "inputs" => [%{"type" => "acceptance-criteria", "required" => true}],
+          "inputs" => [%{"type" => "proposal", "required" => true}],
           "sequence" => [
             %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "capture-demo"}]}}
           ],

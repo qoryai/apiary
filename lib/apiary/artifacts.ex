@@ -209,12 +209,9 @@ defmodule Apiary.Artifacts do
   #   - approved by a person: `{:approved, number}`, when a decision of the work item at a
   #     gate, of kind `:approve` and not `automatic`, covers the version (`versions` has its
   #     public id; a member whose account is gone has no `user_id`, and counts). The check
-  #     comes before the three below, so that a version a person wrote and approved is
-  #     refused as approved;
+  #     comes before the two below;
   #   - none, as the name has no version outside cancelled runs: `:no_version`;
-  #   - a withdrawal: `{:withdrawn, number}`;
-  #   - a person's upload: `{:person, number, user_id}`, as a run withdraws only a name
-  #     whose newest version a run wrote.
+  #   - a withdrawal: `{:withdrawn, number}`.
   #
   # The version is numbered as a push's, and the same message goes to the work item's
   # artifacts topic.
@@ -318,19 +315,10 @@ defmodule Apiary.Artifacts do
   @spec member_types() :: [String.t()]
   def member_types, do: @member_types
 
-  # person_types/1 is the types of `types/1` a person adds a version of by hand: all but
-  # `member_types/0`.
-  @doc false
-  @spec person_types(Workspace.t()) :: [Type.t()]
-  def person_types(%Workspace{} = workspace) do
-    held = @member_types ++ submit_types(workspace)
-    Enum.reject(types(workspace), &(&1.name in held))
-  end
-
   # submit_types/1 is the names of the types that the process of `workspace` sets as the
   # result of a run (`submit.type` of the harness record, `Processes.harness_template/1`):
   # those of its current version and of each version in use (`switch_type/4`). The harness
-  # sets their schemas: no one edits or deletes them, and a person adds no version of them.
+  # sets their schemas: no one edits or deletes them.
   @doc false
   @spec submit_types(Workspace.t()) :: [String.t()]
   def submit_types(%Workspace{id: workspace_id}) do
@@ -731,7 +719,6 @@ defmodule Apiary.Artifacts do
          {:ok, writer} <- writer(actor, work_item, type_name),
          {:ok, type} <- push_type(work_item, type_name),
          :ok <- actor_type(writer, type),
-         :ok <- person_type(writer, work_item, type),
          {:ok, fields} <- fields(opts),
          :ok <- member_name(type, fields),
          {:ok, files} <- files(type, files),
@@ -753,8 +740,7 @@ defmodule Apiary.Artifacts do
                 | :submit_type
                 | {:approved, pos_integer}
                 | :no_version
-                | {:withdrawn, pos_integer}
-                | {:person, pos_integer, Ecto.UUID.t() | nil}}
+                | {:withdrawn, pos_integer}}
              | :not_found
              | :stage_changed
              | :run_ended
@@ -811,7 +797,7 @@ defmodule Apiary.Artifacts do
   end
 
   # The withdrawal's row, under the locks and reads of a push's transaction (`write/5`),
-  # when the artifact's newest version is a run's version with files (`withdrawable/3`).
+  # when the artifact's newest version has files (`withdrawable/3`).
   defp write_withdrawal(writer, work_item, type, fields) do
     Repo.transact(fn ->
       now = DateTime.utc_now()
@@ -833,7 +819,7 @@ defmodule Apiary.Artifacts do
   end
 
   # The artifact of the held work item, `type` and the name, when its newest version that
-  # no cancelled run wrote (`withdrawn?/1`) is a run's version with files.
+  # no cancelled run wrote (`withdrawn?/1`) has files.
   defp withdrawable(held, type, fields) do
     newest =
       Repo.one(
@@ -854,17 +840,14 @@ defmodule Apiary.Artifacts do
       %Version{} = version ->
         if person_approved?(held, version),
           do: {:error, {:withdraw, {:approved, version.number}}},
-          else: written_by_run(version)
+          else: with_files(version)
     end
   end
 
-  defp written_by_run(%Version{withdrawn: true, number: number}),
+  defp with_files(%Version{withdrawn: true, number: number}),
     do: {:error, {:withdraw, {:withdrawn, number}}}
 
-  defp written_by_run(%Version{writer: :person} = version),
-    do: {:error, {:withdraw, {:person, version.number, version.user_id}}}
-
-  defp written_by_run(%Version{artifact: artifact}), do: {:ok, artifact}
+  defp with_files(%Version{artifact: artifact}), do: {:ok, artifact}
 
   # Whether a person approved `version` at a gate of the work item: a decision of kind
   # `:approve` that is not `automatic` and covers the version's public id. A nil `user_id`
@@ -877,23 +860,9 @@ defmodule Apiary.Artifacts do
     )
   end
 
-  # log_refusal/3 writes one warning to the server log for a refused push that a page
-  # shows with no cause, or as a store failure: the refusal's shape, the work item's
-  # public id and the type's name. Nothing of a file, a filename or a note is written: a
-  # text in the refusal is `"…"`, a list `[…]` (a charlist is text too), a changeset its
-  # schema and the fields with errors, an exception its module, and a type name that is
-  # not one (`Type.name?/1`) `"…"`.
-  @doc false
-  @spec log_refusal(WorkItem.t(), term, term) :: :ok
-  def log_refusal(%WorkItem{public_id: id}, type_name, refusal) do
-    Logger.warning(
-      "A push from Add a version failed: #{shape(refusal)}; " <>
-        "work item #{id}, type #{logged_type(type_name)}"
-    )
-  end
-
-  defp logged_type(name), do: if(Type.name?(name), do: name, else: ~s("…"))
-
+  # The shape of a refusal for the server log, with nothing of a file, a filename or a
+  # note: a text is `"…"`, a list `[…]` (a charlist is text too), a changeset its schema
+  # and the fields with errors, and an exception its module.
   defp shape(%Ecto.Changeset{data: %schema{}, errors: errors}) do
     fields = errors |> Keyword.keys() |> Enum.uniq() |> Enum.map_join(", ", &Atom.to_string/1)
     "changeset of #{inspect(schema)}, errors on #{fields}"
@@ -994,19 +963,6 @@ defmodule Apiary.Artifacts do
 
   defp member_action("review-comments"), do: :"work_item.review_comment"
   defp member_action(_type_name), do: :"work_item.answer"
-
-  # A person never pushes a type that `submit_types/1` lists: the harness sets its schema
-  # and a run stores it.
-  defp person_type(%{actor: :person}, %WorkItem{workspace_id: workspace_id}, %Type{
-         standard: false,
-         name: name
-       }) do
-    if name in submit_types(%Workspace{id: workspace_id}),
-      do: {:error, {:unknown_type, name}},
-      else: :ok
-  end
-
-  defp person_type(_writer, _work_item, _type), do: :ok
 
   # The types each actor writes: a person never the member types, a member action only
   # those, a run any.
@@ -1181,7 +1137,7 @@ defmodule Apiary.Artifacts do
 
   # The type a version's files are checked as: a run's version of `mockup` with a
   # `screens.json` as a mockup of pages, the base view `:mockup`; any other version as
-  # its type. A person adds pictures to a mockup, as to any image type.
+  # its type.
   defp checked_type(%{actor: :run}, %Type{standard: true, name: "mockup"} = type, files) do
     if Enum.any?(files, fn {_index, filename, _source} -> filename == Mockup.index_name() end),
       do: %Type{type | base_view: :mockup},
@@ -1920,9 +1876,7 @@ defmodule Apiary.Artifacts do
   @spec open_file(ArtifactFile.t()) :: {:ok, Path.t() | Enumerable.t()} | {:error, term}
   def open_file(%ArtifactFile{store_key: key}), do: Store.impl().open(key)
 
-  # exists?/3 is whether `stage_id` made a stored version of `type_name` (`made_in/4`). For
-  # the type in `submit.type` (`submit_type/1`) only a run's version counts: only a run's
-  # submit step writes a submission.
+  # exists?/3 is whether `stage_id` made a stored version of `type_name` (`made_in/3`).
   @doc false
   @spec exists?(WorkItem.t(), String.t(), String.t()) :: boolean
   def exists?(%WorkItem{} = work_item, stage_id, type_name)
@@ -1932,7 +1886,7 @@ defmodule Apiary.Artifacts do
     case type(workspace, type_name) do
       %Type{} = type ->
         work_item
-        |> made_in(stage_id, type_name, submit_type(work_item) == type_name)
+        |> made_in(stage_id, type_name)
         |> Enum.any?(&Format.stored?(type, &1))
 
       nil ->
@@ -1944,10 +1898,9 @@ defmodule Apiary.Artifacts do
 
   # The content types of the files of each version of `type`, of any name, made in
   # `stage_id`, but by a run a member cancelled (`cancelled?/1`) and of a name whose newest
-  # version is a withdrawal (`withdrawn?/1`): a list per version. With `runs_only?`, only
-  # a run's versions. A version here has one file or more, so a withdrawal, which has none,
-  # is never in the list.
-  defp made_in(%WorkItem{id: id, workspace_id: workspace_id}, stage_id, type, runs_only?) do
+  # version is a withdrawal (`withdrawn?/1`): a list per version. A version here has one
+  # file or more, so a withdrawal, which has none, is never in the list.
+  defp made_in(%WorkItem{id: id, workspace_id: workspace_id}, stage_id, type) do
     Repo.all(
       from v in Version,
         as: :version,
@@ -1957,7 +1910,6 @@ defmodule Apiary.Artifacts do
         where:
           a.work_item_id == ^id and a.workspace_id == ^workspace_id and a.type == ^type and
             v.stage_id == ^stage_id,
-        where: not (^runs_only?) or v.writer == :run,
         where: not exists(Apiary.Runs.Run.cancelled_dispatch_run(:version, :run_id)),
         where: ^not_withdrawn_name(),
         group_by: v.id,

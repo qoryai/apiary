@@ -202,16 +202,6 @@ defmodule Apiary.Artifacts.WatchTest do
     assert Feed.entries(forge) == []
   end
 
-  test "a person's push of the submission type is refused and adds no entry", ctx do
-    submits!(ctx, @submit)
-    forge = forge!(ctx)
-
-    assert {:error, {:unknown_type, "submission"}} =
-             Artifacts.push({:person, ctx.scope}, ctx.work_item, "submission", submission())
-
-    assert Feed.entries(forge) == []
-  end
-
   test "a person's version of a type the process's submit does not set adds no entry", ctx do
     submits!(ctx, @submit)
     forge = forge!(ctx)

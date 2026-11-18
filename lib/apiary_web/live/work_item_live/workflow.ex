@@ -175,8 +175,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       explore_id: explore_id,
       tabs: [],
       ended: false,
-      can_decide: Access.can?(scope, :"gate.approve", row),
-      can_add: Access.can?(scope, :"artifact.write", row)
+      can_decide: Access.can?(scope, :"gate.approve", row)
     }
   end
 
@@ -480,9 +479,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # The work item's newest submission, the type the process version's submit step names
   # (`submit.type` of its harness record, `Processes.harness_template/1`, which a version a
   # person saved takes from the version it is based on; else `submission`), as the
-  # artifact index has it (`id`, its public id; `files`); nil for none. Only a run's
-  # version counts, as only a run's submit step writes a submission; a withdrawn name and a
-  # version a cancelled run wrote count for none.
+  # artifact index has it (`id`, its public id; `files`); nil for none. A withdrawn name and
+  # a version a cancelled run wrote count for none.
   defp submission(version, index) do
     type =
       case Processes.harness_template(version) do
@@ -492,12 +490,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
     index
     |> Enum.filter(&(&1.type == type and not Artifacts.withdrawn?(&1)))
-    |> Enum.map(
-      &Artifacts.newest_counted(%{
-        &1
-        | versions: Enum.filter(&1.versions, fn v -> v.writer == :run end)
-      })
-    )
+    |> Enum.map(&Artifacts.newest_counted/1)
     |> Enum.reject(&is_nil/1)
     |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.number}, fn -> nil end)
   end
