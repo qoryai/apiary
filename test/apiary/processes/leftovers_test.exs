@@ -205,15 +205,15 @@ defmodule Apiary.Processes.LeftoversTest do
     assert time_limit(scope) == nil
   end
 
-  test "a workflow that comes back to the process starts with no override",
+  test "a save that adds a workflow keeps the overrides set for it",
        %{scope: scope, provider: provider} do
-    # A leftover as one made before overrides were deleted: the workflow is in no version.
+    # Overrides set while the workflow is in no version: the save that adds it keeps them.
     override!(scope, provider, "write-a-brief")
 
     explore!(scope, [@workflow, "write-a-brief"])
 
-    assert choice(scope, "write-a-brief") == nil
-    assert time_limit(scope, "write-a-brief") == nil
+    assert %ModelChoice{} = choice(scope, "write-a-brief")
+    assert %TimeLimit{} = time_limit(scope, "write-a-brief")
   end
 
   test "a renamed workflow's overrides go with its old name", %{scope: scope, provider: provider} do
@@ -477,6 +477,23 @@ defmodule Apiary.Processes.LeftoversTest do
     {:ok, _current} = Processes.make_current(scope, trial)
     assert choice(scope) == nil
     assert time_limit(scope) == nil
+  end
+
+  test "a make current keeps the overrides of a workflow the trial adds",
+       %{scope: scope, provider: provider} do
+    {:ok, trial} =
+      Processes.save(
+        scope,
+        scope.workspace,
+        explore_document(scope, [@workflow, "write-a-brief"]),
+        trial: true
+      )
+
+    override!(scope, provider, "write-a-brief")
+
+    {:ok, _current} = Processes.make_current(scope, trial)
+    assert %ModelChoice{} = choice(scope, "write-a-brief")
+    assert %TimeLimit{minutes: 45} = time_limit(scope, "write-a-brief")
   end
 
   test "a drop of a trial deletes what only its work items kept", %{

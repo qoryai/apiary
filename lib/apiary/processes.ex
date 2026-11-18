@@ -60,8 +60,8 @@ defmodule Apiary.Processes do
   these has it any more, they are deleted (Apiary.Processes.delete_leftovers/2):
 
     * in the transaction of a save, a make current, a drop of a trial and an assign,
-      under the workspace's row these hold, once before the change and once after it, so
-      a workflow that comes back starts with none;
+      under the workspace's row these hold, after the change, so the kept workflows
+      include those of the version the change makes current;
     * after a work item is closed or undone, or a run of the workflow ends, by
       `Apiary.Processes.LeftoversJob`, which that change enqueues in its transaction and
       which runs once it commits, under the workspace's row: the change holds the work
@@ -918,7 +918,6 @@ defmodule Apiary.Processes do
            :ok <- Access.check(scope, :"process.edit", workspace),
            :ok <- validate(document),
            :ok <- Apiary.MachineTypes.hold(),
-           :ok <- delete_leftovers(scope, workspace),
            {:ok, base} <- base(workspace, Keyword.get(opts, :based_on)),
            :ok <- changed(base, document),
            {:ok, version} <- insert_version(scope, workspace, base, document, trial?, nil),
@@ -975,7 +974,6 @@ defmodule Apiary.Processes do
            :ok <- harness_access(scope, workspace),
            :ok <- validate(document),
            :ok <- Apiary.MachineTypes.hold(),
-           :ok <- delete_leftovers(scope, workspace),
            {:ok, base} <- base(workspace, Keyword.fetch!(opts, :based_on)),
            :ok <- still_current(workspace, base),
            :ok <- changed_at(base, document, template),
@@ -1159,7 +1157,6 @@ defmodule Apiary.Processes do
       with {:ok, scope, workspace} <- hold(scope, trial),
            :ok <- Access.check(scope, :"process.edit", trial),
            :ok <- Apiary.MachineTypes.hold(),
-           :ok <- delete_leftovers(scope, workspace),
            {:ok, trial} <- held_trial(trial),
            replaced = current_row(workspace, :update),
            _retired = retire_current(workspace),
@@ -1204,7 +1201,6 @@ defmodule Apiary.Processes do
       with {:ok, scope, workspace} <- hold(scope, trial),
            :ok <- Access.check(scope, :"process.edit", trial),
            :ok <- Apiary.MachineTypes.hold(),
-           :ok <- delete_leftovers(scope, workspace),
            {:ok, trial} <- held_trial(trial),
            current = current_row(workspace, :update) || current(workspace),
            items = trial_items(trial),
@@ -1263,7 +1259,6 @@ defmodule Apiary.Processes do
       with {:ok, scope, workspace} <- hold(scope, work_item),
            :ok <- Access.check(scope, :"process.edit", work_item),
            :ok <- Apiary.MachineTypes.hold(),
-           :ok <- delete_leftovers(scope, workspace),
            %WorkItem{} = work_item <- held_item(work_item),
            {:ok, version} <- assignable(version, workspace) do
         before = version_for(work_item)

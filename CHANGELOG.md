@@ -53,11 +53,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   at once; a work item closed or undone, and a run that ends, delete them right after.
   So an open work item on an older version keeps them until it closes, and a queued run
   keeps its workflow's model choice and time limit until it ends. Each delete is in the
-  audit trail, with the cause `workflow_not_in_use`. A model provider or a key that only
-  such a choice used can be deleted, and the choice goes with it. A workflow that comes
-  back to the process starts from "Use workspace default". Such choices and limits made
-  before this change stay until the next save of the process, close, or deletion of
-  their provider or key. With `workflow_model` off, none is deleted.
+  audit trail, with the cause `workflow_not_in_use`. A model provider that only such a
+  choice used can be deleted, and the choice goes with it. A save checks what is kept
+  after it writes the new version, so a choice or limit for a workflow the save adds
+  stays. Such choices and limits made before this change stay until the next save of the
+  process without their workflow, a close, or deletion of their provider. With `workflow_model` off, none is deleted.
 - An escalation of a work item on a track that is not the first track of the gate that
   recorded it offers the gate's other tracks by name, as **Switch to `<track>`**. A switch
   records the track as a move at that gate, so `Stages.track/1` stays the only reader of the
