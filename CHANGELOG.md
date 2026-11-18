@@ -1735,15 +1735,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: workflow_model -->
 - The answer to a next-session request has `model_choice`, the runtime and model of the
   session's workflow, resolved in the same order at the claim. Each session runs on the
-  runtime of its workflow. The claim keeps the result for each workflow of the stage, so a
+  runtime of its workflow, or on the run's runtime where `model_choice` is the run's
+  `run_settings`. The claim keeps the result for each workflow of the stage, so a
   model choice saved after the claim changes nothing for the run. `model_choice` has the
   choice's model where its provider is the run's and its runtime uses the run's API; the
   model of the choice's fallback where the run's provider is that choice's fallback, as
   when the claim took the fallback; and the run's `run_settings` where the choice's
-  provider, key or model is no longer valid. It has `runtime` alone where the choice's
-  provider is another provider or its runtime uses another API, where the run has no
-  provider's key, and, with the default runtime, where the workflow resolves to no model
-  choice at any level: the session uses that runtime's default model. The answer has no
+  provider, key or model is no longer valid, or its runtime is no longer in the
+  catalogue. It has `runtime` alone where the choice's provider is another provider or
+  its runtime uses another API, where the run has no provider's key, and, with the default
+  runtime, where the workflow resolves to no model choice at any level, or its choice's
+  provider was removed: the session uses that runtime's default model. The answer has no
   `model_credential`: a run takes the keys of one provider, and each session joins with
   the group of the run's start key.
 <!-- /feature -->

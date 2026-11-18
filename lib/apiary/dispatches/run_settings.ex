@@ -225,8 +225,6 @@ defmodule Apiary.Dispatches.RunSettings do
 
   def choice_in_effect(%DispatchRun{}), do: nil
 
-  # The run's start key's credential name: the key it keeps with `start`, else its first
-  # (`Apiary.Runs.ProviderCredential`); nil for none.
   # time_limit_minutes/2 is the minutes the time limits of the workspace and the target of
   # the run of the queue `dispatch_run` come to for `workflow`, the default for no limit,
   # read without a lock, as `hold/1` reads them; nil with `factory` off, as `hold/1`

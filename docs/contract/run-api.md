@@ -766,7 +766,8 @@ of the run contract. A next session of the same stage:
 - `inputs`: the input of the session, in the shape of the documents' `inputs`.
 - `model_choice`: the runtime and model of the session's workflow, as `runtime`, `model`,
   `effort`, `provider_models` and `tiers` of the documents' `run_settings`. Every
-  `model_choice` has `runtime`: the session runs on the runtime of its workflow. The claim
+  `model_choice` has `runtime`: the session runs on the runtime of its workflow, or on the
+  run's runtime where `model_choice` is the run's `run_settings`. The claim
   resolves the model choices for each workflow of the stage in the same order as for the
   run: a locked choice of the workspace, the workflow's choice at the run's target, the
   target's choice, the workflow's choice at the workspace, the workspace's (Workspace
@@ -781,7 +782,8 @@ of the run contract. A next session of the same stage:
 - `model_choice` has `runtime` alone where the choice's provider is another provider, or
   its runtime uses another API of the run's provider, or where the run has no provider's
   key; and the catalogue's default runtime alone where the workflow resolves to no model
-  choice at any level. The session uses the default model of that runtime.
+  choice at any level, or its choice's provider was removed. The session uses the default
+  model of that runtime.
 - `model_credential` is left out: a run takes the keys of one provider, so each session
   joins with the group of the run's start key, the credentials of that provider.
 

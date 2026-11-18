@@ -944,8 +944,9 @@ defmodule Apiary.Dispatches.Handover do
   defp time_limits(%{held: %{time_limits: limits}}), do: limits
   defp time_limits(_locked), do: %{}
 
-  # The models of the later sessions of a shared run as the claim formed them
-  # (`RunSettings.build/2`), none for a run with no provider's key.
+  # The runtimes and models of the later sessions of a shared run as the claim formed
+  # them (`RunSettings.build/2`): every shared run has them; none for a run with no run
+  # settings.
   defp session_models(%{settings: %{sessions: sessions}}), do: sessions
   defp session_models(_formed), do: %{}
 

@@ -54,16 +54,36 @@ defmodule Apiary.Kinds.Providers do
   @spec ref() :: String.t()
   def ref, do: @ref
 
+  # Whether the build has `put_test_list/1`: set in `config/test.exs` only, so a
+  # development or release build has neither the function nor the lookup behind it.
+  @test_seam Application.compile_env(:apiary, [__MODULE__, :test_seam], false)
+
   @doc "list/0 is every provider of the catalogue, in the order of its name."
   @spec list() :: [Provider.t()]
-  def list, do: @providers
+  if @test_seam do
+    def list, do: Process.get({__MODULE__, :test_list}) || @providers
+  else
+    def list, do: @providers
+  end
 
   @doc "fetch/1 is the provider named `name`: `{:ok, provider}`, or `:error`."
   @spec fetch(term) :: {:ok, Provider.t()} | :error
   def fetch(name) do
-    case Enum.find(@providers, &(&1.name == name)) do
+    case Enum.find(list(), &(&1.name == name)) do
       %Provider{} = provider -> {:ok, provider}
       nil -> :error
+    end
+  end
+
+  if @test_seam do
+    # put_test_list/1 makes `providers` the catalogue that `list/0` and `fetch/1` answer
+    # in this process, until the process ends. For tests that need a description the
+    # release's catalogue does not have, such as a provider with two APIs.
+    @doc false
+    @spec put_test_list([Provider.t()]) :: :ok
+    def put_test_list(providers) when is_list(providers) do
+      Process.put({__MODULE__, :test_list}, providers)
+      :ok
     end
   end
 

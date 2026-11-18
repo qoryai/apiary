@@ -397,11 +397,13 @@ defmodule Apiary.Stages do
   #     `time_limit_minutes` (the workflow's minutes in `limits`, the time limits as the
   #     claim read them, `Apiary.Dispatches.RunSettings.hold/1`, else read now; none with
   #     `factory` off), `full_suite` (`full_suite?/4`, with the run's access level, which
-  #     every entry of the stage shares), and `model_choice` and `model_credential`, the
-  #     workflow's in `models` as the claim formed them
-  #     (`Apiary.Dispatches.RunSettings.build/2`, `sessions`), left out for a workflow
-  #     with none. `next_session/2` reads these, so a change to the time limits or the model
-  #     choices after the claim changes nothing for the run;
+  #     every entry of the stage shares), and `model_choice`, the workflow's runtime and
+  #     model in `models` as the claim formed them
+  #     (`Apiary.Dispatches.RunSettings.build/2`, `sessions`), present for every entry of
+  #     a claimed run. No entry has `model_credential` now: a run takes the keys of one
+  #     provider, so each session joins with the group of the run's start key.
+  #     `next_session/2` reads these, so a change to the time limits or the model choices
+  #     after the claim changes nothing for the run;
   #   * its first session (`Apiary.Stages.Session`), sequence 1, at the run's position,
   #     with the run's workflow. The sessions of an earlier claim of the run that no
   #     report reached are replaced, as a run whose lease lapsed is claimed again.

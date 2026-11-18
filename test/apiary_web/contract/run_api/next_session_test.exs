@@ -14,7 +14,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
   alias Apiary.{Connections, ModelChoices, Processes, Repo, Stages}
   alias Apiary.Dispatches.RunSettings
-  alias Apiary.Kinds.Runtimes
+  alias Apiary.Kinds.{Providers, Runtimes}
   alias Apiary.ModelChoices.ModelChoice
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Runs.Run
@@ -186,8 +186,6 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
   defp reload(work_item), do: Repo.get!(WorkItem, work_item.id)
 
-  # The credential name of the run's start key: the provider's one key, first.
-
   defp comment!(work_item, n, body) do
     at = DateTime.add(DateTime.utc_now(:second), n, :second)
 
@@ -218,7 +216,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       ])
     end
 
-    test "returns session 2 for the end of session 1, with the workspace's model and the run's start key",
+    test "returns session 2 for the end of session 1, with the workspace's runtime and model",
          ctx do
       :ok = verdict!(ctx, "passed")
       conn = request(ctx, ended(1))
@@ -650,6 +648,65 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       assert runtime == second.name
       refute Map.has_key?(body, "model_credential")
       assert answer_valid?(body)
+    end
+
+    test "is the workflow's runtime alone where that runtime uses another API of the run's provider",
+         ctx do
+      release = ModelChoices.default_runtime()
+      second = %{release | name: release.name <> "-second", title: release.title <> " second"}
+      :ok = Runtimes.put_test_list([release, second])
+
+      # The run's provider with two APIs: the release's runtime uses the first, and the
+      # second runtime the other, with another auth.
+      providers =
+        for provider <- Providers.list() do
+          if provider.name == ctx.provider.provider_kind do
+            [api] = provider.apis
+
+            other =
+              api
+              |> Map.put("runtimes", [second.name])
+              |> Map.put("auth", %{"scheme" => "bearer"})
+
+            %{provider | apis: [Map.put(api, "runtimes", [release.name]), other]}
+          else
+            provider
+          end
+        end
+
+      :ok = Providers.put_test_list(providers)
+
+      :ok =
+        choose!(ctx, {:workspace, "write-acceptance-checks"}, %{
+          runtime: second.name,
+          model: "claude-sonnet-5-5"
+        })
+
+      body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
+
+      assert body["model_choice"] == %{"runtime" => second.name}
+      refute Map.has_key?(body, "model_credential")
+    end
+
+    test "is the run's run_settings where the workflow's runtime is no longer in the catalogue",
+         ctx do
+      release = ModelChoices.default_runtime()
+      second = %{release | name: release.name <> "-second", title: release.title <> " second"}
+      :ok = Runtimes.put_test_list([release, second])
+
+      :ok =
+        choose!(ctx, {:workspace, "write-acceptance-checks"}, %{
+          runtime: second.name,
+          model: "claude-sonnet-5-5"
+        })
+
+      :ok = Runtimes.put_test_list([release])
+      body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
+
+      assert %{"runtime" => runtime, "model" => model} = body["model_choice"]
+      assert runtime == release.name
+      assert model == ctx.gateway_run.run_settings["model"]
+      refute Map.has_key?(body, "model_credential")
     end
 
     test "is the workflow's runtime alone where the run has no provider's key", ctx do
