@@ -6021,6 +6021,7 @@ msgid "Answer"
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "Answer %{question}."
 msgstr ""
@@ -26978,6 +26979,7 @@ msgid "qory run on a machine"
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "question %{number}"
 msgstr ""

@@ -8,6 +8,10 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   # Qory Apiary reads these from the files as the run wrote them: it maps no model id to a
   # family and writes no criterion's words.
   #
+  # A row in the state Needs a person links to the open question that the stage's agent
+  # asked about its criterion (`question_links/4`): the question's `criterion` is the id at
+  # the start of the row's Criterion cell.
+  #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
@@ -156,6 +160,43 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   defp plain(%{literal: literal}) when is_binary(literal), do: literal
   defp plain(%{nodes: nodes}) when is_list(nodes), do: plain(nodes)
   defp plain(_node), do: ""
+
+  ## The questions of the rows
+
+  @doc false
+  # criterion_id/1 is the id at the start of a Criterion cell, in lower case, such as
+  # `ac-3` for `AC-3, "..."` and for `AC-3 Demo: ...`; nil for a cell that starts with no
+  # id. `AC-10` is `ac-10`, never `ac-1`.
+  @spec criterion_id(String.t()) :: String.t() | nil
+  def criterion_id(criterion) do
+    case Regex.run(~r/\A\s*([A-Za-z]+-[0-9]+)(?![0-9])/, criterion) do
+      [_cell, id] -> String.downcase(id)
+      nil -> nil
+    end
+  end
+
+  @doc false
+  # question_links/4 is, by criterion id, where a member answers the question about that
+  # criterion: `%{"ac-3" => %{number:, href:}}`. `questions` are the questions of the take
+  # in (`Apiary.WorkItems.ExploreView`); only an open question that a run of the stage
+  # `stage_id` asked, with a `criterion`, and whose number is in `shown` (the numbers that
+  # the Questions tab draws), has a link. With several such questions about one criterion,
+  # the link is to the one with the lowest number. `path` is the Questions tab.
+  @spec question_links([map], String.t(), Enumerable.t(), String.t()) :: %{
+          String.t() => %{number: pos_integer, href: String.t()}
+        }
+  def question_links(questions, stage_id, shown, path) do
+    for %{criterion: criterion, number: number, state: :open, stage_id: ^stage_id} <-
+          Enum.sort_by(questions, &(&1.number || 0)),
+        is_binary(criterion) and is_integer(number) and number in shown,
+        reduce: %{} do
+      links ->
+        Map.put_new(links, criterion, %{
+          number: number,
+          href: "#{path}#work-item-questions-question-#{number}"
+        })
+    end
+  end
 
   ## The scenarios
 
@@ -322,6 +363,10 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   attr :verification, :map, required: true, doc: "`verification/1`"
   attr :accepted, :string, default: nil, doc: "the member who accepted the escalation"
 
+  attr :answers, :map,
+    default: %{},
+    doc: "where a member answers the question of each criterion, `question_links/4`"
+
   attr :anchors, :map,
     default: %{},
     doc: "the DOM id of each scenario of the Scenarios frame, by its number"
@@ -330,7 +375,9 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
 
   @doc false
   # verification_body/1 is the verification frame's body: who accepted the escalation, the
-  # matrix, the "not verified" list and the artifact row.
+  # matrix, the "not verified" list and the artifact row. A row in the state Needs a person
+  # has, under the state, the link "Answer question N." to the open question about its
+  # criterion; a row with no such question has the state alone.
   def verification_body(assigns) do
     ~H"""
     <div id={@id} class="grid gap-4">
@@ -359,7 +406,14 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
                   <.evidence text={row.evidence} anchors={@anchors} />
                 </div>
               </td>
-              <td class="whitespace-nowrap"><.state_badge state={row.state} /></td>
+              <td class="whitespace-nowrap">
+                <.state_badge state={row.state} />
+                <.answer_link
+                  :if={row.state == :needs_person}
+                  id={"#{@id}-matrix-#{i}-answer"}
+                  link={@answers[criterion_id(row.criterion)]}
+                />
+              </td>
               <td class="q-from-sm whitespace-normal text-[13px]/5">
                 <.evidence text={row.evidence} anchors={@anchors} />
               </td>
@@ -386,6 +440,25 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
         </ul>
       </section>
       {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :link, :map, default: nil, doc: "`%{number:, href:}`, nil for no question"
+
+  # "Answer question N.", the whole sentence a link to the question: the words of an answer
+  # point of the Questions tab (`StageComponents.needs_block/1`).
+  defp answer_link(%{link: nil} = assigns), do: ~H""
+
+  defp answer_link(assigns) do
+    ~H"""
+    <div class="mt-1 whitespace-normal text-[13px]/5">
+      <.link id={@id} href={@link.href} class="q-link">
+        {gettext("Answer %{question}.",
+          question: gettext("question %{number}", number: ApiaryWeb.Format.number(@link.number))
+        )}
+      </.link>
     </div>
     """
   end

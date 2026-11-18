@@ -37,6 +37,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
   @ac1 ~s|AC-1, "After a reload, the total still includes the voucher"|
   @ac2 ~s|AC-2, "On a phone, the voucher line fits the payment step"|
   @ac3 ~s|AC-3, "An expired voucher leaves the total unchanged"|
+  @ac4 ~s|AC-4, "The voucher line shows on the receipt"|
   @check "Check that the voucher line fits in the pictures of scenario 2, because the run could not measure the line on a phone screen."
 
   @verification """
@@ -115,8 +116,9 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
   end
 
   # A work item at Verify's gate, whose run of Verify pushed what `push` pushes, with the
-  # run of the queue and the work item, then passed.
-  defp at_verify_gate!(scope, push) do
+  # run of the queue and the work item, then passed: at the gate, or, with the state
+  # `:waiting_answers`, with the questions that the run asked still open.
+  defp at_verify_gate!(scope, push, state \\ :at_gate) do
     {:ok, work_item} = WorkItems.take_in(scope, backlog_ticket_fixture(scope).public_id)
     work_item = Repo.get!(WorkItem, work_item.id) |> end_run!(understood_result())
     {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
@@ -139,7 +141,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
           )
       end)
 
-    assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+    assert %WorkItem{stage_id: @verify, stage_state: ^state} = work_item
     work_item
   end
 
@@ -407,6 +409,187 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
 
       assert has_element?(view, "#work-item-tab-output-verification", "The check passed.")
       refute has_element?(view, "#work-item-tab-output-verification-parts")
+    end
+  end
+
+  # The verification of a run whose capture ended with a setup fault that a member accepted:
+  # no film, and each `Demo:` criterion in the state Needs a person, with the check to make
+  # and the member who accepted, as the run writes them.
+  @accepted_by "dana@example.com"
+  @demo_check "Run `npm run dev`, open /checkout and check that each delivery option shows its date. No film: a setup fault, accepted by #{@accepted_by}."
+
+  @demo_shown String.replace(@demo_check, "`", "")
+
+  defp needs_person_text do
+    matrix([
+      {@ac1, "Met", "Locked check `tests/total.test.ts` passed."},
+      {@ac2, "Needs a person", @demo_check},
+      {@ac3, "Needs a person", @demo_check},
+      {@ac4, "Not met", "Locked check `tests/receipt.test.ts` failed."}
+    ])
+  end
+
+  # The run of Verify pushes `needs_person_text/0` and asks one question that names no
+  # criterion, one about AC-2 and one about AC-4.
+  defp asking_run(run, work_item) do
+    verification!(run, work_item, needs_person_text())
+    registered = Repo.get_by!(Apiary.Runs.Run, dispatch_run_id: run.id)
+
+    Apiary.WorkItemsFixtures.push_output!(
+      run,
+      registered,
+      Apiary.WorkItemsFixtures.questions_result([
+        "Which basket?",
+        %{"question" => "Check the delivery dates.", "options" => [], "criterion" => "ac-2"},
+        %{"question" => "Check the receipt.", "options" => [], "criterion" => "ac-4"}
+      ])
+    )
+  end
+
+  # An escalation of Verify that a member accepted as it is an hour before the run pushed
+  # the verification, as capture-demos is accepted before verify-a-ticket runs.
+  defp accepted_before!(scope, work_item) do
+    Repo.insert!(%Escalation{
+      organisation_id: work_item.organisation_id,
+      workspace_id: work_item.workspace_id,
+      work_item_id: work_item.id,
+      stage_id: @verify,
+      process_version_id: work_item.process_version_id,
+      round: 1,
+      cause: :run_stopped,
+      resolution: :accept,
+      resolved_by_id: scope.user.id,
+      resolved_at: DateTime.add(DateTime.utc_now(), -3600, :second),
+      inserted_at: DateTime.add(DateTime.utc_now(), -3700, :second)
+    })
+  end
+
+  describe "a row in the state Needs a person" do
+    test "after an accepted escalation: no film, the check, the answer link to the question",
+         %{conn: conn, scope: scope} do
+      work_item = at_verify_gate!(scope, &asking_run/2, :waiting_answers)
+      accepted_before!(scope, work_item)
+      view = tab(conn, scope, work_item)
+      parts = "#work-item-tab-output-verification-parts"
+      questions = ~p"/#{scope.organisation}/#{scope.workspace}/work/#{work_item.number}/questions"
+
+      # No film and no scenario on the tab.
+      refute has_element?(view, "#work-item-tab-scenarios")
+      refute has_element?(view, "video")
+
+      # The state, then the link, whose whole sentence is the link. The state cell has no
+      # other text.
+      assert texts(view, "#{parts}-matrix-1 td:nth-child(2)") ==
+               ["Needs a person Answer question 2."]
+
+      assert has_element?(
+               view,
+               ~s|#{parts}-matrix-1-answer[href="#{questions}#work-item-questions-question-2"]|,
+               "Answer question 2."
+             )
+
+      assert has_element?(view, "#{parts}-matrix-1 .badge.bg-primary-soft", "Needs a person")
+
+      # The check and the member are the run's words, in the Evidence cell, which is drawn
+      # once for each width.
+      for selector <- ["td.q-from-sm", "td:first-child .q-to-sm"] do
+        assert has_element?(view, "#{parts}-matrix-1 #{selector}", @demo_shown)
+      end
+
+      # The accept came before the verification: no line above the matrix.
+      refute has_element?(view, "#{parts}-accepted")
+    end
+
+    test "a row with no question about its criterion shows the state alone",
+         %{conn: conn, scope: scope} do
+      work_item = at_verify_gate!(scope, &asking_run/2, :waiting_answers)
+      accepted_before!(scope, work_item)
+      view = tab(conn, scope, work_item)
+      parts = "#work-item-tab-output-verification-parts"
+
+      # AC-3 needs a person and no question is about it; AC-1 is Met.
+      assert texts(view, "#{parts}-matrix-2 td:nth-child(2)") == ["Needs a person"]
+      assert texts(view, "#{parts}-matrix-0 td:nth-child(2)") == ["Met"]
+      assert has_element?(view, "#{parts}-matrix-2 td.q-from-sm", "accepted by #{@accepted_by}")
+      refute has_element?(view, "#{parts}-matrix-0-answer, #{parts}-matrix-2-answer")
+    end
+
+    test "a row in another state has no link, though a question names its criterion",
+         %{conn: conn, scope: scope} do
+      work_item = at_verify_gate!(scope, &asking_run/2, :waiting_answers)
+      view = tab(conn, scope, work_item)
+      parts = "#work-item-tab-output-verification-parts"
+
+      # The question 3 names AC-4, which is Not met.
+      assert texts(view, "#{parts}-matrix-3 td:nth-child(2)") == ["Not met"]
+
+      assert ids(view, "#{parts}-matrix a[id$=-answer]") == [
+               "#{String.trim_leading(parts, "#")}-matrix-1-answer"
+             ]
+    end
+  end
+
+  describe "criterion_id/1" do
+    test "is the id at the start of the cell, in lower case" do
+      assert VerifyTab.criterion_id(@ac2) == "ac-2"
+
+      assert VerifyTab.criterion_id("AC-3 Demo: at checkout, each option shows its date.") ==
+               "ac-3"
+
+      assert VerifyTab.criterion_id("  ac-12, \"words\"") == "ac-12"
+    end
+
+    test "reads the whole number, so AC-10 is not AC-1" do
+      assert VerifyTab.criterion_id("AC-10, \"words\"") == "ac-10"
+      assert VerifyTab.criterion_id("AC-1, \"words\"") == "ac-1"
+    end
+
+    test "is nil for a cell with no id at the start" do
+      assert VerifyTab.criterion_id("The total includes the voucher (AC-1)") == nil
+      assert VerifyTab.criterion_id("AC-, \"words\"") == nil
+      assert VerifyTab.criterion_id("") == nil
+    end
+  end
+
+  describe "question_links/4" do
+    defp q(number, criterion, state \\ :open, stage_id \\ @verify),
+      do: %{number: number, criterion: criterion, state: state, stage_id: stage_id}
+
+    test "links each criterion to its open question of the stage that the tab draws" do
+      links =
+        VerifyTab.question_links(
+          [q(1, nil), q(2, "ac-2"), q(3, "ac-4")],
+          @verify,
+          MapSet.new([1, 2, 3]),
+          "/q"
+        )
+
+      assert links == %{
+               "ac-2" => %{number: 2, href: "/q#work-item-questions-question-2"},
+               "ac-4" => %{number: 3, href: "/q#work-item-questions-question-3"}
+             }
+    end
+
+    test "skips a question that is answered, of another stage or not on the tab" do
+      questions = [
+        q(1, "ac-1", :answered),
+        q(2, "ac-2", :open, @shape),
+        q(3, "ac-3"),
+        q(4, "ac-4", :decided),
+        q(nil, "ac-5")
+      ]
+
+      assert VerifyTab.question_links(questions, @verify, MapSet.new([1, 2, 4]), "/q") == %{}
+
+      assert %{"ac-3" => %{number: 3}} =
+               VerifyTab.question_links(questions, @verify, MapSet.new([3]), "/q")
+    end
+
+    test "with several open questions about one criterion, links the one with the lowest number" do
+      links =
+        VerifyTab.question_links([q(5, "ac-2"), q(3, "ac-2")], @verify, MapSet.new([3, 5]), "/q")
+
+      assert links["ac-2"].number == 3
     end
   end
 

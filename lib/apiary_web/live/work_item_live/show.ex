@@ -478,6 +478,14 @@ defmodule ApiaryWeb.WorkItemLive.Show do
                 verification={elem(output.read, 1)}
                 accepted={output[:accepted]}
                 anchors={output[:anchors] || %{}}
+                answers={
+                  VerifyTab.question_links(
+                    @view.questions,
+                    @view.stage.id,
+                    tab_numbers(@questions, @flow),
+                    tab_path(@current_scope, @number, :questions)
+                  )
+                }
               >
                 <ArtifactComponents.list
                   id={"work-item-tab-output-#{output.type}-row"}
