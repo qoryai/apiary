@@ -360,12 +360,15 @@ pool that sends no offers takes only a run of the instance's default type, a run
 the type that was the default then (`dispatch_runs.machine_type_was_default`), or a run
 queued before machine types, and the answer has neither, so the starter uses its default
 machine type. A run queued before machine types has no spec and is of the default type. An
-explore run's `run_settings` has `time_limit_minutes`, an integer from 15 to 1440, after
-its other members, for a run with a workflow (`Apiary.Stacks.workflow/2`, or, with the
+explore run's documents have `time_limit_minutes`, an integer from 15 to 1440, after
+`run_settings`, for a run with a workflow (`Apiary.Stacks.workflow/2`, or, with the
 workflow model, the workflow of its stage entry): the limit set for that workflow at the
 run's target, else the one set at its workspace (`Apiary.TimeLimits`), else 180 minutes.
 With no workflow for the run, the member is absent, and the run takes the default of the
-workflow's stack, which the machine applies. The claim registers the run, and the run
+workflow's stack, which the machine applies. After it come `shared_run`, `true` for a run
+of a stage with `shared_run: true`, and `full_suite`, `true` for a run with `write` access
+of an entry in a loop or with `first_attempt: true`, never for a run of Explore; each is
+absent where it would be `false`. The claim registers the run, and the run
 endpoint refuses, under any key, a registration whose `run_id` is that of such a run,
 waiting, claimed, handed over or ended, with the signed `409` `run_id_used`, decided
 first: before the stored answer to a repeat and before the instance limit, the Forager

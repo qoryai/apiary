@@ -30,6 +30,10 @@ defmodule Apiary.Stages.StopCause do
 
   @prebuild "prebuild"
 
+  # Why a run stopped that sent no result, and a session of a shared run that failed or
+  # was cancelled with no verdict (`no_result/0`).
+  @no_result "The run ended without a result."
+
   # The walk failures whose fix is on the set-up step Harness.
   @harness_step_failures ~w(no_harness scp_form credential_in_address too_many ref_missing)
 
@@ -116,7 +120,7 @@ defmodule Apiary.Stages.StopCause do
   end
 
   defp stopped_split(%DispatchRun{end_cause: :run_ended}, _work_item, _context),
-    do: {:one, "The run ended without a result."}
+    do: {:one, @no_result}
 
   defp stopped_split(%DispatchRun{end_cause: :lost}, _work_item, _context),
     do:
@@ -127,6 +131,13 @@ defmodule Apiary.Stages.StopCause do
     {cause, fix} = lines(run, work_item |> names() |> Map.put(:run, run), context)
     {:lines, cause, fix}
   end
+
+  # no_result/0 is why a run stopped that ended without a result: the cause of a session
+  # of a shared run that failed or was cancelled (`Apiary.Stages.next_session/2`), as for
+  # a run that ended so.
+  @doc false
+  @spec no_result() :: String.t()
+  def no_result, do: @no_result
 
   # failed_after_proposal/1 is why a run of Explore stopped whose registered run failed
   # after it pushed version `version` of its proposal: one line, in the default locale's
@@ -240,7 +251,7 @@ defmodule Apiary.Stages.StopCause do
        "Attempt #{run.attempt} reached its time limit, so #{stage_name(run, work_item)} has no result."}
 
   defp timed_out_or_no_result(_registered, _run, _work_item),
-    do: {:one, "The run ended without a result."}
+    do: {:one, @no_result}
 
   # The name of the stage the run was in, from the process version the run started under,
   # else the work item's; "the stage" for a run placed in no stage or no version. Only the
@@ -376,15 +387,36 @@ defmodule Apiary.Stages.StopCause do
 
   defp lines(%DispatchRun{end_cause: :variables_invalid} = run, n, _ctx), do: variables(run, n)
 
-  defp lines(%DispatchRun{end_cause: :ticket_gone}, _n, _ctx),
-    do:
-      {"The run did not start, because the work item's ticket is no longer in Qory Apiary.",
-       "Close the work item, or take the ticket in again."}
+  # A run of a stage with `shared_run: true` also ends `ticket_gone` or `inputs_invalid`
+  # after a session, when the input of its next session cannot be formed
+  # (`Apiary.Stages.next_session/2`); `Apiary.Stages.ended_after_session/1` is then the
+  # session that ended.
+  defp lines(%DispatchRun{end_cause: :ticket_gone} = run, _n, _ctx) do
+    cause =
+      case Apiary.Stages.ended_after_session(run) do
+        nil ->
+          "The run did not start, because the work item's ticket is no longer in Qory Apiary."
 
-  defp lines(%DispatchRun{end_cause: :inputs_invalid}, _n, _ctx),
-    do:
-      {"The run did not start, because a value in the ticket or the work item breaks a rule for the agent's input, such as its size limit.",
-       "Whoever can edit the ticket where it comes from shortens or corrects it, then takes it in again."}
+        session ->
+          "The work item's ticket is no longer in Qory Apiary, so the run ended after session #{session}."
+      end
+
+    {cause, "Close the work item, or take the ticket in again."}
+  end
+
+  defp lines(%DispatchRun{end_cause: :inputs_invalid} = run, _n, _ctx) do
+    cause =
+      case Apiary.Stages.ended_after_session(run) do
+        nil ->
+          "The run did not start, because a value in the ticket or the work item breaks a rule for the agent's input, such as its size limit."
+
+        session ->
+          "A value in the ticket or the work item breaks a rule for the input of the next session, such as its size limit, so the run ended after session #{session}."
+      end
+
+    {cause,
+     "Whoever can edit the ticket where it comes from shortens or corrects it, then takes it in again."}
+  end
 
   defp lines(%DispatchRun{end_cause: :provider_gone}, n, _ctx),
     do:
@@ -429,6 +461,24 @@ defmodule Apiary.Stages.StopCause do
     do:
       {"The run did not start, because it writes and has no work item to take its branch from.",
        "Contact support."}
+
+  defp lines(%DispatchRun{end_cause: :shared_access_differs} = run, _n, _ctx) do
+    {stage, detail} = shared_access(run)
+
+    case detail do
+      {:access, workflow, level, other} ->
+        {"The run did not start, because the workflows of #{stage} would run with different access: #{workflow} runs with #{level} access, because its harness sets #{level}.",
+         shared_access_fix(workflow, other)}
+
+      :access ->
+        {"The run did not start, because the workflows of #{stage} would run with different access.",
+         "Move one of the workflows to a separate stage in Workspace settings › Workflows, then run the round again."}
+
+      nil ->
+        {"The run did not start, because the workflows of #{stage} would run with different access.",
+         "Run the round again."}
+    end
+  end
 
   defp lines(%DispatchRun{end_cause: cause}, n, _ctx),
     do: unknown("The run ended before it started.", "end cause", cause, n)
@@ -723,6 +773,33 @@ defmodule Apiary.Stages.StopCause do
        support(n)}
 
   ## Names
+
+  # The name of the stage of `run`, a run whose stage's workflows would run with different
+  # access levels, and the difference as the harness declares the levels now
+  # (`Apiary.Stages.shared_access/1`); nil where the levels no longer differ.
+  defp shared_access(%DispatchRun{} = run) do
+    case Apiary.Stages.shared_access(run) do
+      {:error, %{stage: stage, detail: detail}} ->
+        {stage, detail}
+
+      :ok ->
+        stage =
+          run.process_version_id &&
+            Apiary.Processes.stage(
+              Apiary.Processes.get_version!(run.process_version_id),
+              run.stage_id
+            )
+
+        {(stage && stage["name"]) || "the stage", nil}
+    end
+  end
+
+  # The fix for a run whose stage's workflows would run with different access, because
+  # the harness sets `workflow` a lower level than `other`, the level the other workflows
+  # of the stage run with.
+  defp shared_access_fix(workflow, other),
+    do:
+      "Move #{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it #{other} access, then run the round again."
 
   defp names(%WorkItem{} = work_item) do
     workspace = Repo.get!(Workspace, work_item.workspace_id)

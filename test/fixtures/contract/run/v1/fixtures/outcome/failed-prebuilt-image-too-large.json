@@ -1,0 +1,5 @@
+{
+  "state": "failed",
+  "reason": "prebuilt_image_too_large",
+  "exit_code": 1
+}

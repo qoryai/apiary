@@ -94,7 +94,10 @@ defmodule Apiary.Dispatches.DispatchRun do
   # longer reaches it, with the outcome `error`, which no code gives yet;
   # `write_without_work_item`, a claimed run with write access and no work item, so with
   # no branch to limit its push credential to (`Apiary.Runs.RunCredentials`), with the
-  # outcome `error`.
+  # outcome `error`; `shared_access_differs`, a claimed run of a stage whose workflows
+  # share one run, whose workflows would run with different access levels, as an update
+  # from the harness changed a level after the process was saved
+  # (`Apiary.Stages.shared_access/1`), with the outcome `error`.
   @end_causes [
     :released,
     :closed,
@@ -116,7 +119,8 @@ defmodule Apiary.Dispatches.DispatchRun do
     :build_failed,
     :harness_unresolved,
     :target_access_gone,
-    :write_without_work_item
+    :write_without_work_item,
+    :shared_access_differs
   ]
 
   # What a run of Explore gave once it ended (`Apiary.Explore.Outcome`); `:error` and

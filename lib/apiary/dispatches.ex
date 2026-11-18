@@ -918,9 +918,27 @@ defmodule Apiary.Dispatches do
       (work_item.stage_state == :running and stage_id in [nil, work_item.stage_id])
   end
 
-  # The place in the work item's process of a run requeued for its image: the same as the
-  # run's, so the stage runner reads the requeued run as the same round.
+  # The place in the work item's process of a run requeued for its image or its pause: the
+  # same as the run's, so the stage runner reads the requeued run as the same round. A run
+  # of a stage with `shared_run: true` keeps its first session's place in its columns, so
+  # its place is that of the session no report ended (`Apiary.Stages.open_session/1`): a
+  # run that paused in its second session continues that session's entry.
   defp stage_place(%DispatchRun{} = run) do
+    case Apiary.Stages.open_session(run) do
+      nil ->
+        run_place(run)
+
+      session ->
+        Map.merge(run_place(run), %{
+          round: session.round,
+          stage_entry: session.stage_entry,
+          loop_entry: session.loop_entry,
+          workflow: session.workflow
+        })
+    end
+  end
+
+  defp run_place(%DispatchRun{} = run) do
     Map.take(run, [
       :process_version_id,
       :stage_id,

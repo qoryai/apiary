@@ -6309,6 +6309,11 @@ msgstr ""
 msgid "Ask the owner of %{source} to assign it to this organisation, then run Explore again. That harness source belongs to another owner, who has not assigned it here."
 msgstr ""
 
+#: lib/apiary_web/components/harness_update_components.ex
+#, elixir-autogen, elixir-format
+msgid "Ask whoever keeps the harness to give %{workflow} %{other} access, or to move it to a separate stage. %{workflow} runs with %{level} access, because its harness sets %{level}."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Asked as question %{number}"
@@ -11148,6 +11153,16 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
+msgid "Give every workflow in %{stage} the same access. The workflows of %{stage} run one after the other on one machine."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Give every workflow in %{stage} the same machine type. The workflows of %{stage} run one after the other on one machine."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
 msgid "Give the loop 1 to 10 rounds."
 msgstr ""
 
@@ -13717,6 +13732,16 @@ msgstr ""
 msgid "Move %{name} from %{from} to %{to}. Its settings and argument are kept."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Move %{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it %{other} access, then run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Move %{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it %{other} access. %{workflow} runs with %{level} access, because its harness sets %{level}."
+msgstr ""
+
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Move `changed: true` to a workflow entry: only an entry has runs to compare with."
@@ -13751,6 +13776,11 @@ msgstr ""
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
 msgid "Move fallback %{number} up"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Move one of the workflows to a separate stage in Workspace settings › Workflows, then run the round again."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
@@ -18716,6 +18746,11 @@ msgstr ""
 msgid "Run the agent"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."
+msgstr ""
+
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Run the test"
@@ -22313,6 +22348,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run did not start."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run ended after session %{number}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

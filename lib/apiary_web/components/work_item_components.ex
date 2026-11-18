@@ -114,6 +114,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     :inputs_invalid,
     :target_access_gone,
     :write_without_work_item,
+    :shared_access_differs,
     :build_failed
   ]
   # The walk's failure codes that `ApiaryWeb.HarnessComponents.public_read_words/2` words.
@@ -2188,8 +2189,8 @@ defmodule ApiaryWeb.WorkItemComponents do
       take in queued no run (`:closed`): who closed it and when (`ended_tab_words/2`);
     * a run without a result (no result, lost, at its time limit or cancelled): what
       happened, and the run's page; for a run that ended at its claim, before it started
-      (`:end_cause` `:variables_invalid`, `:ticket_gone`, `:inputs_invalid`, `:target_access_gone` or
-      `:write_without_work_item`),
+      (`:end_cause` `:variables_invalid`, `:ticket_gone`, `:inputs_invalid`, `:target_access_gone`,
+      `:write_without_work_item` or `:shared_access_differs`),
       while it waited for its environment image's build, which failed (`:build_failed`),
       or because its harness walk failed (`:harness_unresolved`, with
       `:harness_failure`), what a member fixes and why; for a run whose harness had no
@@ -6430,6 +6431,37 @@ defmodule ApiaryWeb.WorkItemComponents do
          "Remove variables in the workspace's settings, then start the run again. The run's variables take more than 64 KiB."
        )}
 
+  # A run of a stage with `shared_run: true` that ended after a session, as the input of
+  # its next session could not be formed.
+  defp no_result_words(%{end_cause: cause, ended_after_session: session}, _earlier)
+       when cause in [:ticket_gone, :inputs_invalid] and is_integer(session),
+       do:
+         {"hero-exclamation-triangle-micro",
+          gettext("The run ended after session %{number}.", number: session),
+          unstarted_words(cause)}
+
+  # A run whose stage's workflows would run with different access, as the harness sets
+  # `workflow` a lower level than `other`, the level the other workflows run with.
+  defp no_result_words(
+         %{end_cause: :shared_access_differs, shared_access: {:access, workflow, _level, other}},
+         _earlier
+       ),
+       do:
+         {"hero-exclamation-triangle-micro", gettext("The run did not start."),
+          gettext(
+            "Move %{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it %{other} access, then run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access.",
+            workflow: workflow,
+            other: other
+          )}
+
+  # A run whose stage's entries set different access, with no harness level between them.
+  defp no_result_words(%{end_cause: :shared_access_differs, shared_access: :access}, _earlier),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run did not start."),
+       gettext(
+         "Move one of the workflows to a separate stage in Workspace settings › Workflows, then run the round again."
+       )}
+
   defp no_result_words(%{end_cause: cause}, _earlier) when cause in @unstarted,
     do:
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),
@@ -6837,6 +6869,12 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   defp unstarted_words(:write_without_work_item),
     do: gettext("Contact support: a run that writes needs a work item.")
+
+  defp unstarted_words(:shared_access_differs),
+    do:
+      gettext(
+        "Run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."
+      )
 
   defp unstarted_words(:build_failed),
     do:
