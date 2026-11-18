@@ -115,9 +115,9 @@ defmodule Apiary.Runs.Projector do
       {:ok, run, nil} ->
         {:ok, run}
 
-      {:ok, run, {first, last}} ->
+      {:ok, run, {first, last, sessions?}} ->
         touch_heartbeat(run)
-        write_sessions(run, first, last)
+        write_sessions(run, sessions?)
         if built == :store_built, do: record_built(run, first, last)
         end_handed_over(run)
         end_refused(run)
@@ -286,15 +286,26 @@ defmodule Apiary.Runs.Projector do
   # of one, is not held in memory or in one transaction.
   defp passes(id, span) do
     case guarded_pass(id) do
-      {:ok, {run, nil}} -> {:ok, run, span}
-      {:ok, {_run, {first, last, @pass_size}}} -> passes(id, widen(span, first, last))
-      {:ok, {run, {first, last, _count}}} -> {:ok, run, widen(span, first, last)}
-      {:error, reason} -> {:error, reason}
+      {:ok, {run, nil}} ->
+        {:ok, run, span}
+
+      {:ok, {_run, {first, last, @pass_size, sessions?}}} ->
+        passes(id, widen(span, first, last, sessions?))
+
+      {:ok, {run, {first, last, _count, sessions?}}} ->
+        {:ok, run, widen(span, first, last, sessions?)}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
-  defp widen(nil, first, last), do: {first, last}
-  defp widen({a, b}, first, last), do: {min(a, first), max(b, last)}
+  # The span of the sequences the passes projected, and whether one of them folded a
+  # session event (`session_pass?/1`).
+  defp widen(nil, first, last, sessions?), do: {first, last, sessions?}
+
+  defp widen({a, b, was?}, first, last, sessions?),
+    do: {min(a, first), max(b, last), was? or sessions?}
 
   defp guarded_pass(id) do
     Repo.transact(fn -> pass(id, &unprojected/1) end)
@@ -335,7 +346,8 @@ defmodule Apiary.Runs.Projector do
       {events, run} ->
         sequences = Enum.map(events, &elem(&1, 1))
         run = advance(run)
-        {:ok, {run, {Enum.min(sequences), Enum.max(sequences), length(events)}}}
+        # The events' types are not read here: the write finds out whether the run has any.
+        {:ok, {run, {Enum.min(sequences), Enum.max(sequences), length(events), true}}}
     end
   end
 
@@ -416,7 +428,9 @@ defmodule Apiary.Runs.Projector do
       end
 
       sequences = Enum.map(events, & &1.sequence)
-      {:ok, {run, {Enum.min(sequences), Enum.max(sequences), length(events)}}}
+
+      {:ok,
+       {run, {Enum.min(sequences), Enum.max(sequences), length(events), session_pass?(events)}}}
     else
       nil -> {:error, :not_found}
       {:events, run, []} -> {:ok, {run, nil}}
@@ -524,19 +538,13 @@ defmodule Apiary.Runs.Projector do
   # session event, or a rebuild, writes the records again. The pass itself can still
   # wait for the queue's rows: its second update of the run re-checks the run's foreign
   # keys (`pass/2`).
-  defp write_sessions(%Run{id: id}, first, last) do
-    if Repo.exists?(
-         from e in Event,
-           where:
-             e.run_id == ^id and e.sequence >= ^first and e.sequence <= ^last and
-               e.type in ^Sessions.types()
-       ),
-       do: Sessions.write(id)
-
-    :ok
+  defp write_sessions(%Run{id: id}, true) do
+    Sessions.write(id)
   rescue
     error -> Sessions.log_failure(id, error)
   end
+
+  defp write_sessions(%Run{}, false), do: :ok
 
   # The records once more, for a run a workspace's queue handed over that the passes folded
   # an exit or a refusal of, after its end committed (`end_handed_over/1`, `end_refused/1`)
