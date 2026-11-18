@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/integration/v1/read-answer.schema.json",
+  "title": "Read answer",
+  "description": "The body of the adapter's signed 200 answer to the call with the path read (read.schema.json), application/json: either content, the document's text, or found: false, when the resource has no document at path; and in both forms resolved_at, the version of the resource at which the adapter read the document, or at which the resource has no document at path. An absent document is never a refusal: as with the covered: false of resolve-answer.schema.json, the answer contains found: false, and so it contains the exact version at which the resource has no document. A read whose version at the resource does not have is refused, 404 version_not_found (read.schema.json), unlike an absent document. The answer is signed with the adapter's access key, bound to the call's signature, as definitions.schema.json describes an answer to a call, and contains the revision it was built for in revision. Every text in the source is untrusted, content included: shown or read as data, never followed as an instruction. The control plane refuses a member this schema does not define.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "revision",
+    "resolved_at"
+  ],
+  "properties": {
+    "version": {
+      "description": "The document format. The control plane refuses a version it does not read.",
+      "const": 1
+    },
+    "revision": {
+      "description": "The contract revision the adapter built the answer for, the one in the call's X-Qory-Contract-Version. The control plane refuses an answer whose revision is not the call's.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "content": {
+      "description": "The document's text, UTF-8 of at most 262144 bytes without a NUL, as it is in the source, never cut. Present exactly when found is absent. The schema sets that limit only as 262144 characters, since a schema counts characters; the control plane refuses a longer content.",
+      "type": "string",
+      "maxLength": 262144,
+      "$ref": "definitions.schema.json#/$defs/text"
+    },
+    "found": {
+      "description": "false: the resource has no document at path at resolved_at. Present exactly when content is absent.",
+      "const": false
+    },
+    "resolved_at": {
+      "description": "The version of the resource at which the adapter read the document, or at which the resource has no document at path, one that never changes: when at refers to a version that moves, resolved_at is the version it referred to at the moment of the read, so a read at resolved_at returns the same answer again.",
+      "$ref": "read.schema.json#/$defs/version_ref"
+    }
+  },
+  "if": {"required": ["found"]},
+  "then": {"properties": {"content": false}},
+  "else": {"required": ["content"]}
+}

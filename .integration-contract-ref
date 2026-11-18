@@ -17,8 +17,9 @@
 # the bodies of the calls for a run's credential, to resolve addresses and to read a
 # document, with their answers, accepted and refused),
 # and whose connect-return.schema.json and setup-pass.schema.json are under
-# test/fixtures/integration-contract/schema/: a commit of the integrations, pinned by its
-# id.
+# test/fixtures/integration-contract/schema/, and the other schemas of the folder but
+# description.schema.json, with its README.md, are under
+# test/fixtures/contract/integration/v1/: a commit of the integrations, pinned by its id.
 #
 # contracts/integration/v1/description.schema.json and the definitions.schema.json it
 # refers to are vendored under priv/contract/integration/ from this commit too, and the

@@ -324,16 +324,58 @@ defmodule Apiary.Integrations.DescriptionTest do
       "a6071435877a64d75384b8f5aae94a484ae3f22b0c250bc78e351fc67feb5147",
     "priv/contract/integration/descriptions/openrouter.json" =>
       "7f6c61e897edb6ff32cd519e33a49e821398fd27f4a6069fac5fd8499b86758f",
+    "test/fixtures/contract/integration/v1/README.md" =>
+      "cb53e4d0520b51990190485c703b85a986bfe6ee05320efa37337d42fa82bae6",
+    "test/fixtures/contract/integration/v1/adapter-secrets-answer.schema.json" =>
+      "98e3f0b1530be9980bc6ada1f8554fae26755055d598ffbe742e6e1a11112198",
+    "test/fixtures/contract/integration/v1/adapter-secrets-plaintext.schema.json" =>
+      "aea8c2ddc5bf9023f5e9ba03ddb2dcbbeee76665d070df41a834ef29bad99172",
+    "test/fixtures/contract/integration/v1/adapter-secrets.schema.json" =>
+      "a93fcb68463b82918e9f9a68077a31512712480397ed93e9eb582595ba02a9c5",
+    "test/fixtures/contract/integration/v1/adapter.schema.json" =>
+      "8e3978b8cfc732a08572e882877815b8c3e76bd6cb5847d9f7d984b9b0f7ed1e",
     "test/fixtures/contract/integration/v1/changes-failed.schema.json" =>
       "ed774f53ea456cb07a740ca7c01d1df7fd8e10897bc1a778884a147761d392f7",
     "test/fixtures/contract/integration/v1/changes-submitted.schema.json" =>
       "2300b80517fe113deaefd128abd77620f0b6af0910afd6076df2c42441b7486c",
     "test/fixtures/contract/integration/v1/changes.schema.json" =>
       "e14112a6e9eea6c803ae37d1c3ec1ca4b0bb12823142dfc70a1f8bb3eeaa9556",
+    "test/fixtures/contract/integration/v1/connect-pass.schema.json" =>
+      "052eca8f4ef9eaf2d6b1eecce7fb9a470df85677a87ca549309e2a0fa1935745",
+    "test/fixtures/contract/integration/v1/connections-disconnect.schema.json" =>
+      "41d6d5cddbcd834b76eb18a558b708785a664af00de35ad0bb0063cc376e4002",
     "test/fixtures/contract/integration/v1/definitions.schema.json" =>
       "c20092d51508581fc286a635621d7243255726e7307f35b909bb2b45414d5a05",
+    "test/fixtures/contract/integration/v1/grant-end.schema.json" =>
+      "7b12fdc44016dc6f0bf6eaccf2bed84db23c48500517c4d9836f4c15415b40d9",
+    "test/fixtures/contract/integration/v1/grant.schema.json" =>
+      "82c1b877b828da1a619fc989925c7ae63a349e1c0a792d02bf4a087b7fe08cc5",
+    "test/fixtures/contract/integration/v1/grants.schema.json" =>
+      "deba62df3ac395836301eb3ffd4fab3123f3b7166859af07f385e370895488bd",
+    "test/fixtures/contract/integration/v1/read-answer.schema.json" =>
+      "5aaf37715fe3b7d40f0f8dc73f584fb7772f971bee87292737c30478f204d1e8",
+    "test/fixtures/contract/integration/v1/read-public.schema.json" =>
+      "d9d47ec50e67999d7aabb44e8391d4ed4078eefb79c76a8b7611a58628fc4788",
+    "test/fixtures/contract/integration/v1/read.schema.json" =>
+      "6116f1104b150f1c5c4de10c6935b3ef480b3c24cfa51eb9c44298b8f31a7855",
     "test/fixtures/contract/integration/v1/refusal.schema.json" =>
-      "11f080fb999c58eea81fce16d3a1c261a3d7eea02aab60458eecd26360622a43"
+      "11f080fb999c58eea81fce16d3a1c261a3d7eea02aab60458eecd26360622a43",
+    "test/fixtures/contract/integration/v1/resolve-answer.schema.json" =>
+      "88217e2274c294eefc17827e8081d88e833b826bd4a11a5af47b79f921f34953",
+    "test/fixtures/contract/integration/v1/resolve.schema.json" =>
+      "f1761a13668edc524d04821f102a57993abc9dc27a215d2a78ee8b5f24e0a644",
+    "test/fixtures/contract/integration/v1/run-credential-answer.schema.json" =>
+      "e424f42c299bb7939b96c7bf1850fcdae9adf82bbc7d2325df4df24e587dbbb8",
+    "test/fixtures/contract/integration/v1/run-credential.schema.json" =>
+      "5b13b6e3871af0757b1d65f566268f9b4f67e274a597d07f0b955dbb9128ac9b",
+    "test/fixtures/contract/integration/v1/source-collections.schema.json" =>
+      "bd39b6e5d4843f34f9cd4759fd3089428c2f4233bb91c1ce2434c844cb729e38",
+    "test/fixtures/contract/integration/v1/source-item-comments.schema.json" =>
+      "4ae6a8141cfa74b676ce42729dfbe2d9d8f8c640ab24ed97a66ae18bd9eea333",
+    "test/fixtures/contract/integration/v1/source-items.schema.json" =>
+      "e06a66ca4c9557ad4517d4e8cd15d326a34632729b9e9decc95b56b3329d29b7",
+    "test/fixtures/contract/integration/v1/sources-disconnect.schema.json" =>
+      "6aefdf20f1dd37fb37dcc30ab87860e46927256a551528700d035d4a2e8cac51"
   }
 
   @root Path.expand("../../..", __DIR__)
@@ -358,7 +400,8 @@ defmodule Apiary.Integrations.DescriptionTest do
 
       vendored =
         for dir <- ["priv/contract/integration", "test/fixtures/contract/integration/v1"],
-            path <- Path.wildcard(Path.join([@root, dir, "**", "*.json"])),
+            path <- Path.wildcard(Path.join([@root, dir, "**", "*"])),
+            File.regular?(path),
             do: Path.relative_to(path, @root)
 
       assert Enum.sort(vendored) == Enum.sort(Map.keys(@vendored_sha256))
