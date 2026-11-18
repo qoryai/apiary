@@ -37,7 +37,8 @@ defmodule Apiary.SealedRunsFixtures do
   With `place: :workspace`, the provider is added for the scope's workspace alone, its key
   a secret of that workspace (`Apiary.Connections.create_provider/3`).
 
-  With `keys: keys`, the provider has `keys`, maps of `value_id` and `value`, in place of
+  With `kind: kind`, the provider is of that catalogue kind, such as `"openai-subscription"`
+  (whose `keys` are logins and whose `choice` needs `runtime: "codex"`); with `keys: keys`, the provider has `keys`, maps of `value_id` and `value`, in place of
   the one key; with `choice: attrs`, the workspace's model choice has `attrs` beside the
   provider; and with `before_claim: fun`, `fun` is called with the provider before the
   claim, to write the states of its keys, say.
@@ -51,7 +52,7 @@ defmodule Apiary.SealedRunsFixtures do
       Connections.create_provider(
         scope,
         %{
-          provider: "anthropic",
+          provider: Keyword.get(opts, :kind, "anthropic"),
           keys: Keyword.get(opts, :keys, [%{value_id: "main", value: @model_key}])
         },
         Keyword.get(opts, :place, :organisation)
