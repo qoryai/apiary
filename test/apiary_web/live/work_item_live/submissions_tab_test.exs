@@ -89,7 +89,7 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
   end
 
   # The default process with Shape running a workflow and outputting the submission type.
-  defp process!(scope, submit) do
+  defp process!(scope, submit, more_outputs \\ []) do
     document = Processes.default_document("software")
 
     stages =
@@ -97,7 +97,9 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
         %{"id" => @shape} = stage ->
           Map.merge(stage, %{
             "sequence" => [%{"workflow" => "shape-a-ticket"}],
-            "outputs" => [%{"type" => "submission", "required" => false}],
+            "outputs" =>
+              [%{"type" => "submission", "required" => false}] ++
+                for(type <- more_outputs, do: %{"type" => type, "required" => false}),
             "gate" => %{"kind" => "person", "approvers" => "members"}
           })
 
@@ -551,6 +553,160 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
       assert has_element?(view, "#{row}-r0-c2 .badge", "Head")
       assert has_element?(view, "#{row}-r1-c1 .badge", "Head")
       assert has_element?(view, "#{row}-r1-base", "8a8a8a8")
+    end
+  end
+
+  describe "a person's version of the submission type (696 (c))" do
+    # A person's version of `type` at Shape's gate, as `Apiary.Stages.add_version/5` stores
+    # an upload: no run.
+    defp person_version!(scope, work_item, type, filename, content_type, binary) do
+      {:ok, version} =
+        Apiary.Stages.add_version(
+          scope,
+          Repo.get!(WorkItem, work_item.id),
+          type,
+          [%{filename: filename, content_type: content_type, binary: binary}],
+          name: "main"
+        )
+
+      version
+    end
+
+    defp at_gate!(work_item) do
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_state: :at_gate]
+        )
+
+      Repo.get!(WorkItem, work_item.id)
+    end
+
+    defp notes_type!(scope) do
+      Repo.delete_all(
+        from t in Apiary.Artifacts.Type,
+          where: t.workspace_id == ^scope.workspace.id and t.name == "notes"
+      )
+
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "notes",
+          "base_view" => "document",
+          "size_limit" => 1_048_576,
+          "max_files" => 1
+        })
+    end
+
+    defp gate_frames(work_item) do
+      work_item = Repo.get!(WorkItem, work_item.id) |> Repo.preload(:process_version)
+      Apiary.Stages.gate_frames(work_item, work_item.process_version, @shape)
+    end
+
+    test "is neither recorded nor framed; a person's version of another output is", ctx do
+      notes_type!(ctx.scope)
+      process!(ctx.scope, %{"type" => "submission", "send" => "end_of_run"}, ["notes"])
+      work_item = at_shape!(ctx.scope)
+      %{one: one, two: two} = two_runs!(work_item)
+      work_item = at_gate!(work_item)
+
+      submission =
+        person_version!(
+          ctx.scope,
+          work_item,
+          "submission",
+          "submission.json",
+          "application/json",
+          Jason.encode!(%{"ref" => "by-hand"})
+        )
+
+      notes =
+        person_version!(ctx.scope, work_item, "notes", "notes.md", "text/markdown", "## By hand")
+
+      assert submission.number > two.number
+
+      # The recorded set: the newest run's submission and the person's notes.
+      ids = for %{version: version} <- gate_frames(work_item), do: version.public_id
+      assert two.public_id in ids
+      assert notes.public_id in ids
+      refute submission.public_id in ids
+
+      {:ok, view, html} = live(ctx.conn, stage_path(ctx.scope, work_item))
+
+      # The Submissions list has the runs' rows alone.
+      rows =
+        html
+        |> LazyHTML.from_document()
+        |> LazyHTML.query("#work-item-tab-output-submission-list > ul > li")
+        |> Enum.flat_map(&LazyHTML.attribute(&1, "id"))
+
+      assert rows == [
+               "work-item-tab-output-submission-#{two.public_id}",
+               "work-item-tab-output-submission-#{one.public_id}"
+             ]
+
+      refute has_element?(view, "#work-item-tab-output-submission-#{submission.public_id}")
+
+      # The gate card's list of what an approval records has the run's version.
+      assert has_element?(
+               view,
+               ~s(#work-item-stage-gate-recorded-submission [href$="/#{two.public_id}"])
+             )
+
+      refute has_element?(
+               view,
+               ~s(#work-item-stage-gate-recorded-submission [href$="/#{submission.public_id}"])
+             )
+
+      # The notes frame has the person's version with its caption.
+      short = ApiaryWeb.People.short(ctx.user.email)
+
+      assert has_element?(
+               view,
+               "#work-item-tab-output-notes",
+               "Version #{notes.number} · #{short}"
+             )
+
+      # The approval records the same set.
+      {:ok, _approved} =
+        Apiary.Stages.approve(ctx.scope, Repo.get!(WorkItem, work_item.id), nil,
+          expect_stage: @shape
+        )
+
+      recorded =
+        Repo.one(
+          from d in Apiary.Stages.GateDecision,
+            where:
+              d.work_item_id == ^work_item.id and d.kind == :approve and d.stage_id == ^@shape,
+            select: d.versions
+        )
+
+      assert two.public_id in recorded
+      assert notes.public_id in recorded
+      refute submission.public_id in recorded
+
+      # Shape's tab after the gate frames the versions that approval recorded.
+      ids = for %{version: version} <- gate_frames(work_item), do: version.public_id
+      assert Enum.sort(ids) == Enum.sort(recorded)
+    end
+
+    test "with no submit type, a person's version of the type is recorded as any other", ctx do
+      process!(ctx.scope, nil)
+      work_item = at_shape!(ctx.scope)
+      %{dispatch_run: run} = shape_run!(work_item)
+      _run_version = submission!(run, work_item, repository())
+      work_item = at_gate!(work_item)
+
+      submission =
+        person_version!(
+          ctx.scope,
+          work_item,
+          "submission",
+          "submission.json",
+          "application/json",
+          Jason.encode!(%{"ref" => "by-hand"})
+        )
+
+      ids = for %{version: version} <- gate_frames(work_item), do: version.public_id
+      assert ids == [submission.public_id]
     end
   end
 end

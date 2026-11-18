@@ -1002,7 +1002,7 @@ defmodule Apiary.Stages do
   # one entry in the trail. It covers the versions `recorded_versions/4` gives, which the
   # work item page frames (`gate_frames/3`).
   defp approve_locked(scope, work_item, version, stage, note, audit?, track) do
-    artifacts = Artifacts.list(work_item)
+    artifacts = work_item |> Artifacts.list() |> recordable(work_item)
     approvals = approvals_by_version(work_item)
     covered = Enum.map(recorded_versions(stage, artifacts, approvals, true), & &1.public_id)
     details = %{"stage_id" => stage["id"], "versions" => covered}
@@ -3701,7 +3701,8 @@ defmodule Apiary.Stages do
   # an approval would record now (`recorded_versions/4`, the set `approve_locked/7` lists).
   # At any other stage with a person's approval in this take in, they are the versions the
   # newest such approval recorded, in its order; with none, the versions its gate shows.
-  # [] for a stage the work item's process version does not have.
+  # A person's version of the submission type is never one (`recordable/2`). [] for a stage
+  # the work item's process version does not have.
   @doc false
   @spec gate_frames(WorkItem.t(), Processes.Version.t(), String.t()) :: [
           %{type: String.t(), name: String.t(), version: Artifacts.Version.t()}
@@ -3713,7 +3714,7 @@ defmodule Apiary.Stages do
         []
 
       stage ->
-        artifacts = Artifacts.list(work_item)
+        artifacts = work_item |> Artifacts.list() |> recordable(work_item)
         by_id = Map.new(artifacts, &{&1.id, &1})
 
         for version <- framed_versions(work_item, stage, artifacts) do
@@ -3722,6 +3723,25 @@ defmodule Apiary.Stages do
             name: by_id[version.artifact_id].name,
             version: version
           }
+        end
+    end
+  end
+
+  # recordable/2 is `artifacts` with no version a person made of the submission type, the
+  # type in `submit.type` that the Submissions list reads (`Artifacts.submit_type/1`): only
+  # a run's submit step writes a submission (696 (c)), so an approval records no person's
+  # version of it and the work item page frames none (`recorded_versions/4`,
+  # `gate_frames/3`). A person's version of every other type stays.
+  defp recordable(artifacts, work_item) do
+    case Artifacts.submit_type(work_item) do
+      nil ->
+        artifacts
+
+      type ->
+        for artifact <- artifacts do
+          if artifact.type == type,
+            do: %{artifact | versions: Enum.reject(artifact.versions, &(&1.writer == :person))},
+            else: artifact
         end
     end
   end
