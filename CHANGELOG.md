@@ -12,20 +12,27 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
-<!-- feature: factory, secrets -->
+<!-- feature: factory -->
 - **OpenAI API key** and **OpenAI subscription** are model providers, and **Codex** is a
   runtime. Under **Organisation settings › Model providers › New model provider**, the
   provider choice lists both, and the API key's help reads “Get the key from the provider
   first: create an API key in the OpenAI Platform.” **OpenAI API key** lists 6 models and
   **OpenAI subscription** 10, each with its effort values, which Workspace settings › Model
   shows once **Codex** is the runtime. With two runtimes in the catalogue, the **Runtime**
-  field of that page and of the set-up's Model step is shown, with **Claude Code** first,
-  and **Add an integration** has a card for **Codex**, “OpenAI's coding agent.”, beside
-  **Claude Code**.
-  The link to a vendor's terms in a provider's help names that provider's vendor, such as
-  “Anthropic's terms”. On a run's page, a Codex session shows its session events, the
-  version it started with, and no note that it sends none; the note “Only Claude Code and
-  Codex send session events.” stays for a program that is no runtime of the catalogue.
+  field of that page is shown, with **Claude Code** first. Signing in with an OpenAI
+  subscription, refreshing that sign-in and limiting its paths are not built yet.
+- The link to a vendor's terms in a provider's help names that provider's vendor, such as
+  “Anthropic's terms”.
+<!-- /feature -->
+<!-- feature: secrets -->
+- **Add an integration** has a card for **Codex**, “OpenAI's coding agent.”, beside
+  **Claude Code**. A custom service's declaration may no longer use `OPENAI_API_KEY` as a
+  placeholder name, as Codex reads its key from that variable (`placeholder_conflict`).
+<!-- /feature -->
+<!-- feature: observability -->
+- On a run's page, a Codex session shows its session events and the version it started
+  with, and no note that it sends none. The note “Only Claude Code and Codex send session
+  events.” stays for a program that is no runtime of the catalogue.
 <!-- /feature -->
 <!-- feature: factory -->
 - A work item has a **Questions** tab, before **Thread**, once an agent has asked a
