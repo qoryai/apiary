@@ -42,7 +42,8 @@ defmodule Apiary.Runs.Projector do
   that folded one of the run's `dev.qory.session.started`, `dev.qory.session.exited`,
   `dev.qory.runtime.started` or `dev.qory.runtime.result` events has committed, in a
   separate transaction, from all the run's events of those types
-  (`Apiary.Runs.Sessions`). A rebuild does not delete the records: the key
+  (`Apiary.Runs.Sessions`), and once more after the end of a run of the queue that folded
+  an exit or a refusal has committed. A rebuild does not delete the records: the key
   windows that hang on them come from the gateway's reports, not from the events, and the
   records stay when retention deletes the events. A run whose events retention has deleted,
   or is due to delete (`Apiary.Retention.due_or_pruned?/1`), keeps its records and its cost:
@@ -120,6 +121,7 @@ defmodule Apiary.Runs.Projector do
         if built == :store_built, do: record_built(run, first, last)
         end_handed_over(run)
         end_refused(run)
+        write_sessions_after_end(run)
         settle_dispatched(run, first, last)
         Runs.broadcast_projected(run, first, last)
         {:ok, run}
@@ -533,9 +535,29 @@ defmodule Apiary.Runs.Projector do
 
     :ok
   rescue
-    error ->
-      Logger.error("session records not written run=#{id} error=#{inspect(error.__struct__)}")
-      :ok
+    error -> log_sessions_failure(id, error)
+  end
+
+  # The records once more, for a run a workspace's queue handed over that the passes folded
+  # an exit or a refusal of, after its end committed (`end_handed_over/1`, `end_refused/1`),
+  # outside that transaction, so the write takes its locks in the order the end took them.
+  # The write in `project/2` before the end is the first try; when it failed, and was
+  # logged, this is the second, and the last one the run's passes make. The write is the
+  # same for the same events, and a failure is logged as there: the records stay as they are.
+  defp write_sessions_after_end(%Run{dispatch_run_id: queue_id, id: id} = run)
+       when is_binary(queue_id) and
+              (is_struct(run.exited_at, DateTime) or is_struct(run.refused_at, DateTime)) do
+    Sessions.write(id)
+    :ok
+  rescue
+    error -> log_sessions_failure(run.id, error)
+  end
+
+  defp write_sessions_after_end(_run), do: :ok
+
+  defp log_sessions_failure(id, error) do
+    Logger.error("session records not written run=#{id} error=#{inspect(error.__struct__)}")
+    :ok
   end
 
   defp session_pass?(events), do: Enum.any?(events, &(&1.type in Sessions.types()))

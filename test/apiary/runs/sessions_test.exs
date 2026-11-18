@@ -8,6 +8,7 @@ defmodule Apiary.Runs.SessionsTest do
   import Apiary.RunEventsFixtures, except: [at: 1]
   import Apiary.RunListFixtures, only: [queue_run!: 3]
 
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Organisations.Workspace
   alias Apiary.Runs.{Event, Projector, Run, SessionKeyWindow, SessionRecord, Sessions}
   alias Apiary.Stages.Session
@@ -458,6 +459,50 @@ defmodule Apiary.Runs.SessionsTest do
                {2, @key_id, "five_hour", 10, 30, 20},
                {5, @key_id, "five_hour", 50, 20, -30}
              ]
+    end
+
+    test "a write that failed before the end of the run is made again after it", %{
+      scope: scope
+    } do
+      {run, queued, _rows} = shared_run!(scope)
+
+      # The records of a run of the queue that is handed over are refused, as a write that
+      # fails for a reason that is over once the end of the run has committed.
+      Repo.query!("""
+      CREATE FUNCTION refuse_before_the_end() RETURNS trigger AS $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM dispatch_runs WHERE id = NEW.dispatch_run_id
+                   AND state = 'handed_over') THEN
+          RAISE EXCEPTION 'the run of the queue is not over';
+        END IF;
+        RETURN NEW;
+      END
+      $$ LANGUAGE plpgsql
+      """)
+
+      Repo.query!("""
+      CREATE TRIGGER refuse_before_the_end BEFORE INSERT OR UPDATE ON session_records
+      FOR EACH ROW EXECUTE FUNCTION refuse_before_the_end()
+      """)
+
+      events =
+        for session <- 1..3, event <- session_events(session, session / 100), do: event
+
+      exit_event = {1_000, "run.exited", %{"state" => "succeeded", "exit_code" => 0}}
+      events_fixture(run, events ++ [exit_event])
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn -> assert {:ok, run} = Projector.project(run) end)
+
+      # The first write failed and was logged; the end committed; the second write took.
+      assert log =~ "session records not written"
+      refute Repo.get!(DispatchRun, queued.id).state == :handed_over
+
+      records = records(run)
+      assert Enum.map(records, & &1.session_number) == [1, 2, 3]
+
+      assert Enum.map(records, &Decimal.to_float(&1.cost_usd)) == [0.01, 0.02, 0.03]
+      assert Decimal.equal?(Repo.get!(Run, run.id).cost_usd, Decimal.new("0.06"))
     end
 
     test "a session of a run the queue started takes its place from the run of the queue", %{

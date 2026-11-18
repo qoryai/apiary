@@ -206,6 +206,45 @@ defmodule Apiary.Runs.SessionWindowsRacesTest do
     assert deadlocks() == before
   end
 
+  test "the write after the end of a run holds no lock of the end while it waits for a pass",
+       %{scope: scope, run: run} do
+    before = deadlocks()
+    queued = queued!(scope, run)
+
+    events_fixture(run, [
+      {1, "session.started", %{"session" => 1, "runtime" => "claude"}},
+      {2, "runtime.result", %{"session" => 1, "cost_usd" => 0.25}},
+      {3, "session.exited", %{"session" => 1, "state" => "succeeded"}}
+    ])
+
+    Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [exited_at: DateTime.utc_now()])
+    run = Repo.get!(Run, run.id)
+
+    # A pass of the projector holds the run's projection lock.
+    {held, held_pid} = hold(fn -> Projector.lock(run.id) && :ok end)
+
+    # The end of the run, then the write the projector makes after it, as `project/2` does.
+    ours =
+      start(fn ->
+        RunEnd.run_ended(run)
+        Sessions.write(run.id)
+      end)
+
+    await_blocked(ours.backend, held_pid)
+
+    # The write waits for the pass, and the end is over: its transaction has committed, so
+    # the work item, the run of the queue and the run are not locked by it.
+    assert Repo.get!(Apiary.Dispatches.DispatchRun, queued.id).state != :handed_over
+    assert records(run) == []
+
+    commit(held)
+
+    assert Task.await(ours.task) == :ok
+    assert [%SessionRecord{session_number: 1, work_item_id: work_item_id}] = records(run)
+    assert work_item_id == queued.work_item_id
+    assert deadlocks() == before
+  end
+
   # Postgres's own count of the deadlocks it found in this database.
   defp deadlocks do
     %{rows: [[count]]} =
