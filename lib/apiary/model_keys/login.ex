@@ -77,6 +77,7 @@ defmodule Apiary.ModelKeys.Login do
 
   import Ecto.Query, warn: false
 
+  alias Apiary.Access
   alias Apiary.Accounts.Scope
   alias Apiary.Audit
   alias Apiary.Connections.Connection
@@ -387,8 +388,9 @@ defmodule Apiary.ModelKeys.Login do
     * `:sign_in_needed`: the provider rejected the refresh for good, now or earlier, and no
       call is made until a new login is pasted;
     * `:unavailable`: the access token has expired and could not be refreshed, because a
-      call failed for a reason that may pass or another caller's refresh did not end in
-      time, or the key cannot be read;
+      call failed for a reason that may pass, another caller's refresh did not end in
+      time, `Apiary.Access` refuses the refresh (`model_key.refresh`), or the key cannot be
+      read;
     * `:not_found`: a key that is gone, or that is no login.
 
   `opts`: `trigger:` (required, `t:trigger/0`), `wait:`, how long in milliseconds a caller
@@ -489,8 +491,23 @@ defmodule Apiary.ModelKeys.Login do
       %__MODULE__{} = row ->
         case due_reason(row, db_now(), ctx.trigger) do
           nil -> serve(ctx)
-          _reason -> lease(ctx)
+          _reason -> refresh_allowed(ctx)
         end
+    end
+  end
+
+  # Asks `Apiary.Access` whether the instance may refresh a sign-in of the provider's
+  # organisation (`model_key.refresh`, which needs the `secrets` feature), before the lease
+  # is taken: refused, no call is made and no entry is written, and the caller gets the
+  # stored token while it is valid.
+  defp refresh_allowed(ctx) do
+    with %Organisation{} = organisation <-
+           Repo.get(Organisation, ctx.provider.organisation_id),
+         :ok <-
+           Access.check(Scope.for_instance(organisation), :"model_key.refresh", organisation) do
+      lease(ctx)
+    else
+      _refused -> while_valid(serve(ctx), db_now())
     end
   end
 

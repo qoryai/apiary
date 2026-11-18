@@ -1402,12 +1402,18 @@ defmodule Apiary.AuditChanges do
     {before, Collections.post_listing(key_scope, listed(theirs, "second"))}
   end
 
-  # A sign-in that the provider rejected for good makes no call, and records nothing.
+  # A refresh of a sign-in that is due, in an organisation marked for deletion, which
+  # `Apiary.Access` refuses (`model_key.refresh`), makes no call and records nothing.
   def refuse(:"model_key.refresh", %{scope: scope}) do
-    {provider, value, _tokens} = login_provider(scope, 60)
+    {provider, value, _tokens} = login_provider(scope, -60)
 
-    Repo.update_all(from(l in Apiary.ModelKeys.Login, where: l.secret_value_id == ^value.id),
-      set: [state: "sign_in_needed", sign_in_cause: "refresh_token_reused"]
+    Repo.update_all(
+      from(o in Apiary.Organisations.Organisation, where: o.id == ^provider.organisation_id),
+      set: [
+        deletion_marked_at: DateTime.utc_now(),
+        purge_after: DateTime.add(DateTime.utc_now(), 30 * 86_400),
+        purge_trigger: "grace_period"
+      ]
     )
 
     Req.Test.stub(Apiary.ModelKeys.LoginRefresh, &Req.Test.json(&1, %{}))

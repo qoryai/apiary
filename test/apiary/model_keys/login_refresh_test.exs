@@ -339,6 +339,27 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
 
       assert [%Entry{details: %{"outcome" => "refreshed"}}] = trail(provider)
     end
+
+    test "a due refresh in an organisation marked for deletion is refused by access: no call, no entry",
+         %{scope: scope} do
+      {provider, tokens} = subscription!(scope, expires_in: 60)
+      stub!(new_tokens("refused"))
+
+      Repo.update_all(
+        from(o in Apiary.Organisations.Organisation, where: o.id == ^provider.organisation_id),
+        set: [
+          deletion_marked_at: DateTime.utc_now(),
+          purge_after: DateTime.add(DateTime.utc_now(), 30 * @day),
+          purge_trigger: "grace_period"
+        ]
+      )
+
+      assert {:ok, access, _at} = token(provider)
+      assert access == tokens.access_token
+      assert requests() == []
+      assert trail(provider) == []
+      assert %Login{lease_id: nil, failures: 0, refreshed_at: nil} = row(provider)
+    end
   end
 
   describe "one refresh at a time" do
