@@ -1006,24 +1006,6 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
       assert inputs["submission"] == nil
     end
 
-    test "with no submit type, the draft line shows a person's submission", ctx do
-      process!(ctx.scope, nil)
-      work_item = ctx.scope |> at_shape!() |> at_gate!()
-
-      _person =
-        person_version!(
-          ctx.scope,
-          work_item,
-          "submission",
-          "submission.json",
-          "application/json",
-          Jason.encode!(%{"ref" => "by-hand", "repositories" => [by_hand()]})
-        )
-
-      {:ok, view, _html} = live(ctx.conn, stage_path(ctx.scope, work_item))
-      assert has_element?(view, "#work-item-stage-gate-draft-0", "the draft in northwind/by-hand")
-    end
-
     test "on a version a person saved, the harness record's submit type still leaves a person's out",
          ctx do
       submit = %{"type" => "submission", "send" => "end_of_run"}

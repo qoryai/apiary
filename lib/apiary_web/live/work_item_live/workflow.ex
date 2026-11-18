@@ -480,25 +480,27 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # The work item's newest submission, the type the process version's submit step names
   # (`submit.type` of its harness record, `Processes.harness_template/1`, which a version a
   # person saved takes from the version it is based on; else `submission`), as the
-  # artifact index has it (`id`, its public id; `files`); nil for none. A withdrawn name and
-  # a version a cancelled run wrote count for none, nor, for the type in `submit.type`, a
-  # version a person made: only a run's submit step writes a submission.
+  # artifact index has it (`id`, its public id; `files`); nil for none. Only a run's
+  # version counts, as only a run's submit step writes a submission; a withdrawn name and a
+  # version a cancelled run wrote count for none.
   defp submission(version, index) do
-    {type, runs_only?} =
+    type =
       case Processes.harness_template(version) do
-        %{"submit" => %{"type" => type}} when is_binary(type) -> {type, true}
-        _other -> {"submission", false}
+        %{"submit" => %{"type" => type}} when is_binary(type) -> type
+        _other -> "submission"
       end
 
     index
     |> Enum.filter(&(&1.type == type and not Artifacts.withdrawn?(&1)))
-    |> Enum.map(&Artifacts.newest_counted(%{&1 | versions: submitted(&1.versions, runs_only?)}))
+    |> Enum.map(
+      &Artifacts.newest_counted(%{
+        &1
+        | versions: Enum.filter(&1.versions, fn v -> v.writer == :run end)
+      })
+    )
     |> Enum.reject(&is_nil/1)
     |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.number}, fn -> nil end)
   end
-
-  defp submitted(versions, true), do: Enum.filter(versions, &(&1.writer == :run))
-  defp submitted(versions, false), do: versions
 
   # The newest version of one name of an output type (`Apiary.Stages.status/2`).
   defp named_output(named),

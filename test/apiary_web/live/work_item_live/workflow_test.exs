@@ -2647,7 +2647,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "the submission's draft, linked, above the outputs", %{conn: conn, scope: scope} do
       work_item = at_build(scope, :at_gate)
-      push!({:person, scope}, work_item, "submission", @build)
+      push!({:run, build_run!(work_item)}, work_item, "submission", @build)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-stage-gate-draft-0", "Submission:")
@@ -2722,7 +2722,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "the submission is read once, not again on each refresh", %{conn: conn, scope: scope} do
       work_item = at_build(scope, :at_gate)
-      submission = push!({:person, scope}, work_item, "submission", @build)
+      submission = push!({:run, build_run!(work_item)}, work_item, "submission", @build)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert %{"repositories" => [_repository]} =
