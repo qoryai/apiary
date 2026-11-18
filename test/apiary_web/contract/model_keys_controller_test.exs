@@ -15,7 +15,7 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
 
   alias Apiary.{ForagerSchemas, ModelKeys, Policy, Repo}
   alias Apiary.ModelKeys.State
-  alias Apiary.Runs.Run
+  alias Apiary.Runs.{Run, SessionKeyWindow, SessionRecord}
   alias Apiary.Secrets.Value
   alias ApiaryWeb.Contract.{RawBody, SignedRequest}
 
@@ -231,6 +231,8 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
       without = post_report(ctx, report(ctx, [item]))
       assert without.status == 200
       stored = rows()
+      # A report with no session changes no session's record.
+      assert Repo.all(SessionRecord) == []
 
       Repo.delete_all(State)
       with_session = post_report(ctx, report(ctx, [item], session: 2))
@@ -241,6 +243,57 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
 
       assert Enum.map(rows(), &Map.drop(&1, [:updated_at])) ==
                Enum.map(stored, &Map.drop(&1, [:updated_at]))
+
+      # The session's record holds the window the report named it for.
+      assert [%SessionRecord{session_number: 2, run_id: run_id} = record] =
+               Repo.all(SessionRecord)
+
+      assert run_id == ctx.run.id
+
+      assert [%SessionKeyWindow{window: "five_hour", key_id: key_id} = window] =
+               Repo.all(SessionKeyWindow)
+
+      assert key_id == ctx.value.id
+      assert window.session_record_id == record.id
+      assert Decimal.equal?(window.first_utilization, 100)
+      assert Decimal.equal?(window.last_utilization, 100)
+      assert Decimal.equal?(window.share, 0)
+    end
+
+    test "a later report of the session moves its last utilization and its share", ctx do
+      first =
+        state(ctx,
+          status: "allowed",
+          cooldown_until: nil,
+          utilization: 7,
+          observed_at: now_z(-30)
+        )
+
+      last =
+        state(ctx,
+          status: "allowed",
+          cooldown_until: nil,
+          utilization: 12,
+          observed_at: now_z(-2)
+        )
+
+      assert post_report(ctx, report(ctx, [first], session: 1)).status == 200
+      assert post_report(ctx, report(ctx, [last], session: 1)).status == 200
+      # A report of the same session with no utilization changes nothing.
+      none =
+        state(ctx,
+          status: "allowed",
+          cooldown_until: nil,
+          utilization: nil,
+          observed_at: now_z(-1)
+        )
+
+      assert post_report(ctx, report(ctx, [none], session: 1)).status == 200
+
+      assert [%SessionKeyWindow{} = window] = Repo.all(SessionKeyWindow)
+      assert Decimal.equal?(window.first_utilization, 7)
+      assert Decimal.equal?(window.last_utilization, 12)
+      assert Decimal.equal?(window.share, 5)
     end
 
     test "replayed older is answered the newer state, which stays", ctx do
@@ -597,6 +650,22 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
       assert conn.status == 410
       assert signed_answer?(conn)
       assert [%State{window: "five_hour", status: "rejected"}] = rows()
+    end
+
+    test "410 that also keeps the session's window of a report within 60 s of the exit", ctx do
+      Apiary.RunEventsFixtures.event_fixture(ctx.run, 1, "run.exited", %{},
+        received_at: DateTime.add(DateTime.utc_now(), -59, :second)
+      )
+
+      {1, _} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id), set: [state: "completed"])
+
+      conn = post_report(ctx, report(ctx, [state(ctx, utilization: 41)], session: 3))
+      assert conn.status == 410
+
+      assert [%SessionKeyWindow{last_utilization: last}] = Repo.all(SessionKeyWindow)
+      assert Decimal.equal?(last, 41)
+      assert [%SessionRecord{session_number: 3}] = Repo.all(SessionRecord)
     end
 
     test "410 that stores a report up to 60 s after the server ended the run, before its exit",

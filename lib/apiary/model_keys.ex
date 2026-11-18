@@ -47,7 +47,7 @@ defmodule Apiary.ModelKeys do
   alias Apiary.Kinds.{Provider, Providers}
   alias Apiary.ModelKeys.{Copy, Setting, State}
   alias Apiary.Repo
-  alias Apiary.Runs.{ProviderCredential, Run}
+  alias Apiary.Runs.{ProviderCredential, Run, Sessions}
   alias Apiary.Secrets.Value
 
   @api_key_pause_seconds 60
@@ -606,10 +606,17 @@ defmodule Apiary.ModelKeys do
   the copy's `copy_set_at`, which is an exact copy of that column, so the clocks of
   several servers do not matter. A key with no kept copy is the run's value when its
   `value_set_at` is not after the run's insert (`copy_set_at`). A nil `copy_set_at` is
-  left out. A rename leaves `value_set_at` as it is. Returns `:ok`.
+  left out. A rename leaves `value_set_at` as it is.
+
+  With `session`, `{run, number}`, the session a report names (`Apiary.ModelKeys.Report`),
+  the utilization of each row kept is also counted into the session's key windows
+  (`Apiary.Runs.Sessions.record_windows/3`): the first and the last utilization of the key
+  and window in that session, and their difference, the share. That write is outside the
+  states' transaction, and a failure of it is logged and changes nothing of the states. With
+  no `session` nothing is written beside the states. Returns `:ok`.
   """
-  @spec record([run_key], [map], DateTime.t()) :: :ok
-  def record(keys, items, %DateTime{} = now) do
+  @spec record([run_key], [map], DateTime.t(), {Run.t(), pos_integer} | nil) :: :ok
+  def record(keys, items, %DateTime{} = now, session \\ nil) do
     by_name = Map.new(keys, &{&1.name, &1})
     copies = Map.new(keys, &{&1.secret_value_id, {&1.copy_kept, &1.copy_set_at}})
 
@@ -629,11 +636,25 @@ defmodule Apiary.ModelKeys do
       |> Enum.sort_by(&{&1.secret_value_id, &1.window})
 
     if rows != [] do
-      {:ok, :ok} = Repo.transact(fn -> {:ok, write_states(rows, copies)} end)
+      {:ok, kept} = Repo.transact(fn -> {:ok, write_states(rows, copies)} end)
+      session_windows(session, kept)
     end
 
     :ok
   end
+
+  # The utilization of the rows just kept, for the session the report names: outside the
+  # states' transaction, and never a failure of the report, which has been taken
+  # (`Apiary.ModelKeys.Report.answer/5`).
+  defp session_windows({%Run{} = run, number}, [_ | _] = kept) do
+    Sessions.record_windows(run, number, kept)
+  rescue
+    exception ->
+      Logger.error("a session's key windows were not kept: #{inspect(exception.__struct__)}")
+      :ok
+  end
+
+  defp session_windows(_session, _kept), do: :ok
 
   # The rows of the keys that still exist, whose value the run has (`copies`), written
   # after their values' rows are locked in the order of their ids, the order of a deletion
@@ -655,7 +676,7 @@ defmodule Apiary.ModelKeys do
 
     case Enum.filter(rows, &current?(&1, set, copies)) do
       [] ->
-        :ok
+        []
 
       kept_rows ->
         Repo.insert_all(State, kept_rows,
@@ -663,7 +684,7 @@ defmodule Apiary.ModelKeys do
           conflict_target: [:secret_value_id, :window]
         )
 
-        :ok
+        kept_rows
     end
   end
 
