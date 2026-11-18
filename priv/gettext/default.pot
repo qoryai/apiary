@@ -17183,6 +17183,11 @@ msgstr ""
 msgid "Qory Apiary could not save the new sign-in"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not save the new sign-in on %{time}. Sign in again."
+msgstr ""
+
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary could not save the work item, so the %{item} was not taken in."
