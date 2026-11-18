@@ -11,9 +11,11 @@ defmodule Apiary.Explore.Questions do
   # is null; a question a run reopened keeps its earlier answers in `history`. A question
   # a run adds decided has a `decision`: the `option` the run chose, its `reason`, the
   # `run` and when (`at`). A later version keeps that `decision` unchanged in every state
-  # of the question (`:decision_changed`). A question may have a `criterion`: the id of
-  # the acceptance criterion it is about, such as `ac-3`. Qory Apiary keeps it in the
-  # version as the run pushed it, and `answer/4` keeps it beside the answer.
+  # of the question (`:decision_changed`). Each question has an `about`: what it is about,
+  # either the work item itself (`{"work_item": true}`) or one output of the work item,
+  # its `type` and `name`, with the `item` of that output where the question is about one
+  # entry, such as the criterion `ac-3` of the acceptance criteria. Qory Apiary keeps it in
+  # the version as the run pushed it, and `answer/4` keeps it beside the answer.
   #
   # A run adds, withdraws and reopens questions by pushing a new version through the run
   # API; Qory Apiary writes the answers (`answer/4`, from `Apiary.WorkItems.Moves`). So a
@@ -38,12 +40,12 @@ defmodule Apiary.Explore.Questions do
   #   * `:reopened_run`: the run reopened an answered question with a `reopened.run`
   #     other than the run's number;
   #   * `:answered_changed`: the run changed the `question`, `context`, `options` or
-  #     `criterion` of a question that stays answered, each option's `recommended`
-  #     included, and a `context` or `criterion` added or dropped, so an answer keeps the
+  #     `about` of a question that stays answered, each option's `recommended`
+  #     included, and a `context` added or dropped, so an answer keeps the
   #     question the member answered;
   #   * `:decided_changed`: the run changed the `question` or `options` of a question
   #     with a `decision`, in any state, a reopen and a withdraw included, or its
-  #     `context` or `criterion` while it stays decided or answered, so a decision keeps
+  #     `context` or `about` while it stays decided or answered, so a decision keeps
   #     the options it was chosen from: a run that learns more withdraws the question
   #     and adds a new one;
   #   * `:new_not_open`: a question the newest version does not have is neither `open`
@@ -65,7 +67,7 @@ defmodule Apiary.Explore.Questions do
   #
   # A decision is checked against its question once, when a run adds the question. After
   # that, the question and options of a question with a decision stay as they are, and
-  # its context and criterion while it stays decided or answered (`:decided_changed`);
+  # its context and about while it stays decided or answered (`:decided_changed`);
   # the decision stays too (`:decision_changed`). The JSON Schema of the format cannot
   # check these rules.
   #
@@ -120,7 +122,7 @@ defmodule Apiary.Explore.Questions do
   ]
   # What a run leaves as it is on a question that stays answered or has a decision. A
   # member present on one side only counts as changed.
-  @answered_kept ~w(question context options criterion)
+  @answered_kept ~w(question context options about)
 
   @typedoc "A questions document, decoded: a map with string keys."
   @type document :: %{optional(String.t()) => term}
@@ -430,7 +432,7 @@ defmodule Apiary.Explore.Questions do
   end
 
   # A question with a decision keeps the question and the options the decision was
-  # chosen from, in every state, and its context and criterion while it stays decided or
+  # chosen from, in every state, and its context and about while it stays decided or
   # answered: a run that reopens an answer may add to the context what contradicts the
   # answer.
   defp decision_kept(%{"decision" => _decision} = earlier, given) do
@@ -521,6 +523,24 @@ defmodule Apiary.Explore.Questions do
   end
 
   defp decision(_question), do: :ok
+
+  # abouts/2 is `{id, about}` for each question of `document`, a version a run pushes,
+  # that `newest`, the newest version's document (nil for none), does not have, or whose
+  # `about` differs there, in the order of `document`: the `about`s the push checks
+  # against the work item's outputs (`Apiary.Artifacts.push/5`). A question the run leaves
+  # as it was is not checked again, so a later withdrawal of an output does not refuse
+  # the questions that were asked about it.
+  @doc false
+  @spec abouts(document | nil, document) :: [{String.t(), map}]
+  def abouts(newest, %{"questions" => questions}) when is_list(questions) do
+    earlier = Map.new((newest && newest["questions"]) || [], &{&1["id"], &1["about"]})
+
+    for %{"id" => id, "about" => %{} = about} <- questions,
+        not (Map.has_key?(earlier, id) and earlier[id] == about),
+        do: {id, about}
+  end
+
+  def abouts(_newest, _document), do: []
 
   defp history(entry), do: Map.get(entry, "history") || []
   defp follows(entry), do: Map.get(entry, "follows") || []

@@ -29,21 +29,18 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
   @mp4 <<0, 0, 0, 24, "ftypisom", 0, 0, 2, 0, "isomiso2">>
   @png <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, "IHDR">>
 
-  @verification """
-  ## Summary
-
-  Commit: #{@commit}. One criterion is met.
-
-  ## Matrix
-
-  | Criterion | State | Evidence |
-  |---|---|---|
-  | AC-1, "After a reload, the total still includes the voucher" | Met | Demo video: scenario 1 |
-
-  ## Model families
-
-  Build: claude. Verify: deepseek.
-  """
+  @verification Jason.encode!(%{
+                  "target_version" => @commit,
+                  "matrix" => [
+                    %{
+                      "criterion" => "ac-1",
+                      "state" => "met",
+                      "evidence" => "Demo video: scenario 1"
+                    }
+                  ],
+                  "not_verified" => [],
+                  "model_families" => ["claude", "deepseek"]
+                })
 
   setup_all do
     previous = WorkflowFake.install()
@@ -55,7 +52,6 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
 
   setup %{scope: scope} do
     for {name, view} <- [
-          {"verification", "document"},
           {"demo-evidence", "file"},
           {"demo-script", "file"}
         ] do
@@ -184,7 +180,7 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
   # A work item at Verify's gate with scenario 1 (a film), 2 (pictures) and 10 (a film).
   defp three_scenarios!(scope) do
     at_verify_gate!(scope, fn run, work_item ->
-      push!(run, work_item, "verification", "main", [{"verification.md", @verification}])
+      push!(run, work_item, "verification", "main", [{"verification.json", @verification}])
       scenario!(run, work_item, 10, :film)
       scenario!(run, work_item, 2, :pictures)
       scenario!(run, work_item, 1, :film)
@@ -328,8 +324,7 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
       reads = :sys.get_state(view.pid).socket.assigns.reads
 
       # The verification of the stage and the demo evidence of each scenario, each read once.
-      assert {:verification, 1} in Map.keys(reads)
-      assert length(for {:json, _id} <- Map.keys(reads), do: :json) == 3
+      assert length(for {:json, _id} <- Map.keys(reads), do: :json) == 4
 
       scenario!(verify_run!(work_item, work_item.take_in), work_item, 4, :film)
       _ = render(view)
@@ -337,7 +332,7 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
       assert length(
                for {:json, _id} <- Map.keys(:sys.get_state(view.pid).socket.assigns.reads),
                    do: :json
-             ) == 4
+             ) == 5
     end
 
     test "is read again when a scenario is pushed", %{conn: conn, scope: scope} do
@@ -489,7 +484,7 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
     test "has no queue and no scenario section", %{conn: conn, scope: scope} do
       work_item =
         at_verify_gate!(scope, fn run, work_item ->
-          push!(run, work_item, "verification", "main", [{"verification.md", @verification}])
+          push!(run, work_item, "verification", "main", [{"verification.json", @verification}])
           scenario!(run, work_item, 1, :film)
           # A newer film that the demo evidence does not name.
           push!(run, work_item, "demo-video", "scenario-1", film_files("scenario-1"))
@@ -518,7 +513,7 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
     test "is not queued once its name is withdrawn", %{conn: conn, scope: scope} do
       work_item =
         at_verify_gate!(scope, fn run, work_item ->
-          push!(run, work_item, "verification", "main", [{"verification.md", @verification}])
+          push!(run, work_item, "verification", "main", [{"verification.json", @verification}])
           scenario!(run, work_item, 1, :film)
           scenario!(run, work_item, 2, :film)
 
@@ -541,7 +536,7 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
     test "is not queued when a run that a member cancelled wrote it", %{conn: conn, scope: scope} do
       work_item =
         at_verify_gate!(scope, fn run, work_item ->
-          push!(run, work_item, "verification", "main", [{"verification.md", @verification}])
+          push!(run, work_item, "verification", "main", [{"verification.json", @verification}])
           scenario!(run, work_item, 1, :film)
         end)
 
@@ -568,7 +563,7 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
          %{conn: conn, scope: scope} do
       work_item =
         at_verify_gate!(scope, fn run, work_item ->
-          push!(run, work_item, "verification", "main", [{"verification.md", @verification}])
+          push!(run, work_item, "verification", "main", [{"verification.json", @verification}])
           push!(run, work_item, "explainer", "main", [{"explainer.md", "Words."}])
         end)
 

@@ -108,6 +108,7 @@ defmodule Apiary.Kinds.BoundsCallersTest do
       "question" => "Which region?",
       "options" => [%{"title" => "Europe", "explanation" => "Serve from Europe."}],
       "state" => "open",
+      "about" => %{"work_item" => true},
       "asked" => %{"run" => 1, "at" => "2026-11-04T10:00:00Z"}
     }
 

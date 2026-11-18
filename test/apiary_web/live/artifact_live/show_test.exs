@@ -514,6 +514,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
                  "context" => context,
                  "options" => [],
                  "state" => "open",
+                 "about" => %{"work_item" => true},
                  "asked" => %{"run" => 1, "at" => "2026-11-05T10:00:00Z"}
                }
              ]
@@ -1646,9 +1647,13 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       view
       |> file_input("#artifact-form", :files, [
-        %{name: "criteria.md", content: "- The sale price", type: "text/markdown"}
+        %{
+          name: "criteria.json",
+          content: Jason.encode!(Apiary.StagesFixtures.criteria_document()),
+          type: "application/json"
+        }
       ])
-      |> render_upload("criteria.md")
+      |> render_upload("criteria.json")
 
       view
       |> form("#artifact-form", artifact: %{type: "acceptance-criteria", name: "main", note: ""})

@@ -15,15 +15,18 @@ defmodule Apiary.Artifacts.SchemaError do
   # schema of the `allOf` is an `if`. Outside an `allOf` are the check on a verdict's
   # point (`verdict.schema.json`) and the two checks in `questions.schema.json` that an
   # answer with option null has a note. A verdict's top-level checks, the checks on a
-  # question in `questions.schema.json` (its answer, its decision, and `criterion` where
+  # question in `questions.schema.json` (its answer, its decision, and `about.item` where
   # an option has `proposal`) and every `if` in `review-comments.schema.json` sit inside
   # an `allOf`. With `unwrap: :conditions`, as for the type `questions`, a question with
-  # `proposal` and no `criterion` fails as "property 'criterion' is required" at the
-  # question, and an `allOf` of a length limit keeps its message. With
+  # `proposal` and an `about` with no `item` fails as "property 'item' is required" at
+  # the question's `about`, and an `allOf` of a length limit keeps its message. With
   # `unwrap: true`, as for the type `mockup`, an `allOf` error, which a `$ref` to a
   # definition with a limit on its length makes, is the errors of its schemas that
   # failed, so "value did not conform to all of the given schemas" is replaced by the
-  # failing limit's message.
+  # failing limit's message. With either, a `oneOf` that no schema matched, as a question's
+  # `about` in `questions.schema.json`, is the errors of the schema the value is closest
+  # to (`failed/2`): an `item` of the acceptance criteria that is no criterion id fails at
+  # `#/questions/0/about/item` with its pattern.
   #
   # Both strings come from the file: a member name is part of the path, and a message
   # can quote a member name or a value. Each is cut to at most 1,024 bytes before its
@@ -103,6 +106,24 @@ defmodule Apiary.Artifacts.SchemaError do
     unwrapped(error, nested, all_of?)
   end
 
+  # A `oneOf` error where no schema matched, read with `unwrap`, is the errors of the one
+  # schema that has an error at a place deeper than the `oneOf`'s, not counting an error
+  # that its parent reports (`message/1`): the shape the value is closest to. Where no
+  # schema's errors, or more than one's, reach deeper, it keeps its message.
+  defp failed(%{kind: :oneOf, args: args, data_path: path} = error, all_of?)
+       when all_of? in [true, :conditions] do
+    deeper =
+      for {_index, %{errors: errors}} <- Keyword.get(args, :invalidated, []),
+          nested = Enum.flat_map(:lists.flatten(errors), &failed(&1, all_of?)),
+          Enum.any?(nested, &(length(&1.data_path) > length(path) and leaf?(&1))),
+          do: nested
+
+    case deeper do
+      [nested] -> nested
+      _none_or_more -> [error]
+    end
+  end
+
   defp failed(error, _all_of?), do: [error]
 
   defp all_of_errors(args) do
@@ -113,6 +134,8 @@ defmodule Apiary.Artifacts.SchemaError do
 
   defp unwrapped(error, [], _all_of?), do: [error]
   defp unwrapped(_error, nested, all_of?), do: Enum.flat_map(nested, &failed(&1, all_of?))
+
+  defp leaf?(error), do: match?({:leaf, _message}, message(error))
 
   defp first_pointer([error | _rest]) do
     {_level, message} = message(error)

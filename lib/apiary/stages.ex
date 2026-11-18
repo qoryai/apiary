@@ -4177,6 +4177,71 @@ defmodule Apiary.Stages do
     )
   end
 
+  # accepted_findings/2 is each escalation of the work item at a stage of `stage_ids` that
+  # it reached at the round limit and that a member accepted as it is in the current take in
+  # (`resolved_at` at or after the work item's `taken_in_at`), oldest first:
+  # `%{stage_id:, by:, at:, findings:}`, `by` the member's account id, `at` when the member
+  # accepted it, and `findings` the `text` of each point of the verdict that the
+  # escalation's run pushed last before the escalation, in the verdict's order, where that
+  # verdict is `changes-requested`. A shared run pushes a verdict each round, so the newest
+  # before the escalation is the one that reached the limit. `findings` is empty where that
+  # verdict is missing, cannot be read, or is another verdict: a round limit reached by
+  # failed checks after a `passed` verdict has no findings to accept.
+  @doc false
+  @spec accepted_findings(WorkItem.t(), [String.t()]) :: [
+          %{
+            stage_id: String.t(),
+            by: Ecto.UUID.t() | nil,
+            at: DateTime.t(),
+            findings: [String.t()]
+          }
+        ]
+  def accepted_findings(%WorkItem{id: id, taken_in_at: since}, stage_ids)
+      when is_list(stage_ids) do
+    query =
+      from e in Escalation,
+        where:
+          e.work_item_id == ^id and e.stage_id in ^stage_ids and e.cause == :round_limit and
+            e.resolution == :accept and not is_nil(e.resolved_at),
+        order_by: [asc: e.resolved_at]
+
+    accepts =
+      if since,
+        do: Repo.all(from e in query, where: e.resolved_at >= ^since),
+        else: Repo.all(query)
+
+    for escalation <- accepts do
+      %{
+        stage_id: escalation.stage_id,
+        by: escalation.resolved_by_id,
+        at: escalation.resolved_at,
+        findings: findings(escalation)
+      }
+    end
+  end
+
+  defp findings(%Escalation{run_id: nil}), do: []
+
+  defp findings(%Escalation{run_id: run_id, inserted_at: at}) do
+    verdict =
+      Repo.one(
+        from v in Apiary.Artifacts.Version,
+          join: a in assoc(v, :artifact),
+          where: v.run_id == ^run_id and a.type == "verdict" and v.inserted_at <= ^at,
+          order_by: [desc: v.inserted_at, desc: v.number],
+          limit: 1,
+          preload: [files: ^from(f in Apiary.Artifacts.ArtifactFile, order_by: f.filename)]
+      )
+
+    case verdict && Artifacts.stored_json(verdict) do
+      {:ok, %{"verdict" => "changes-requested", "points" => points}} when is_list(points) ->
+        for %{"text" => text} <- points, is_binary(text), do: text
+
+      _none ->
+        []
+    end
+  end
+
   defp open_escalation(work_item) do
     Repo.one(
       from e in Escalation, where: e.work_item_id == ^work_item.id and is_nil(e.resolved_at)

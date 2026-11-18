@@ -519,6 +519,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     })
   end
 
+  defp sample("acceptance-criteria"),
+    do:
+      Apiary.StagesFixtures.json_file(
+        "acceptance-criteria",
+        Apiary.StagesFixtures.criteria_document()
+      )
+
   defp sample(type) do
     %{filename: "#{type}.md", content_type: "text/markdown", binary: "# #{type}"}
   end
@@ -2860,9 +2867,6 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       |> place!(version, @shape, :at_gate, stage_round: 1, stage_entry: 1)
     end
 
-    defp markdown(name),
-      do: [%{filename: name, content_type: "text/markdown", binary: "# Done"}]
-
     test "one line, an Add for each output, and no Approve that can only fail", %{
       conn: conn,
       scope: scope
@@ -2904,7 +2908,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       {:ok, _version} =
-        Stages.add_version(scope, work_item, "acceptance-criteria", markdown("ac.md"))
+        Stages.add_version(scope, work_item, "acceptance-criteria", [
+          Apiary.StagesFixtures.json_file(
+            "acceptance-criteria",
+            Apiary.StagesFixtures.criteria_document()
+          )
+        ])
 
       refute has_element?(view, "#work-item-stage-gate-line")
       refute has_element?(view, "#work-item-stage-gate-add-acceptance-criteria")
@@ -2951,7 +2960,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-stage-gate-approve")
 
       {:ok, _version} =
-        Stages.add_version(scope, work_item, "acceptance-criteria", markdown("ac.md"))
+        Stages.add_version(scope, work_item, "acceptance-criteria", [
+          Apiary.StagesFixtures.json_file(
+            "acceptance-criteria",
+            Apiary.StagesFixtures.criteria_document()
+          )
+        ])
 
       assert Repo.get!(WorkItem, work_item.id).stage_id == @build
 
@@ -3752,7 +3766,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-stage-gate-ask-changes")
 
       {:ok, _version} =
-        Stages.add_version(scope, work_item, "acceptance-criteria", markdown("ac.md"))
+        Stages.add_version(scope, work_item, "acceptance-criteria", [
+          Apiary.StagesFixtures.json_file(
+            "acceptance-criteria",
+            Apiary.StagesFixtures.criteria_document()
+          )
+        ])
 
       refute has_element?(view, "#work-item-stage-gate-line")
       view |> form("#work-item-stage-gate-approve") |> render_submit()
@@ -8229,9 +8248,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       view
       |> file_input("#artifact-form", :files, [
-        %{name: "criteria.md", content: "# Criteria", type: "text/markdown"}
+        %{
+          name: "criteria.json",
+          content: Jason.encode!(Apiary.StagesFixtures.criteria_document()),
+          type: "application/json"
+        }
       ])
-      |> render_upload("criteria.md")
+      |> render_upload("criteria.json")
 
       cancel_and_escape(view, fn -> submit_criteria(view) end, fn ->
         assert Artifacts.list(add) == []
@@ -8269,9 +8292,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     defp add_criteria(view) do
       view
       |> file_input("#artifact-form", :files, [
-        %{name: "criteria.md", content: "# Criteria", type: "text/markdown"}
+        %{
+          name: "criteria.json",
+          content: Jason.encode!(Apiary.StagesFixtures.criteria_document()),
+          type: "application/json"
+        }
       ])
-      |> render_upload("criteria.md")
+      |> render_upload("criteria.json")
 
       submit_criteria(view)
     end

@@ -459,12 +459,6 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       people = %{"inputs" => [], "sequence" => [], "outputs" => []}
       gate = %{"kind" => "person", "approvers" => "members"}
 
-      {:ok, _type} =
-        Apiary.Artifacts.create_type(ctx.scope, ctx.work_item_workspace, %{
-          "name" => "verification",
-          "base_view" => "document"
-        })
-
       stages = [
         Map.merge(people, %{"id" => @explore, "name" => "Explore", "gate" => gate}),
         Map.merge(people, %{"id" => build, "name" => "Build", "gate" => gate}),
@@ -475,7 +469,16 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       {:ok, version} = Apiary.Processes.save(ctx.scope, ctx.work_item_workspace, document)
 
       verification =
-        store!(ctx, "verification", [file("v.md", "text/markdown", "# Criterion 2 fails")],
+        store!(
+          ctx,
+          "verification",
+          [
+            file(
+              "verification.json",
+              "application/json",
+              Jason.encode!(Apiary.StagesFixtures.verification_document())
+            )
+          ],
           stage_id: verify
         )
 
@@ -1884,6 +1887,31 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert [_pages, _images] = RunApiStubs.pushed()
     end
 
+    test "a criterion id that an earlier criterion has: the whole line a run gets", ctx do
+      document = Apiary.StagesFixtures.criteria_document()
+      [first | rest] = document["criteria"]
+      criteria = [first | rest] ++ [%{first | "text" => "Again."}]
+      json = Jason.encode!(%{document | "criteria" => criteria})
+
+      conn =
+        write(
+          ctx,
+          "/artifacts",
+          push_body("acceptance-criteria", [
+            {"acceptance-criteria.json", "application/json", json}
+          ])
+        )
+
+      assert json_response(conn, 422) == %{
+               "error" => "invalid_artifact",
+               "names" => ["files[0]"],
+               "message" =>
+                 "Fix acceptance-criteria.json to match the format of acceptance-criteria: " <>
+                   "at #/criteria/3/id, give criterion 4 an id that no earlier criterion has: " <>
+                   "ac-1 is taken."
+             }
+    end
+
     test "a proposal takes 10 files and 5 MiB together, and no more", ctx do
       md = {"proposal.md", "text/markdown", "# Gift cards"}
       images = for n <- 1..10, do: {"#{n}.png", "image/png", @png}
@@ -1932,7 +1960,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
          "Set reopened.run in the history of each question you reopen in questions.json " <>
            "to this run's number."},
         {"questions", :answered_changed,
-         "Leave question, context, options and criterion of each answered question in " <>
+         "Leave question, context, options and about of each answered question in " <>
            "questions.json as the newest version of questions has them, set or absent."},
         {"questions", :follows_changed,
          "Leave follows of each question in questions.json as the newest version of " <>
@@ -1956,7 +1984,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
            "question already in it to decided."},
         {"questions", :decided_changed,
          "Leave question and options of each question with a decision in questions.json " <>
-           "as the newest version of questions has them, and its context and criterion " <>
+           "as the newest version of questions has them, and its context and about " <>
            "while it stays decided or answered: to change them, withdraw the question and " <>
            "add a new one."},
         {"questions", :decision_changed,
@@ -1966,6 +1994,12 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         {"questions", :decision_run,
          "Set decision.run of each question in questions.json to the question's asked.run: " <>
            "only the run that asked a question records a decision on it."},
+        {"questions", {:about, "q4", "screenshot", "scenario-2"},
+         "Set about of question q4 in questions.json to an output of this work item, " <>
+           "or to {\"work_item\": true}: the work item has no screenshot named scenario-2."},
+        {"questions", {:about_item, "q4", "acceptance-criteria", "main", "ac-9"},
+         "Set about.item of question q4 in questions.json to a criterion id of " <>
+           "acceptance-criteria named main: no version of it has ac-9."},
         {"review-comments", :id_dropped,
          "Keep every review comment of the newest version of review-comments in " <>
            "review-comments.json: the id of a review comment is missing."},
@@ -2012,7 +2046,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       end
 
       # Every reason of each check has its message.
-      assert Enum.sort(for {"questions", reason, _} <- cases, do: reason) ==
+      assert Enum.sort(for {"questions", reason, _} <- cases, is_atom(reason), do: reason) ==
                Enum.sort(Apiary.Explore.Questions.reasons())
 
       assert Enum.sort(for {"review-comments", reason, _} <- cases, do: reason) ==
@@ -2836,6 +2870,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
             "question" => "Which basket gets the sale?",
             "options" => [],
             "state" => "open",
+            "about" => %{"work_item" => true},
             "asked" => %{"run" => ctx.run.number, "at" => "2026-11-08T10:00:00Z"}
           }
         ]

@@ -112,6 +112,13 @@ defmodule Apiary.ArtifactsTest do
 
   defp json(filename, value), do: file(filename, Jason.encode!(value), "application/json")
 
+  defp criteria,
+    do:
+      Apiary.StagesFixtures.json_file(
+        "acceptance-criteria",
+        Apiary.StagesFixtures.criteria_document()
+      )
+
   defp proposal, do: doc("proposal.md", "## What this is\n\nGift cards at the checkout.")
 
   defp stored_paths(root) do
@@ -132,7 +139,7 @@ defmodule Apiary.ArtifactsTest do
   end
 
   describe "types/1 and type/2" do
-    test "list the ten standard types first, then the workspace's custom types by name", %{
+    test "list the eleven standard types first, then the workspace's custom types by name", %{
       scope: scope
     } do
       {:ok, _type} =
@@ -145,14 +152,21 @@ defmodule Apiary.ArtifactsTest do
 
       assert names ==
                ~w(acceptance-criteria explainer decision-record mockup screenshot demo-video
-                  proposal questions review-comments verdict demo-findings)
+                  proposal questions review-comments verdict verification demo-findings)
     end
 
     test "have the base views and dedicated views of the workflow model", %{scope: scope} do
       types = Map.new(Artifacts.types(scope.workspace), &{&1.name, &1})
 
-      for name <- ~w(acceptance-criteria explainer decision-record proposal),
+      for name <- ~w(explainer decision-record proposal),
           do: assert(types[name].base_view == :document)
+
+      for name <- ~w(acceptance-criteria verification) do
+        assert types[name].base_view == :structured
+        assert types[name].view == nil
+        assert types[name].max_files == 1
+        assert types[name].size_limit == 1_048_576
+      end
 
       assert types["proposal"].max_files == 10
       assert types["proposal"].size_limit == 5 * 1_048_576
@@ -610,7 +624,7 @@ defmodule Apiary.ArtifactsTest do
                Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "mockup", false)
 
       assert stored(ctx.scope) ==
-               ~w(acceptance-criteria explainer decision-record screenshot demo-video)
+               ~w(acceptance-criteria explainer decision-record screenshot demo-video verification)
 
       assert Artifacts.type(ctx.scope.workspace, "mockup") == nil
       refute "mockup" in names(Artifacts.types(ctx.scope.workspace))
@@ -898,6 +912,7 @@ defmodule Apiary.ArtifactsTest do
       "question" => text,
       "options" => [],
       "state" => "open",
+      "about" => %{"work_item" => true},
       "asked" => %{"run" => number, "at" => "2026-11-04T10:00:00Z"}
     }
   end
@@ -1106,7 +1121,7 @@ defmodule Apiary.ArtifactsTest do
       assert count(Version) == 1
     end
 
-    test "stores a question's criterion as the run pushed it, and refuses one not an id",
+    test "stores a question's about as the run pushed it, and refuses an item not an id",
          %{run: run} = context do
       push =
         &Artifacts.push({:run, run}, context.work_item, "questions", [
@@ -1118,21 +1133,167 @@ defmodule Apiary.ArtifactsTest do
         path |> File.read!() |> Jason.decode!()
       end
 
-      with_criterion = Map.put(asked(run, "q1", "Which basket?"), "criterion", "ac-3")
-      without = asked(run, "q2", "Which sale?")
+      {:ok, _criteria} =
+        Artifacts.push({:run, run}, context.work_item, "acceptance-criteria", [criteria()])
+
+      about = %{"type" => "acceptance-criteria", "name" => "main", "item" => "ac-3"}
+      on_criterion = Map.put(asked(run, "q1", "Which basket?"), "about", about)
+      on_work_item = asked(run, "q2", "Which sale?")
 
       for id <- ["AC-3", "ac-0", "criterion-3"] do
-        assert {:error, {:invalid, {:schema, 0, %{path: "#/questions/0/criterion"}}}} =
-                 push.([Map.put(with_criterion, "criterion", id)]),
+        assert {:error, {:invalid, {:schema, 0, %{path: "#/questions/0/about/item"}}}} =
+                 push.([put_in(on_criterion, ["about", "item"], id)]),
                id
       end
 
-      assert count(Version) == 0
+      assert {:error, {:invalid, {:schema, 0, %{path: "#/questions/0"}}}} =
+               push.([Map.delete(on_work_item, "about")])
 
-      # The version keeps the criterion of q1, and q2 without one, as the run pushed them.
-      assert {:ok, %Version{number: 1} = version} = push.([with_criterion, without])
+      assert count(Version) == 1
 
-      assert stored.(version) == %{"questions" => [with_criterion, without]}
+      # The version keeps each about as the run pushed it.
+      assert {:ok, %Version{number: 1} = version} = push.([on_criterion, on_work_item])
+
+      assert stored.(version) == %{"questions" => [on_criterion, on_work_item]}
+    end
+
+    test "refuses acceptance criteria or a verification that fails its schema, and Markdown",
+         %{run: run} = context do
+      push = &Artifacts.push({:run, run}, context.work_item, &1, [&2])
+      criteria = Apiary.StagesFixtures.criteria_document()
+      verification = Apiary.StagesFixtures.verification_document()
+      [first | rest] = criteria["criteria"]
+      [row | rows] = verification["matrix"]
+
+      for {type, document, path} <- [
+            {"acceptance-criteria", Map.delete(criteria, "summary"), "#"},
+            {"acceptance-criteria", %{criteria | "criteria" => []}, "#/criteria"},
+            {"acceptance-criteria",
+             %{criteria | "criteria" => [Map.delete(first, "check") | rest]}, "#/criteria/0"},
+            {"acceptance-criteria",
+             %{criteria | "criteria" => [%{first | "id" => "AC-1"} | rest]}, "#/criteria/0/id"},
+            {"verification", %{verification | "matrix" => [%{row | "state" => "unknown"} | rows]},
+             "#/matrix/0/state"},
+            {"verification", Map.delete(verification, "target_version"), "#"},
+            {"verification", %{verification | "model_families" => []}, "#/model_families"}
+          ] do
+        assert {:error, {:invalid, {:schema, 0, %{path: ^path}}}} =
+                 push.(type, Apiary.StagesFixtures.json_file(type, document)),
+               inspect({type, path})
+      end
+
+      # A criterion's id is once in the criteria.
+      assert {:error,
+              {:invalid,
+               {:schema, 0,
+                %{
+                  path: "#/criteria/2/id",
+                  error: "give criterion 3 an id that no earlier criterion has: ac-1 is taken"
+                }}}} =
+               push.(
+                 "acceptance-criteria",
+                 Apiary.StagesFixtures.json_file("acceptance-criteria", %{
+                   criteria
+                   | "criteria" => [first | rest] |> List.replace_at(2, %{first | "check" => "x"})
+                 })
+               )
+
+      for type <- ["acceptance-criteria", "verification"] do
+        assert {:error, {:invalid, _refusal}} =
+                 push.(type, doc("#{type}.md", "## Matrix\n\n| AC-1 | Met | Done |")),
+               type
+      end
+
+      assert {:ok, _version} = push.("acceptance-criteria", criteria())
+
+      assert {:ok, _version} =
+               push.(
+                 "verification",
+                 Apiary.StagesFixtures.json_file("verification", verification)
+               )
+
+      assert Artifacts.list(context.work_item) |> Enum.map(& &1.type) |> Enum.sort() ==
+               ["acceptance-criteria", "verification"]
+    end
+
+    test "refuses an about that points at an output or a criterion the work item lacks",
+         %{run: run} = context do
+      push =
+        &Artifacts.push({:run, run}, context.work_item, "questions", [
+          json("questions.json", %{"questions" => &1})
+        ])
+
+      on = fn id, about -> Map.put(asked(run, id, "Which basket?"), "about", about) end
+      criterion = %{"type" => "acceptance-criteria", "name" => "main", "item" => "ac-9"}
+      picture = %{"type" => "screenshot", "name" => "scenario-1"}
+
+      assert push.([on.("q1", criterion)]) ==
+               {:error, {:invalid, {:kept, 0, {:about, "q1", "acceptance-criteria", "main"}}}}
+
+      {:ok, _criteria} =
+        Artifacts.push({:run, run}, context.work_item, "acceptance-criteria", [criteria()])
+
+      assert push.([on.("q1", criterion)]) ==
+               {:error,
+                {:invalid, {:kept, 0, {:about_item, "q1", "acceptance-criteria", "main", "ac-9"}}}}
+
+      assert push.([on.("q1", picture)]) ==
+               {:error, {:invalid, {:kept, 0, {:about, "q1", "screenshot", "scenario-1"}}}}
+
+      # A removed criterion keeps its id; an item of an output Qory Apiary does not read
+      # is not checked.
+      {:ok, _picture} =
+        Artifacts.push(
+          {:run, run},
+          context.work_item,
+          "screenshot",
+          [
+            file("step-1.png", @gif, "image/png")
+          ],
+          name: "scenario-1"
+        )
+
+      assert count(Version) == 2
+
+      assert {:ok, %Version{number: 1}} =
+               push.([
+                 on.("q1", %{criterion | "item" => "ac-2"}),
+                 on.("q2", Map.put(picture, "item", "step 3"))
+               ])
+
+      # A withdrawn output counts as none for a new about, and a kept one is not checked
+      # again.
+      {:ok, _withdrawal} =
+        Artifacts.withdraw({:run, run}, context.work_item, "screenshot", name: "scenario-1")
+
+      kept = [
+        on.("q1", %{criterion | "item" => "ac-2"}),
+        on.("q2", Map.put(picture, "item", "step 3"))
+      ]
+
+      assert {:ok, %Version{number: 2}} = push.(kept)
+
+      assert push.(kept ++ [on.("q3", picture)]) ==
+               {:error, {:invalid, {:kept, 0, {:about, "q3", "screenshot", "scenario-1"}}}}
+
+      # An item passes where any version of the acceptance criteria has it: version 2
+      # leaves ac-2 and ac-3 out entirely, and no version has ac-9.
+      {:ok, %Version{number: 2}} =
+        Artifacts.push({:run, run}, context.work_item, "acceptance-criteria", [
+          Apiary.StagesFixtures.json_file(
+            "acceptance-criteria",
+            Apiary.StagesFixtures.criteria_document(%{
+              "criteria" => [%{"id" => "ac-1", "text" => "A code.", "check" => "Tests"}]
+            })
+          )
+        ])
+
+      dropped = on.("q3", %{criterion | "item" => "ac-3"})
+      assert {:ok, %Version{number: 3}} = push.(kept ++ [dropped])
+
+      assert push.(kept ++ [dropped, on.("q4", criterion)]) ==
+               {:error,
+                {:invalid, {:kept, 0, {:about_item, "q4", "acceptance-criteria", "main", "ac-9"}}}}
     end
 
     test "a refused or normalised version of the questions keeps no file without a version",

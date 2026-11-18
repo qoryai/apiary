@@ -918,6 +918,7 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
               "context" => String.duplicate("a", pad),
               "options" => [],
               "state" => "open",
+              "about" => %{"work_item" => true},
               "asked" => %{"run" => 1000, "at" => at}
             }
           end

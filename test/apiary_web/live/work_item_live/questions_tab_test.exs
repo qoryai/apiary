@@ -1629,6 +1629,7 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
         "question" => "Which shelf?",
         "options" => [],
         "state" => "open",
+        "about" => %{"work_item" => true},
         "asked" => %{"run" => run_of(work_item, "q2"), "at" => "2026-11-04T10:00:00Z"},
         "follows" => ["q1"]
       }

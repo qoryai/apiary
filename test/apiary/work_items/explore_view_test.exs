@@ -1253,6 +1253,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
           "question" => text,
           "options" => [],
           "state" => "open",
+          "about" => %{"work_item" => true},
           "asked" => %{"run" => registered.number, "at" => at}
         }
       end
