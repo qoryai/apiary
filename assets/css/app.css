@@ -14476,14 +14476,19 @@
     border-radius: var(--radius-box);
     background-color: var(--color-base-100);
   }
-  .q-xp-opt-pick {
+  /* Only the radio and its label take the pointer. */
+  .q-xp-opt-pick,
+  .q-xp-opt-box > input,
+  .q-xp-opt-box label {
     cursor: pointer;
   }
-  .q-xp-opt-pick:has(input:checked) {
+  .q-xp-opt-pick:has(input:checked),
+  .q-xp-opt-box:has(input[type="radio"]:checked) {
     border-color: var(--color-primary);
     background-color: var(--q-primary-soft);
   }
-  .q-xp-opt-pick:has(input:focus-visible) {
+  .q-xp-opt-pick:has(input:focus-visible),
+  .q-xp-opt-box:has(input[type="radio"]:focus-visible) {
     outline: 2px solid var(--q-ring);
     outline-offset: 1px;
   }
