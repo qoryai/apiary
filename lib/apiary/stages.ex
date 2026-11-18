@@ -545,8 +545,9 @@ defmodule Apiary.Stages do
   # `workflow`, `time_limit_minutes` and `full_suite` (the settings of its entry as the
   # claim kept them, `claim_sessions!/3`), `inputs` (the run's inputs,
   # `Apiary.Dispatches.Inputs.explore/4`), and `model_choice` and `model_credential`, the
-  # model of the entry's workflow and the run's start key as the claim kept them, both nil
-  # where the claim kept none (`claim_sessions!/3`).
+  # runtime and model of the entry's workflow and the credential the session joins with,
+  # as the claim kept them (`claim_sessions!/3`); each nil where the claim kept none. With
+  # no `model_credential`, the session joins with the group of the run's start key.
   #
   # The step is recorded with its result, and a repeat for the same `session` returns
   # that result and steps nothing. Errors, with nothing written:

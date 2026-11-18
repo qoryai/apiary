@@ -227,20 +227,6 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # The run's start key's credential name: the key it keeps with `start`, else its first
   # (`Apiary.Runs.ProviderCredential`); nil for none.
-  defp start_name([_ | _] = keys),
-    do: (Enum.find(keys, & &1["start"]) || hd(keys))["name"]
-
-  defp start_name(_none), do: nil
-
-  # The members of `built`'s `run_settings` but `runtime`, as a JSON map.
-  defp model_choice(%{wire: wire}) do
-    wire.values
-    |> Enum.reject(fn {member, _value} -> member == "runtime" end)
-    |> Jason.OrderedObject.new()
-    |> Jason.encode!()
-    |> Jason.decode!()
-  end
-
   # time_limit_minutes/2 is the minutes the time limits of the workspace and the target of
   # the run of the queue `dispatch_run` come to for `workflow`, the default for no limit,
   # read without a lock, as `hold/1` reads them; nil with `factory` off, as `hold/1`
@@ -391,9 +377,14 @@ defmodule Apiary.Dispatches.RunSettings do
 
     input = Map.put(held.input, :providers, resolved_providers)
 
+    sessions = {resolved_providers, providers, described}
+
     case Resolution.resolve(input) do
       :none ->
-        sealed(runtime_only(ModelChoices.default_runtime()))
+        ModelChoices.default_runtime()
+        |> runtime_only()
+        |> sealed()
+        |> with_sessions(held, sessions)
 
       {:error, :provider_removed} ->
         {:end, :provider_gone}
@@ -423,47 +414,40 @@ defmodule Apiary.Dispatches.RunSettings do
              do:
                built
                |> sealed()
-               |> with_sessions(held, {resolved_providers, providers, described}, runtime)
+               |> with_sessions(held, sessions)
     end
   end
 
   # The model of each later session of a shared run, by its workflow, as `sessions` beside
   # `built`, which the claim keeps on the run (`Apiary.Stages.claim_sessions!/3`): a map
-  # of `model_choice` and `model_credential` for each workflow that has one. For a
-  # workflow whose choices resolve to the run's provider and runtime: `model_choice`, the
-  # `model`, `effort`, `provider_models` and `tiers` of that choice, and
-  # `model_credential`, the run's start key. Where the run's provider is that choice's
-  # fallback, as when the claim took the fallback, the same of that fallback
-  # (`Apiary.ModelChoices.Resolution.fallback/3`). Where the
-  # choice's provider, key or model is no longer valid (`form/6`), `model_choice` is the
-  # run's: the members of its `run_settings` but `runtime`. A workflow whose choices
-  # resolve to no choice at any level has no entry, and neither has any workflow of a run
-  # with no provider's key: the session uses the gateway's key and the runtime's default
-  # model. A workflow whose choices resolve to another provider or runtime than the run's
-  # has no entry either. A settings check of the session's provider that ran out of time
-  # or crashed is `{:unchecked, provider}`, which leaves the run waiting as for the run's
-  # provider.
-  defp with_sessions(
-         {:ok, %{columns: %{provider_connection_id: id, model_keys: keys}} = built},
-         held,
-         resolved,
-         runtime
-       ) do
-    start = start_name(keys)
-    run = %{"model_choice" => model_choice(built), "model_credential" => start}
-
+  # with `model_choice` for each workflow, which always has `runtime`, the runtime the
+  # session runs on. A run takes the keys of one provider, so every key of the run is in
+  # the start key's group, and no entry has `model_credential`: each session joins with
+  # the group of the run's start key.
+  #
+  # `model_choice` is, for the choices of the workflow (`session_choice/4`):
+  #   * the `runtime`, `model`, `effort`, `provider_models` and `tiers` of the choice,
+  #     where its provider is the run's and its runtime uses the run's API (`format`,
+  #     `endpoint` and `auth`), so the run's keys serve it; or of its fallback, where the
+  #     run's provider is that choice's fallback, as when the claim took the fallback
+  #     (`Apiary.ModelChoices.Resolution.fallback/3`);
+  #   * the run's `run_settings`, where that choice's provider, key or model is no longer
+  #     valid (`form/6`), or its runtime is no longer in the catalogue;
+  #   * `runtime` alone, the runtime of the choice, where its provider is another
+  #     provider, or its runtime uses another API of the run's provider; or the
+  #     catalogue's default runtime (`Apiary.ModelChoices.default_runtime/0`), where the
+  #     choices resolve to no choice at any level or to a provider that is gone. The
+  #     same where the run has no provider's key. The session then uses the default model
+  #     of that runtime.
+  #
+  # A settings check of the session's provider that ran out of time or crashed is
+  # `{:unchecked, provider}`, which leaves the run waiting as for the run's provider.
+  defp with_sessions({:ok, built}, held, resolved) do
     held.sessions
     |> Enum.reduce_while({:ok, %{}}, fn {workflow, input}, {:ok, sessions} ->
-      case session_choice(input, id, resolved, runtime, held.workspace.id) do
-        :none ->
-          {:cont, {:ok, sessions}}
-
-        :run ->
-          {:cont, {:ok, Map.put(sessions, workflow, run)}}
-
+      case session_choice(input, built, resolved, held.workspace.id) do
         {:ok, choice} ->
-          entry = %{"model_choice" => choice, "model_credential" => start}
-          {:cont, {:ok, Map.put(sessions, workflow, entry)}}
+          {:cont, {:ok, Map.put(sessions, workflow, %{"model_choice" => choice})}}
 
         {:unchecked, _provider} = unchecked ->
           {:halt, unchecked}
@@ -475,31 +459,57 @@ defmodule Apiary.Dispatches.RunSettings do
     end
   end
 
-  defp with_sessions(other, _held, _resolved, _runtime), do: other
+  defp with_sessions(other, _held, _resolved), do: other
 
   # What the choices `input` of a later session's workflow come to against the run's
-  # provider `id` and `runtime`: `{:ok, model_choice}`, `:run` for the run's model,
-  # `:none` for no choice or for another provider or runtime (`with_sessions/4`), or
-  # `{:unchecked, provider}`. The choice's provider where it is the run's, else the
-  # choice's fallback whose provider is the run's.
-  defp session_choice(input, id, {resolved, providers, described}, runtime, workspace_id) do
+  # settings `built` (`with_sessions/3`): `{:ok, model_choice}` or `{:unchecked,
+  # provider}`.
+  defp session_choice(input, built, {resolved, providers, described}, workspace_id) do
     input = Map.put(input, :providers, resolved)
 
-    with {:ok, %Resolution{} = resolution} <- Resolution.resolve(input),
-         %Resolution{connection_id: ^id} = resolution <- on_provider(input, resolution, id),
-         {:ok, %Runtime{name: name} = session_runtime} when name == runtime.name <-
-           runtime(resolution) do
-      provider = Map.fetch!(providers, id)
+    case Resolution.resolve(input) do
+      {:ok, %Resolution{} = resolution} ->
+        case runtime(resolution) do
+          {:ok, runtime} ->
+            on_run_keys(input, resolution, runtime, built, {providers, described}, workspace_id)
 
-      case form(resolution, provider, described[id], session_runtime, workspace_id) do
-        {:ok, built} -> {:ok, model_choice(built)}
-        {:unchecked, _provider} = unchecked -> unchecked
-        {:end, _cause} -> :run
-      end
-    else
-      _none_or_other -> :none
+          {:end, :runtime_unserved} ->
+            {:ok, built.stored}
+        end
+
+      _none_or_gone ->
+        {:ok, %{"runtime" => ModelChoices.default_runtime().name}}
     end
   end
+
+  # The choice `resolution`, for `runtime`, on the run's provider and API, else `runtime`
+  # alone.
+  defp on_run_keys(
+         input,
+         resolution,
+         runtime,
+         %{columns: %{provider_connection_id: id, provider_api: api}} = built,
+         {providers, described},
+         workspace_id
+       ) do
+    with %Resolution{connection_id: ^id} = resolution <- on_provider(input, resolution, id),
+         provider = Map.fetch!(providers, id),
+         {:ok, formed} <- form(resolution, provider, described[id], runtime, workspace_id) do
+      if same_api?(formed.columns.provider_api, api),
+        do: {:ok, formed.stored},
+        else: {:ok, %{"runtime" => runtime.name}}
+    else
+      {:unchecked, _provider} = unchecked -> unchecked
+      {:end, _cause} -> {:ok, built.stored}
+      _another_provider -> {:ok, %{"runtime" => runtime.name}}
+    end
+  end
+
+  defp on_run_keys(_input, _resolution, runtime, _built, _providers, _workspace_id),
+    do: {:ok, %{"runtime" => runtime.name}}
+
+  defp same_api?(api, other),
+    do: Map.take(api, ~w(format endpoint auth)) == Map.take(other, ~w(format endpoint auth))
 
   # `resolution` where its provider is `id`, else its fallback whose provider is `id`
   # (`Resolution.fallback/3`), else `:none`.

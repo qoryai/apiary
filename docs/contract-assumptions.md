@@ -360,13 +360,16 @@ pool that sends no offers takes only a run of the instance's default type, a run
 the type that was the default then (`dispatch_runs.machine_type_was_default`), or a run
 queued before machine types, and the answer has neither, so the starter uses its default
 machine type. A run queued before machine types has no spec and is of the default type.
-Every explore run's documents have `run_settings`, a stage's runs among them; a
-prebuild's have none. `runtime` and `model` come from the first model choice in this order
+Every explore run's documents have `run_settings`, a stage's runs among them, as the run
+contract requires (`documents.schema.json`); a prebuild's have none. `runtime` and `model` come from the first model choice in this order
 (`Apiary.ModelChoices.Resolution`): a locked choice of the workspace, the workflow's choice
 at the run's target, the target's choice, the workflow's choice at the workspace, the
 workspace's (Workspace settings › Model), and the organisation's default. With no choice,
 `run_settings` has `runtime` alone, the catalogue's default, and the run uses the gateway's
-key. A pool claims a run only with the feature `factory` on (`dispatch.claim`), and
+key. Each later session of a run of a stage with `shared_run: true` gets its workflow's
+runtime and model in the next-session answer's `model_choice`, which always has `runtime`,
+and no `model_credential`: a run takes the keys of one provider, so the session joins
+with the group of the run's start key (`docs/contract/run-api.md`). A pool claims a run only with the feature `factory` on (`dispatch.claim`), and
 `factory` needs `secrets`. The code that builds `run_settings` runs with either feature off
 too: with `factory` or `secrets` off, it builds the choice's `runtime`, `model`, `effort`,
 `provider_models` and `tiers` and no key, and checks neither the chosen key nor the

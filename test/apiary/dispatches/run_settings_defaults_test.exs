@@ -223,11 +223,11 @@ defmodule Apiary.Dispatches.RunSettingsDefaultsTest do
 
       assert %{
                "workflow" => "write-acceptance-checks",
-               "model_choice" => %{"model" => "claude-sonnet-5-5"},
-               "model_credential" => credential
+               "model_choice" => %{"runtime" => "claude", "model" => "claude-sonnet-5-5"}
              } = session
 
-      assert credential == "#{ctx.provider.public_id}-1"
+      # Every key of the run is the provider's: the session joins with the start key's group.
+      refute Map.has_key?(session, "model_credential")
     end
   end
 

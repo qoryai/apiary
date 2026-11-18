@@ -746,9 +746,8 @@ of the run contract. A next session of the same stage:
 
 ```json
 {"next": "session", "session": 2, "workflow": "write-acceptance-checks",
- "model_choice": {"model": "claude-sonnet-5-5", "effort": "high",
+ "model_choice": {"runtime": "claude", "model": "claude-sonnet-5-5", "effort": "high",
                   "provider_models": [{"id": "claude-sonnet-5-5", "effort": ["low", "medium", "high"]}]},
- "model_credential": "<provider's public id>-1",
  "time_limit_minutes": 180, "full_suite": false, "inputs": {"version": 1, "...": "..."}}
 ```
 
@@ -757,23 +756,26 @@ of the run contract. A next session of the same stage:
 - `workflow`, `time_limit_minutes` and `full_suite`: the entry's, as the claim kept them,
   so a time limit saved after the claim changes nothing for the run.
 - `inputs`: the input of the session, in the shape of the documents' `inputs`.
-- `model_choice`: the model of the session's workflow, as `model`, `effort`,
-  `provider_models` and `tiers` of the documents' `run_settings`, with no `runtime`: every
-  session uses the runtime of `run_settings`. The claim resolves the model choices for
-  each workflow of the stage in the same order as for the run: a locked choice of the
-  workspace, the workflow's choice at the run's target, the target's choice, the
-  workflow's choice at the workspace, the workspace's (Workspace settings › Model), and
-  the organisation's default. The claim keeps the result, so a model choice saved after
-  the claim changes nothing for the run.
-- `model_credential`: the credential name of the run's start key,
-  `<provider's public id>-<n>`, sent with `model_choice`.
-- `model_choice` is the model of the choice's fallback where the run's provider is that
-  choice's fallback, as when the claim took the fallback.
-- `model_choice` is the run's model, the members of `run_settings` but `runtime`, where
-  the choice's provider, key or model is no longer valid.
-- Both are left out where the session's workflow resolves to no model choice at any
-  level, or where the run has no provider's key: the session uses the gateway's key and
-  the runtime's default model.
+- `model_choice`: the runtime and model of the session's workflow, as `runtime`, `model`,
+  `effort`, `provider_models` and `tiers` of the documents' `run_settings`. Every
+  `model_choice` has `runtime`: the session runs on the runtime of its workflow. The claim
+  resolves the model choices for each workflow of the stage in the same order as for the
+  run: a locked choice of the workspace, the workflow's choice at the run's target, the
+  target's choice, the workflow's choice at the workspace, the workspace's (Workspace
+  settings › Model), and the organisation's default. The claim keeps the result, so a
+  model choice saved after the claim changes nothing for the run.
+- `model_choice` has the choice's model where the choice's provider is the run's and its
+  runtime uses the same API of that provider as the run, so the run's keys serve it; or
+  the model of the choice's fallback, where the run's provider is that choice's fallback,
+  as when the claim took the fallback.
+- `model_choice` is the run's `run_settings` where the choice's provider, key or model is
+  no longer valid, or its runtime is no longer in the catalogue.
+- `model_choice` has `runtime` alone where the choice's provider is another provider, or
+  its runtime uses another API of the run's provider, or where the run has no provider's
+  key; and the catalogue's default runtime alone where the workflow resolves to no model
+  choice at any level. The session uses the default model of that runtime.
+- `model_credential` is left out: a run takes the keys of one provider, so each session
+  joins with the group of the run's start key, the credentials of that provider.
 
 Or the end of the run, where the stage runs no further workflow in this run: an
 escalation, open questions, the gate, or the next stage, whose run is queued as any run:

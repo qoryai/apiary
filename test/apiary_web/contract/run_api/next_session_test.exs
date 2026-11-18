@@ -14,6 +14,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
   alias Apiary.{Connections, ModelChoices, Processes, Repo, Stages}
   alias Apiary.Dispatches.RunSettings
+  alias Apiary.Kinds.Runtimes
   alias Apiary.ModelChoices.ModelChoice
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Runs.Run
@@ -186,7 +187,6 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
   defp reload(work_item), do: Repo.get!(WorkItem, work_item.id)
 
   # The credential name of the run's start key: the provider's one key, first.
-  defp start_key(ctx), do: "#{ctx.provider.public_id}-1"
 
   defp comment!(work_item, n, body) do
     at = DateTime.add(DateTime.utc_now(:second), n, :second)
@@ -235,10 +235,12 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
                "inputs" => %{"version" => 1, "work_item" => %{}, "run" => %{}}
              } = body
 
-      # The workspace's choice names no model: the provider's default model.
-      assert %{"model" => model, "provider_models" => [_ | _]} = body["model_choice"]
+      # The workspace's choice has no model: the provider's default model.
+      assert %{"runtime" => "claude", "model" => model, "provider_models" => [_ | _]} =
+               body["model_choice"]
+
       assert model == ctx.gateway_run.run_settings["model"]
-      assert body["model_credential"] == start_key(ctx)
+      refute Map.has_key?(body, "model_credential")
 
       assert String.starts_with?(conn.resp_body, ~s({"next":"session","session":2,))
 
@@ -258,7 +260,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       body = json_response(request(ctx, ended(1)), 200)
 
       assert body["model_choice"]["model"] == ctx.gateway_run.run_settings["model"]
-      assert body["model_credential"] == start_key(ctx)
+      refute Map.has_key?(body, "model_credential")
     end
 
     @tag :contract
@@ -516,8 +518,8 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
                }
              } = body["model_choice"]
 
-      refute Map.has_key?(body["model_choice"], "runtime")
-      assert body["model_credential"] == start_key(ctx)
+      assert body["model_choice"]["runtime"] == "claude"
+      refute Map.has_key?(body, "model_credential")
       assert answer_valid?(body)
     end
 
@@ -537,11 +539,13 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
       body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
 
-      assert body["model_choice"]["model"] == ctx.gateway_run.run_settings["model"]
-      assert body["model_credential"] == start_key(ctx)
+      assert %{"runtime" => "claude", "model" => model} = body["model_choice"]
+      assert model == ctx.gateway_run.run_settings["model"]
+      refute Map.has_key?(body, "model_credential")
     end
 
-    test "is absent where the session's workflow resolves to no choice", ctx do
+    test "is the default runtime alone where the session's workflow resolves to no choice",
+         ctx do
       # The run's provider comes from the choice of its first workflow alone.
       {:ok, _deleted} = ModelChoices.delete_choice(ctx.scope, :workspace)
       :ok = choose!(ctx, {:workspace, "plan-the-build"}, %{})
@@ -549,7 +553,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
 
       assert %{"workflow" => "write-acceptance-checks"} = body
-      refute Map.has_key?(body, "model_choice")
+      assert body["model_choice"] == %{"runtime" => "claude"}
       refute Map.has_key?(body, "model_credential")
     end
 
@@ -574,7 +578,8 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
 
       assert %{"model" => "claude-sonnet-5-5", "effort" => "high"} = body["model_choice"]
-      assert body["model_credential"] == "#{fallback.public_id}-1"
+      # The run's keys are the fallback's: the session joins with the start key's group.
+      refute Map.has_key?(body, "model_credential")
     end
 
     test "is the fallback's where the workflow's choice has another provider and the run's as its fallback",
@@ -600,17 +605,60 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
 
       assert %{"model" => "claude-sonnet-5-5", "effort" => "high"} = body["model_choice"]
-      assert body["model_credential"] == "#{ctx.provider.public_id}-1"
+      refute Map.has_key?(body, "model_credential")
     end
 
-    test "is absent where the run has no provider's key", ctx do
+    test "is the workflow's runtime alone where its choice has another provider", ctx do
+      {:ok, other} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "anthropic",
+          name: "Other keys",
+          keys: [%{value_id: "main", value: "sk-ant-other-0123456789"}]
+        })
+
+      :ok = choose!(ctx, :workspace, %{model: "claude-opus-5-5"})
+
+      {:ok, _choice} =
+        ModelChoices.put_choice(ctx.scope, {:workspace, "write-acceptance-checks"}, %{
+          provider: other.public_id,
+          model: "claude-sonnet-5-5"
+        })
+
+      body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
+
+      assert body["model_choice"] == %{"runtime" => "claude"}
+      refute Map.has_key?(body, "model_credential")
+    end
+
+    @tag :contract
+    test "is the workflow's runtime with its model where that runtime uses the run's API",
+         ctx do
+      [release] = Runtimes.list()
+      second = %{release | name: release.name <> "-second", title: release.title <> " second"}
+      :ok = Runtimes.put_test_list([release, second])
+
+      :ok =
+        choose!(ctx, {:workspace, "write-acceptance-checks"}, %{
+          runtime: second.name,
+          model: "claude-sonnet-5-5"
+        })
+
+      body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
+
+      assert %{"runtime" => runtime, "model" => "claude-sonnet-5-5"} = body["model_choice"]
+      assert runtime == second.name
+      refute Map.has_key?(body, "model_credential")
+      assert answer_valid?(body)
+    end
+
+    test "is the workflow's runtime alone where the run has no provider's key", ctx do
       # No choice for the run's first workflow: the run uses the gateway's key.
       {:ok, _deleted} = ModelChoices.delete_choice(ctx.scope, :workspace)
       :ok = choose!(ctx, {:workspace, "write-acceptance-checks"}, %{model: "claude-sonnet-5-5"})
 
       body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
 
-      refute Map.has_key?(body, "model_choice")
+      assert body["model_choice"] == %{"runtime" => "claude"}
       refute Map.has_key?(body, "model_credential")
     end
   end
