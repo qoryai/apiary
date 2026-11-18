@@ -19,7 +19,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   run of the queue: a run that continues a paused run has the paused run's attempt plus 1,
   and the paused run keeps its record as attempt 1. A value that the runtime did not report
   is empty, never 0. No page shows the records yet. A run's events written before this
-  change have no record until the run is projected again.
+  change have no record until the run is projected again. A run whose events are deleted,
+  or are due to be, gets no new record and keeps its cost.
 <!-- feature: factory, secrets -->
 - A key report that names a session also counts into that session's record, for each key and
   limit window, the first and the last utilization that the gateway reported and their
