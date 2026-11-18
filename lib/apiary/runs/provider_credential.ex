@@ -258,11 +258,13 @@ defmodule Apiary.Runs.ProviderCredential do
 
       keys =
         for row <- rows do
+          provider = Map.fetch!(providers, row.connection_id)
+
           %{
             name: row.name,
             secret_value_id: row.secret_value_id,
-            entry: entry(row.name, row.api, kept(row)),
-            provider: Map.fetch!(providers, row.connection_id),
+            entry: entry(row.name, provider.public_id, row.api, kept(row)),
+            provider: provider,
             row: row
           }
         end
@@ -361,12 +363,16 @@ defmodule Apiary.Runs.ProviderCredential do
   end
 
   @doc false
-  # entry/3 is the API credential named `name` for `api`, the API of the key's row, with
-  # the members the run keeps for the key `key`, by the contract's member names, and with
-  # the row's `use_up_to_windows`, from `api`, beside the key's `use_up_to_percent`.
-  @spec entry(String.t(), map, map) :: Jason.OrderedObject.t()
+  # entry/4 is the API credential named `name` of the key group `group`, the public id of
+  # the key's provider, for `api`, the API of the key's row, with the members the run
+  # keeps for the key `key`, by the contract's member names, and with the row's
+  # `use_up_to_windows`, from `api`, beside the key's `use_up_to_percent`. Each provider's
+  # keys are one key group for the gateway, which rotates, cools and stops each group
+  # apart from the others.
+  @spec entry(String.t(), String.t(), map, map) :: Jason.OrderedObject.t()
   def entry(
         name,
+        group,
         %{"format" => format, "endpoint" => endpoint, "auth" => auth} = api,
         key \\ %{}
       ) do
@@ -393,6 +399,7 @@ defmodule Apiary.Runs.ProviderCredential do
     Jason.OrderedObject.new(
       [
         {"name", name},
+        {"group", group},
         {"format", format},
         {"endpoint", endpoint},
         {"auth", Jason.OrderedObject.new(auth)}
