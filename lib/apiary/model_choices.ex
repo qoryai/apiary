@@ -256,12 +256,18 @@ defmodule Apiary.ModelChoices do
   # 4 to 6), as `Apiary.Processes.shared_models/3` takes them: `choices`, each workflow's
   # resolution by its name (`Apiary.ModelChoices.Resolution.resolve/1`), and `providers`,
   # the `name` and the catalogue `description` (`Apiary.Connections.provider/1`) of each
-  # provider those choices and their fallbacks use, by row id. Read without a lock.
-  @spec shared_models(Workspace.t(), Target.t() | nil, [String.t()]) :: map
-  def shared_models(%Workspace{} = workspace, target, workflows) when is_list(workflows) do
+  # provider those choices and their fallbacks use, by row id, and of `start_ids`, the
+  # providers a continuation starts on. Read without a lock.
+  @spec shared_models(Workspace.t(), Target.t() | nil, [String.t()], [Ecto.UUID.t()]) :: map
+  def shared_models(%Workspace{} = workspace, target, workflows, start_ids \\ [])
+      when is_list(workflows) and is_list(start_ids) do
     inputs = Map.new(workflows, &{&1, input(workspace, target, &1)})
     choices = Map.new(inputs, fn {workflow, input} -> {workflow, Resolution.resolve(input)} end)
-    rows = inputs |> Map.values() |> Enum.flat_map(&Map.get(&1, :rows, []))
+
+    rows =
+      Enum.flat_map(Map.values(inputs), &Map.get(&1, :rows, [])) ++
+        provider_rows(workspace.organisation_id, [], start_ids)
+
     %{choices: choices, providers: described_providers(rows)}
   end
 

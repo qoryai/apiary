@@ -554,8 +554,10 @@ defmodule Apiary.Stages do
     with %{} = stage <- shared_stage(run),
          workspace = Repo.get!(Workspace, run.workspace_id),
          target = Apiary.Dispatches.RunSettings.target_of(run),
-         models = ModelChoices.shared_models(workspace, target, shared_workflows(run)),
-         {:error, detail} <- Processes.shared_models(stage, models, start_provider_ids(run)) do
+         start_ids = start_provider_ids(run),
+         models =
+           ModelChoices.shared_models(workspace, target, shared_workflows(run), start_ids || []),
+         {:error, detail} <- Processes.shared_models(stage, models, start_ids) do
       {:error, %{stage: stage["name"], detail: detail}}
     else
       _fits -> :ok
