@@ -532,6 +532,9 @@ defmodule ApiaryWeb.ProviderLiveTest do
       refute html =~ "<a"
       assert html =~ "Anthropic&#39;s terms"
 
+      html = rendered_to_string(Index.terms(%{href: nil, vendor: "your LiteLLM proxy"}))
+      assert html =~ "Your LiteLLM proxy&#39;s terms"
+
       html = rendered_to_string(Index.terms(%{href: "https://terms.example.com", vendor: "Acme"}))
       assert html =~ ~s(href="https://terms.example.com")
       assert html =~ "Acme&#39;s terms"

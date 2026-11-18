@@ -490,7 +490,16 @@ defmodule ApiaryWeb.ProviderLive.Index do
     """
   end
 
-  defp terms_words(vendor), do: gettext("%{vendor}'s terms", vendor: vendor)
+  # A vendor such as "your LiteLLM proxy" starts a line, so its first letter is upper case.
+  defp terms_words(vendor),
+    do: gettext("%{vendor}'s terms", vendor: upcase_first(vendor))
+
+  defp upcase_first(text) do
+    case String.next_grapheme(text) do
+      {first, rest} -> String.upcase(first) <> rest
+      nil -> text
+    end
+  end
 
   # The vendor of the provider's description, which names the company behind the model
   # API, or the provider's title for a description with none.
