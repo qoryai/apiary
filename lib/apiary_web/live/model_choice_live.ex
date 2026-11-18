@@ -128,16 +128,23 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # with no runtime (`unfit`, nil where it serves one); and their entries
   # (`ApiaryWeb.ModelTiers.entries/2`). `described` is each applicable provider with its
   # description, or why it has none (`Apiary.Connections.provider/1`). The provider of
-  # the saved choice stays listed while it is not offered, so a save keeps it unless the
-  # person chooses another; a fallback row is not offered it (`left/2`). It stays listed
-  # too while its description cannot be read, so Provider keeps it with a line under it
-  # (`provider_line/1`) and no other provider in its place.
+  # the saved choice, and the provider of each saved fallback, stay listed while they are
+  # not offered, so a save keeps them, with their tiers and runtime, unless the person
+  # chooses another; no other row is offered them (`left/2`), and the choice's Provider
+  # lists only the choice's (`ApiaryWeb.ModelTiers.entries/2`). The choice's provider
+  # stays listed too while its description cannot be read, so Provider keeps it with a
+  # line under it (`provider_line/1`) and no other provider in its place.
   defp assign_providers(socket, name) do
     saved = socket.assigns.choice && socket.assigns.choice.connection_id
 
+    kept =
+      MapSet.new(Map.values(socket.assigns.fallback_stored), & &1.provider_id)
+      |> MapSet.put(saved)
+
     providers =
       for {provider, read} <- socket.assigns.described,
-          entry <- provider_entries(provider, read, provider.id == saved, name),
+          entry <-
+            provider_entries(provider, read, provider.id == saved, provider.id in kept, name),
           do: entry
 
     assign(socket,
@@ -146,7 +153,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
     )
   end
 
-  defp provider_entries(provider, {:ok, description}, saved?, name) do
+  defp provider_entries(provider, {:ok, description}, _main?, saved?, name) do
     runtimes = Providers.runtimes(description)
     offered = Providers.offered?(description)
     runtime = ModelTiers.runtime(runtimes, name)
@@ -171,7 +178,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
     end
   end
 
-  defp provider_entries(provider, {:error, why}, true, _name),
+  defp provider_entries(provider, {:error, why}, true, _saved?, _name),
     do: [
       %{
         provider: provider,
@@ -186,7 +193,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
       }
     ]
 
-  defp provider_entries(_provider, {:error, _why}, false, _name), do: []
+  defp provider_entries(_provider, {:error, _why}, false, _saved?, _name), do: []
 
   # The line under Provider while the chosen provider works with no runtime, or, for the
   # saved choice's provider, its description cannot be read: "<Provider> works with no

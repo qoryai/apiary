@@ -2035,6 +2035,13 @@ defmodule ApiaryWeb.ModelChoiceLive.ModelProxiesTest do
              ~s{#model_choice_fallbacks_0_provider option[value="#{litellm.public_id}"][selected]}
            )
 
+    assert has_element?(
+             lv,
+             ~s{#model_choice_fallbacks_0_tiers_thinking_model[value="claude-opus-5-5"]}
+           )
+
+    assert has_element?(lv, "#model-fallback-0-runtime")
+
     lv |> form("#model-form") |> render_submit()
     assert has_element?(lv, "#flash-info", "Model saved.")
 
