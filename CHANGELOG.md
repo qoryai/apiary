@@ -82,9 +82,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   its expected result, and the artifact row; for a pictures scenario, one picture per
   step, each with the step's title and expected result. A scenario whose name is withdrawn
   is left out, and so are the scenarios of an earlier take in.
-- On that tab, every frame is open, the other outputs' frames, such as Demo evidence and
-  Explainer, show the version and the artifact rows only, and a row names the artifact
-  as the gate card does, such as “demo video scenario-1 v1”. The gate card lists the
+- On that tab, every output frame is open, the other outputs' frames, such as Demo
+  evidence and Explainer, show the version and the artifact rows only, and a row names
+  the artifact as the gate card does, such as “demo video scenario-1 v1”. The gate card lists the
   films and pictures together, in scenario order.
 - On that tab, an output frame lists the artifact row of each name of its type, `main`
   first, and an output with only other names has a frame too.
@@ -168,10 +168,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   stage's tab shows a frame for each version that approval recorded. On the tab of a
   stage with a `verification` output, the frames stay those of the Verify tab, and each
   version a person made that an approval would record is added: a film or picture is an
-  entry of the Scenarios frame, with its name as the title and that caption, and the
-  frame's count of scenarios includes it; a version of another type is a row in its
+  entry of the Scenarios frame, with its name as the title (the type for `main`) and that
+  caption, in place of the run's version of the same name where the person's is higher,
+  and the frame's count of scenarios includes it; a verification is the Verification
+  frame's version where it is higher than the run's, read as its table or its Markdown,
+  and its caption has the member's short name; a version of another type is a row in its
   type's frame, whose caption has the member's short name where that version is the
-  frame's highest. In a stage that started no run, the input frames follow the output
+  frame's highest. A person's version makes its frame also where no run wrote one. In a stage that started no run, the input frames follow the output
   frames, folded. On the stage card, each output's version at the gate
   links to that version's page, and the gate also links every further version that an
   approval would record. In `GET artifacts`, each version has `decision` and

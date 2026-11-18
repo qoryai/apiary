@@ -23923,6 +23923,11 @@ msgid_plural "Version %{version} · %{count} scenarios"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Version %{version} · %{member} · Model families: %{families}"
+msgstr ""
+
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "Version %{version} · %{title}"

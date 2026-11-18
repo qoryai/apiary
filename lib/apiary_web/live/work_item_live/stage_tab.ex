@@ -520,21 +520,22 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   # verification is a frame of the kind `:row`, with its artifact rows and no text; its
   # `writer` is the short name of the member who made its version where a person's version
   # is higher than every run's, else nil. The verification's frame is of the kind `:output`,
-  # with the run's version. `persons` is the versions of the frame's types that a person
-  # made in `recorded`, each `%{type:, name:, id:, number:, writer:}`: the Scenarios
-  # frame's are its entries (`ApiaryWeb.WorkItemLive.VerifyTab.scenarios/6`), a row
-  # frame's are its rows.
+  # with the higher of the run's version and the version of `main` a person made, the one
+  # an approval records, and `writer` as a row frame has it. `persons` is the versions of
+  # the frame's types that a person made in `recorded`, each `%{type:, name:, id:, number:,
+  # writer:}`: the Scenarios frame's are its entries
+  # (`ApiaryWeb.WorkItemLive.VerifyTab.scenarios/6`), a row frame's and the verification
+  # frame's are rows. A person's verification of another name is a row of that frame only.
   @spec verify_frames(map, %{String.t() => pos_integer}, [map]) :: [map]
   def verify_frames(stage, newest, recorded) do
-    persons =
-      for %{type: type, version: %{writer: :person}} = entry <- recorded,
-          type != "verification",
-          do: entry
+    persons = for %{version: %{writer: :person}} = entry <- recorded, do: entry
 
     shown =
-      Enum.reduce(persons, newest, fn %{type: type, version: %{number: number}}, shown ->
-        Map.update(shown, type, number, &max(&1, number))
-      end)
+      for %{type: type, name: name, version: %{number: number}} <- persons,
+          type != "verification" or name == "main",
+          reduce: newest do
+        shown -> Map.update(shown, type, number, &max(&1, number))
+      end
 
     types =
       (stage.outputs ++ Enum.map(persons, & &1.type))
@@ -570,7 +571,9 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
           %{frame | kind: :row, persons: fed, writer: row_writer(shown[type], newest[type], fed)}
 
         true ->
-          frame
+          fed = for %{type: ^type} = entry <- persons, do: fed(entry)
+          main = Enum.filter(fed, &(&1.name == "main"))
+          %{frame | persons: fed, writer: row_writer(shown[type], newest[type], main)}
       end
     end)
   end

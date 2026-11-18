@@ -87,11 +87,16 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
         Artifacts.create_type(scope, scope.workspace, %{"name" => name, "base_view" => view})
     end
 
+    save_process!(scope, ~w(verification demo-video screenshot demo-evidence explainer))
+    :ok
+  end
+
+  # The process Explore, Shape, then Verify, whose outputs are `outputs`, none required.
+  defp save_process!(scope, outputs) do
     [explore | _rest] = Processes.default_document("software")["stages"]
     gate = %{"kind" => "person", "approvers" => "members"}
-    output = &%{"type" => &1, "required" => false}
 
-    {:ok, _version} =
+    {:ok, version} =
       Processes.save(scope, scope.workspace, %{
         "schema" => "qory.process/v1",
         "stages" => [
@@ -101,17 +106,13 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
             "id" => @verify,
             "name" => "Verify",
             "sequence" => [%{"workflow" => "verify-a-ticket"}],
-            "outputs" =>
-              Enum.map(
-                ~w(verification demo-video screenshot demo-evidence explainer),
-                output
-              ),
+            "outputs" => Enum.map(outputs, &%{"type" => &1, "required" => false}),
             "gate" => gate
           }
         ]
       })
 
-    :ok
+    version
   end
 
   # A work item at Verify's gate, whose run of Verify pushed what `push` pushes, with the
@@ -1241,6 +1242,121 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
 
       assert has_element?(view, "#work-item-tab-output-notes-s", "Version 1 · #{short}")
       assert has_element?(view, "#work-item-tab-output-notes-row", "notes v1")
+    end
+
+    test "a person's verification above the run's is the Verification frame's version, " <>
+           "read as its table, and the approval records it",
+         %{conn: conn, scope: scope} do
+      work_item =
+        at_verify_gate!(scope, &verification!(&1, &2, "## Summary\n\nThe run's text.\n"))
+
+      by_hand =
+        upload!(scope, work_item, "verification", "main", [
+          %{filename: "verification.md", content_type: "text/markdown", binary: @verification}
+        ])
+
+      view = tab(conn, scope, work_item)
+      short = ApiaryWeb.People.short(scope.user.email)
+
+      assert has_element?(
+               view,
+               "#work-item-tab-output-verification-s",
+               "Version 2 · #{short} · Model families: Build claude · Verify deepseek"
+             )
+
+      assert has_element?(view, "#work-item-tab-output-verification-parts-matrix-1")
+      refute render(view) =~ "The run's text."
+
+      assert [%{type: "verification", version: 2} | _rest] =
+               :sys.get_state(view.pid).socket.assigns.frames
+
+      {:ok, _approved} =
+        Stages.approve(scope, Repo.get!(WorkItem, work_item.id), nil, expect_stage: @verify)
+
+      assert by_hand.public_id in recorded(work_item)
+    end
+
+    test "with no run's verification, a person's has the Verification frame, as Markdown",
+         %{conn: conn, scope: scope} do
+      work_item = at_verify_gate!(scope, &explainer!(&1, &2))
+
+      upload!(scope, work_item, "verification", "main", [
+        %{
+          filename: "verification.md",
+          content_type: "text/markdown",
+          binary: "## Summary\n\nChecked by hand.\n"
+        }
+      ])
+
+      view = tab(conn, scope, work_item)
+      short = ApiaryWeb.People.short(scope.user.email)
+
+      assert has_element?(view, "#work-item-tab-output-verification-s", "Version 1 · #{short}")
+      assert has_element?(view, "#work-item-tab-output-verification", "Checked by hand.")
+    end
+
+    test "a person's picture named main has the key of its type and name, and the type " <>
+           "as its title",
+         %{conn: conn, scope: scope} do
+      work_item = at_verify_gate!(scope, &verification!(&1, &2))
+      upload!(scope, work_item, "screenshot", "main", picture("main"))
+      view = tab(conn, scope, work_item)
+
+      assert ids(view, "#work-item-tab-scenarios > div") == [
+               "work-item-tab-scenarios-screenshot--main--"
+             ]
+
+      assert texts(view, "#work-item-tab-scenarios h3") == ["Screenshot"]
+    end
+
+    test "a person's higher version of a run's scenario takes its place, captioned, " <>
+           "counted once",
+         %{conn: conn, scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item)
+          scenario!(run, work_item, 1, :film)
+          scenario!(run, work_item, 2, :pictures)
+        end)
+
+      upload!(scope, work_item, "screenshot", "scenario-2", picture("scenario-2"))
+      view = tab(conn, scope, work_item)
+      short = ApiaryWeb.People.short(scope.user.email)
+
+      assert has_element?(view, "#work-item-tab-output-demo-video-s", "Version 2 · 2 scenarios")
+
+      assert texts(view, "#work-item-tab-scenarios h3") == [
+               "Scenario 1: Title of scenario-1",
+               "Scenario 2: Title of scenario-2"
+             ]
+
+      entry = "#work-item-tab-scenarios-scenario-2"
+      assert has_element?(view, "#{entry}-caption", "Version 2 · #{short}")
+      assert has_element?(view, "#{entry}-row", "screenshot scenario-2 v2")
+      refute has_element?(view, "#work-item-tab-scenarios-screenshot--scenario-2--")
+      refute has_element?(view, "#work-item-tab-scenarios-scenario-1-caption")
+    end
+
+    test "the questions have no frame on the tab", %{conn: conn, scope: scope} do
+      save_process!(scope, ~w(verification questions explainer))
+
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          verification!(run, work_item)
+          explainer!(run, work_item)
+
+          push!(run, work_item, "questions", "main", [
+            {"questions.json", Jason.encode!(%{"questions" => []})}
+          ])
+        end)
+
+      assert Enum.any?(Artifacts.list(work_item), &(&1.type == "questions"))
+      view = tab(conn, scope, work_item)
+
+      assert ids(view, "section.q-xp-frame") == [
+               "work-item-tab-output-verification",
+               "work-item-tab-output-explainer"
+             ]
     end
 
     test "a person's picture alone has the Scenarios frame, open, then the inputs, folded" do

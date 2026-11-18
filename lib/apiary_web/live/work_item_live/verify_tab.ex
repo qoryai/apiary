@@ -181,8 +181,8 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   # `%{type:, name:, id:, number:, writer:}`, `id` the version's public id and `writer` the
   # member's short name. Each is a scenario with `writer` set, for its caption: in the
   # place of the scenario of the same artifact where that one has a lower number, else
-  # after the others, with its name as its title and no number. A run's scenario has
-  # `writer` nil.
+  # after the others, with its name as its title (the type's words for `main`) and no
+  # number. A run's scenario has `writer` nil.
   @spec scenarios(
           [map],
           String.t(),
@@ -674,6 +674,12 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
        do: gettext("Scenario %{number}: %{title}", number: number, title: title)
 
   defp scenario_title(%{title: title}) when is_binary(title), do: title
+  # A name `main` reads as the type, as an output frame's heading has it.
+  defp scenario_title(%{artifact: %{name: "main", type: type}}) do
+    {first, rest} = type |> StageComponents.type_words() |> String.split_at(1)
+    String.upcase(first) <> rest
+  end
+
   defp scenario_title(%{artifact: artifact}), do: artifact.name
 
   defp step_title(i, %{title: title}),

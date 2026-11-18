@@ -483,7 +483,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
               >
                 <ArtifactComponents.list
                   id={"work-item-tab-output-#{output.type}-row"}
-                  artifacts={named(@artifacts, output.type, @view, @row)}
+                  artifacts={row_artifacts(@artifacts, output, @view, @row)}
                   scope={@current_scope}
                   number={@number}
                   label={verify_label(@view.stage)}
@@ -2468,13 +2468,29 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   defp verify_frame(%{read: {:verification, verification}} = frame, socket, reads) do
+    version = ApiaryWeb.Format.number(frame.version)
+    families = Enum.join(verification.families, " · ")
+
+    # With no families, the frame's caption is "Version N", with the member after it for a
+    # person's version (`ApiaryWeb.WorkItemComponents.output_frame/1`).
     caption =
-      if verification.families != [],
-        do:
-          gettext("Version %{version} · Model families: %{families}",
-            version: ApiaryWeb.Format.number(frame.version),
-            families: Enum.join(verification.families, " · ")
+      cond do
+        verification.families == [] ->
+          nil
+
+        frame[:writer] ->
+          gettext("Version %{version} · %{member} · Model families: %{families}",
+            version: version,
+            member: frame.writer,
+            families: families
           )
+
+        true ->
+          gettext("Version %{version} · Model families: %{families}",
+            version: version,
+            families: families
+          )
+      end
 
     {frame, reads} =
       %{frame | kind: :verification} |> Map.put(:caption, caption) |> accepted(socket, reads)
@@ -2537,7 +2553,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # (`Apiary.Artifacts.name_order/1`): `main`, each other name with a version that a run of
   # the take in wrote at the stage (`StageTab.of_take_in/2`), so an earlier take in's names
   # stay off the tab, and each `{type, name}` of `persons`.
-  defp named(artifacts, type, view, row, persons \\ []) do
+  defp named(artifacts, type, view, row, persons) do
     taken =
       for artifact <- StageTab.of_take_in(view.artifacts, row.take_in),
           into: MapSet.new(persons),
