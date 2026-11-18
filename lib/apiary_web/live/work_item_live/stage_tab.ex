@@ -316,6 +316,14 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
 
   def track_line(_flow), do: nil
 
+  @doc """
+  fast_track?/1 is whether the work item of `flow` is on the track `fast-track`. A work item
+  on another track, and one on none, is not.
+  """
+  @spec fast_track?(map) :: boolean
+  def fast_track?(%{track: %{id: "fast-track"}}), do: true
+  def fast_track?(_flow), do: false
+
   # The newest of `runs` (the stage's runs of the take in, `Workflow.page/2`'s `runs`,
   # newest first) of one of `workflows`; nil for none.
   defp newest_run(runs, workflows), do: Enum.find(runs, &(&1.workflow in workflows))
