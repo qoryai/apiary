@@ -420,14 +420,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           time: expiry(retry_at)
         )
 
-      {reason, _no_retry_at} ->
-        gettext(
-          "Qory Apiary could not refresh the sign-in of the key %{key} of %{provider}: %{reason} (%{code})",
-          key: key,
-          provider: provider,
-          reason: reason,
-          code: cause
-        )
+      {_reason, _no_retry_at} ->
+        nil
     end
   end
 

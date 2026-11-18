@@ -65,10 +65,8 @@ defmodule ApiaryWeb.ActivityModelKeyRefreshTest do
     end
   end
 
-  test "a failure with no stored retry time says no time" do
-    assert sentence(Map.merge(@details, %{"outcome" => "failed", "cause" => "timeout"})) ==
-             "Qory Apiary could not refresh the sign-in of #{@key_of}: the refresh request " <>
-               "to OpenAI timed out (timeout)"
+  test "a failure that may pass with no stored retry time has no sentence" do
+    assert sentence(Map.merge(@details, %{"outcome" => "failed", "cause" => "timeout"})) == nil
   end
 
   test "a refresh address off the allowed list asks the author of the description" do

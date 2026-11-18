@@ -17170,11 +17170,6 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary could not refresh the sign-in of the key %{key} of %{provider}: %{reason} (%{code})"
-msgstr ""
-
-#: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format
 msgid "Qory Apiary could not refresh the sign-in of the key %{key} of %{provider}: %{reason} (%{code}). It tries again at %{time}"
 msgstr ""
 
