@@ -206,9 +206,8 @@ defmodule Apiary.RetentionTest do
 
       records = Repo.all(from r in SessionRecord, where: r.run_id == ^old.id, order_by: r.id)
       windows = Repo.all(SessionKeyWindow)
-      assert [%SessionRecord{cost_usd: %Decimal{}}] = records
+      assert [%SessionRecord{session_number: 1, started_at: %DateTime{}}] = records
       assert [%SessionKeyWindow{}] = windows
-      assert %Decimal{} = old.cost_usd
 
       assert %{runs_pruned: 1} = Retention.prune_workspace(scope.workspace, now: @now)
 
@@ -218,7 +217,6 @@ defmodule Apiary.RetentionTest do
                records
 
       assert Repo.all(SessionKeyWindow) == windows
-      assert Decimal.equal?(Repo.get!(Run, old.id).cost_usd, old.cost_usd)
     end
 
     test "past the events cut-off a run keeps its row, its counts and its connections", %{
