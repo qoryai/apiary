@@ -2,8 +2,9 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   # The run settings of an explore run a claim registers (`Apiary.Dispatches.RunSettings`):
   # what the model choices resolve to, the API of the provider the run uses, the causes
   # that end the run, and what the run keeps. The races with a provider's change are
-  # `run_settings_races_test.exs`; the answer's 1 MiB limit and the features off are
-  # `run_settings_budget_test.exs`.
+  # `run_settings_races_test.exs`; the answer's 1 MiB limit is
+  # `run_settings_budget_test.exs`; the order of the levels and the features off are
+  # `run_settings_defaults_test.exs`.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]

@@ -4,8 +4,8 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
   # input gets what the rest of the documents leave and leaves out its oldest comments
   # first, the 201 carries the documents the claim stored, byte for byte, and a claim
   # whose documents cannot fit is refused with nothing written. Then an explore run's
-  # documents with the feature `secrets` off. Not async: the tests set the limit and the
-  # features in the application environment.
+  # documents with the feature `secrets` off: run settings with no key. Not async: the
+  # tests set the limit and the features in the application environment.
   use Apiary.DataCase, async: false
 
   import Ecto.Query, only: [from: 2]
@@ -178,7 +178,7 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
 
   describe "with the feature secrets off" do
     @tag with_features: [:observability, :security, :secrets, :factory]
-    test "the documents have no run settings, and the run keeps none, whatever the gateway's keys",
+    test "the documents have the choice's runtime and model, and the run keeps no key, whatever the gateway's keys",
          ctx do
       # `factory` needs `secrets`, so no value of QORY_FEATURES gives these features: they
       # are set here because `Apiary.Dispatches.RunSettings` asks for `secrets` as well.
@@ -207,11 +207,19 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
       {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
 
       handed = claimed!(ctx)
-      assert handed.run_settings == nil
-      refute answer(handed) =~ "run_settings"
+      runtime = hd(Apiary.Kinds.Runtimes.list()).name
 
-      assert %Run{run_settings: nil, provider_connection_id: nil, provider_api: nil} =
-               Repo.get!(Run, handed.run.id)
+      assert %{"runtime" => ^runtime, "model" => _model, "provider_models" => [_ | _]} =
+               handed.run_settings |> Jason.encode!() |> Jason.decode!()
+
+      assert answer(handed) =~ "run_settings"
+
+      assert %Run{
+               run_settings: %{"runtime" => ^runtime},
+               provider_connection_id: nil,
+               provider_api: nil,
+               model_keys: nil
+             } = Repo.get!(Run, handed.run.id)
     end
   end
 end

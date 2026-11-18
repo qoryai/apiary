@@ -12,11 +12,21 @@ defmodule Apiary.Dispatches.RunSettings do
   # dispatch it inserted, in that order; then `Apiary.Dispatches.Handover.register/2` calls
   # `hold/1`, and `build/1` with what `hold/1` returned.
   #
-  # Only an explore run has `run_settings`, and only with both features `factory` and
-  # `secrets` on; without either, the documents have none. With them on and no choice at any
-  # level, it has `runtime` alone, the catalogue's default
+  # Every run of the step `explore`, the runs of the stage runner among them, has
+  # `run_settings`, whatever the features; a prebuild has none. The choice in effect is the
+  # first in the order of `Apiary.ModelChoices.Resolution`: a locked choice of the
+  # workspace, then the workflow's at the target (level 2), the target's (3), the
+  # workflow's at the workspace (4), the workspace's (5) and the organisation's default
+  # (6). With no choice at any level, the run has `runtime` alone, the catalogue's default
   # (`Apiary.ModelChoices.default_runtime/0`), and the run uses the gateway's key. With a
-  # choice, `runtime` is the runtime the choice resolves to.
+  # choice, `runtime` is the runtime the choice resolves to, with its model.
+  #
+  # The run is given its provider's key only with both features `factory` and `secrets`
+  # on (`Apiary.Runs.ProviderCredential.applies?/0`). With either off, the run still gets
+  # the choice's runtime, model, effort, `provider_models` and `tiers`, and no key: the
+  # claim checks no key and no endpoint (no `key_gone`), keeps no provider column and no
+  # key on the run, and leaves no run waiting for a key; the run uses the gateway's key.
+  # `time_limit_minutes` needs `factory`, whose pages set the time limits.
   #
   # ## What it holds
   #
@@ -117,7 +127,7 @@ defmodule Apiary.Dispatches.RunSettings do
   alias Apiary.ModelChoices.Resolution
   alias Apiary.ModelKeys.Order
   alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Runs.Target
+  alias Apiary.Runs.{ProviderCredential, Target}
   alias Apiary.Secrets.{Secret, Value}
   alias Apiary.WorkItems.WorkItem
 
@@ -154,29 +164,29 @@ defmodule Apiary.Dispatches.RunSettings do
   def causes, do: [:provider_gone, :runtime_unserved, :key_gone, :model_gone]
 
   # hold/1 is what the claim of the run of the queue `dispatch_run` holds before it
-  # locks anything: nil for a run that has no `run_settings`, else what `build/1` takes.
+  # locks anything: nil for a prebuild, which has no `run_settings`, else what `build/1`
+  # takes.
   @doc false
   @spec hold(DispatchRun.t()) :: map | :unstable | nil
   def hold(%DispatchRun{step: @step, workspace_id: workspace_id, work_item_id: id} = dispatch_run) do
-    if Features.on?(:factory) and Features.on?(:secrets) do
-      workspace = Repo.get!(Workspace, workspace_id)
-      organisation = Repo.get!(Organisation, workspace.organisation_id)
-      target = target(workspace, id)
-      workflow = workflow(dispatch_run, workspace, target)
+    workspace = Repo.get!(Workspace, workspace_id)
+    organisation = Repo.get!(Organisation, workspace.organisation_id)
+    target = target(workspace, id)
+    workflow = workflow(dispatch_run, workspace, target)
 
-      case lock(workspace, target, workflow, [], @lock_rounds) do
-        {:ok, input} ->
-          %{
-            organisation: organisation,
-            workspace: workspace,
-            target: target,
-            input: input,
-            time_limit: time_limit(workspace, target, workflow)
-          }
+    case lock(workspace, target, workflow, [], @lock_rounds) do
+      {:ok, input} ->
+        %{
+          organisation: organisation,
+          workspace: workspace,
+          target: target,
+          input: input,
+          keyed: ProviderCredential.applies?(),
+          time_limit: if(Features.on?(:factory), do: time_limit(workspace, target, workflow))
+        }
 
-        :unstable ->
-          :unstable
-      end
+      :unstable ->
+        :unstable
     end
   end
 
@@ -330,7 +340,14 @@ defmodule Apiary.Dispatches.RunSettings do
         with {:ok, runtime} <- runtime(resolution),
              :ok <- intact(provider),
              {:ok, built} <-
-               form(resolution, provider, described[provider.id], runtime, held.workspace.id),
+               form(
+                 resolution,
+                 provider,
+                 described[provider.id],
+                 runtime,
+                 held.workspace.id,
+                 held.keyed
+               ),
              {:ok, built} <-
                keys(
                  built,
@@ -342,6 +359,12 @@ defmodule Apiary.Dispatches.RunSettings do
              do: sealed(with_time_limit(built, held))
     end
   end
+
+  # Without the features under which a run is given its provider's key
+  # (`Apiary.Runs.ProviderCredential.applies?/0`), the run gets the choice's runtime and
+  # models and no key: it keeps no provider column and waits for no key.
+  defp keys(built, _provider, _resolved, %{keyed: false}, _now),
+    do: {:ok, %{built | columns: %{}}}
 
   # The settings `built` of the choice's provider with its keys, else those of the first
   # fallback with a key not in cooldown, else `{:cooling, built, provider_ids}`: the
@@ -533,21 +556,23 @@ defmodule Apiary.Dispatches.RunSettings do
   # moduledoc that applies, else `{:ok, built}`; `{:unchecked, provider}` where the check
   # of the provider's settings ran out of time or crashed, which ends no run. A function
   # of its arguments, which a test calls with a description or a runtime the catalogue
-  # does not have.
+  # does not have. With `keyed` false, for a run given no key, the endpoint and the key
+  # are not checked.
   @doc false
   @spec form(
           Resolution.t(),
           Connection.t(),
           {:ok, Provider.t()} | {:error, atom},
           Runtime.t(),
-          Ecto.UUID.t()
+          Ecto.UUID.t(),
+          boolean
         ) :: {:ok, built} | {:end, cause} | {:unchecked, Connection.t()}
-  def form(resolution, provider, description, runtime, workspace_id) do
+  def form(resolution, provider, description, runtime, workspace_id, keyed \\ true) do
     with {:ok, description} <- described(description, provider),
          :ok <- applies(provider, workspace_id),
          {:ok, api} <- api(description, runtime),
-         {:ok, endpoint} <- endpoint(api, provider),
-         :ok <- key(provider, resolution.value_id),
+         {:ok, endpoint} <- endpoint(api, provider, keyed),
+         :ok <- key(provider, resolution.value_id, keyed),
          models = Connections.provider_models(description),
          :ok <- model(models, resolution, runtime) do
       api = with_windows(%{api | "endpoint" => endpoint}, description)
@@ -585,9 +610,13 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # The address of the API: the description's, or the one the provider has for the
   # setting the description names, which passes the endpoint rule again here.
-  defp endpoint(%{"endpoint" => address}, _provider) when is_binary(address), do: {:ok, address}
+  # A run given no key does not reach the provider's API, so its endpoint is not checked.
+  defp endpoint(_api, _provider, false), do: {:ok, nil}
 
-  defp endpoint(%{"endpoint" => %{"setting" => name}}, %Connection{} = provider) do
+  defp endpoint(%{"endpoint" => address}, _provider, true) when is_binary(address),
+    do: {:ok, address}
+
+  defp endpoint(%{"endpoint" => %{"setting" => name}}, %Connection{} = provider, true) do
     address = Map.get(Connection.settings_map(provider), name)
 
     case Endpoint.check(address) do
@@ -596,11 +625,15 @@ defmodule Apiary.Dispatches.RunSettings do
     end
   end
 
-  defp key(%Connection{secret: %Secret{values: values}}, value_id) when is_binary(value_id) do
+  # The chosen key, checked only for a run given its provider's key.
+  defp key(_provider, _value_id, false), do: :ok
+
+  defp key(%Connection{secret: %Secret{values: values}}, value_id, true)
+       when is_binary(value_id) do
     if Enum.any?(values, &(&1.value_id == value_id)), do: :ok, else: {:end, :key_gone}
   end
 
-  defp key(%Connection{}, _value_id), do: {:end, :key_gone}
+  defp key(%Connection{}, _value_id, true), do: {:end, :key_gone}
 
   # A chosen model, with no effort or one of its offered effort values.
   defp model(_models, %Resolution{model_id: nil}, _runtime), do: {:end, :model_gone}

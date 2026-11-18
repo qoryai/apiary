@@ -126,10 +126,10 @@ defmodule Apiary.Dispatches.Handover do
   # where the instance has a largest prebuilt image. Its target is made in its workspace
   # where the workspace has no row of it.
   #
-  # An explore run has `run_settings` with the features `factory` and `secrets` on
-  # (`Apiary.Dispatches.RunSettings`), and keeps them on its registered run, with the
-  # provider's row id, its keys' secret's row id, its model keys in their order, the
-  # provider's chain and the API of the provider the run uses; later reads take those,
+  # An explore run has `run_settings` (`Apiary.Dispatches.RunSettings`), and keeps them on
+  # its registered run, with, where it is given its provider's key, the provider's row id,
+  # its keys' secret's row id, its model keys in their order, the provider's chain and the
+  # API of the provider the run uses; later reads take those,
   # never the choices. Where every key of the choice's provider and of each fallback that
   # forms is in cooldown, the claim registers nothing once the checks of step 1 pass:
   # `register/2` returns `{:wait, provider_ids}`, and the run waits again for those

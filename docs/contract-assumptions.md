@@ -359,11 +359,22 @@ adds `machine` and `machine_spec`, the run's type and its spec, after `lease_unt
 pool that sends no offers takes only a run of the instance's default type, a run queued on
 the type that was the default then (`dispatch_runs.machine_type_was_default`), or a run
 queued before machine types, and the answer has neither, so the starter uses its default
-machine type. A run queued before machine types has no spec and is of the default type. An
-explore run's `run_settings` has `time_limit_minutes`, an integer from 15 to 1440, after
-its other members, for a run with a workflow (`Apiary.Stacks.workflow/2`, or, with the
-workflow model, the workflow of its stage entry): the limit set for that workflow at the
-run's target, else the one set at its workspace (`Apiary.TimeLimits`), else 180 minutes.
+machine type. A run queued before machine types has no spec and is of the default type.
+Every explore run's documents have `run_settings`, a stage's runs among them; a
+prebuild's have none. `runtime` and `model` come from the first model choice in this order
+(`Apiary.ModelChoices.Resolution`): a locked choice of the workspace, the workflow's choice
+at the run's target, the target's choice, the workflow's choice at the workspace, the
+workspace's (Workspace settings › Model), and the organisation's default. With no choice,
+`run_settings` has `runtime` alone, the catalogue's default, and the run uses the gateway's
+key. A pool claims a run only with the feature `factory` on (`dispatch.claim`), and
+`factory` needs `secrets`. The code that builds `run_settings` runs with either feature off
+too: with `factory` or `secrets` off, it builds the choice's `runtime`, `model`, `effort`,
+`provider_models` and `tiers` and no key, and checks neither the chosen key nor the
+provider's endpoint. An explore run's `run_settings` has `time_limit_minutes`, an integer
+from 15 to 1440, after its other members, for a run with a workflow and `factory` on
+(`Apiary.Stacks.workflow/2`, or, with the workflow model, the workflow of its stage
+entry): the limit set for that workflow at the run's target, else the one set at its
+workspace (`Apiary.TimeLimits`), else 180 minutes.
 With no workflow for the run, the member is absent, and the run takes the default of the
 workflow's stack, which the machine applies. The claim registers the run, and the run
 endpoint refuses, under any key, a registration whose `run_id` is that of such a run,
