@@ -713,7 +713,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
       phx-hook={@film && "WatchHandoff"}
       data-version={@film && @scenario.version.public_id}
     >
-      <span class="hero-play-micro size-4 shrink-0" aria-hidden="true"></span>
+      <.icon name="hero-play-micro" class="size-4 shrink-0" />
       <span>{gettext("Watch")}</span>
     </.button>
     """

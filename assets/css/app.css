@@ -13452,31 +13452,32 @@
       grid-template-columns: minmax(0, 1fr) 18rem;
     }
   }
-  /* A version's page with a player (`ArtifactComponents.view/1`, `player`): Cinema, which the
-     ArtifactPlayer hook marks with `data-cinema="true"`, takes the player out of the left
+  /* A version's page with a player (`ArtifactComponents.view/1`, `player`): Cinema, whose button
+     the ArtifactPlayer hook presses (`aria-pressed="true"`; a patch of the page leaves an
+     ignored element's `aria-*` alone but removes its `data-*`), takes the player out of the left
      column and puts it above both columns, as wide as the page. The left column and the
      player's section become cells of the page's grid, so the film stays in the page and is
      not loaded again; the queue and Details stay in the right column, now under the player.
      The button is hidden under 1024 px, so the rule is too. */
   @media (min-width: 1024px) {
-    .q-art-cols:has([data-cinema="true"]) > .q-art-main {
+    .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) > .q-art-main {
       display: contents;
     }
-    .q-art-cols:has([data-cinema="true"]) #artifact-view-part {
+    .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) #artifact-view-part {
       grid-column: 1 / -1;
       grid-row: 1;
     }
-    .q-art-cols:has([data-cinema="true"]) .q-art-rest {
+    .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) .q-art-rest {
       grid-column: 1;
       grid-row: 2;
       min-width: 0;
       align-content: start;
     }
-    .q-art-cols:has([data-cinema="true"]) > aside {
+    .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) > aside {
       grid-column: 2;
       grid-row: 2;
     }
-    .q-art-cols:has([data-cinema="true"]) .q-player > video {
+    .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) .q-player > video {
       width: 100%;
     }
   }

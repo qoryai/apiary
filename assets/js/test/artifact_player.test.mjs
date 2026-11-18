@@ -46,7 +46,7 @@ const button = (dataset = {}) => {
     hidden: false,
     setAttribute: (name, value) => (attributes[name] = value),
     getAttribute: name => attributes[name],
-    querySelector: selector => (selector === "[data-text]" ? text : selector === "[data-icon]" ? icon : null),
+    querySelector: selector => (selector === "[data-text]" ? text : selector === '[class^="hero-"]' ? icon : null),
   })
 }
 
@@ -142,6 +142,19 @@ test("Cinema stays on across pages: the next page's hook reads it on mount", () 
   const next = mount({version: "av_two"})
   assert.equal(next.el.dataset.cinema, "true")
   assert.equal(next.cinema.getAttribute("aria-pressed"), "true")
+})
+
+test("a patch or a reconnect that removes data-cinema is followed by it again, from the button", () => {
+  const {hook, el, cinema} = mount()
+  cinema.fire("click")
+  delete el.dataset.cinema
+  hook.updated()
+  assert.equal(el.dataset.cinema, "true")
+  cinema.fire("click")
+  delete el.dataset.cinema
+  hook.reconnected()
+  assert.equal(el.dataset.cinema, "false")
+  assert.equal(cinema.getAttribute("aria-pressed"), "false")
 })
 
 test("Full screen shows the player's figure in full screen, and the button reads Leave full screen", () => {
@@ -253,4 +266,15 @@ test("the hook stops listening once removed", () => {
   assert.equal(cinema.listeners.click, undefined)
   assert.equal(full.listeners.click, undefined)
   assert.equal(globalThis.document.listeners.fullscreenchange, undefined)
+})
+
+test("no hook of the player page starts a film or reacts to its end", async () => {
+  const {readFileSync} = await import("node:fs")
+  for (const name of ["artifact_player", "queue_media", "watch_handoff"]) {
+    const source = readFileSync(new URL(`../hooks/${name}.js`, import.meta.url), "utf8")
+      .split("\n")
+      .filter(line => !line.trim().startsWith("//"))
+      .join("\n")
+    assert.doesNotMatch(source, /\.play\(|autoplay|"ended"|\bended\b/, name)
+  }
 })

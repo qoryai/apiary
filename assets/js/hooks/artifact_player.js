@@ -5,7 +5,9 @@
 // Cinema is kept in `localStorage` (`qory:artifact-cinema`, "on" or absent) and read on
 // mount, so it stays on from one page to the next. The hook sets `aria-pressed` on the
 // button and `data-cinema` on its element; the page's CSS moves the player above the two
-// columns from that, so the film is not loaded again.
+// columns from the pressed button, so the film is not loaded again. A patch of the page
+// removes the element's `data-*` attributes that the server did not render, so the hook
+// sets `data-cinema` again from the button after each patch and each reconnect.
 //
 // Full screen asks the browser to show the player's `<figure>` (the film or the picture, the
 // line under it and the button) alone, and the button reads Leave full screen while it does.
@@ -90,6 +92,14 @@ export const ArtifactPlayer = {
     if (note) applyHandoff(this.video, note)
   },
 
+  updated() {
+    this.setCinema(this.cinema?.getAttribute("aria-pressed") === "true")
+  },
+
+  reconnected() {
+    this.updated()
+  },
+
   setCinema(on) {
     this.el.dataset.cinema = String(on)
     this.cinema?.setAttribute("aria-pressed", String(on))
@@ -101,7 +111,7 @@ export const ArtifactPlayer = {
     button.setAttribute("title", on ? button.dataset.leaveTitle : button.dataset.title)
     const text = button.querySelector("[data-text]")
     if (text) text.textContent = on ? button.dataset.leaveLabel : button.dataset.label
-    const icon = button.querySelector("[data-icon]")
+    const icon = button.querySelector('[class^="hero-"]')
     icon?.classList.toggle(OUT, !on)
     icon?.classList.toggle(IN, on)
   },

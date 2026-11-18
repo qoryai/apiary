@@ -577,7 +577,7 @@ defmodule ApiaryWeb.ArtifactComponents do
               disabled={@shown <= 1}
               class={size_class()}
             >
-              <span class="hero-chevron-left-micro size-4 shrink-0" aria-hidden="true"></span>
+              <.icon name="hero-chevron-left-micro" class="size-4 shrink-0" />
               <span>{gettext("Previous picture")}</span>
             </.button>
             <span id="artifact-picture-count" class="px-1 text-[12.5px] text-muted tabular-nums">
@@ -592,7 +592,7 @@ defmodule ApiaryWeb.ArtifactComponents do
               class={size_class()}
             >
               <span>{gettext("Next picture")}</span>
-              <span class="hero-chevron-right-micro size-4 shrink-0" aria-hidden="true"></span>
+              <.icon name="hero-chevron-right-micro" class="size-4 shrink-0" />
             </.button>
           </div>
           <.sizes id={"#{@id}-sizes"} version={@version.public_id} />
@@ -746,7 +746,7 @@ defmodule ApiaryWeb.ArtifactComponents do
         title={gettext("Cinema: the player takes the width of the page")}
         class={[size_class(), "hidden lg:flex"]}
       >
-        <span class="hero-arrows-right-left size-4 shrink-0" aria-hidden="true"></span>
+        <.icon name="hero-arrows-right-left" class="size-4 shrink-0" />
         <span>{gettext("Cinema")}</span>
       </.button>
       <.button
@@ -762,7 +762,7 @@ defmodule ApiaryWeb.ArtifactComponents do
         data-leave-label={gettext("Leave full screen")}
         class={size_class()}
       >
-        <span data-icon class="hero-arrows-pointing-out-micro size-4 shrink-0" aria-hidden="true"></span>
+        <.icon name="hero-arrows-pointing-out-micro" class="size-4 shrink-0" />
         <span data-text>{gettext("Full screen")}</span>
       </.button>
     </div>
@@ -772,6 +772,7 @@ defmodule ApiaryWeb.ArtifactComponents do
   @doc false
   # size_class/0 is the classes that make a `<.button size="xs">` the small button of the
   # Speed row and the player's line: the same height, face and pressed state.
+  @spec size_class() :: String.t()
   def size_class,
     do:
       "h-7 min-h-7 gap-1.5 border-base-300 bg-base-100 text-[13px]/none font-normal shadow-none aria-pressed:bg-base-300 px-2"

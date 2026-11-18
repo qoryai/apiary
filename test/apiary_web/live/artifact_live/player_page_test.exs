@@ -13,6 +13,7 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Artifacts, Processes, Repo, Stages, WorkItems}
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.ArtifactComponents
   alias ApiaryWeb.WorkItemLive.VerifyTab
@@ -181,6 +182,31 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
       scenario!(run, work_item, 2, :pictures)
       scenario!(run, work_item, 1, :film)
     end)
+  end
+
+  # A run of the queue at Verify for `work_item`, of the take in `take_in`, after its newest
+  # run; and a cancel of it by a member.
+  defp verify_run!(work_item, take_in) do
+    newest = newest_run(work_item)
+
+    %DispatchRun{organisation_id: work_item.organisation_id, workspace_id: work_item.workspace_id}
+    |> DispatchRun.queue_changeset(%{
+      work_item_id: work_item.id,
+      step: newest.step,
+      take_in: take_in,
+      attempt: newest.attempt + 1,
+      of: max(newest.of, newest.attempt + 1),
+      queued_at: DateTime.utc_now()
+    })
+    |> Ecto.Changeset.put_change(:stage_id, @verify)
+    |> Repo.insert!()
+  end
+
+  defp cancel!(scope, run) do
+    Apiary.RunEventsFixtures.run_fixture(scope, %{
+      dispatch_run_id: run.id,
+      cancel_requested_at: DateTime.utc_now()
+    })
   end
 
   # The queue as the page reads it: from the artifacts without a withdrawn name.
@@ -469,6 +495,32 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
 
       assert has_element?(view, "#artifact-queue-title", "1 of 1")
       refute has_element?(view, "#artifact-queue-item-scenario-2")
+    end
+
+    test "is not queued when a run that a member cancelled wrote it", %{conn: conn, scope: scope} do
+      work_item =
+        at_verify_gate!(scope, fn run, work_item ->
+          push!(run, work_item, "verification", "main", [{"verification.md", @verification}])
+          scenario!(run, work_item, 1, :film)
+        end)
+
+      run = verify_run!(work_item, work_item.take_in)
+      cancelled = scenario!(run, work_item, 3, :film)
+      cancel!(scope, run)
+
+      assert [first] = queue(work_item)
+      view = page(conn, scope, work_item, first)
+      assert has_element?(view, "#artifact-queue-title", "1 of 1")
+      refute has_element?(view, "#artifact-queue-item-scenario-3")
+
+      {:ok, view, _html} =
+        live(
+          conn,
+          ArtifactComponents.version_path(scope, work_item.number, cancelled.public_id)
+        )
+
+      refute has_element?(view, "#artifact-queue")
+      refute has_element?(view, "#artifact-scenario")
     end
 
     test "is a page with no queue for a film the Verify stage did not make",
