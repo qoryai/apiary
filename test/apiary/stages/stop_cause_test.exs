@@ -51,7 +51,7 @@ defmodule Apiary.Stages.StopCauseTest do
        %{work_item: work_item, ws: ws} do
     assert text(:key_gone, work_item) ==
              "The run did not start, because the chosen model provider has no key.\n" <>
-               "Owners and admins of #{ws} add a key to the provider in Organisation settings › Model providers, or choose another provider in Workspace settings › Model."
+               "Owners and admins of #{ws} choose another provider on the set-up step Model, or add a key to it in Organisation settings › Model providers."
 
     assert text(:provider_gone, work_item) ==
              "The run did not start, because the model provider of its model choice was removed, or no longer applies to #{ws}.\n" <>
