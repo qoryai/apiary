@@ -1510,11 +1510,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A run receives the variables of its workspace. When a claim registers a run, Qory
   Apiary resolves the variables of the organisation, the workspace, and the target (a
   repository, in a software workspace) as they are then, and sends them in the run
-  configuration's `variables`, beside `QORY_RUN_SYSTEM` and `QORY_RUN_REPOSITORIES`. The
-  more specific level wins, and a lock of a broader level holds. The organisation's level
-  is included while the feature `organisation_variables` is on. A later change reaches the
-  next run: a run keeps what it received at its start, and its run configuration, and the
-  digest of it, do not change. A run registered outside the workspace's queue, with
+  configuration's `variables` and, for a run with a target, beside `QORY_RUN_SYSTEM` and
+  `QORY_RUN_REPOSITORIES`. The more specific level wins, and a lock of a broader level
+  holds. The organisation's level is included while the feature `organisation_variables`
+  is on. A later change reaches the next run: a run keeps what it received at its start,
+  and its run configuration, and the digest of it, do not change. A run registered outside the workspace's queue, with
   `qory run register`, receives none. The Variables tab of **Workspace settings › Secrets
   and variables** and its pages read “A run receives these variables when it starts. A
   change reaches the next run.” The organisation's **Variables** page reads “A run
@@ -1530,6 +1530,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   works, except a name beginning `QORY_`, which stays refused, and the form and the list
   say “GH_TOKEN is on Forager's deny list.” and “On Forager's deny list”, which they could
   not show before. A connection's placeholder may still take the name of a forge token.
+  The names and patterns of the list are now refused on save for a placeholder, in a tool
+  role's `placeholders` of an integration's description and in a service declaration's
+  `name`: `PATH`, `HOME`, `DOCKER_HOST` and a name ending in `_PROXY` are examples. Before,
+  only a name beginning `QORY_` was refused there.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
 - A run takes at most 126 variables and 64 KiB of names and values, which the run
@@ -2447,6 +2451,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   previous image runs get no workspace access at the next upgrade, because the adoption
   covers only organisations it has not adopted. That member reaches no workspace, and
   the members of that workspace do not reach it, until they are added to it.
+<!-- feature: factory, secrets -->
+- After the upgrade, the variables of each workspace, target and organisation reach every
+  run that starts, a prebuild too, where none did before. Members check the values they
+  stored in **Workspace settings › Secrets and variables** and on the organisation's
+  **Variables** page before the first run starts.
+<!-- /feature -->
 - Upgrade every Qory Gateway before you upgrade Qory Apiary, to a gateway built with
   qoryai/forager#52 or later. A gateway built before it returns an error for each batch
   that contains one of the three image codes `image_access_denied`, `image_rate_limited`

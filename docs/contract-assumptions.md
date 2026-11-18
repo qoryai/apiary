@@ -404,9 +404,10 @@ its dispatch held, through the gateway the pool's choice resolves to: the run's 
 is the one the run of the queue was given, and so is its instance id; its labels and its
 run variables come from the target, the work item's or the prebuild's collection's, with
 the variables its workspace and target resolve to when the claim registers it
-(`Apiary.Variables.for_run/2`), and what it is about from the step and the work item, never from the request; a prebuild's
-input is the `environment_ref` its run of the queue was queued for. The claim encodes
-the run's documents once (the run contract's `documents.schema.json`: `step`, `domain`,
+(`Apiary.Variables.for_run/2`), and what it is about from the step and the work item,
+never from the request; a prebuild's input is the `environment_ref` its run of the queue
+was queued for. The claim encodes the run's documents once (the run contract's
+`documents.schema.json`: `step`, `domain`,
 `access` (`read`, `write-no-push` or `write`) and `target` together or neither,
 `work_item`, `run_settings`, `stack`, `workflow` and `harness_hidden` together or none,
 and `inputs`) and keeps the bytes on the registered run (`runs.run_documents`); every

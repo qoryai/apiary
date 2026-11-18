@@ -132,8 +132,8 @@ defmodule ApiaryWeb.SecretLive.Index do
   # The section: its title and sentence, then its two tabs, Secrets and Variables, each a
   # link with an address of its own (`page_tabs/1`, not an ARIA tablist) that wraps and
   # does not stick. Under them the panel of the tab: the line of what a run receives
-  # (`not_on_runs_words/1`), who changes them, its New beside its search, Filter and Sort, and its
-  # list.
+  # (`not_on_runs_words/1`), who changes them, its New beside its search, Filter and Sort,
+  # and its list.
   # One status line, there from the start and outside both tabs' parts, says a switch
   # ("Variables, 7") and what a search left.
   def render(assigns) do

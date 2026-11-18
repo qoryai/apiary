@@ -84,9 +84,9 @@ defmodule ApiaryProWeb.SettingsLive.Variables do
     """
   end
 
-  # The section: its title and sentence, the line of what a run receives, who changes them, New variable beside the search and Filter, and the list, as
-  # the core's Variables tab has them. One status line, there from the start, says what a
-  # search or a filter left.
+  # The section: its title and sentence, the line of what a run receives, who changes
+  # them, New variable beside the search and Filter, and the list, as the core's Variables
+  # tab has them. One status line, there from the start, says what a search or a filter left.
   def render(assigns) do
     assigns =
       assign(assigns,

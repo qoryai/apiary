@@ -119,8 +119,8 @@ defmodule Apiary.Dispatches.HandoverVariablesTest do
   defp names(count, prefix \\ "V"),
     do: for(n <- 1..count, do: {prefix <> String.pad_leading(Integer.to_string(n), 3, "0"), "x"})
 
-  # The run of the queue ended `variables_invalid` with `detail`, no run was registered, and
-  # the stop cause reads the detail as the claim wrote it: `line` and the fix.
+  # The run of the queue ended `variables_invalid` with `detail`, its run failed before it
+  # started, and the stop cause reads the detail as the claim wrote it: `line` and the fix.
   defp refused!(ctx, {work_item, queued}, detail, line) do
     assert %DispatchRun{
              state: :ended,
@@ -267,6 +267,31 @@ defmodule Apiary.Dispatches.HandoverVariablesTest do
       assert claimed!(ctx) == Map.put(@own, "NODE_ENV", "production")
     end
 
+    test "QORY_RUN_SYSTEM at a level above the run's own is not given: the run keeps its value",
+         ctx do
+      # A save refuses the name, so each level is written around it.
+      rows!(ctx, [{"QORY_RUN_SYSTEM", "workspace.example"}])
+      rows!(ctx, [{"QORY_RUN_SYSTEM", "target.example"}], ctx.target.id)
+
+      Repo.insert_all(ApiaryPro.OrganisationVariables.Variable, [
+        %{
+          id: Ecto.UUID.generate(),
+          organisation_id: ctx.scope.organisation.id,
+          name: "QORY_RUN_SYSTEM",
+          value: "organisation.example",
+          locked: true,
+          created_by_id: ctx.scope.user.id,
+          updated_by_id: ctx.scope.user.id,
+          inserted_at: DateTime.utc_now(),
+          updated_at: DateTime.utc_now()
+        }
+      ])
+
+      {_work_item, _queued} = queued!(ctx)
+
+      assert claimed!(ctx) == @own
+    end
+
     test "is refused on save when it begins QORY_", ctx do
       assert {:error, %Ecto.Changeset{}} =
                Variables.create_variable(ctx.scope, :workspace, %{name: "QORY_X", value: "1"})
@@ -312,6 +337,50 @@ defmodule Apiary.Dispatches.HandoverVariablesTest do
 
       assert line =~ "run_id=#{elem(queued, 1).run_id}"
       assert line =~ "names=127"
+    end
+
+    test "a variable over the contract's value limit ends the run with no detail, and the log names it only",
+         ctx do
+      # The table's check keeps a value to 4096 bytes; the sandbox's transaction drops it
+      # for this test and rolls the drop back.
+      Repo.query!("ALTER TABLE variables DROP CONSTRAINT variables_value_check")
+      value = String.duplicate("secretvalue", 400)
+      rows!(ctx, [{"TOO_LONG", value}])
+      {_work_item, queued} = queued!(ctx)
+
+      log = capture_log(fn -> assert claim(ctx) == {:ok, :none} end)
+
+      assert %DispatchRun{
+               state: :ended,
+               end_cause: :variables_invalid,
+               end_detail: nil,
+               result_outcome: :error
+             } = queue_run!(queued)
+
+      assert [line] =
+               log |> String.split("\n") |> Enum.filter(&(&1 =~ "end_cause=variables_invalid"))
+
+      assert line =~ "variable=TOO_LONG"
+      refute log =~ "secretvalue"
+    end
+
+    test "127 variables end a prebuild too, with the count kept and no outcome", ctx do
+      rows!(ctx, names(127))
+      collection = collection_fixture(ctx.scope)
+
+      {:ok, prebuild} =
+        Repo.transact(fn -> Dispatches.queue_prebuild(collection, ctx.pool, "env-1") end)
+
+      log = capture_log(fn -> assert claim(ctx) == {:ok, :none} end)
+
+      assert %DispatchRun{
+               state: :ended,
+               end_cause: :variables_invalid,
+               end_detail: "names_127",
+               result_outcome: nil
+             } = queue_run!(prebuild)
+
+      assert log =~ "names=127"
     end
 
     test "names left out of the run do not count toward the 126", ctx do

@@ -25,11 +25,11 @@ and variables, on the **Variables** tab.
 **A run receives the variables that its workspace and target inherit from the
 organisation, as they are when it starts.** Qory Apiary keeps the variables, checks them
 and resolves them at every level, for each workspace and repository, and puts the result
-in the run's configuration when the run starts. A later change reaches the next run, and
-a run already started keeps what it received. A run takes at most 126 variables of all
-levels together, and 64 KiB of names and values: a run over either does not start, and
-its work item says why. A name that Forager leaves out of every run, such as `PATH` or a
-name ending in `_PROXY`, is not given to a run.
+in the run's configuration when the run starts. A later change reaches the next run, and a
+run already started keeps what it received. A run takes at most 126 variables of all
+levels together, and 64 KiB of names and values: a run over either does not start, and its
+work item says why, for a run of a work item. A name that Forager leaves out of every run,
+such as `PATH` or a name ending in `_PROXY`, is not given to a run.
 
 ## Three levels
 
