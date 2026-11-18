@@ -6,6 +6,7 @@ defmodule Apiary.SchemaConstraintsTest do
 
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
+  import Apiary.RunEventsFixtures, only: [run_fixture: 1]
 
   defp refused(constraint, fun), do: assert_raise(Postgrex.Error, ~r/#{constraint}/, fun)
 
@@ -423,5 +424,126 @@ defmodule Apiary.SchemaConstraintsTest do
     # Named with no gateway is a gateway that is gone; the default and direct name none.
     assert %{num_rows: 1} = update!("nodes", node.id, "gateway_id = NULL")
     assert %{num_rows: 1} = update!("nodes", pool.id, "gateway_choice = 'default'")
+  end
+
+  # A row of `table` with `columns` and the two timestamps every table has; the ids are
+  # dumped by the caller.
+  defp insert!(table, columns) do
+    {names, values} = columns |> Map.to_list() |> Enum.unzip()
+    marks = Enum.map_join(1..length(values), ", ", &"$#{&1}")
+
+    Repo.query!(
+      "INSERT INTO #{table} (#{Enum.join(names, ", ")}, inserted_at, updated_at) " <>
+        "VALUES (#{marks}, now(), now())",
+      values
+    )
+  end
+
+  defp record_columns(run, extra \\ %{}) do
+    Map.merge(
+      %{
+        id: Ecto.UUID.dump!(Ecto.UUID.generate()),
+        organisation_id: Ecto.UUID.dump!(run.organisation_id),
+        workspace_id: Ecto.UUID.dump!(run.workspace_id),
+        run_id: Ecto.UUID.dump!(run.id),
+        session_number: 1
+      },
+      extra
+    )
+  end
+
+  test "the database refuses a session record with a negative count, a number below 1, or a twin" do
+    run = run_fixture(scope_fixture())
+    assert %{num_rows: 1} = insert!("session_records", record_columns(run))
+
+    # One record for a session of a run.
+    refused("session_records_run_id_session_number_index", fn ->
+      insert!("session_records", record_columns(run))
+    end)
+
+    for {constraint, extra} <- [
+          {"session_records_session_number_check", %{session_number: 0}},
+          {"session_records_attempt_check", %{session_number: 2, attempt: 0}},
+          {"session_records_turns_check", %{session_number: 2, turns: -1}},
+          {"session_records_duration_check", %{session_number: 2, duration_ms: -1}},
+          {"session_records_tokens_check", %{session_number: 2, output_tokens: -1}},
+          {"session_records_tokens_check", %{session_number: 2, cache_write_tokens: -1}},
+          {"session_records_cost_check", %{session_number: 2, cost_usd: Decimal.new("-0.000001")}}
+        ] do
+      refused(constraint, fn -> insert!("session_records", record_columns(run, extra)) end)
+    end
+
+    # A value no result carried is null, and 0 is a value.
+    assert %{num_rows: 1} =
+             insert!(
+               "session_records",
+               record_columns(run, %{
+                 session_number: 2,
+                 turns: 0,
+                 input_tokens: 0,
+                 cost_usd: Decimal.new(0)
+               })
+             )
+  end
+
+  test "the database refuses a session record that names another workspace than its run's" do
+    run = run_fixture(scope_fixture())
+    other = scope_fixture()
+
+    refused("session_records_run_id_fkey", fn ->
+      insert!(
+        "session_records",
+        record_columns(run, %{workspace_id: Ecto.UUID.dump!(other.workspace.id)})
+      )
+    end)
+  end
+
+  test "the database refuses a key window of another workspace, and one out of its bounds" do
+    run = run_fixture(scope_fixture())
+    other = scope_fixture()
+    record = record_columns(run)
+    insert!("session_records", record)
+
+    window = fn extra ->
+      Map.merge(
+        %{
+          id: Ecto.UUID.dump!(Ecto.UUID.generate()),
+          organisation_id: record.organisation_id,
+          workspace_id: record.workspace_id,
+          session_record_id: record.id,
+          key_id: Ecto.UUID.dump!(Ecto.UUID.generate()),
+          window: "five_hour",
+          first_utilization: Decimal.new(7),
+          last_utilization: Decimal.new(12),
+          share: Decimal.new(5)
+        },
+        extra
+      )
+    end
+
+    assert %{num_rows: 1} = insert!("session_key_windows", window.(%{}))
+
+    refused("session_key_windows_session_record_id_fkey", fn ->
+      insert!(
+        "session_key_windows",
+        window.(%{workspace_id: Ecto.UUID.dump!(other.workspace.id)})
+      )
+    end)
+
+    # A window that reset in the session has a negative share.
+    assert %{num_rows: 1} =
+             insert!(
+               "session_key_windows",
+               window.(%{share: Decimal.new(-7), first_utilization: Decimal.new(12)})
+             )
+
+    for {constraint, extra} <- [
+          {"session_key_windows_window_check", %{window: "Five-hour"}},
+          {"session_key_windows_utilization_check", %{last_utilization: Decimal.new(101)}},
+          {"session_key_windows_utilization_check", %{first_utilization: Decimal.new(-1)}},
+          {"session_key_windows_share_check", %{share: Decimal.new(101)}}
+        ] do
+      refused(constraint, fn -> insert!("session_key_windows", window.(extra)) end)
+    end
   end
 end
