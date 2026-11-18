@@ -40,6 +40,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   have yet has **Key** disabled, with "Save the stage first to set this workflow's model
   choice." Whoever may not change model choices sees the fields disabled and no button.
   This needs the features `factory` and `secrets`.
+- A workflow's model choice and time limit in a workspace are deleted when neither the
+  workspace's current process version nor the version of an open work item has the
+  workflow. A save of the process, a trial made current or dropped, and a work item moved
+  to another version delete them at once; a work item closed or undone deletes them
+  right after, so an open work item on an older version keeps them until it closes. Each
+  delete is in the audit trail, with the cause `workflow_not_in_use`. A model provider
+  that only such a choice used can be deleted, and the choice goes with it. A workflow
+  that comes back to the process starts from "Use workspace default".
 - An escalation of a work item on a track that is not the first track of the gate that
   recorded it offers the gate's other tracks by name, as **Switch to `<track>`**. A switch
   records the track as a move at that gate, so `Stages.track/1` stays the only reader of the
