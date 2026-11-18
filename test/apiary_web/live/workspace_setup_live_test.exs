@@ -4947,6 +4947,51 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert fallback_runtimes(choice) == [{anthropic.id, release.name}]
   end
 
+  test "a refusal of a stored fallback is one line under the step that links the Model page",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    anthropic = provider!(scope, "anthropic", "main")
+    openrouter = provider!(scope, "openrouter", "router")
+
+    {:ok, stored} =
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
+        provider: anthropic.public_id,
+        fallbacks: [fallback(openrouter, ModelChoices.default_runtime().name)]
+      })
+
+    # The fallback's provider no longer applies to the workspace. Coded again, as a save
+    # codes it, so the row passes its integrity code.
+    Apiary.Connections.Connection
+    |> Repo.get!(openrouter.id)
+    |> Ecto.Changeset.change(applies_to: "selected")
+    |> Apiary.Kinds.Coded.seal()
+    |> Repo.update!()
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+    [_first, other | _rest] = models("anthropic")
+
+    lv
+    |> form("#set-up-model-form", model: %{source: anthropic.public_id, tiers: tiers(other)})
+    |> render_submit()
+
+    assert has_element?(
+             lv,
+             "#set-up-model-fallback-refused",
+             "A fallback on the Model page cannot be saved: Choose another provider: " <>
+               "#{openrouter.name} is not used in this workspace. Change it in " <>
+               "Workspace settings › Model."
+           )
+
+    assert has_element?(
+             lv,
+             ~s{#set-up-model-fallback-refused a[href="/#{organisation.slug}/main/settings/model"]}
+           )
+
+    refute has_element?(lv, "#set-up-model-form [id$='-error']", openrouter.name)
+    assert {[choice], []} = choices(scope)
+    assert choice.updated_at == stored.updated_at
+  end
+
   test "a provider that works with no runtime is offered; chosen, a line under Provider and Continue disabled",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()

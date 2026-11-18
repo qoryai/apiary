@@ -1059,6 +1059,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       runtimes: runtimes,
       runtime: runtime,
       no_runtime: if(chosen && runtimes == [], do: ModelTiers.no_runtime_line(chosen.title)),
+      fallback_refusal: opts[:fallback_refusal],
       key: key,
       tiers: tiers,
       tier_errors:
@@ -1751,11 +1752,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   # A refused choice, each reason on the step's field it is about
   # (`ApiaryWeb.ModelTiers.field_errors/2`, its `:provider` on Provider), with `tiers` as
-  # sent; or
-  # a refusal of the save in the flash.
+  # sent; a refusal of a stored fallback, which the save sends again
+  # (`Apiary.ModelChoices.put_choice/4`), as one line under the step
+  # (`fallback_refusal/2`); or a refusal of the save in the flash.
   defp model_refused(socket, params, %Ecto.Changeset{} = changeset, tiers) do
+    {fallbacks, choice} = Enum.split_with(changeset.errors, &match?({:fallbacks, _error}, &1))
+
     {tier_errors, errors} =
-      changeset.errors
+      choice
       |> ModelTiers.field_errors(tiers)
       |> Enum.split_with(fn {field, _error} -> field == :tiers or is_tuple(field) end)
 
@@ -1763,7 +1767,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       for {field, error} <- errors,
           do: {if(field == :provider, do: :source, else: field), error}
 
-    assign_model_form(socket, params, errors, tiers: tiers, tier_errors: tier_errors)
+    assign_model_form(socket, params, errors,
+      tiers: tiers,
+      tier_errors: tier_errors,
+      fallback_refusal: fallback_refusal(socket.assigns.flow, fallbacks)
+    )
   end
 
   defp model_refused(socket, _params, :forbidden, _tiers),
@@ -1771,6 +1779,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   defp model_refused(socket, _params, _reason, _tiers),
     do: put_flash(socket, :error, gettext("Nothing was changed. Try again."))
+
+  # The line for the first refusal of a stored fallback, nil for none: "A fallback on the
+  # Model page cannot be saved: <the refusal>. Change it in Workspace settings › Model.",
+  # the place a link to that page.
+  defp fallback_refusal(_flow, []), do: nil
+
+  defp fallback_refusal(flow, [{:fallbacks, error} | _rest]) do
+    rich_gettext(
+      "A fallback on the Model page cannot be saved: %{refusal}. Change it in %{place}.",
+      refusal: error |> translate_error() |> String.trim_trailing("."),
+      place:
+        {:link, ~p"/#{flow.organisation}/#{flow.workspace}/settings/model",
+         gettext("Workspace settings › Model")}
+    )
+  end
 
   # The next step; after the last, the workspace's overview.
   defp go_on(%{assigns: %{next_path: nil, flow: flow}} = socket),
