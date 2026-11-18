@@ -12,9 +12,10 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
 
+  alias Apiary.Artifacts
   alias Apiary.Stages.Runner
   alias ApiaryWeb.People
-  alias ApiaryWeb.WorkItemLive.StageComponents
+  alias ApiaryWeb.WorkItemLive.{StageComponents, VerifyTab}
 
   # tabs/2 is the tabs of `flow` in the process version's order, with every run the page
   # read, of any take in: `%{id:, key:, name:, types:}`, `types` the stage's output types.
@@ -110,14 +111,16 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   #     (`Apiary.Stages.stage_skips/1`), nil for none;
   #   * `take_ins`: the earlier take ins with the stage's runs and skips, each with its
   #     `place` among all of them, from 1;
-  #   * `questions`: on the current stage's tab, every open question and the closed ones the
-  #     stage's runs wrote; on another tab, the closed ones its runs wrote;
+  #   * `questions`: the questions that the Questions tab groups under the stage, whether open
+  #     or closed (`question_groups/3`); `waiting`, whether the tab is the current stage's
+  #     and a question is open, of any stage;
   #   * `questions_version`, `review_comments`, `artifacts` and `index`, each of the stage;
   #   * `wrote`: the versions the stage's runs wrote, for the summary of its runs
   #     (`wrote/3`), [] for no stage;
   #   * `foot`: on Explore's tab at a later stage, the record block of Explore's runs.
   #
-  # On the Ticket tab and the Thread, `review_comments` are the current stage's. A version
+  # On the Ticket tab, the Questions tab and the Thread, `review_comments` are the current
+  # stage's, and `questions` are all of them. A version
   # with no stage belongs to Explore, as a run with none does.
   @spec view(atom | String.t(), map | nil, map) :: map
   def view(_tab, nil, read) do
@@ -130,6 +133,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       proposal_version: nil,
       take_ins: read.earlier_take_ins,
       questions: read.questions,
+      waiting: nil,
       questions_version: read.questions_version,
       review_comments: read.review_comments,
       artifacts: read.artifacts,
@@ -139,7 +143,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     }
   end
 
-  def view(tab, flow, read) when tab in [:ticket, :thread] do
+  def view(tab, flow, read) when tab in [:ticket, :questions, :thread] do
     artifacts = artifacts(flow, flow.stage, read.artifacts)
 
     flow
@@ -162,6 +166,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       proposal_version: nil,
       take_ins: Enum.map(read.earlier_take_ins, &with_skips(&1, flow, nil)),
       questions: read.questions,
+      waiting: nil,
       questions_version: read.questions_version,
       review_comments: read.review_comments,
       artifacts: read.artifacts,
@@ -186,6 +191,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       proposal_version: proposal_version(flow, stage, passed_over),
       take_ins: take_ins(flow, stage, read.earlier_take_ins),
       questions: questions(flow, stage, read.questions),
+      waiting: waiting?(flow, stage, read.questions),
       questions_version: version_of(artifacts, "questions"),
       review_comments: comments(flow, stage, read.review_comments, artifacts),
       artifacts: artifacts,
@@ -371,17 +377,23 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     Map.put(take_in, :skips, skips)
   end
 
+  # The questions of `stage`: those that the Questions tab groups under it, in every state
+  # (`ApiaryWeb.WorkItemComponents.question_groups/3`). A question of a stage that the
+  # process no longer has is Explore's, as a run with no stage is.
   defp questions(flow, stage, questions) do
-    current? = stage.id == flow.stage.id
+    known = MapSet.new(flow.stages, & &1.id)
 
     Enum.filter(questions, fn question ->
-      if question.state == :open,
-        do: current? or (is_nil(current(flow)) and asked_at?(question, flow, stage)),
-        else: asked_at?(question, flow, stage)
+      group = if MapSet.member?(known, question[:stage_id]), do: question.stage_id
+      (group || flow.explore_id) == stage.id
     end)
   end
 
-  defp asked_at?(question, flow, stage), do: stage_of(question, flow) == stage.id
+  # Whether the current stage's tab has the questions open: some question is open, of any
+  # stage. The Questions tab then holds the decisions of the current stage in its form, so
+  # that tab's Decisions frame is empty.
+  defp waiting?(flow, stage, questions),
+    do: stage.id == flow.stage.id and Enum.any?(questions, &(&1.state == :open))
 
   # Explore's tab lists the review comments on the proposal; a stage's tab those on a
   # version of its outputs made at the stage, among the stage's `artifacts`, each with its
@@ -435,17 +447,18 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     Enum.filter(index, &MapSet.member?(shown, {&1.type, &1.name}))
   end
 
-  # frames/1 is the output frames of a stage's tab: one for each version an approval of the
-  # stage records (`Apiary.Stages.gate_frames/3`), in that order, as
-  # `%{type:, name:, version:, open:, writer:}`, the first one `open`. `version` is the
-  # version's number; `writer`, for the frame's caption, is the short name of the member
-  # who made it where a person did (`ApiaryWeb.People.short/1`), "Former member" for an
-  # account that is gone, else nil. The review comments, the document a review comment is
-  # written to, have no frame.
+  # frames/1 is the output frames of the tab of a stage with no `verification` output: one
+  # for each version an approval of the stage records (`Apiary.Stages.gate_frames/3`), in
+  # that order, as `%{type:, name:, version:, open:, writer:, kind:}`, the first one `open`.
+  # `version` is the version's number; `writer`, for the frame's caption, is the short name
+  # of the member who made it where a person did (`ApiaryWeb.People.short/1`), "Former
+  # member" for an account that is gone, else nil. `kind` is `:output`. The review
+  # comments, the document a review comment is written to, have no frame, nor do the
+  # questions, which are on the Questions tab.
   @spec frames([map]) :: [map]
   def frames(recorded) do
     recorded
-    |> Enum.reject(&(&1.type == "review-comments"))
+    |> Enum.reject(&(&1.type in ["review-comments", "questions"]))
     |> Enum.with_index()
     |> Enum.map(fn {%{type: type, name: name, version: version}, place} ->
       %{
@@ -453,31 +466,115 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
         name: name,
         version: version.number,
         open: place == 0,
-        writer: if(version.writer == :person, do: member(version.user))
+        writer: if(version.writer == :person, do: member(version.user)),
+        kind: :output
       }
     end)
   end
 
   defp member(user), do: People.short(People.email(user) || People.former_member())
 
+  # verify?/1 is whether `stage` has an output of the type `verification`: its tab has the
+  # frames of `verify_frames/2`, every other stage's tab those of `frames/1`.
+  @spec verify?(map) :: boolean
+  def verify?(stage), do: "verification" in stage.outputs
+
+  # of_take_in/2 is `artifacts` with only the versions that a run of the take in
+  # `take_in` wrote, as the newest outputs of a stage count them
+  # (`Apiary.WorkItems.ExploreView.newest_outputs/3`); an artifact with none is left out.
+  # A version a person added has no run, so it is left out too.
+  @spec of_take_in([map], integer | nil) :: [map]
+  def of_take_in(artifacts, take_in) do
+    for artifact <- artifacts,
+        versions = Enum.filter(artifact.versions, &match?(%{run: %{take_in: ^take_in}}, &1)),
+        versions != [],
+        do: %{artifact | versions: versions}
+  end
+
+  # newest/3 is `newest`, the newest version of each type's `main` (`verify_frames/2`), with
+  # each type of the tab's `artifacts` that has no `main` there: the highest number among
+  # the newest version of each of its names that a run of the take in `take_in` wrote
+  # (`of_take_in/2`) and no member cancelled (`Apiary.Artifacts.newest_counted/1`).
+  @spec newest(%{String.t() => pos_integer}, [map], integer | nil) ::
+          %{String.t() => pos_integer}
+  def newest(newest, artifacts, take_in) do
+    for artifact <- of_take_in(artifacts, take_in),
+        not Map.has_key?(newest, artifact.type),
+        %{number: number} = version <- [Artifacts.newest_counted(artifact)],
+        not Map.get(version, :withdrawn, false),
+        reduce: newest do
+      acc -> Map.update(acc, artifact.type, number, &max(&1, number))
+    end
+  end
+
+  # verify_frames/2 is the output frames of the tab of `stage`, a stage with a
+  # `verification` output (`verify?/1`), in its order, with the newest version a run of the
+  # take in pushed at the stage of each type (`newest`): `%{type:, name:, version:, open:,
+  # writer:, kind:}`, `name` `main` and `writer` nil, every frame open. A type with no such
+  # version has no frame, nor do the review comments and the questions. The scenarios' films
+  # and pictures (`ApiaryWeb.WorkItemLive.VerifyTab.media/0`) share one frame of the kind
+  # `:scenarios`, in the place of the first, with the highest of their versions; each output
+  # other than the verification is a frame of the kind `:row`, with its version and its
+  # artifact rows, and no text; the verification's frame is of the kind `:output`.
+  @spec verify_frames(map, %{String.t() => pos_integer}) :: [map]
+  def verify_frames(stage, newest) do
+    types =
+      Enum.filter(
+        stage.outputs,
+        &(Map.has_key?(newest, &1) and &1 not in ["review-comments", "questions"])
+      )
+
+    media = Enum.filter(types, &(&1 in VerifyTab.media()))
+
+    types
+    |> Enum.reject(&(&1 in Enum.drop(media, 1)))
+    |> Enum.map(fn type ->
+      frame = %{
+        type: type,
+        name: "main",
+        version: newest[type],
+        open: true,
+        writer: nil,
+        kind: :output
+      }
+
+      cond do
+        type in media ->
+          %{frame | kind: :scenarios, version: media |> Enum.map(&newest[&1]) |> Enum.max()}
+
+        type != "verification" ->
+          %{frame | kind: :row}
+
+        true ->
+          frame
+      end
+    end)
+  end
+
   @doc """
-  with_inputs/2 is `outputs`, the output frames (`frames/1`), then `inputs`, the input
-  frames (`input_frames/2`), folded, but for an input of a type that an output frame
-  already shows. With no output frame, it is `inputs` as they are.
+  with_inputs/2 is `outputs`, the output frames (`frames/1` or `verify_frames/2`), then
+  `inputs`, the input frames (`input_frames/2`), folded, but for an input of a type that an
+  output frame already shows: the Scenarios frame shows both the films and the pictures
+  (`ApiaryWeb.WorkItemLive.VerifyTab.media/0`). With no output frame, it is `inputs` as
+  they are.
   """
   @spec with_inputs([map], [map]) :: [map]
   def with_inputs([], inputs), do: inputs
 
   def with_inputs(outputs, inputs) do
-    shown = MapSet.new(outputs, & &1.type)
+    shown = for output <- outputs, type <- shown_types(output), into: MapSet.new(), do: type
     outputs ++ for(input <- inputs, input.type not in shown, do: %{input | open: false})
   end
+
+  defp shown_types(%{kind: :scenarios}), do: VerifyTab.media()
+  defp shown_types(%{type: type}), do: [type]
 
   @doc """
   input_frames/2 is, for the current stage's tab where the stage started no run
   (`StageComponents.started_no_run?/1`), the frames of the newest versions of the stage's
   inputs: the person at the gate reads what earlier stages made. `[]` for any other tab.
-  The first is `open`, as `frames/1` opens the first of the outputs.
+  The first is `open`, as `frames/1` opens the first of the outputs. A frame's `kind` is
+  `:output`.
   """
   @spec input_frames(map, map) :: [map]
   def input_frames(flow, stage) do
@@ -486,7 +583,14 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       |> Enum.filter(&(is_integer(&1.version) and &1.type != "review-comments"))
       |> Enum.with_index()
       |> Enum.map(fn {input, place} ->
-        %{type: input.type, name: "main", version: input.version, open: place == 0, writer: nil}
+        %{
+          type: input.type,
+          name: "main",
+          version: input.version,
+          open: place == 0,
+          writer: nil,
+          kind: :output
+        }
       end)
     else
       []
@@ -494,15 +598,19 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   end
 
   # approved/3 is `frames` of `stage`, each with the approval it shows (`approval`), nil for
-  # none, from `index`, the approval marks (`flow.index`). Only the first frame, the open
-  # one, shows an approval: the newest approval of its version, where the gate of `stage`
+  # none, from `index`, the approval marks (`flow.index`). Only the first frame shows an
+  # approval: the newest approval of its version, where the gate of `stage`
   # recorded it as a gate `none` (vault 0252), with no member (`automatic`) or with the
   # member who accepted the escalation that ended the stage (`by`). The gate is read from
   # the approval, not from the stage today: a later process version may change it. A
   # person gate's approval shows none.
   @spec approved([map], map, [map]) :: [map]
   def approved(frames, stage, index) do
-    Enum.map(frames, &Map.put(&1, :approval, if(&1.open, do: approval(&1, stage, index))))
+    frames
+    |> Enum.with_index()
+    |> Enum.map(fn {frame, place} ->
+      Map.put(frame, :approval, if(place == 0, do: approval(frame, stage, index)))
+    end)
   end
 
   defp approval(%{type: type, version: version} = frame, stage, index) do

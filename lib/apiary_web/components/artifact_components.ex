@@ -122,7 +122,8 @@ defmodule ApiaryWeb.ArtifactComponents do
   list/1 is the plain list of a work item's artifacts: one row per artifact, with its
   type, its name where it is not `main`, its newest version's number, file count and
   writer, the check result where the caller passes one, and a link to the newest
-  version's page.
+  version's page. The newest version is the newest that no run a member cancelled wrote,
+  where the artifact has one.
 
   For the work item page (`ApiaryWeb.WorkItemLive.Show`, piece W), under the feature
   `workflow_model`:
@@ -150,6 +151,8 @@ defmodule ApiaryWeb.ArtifactComponents do
       Add a version, which needs `scope` and `number`.
     * `round`: whether a run's writer shows its round (`writer/2`); false in the Explore
       tab's fold at the Explore stage, true elsewhere.
+    * `label`: a function of an artifact and the version its row shows to the row's
+      words, in place of `title/2`; nil for `title/2`.
   """
   attr :id, :string, required: true
   attr :artifacts, :list, required: true
@@ -158,6 +161,7 @@ defmodule ApiaryWeb.ArtifactComponents do
   attr :checks, :map, default: %{}
   attr :add, :boolean, default: false
   attr :round, :boolean, default: true
+  attr :label, :any, default: nil
 
   def list(assigns) do
     assigns = assign(assigns, :links?, assigns.scope != nil and assigns.number != nil)
@@ -180,9 +184,9 @@ defmodule ApiaryWeb.ArtifactComponents do
               navigate={version_path(@scope, @number, newest.public_id)}
               class="font-medium text-accent"
             >
-              {title(artifact, newest)}
+              {row_title(@label, artifact, newest)}
             </.link>
-            <span :if={!@links?} class="font-medium">{title(artifact, newest)}</span>
+            <span :if={!@links?} class="font-medium">{row_title(@label, artifact, newest)}</span>
             <.check_word :if={check = Map.get(@checks, artifact.type)} check={check} />
           </div>
           <span class="text-[12.5px]/5 text-muted">
@@ -227,7 +231,16 @@ defmodule ApiaryWeb.ArtifactComponents do
 
   defp check_word(assigns), do: ~H""
 
-  defp newest(%Artifact{versions: [newest | _older]}), do: newest
+  defp row_title(nil, artifact, version), do: title(artifact, version)
+
+  defp row_title(label, artifact, version) when is_function(label, 2),
+    do: label.(artifact, version)
+
+  # The version a row shows: the newest that no run a member cancelled wrote, else, where
+  # cancelled runs wrote every version, the newest, marked as not counted (`writer/2`).
+  defp newest(%Artifact{versions: [newest | _older]} = artifact),
+    do: Apiary.Artifacts.newest_counted(artifact) || newest
+
   defp newest(_artifact), do: nil
 
   @doc """
@@ -240,6 +253,15 @@ defmodule ApiaryWeb.ArtifactComponents do
 
   def title(%Artifact{type: type, name: name}, %Version{number: number}),
     do: gettext("%{type} %{name} v%{number}", type: type, name: name, number: number)
+
+  @doc """
+  plain_name/2 is an artifact's type and name in today's plain form, where a member reads
+  a type id: the type with a space for each "-", then the name unless it is `main` or nil,
+  such as "demo video scenario-2". `title/2` is unchanged.
+  """
+  @spec plain_name(String.t(), String.t() | nil) :: String.t()
+  def plain_name(type, name) when name in [nil, "main"], do: String.replace(type, "-", " ")
+  def plain_name(type, name), do: String.replace(type, "-", " ") <> " " <> name
 
   @doc """
   writer/2 is who made a version, in words: a person's email address, "Former member"

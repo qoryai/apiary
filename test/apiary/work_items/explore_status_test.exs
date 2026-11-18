@@ -77,11 +77,14 @@ defmodule Apiary.WorkItems.ExploreStatusTest do
       {:cancelled, [[end_cause: :closed]], []},
       {:cancelled, [[end_cause: :undone]], []},
       {:cancelled, [[run: %{state: "cancelled"}]], []},
+      {:cancelled, [[run: %{state: "cancelled", reason: "cancelled_by_member"}]], []},
+      {:time_limit, [[run: %{state: "cancelled", reason: "timeout"}]], []},
       # Open questions wait for answers at any count of runs.
       {:questions, at_limit(result: questions_result()), []},
       {:used_up, at_limit([]), []},
       {:used_up, at_limit(end_cause: :lost), []},
       {:used_up, at_limit(end_cause: :released), []},
+      {:used_up, at_limit(run: %{state: "cancelled", reason: "timeout"}), []},
       {:used_up, at_limit(end_cause: :variables_invalid), []},
       {:shape, [[result: understood_result()]], confirmed: true},
       {:shape, [], confirmed: true}
@@ -111,6 +114,7 @@ defmodule Apiary.WorkItems.ExploreStatusTest do
                :questions,
                :no_result,
                :lost,
+               :time_limit,
                :cancelled,
                :used_up,
                :shape
