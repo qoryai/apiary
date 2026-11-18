@@ -12593,7 +12593,7 @@ msgid "Light"
 msgstr ""
 
 #: lib/apiary/model_choices.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgctxt "model tier"
 msgid "Light"
 msgstr ""
@@ -22522,7 +22522,7 @@ msgid "Thinking"
 msgstr ""
 
 #: lib/apiary/model_choices.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgctxt "model tier"
 msgid "Thinking"
 msgstr ""
