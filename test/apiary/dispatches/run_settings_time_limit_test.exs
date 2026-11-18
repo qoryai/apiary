@@ -98,6 +98,13 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       assert %{"time_limit_minutes" => 240} = settings(claim!(ctx, place))
     end
 
+    test "a saved limit of 45 minutes for explore-a-ticket reaches its run", ctx do
+      place = handover_place_fixture(ctx.scope)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 45)
+
+      assert %{"time_limit_minutes" => 45} = settings(claim!(ctx, place))
+    end
+
     test "a cleared limit sends 180 minutes, whatever another workflow has", ctx do
       workflow!(ctx, "hello")
       place = handover_place_fixture(ctx.scope)

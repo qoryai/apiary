@@ -81,8 +81,8 @@ defmodule Apiary.Runs.Record.Overview do
   place among the rows after it: `main-session-2`.
 
   `versions:` are the artifact versions the run pushed, each `%{type, name, number,
-  at}`, `public_id`, `cancelled`, whether the run was cancelled, `run_number` and
-  `round`. A Pushed row, `kind: :pushed`, has those fields but `public_id`,
+  at}`, `public_id`, `withdrawn`, whether the version is a withdrawal, `cancelled`,
+  whether the run was cancelled, `run_number` and `round`. A Pushed row, `kind: :pushed`, has those fields but `public_id`,
   the id `push-` and `public_id` (a version without one: its place in the order below),
   and no sequence. It sits after the last row whose `at` is at or before the version's,
   and before every row when there is none; two versions in one place are in order of
@@ -264,6 +264,7 @@ defmodule Apiary.Runs.Record.Overview do
           type: version.type,
           name: version[:name],
           number: version.number,
+          withdrawn: version[:withdrawn] == true,
           cancelled: version[:cancelled] == true,
           run_number: version[:run_number],
           round: version[:round]

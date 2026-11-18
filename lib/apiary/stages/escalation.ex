@@ -3,14 +3,15 @@ defmodule Apiary.Stages.Escalation do
   # `cause`, with the `points` a person reads, from the run of the queue `run_id` (nil for
   # the output checks). Each point is `%{"text", "action", "question"?, "fix"?}`
   # (`Apiary.Stages.Points`): the run's verdict writes them for `escalate`, and the stage
-  # runner writes them for the causes it sets (`Apiary.Stages.Runner`). Open while
-  # `resolved_at` is nil, at most one per work item. A person resolves it with
+  # runner writes them for the causes it sets (`Apiary.Stages.Runner`); `return_limit` has
+  # the runner's point, then the points of the verdict of the run that reached the limit.
+  # Open while `resolved_at` is nil, at most one per work item. A person resolves it with
   # `resolution`, with their `note`.
   @moduledoc false
   use Ecto.Schema
 
-  @causes [:round_limit, :escalate, :check_failed, :run_stopped]
-  @resolutions [:accept, :another_round, :move_back, :close]
+  @causes [:round_limit, :escalate, :check_failed, :run_stopped, :return_limit]
+  @resolutions [:accept, :another_round, :move_back, :switch, :close]
 
   @typedoc "An escalation of a work item's stage."
   @type t :: %__MODULE__{}

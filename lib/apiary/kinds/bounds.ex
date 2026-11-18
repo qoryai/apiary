@@ -172,7 +172,7 @@ defmodule Apiary.Kinds.Bounds do
 
   @read ~w($schema $id $ref $defs title description type const enum required properties
            additionalProperties items minItems maxItems uniqueItems minLength maxLength
-           pattern allOf anyOf oneOf not if then else)
+           pattern minimum maximum allOf anyOf oneOf not if then else)
   @described ~w(items properties additionalProperties)
   @narrowing ~w(not if then else)
 

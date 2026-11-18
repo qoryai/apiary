@@ -9,6 +9,7 @@ defmodule ApiaryWeb.StagesLive.Words do
   import ApiaryWeb.RichText, only: [rich_gettext: 2]
 
   alias Apiary.Processes
+  alias Apiary.Stages.Runner
   alias ApiaryWeb.StagesLive.Draft
 
   # A stage's gate, with each named approver by name: `people` maps a person's user id,
@@ -50,7 +51,8 @@ defmodule ApiaryWeb.StagesLive.Words do
   # A stage's sequence as its card draws it: each workflow, and each loop as a group with
   # its label and its workflows. Text only. With the process document `doc`, an entry or a
   # loop that has a condition on a track also has `condition`, its words (`condition/4`),
-  # and a loop has `conditions`, the words of each workflow's condition, nil for none.
+  # and a loop has `conditions`, the words of each workflow's condition, nil for none. A
+  # workflow with a return to an earlier stage (choice 10) also has `returns`, its line.
   @doc false
   def card_sequence(stage, doc \\ nil) do
     for entry <- stage["sequence"] do
@@ -69,9 +71,39 @@ defmodule ApiaryWeb.StagesLive.Words do
         entry ->
           %{workflow: to_string(entry["workflow"])}
           |> put_condition(condition(entry, doc, stage["id"]))
+          |> put_returns(earlier_return(entry, stage, doc))
       end
     end
   end
+
+  defp put_returns(map, nil), do: map
+  defp put_returns(map, {name, limit}), do: Map.put(map, :returns, card_return(name, limit))
+
+  # The stage that a workflow entry's return key is set to, by name, and the most returns,
+  # when the stage is before `stage` in the process document `doc`; nil for an entry with
+  # no key, with no document, and for a key to a stage that is not before it, which the
+  # editor shows as an error.
+  @doc false
+  def earlier_return(%{"return" => %{"stage" => id} = key}, stage, %{"stages" => stages}) do
+    earlier = Enum.take_while(stages, &(&1["id"] != stage["id"]))
+
+    case Enum.find(earlier, &(&1["id"] == id)) do
+      %{"name" => name} -> {name, Runner.returns_limit(key)}
+      nil -> nil
+    end
+  end
+
+  def earlier_return(_entry, _stage, _doc), do: nil
+
+  # The line under a workflow on its card, and in the card's label.
+  defp card_return(name, limit),
+    do:
+      ngettext(
+        "Returns to %{stage}, at most %{count} time",
+        "Returns to %{stage}, at most %{count} times",
+        limit,
+        stage: name
+      )
 
   # `conditions`, one place for each workflow of a loop, nil for a workflow with none; no key
   # where none of them has one.
@@ -155,7 +187,7 @@ defmodule ApiaryWeb.StagesLive.Words do
   end
 
   # The words a screen reader reads for a card, in the card's order: its name, its condition,
-  # its description, its workflows and loops, its gate and the tracks it offers, each in full.
+  # its description, its workflows and loops, each workflow's return, its gate and the tracks it offers, each in full.
   @doc false
   def card_label(stage, people, doc \\ nil) do
     sequence =
@@ -173,7 +205,7 @@ defmodule ApiaryWeb.StagesLive.Words do
               |> with_condition(item)
 
             %{workflow: name} = item ->
-              with_condition(name, item)
+              name |> with_condition(item) |> with_returns(item)
           end)
       end
 
@@ -208,6 +240,9 @@ defmodule ApiaryWeb.StagesLive.Words do
     do: text <> ", " <> String.trim_trailing(condition, ".")
 
   defp with_condition(text, _item), do: text
+
+  defp with_returns(text, %{returns: line}), do: text <> ". " <> line
+  defp with_returns(text, _item), do: text
 
   # The stage's description as the document has it, plain text; nil for none or a blank one.
   @doc false
@@ -518,6 +553,11 @@ defmodule ApiaryWeb.StagesLive.Words do
     end
   end
 
+  # `changed: true` in a condition on an item that is no workflow entry.
+  def refusal(%{error: :condition_changed_entry_only}, _doc),
+    do:
+      gettext("Move `changed: true` to a workflow entry: only an entry has runs to compare with.")
+
   def refusal(%{error: :condition_track, path: path, detail: track}, doc) when is_binary(path) do
     {stage, _field} = place(path, doc)
 
@@ -616,6 +656,9 @@ defmodule ApiaryWeb.StagesLive.Words do
         gettext("Two stages have the name %{stage}. Give each stage a different name.",
           stage: stage
         )
+
+      error == :return_not_earlier ->
+        return_refused(stage)
 
       field == "name" ->
         gettext("Give every stage a name of 1 to 60 characters.")
@@ -737,6 +780,21 @@ defmodule ApiaryWeb.StagesLive.Words do
         fallback: fallback
       )
 
+  # The line under a workflow's "Returns at most" (choice 10): the return after `limit`
+  # returns escalates, named by its place, from the second (a limit of 1) to the eleventh
+  # (a limit of 10, the schema's most).
+  @doc false
+  def return_line(1), do: gettext("At the second return, Qory Apiary escalates to a member.")
+  def return_line(2), do: gettext("At the third return, Qory Apiary escalates to a member.")
+  def return_line(3), do: gettext("At the fourth return, Qory Apiary escalates to a member.")
+  def return_line(4), do: gettext("At the fifth return, Qory Apiary escalates to a member.")
+  def return_line(5), do: gettext("At the sixth return, Qory Apiary escalates to a member.")
+  def return_line(6), do: gettext("At the seventh return, Qory Apiary escalates to a member.")
+  def return_line(7), do: gettext("At the eighth return, Qory Apiary escalates to a member.")
+  def return_line(8), do: gettext("At the ninth return, Qory Apiary escalates to a member.")
+  def return_line(9), do: gettext("At the tenth return, Qory Apiary escalates to a member.")
+  def return_line(10), do: gettext("At the eleventh return, Qory Apiary escalates to a member.")
+
   # Remove loop refused: the loop's condition cannot move onto `workflow`, which has one.
   @doc false
   def loop_kept(workflow),
@@ -749,6 +807,16 @@ defmodule ApiaryWeb.StagesLive.Words do
   # A loop's rounds outside 1 to 10, under the field.
   @doc false
   def rounds_refused, do: gettext("Give the loop 1 to 10 rounds.")
+
+  # A workflow's "Returns at most" outside 1 to 10 (choice 10), under the field.
+  @doc false
+  def returns_refused, do: gettext("Enter 1 to 10 returns.")
+
+  # A return key set to a stage that is not before the entry's stage `stage`, by name, or
+  # to a removed stage (choice 10): in the return field, and for a save that fails.
+  @doc false
+  def return_refused(stage),
+    do: gettext("Pick a stage before %{stage} to return to.", stage: stage)
 
   # A refusal that means the page was behind the versions: a trial dropped or made current
   # in another tab or by another person, or a version gone.

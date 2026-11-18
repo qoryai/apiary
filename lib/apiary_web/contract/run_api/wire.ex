@@ -109,13 +109,22 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   defp stage_value(stage, :name) when is_binary(stage), do: stage
   defp stage_value(_stage, _key), do: nil
 
+  # An input has `from` only for a version of a stage the work item left by a person's
+  # move to an earlier stage (`"move"`), or a verdict or verification of the stage whose run
+  # returned the work item (`"return"`) (`Apiary.Stages.inputs/1`).
   defp input(input) do
-    object([
-      {"type", get(input, :type)},
-      {"required", get(input, :required) == true},
-      {"version", ref(get(input, :version))}
-    ])
+    object(
+      [
+        {"type", get(input, :type)},
+        {"required", get(input, :required) == true},
+        {"version", ref(get(input, :version))}
+      ] ++ from_entry(get(input, :from))
+    )
   end
+
+  defp from_entry(:move), do: [{"from", "move"}]
+  defp from_entry(:return), do: [{"from", "return"}]
+  defp from_entry(_none), do: []
 
   defp output(output) do
     object([
@@ -181,8 +190,10 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
     ])
   end
 
+  # The newest version that no run a member cancelled wrote.
   defp newest_number(versions) do
     versions
+    |> Enum.reject(&(get(&1, :cancelled) == true))
     |> Enum.map(&get(&1, :number))
     |> Enum.filter(&is_integer/1)
     |> Enum.max(fn -> nil end)

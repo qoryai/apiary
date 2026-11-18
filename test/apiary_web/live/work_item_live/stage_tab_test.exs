@@ -10,6 +10,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
+  import Apiary.OrganisationsFixtures, only: [with_domain: 2]
   import Apiary.StagesFixtures
   import Apiary.WorkItemsFixtures
 
@@ -17,6 +18,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.WorkItems.{Explore, WorkItem}
   alias ApiaryWeb.WorkflowFake
+  alias ApiaryWeb.WorkItemLive.StageTab
 
   @moduletag needs: [:factory, :workflow_model]
 
@@ -103,6 +105,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}" <> rest
 
   defp stage(scope, number, id \\ @shape), do: page(scope, number, "/stages/#{id}")
+
+  defp questions(scope, number), do: page(scope, number, "/questions")
 
   # The live action and the stage of the page's address, once a patch at the join has landed.
   defp address(view) do
@@ -385,6 +389,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
       assert %{{"spec", 1} => %{}} = :sys.get_state(view.pid).socket.assigns.frame_texts
+      assert has_element?(view, "#work-item-tab-output-spec-fold[open]")
+      refute has_element?(view, "#work-item-tab-output-test-features-fold[open]")
 
       refute Map.has_key?(
                :sys.get_state(view.pid).socket.assigns.frame_texts,
@@ -392,7 +398,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
              )
     end
 
-    test "an output whose artifact is not named main has no frame", %{
+    test "an output whose artifact is not named main has a frame with its artifact row", %{
       conn: conn,
       scope: scope
     } do
@@ -410,7 +416,13 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
       assert has_element?(view, "#work-item-tab-output-spec")
-      refute has_element?(view, "#work-item-tab-output-test-features")
+      view |> element("#work-item-tab-output-test-features-s") |> render_click()
+
+      assert has_element?(
+               view,
+               "#work-item-tab-output-test-features-row",
+               "test-features other v1"
+             )
     end
 
     test "a version with no Markdown has its artifact row", %{conn: conn, scope: scope} do
@@ -753,7 +765,17 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       {:ok, view, html} = live(conn, stage(scope, work_item.number))
 
-      assert html =~ "A question of Shape?"
+      # The questions are on the Questions tab; Shape's tab counts them and links there.
+      refute html =~ "A question of Shape?"
+
+      assert has_element?(
+               view,
+               ~s|#work-item-tab-questions-line a[href="#{questions(scope, work_item.number)}"]|,
+               "Questions tab"
+             )
+
+      {:ok, questions_view, _html} = live(conn, questions(scope, work_item.number))
+      assert has_element?(questions_view, "#work-item-questions-open", "A question of Shape?")
       assert has_element?(view, "#work-item-record", "1 run")
       assert has_element?(view, "#work-item-record", "spec v1")
       refute has_element?(view, "#work-item-artifact-list", "proposal")
@@ -1254,11 +1276,11 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert escalations(work_item) == [{nil, nil}]
       assert gate_entries(work_item) == []
 
-      # On Shape's tab the send shows the line of a member who is not an approver.
+      # On the Questions tab the send shows the line of a member who is not an approver.
       {:ok, view, _html} =
-        live(log_in_user(build_conn(), member.user), stage(scope, work_item.number))
+        live(log_in_user(build_conn(), member.user), questions(scope, work_item.number))
 
-      q = "#work-item-tab-questions"
+      q = "#work-item-questions-open"
 
       view
       |> element("#{q}-form")
@@ -1291,7 +1313,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                gate_entries(work_item)
     end
 
-    test "Shape waiting for an answer: the needs block links the question on Shape's tab",
+    test "Shape waiting for an answer: the needs block links the question on the Questions tab",
          %{conn: conn, scope: scope} do
       work_item = at_shape!(scope)
 
@@ -1322,31 +1344,43 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
         |> reload()
 
       assert work_item.stage_state == :waiting_answers
-      anchor = "#work-item-tab-questions-question-1"
+      anchor = "#work-item-questions-question-1"
       point = "#work-item-needs-point-1"
 
-      # From the Ticket tab, the link opens Shape's tab at the question.
-      {:ok, view, _html} = live(conn, page(scope, work_item.number, "/ticket"))
-      href = stage(scope, work_item.number) <> anchor
-      assert has_element?(view, ~s|#{point} a[href="#{href}"]|, "question 1")
+      # From the Ticket tab and Shape's tab, the link opens the Questions tab at the question.
+      href = questions(scope, work_item.number) <> anchor
 
-      # On Shape's tab, the link is the anchor of the question, which the tab has.
-      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+      for address <- [page(scope, work_item.number, "/ticket"), stage(scope, work_item.number)] do
+        {:ok, view, _html} = live(conn, address)
+        assert has_element?(view, ~s|#{point} a[href="#{href}"]|, "question 1")
+      end
+
+      # On the Questions tab, the link is the anchor of the question, which the tab has.
+      {:ok, view, _html} = live(conn, questions(scope, work_item.number))
       assert has_element?(view, ~s|#{point} a[href="#{anchor}"]|, "question 1")
       assert has_element?(view, anchor)
     end
 
-    test "Shape's tab waiting for answers: the questions form, the comment and " <>
+    test "the Questions tab waiting for answers: the questions form, the comment and " <>
            "Run another round",
          %{conn: conn, scope: scope} do
       work_item = waiting!(scope, ["Which basket?"])
-      {:ok, view, html} = live(conn, stage(scope, work_item.number))
-      q = "#work-item-tab-questions"
+      {:ok, view, html} = live(conn, questions(scope, work_item.number))
+      q = "#work-item-questions-open"
 
       assert has_element?(view, "#{q}-form")
-      assert has_element?(view, "#{q}-go", "Run another round")
+      assert has_element?(view, "#{q}-go", "Run another round of Shape")
       assert has_element?(view, "#{q}-comment")
-      assert html =~ "That run reads your answers and your comment, and updates the outputs."
+
+      assert has_element?(
+               view,
+               "label[for=work-item-questions-open-comment]",
+               "Comment on Shape's outputs"
+             )
+
+      assert html =~
+               "That run reads your answers and your comment, and updates Shape&#39;s outputs."
+
       refute html =~ "updates the proposal"
 
       view
@@ -1356,8 +1390,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
         "answers" => %{"q1" => %{"note" => "The cart."}}
       })
 
-      assert has_element?(view, "#spend-dialog-title", "Run another round?")
-      assert has_element?(view, ~s|#spend-dialog[data-return="work-item-tab-questions-go"]|)
+      assert has_element?(view, "#spend-dialog-title", "Run another round of Shape?")
+      assert has_element?(view, ~s|#spend-dialog[data-return="work-item-questions-open-go"]|)
       confirm_spend(view)
 
       assert %DispatchRun{state: :waiting, stage_id: @shape} = newest_run(work_item)
@@ -1389,13 +1423,15 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert %DispatchRun{state: :waiting, stage_id: @shape} = newest_run(work_item)
     end
 
-    test "Explore's tab after a move back: its form runs Explore's next round", %{
+    test "the Questions tab after a move back: its form runs Explore's next round", %{
       conn: conn,
       scope: scope
     } do
       {work_item, _spec_comment} = moved_back_waiting!(scope)
-      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @explore))
-      q = "#work-item-explore-questions"
+      {:ok, view, _html} = live(conn, questions(scope, work_item.number))
+      q = "#work-item-questions-open"
+
+      assert has_element?(view, "#{q}-go", "Run another round of Explore")
 
       view
       |> element("#{q}-form")
@@ -1598,9 +1634,9 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
   end
 
   describe "the stage card's link to the questions" do
-    test "goes to the current stage's tab from any tab", %{conn: conn, scope: scope} do
+    test "goes to the Questions tab from any tab", %{conn: conn, scope: scope} do
       work_item = waiting!(scope, ["A question of Shape?"])
-      to = stage(scope, work_item.number)
+      to = questions(scope, work_item.number)
 
       for address <- [
             stage(scope, work_item.number, @explore),
@@ -1812,6 +1848,32 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                  "Did not run, because Quick fix passed on its first attempt."
                )
       end
+
+      # The same two records, now passed over for a condition on a change.
+      for {negated, words} <- [
+            {false, "did not run: the demo scenarios did not change since it last passed."},
+            {true, "did not run: the demo scenarios changed since it last passed."}
+          ] do
+        {2, _rows} =
+          Repo.update_all(
+            from(k in Stages.Skip,
+              where: k.work_item_id == ^work_item.id and not is_nil(k.workflow)
+            ),
+            set: [
+              reason: nil,
+              cause_entry: nil,
+              input: "demo-scenarios",
+              changed: true,
+              negated: negated
+            ]
+          )
+
+        {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+        for {i, workflow} <- [{1, "shape-a-ticket"}, {2, "build-it"}] do
+          assert has_element?(view, "#work-item-record-skip-#{i}", "#{workflow} #{words}")
+        end
+      end
     end
 
     test "the tab of a stage the work item went through has no such block", %{
@@ -1922,6 +1984,118 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert shown(view) ==
                "#{ApiaryWeb.People.short(scope.user.email)} moved the work item past Explore's gate on 14 Nov 2025, so it runs Fast track. Fast track skips Build."
+    end
+
+    # Explore's gate offers Fast track first, Standard second; Shape runs on Standard only.
+    # The work item is on Standard, escalated in Build, and a switch puts it on Fast track,
+    # which passes Shape over. The decisions are dated before the switch, the switch and
+    # the pass-over as `moved!/1` dates them.
+    defp switched!(scope) do
+      document = Processes.default_document("software")
+
+      stages =
+        Enum.map(document["stages"], fn
+          %{"id" => @explore, "gate" => gate} = stage ->
+            %{stage | "gate" => Map.put(gate, "tracks", ["fast-track", "standard"])}
+
+          %{"id" => @shape} = stage ->
+            Map.merge(stage, %{
+              "sequence" => [],
+              "outputs" => [],
+              "when" => %{"track" => "standard"}
+            })
+
+          %{"id" => @build} = stage ->
+            Map.merge(stage, %{"sequence" => [], "outputs" => []})
+
+          stage ->
+            stage
+        end)
+
+      document =
+        document
+        |> Map.put("stages", stages)
+        |> Map.put("tracks", [
+          %{"id" => "standard", "name" => "Standard"},
+          %{"id" => "fast-track", "name" => "Fast track"}
+        ])
+
+      {:ok, version} = Processes.save(scope, scope.workspace, document)
+      work_item = scope |> taken_in_fixture() |> end_run!(understood_result())
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "standard")
+      {:ok, at_build} = Stages.approve(scope, reload(work_item), nil, expect_stage: @shape)
+      assert %WorkItem{stage_id: @build} = at_build
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_state: :escalated]
+        )
+
+      Repo.insert!(%Apiary.Stages.Escalation{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        process_version_id: version.id,
+        stage_id: @build,
+        round: 1,
+        cause: :escalate,
+        points: [%{"text" => "The change alters the product.", "action" => "run_again"}],
+        inserted_at: DateTime.utc_now()
+      })
+
+      assert {:ok, _switched} =
+               Stages.resolve_escalation(scope, reload(work_item), {:switch, "fast-track"}, nil,
+                 expect_stage: @build
+               )
+
+      {_n, _rows} =
+        Repo.update_all(
+          from(d in Stages.GateDecision,
+            where: d.work_item_id == ^work_item.id and is_nil(d.escalation_id)
+          ),
+          set: [inserted_at: ~U[2025-11-13 12:00:00.000000Z]]
+        )
+
+      {_n, _rows} =
+        Repo.update_all(
+          from(d in Stages.GateDecision,
+            where: d.work_item_id == ^work_item.id and not is_nil(d.escalation_id)
+          ),
+          set: [inserted_at: ~U[2025-11-14 12:00:00.000000Z]]
+        )
+
+      {_n, _rows} =
+        Repo.update_all(from(k in Stages.Skip, where: k.work_item_id == ^work_item.id),
+          set: [inserted_at: ~U[2025-11-14 12:00:01.000000Z]]
+        )
+
+      reload(work_item)
+    end
+
+    test "a track that a switch recorded reads that the person switched the work item, not that they moved it past a gate",
+         %{conn: conn, scope: scope} do
+      work_item = switched!(scope)
+      assert [%{kind: :move, switch: true, track_id: "fast-track"}] = approvals_of(work_item)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+
+      assert shown(view) ==
+               "You switched the work item to Fast track on 14 Nov 2025. Fast track skips Shape."
+
+      refute has_element?(view, "#work-item-tab-passed-over-why", "moved the work item past")
+    end
+
+    test "a track that a switch recorded reads the member's name for another reader", %{
+      scope: scope
+    } do
+      work_item = switched!(scope)
+      %{user: other} = Apiary.OrganisationsFixtures.member_fixture(scope, :admin)
+
+      {:ok, view, _html} =
+        live(log_in_user(build_conn(), other), stage(scope, work_item.number, @shape))
+
+      assert shown(view) ==
+               "#{ApiaryWeb.People.short(scope.user.email)} switched the work item to Fast track on 14 Nov 2025. Fast track skips Shape."
     end
 
     defp approvals_of(work_item),
@@ -2424,7 +2598,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     # first entry is the Fast track's, a first attempt; its other entries and its loop run on
     # Standard only, and its gate needs no member. Verify's workflow runs on Standard only,
     # and a person approves its gate.
-    defp screens!(scope, build \\ nil) do
+    defp screens!(scope, build \\ nil, report \\ "test-features") do
       document = Processes.default_document("software")
 
       :ok =
@@ -2462,13 +2636,13 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                       "unless" => %{"track" => "fast-track"}
                     }
                   ],
-              "outputs" => [%{"type" => "test-features", "required" => false}],
+              "outputs" => [%{"type" => report, "required" => false}],
               "gate" => %{"kind" => "none"}
             })
 
           %{"id" => @verify} = stage ->
             Map.merge(stage, %{
-              "inputs" => [%{"type" => "test-features", "required" => false}],
+              "inputs" => [%{"type" => report, "required" => false}],
               "sequence" => [
                 %{"workflow" => "shape-a-ticket", "unless" => %{"track" => "fast-track"}}
               ],
@@ -2783,7 +2957,9 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-stage-gate-track h3", "Track")
+      # The label and the badge are one row.
+      assert has_element?(view, "#work-item-stage-gate-path > span", "Track")
+      assert has_element?(view, "#work-item-stage-gate-path > .badge", "Fast track")
       assert has_element?(view, "#work-item-stage-gate-track", "Fast track")
       refute has_element?(view, "#work-item-stage-gate input[type=radio]")
       refute has_element?(view, "#work-item-stage-gate-track", "Standard")
@@ -2830,18 +3006,18 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert has_element?(
                view,
                "#work-item-tab-passed-over-proposal",
-               "The work item has no spec and no acceptance criteria. The exact change in proposal v1 is the one criterion."
+               "The exact change in proposal v1 is the work item's one criterion."
              )
 
       assert Gettext.with_locale(ApiaryWeb.Gettext, "en", fn ->
                Gettext.dgettext(
                  ApiaryWeb.Gettext,
                  "default",
-                 "Shape did not run, so the work item has no shaping outputs. Proposal v%{version}, as approved, is what the next stages work to.",
+                 "Proposal v%{version}, as approved, is what the next stages work to.",
                  version: "1"
                )
              end) ==
-               "Shape did not run, so the work item has no shaping outputs. Proposal v1, as approved, is what the next stages work to."
+               "Proposal v1, as approved, is what the next stages work to."
     end
 
     test "Shape's tab has no such line where Explore's approval lists no proposal version", %{
@@ -3112,8 +3288,10 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert has_element?(
                view,
                "#work-item-stage-gate-no-run",
-               "Verify started no run. Read the build report and the draft, then approve."
+               "Read the build report below, then approve."
              )
+
+      refute html =~ "started no run"
 
       assert Gettext.with_locale(ApiaryWeb.Gettext, "en", fn ->
                Gettext.dgettext(
@@ -3133,6 +3311,32 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert gate =~ ~s(id="work-item-stage-gate-approve-go")
       assert report =~ "The report text"
+    end
+
+    test "a workspace of another domain reads the engine's wording on Verify's gate and Shape's tab",
+         %{conn: conn, scope: scope} do
+      work_item = at_verify_gate!(scope)
+      scope = with_domain(scope, "example")
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert has_element?(
+               view,
+               "#work-item-stage-gate-no-run",
+               "Read the inputs below, then approve."
+             )
+
+      refute has_element?(view, "#work-item-stage-gate-no-run", "build report")
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
+
+      assert has_element?(
+               view,
+               "#work-item-tab-passed-over-proposal",
+               "Proposal v1, as approved, is what the next stages work to."
+             )
+
+      refute has_element?(view, "#work-item-tab-passed-over-proposal", "exact change")
     end
 
     test "Approve at Verify's gate passes the stage with the track the work item is on", %{
@@ -3189,6 +3393,380 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert length(Regex.scan(~r/id="work-item-tab-gate"/, html)) == 1
       assert html =~ ~s(id="work-item-tab-output-gate")
+    end
+  end
+
+  describe "the full test suite line under the build report" do
+    defp suite_tab(suite, extra \\ []) do
+      render_component(
+        &ApiaryWeb.WorkItemComponents.stage_tab/1,
+        Keyword.merge(
+          [
+            stage: %{name: "Verify", outputs: []},
+            work_item: %{number: 1, status: :confirm, run: nil},
+            outputs: [%{type: "build-report", version: 1, open: true, read: nil}],
+            suite: suite && Map.merge(%{reason: nil, fast: false}, suite)
+          ],
+          extra
+        )
+      )
+    end
+
+    defp suite_line(html) do
+      case Regex.run(~r/<p[^>]*id="work-item-suite-line"[^>]*>\s*(.*?)\s*<\/p>/s, html) do
+        [_all, text] -> text
+        nil -> nil
+      end
+    end
+
+    defp counts(state, fast \\ false),
+      do: %{state: state, passed: 412, failed: 3, skipped: 5, minutes: 6, fast: fast}
+
+    test "on the Standard track a passed or failed suite has its counts and its minutes" do
+      assert suite_tab(counts(:passed)) |> suite_line() ==
+               "The full test suite passed on that commit: 412 passed, 3 failed, 5 skipped, in 6 minutes."
+
+      assert suite_tab(counts(:failed)) |> suite_line() ==
+               "The full test suite failed on that commit: 412 passed, 3 failed, 5 skipped, in 6 minutes."
+    end
+
+    test "counts of 0 are shown as 0, not left out as absent counts" do
+      zero = %{passed: 0, failed: 0, skipped: 0, minutes: 6}
+
+      assert suite_tab(Map.merge(counts(:passed), zero)) |> suite_line() ==
+               "The full test suite passed on that commit: 0 passed, 0 failed, 0 skipped, in 6 minutes."
+
+      assert suite_tab(Map.merge(counts(:failed, true), zero)) |> suite_line() ==
+               "The full test suite failed: 0 passed, 0 failed, 0 skipped."
+    end
+
+    test "a result with no counts has the minutes on the Standard track, and nothing on the Fast" do
+      none = %{passed: nil, failed: nil, skipped: nil, minutes: 6}
+
+      for {state, word} <- [passed: "passed", failed: "failed"] do
+        standard = Map.merge(counts(state), none)
+
+        assert suite_tab(standard) |> suite_line() ==
+                 "The full test suite #{word} on that commit, in 6 minutes."
+
+        assert suite_tab(%{standard | minutes: 1}) |> suite_line() ==
+                 "The full test suite #{word} on that commit, in 1 minute."
+
+        assert suite_tab(%{standard | minutes: 1.0}) |> suite_line() ==
+                 "The full test suite #{word} on that commit, in 1 minute."
+
+        assert suite_tab(%{standard | minutes: 0.25}) |> suite_line() ==
+                 "The full test suite #{word} on that commit, in 0.25 minutes."
+
+        assert suite_tab(%{standard | fast: true}) |> suite_line() ==
+                 "The full test suite #{word}."
+      end
+    end
+
+    test "on the Fast track a passed or failed suite has its counts and no minutes" do
+      assert suite_tab(counts(:passed, true)) |> suite_line() ==
+               "The full test suite passed: 412 passed, 3 failed, 5 skipped."
+
+      assert suite_tab(counts(:failed, true)) |> suite_line() ==
+               "The full test suite failed: 412 passed, 3 failed, 5 skipped."
+    end
+
+    test "minutes are one minute for exactly 1, and minutes for any other number" do
+      for {minutes, words} <- [
+            {1, "in 1 minute."},
+            {1.0, "in 1 minute."},
+            {0.25, "in 0.25 minutes."},
+            {0, "in 0 minutes."},
+            {12, "in 12 minutes."},
+            {6.0, "in 6 minutes."},
+            {4.5, "in 4.5 minutes."}
+          ] do
+        for state <- [:passed, :failed] do
+          line = suite_tab(%{counts(state) | minutes: minutes}) |> suite_line()
+          assert line =~ ~r/#{Regex.escape(words)}$/, "#{state} #{inspect(minutes)}: #{line}"
+        end
+      end
+    end
+
+    test "a suite that did not run shows its reason, on any track" do
+      for fast <- [false, true] do
+        suite = %{state: :not_run, reason: "the repository has no test command", fast: fast}
+
+        assert suite_tab(suite) |> suite_line() ==
+                 "The full test suite did not run: the repository has no test command."
+      end
+
+      document = %{state: :not_run, reason: "a change to a document runs no tests", fast: true}
+
+      assert suite_tab(document) |> suite_line() ==
+               "The full test suite did not run: a change to a document runs no tests."
+    end
+
+    test "a reason ends in a full stop, except after a question mark or an exclamation mark" do
+      for {reason, line} <- [
+            {"no test command", "The full test suite did not run: no test command."},
+            {"Wait..", "The full test suite did not run: Wait..."},
+            {"Is it?", "The full test suite did not run: Is it?"},
+            {"Stop!", "The full test suite did not run: Stop!"}
+          ] do
+        assert suite_tab(%{state: :not_run, reason: reason}) |> suite_line() == line
+      end
+    end
+
+    test "only the track fast-track has the Fast track words" do
+      assert StageTab.fast_track?(%{track: %{id: "fast-track", name: "Fast track"}})
+      refute StageTab.fast_track?(%{track: %{id: "standard", name: "Standard"}})
+      refute StageTab.fast_track?(%{track: %{id: "express", name: "Express"}})
+      refute StageTab.fast_track?(%{track: nil})
+      refute StageTab.fast_track?(%{})
+    end
+
+    test "a reason is text: markup in it is escaped" do
+      html = suite_tab(%{state: :not_run, reason: "<script>alert(1)</script> & <b>x</b>"})
+
+      refute html =~ "<script>alert"
+      refute html =~ "<b>x</b>"
+
+      assert suite_line(html) ==
+               "The full test suite did not run: &lt;script&gt;alert(1)&lt;/script&gt; &amp; &lt;b&gt;x&lt;/b&gt;."
+    end
+
+    test "no suite result, no line" do
+      refute suite_tab(nil) =~ "work-item-suite-line"
+      refute suite_tab(nil) =~ "The full test suite"
+    end
+
+    test "no build report frame, no line" do
+      html =
+        suite_tab(counts(:passed), outputs: [%{type: "spec", version: 1, open: true, read: nil}])
+
+      refute html =~ "work-item-suite-line"
+    end
+
+    test "the line is under the build report's frame, not in it, and before the next frame" do
+      html =
+        suite_tab(counts(:passed),
+          outputs: [
+            %{type: "build-report", version: 1, open: true, read: nil},
+            %{type: "spec", version: 1, open: false, read: nil}
+          ]
+        )
+
+      report = :binary.match(html, ~s(id="work-item-tab-output-build-report")) |> elem(0)
+      line = :binary.match(html, ~s(id="work-item-suite-line")) |> elem(0)
+      spec = :binary.match(html, ~s(id="work-item-tab-output-spec")) |> elem(0)
+
+      assert report < line and line < spec
+
+      # The frame closed before the line.
+      between = binary_part(html, report, line - report)
+      assert between =~ "</section>"
+    end
+  end
+
+  describe "the full test suite line at Verify's gate" do
+    # A work item at Verify's gate on `track`, whose Build run wrote a build report and a
+    # verdict with `suite` as its full_suite (nil for none). Shape and Verify's workflow
+    # run on a track no work item is on, and Build's run on both.
+    defp report_gate!(scope, suite, track \\ "fast-track") do
+      screens!(scope, [%{"workflow" => "build-it"}], "build-report")
+      document = Processes.current(scope.workspace).document
+
+      stages =
+        Enum.map(document["stages"], fn
+          %{"id" => @explore, "gate" => gate} = stage ->
+            %{stage | "gate" => Map.update!(gate, "tracks", &(&1 ++ ["manual"]))}
+
+          %{"id" => @shape} = stage ->
+            Map.put(stage, "when", %{"track" => "manual"})
+
+          %{"id" => @verify} = stage ->
+            %{
+              stage
+              | "sequence" => [
+                  %{"workflow" => "shape-a-ticket", "when" => %{"track" => "manual"}}
+                ]
+            }
+
+          stage ->
+            stage
+        end)
+
+      tracks = document["tracks"] ++ [%{"id" => "manual", "name" => "Manual"}]
+
+      {:ok, _version} =
+        Processes.save(scope, scope.workspace, %{
+          document
+          | "stages" => stages,
+            "tracks" => tracks
+        })
+
+      work_item = scope |> taken_in_fixture() |> end_run!(proposing(track))
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: track)
+
+      work_item
+      |> reload()
+      |> end_run!(fn run, _registered ->
+        push!(run, work_item, "build-report", "## The report text")
+        verdict = %{"verdict" => "passed"}
+
+        {:ok, _version} =
+          Stages.Artifacts.push_json(
+            {:run, run},
+            Repo.get!(WorkItem, run.work_item_id),
+            "verdict",
+            if(suite, do: Map.put(verdict, "full_suite", suite), else: verdict),
+            stage_id: run.stage_id
+          )
+      end)
+      |> reload()
+    end
+
+    setup %{scope: scope} do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "build-report",
+          "base_view" => "document",
+          "size_limit" => 1_048_576,
+          "max_files" => 1
+        })
+
+      :ok
+    end
+
+    test "a work item on the Fast track shows the Fast track line from the verdict", %{
+      conn: conn,
+      scope: scope
+    } do
+      suite = %{
+        "state" => "passed",
+        "passed" => 412,
+        "failed" => 0,
+        "skipped" => 3,
+        "minutes" => 6
+      }
+
+      work_item = report_gate!(scope, suite)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert has_element?(view, "#work-item-tab-output-build-report")
+
+      assert has_element?(
+               view,
+               "#work-item-suite-line",
+               "The full test suite passed: 412 passed, 0 failed, 3 skipped."
+             )
+
+      refute has_element?(view, "#work-item-tab-output-build-report #work-item-suite-line")
+    end
+
+    test "a work item on the Standard track shows the Standard line, with the minutes", %{
+      conn: conn,
+      scope: scope
+    } do
+      suite = %{
+        "state" => "failed",
+        "passed" => 409,
+        "failed" => 3,
+        "skipped" => 3,
+        "minutes" => 6
+      }
+
+      work_item = report_gate!(scope, suite, "standard")
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert has_element?(
+               view,
+               "#work-item-suite-line",
+               "The full test suite failed on that commit: 409 passed, 3 failed, 3 skipped, in 6 minutes."
+             )
+    end
+
+    test "a verdict with minutes and no counts shows the Fast track line without counts", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = report_gate!(scope, %{"state" => "failed", "minutes" => 2})
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert has_element?(view, "#work-item-suite-line", "The full test suite failed.")
+    end
+
+    test "a verdict with minutes and no counts shows the Standard line with the minutes", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = report_gate!(scope, %{"state" => "passed", "minutes" => 2}, "standard")
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert has_element?(
+               view,
+               "#work-item-suite-line",
+               "The full test suite passed on that commit, in 2 minutes."
+             )
+    end
+
+    test "a verdict that did not run the suite shows the reason as sent", %{
+      conn: conn,
+      scope: scope
+    } do
+      suite = %{"state" => "not_run", "reason" => "a change to a document runs no tests"}
+      work_item = report_gate!(scope, suite)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert has_element?(
+               view,
+               "#work-item-suite-line",
+               "The full test suite did not run: a change to a document runs no tests."
+             )
+    end
+
+    test "the page keeps what it read of a verdict file, a result and no result alike", %{
+      conn: conn,
+      scope: scope
+    } do
+      suite = %{"state" => "passed", "passed" => 4, "failed" => 0, "skipped" => 0, "minutes" => 2}
+      work_item = report_gate!(scope, suite)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+      assigns = :sys.get_state(view.pid).socket.assigns
+
+      [{id, {:ok, %{passed: 4}}}] = Map.to_list(assigns.suite_reads)
+
+      # The kept read is shown again when the frames are read again, whatever the file says.
+      kept = {:ok, %{state: :failed, passed: 1, failed: 1, skipped: 0, minutes: 3, reason: nil}}
+
+      :sys.replace_state(view.pid, fn state ->
+        update_in(state.socket.assigns, &%{&1 | suite_reads: %{id => kept}})
+      end)
+
+      send(view.pid, {:artifact_pushed, work_item.id, id})
+
+      assert has_element?(
+               view,
+               "#work-item-suite-line",
+               "The full test suite failed: 1 passed, 1 failed, 0 skipped."
+             )
+    end
+
+    test "a verdict with no result is kept as none", %{conn: conn, scope: scope} do
+      work_item = report_gate!(scope, nil)
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert [:none] = Map.values(:sys.get_state(view.pid).socket.assigns.suite_reads)
+    end
+
+    test "a verdict with no full_suite has no line", %{conn: conn, scope: scope} do
+      work_item = report_gate!(scope, nil)
+
+      {:ok, view, html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert has_element?(view, "#work-item-tab-output-build-report")
+      refute has_element?(view, "#work-item-suite-line")
+      refute html =~ "The full test suite"
     end
   end
 end

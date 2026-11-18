@@ -99,7 +99,7 @@ defmodule Apiary.Kinds.BoundsTest do
           },
           "c" => %{"type" => "array", "maxItems" => 7, "items" => %{"const" => 1}}
         },
-        "$defs" => %{"b" => %{"type" => "string"}},
+        "$defs" => %{"b" => %{"type" => "integer", "minimum" => 0, "maximum" => 9}},
         "anyOf" => [%{"required" => ["a"]}, %{"required" => ["c"]}],
         "oneOf" => [%{"properties" => %{"a" => %{"const" => 1}}}, true],
         "not" => %{"required" => ["d"]}

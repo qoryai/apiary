@@ -66,7 +66,7 @@ export const estimateHeight = data => {
             ? LOOP_FRAME +
               item.workflows.reduce((sum, _name, i) => sum + LINE + under(item.conditions?.[i]), 0) +
               under(item.condition)
-            : LINE + under(item.condition),
+            : LINE + under(item.condition) + under(item.returns),
         )
   const description = data?.description ? [descriptionLines(data.description) * DESCRIPTION_LINE] : []
   const condition = data?.condition ? [CONDITION_LINE] : []
@@ -138,7 +138,8 @@ const text = value => String(value ?? "")
 
 // One step of a stage's sequence: a workflow, or a loop with its label and workflows, and
 // the words of its condition on a track, if it has one; a loop also has the words of each
-// workflow's condition, "" for none.
+// workflow's condition, "" for none. A workflow also has the line of its return to an
+// earlier stage, if it has one.
 const step = item => {
   const condition = item?.condition ? {condition: text(item.condition)} : {}
   if (item && typeof item === "object" && "loop" in item) {
@@ -146,7 +147,8 @@ const step = item => {
     const inner = Array.isArray(item.conditions) ? {conditions: workflows.map((_, i) => text(item.conditions[i]))} : {}
     return {loop: text(item.loop), workflows, ...inner, ...condition}
   }
-  return {workflow: text(item?.workflow), ...condition}
+  const returns = item?.returns ? {returns: text(item.returns)} : {}
+  return {workflow: text(item?.workflow), ...condition, ...returns}
 }
 
 // Each workflow's mark, by name: whether the harness lists it, and its label as text.
