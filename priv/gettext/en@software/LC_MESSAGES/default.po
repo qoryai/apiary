@@ -16140,9 +16140,34 @@ msgstr ""
 msgid "Open work item #%{number} in %{workspace}"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI ended this sign-in"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI no longer accepts this sign-in"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI returned HTTP %{status} to the refresh"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI returned HTTP 401 to the refresh"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "OpenAI's coding agent."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI's response to the refresh was not in the expected form"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
@@ -17117,6 +17142,11 @@ msgstr ""
 msgid "Qory Apiary could not check the credential from the adapter"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not connect to OpenAI"
+msgstr ""
+
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary could not connect to the %{adapter} adapter. Try again. If it repeats, %{contact_support}."
@@ -17140,7 +17170,17 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
-msgid "Qory Apiary could not refresh the sign-in of the key %{key} of %{provider}: %{cause}"
+msgid "Qory Apiary could not refresh the sign-in of the key %{key} of %{provider}: %{reason} (%{code})"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not refresh the sign-in of the key %{key} of %{provider}: %{reason} (%{code}). It tries again at %{time}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not refresh the sign-in of the key %{key} of %{provider}: the refresh address in the description of %{provider} is not on the allowed list (bad_endpoint). Ask the author of that description to correct it"
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
@@ -20195,6 +20235,11 @@ msgstr ""
 #: lib/apiary_web/live/artifact_live/new.ex
 #, elixir-autogen, elixir-format
 msgid "Shrink %{filename} to at most %{size}."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Sign in again on the key %{key} of %{provider}: Qory Apiary could not refresh its sign-in, because %{reason} (%{code})"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -27727,6 +27772,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "the refresh request to OpenAI timed out"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "the request failed for another credential of the run, so this one was not sent"
 msgstr ""
 
@@ -27753,6 +27803,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "the same hosts are allowed; denies %{deny_added} more and %{deny_removed} fewer."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "the saved sign-in has expired"
 msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
@@ -27823,6 +27878,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "this organisation"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "this sign-in's refresh token was already used, for example by another program"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
