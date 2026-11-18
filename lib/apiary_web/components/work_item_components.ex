@@ -6848,7 +6848,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp unstarted_words(:variables_invalid),
     do:
       gettext(
-        "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."
+        "Fix the variables in the workspace or its organisation, then run Explore again. One of the run's variables breaks a variable rule."
       )
 
   defp unstarted_words(:ticket_gone),

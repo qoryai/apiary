@@ -10693,7 +10693,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."
+msgid "Fix the variables in the workspace or its organisation, then run Explore again. One of the run's variables breaks a variable rule."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/machine_types.ex

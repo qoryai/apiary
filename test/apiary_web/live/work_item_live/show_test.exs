@@ -1187,7 +1187,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
          %{conn: conn, scope: scope} do
       for {cause, body} <- [
             {:variables_invalid,
-             "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."},
+             "Fix the variables in the workspace or its organisation, then run Explore again. One of the run's variables breaks a variable rule."},
             {:ticket_gone,
              "If the ticket is still in the Backlog, take it in again from there. Qory Apiary no longer has this work item's ticket."},
             {:inputs_invalid,
@@ -1228,7 +1228,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
             {"bytes_70000",
              "Remove variables in the workspace or its organisation, then start the run again. The run's variables take more than 64 KiB."},
             {nil,
-             "Fix the variables in the workspace's settings, then run Explore again. One of the run's variables breaks a variable rule."}
+             "Fix the variables in the workspace or its organisation, then run Explore again. One of the run's variables breaks a variable rule."}
           ] do
         work_item = work_item_fixture(scope)
         explore_run_fixture(work_item, end_cause: :variables_invalid, end_detail: detail)
