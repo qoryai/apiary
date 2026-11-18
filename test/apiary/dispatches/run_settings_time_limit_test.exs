@@ -1,10 +1,10 @@
 defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
-  # The `time_limit_minutes` of an explore run's `run_settings`
-  # (`Apiary.Dispatches.RunSettings`): the minutes the time limits of the run's target and
-  # workspace come to for the run's workflow, read from the one stack row with a workflow
-  # (`Apiary.Stacks.workflow/2`) or, with the workflow model, from the run's stage entry,
-  # the last member; 180 minutes for a workflow with no limit, and absent with no
-  # workflow. A stage entry's time limit is not read. Also the model choices of that
+  # The `time_limit_minutes` of an explore run's documents, after `run_settings`
+  # (`Apiary.Dispatches.RunSettings`, `Apiary.Dispatches.Handover`): the minutes the time
+  # limits of the run's target and workspace come to for the run's workflow, read from the
+  # one stack row with a workflow (`Apiary.Stacks.workflow/2`) or, with the workflow
+  # model, from the run's stage entry; 180 minutes for a workflow with no limit, and
+  # absent with no workflow. `run_settings` has no time limit. A stage entry's time limit is not read. Also the model choices of that
   # workflow, which apply only to its runs. Not async: the features are the whole node's.
   use Apiary.DataCase, async: false
 
@@ -50,6 +50,9 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
 
   defp settings(%{run_settings: settings}), do: settings |> Jason.encode!() |> Jason.decode!()
 
+  # The members of the documents about the run's first session, by name.
+  defp session(%{session: members}), do: Map.new(members)
+
   defp keys(%{run_settings: settings}) do
     ordered = settings |> Jason.encode!() |> Jason.decode!(objects: :ordered_objects)
     Enum.map(ordered.values, &elem(&1, 0))
@@ -89,20 +92,20 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
          ctx do
       place = handover_place_fixture(ctx.scope)
       entry_limits!(ctx, %{})
-      assert %{"time_limit_minutes" => 180} = settings(claim!(ctx, place))
+      assert %{"time_limit_minutes" => 180} = session(claim!(ctx, place))
 
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 90)
-      assert %{"time_limit_minutes" => 90} = settings(claim!(ctx, place))
+      assert %{"time_limit_minutes" => 90} = session(claim!(ctx, place))
 
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 240)
-      assert %{"time_limit_minutes" => 240} = settings(claim!(ctx, place))
+      assert %{"time_limit_minutes" => 240} = session(claim!(ctx, place))
     end
 
     test "a saved limit of 45 minutes for explore-a-ticket reaches its run", ctx do
       place = handover_place_fixture(ctx.scope)
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 45)
 
-      assert %{"time_limit_minutes" => 45} = settings(claim!(ctx, place))
+      assert %{"time_limit_minutes" => 45} = session(claim!(ctx, place))
     end
 
     test "a cleared limit sends 180 minutes, whatever another workflow has", ctx do
@@ -111,10 +114,10 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 30)
 
-      assert %{"time_limit_minutes" => 30} = settings(claim!(ctx, place))
+      assert %{"time_limit_minutes" => 30} = session(claim!(ctx, place))
 
       {:ok, _} = TimeLimits.delete_limit(ctx.scope, :workspace, "explore-a-ticket")
-      assert %{"time_limit_minutes" => 180} = settings(claim!(ctx, place))
+      assert %{"time_limit_minutes" => 180} = session(claim!(ctx, place))
     end
 
     test "a time limit on a stage entry of an older document is not read", ctx do
@@ -122,10 +125,10 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       place = handover_place_fixture(ctx.scope)
 
       entry_limits!(ctx, %{"time_limit" => "45m"})
-      assert %{"time_limit_minutes" => 180} = settings(claim!(ctx, place))
+      assert %{"time_limit_minutes" => 180} = session(claim!(ctx, place))
 
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 90)
-      assert %{"time_limit_minutes" => 90} = settings(claim!(ctx, place))
+      assert %{"time_limit_minutes" => 90} = session(claim!(ctx, place))
     end
 
     test "any other workflow resolves its limit by the name of its entry", ctx do
@@ -135,7 +138,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "review", 90)
 
       entry_limits!(ctx, %{}, "review")
-      assert %{"time_limit_minutes" => 90} = settings(claim!(ctx, place))
+      assert %{"time_limit_minutes" => 90} = session(claim!(ctx, place))
     end
 
     test "reads the target when the entry's access is read, whatever the walk resolved",
@@ -169,11 +172,20 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
                harness: section
              }
 
-      assert settings(claimed) == %{"runtime" => @runtime, "time_limit_minutes" => 90}
-      assert keys(claimed) == ~w(runtime time_limit_minutes)
+      assert settings(claimed) == %{"runtime" => @runtime}
+      assert session(claimed) == %{"time_limit_minutes" => 90}
 
-      assert %Run{run_settings: %{"runtime" => @runtime, "time_limit_minutes" => 90}} =
-               Repo.get!(Run, claimed.run.id)
+      kept = Repo.get!(Run, claimed.run.id)
+      assert kept.run_settings == %{"runtime" => @runtime}
+
+      # The documents the run keeps have the limit right after `run_settings`.
+      documents = Jason.decode!(kept.run_documents, objects: :ordered_objects)
+      names = Enum.map(documents.values, &elem(&1, 0))
+
+      assert names |> Enum.drop_while(&(&1 != "run_settings")) |> Enum.take(2) ==
+               ~w(run_settings time_limit_minutes)
+
+      assert documents["time_limit_minutes"] == 90
     end
 
     test "sends the target's limit over the workspace's", ctx do
@@ -183,19 +195,20 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 90)
       {:ok, _} = TimeLimits.put_limit(ctx.scope, target, "explore-a-ticket", 1440)
 
-      assert %{"time_limit_minutes" => 1440} = settings(claim!(ctx, place))
+      assert %{"time_limit_minutes" => 1440} = session(claim!(ctx, place))
     end
 
     test "sends 180 minutes with no limit, or a limit of another workflow", ctx do
       workflow!(ctx, "explore-a-ticket")
       place = handover_place_fixture(ctx.scope)
-      assert settings(claim!(ctx, place)) == %{"runtime" => @runtime, "time_limit_minutes" => 180}
+      assert session(claim!(ctx, place)) == %{"time_limit_minutes" => 180}
 
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "review", 90)
-      assert settings(claim!(ctx, place)) == %{"runtime" => @runtime, "time_limit_minutes" => 180}
+      assert session(claim!(ctx, place)) == %{"time_limit_minutes" => 180}
     end
 
-    test "sends the limit after the model choice's members", ctx do
+    test "sends the limit beside run_settings, which has the model choice's members alone",
+         ctx do
       workflow!(ctx, "explore-a-ticket")
 
       {:ok, provider} =
@@ -215,8 +228,9 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
 
       claimed = claim!(ctx, handover_place_fixture(ctx.scope, allow_secrets: true))
 
-      assert %{"model" => "claude-opus-5-5", "time_limit_minutes" => 45} = settings(claimed)
-      assert keys(claimed) == ~w(runtime model provider_models tiers time_limit_minutes)
+      assert %{"model" => "claude-opus-5-5"} = settings(claimed)
+      assert session(claimed) == %{"time_limit_minutes" => 45}
+      assert keys(claimed) == ~w(runtime model provider_models tiers)
     end
   end
 
@@ -285,6 +299,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
 
     claimed = claim!(ctx, place)
     assert settings(claimed) == %{"runtime" => @runtime}
+    assert session(claimed) == %{}
     assert claimed.harness == nil
   end
 
@@ -297,6 +312,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
 
     claimed = claim!(ctx, place)
     assert settings(claimed) == %{"runtime" => @runtime}
+    assert session(claimed) == %{}
     assert claimed.harness == nil
   end
 

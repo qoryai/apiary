@@ -1484,6 +1484,33 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert note_count(lv) == 1
     end
 
+    test "sessions on codex and claude behind a wall: the Codex session wrote no event and has no wall note",
+         ctx do
+      run = sessions_run(ctx.scope, ["codex", "claude"], wall: "docker", hooks: false)
+      lv = open(ctx.conn, ctx.scope, run)
+
+      refute has_element?(lv, "#prepare-machine-session-agent .q-limits")
+      assert note_text(lv, "#prepare-machine-session-2-agent .q-limits") == @wall_note
+      assert note_count(lv) == 1
+    end
+
+    test "a Codex session's output events do not count as hook events: the walled Claude Code session keeps its wall note",
+         ctx do
+      codex_events = [
+        {15, "runtime.started", %{"session" => 1, "session_id" => "t1", "source" => "startup"}},
+        {17, "runtime.turn_finished", %{"session" => 1, "session_id" => "t1"}}
+      ]
+
+      base = sessions_run(ctx.scope, ["codex", "claude"], wall: "docker", hooks: false)
+      events_fixture(base, codex_events)
+      {:ok, run} = Projector.project(base)
+      lv = open(ctx.conn, ctx.scope, run)
+
+      refute has_element?(lv, "#prepare-machine-session-agent .q-limits")
+      assert note_text(lv, "#prepare-machine-session-2-agent .q-limits") == @wall_note
+      assert note_count(lv) == 1
+    end
+
     test "two Claude Code sessions behind a wall: each has the wall note", ctx do
       run = sessions_run(ctx.scope, ["claude", "claude"], wall: "docker", hooks: false)
       lv = open(ctx.conn, ctx.scope, run)
@@ -1544,7 +1571,7 @@ defmodule ApiaryWeb.RunLive.ShowPreparationTest do
       assert before?(lv, "q-limits", ~s(id="timeline"))
     end
 
-    test "with no Run list, a aider session, then a Claude Code one: both notes above the Timeline",
+    test "with no Run list, an aider session, then a Claude Code one: both notes above the Timeline",
          ctx do
       run =
         ctx.scope

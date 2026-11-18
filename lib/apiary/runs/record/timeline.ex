@@ -73,7 +73,8 @@ defmodule Apiary.Runs.Record.Timeline do
   # extension, and the page reads the steps again (`ApiaryWeb.RunLive.Show`).
   @steps ~w(run.step_started run.step_exited)
 
-  # The session reads these from the runtime's output; every other `runtime.` event comes
+  # The session reads these from the runtime's output, whichever runtime it runs; of a
+  # runtime whose events come from hooks (`hooks?/1`), every other `runtime.` event comes
   # from a hook.
   @not_from_a_hook ~w(runtime.result runtime.text runtime.tool_result runtime.tool_denied)
 
@@ -131,7 +132,8 @@ defmodule Apiary.Runs.Record.Timeline do
   `:type`, `:time` and, where the event has them, `:tool_use_id`, `:agent_id`,
   `:agent_type`, `:text_kind` (on a text event: its `kind`, `"prompt"` for a text whose
   `role` is `user`, or `"empty"` for a block with no text), `:bare` (true on a session's
-  start whose `bare` is `true`), `:session` (the number of the session that sent the
+  start whose `bare` is `true`), `:runtime` (on a session's start: the runtime it names),
+  `:session` (the number of the session that sent the
   event, nil without one), `:background_tasks` (a list,
   or nil when the event has none), `:host`, `:port`, `:decision` and, on an egress event
   that has one, `:tool`, the tool whose host it was for; with `:decision` allowed it is a
@@ -154,7 +156,8 @@ defmodule Apiary.Runs.Record.Timeline do
       `lane/2` finds any of them;
     * `:rails`: how many rails the gutter needs, one to four;
     * `:session_items`: how many items are the session's (not Forager's, not egress);
-    * `:hook_events`: how many `runtime.` events came from the runtime's hooks;
+    * `:hook_events`: how many `runtime.` events came from the hooks of a runtime that has
+      them (`hooks?/1`), by the runtime that the event's session named at its start;
     * `:texts`: how many text items there are: none in a run recorded before the runtime
       reported its text, whose Transcript then takes the text of each turn's end;
     * `:background`: `%{tasks: [...], count: n}`, the tasks of the last list the runtime
@@ -163,6 +166,13 @@ defmodule Apiary.Runs.Record.Timeline do
     * `:alive`: the `alive:` it was folded with.
   """
   def index(events, opts \\ []), do: extend(new(), events, opts)
+
+  @doc """
+  Whether a runtime's session events come from hooks: Claude Code's, and those of a session
+  that names no runtime. The other runtimes of the catalogue send theirs from the
+  runtime's output, so none of their events counts as `:hook_events`.
+  """
+  def hooks?(runtime), do: runtime in [nil, "claude"]
 
   @doc "The index of a run with no events."
   def new, do: finalize(new_state(), false)
@@ -176,7 +186,7 @@ defmodule Apiary.Runs.Record.Timeline do
     state =
       Enum.reduce(events, state, fn event, state ->
         state = %{state | through: max(state.through, event.sequence)}
-        state = state |> background(event) |> run_started(event)
+        state = state |> background(event) |> run_started(event) |> session_runtime(event)
 
         case kind(event.type) do
           nil -> state
@@ -242,6 +252,9 @@ defmodule Apiary.Runs.Record.Timeline do
       # the item seq of the run's start, and the sequence of the session's start it shows
       run_started_seq: nil,
       session_seq: nil,
+      # session number => the runtime its start named, and the runtime of the last start
+      session_runtimes: %{},
+      last_runtime: nil,
       through: 0
     }
   end
@@ -277,13 +290,36 @@ defmodule Apiary.Runs.Record.Timeline do
   defp public_lane(lane),
     do: Map.take(lane, [:index, :id, :type, :rail, :color, :started_seq, :finished_seq])
 
-  defp count(state, %{type: @prefix <> "runtime." <> name}) do
-    if ("runtime." <> name) in @not_from_a_hook,
-      do: state,
-      else: %{state | hook_events: state.hook_events + 1}
+  defp count(state, %{type: @prefix <> "runtime." <> name} = event) do
+    if ("runtime." <> name) in @not_from_a_hook or
+         not hooks?(event_runtime(state, event)),
+       do: state,
+       else: %{state | hook_events: state.hook_events + 1}
   end
 
   defp count(state, _event), do: state
+
+  # The runtime a session's start named, kept by the session's number; an event with no
+  # number, or of a session whose start is not in the record, takes the runtime of the last
+  # start.
+  defp session_runtime(state, %{type: @prefix <> @session_started} = event) do
+    runtime = event[:runtime]
+
+    %{
+      state
+      | last_runtime: runtime,
+        session_runtimes:
+          if(is_integer(event[:session]),
+            do: Map.put(state.session_runtimes, event[:session], runtime),
+            else: state.session_runtimes
+          )
+    }
+  end
+
+  defp session_runtime(state, _event), do: state
+
+  defp event_runtime(state, event),
+    do: Map.get(state.session_runtimes, event[:session], state.last_runtime)
 
   ## Calls
 

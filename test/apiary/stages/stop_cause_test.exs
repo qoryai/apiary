@@ -76,6 +76,9 @@ defmodule Apiary.Stages.StopCauseTest do
                "Close the work item, or take the ticket in again."
 
     assert text(:inputs_invalid, work_item) =~
+             ~r/\AThe run did not start, because a value in the ticket or the work item breaks a rule for the agent's input, such as its size limit.\n/
+
+    assert text(:inputs_invalid, work_item) =~
              "\nWhoever can edit the ticket where it comes from shortens or corrects it, then takes it in again."
   end
 
@@ -204,6 +207,13 @@ defmodule Apiary.Stages.StopCauseTest do
     assert text(:write_without_work_item, work_item) ==
              "The run did not start, because it writes and has no work item to take its branch from.\n" <>
                "Contact support."
+  end
+
+  test "a shared stage whose access no longer differs names no workflow, and runs the round again",
+       %{work_item: work_item} do
+    assert text(:shared_access_differs, work_item) ==
+             "The run did not start, because the workflows of the stage would run with different access.\n" <>
+               "Run the round again."
   end
 
   test "a harness with no walk row, and an unknown cause, show the code with a description",

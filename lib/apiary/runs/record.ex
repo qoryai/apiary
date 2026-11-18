@@ -30,6 +30,7 @@ defmodule Apiary.Runs.Record do
   @runtime_started "dev.qory.runtime.started"
   @runtime_text "dev.qory.runtime.text"
   @session_started "dev.qory.session.started"
+  @session_started "dev.qory.session.started"
   @session_exited ~w(dev.qory.session.exited)
   @session_end_types ~w(dev.qory.runtime.started dev.qory.runtime.result dev.qory.session.exited)
   @resized "dev.qory.run.resized"
@@ -317,6 +318,16 @@ defmodule Apiary.Runs.Record do
             fragment(
               "CASE WHEN jsonb_typeof(? -> 'session') = 'number' AND (? ->> 'session') ~ '^[0-9]{1,10}$' THEN (? ->> 'session')::bigint END",
               e.data,
+              e.data,
+              e.data
+            ),
+          # The runtime a session's start names, nil on every other type: the timeline counts
+          # the hook events of the sessions whose runtime sends hooks.
+          runtime:
+            fragment(
+              "CASE WHEN ? = ? AND jsonb_typeof(? -> 'runtime') = 'string' THEN left(? ->> 'runtime', 64) END",
+              e.type,
+              ^@session_started,
               e.data,
               e.data
             ),

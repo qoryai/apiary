@@ -53,6 +53,14 @@ defmodule Apiary.EditionTest do
     end
   end
 
+  describe "schema_change_line/1" do
+    # The configured edition's answer for an operated workspace:
+    # test/apiary_pro/workspace_operators_test.exs.
+    test "the core answers nil, so the page links to Harness settings", %{scope: scope} do
+      assert Apiary.Edition.Core.schema_change_line(scope) == nil
+    end
+  end
+
   describe "machines_who_may/2" do
     test "the core answers who acts on a pool of the workspace", %{scope: scope} do
       for edition <- [Apiary.Edition.Core, Apiary.Edition] do
