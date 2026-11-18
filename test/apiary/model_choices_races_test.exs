@@ -140,8 +140,12 @@ defmodule Apiary.ModelChoicesRacesTest do
       await_blocked(second.backend, first_pid)
       commit(first)
 
-      assert {:error, %Ecto.Changeset{errors: [fallbacks: {"is invalid", opts}]}} =
+      assert {:error, %Ecto.Changeset{errors: [fallbacks: {refusal, opts}]}} =
                Task.await(second.task)
+
+      assert refusal ==
+               "Choose another provider for this fallback: its provider no longer exists in " <>
+                 "this organisation."
 
       assert {opts[:fallback], opts[:field]} == {0, :provider}
       refute provider_there?(ctx.fallback)
