@@ -18767,8 +18767,8 @@ msgstr "Runs of this repository start in the pool's default image."
 
 #: lib/apiary_web/live/artifact_live/types.ex
 #, elixir-autogen, elixir-format
-msgid "Runs of this workspace store their result as a %{name} version, checked against the schema in the harness commit that each run uses. So %{name} cannot be edited or deleted here."
-msgstr ""
+msgid "Runs of this workspace store their result as a %{name} version, checked against the schema in the harness version that each run uses. So %{name} cannot be edited or deleted here."
+msgstr "Runs of this workspace store their result as a %{name} version, checked against the schema in the harness commit that each run uses. So %{name} cannot be edited or deleted here."
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format

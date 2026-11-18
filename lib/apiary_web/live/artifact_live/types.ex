@@ -361,7 +361,7 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   defp harness_line(name, step) do
     [
       rich_gettext(
-        "Runs of this workspace store their result as a %{name} version, checked against the schema in the harness commit that each run uses. So %{name} cannot be edited or deleted here.",
+        "Runs of this workspace store their result as a %{name} version, checked against the schema in the harness version that each run uses. So %{name} cannot be edited or deleted here.",
         name: name
       ),
       " ",
