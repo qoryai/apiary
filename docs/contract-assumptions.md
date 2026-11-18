@@ -1845,8 +1845,8 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   `forager_session` is the number, else, for a session that no report ended, such as the one
   open when a run paused, the newest row with none, else the row of that sequence. A run the
   queue did not start has none of the five. The model is that of the session's
-  `dev.qory.runtime.started` in the main conversation, else, for session 1, the model of the
-  run's `run_settings`, and for another session none. A step that a rerun keeps is not run
+  `dev.qory.runtime.started` in the main conversation, and none when no such event says it:
+  the run's `run_settings` are not proof of what ran. A step that a rerun keeps is not run
   again, so it has no session and no record; its record stays on the run where it ran. The
   records stay when `Apiary.Retention` deletes the run's events, and a run whose events
   retention has deleted or is due to delete is not written to: its records, and its cost,

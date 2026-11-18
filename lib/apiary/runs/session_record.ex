@@ -14,8 +14,8 @@ defmodule Apiary.Runs.SessionRecord do
   From the events: `started_at` and `ended_at`, the times of the session's
   `dev.qory.session.started` and `dev.qory.session.exited`, nil until the event is
   projected, and nil for the end of a session that never ended; `model`, from the
-  session's `dev.qory.runtime.started`, else, for session 1, the run's `run_settings` model;
-  and, from the session's `dev.qory.runtime.result` events (`Apiary.Runs.Sessions`),
+  session's `dev.qory.runtime.started`, nil when none says it (the run's settings are not
+  what ran); and, from the session's `dev.qory.runtime.result` events (`Apiary.Runs.Sessions`),
   `cost_usd` and the four token counts of the session's last result line that has them,
   `turns` and `duration_ms`, each summed over the lines, and `error`, true when any line is
   an error. A value no result carried is nil, which means unknown and never 0.

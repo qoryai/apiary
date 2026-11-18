@@ -303,8 +303,7 @@ defmodule Apiary.Runs.Sessions do
 
       rows =
         for session <- sessions do
-          base = row(run, context, session.session_number, now)
-          base |> Map.merge(session) |> Map.put(:model, session.model || base.model)
+          run |> row(context, session.session_number, now) |> Map.merge(session)
         end
 
       Repo.insert_all(SessionRecord, rows,
@@ -345,7 +344,6 @@ defmodule Apiary.Runs.Sessions do
       workflow: (session && session.workflow) || (dispatch && dispatch.workflow),
       attempt: dispatch && dispatch.attempt,
       session_number: number,
-      model: if(number == 1, do: model_of(run)),
       error: false,
       inserted_at: now,
       updated_at: now
@@ -372,11 +370,6 @@ defmodule Apiary.Runs.Sessions do
         Enum.find(sessions, &(&1.sequence == number))
     end
   end
-
-  # The model of the run's first session, from the settings written when it was claimed:
-  # what session 1's `dev.qory.runtime.started` did not say. Another session has none.
-  defp model_of(%Run{run_settings: %{"model" => model}}) when is_binary(model), do: model
-  defp model_of(%Run{}), do: nil
 
   @doc """
   The id of the record of session `number` of `run`, written with the run's place and no

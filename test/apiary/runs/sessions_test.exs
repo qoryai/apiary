@@ -483,12 +483,13 @@ defmodule Apiary.Runs.SessionsTest do
       assert four.cost_usd == nil
     end
 
-    test "a session with no model of its own has the run's model for session 1 only", %{
+    test "a session's model is what its runtime.started said, and nil with none", %{
       scope: scope
     } do
       run = run_fixture(scope)
       queue_run!(scope, run, queued: [])
 
+      # The settings are not proof of what ran: no session takes its model from them.
       Repo.update_all(from(r in Run, where: r.id == ^run.id),
         set: [run_settings: %{"model" => "model-from-settings"}]
       )
@@ -503,7 +504,7 @@ defmodule Apiary.Runs.SessionsTest do
       ])
 
       {:ok, run} = Projector.project(run)
-      assert records(run) |> Enum.map(& &1.model) == ["model-from-settings", nil, "model-large"]
+      assert records(run) |> Enum.map(& &1.model) == [nil, nil, "model-large"]
     end
 
     # The run's events, the way retention leaves them: a run with one projected session
