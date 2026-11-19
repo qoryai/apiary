@@ -92,14 +92,17 @@ defmodule ApiaryWeb.ProviderKeyLogTest do
         keys: [%{value_id: "main", value: key()}]
       })
 
-    path = "#{models_path(scope)}/#{provider.public_id}/keys/main/edit"
+    row =
+      Apiary.Repo.get_by!(Apiary.Secrets.Value, secret_id: provider.secret_id, value_id: "main")
+
+    path = "#{models_path(scope)}/#{provider.public_id}/keys/#{row.id}/edit"
     key = key()
     {:ok, lv, _html} = live(conn, path)
 
     log =
       capture_log([level: :debug], fn ->
         html =
-          render_submit(lv, "save", %{"key" => %{"value_id" => "main", "key" => key <> <<0>>}})
+          render_submit(lv, "save", %{"key" => %{"key" => key <> <<0>>}})
 
         assert html =~ "must not contain a NUL byte"
         refute html =~ key
@@ -111,7 +114,7 @@ defmodule ApiaryWeb.ProviderKeyLogTest do
     log =
       capture_log([level: :debug], fn ->
         assert {:error, {:live_redirect, _to}} =
-                 render_submit(lv, "save", %{"key" => %{"value_id" => "main", "key" => key}})
+                 render_submit(lv, "save", %{"key" => %{"key" => key}})
       end)
 
     refute log =~ key
@@ -120,7 +123,7 @@ defmodule ApiaryWeb.ProviderKeyLogTest do
 
     log =
       crash_log(lv, fn ->
-        render_submit(lv, "unknown", %{"key" => %{"value_id" => "main", "key" => key}})
+        render_submit(lv, "unknown", %{"key" => %{"key" => key}})
       end)
 
     assert log =~ "FunctionClauseError"
