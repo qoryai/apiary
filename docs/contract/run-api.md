@@ -850,10 +850,13 @@ of the run contract. A next session of the same stage:
 - `model_choice` is the run's `run_settings` where the choice's runtime, key or model is
   no longer valid, or its runtime is no longer in the catalogue. A choice whose provider
   was removed, or no longer fits the catalogue, ends the claim `provider_gone`.
-- `model_choice` has `runtime` alone where its runtime uses another API of a provider that
-  an earlier session of the run uses, or where its provider has no key; and the
-  catalogue's default runtime alone where the workflow resolves to
-  no model choice at any level. The session uses the default model of that runtime.
+- `model_choice` has the catalogue's default runtime alone where the workflow resolves to
+  no model choice at any level: the session runs on the machine's key and uses the
+  default model of that runtime.
+- Where a session's runtime uses another API of a provider that an earlier session of the
+  run uses, or neither its provider nor a provider of its fallbacks has a key, the claim
+  ends the run before it starts, with the end cause `session_key_missing`: one run uses
+  one API of each provider.
 - `model_credential`, for a session on a key of a provider other than the start key's, is
   the credential name of the key the session starts on: that provider's first key out of
   cooldown, else its first key. The claim picks at most 6 keys in this order: the start

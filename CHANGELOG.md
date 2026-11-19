@@ -291,6 +291,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   run before it starts, with the end cause `too_many_providers` or `model_choice_missing`
   and the outcome error. The work item and the stop line show the same fix while the
   fault remains, and "Run the round again." once it is gone.
+- A save of a stage with `shared_run: true` also fails when neither a later workflow's
+  provider nor a provider of its fallbacks has a model key, or when a workflow's runtime
+  uses another API of a provider that an earlier workflow uses, as one run uses one API
+  of each provider. The errors are "Add a model key to Checkout, or choose a model of
+  another provider for workflow review. Checkout has no model key." and "Choose a model
+  for workflow review that uses the Anthropic Messages API of Northwind, as workflow
+  plan does, or a model of another provider. One run uses one API of each provider." A
+  workflow with no model choice runs on the machine's key and is never refused. The
+  claim checks both again and ends such a run before it starts, with the end cause
+  `session_key_missing` and the outcome error. The work item and the stop line show the
+  same fix while the fault remains, and "Run the round again." once it is gone.
 - `full_suite` is `true` only for a session of an entry with access `write` that is in a
   loop or has `first_attempt`, whether the stage has `shared_run` or not. A run with
   access `read` or `write-no-push`, and a run of Explore, gets `false` for every session.
@@ -2980,6 +2991,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `dispatch_runs.result_outcome` take the causes `model_choice_missing` and
   `too_many_providers`. Each new check scans its table as it is added, under a lock that
   blocks reads and writes. It changes no row.
+- `dispatch_runs` and `dispatches` (20261118162400): the checks on `end_cause` and on
+  `dispatch_runs.result_outcome` take the cause `session_key_missing`. Each new check
+  scans its table as it is added, under a lock that blocks reads and writes. It changes
+  no row.
 - `run_model_keys` (20261118162100): a new table, one row for each model key a run's
   claim stored, at most 6 per run, with its foreign keys to `runs`,
   `organisation_connections` and `secrets`, and its indexes and checks. It changes no

@@ -915,9 +915,14 @@ provider's public id, so each provider's keys form one key group, which the gate
 rotates, cools and stops apart from every other group (the Forager contract, Several
 model keys). Where the workflows of a stage with `shared_run: true`, fallbacks included,
 use more than 6 providers, a save of the stage fails, and a claim of a run of the stage
-ends `too_many_providers`. The claim orders the provider's keys at its clock: the keys
-with no known reset, or one already passed; then the keys by their known reset, the
-closest minute first; then the keys in cooldown, the earliest `cooldown_until` first. Ties
+ends `too_many_providers`. Where neither a later workflow's provider nor a provider of its
+fallbacks has a key, or a workflow's runtime uses another API of a provider that an
+earlier workflow uses, a save of the stage fails, and a claim of a run of the stage ends
+`session_key_missing`: one run uses one API of each provider. A workflow with no model
+choice runs on the machine's key and is never refused. The claim orders the provider's
+keys at its clock: the keys with no known reset, or one already passed; then the keys by
+their known reset, the closest minute first; then the keys in cooldown, the earliest
+`cooldown_until` first. Ties
 go in tie order: the default key first, then the other keys by when each was added. A
 key's known reset is the earliest `resets_at` that a gateway reported, else the next reset
 of its weekly schedule; a key is in cooldown while one of its windows has a
