@@ -926,7 +926,7 @@ model provider sets the providers of each waiting run it may change again, from 
 in effect, once the change has committed (`Apiary.Dispatches.refresh_model_providers/1`).
 A key that needs a new value (its sign-in needs a new one, or a gateway's model keys
 report listed it in `unauthorized`, which stays until a new value; a key that no secrets
-request sent to the run is not marked, and a run marks a key once) is a key in cooldown
+request sent to the run is not marked, and a run marks a key once for a value) is a key in cooldown
 with no end for the claim: the run waits while every key of the provider and of each
 fallback is in cooldown or needs a new value, and the paused run's `paused_until` has no
 time for such a key. A sign-in whose access token expires before the end of the run's

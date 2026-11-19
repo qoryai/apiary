@@ -370,7 +370,8 @@ defmodule Apiary.ModelKeys do
   `[{secret_value_id, value_set_at, login_at}]`, each the key's row id, when the sealed
   value was set, read from the row the value was read from, and the time of the sign-in or
   of its last refresh when the token was read (`Apiary.ModelKeys.Copy`).
-  One row per run and key (`Apiary.ModelKeys.Copy`), the last request's. Each statement
+  One row per run and key (`Apiary.ModelKeys.Copy`), the last request's; a request that seals
+  another value than the row has clears the run's mark of the key (`marked_at`). Each statement
   takes the run's row and the key's row `FOR KEY SHARE`, in the order of the keys' ids,
   then the copy's row: a key or a run deleted since the request is left out, as a copy
   goes with either. In the caller's transaction. Returns `:ok`.
@@ -410,6 +411,14 @@ defmodule Apiary.ModelKeys do
                     "CASE WHEN EXCLUDED.login_at IS NULL THEN NULL WHEN EXCLUDED.login_at IS NOT DISTINCT FROM ? THEN ? ELSE EXCLUDED.login_sealed_at END",
                     c.login_at,
                     c.login_sealed_at
+                  ),
+                # The run's mark of the key is for the value it had: a new value, sealed
+                # again, is a new chance to mark.
+                marked_at:
+                  fragment(
+                    "CASE WHEN EXCLUDED.value_set_at IS NOT DISTINCT FROM ? THEN ? END",
+                    c.value_set_at,
+                    c.marked_at
                   )
               ]
             ]
@@ -1095,13 +1104,14 @@ defmodule Apiary.ModelKeys do
   (`Apiary.ModelKeys.Login.rejectable?/3`, by the run's copy of the sign-in time and the
   database's clock): the gateway lists such a key while its renewal is pending. An entry
   whose `at` is before the time the run's copy took the token it has now is for an earlier
-  token and marks nothing (`for_an_older_token?/2`). A run marks a key once: the first entry
-  that passes these checks takes the run's copy of the key (`Apiary.ModelKeys.Copy`,
-  `marked_at`), and a second entry for the key, in the same report or a later one, marks
-  nothing and moves nothing; a new run marks the key again. An entry that is left out is no
-  error: the report is answered as one whose entries all marked. A refresh never changes the row;
-  a new sign-in ends the state, as a new value of any key does. An entry that is older
-  than the key's row keeps the row. The rows are written in the order of the keys' row
+  token and marks nothing (`for_an_older_token?/2`). A run marks a key once for a value:
+  the first entry that passes these checks takes the run's copy of the key
+  (`Apiary.ModelKeys.Copy`, `marked_at`), and a second entry for the key, in the same
+  report or a later one, marks nothing and moves nothing; a new run marks the key again,
+  and so does the same run once a request has sealed a new value of the key for it. An
+  entry that is left out is no error: the report is answered as one whose entries all
+  marked. A refresh never changes the row; a new sign-in ends the state, as a new value of
+  any key does. An entry that is older than the key's row keeps the row. The rows are written in the order of the keys' row
   ids, after the values' rows are locked `FOR SHARE`, as `record/3` does, so a new value
   and this write take turns. Returns `:ok`.
   """

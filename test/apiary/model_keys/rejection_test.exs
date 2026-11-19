@@ -12,7 +12,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
 
   alias Apiary.{Connections, ModelKeys}
   alias Apiary.Connections.Connection
-  alias Apiary.ModelKeys.{Login, Rejection}
+  alias Apiary.ModelKeys.{Copy, Login, Rejection}
   alias Apiary.Secrets.Value
 
   @moduletag needs: [:factory, :secrets]
@@ -179,6 +179,90 @@ defmodule Apiary.ModelKeys.RejectionTest do
         )
 
       assert [%Rejection{rejected_at: ^first}] = rows(main)
+    end
+
+    test "keeps the run's mark when a request seals the same value again", ctx do
+      main = ctx.values["main"]
+      run_key = key(ctx, main)
+      first = ~U[2026-11-18 09:12:00.000000Z]
+
+      :ok =
+        ModelKeys.reject(
+          [run_key],
+          [unauthorized("model-1", first)],
+          ctx.provider,
+          DateTime.utc_now()
+        )
+
+      :ok = ModelKeys.keep_copies(run_key.run_id, [{main.id, main.value_set_at}])
+      assert %Copy{marked_at: %DateTime{}} = Repo.get_by!(Copy, run_id: run_key.run_id)
+
+      :ok =
+        ModelKeys.reject(
+          [run_key],
+          [unauthorized("model-1", DateTime.add(first, 600))],
+          ctx.provider,
+          DateTime.utc_now()
+        )
+
+      assert [%Rejection{rejected_at: ^first}] = rows(main)
+    end
+
+    test "lets the run mark a new value once a request sealed it for the run", ctx do
+      main = ctx.values["main"]
+      run_key = key(ctx, main)
+      first = ~U[2026-11-18 09:12:00.000000Z]
+      later = ~U[2026-11-18 09:30:00.000000Z]
+
+      :ok =
+        ModelKeys.reject(
+          [run_key],
+          [unauthorized("model-1", first)],
+          ctx.provider,
+          DateTime.utc_now()
+        )
+
+      new_value!(ctx.scope, ctx.provider, "main", "sk-ant-fixture-main-9876543210")
+      assert rows(main) == []
+      renewed = Repo.get!(Value, main.id)
+      assert DateTime.compare(renewed.value_set_at, main.value_set_at) == :gt
+
+      # The run still has the old value until a request seals the new one: it marks nothing.
+      :ok =
+        ModelKeys.reject(
+          [run_key],
+          [unauthorized("model-1", later)],
+          ctx.provider,
+          DateTime.utc_now()
+        )
+
+      assert rows(main) == []
+
+      :ok = ModelKeys.keep_copies(run_key.run_id, [{main.id, renewed.value_set_at}])
+      assert %Copy{marked_at: nil} = Repo.get_by!(Copy, run_id: run_key.run_id)
+
+      resealed = %{run_key | copy_set_at: renewed.value_set_at}
+
+      :ok =
+        ModelKeys.reject(
+          [resealed],
+          [unauthorized("model-1", later)],
+          ctx.provider,
+          DateTime.utc_now()
+        )
+
+      assert [%Rejection{rejected_at: ^later}] = rows(main)
+
+      # The new value is marked once for the run as well.
+      :ok =
+        ModelKeys.reject(
+          [resealed],
+          [unauthorized("model-1", DateTime.add(later, 600))],
+          ctx.provider,
+          DateTime.utc_now()
+        )
+
+      assert [%Rejection{rejected_at: ^later}] = rows(main)
     end
 
     test "marks nothing for a key the gateway never received", ctx do
