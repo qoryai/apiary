@@ -367,7 +367,7 @@ defmodule Apiary.Access do
     # Stored secrets and variables.
     Action.new(
       :"secret.read",
-      "read the stored secrets: their names, notes and value IDs, never a value",
+      "read the stored secrets: their names, notes and value IDs, and of a model provider's key the last 4 characters of a pasted key or the email of a sign-in, never the value",
       feature: :secrets,
       roles: @members,
       audited: {:not, @read}

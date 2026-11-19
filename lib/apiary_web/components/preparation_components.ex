@@ -1232,6 +1232,10 @@ defmodule ApiaryWeb.PreparationComponents do
   # A reason about a model key (`Apiary.Runs.Waiting`: `{kind, provider's public id, key}`)
   # with the path of the key's page, Organisation settings › Model providers, in place of
   # the provider's id; none without the run's organisation.
+  defp with_key_page({kind, _provider_id, %{id: nil, identity: identity}}, _organisation)
+       when kind in [:refreshing, :restart, :sign_in, :new_key],
+       do: {kind, identity, nil}
+
   defp with_key_page({kind, provider_id, %{id: id, identity: identity}}, %{} = organisation)
        when kind in [:refreshing, :restart, :sign_in, :new_key] and is_binary(provider_id) do
     {kind, identity, ~p"/#{organisation}/settings/model-providers/#{provider_id}/keys/#{id}/edit"}

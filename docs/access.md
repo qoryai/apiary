@@ -563,7 +563,9 @@ stay known to such a gateway, and are accepted:
 
 A model provider's keys are values of its secret (`Apiary.ModelKeys`), and their pages
 need the features `factory` and `secrets`. Every member reads a provider's page with its
-keys and their states (`connection.read`). Adding a key, changing its value, its Resets,
+keys and their states (`connection.read`). A key shows as its identity line, which for a
+pasted API key has its last 4 characters and for a sign-in has the email of the ChatGPT
+account, so members see those, never the key or a token. Adding a key, changing its value, its Resets,
 its Pause for and its Use up to, and deleting it, are `provider.write`,
 owners' and admins', checked at the organisation: **Add key** and **Edit key** on the
 provider's page (`ApiaryWeb.ProviderLive.Key`), and **Add value**, **Change value**,
@@ -1398,7 +1400,8 @@ are shown more than the organisation has.
 
 What each action covers:
 
-- `organisation_secret.read`: their names, notes and value IDs, never a value; an
+- `organisation_secret.read`: their names, notes and value IDs, and for a model provider's
+  key the last 4 characters of a pasted key or the email of a sign-in, never the value; an
   owner's, an admin's and the reader's, so an instance admin reads them, as they read a
   workspace's (`secret.read`), and changes nothing. A member does not read them; a member
   reads the secrets of the workspaces they reach, as the core says.

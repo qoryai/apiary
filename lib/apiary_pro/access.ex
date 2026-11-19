@@ -171,7 +171,7 @@ defmodule ApiaryPro.Access do
     # organisation's variables are: by its owners, its admins and the readers.
     Action.new(
       :"organisation_secret.read",
-      "read the organisation's secrets: their names, notes and value IDs, never a value",
+      "read the organisation's secrets: their names, notes and value IDs, and of a model provider's key the last 4 characters of a pasted key or the email of a sign-in, never the value",
       feature: :organisation_variables,
       roles: @admins ++ [:reader],
       asked_of: :organisation,

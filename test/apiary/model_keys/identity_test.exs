@@ -329,6 +329,17 @@ defmodule Apiary.ModelKeys.IdentityTest do
       assert parsed(%{"email" => "a b@example.com"}).email == nil
       assert parsed(%{"email" => "a@b@example.com"}).email == nil
       assert parsed(%{"email" => "a@example.com\n"}).email == nil
+
+      # A format character (Unicode `Cf`) anywhere in it: no email, so the line shows the account.
+      for char <- ["\u202E", "\u200B", "\u2066", "\u200F", "\uFEFF"],
+          email <- [
+            char <> "a@example.com",
+            "a" <> char <> "@example.com",
+            "a@example.com" <> char
+          ] do
+        assert parsed(%{"email" => email}).email == nil
+      end
+
       assert parsed(%{"email" => String.duplicate("a", 250) <> "@example.com"}).email == nil
     end
 

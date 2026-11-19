@@ -5,7 +5,7 @@ defmodule Apiary.ModelKeys.Identity do
   value id (`key-1`, `key-2`, …) is made by Apiary and shown nowhere.
 
   The line is the provider's name (`provider.name`, as the provider's page shows it), a
-  middle dot and what tells the keys of the provider apart:
+  middle dot and the text that distinguishes the keys of the provider:
 
     * a sign-in, `OpenAI subscription · dana@example.com`: the `email` claim of the
       sign-in's `id_token`; else, for a sign-in with no email, `OpenAI subscription · account
@@ -66,28 +66,6 @@ defmodule Apiary.ModelKeys.Identity do
     logins = Login.by_key(provider)
     Map.new(values, &{&1.id, of(provider, &1, logins)})
   end
-
-  @doc """
-  The identity lines of all the keys of `provider`, by value id: one read, for a write that
-  words a refusal after a failed statement, when the database no longer answers reads in
-  its transaction.
-  """
-  @spec lines_by_value_id(Connection.t()) :: %{String.t() => String.t()}
-  def lines_by_value_id(
-        %Connection{secret_id: secret_id, organisation_id: organisation_id} = provider
-      )
-      when is_binary(secret_id) do
-    logins = Login.by_key(provider)
-
-    from(v in Value,
-      where: v.secret_id == ^secret_id and v.organisation_id == ^organisation_id,
-      where: not is_nil(v.value_id)
-    )
-    |> Repo.all()
-    |> Map.new(&{&1.value_id, of(provider, &1, logins)})
-  end
-
-  def lines_by_value_id(%Connection{}), do: %{}
 
   @doc """
   The identity line of the key of `provider` with the row id `row_id` (`secret_values.id`),
