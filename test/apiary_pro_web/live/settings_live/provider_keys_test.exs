@@ -2,10 +2,12 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
   @moduledoc """
   The keys of the model providers added for every workspace, on the organisation's Settings
   › Secrets and variables, the Secrets tab: listed with the provider's name and "Model
-  provider key", masked, never a key; changed, added, renamed and deleted as the provider's
-  keys, under `provider.write`; the secret's deletion refused while the provider links it;
-  a workspace's key not listed; and the page with and without the feature
-  `organisation_variables`, which the keys do not need.
+  provider key", each key by its identity line (`Apiary.ModelKeys.Identity`) and never its
+  value id, mask or value; changed and deleted as the provider's keys at the key's row id,
+  under `provider.write`, with no Add value and no Rename; the search matches the identity
+  line; the secret's deletion refused while the provider links it; a workspace's key not
+  listed; and the page with and without the feature `organisation_variables`, which the
+  keys do not need.
   """
   # Not async: the features are the node's, as in the other pages of the section.
   use ApiaryWeb.ConnCase, async: false
@@ -24,6 +26,7 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
 
   @key "sk-ant-organisation-page-key-0123456789"
   @second "second-organisation-key-9876543210"
+  @third "third-organisation-key-0000009c2e"
 
   setup :register_and_log_in_user
 
@@ -39,6 +42,27 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
   end
 
   defp secrets_path(scope, rest \\ ""), do: "/#{scope.organisation.slug}/settings/secrets#{rest}"
+
+  # The row id of the key `value_id` of `secret`, which the key's addresses have.
+  defp row_id!(secret, value_id),
+    do: Repo.get_by!(Secrets.Value, secret_id: secret.id, value_id: value_id).id
+
+  # The Change value page of the key `value_id` of `secret`, at its row id.
+  defp change_path(scope, secret, value_id),
+    do: secrets_path(scope, "/#{secret.public_id}/values/#{row_id!(secret, value_id)}/change")
+
+  # The identity line of a key of "Claude keys" whose value ends in `tail`.
+  defp line(tail \\ "6789"), do: "Claude keys · …#{tail}"
+
+  defp text(lv, selector) do
+    lv
+    |> element(selector)
+    |> render()
+    |> LazyHTML.from_fragment()
+    |> LazyHTML.text()
+    |> String.split()
+    |> Enum.join(" ")
+  end
 
   # The key `value_id` of `provider`, as the secrets endpoint reveals it, by its row id;
   # `{:error, :not_found}` once no key has that value id.
@@ -72,7 +96,7 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
   end
 
   describe "the list" do
-    test "has the key with its provider, masked, and what uses it", ctx do
+    test "has the key with its provider and its identity line, and what uses it", ctx do
       %{conn: conn, scope: scope, secret: secret} = ctx
 
       {:ok, lv, html} = live(conn, secrets_path(scope))
@@ -82,16 +106,24 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
       assert has_element?(lv, "#{row} .q-title", secret.name)
       assert has_element?(lv, "#{row}-provider", "Claude keys")
       assert has_element?(lv, row, "Model provider key · 1 value")
-      assert has_element?(lv, "#{row}-main-value-id", "main")
-      assert has_element?(lv, "#{row}-main [aria-hidden=true]", "••••••••••••")
+      assert text(lv, "#{row}-main-value-id") == line()
+      refute html =~ "••••"
       assert has_element?(lv, "#{row}-used-by", "Claude keys")
 
-      # Its name stays: no Edit name and note, and no page for it.
-      assert has_element?(lv, "#{row}-add")
+      # Its name stays: no Edit name and note, and no page for it. A model key has no Add
+      # value and no Rename.
+      refute has_element?(lv, "#{row}-add")
       assert has_element?(lv, "#{row}-delete")
       assert has_element?(lv, "#{row}-main-change")
-      assert has_element?(lv, "#{row}-main-rename")
+      refute has_element?(lv, "#{row}-main-rename")
       refute has_element?(lv, "#{row}-edit")
+
+      assert has_element?(lv, ~s{[aria-label="Actions for #{line()} of #{secret.name}"]})
+
+      assert has_element?(
+               lv,
+               ~s{#{row}-main-change[aria-label="Change value #{line()} of #{secret.name}"]}
+             )
 
       assert {:error, {:live_redirect, %{flash: %{"error" => error}}}} =
                live(conn, secrets_path(scope, "/#{secret.public_id}/edit"))
@@ -155,7 +187,7 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
       assert {:error, {:live_redirect, %{flash: %{"error" => error}}}} =
                live(
                  conn,
-                 secrets_path(scope, "/#{workspace_secret.public_id}/values/main/change")
+                 change_path(scope, workspace_secret, "main")
                )
 
       assert error == "That secret is no longer in #{scope.organisation.name}."
@@ -163,14 +195,16 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
   end
 
   describe "who changes" do
-    test "an owner changes, adds, renames and deletes a key as the provider's, never showing one",
-         ctx do
+    test "an owner changes and deletes a key as the provider's, never showing one", ctx do
       %{conn: conn, scope: scope, secret: secret, provider: provider} = ctx
       row = "#secret-#{secret.public_id}"
+      {:ok, _provider} = Connections.add_provider_key(scope, provider, %{value: @second})
       {:ok, lv, _html} = live(conn, secrets_path(scope))
+      assert text(lv, "#{row}-key-1-value-id") == line("3210")
 
       lv |> element("#{row}-main-change") |> render_click()
-      assert_patch(lv, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
+      assert_patch(lv, change_path(scope, secret, "main"))
+      assert has_element?(lv, "h1", "Change #{line()} of #{secret.name}")
 
       html =
         lv |> form("#secret-form", secret_value: %{value: "changed-#{@key}"}) |> render_submit()
@@ -178,42 +212,27 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
       refute_keys(html)
       refute html =~ "changed-#{@key}"
       assert_patch(lv, secrets_path(scope))
-      assert render(lv) =~ "main of #{secret.name} is saved."
+      assert render(lv) =~ "#{line()} of #{secret.name} is saved."
       assert reveal(provider, "main") == {:ok, "changed-#{@key}"}
-
-      lv |> element("#{row}-add") |> render_click()
-      assert_patch(lv, secrets_path(scope, "/#{secret.public_id}/add-value"))
-
-      html =
-        lv
-        |> form("#secret-form", secret_value: %{value_id: "spare", value: @second})
-        |> render_submit()
-
-      refute_keys(html)
-      assert render(lv) =~ "spare is added to #{secret.name}."
-      assert reveal(provider, "spare") == {:ok, @second}
       assert has_element?(lv, row, "Model provider key · 2 values")
 
-      lv |> element("#{row}-spare-rename") |> render_click()
-      lv |> form("#secret-form", secret_value: %{value_id: "backup"}) |> render_submit()
-      assert render(lv) =~ "spare of #{secret.name} is now backup."
-      assert reveal(provider, "backup") == {:ok, @second}
+      lv |> element("#{row}-key-1-delete") |> render_click()
 
-      # The default key stays, with why on its confirmation.
-      lv |> element("#{row}-main-delete") |> render_click()
-      lv |> element("#{row}-main-confirm button", "Yes, delete") |> render_click()
+      assert_patch(
+        lv,
+        secrets_path(scope, "/#{secret.public_id}/values/#{row_id!(secret, "key-1")}/delete")
+      )
 
       assert has_element?(
                lv,
-               "#secret-refused",
-               "Choose another default key for Claude keys first: main is its default key."
+               "#{row}-key-1-confirm",
+               "Delete #{line("3210")} of #{secret.name}?"
              )
 
-      lv |> element("#{row}-backup-delete") |> render_click()
-      html = lv |> element("#{row}-backup-confirm button", "Yes, delete") |> render_click()
+      html = lv |> element("#{row}-key-1-confirm button", "Yes, delete") |> render_click()
       refute_keys(html)
-      assert render(lv) =~ "backup is deleted from #{secret.name}."
-      assert reveal(provider, "backup") == {:error, :not_found}
+      assert render(lv) =~ "#{line("3210")} is deleted from #{secret.name}."
+      assert reveal(provider, "key-1") == {:error, :not_found}
 
       # Each change is the provider's `provider.write` entry, and no `secret.write` entry.
       changes =
@@ -223,28 +242,71 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
             select: e.details["change"]
         )
 
-      assert Enum.count(changes, &(&1 == "provider_keys_changed")) == 4
+      assert Enum.count(changes, &(&1 == "provider_keys_changed")) == 3
       refute Repo.exists?(from e in Apiary.Audit.Entry, where: e.action == "secret.write")
+    end
+
+    test "the default key stays, with why on its confirmation", ctx do
+      %{conn: conn, scope: scope, secret: secret, provider: provider} = ctx
+      row = "#secret-#{secret.public_id}"
+      {:ok, _provider} = Connections.add_provider_key(scope, provider, %{value: @second})
+      {:ok, lv, _html} = live(conn, secrets_path(scope))
+
+      lv |> element("#{row}-main-delete") |> render_click()
+      assert has_element?(lv, "#{row}-main-confirm", "Delete #{line()} of #{secret.name}?")
+      lv |> element("#{row}-main-confirm button", "Yes, delete") |> render_click()
+
+      assert has_element?(
+               lv,
+               "#secret-refused",
+               "Choose another default key for Claude keys first: #{line()} is its default key."
+             )
+
+      assert reveal(provider, "main") == {:ok, @key}
+    end
+
+    test "Add value and Rename value of a key are not found, as an unknown secret is", ctx do
+      %{conn: conn, scope: scope, secret: secret} = ctx
+      {:ok, _provider} = Connections.add_provider_key(scope, ctx.provider, %{value: @second})
+
+      for rest <- [
+            "/add-value",
+            "/values/main/rename",
+            "/values/#{row_id!(secret, "main")}/rename",
+            "/values/main/change",
+            "/values/key-1/change",
+            "/values/key-1/delete",
+            "/values/#{Ecto.UUID.generate()}/change",
+            "/values/#{Ecto.UUID.generate()}/delete"
+          ] do
+        assert {:error, {:live_redirect, %{flash: %{"error" => error}}}} =
+                 live(conn, secrets_path(scope, "/#{secret.public_id}#{rest}")),
+               rest
+
+        assert error =~ "no longer", rest
+      end
+
+      # An unknown secret has the same refusal.
+      assert {:error, {:live_redirect, %{flash: %{"error" => unknown}}}} =
+               live(conn, secrets_path(scope, "/sec_0000000000000000000000/add-value"))
+
+      assert unknown == "That secret is no longer in #{scope.organisation.name}."
     end
 
     @tag with_features: Features.all() -- [:organisation_variables]
     test "an owner changes a key without the feature organisation_variables", ctx do
       %{conn: conn, scope: scope, secret: secret, provider: provider} = ctx
 
-      {:ok, lv, _html} =
-        live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
+      {:ok, lv, _html} = live(conn, change_path(scope, secret, "main"))
 
       html = lv |> form("#secret-form", secret_value: %{value: "new-#{@key}"}) |> render_submit()
       refute html =~ "new-#{@key}"
       assert reveal(provider, "main") == {:ok, "new-#{@key}"}
 
-      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
-
-      lv
-      |> form("#secret-form", secret_value: %{value_id: "spare", value: @second})
-      |> render_submit()
-
-      assert reveal(provider, "spare") == {:ok, @second}
+      # The page the feature closes has no Add value for a key either.
+      assert_raise ApiaryWeb.NotFound, fn ->
+        live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
+      end
     end
 
     test "refuses to delete the secret while the provider links it", ctx do
@@ -274,8 +336,7 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
       {:ok, lv, _html} = live(conn, secrets_path(scope))
       assert has_element?(lv, "#secret-#{secret.public_id}-menu")
 
-      {:ok, lv, _html} =
-        live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
+      {:ok, lv, _html} = live(conn, change_path(scope, secret, "main"))
 
       lv |> form("#secret-form", secret_value: %{value: "admin-value"}) |> render_submit()
       assert reveal(provider, "main") == {:ok, "admin-value"}
@@ -288,8 +349,8 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
 
       for rest <- [
             "",
-            "/#{secret.public_id}/values/main/change",
-            "/#{secret.public_id}/values/main/rename",
+            "/#{secret.public_id}/values/#{row_id!(secret, "main")}/change",
+            "/#{secret.public_id}/values/#{row_id!(secret, "main")}/rename",
             "/#{secret.public_id}/add-value",
             "/#{secret.public_id}/delete"
           ] do
@@ -310,10 +371,100 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
       refute has_element?(lv, "#secret-#{secret.public_id}-menu")
 
       assert {:error, {:live_redirect, %{flash: %{"error" => error}}}} =
-               live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
+               live(conn, change_path(scope, secret, "main"))
 
       assert error =~ "change nothing here"
       assert reveal(provider, "main") == {:ok, @key}
+    end
+  end
+
+  describe "the value lines and the search" do
+    setup %{scope: scope, provider: provider} do
+      {:ok, _provider} = Connections.add_provider_key(scope, provider, %{value: @third})
+      {:ok, _provider} = Connections.add_provider_key(scope, provider, %{value: "sk-short-1"})
+      {:ok, _provider} = Connections.add_provider_key(scope, provider, %{value: @second})
+
+      # A key saved before the hint existed has none.
+      Repo.update_all(
+        from(v in Secrets.Value,
+          where: v.secret_id == ^provider.secret_id and v.value_id == "key-3"
+        ),
+        set: [hint: nil]
+      )
+
+      {:ok, plain} =
+        Secrets.create_organisation_secret(scope, %{
+          "name" => "DEPLOY_TOKEN",
+          "values" => %{
+            "0" => %{"value_id" => "prod", "value" => "p"},
+            "1" => %{"value_id" => "staging", "value" => "s"}
+          }
+        })
+
+      %{plain: plain}
+    end
+
+    defp found?(conn, scope, secret, q) do
+      {:ok, lv, _html} = live(conn, secrets_path(scope, "?q=#{URI.encode_www_form(q)}"))
+      has_element?(lv, "#secret-#{secret.public_id}")
+    end
+
+    test "each value line has the hint, or the provider's name alone for a key with none", ctx do
+      %{conn: conn, scope: scope, secret: secret} = ctx
+      row = "#secret-#{secret.public_id}"
+      {:ok, lv, html} = live(conn, secrets_path(scope))
+
+      assert text(lv, "#{row}-main-value-id") == line()
+      assert text(lv, "#{row}-key-1-value-id") == line("9c2e")
+      # A value of fewer than 12 characters, and a key saved before the hint existed.
+      assert text(lv, "#{row}-key-2-value-id") == "Claude keys"
+      assert text(lv, "#{row}-key-3-value-id") == "Claude keys"
+      refute html =~ "••••"
+      refute html =~ "sk-short-1"
+    end
+
+    test "the search matches the identity line of a key, not its value id", ctx do
+      %{conn: conn, scope: scope, secret: secret} = ctx
+
+      for q <- ["main", "key-1", "y-1", "0123456789"],
+          do: refute(found?(conn, scope, secret, q), q)
+
+      for q <- ["claude", "Claude keys", "6789", "…6789", "9c2e", "…9c2e", "Claude keys · …9c2e"],
+          do: assert(found?(conn, scope, secret, q), q)
+    end
+
+    test "the search matches the value ids of an ordinary secret as before", ctx do
+      %{conn: conn, scope: scope, plain: plain} = ctx
+
+      for q <- ["staging", "prod", "deploy"], do: assert(found?(conn, scope, plain, q), q)
+    end
+
+    test "an ordinary secret keeps its value ids, Add value, Rename, Change and Delete", ctx do
+      %{conn: conn, scope: scope, plain: plain} = ctx
+      row = "#secret-#{plain.public_id}"
+      {:ok, lv, _html} = live(conn, secrets_path(scope))
+
+      assert text(lv, "#{row}-prod-value-id") == "prod"
+      assert has_element?(lv, "#{row}-add")
+
+      for id <- ~w(prod staging) do
+        assert has_element?(lv, "#{row}-#{id}-change")
+        assert has_element?(lv, "#{row}-#{id}-rename")
+        assert has_element?(lv, "#{row}-#{id}-delete")
+      end
+
+      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{plain.public_id}/add-value"))
+      assert has_element?(lv, ~s{#secret-form label}, "Value ID of the new value")
+
+      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{plain.public_id}/values/prod/rename"))
+      assert has_element?(lv, "h1", "Rename prod of DEPLOY_TOKEN")
+
+      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{plain.public_id}/values/prod/change"))
+      assert has_element?(lv, "h1", "Change prod of DEPLOY_TOKEN")
+
+      {:ok, lv, _html} = live(conn, secrets_path(scope))
+      lv |> element("#{row}-prod-delete") |> render_click()
+      assert has_element?(lv, "#{row}-prod-confirm", "Delete prod of DEPLOY_TOKEN?")
     end
   end
 
@@ -422,58 +573,66 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
           do: refute(html =~ secret)
     end
 
-    test "has the button on Add value and Change value, with the hint", ctx do
+    test "has the button on Change value, with the hint, and no Add value", ctx do
       %{conn: conn, scope: scope, login_secret: secret} = ctx
       Stub.put()
 
-      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
+      {:ok, lv, _html} = live(conn, change_path(scope, secret, "main"))
       assert words(lv, "#secret-sign-in-start") == "Sign in with ChatGPT"
       assert words(lv, "#secret-sign-in-hint") == @hint
       refute has_element?(lv, "#secret-form textarea")
 
-      {:ok, lv, _html} =
-        live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
-
-      assert words(lv, "#secret-sign-in-start") == "Sign in with ChatGPT"
-      assert words(lv, "#secret-sign-in-hint") == @hint
+      assert {:error, {:live_redirect, %{flash: %{"error" => _error}}}} =
+               live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
     end
 
     test "has no button while the description has no device sign-in", ctx do
       %{conn: conn, scope: scope, login_secret: secret} = ctx
 
-      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
+      {:ok, lv, _html} = live(conn, change_path(scope, secret, "main"))
       refute has_element?(lv, "#secret-sign-in-start")
     end
 
-    test "keeps Value and New value, and their hint, for an API key", ctx do
+    test "shows its value line by the email of the sign-in", ctx do
+      %{conn: conn, scope: scope, login_secret: secret, subscription: subscription} = ctx
+      row = "#secret-#{secret.public_id}"
+
+      {:ok, lv, _html} = live(conn, secrets_path(scope))
+      assert words(lv, "#{row}-main-value-id") == "#{subscription.name} · dana@example.com"
+
+      # A sign-in saved before the email was kept has the account line.
+      value = Apiary.ModelKeysFixtures.key_value!(subscription, "main")
+
+      Repo.update_all(from(l in Apiary.ModelKeys.Login, where: l.secret_value_id == ^value.id),
+        set: [email: nil]
+      )
+
+      {:ok, lv, _html} = live(conn, secrets_path(scope))
+      assert words(lv, "#{row}-main-value-id") == "#{subscription.name} · account …re-a"
+    end
+
+    test "keeps New value and its hint on Change value for an API key, and Value on Add value for another secret",
+         ctx do
       %{conn: conn, scope: scope, secret: secret} = ctx
       Stub.put()
 
-      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
+      {:ok, lv, _html} = live(conn, change_path(scope, secret, "main"))
+      assert words(lv, ~s{#secret-form label[for="secret_value_value"]}) == "New value"
+
+      {:ok, plain} =
+        Secrets.create_organisation_secret(scope, %{"name" => "FORGE_TOKEN", "value" => "plain"})
+
+      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{plain.public_id}/add-value"))
       assert words(lv, ~s{#secret-form label[for="secret_value_value"]}) == "Value"
 
       assert words(lv, "#secret_value_value-hint") ==
                "Stored encrypted. Nobody sees it again once it is saved."
-
-      {:ok, lv, _html} =
-        live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
-
-      assert words(lv, ~s{#secret-form label[for="secret_value_value"]}) == "New value"
     end
 
-    test "refuses Add value before the sign-in, then stores the sign-in, showing no token",
-         ctx do
+    test "stores a new sign-in from Change value, showing no token", ctx do
       %{conn: conn, scope: scope, login_secret: secret, subscription: subscription} = ctx
       tokens = Stub.put(tokens: Apiary.ModelKeysFixtures.login_tokens(tag: "pro"), hold: true)
-      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
-
-      lv |> form("#secret-form", secret_value: %{value_id: "spare"}) |> render_submit()
-
-      assert words(lv, "#secret-sign-in-error-1") ==
-               "Click Sign in with ChatGPT, then save. This key has no sign-in yet."
-
-      assert [%{value_id: "main"}] =
-               Repo.all(from v in Secrets.Value, where: v.secret_id == ^subscription.secret_id)
+      {:ok, lv, _html} = live(conn, change_path(scope, secret, "main"))
 
       lv |> element("#secret-sign-in-start") |> render_click()
       Stub.eventually(fn -> assert has_element?(lv, "#secret-sign-in-code") end)
@@ -488,14 +647,15 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
         tokens
       )
 
-      html = lv |> form("#secret-form", secret_value: %{value_id: "spare"}) |> render_submit()
+      # The form of a sign-in has no field, so the event is sent as the page's handler reads it.
+      html = render_submit(lv, "set_value", %{"secret_value" => %{"value" => ""}})
 
       refute_tokens(html, tokens)
       refute_tokens(render(lv), tokens)
 
-      value = Apiary.ModelKeysFixtures.key_value!(subscription, "spare")
+      value = Apiary.ModelKeysFixtures.key_value!(subscription, "main")
 
-      assert %Apiary.ModelKeys.Login{account_id: account} =
+      assert %Apiary.ModelKeys.Login{account_id: account, generation: 2} =
                Repo.get!(Apiary.ModelKeys.Login, value.id)
 
       assert account == tokens.account_id
