@@ -526,9 +526,12 @@ replaces the navigation it is in.
   which it drops. Where the set-up's save is refused for a kept row, the step shows one
   line under its form (`#set-up-model-fallback-refused`), "Change a fallback in Workspace
   settings › Model. Choose another provider: Northwind Claude is not used in this
-  workspace.", the place a link to this page. A save that changes the chosen provider to
-  the provider of a row drops that row. A provider whose saved settings no longer fit the
-  catalogue entry of its kind in the running release serves nothing, and the page shows
+  workspace.", the place a link to this page. On the set-up's Model step, a provider that
+  works with no runtime has the same line under Provider (`#set-up-model-no-runtime`),
+  and the Provider group (`#set-up-model-source`) has a red ring, `aria-invalid` and the
+  line as its description. A save that changes the chosen provider to the provider of a
+  row drops that row. A provider whose saved settings no longer fit the catalogue entry
+  of its kind in the running release serves nothing, and the page shows
   "Add Northwind Claude again in Organisation settings › Model providers: its settings no
   longer fit this version of Qory Apiary." A provider whose settings check ran out of time
   or crashed serves nothing on that read, with no line, and the next read checks it again.

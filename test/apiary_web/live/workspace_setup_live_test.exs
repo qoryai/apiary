@@ -5064,6 +5064,55 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert words(lv, "#set-up-model-runtime-name") == bearer.title
   end
 
+  test "while a provider that works with no runtime is chosen, Provider is refused and described by the line",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    deepseek = provider!(scope, "deepseek", "ds")
+    openrouter = provider!(scope, "openrouter", "router")
+    release = Apiary.Kinds.Runtimes.list() |> Enum.find(&(&1.name == "claude"))
+
+    # The catalogue has only a bearer runtime, which DeepSeek does not serve and
+    # OpenRouter does.
+    bearer = %{
+      release
+      | name: release.name <> "-bearer",
+        title: release.title <> " bearer",
+        model_keys: Enum.filter(release.model_keys, &(&1["auth"] == %{"scheme" => "bearer"}))
+    }
+
+    :ok = Apiary.Kinds.Runtimes.put_test_list([bearer])
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    lv |> form("#set-up-model-form", model: %{source: deepseek.public_id}) |> render_change()
+
+    assert words(lv, "#set-up-model-no-runtime") ==
+             "DeepSeek works with no runtime in this version of Qory. Pick another provider."
+
+    # The red ring of `app.css` follows `aria-invalid` on the group.
+    assert has_element?(
+             lv,
+             ~s{fieldset#set-up-model-source[aria-invalid="true"][aria-describedby="set-up-model-no-runtime"]}
+           )
+
+    # OpenRouter serves the bearer runtime: the line and the attributes go.
+    lv |> form("#set-up-model-form", model: %{source: openrouter.public_id}) |> render_change()
+    refute has_element?(lv, "#set-up-model-no-runtime")
+    refute has_element?(lv, "fieldset#set-up-model-source[aria-invalid]")
+    refute has_element?(lv, "fieldset#set-up-model-source[aria-describedby]")
+  end
+
+  test "at mount, with a provider that works with a runtime, Provider is not refused",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    _anthropic = provider!(scope, "anthropic", "main")
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert has_element?(lv, "fieldset#set-up-model-source")
+    refute has_element?(lv, "#set-up-model-no-runtime")
+    refute has_element?(lv, "fieldset#set-up-model-source[aria-invalid]")
+    refute has_element?(lv, "fieldset#set-up-model-source[aria-describedby]")
+  end
+
   test "a change of Runtime keeps the models and takes back an effort the runtime refuses",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()

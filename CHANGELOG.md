@@ -1790,6 +1790,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - On **Workspace settings › Model**, **Provider** has a red border while the chosen
   provider works with no runtime, and a fallback's **Provider** while the fallback's
   provider does, as a workflow's **Provider** on **Workspace settings › Workflows** has.
+  On the set-up's **Model** step, a red ring goes around the **Provider** group while the
+  chosen provider works with no runtime.
 - Only a run of Explore uses a model key. Such a run gets up to 6 keys of its model
   provider at its claim, each a separate credential of the run, named after the
   provider's public id: `con_…-1` to `con_…-6`. The run starts with a key with no known
