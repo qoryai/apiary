@@ -8644,4 +8644,220 @@ defmodule Apiary.StagesTest do
     defp runs_of(%DispatchRun{id: id}),
       do: Repo.all(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^id)
   end
+
+  describe "the entry an accept starts" do
+    @scenarios %{"input" => "demo-scenarios"}
+
+    # Explore, whose demo scenarios are optional and which stores none, then Shape with
+    # `sequence`; the work item in Shape after the run of its first entry ended with no
+    # verdict, which escalates.
+    defp escalated_in_shape!(scope, sequence) do
+      work_item = scope |> in_shape!(sequence) |> end_run!(nil)
+
+      assert %WorkItem{stage_id: @shape, stage_state: :escalated, stage_entry: 0} = work_item
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+      work_item
+    end
+
+    # The process of `escalated_in_shape!/2`, with `extra` on Shape; the work item with
+    # the first run of Shape queued.
+    defp in_shape!(scope, sequence, extra \\ %{}) do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "demo-scenarios",
+          "base_view" => "document"
+        })
+
+      save!(scope, [
+        explore_stage(%{
+          "outputs" => [
+            %{"type" => "proposal", "required" => true},
+            %{"type" => "demo-scenarios", "required" => false}
+          ]
+        }),
+        stage(@shape, "Shape", sequence, extra)
+      ])
+
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
+      work_item = reload(work_item)
+      assert %WorkItem{stage_id: @shape, stage_state: :running} = work_item
+      work_item
+    end
+
+    defp loop_of(workflows),
+      do: %{"loop" => %{"rounds" => 3, "body" => Enum.map(workflows, &%{"workflow" => &1})}}
+
+    test "the next entry: its workflow, the run that starts/2 finds", %{scope: scope} do
+      work_item =
+        escalated_in_shape!(scope, [
+          %{"workflow" => "shape-a-ticket"},
+          %{"workflow" => "capture-demo"}
+        ])
+
+      assert %{accept_entry: "capture-demo"} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == {:run, "capture-demo"}
+      # At the click, the entry and the run come from one step.
+      assert Stages.accept_starts(work_item) == %{
+               entry: "capture-demo",
+               run: {:run, "capture-demo"}
+             }
+    end
+
+    test "two entries with the same workflow: the name of the entry the accept starts", %{
+      scope: scope
+    } do
+      work_item =
+        escalated_in_shape!(scope, [
+          %{"workflow" => "shape-a-ticket"},
+          %{"workflow" => "review-spec", "name" => "First review"},
+          %{"workflow" => "review-spec", "name" => "Second review"}
+        ])
+
+      assert %{accept_entry: "First review"} = Stages.status(work_item, scope)
+
+      {:ok, work_item} =
+        Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @shape)
+
+      work_item = work_item |> reload() |> end_run!(nil)
+      assert %WorkItem{stage_entry: 1, stage_state: :escalated} = work_item
+      assert %{accept_entry: "Second review"} = Stages.status(work_item, scope)
+
+      assert Stages.accept_starts(work_item) == %{
+               entry: "Second review",
+               run: {:run, "review-spec"}
+             }
+    end
+
+    test "an escalation at a loop's first workflow: the entry after the loop", %{scope: scope} do
+      work_item =
+        scope
+        |> in_shape!([
+          loop_of(["write-spec", "review-spec"]),
+          %{"workflow" => "plan-the-build", "name" => "Plan the build"}
+        ])
+        |> end_run!(
+          verdict("escalate", [%{"text" => "The ticket has no goal.", "action" => "run_again"}])
+        )
+
+      assert %WorkItem{stage_entry: 0, loop_entry: 0, stage_state: :escalated} = work_item
+      assert %{accept_entry: "Plan the build"} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == {:run, "plan-the-build"}
+    end
+
+    test "every later entry held back, a required output missing: the loop the accept starts again",
+         %{scope: scope} do
+      work_item =
+        scope
+        |> in_shape!(
+          [
+            loop_of(["write-spec", "review-spec"]),
+            %{"workflow" => "plan-the-build"},
+            %{"workflow" => "capture-demos", "when" => @scenarios}
+          ],
+          %{"outputs" => [%{"type" => "walkthrough", "required" => true}]}
+        )
+        # In a loop, a run with no verdict runs the next workflow; `passed` leaves the loop.
+        |> end_run!(nil)
+        |> end_run!(verdict("passed"))
+        |> end_run!(nil)
+
+      assert %WorkItem{stage_entry: 1, stage_round: 1, stage_state: :escalated} = work_item
+
+      # capture-demos is passed over, the walkthrough check fails, and the loop runs its
+      # next round: the button reads Start write-spec, the run that starts.
+      assert %{accept_entry: "write-spec", accept_needs: []} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == {:run, "write-spec"}
+      assert Stages.accept_starts(work_item) == %{entry: "write-spec", run: {:run, "write-spec"}}
+    end
+
+    test "the next workflow not listed by the harness: that entry, which the stage waits for",
+         %{scope: scope} do
+      work_item =
+        escalated_in_shape!(scope, [
+          %{"workflow" => "shape-a-ticket"},
+          %{"workflow" => "film-the-demo", "name" => "Film the demo"}
+        ])
+
+      :ok = Processes.record_declared(scope.workspace, ["shape-a-ticket"])
+
+      assert %{accept_entry: "Film the demo"} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == :none
+      assert Stages.accept_starts(work_item) == %{entry: "Film the demo", run: :none}
+
+      assert {:ok, %WorkItem{stage_state: :waiting_workflow, stage_entry: 1}} =
+               Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @shape)
+    end
+
+    test "a loop as the next entry: the loop's first workflow", %{scope: scope} do
+      work_item =
+        escalated_in_shape!(scope, [
+          %{"workflow" => "shape-a-ticket"},
+          %{
+            "loop" => %{
+              "rounds" => 2,
+              "body" => [
+                %{"workflow" => "implement-the-change"},
+                %{"workflow" => "review-the-change"}
+              ]
+            }
+          }
+        ])
+
+      assert %{accept_entry: "implement-the-change"} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == {:run, "implement-the-change"}
+    end
+
+    test "a named entry: its name from the process; the run is of its workflow", %{
+      scope: scope
+    } do
+      work_item =
+        escalated_in_shape!(scope, [
+          %{"workflow" => "shape-a-ticket"},
+          %{"workflow" => "verify-a-ticket", "name" => "Acceptance test run"}
+        ])
+
+      assert %{accept_entry: "Acceptance test run"} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == {:run, "verify-a-ticket"}
+    end
+
+    test "a later entry whose condition is not met is passed over", %{scope: scope} do
+      work_item =
+        escalated_in_shape!(scope, [
+          %{"workflow" => "shape-a-ticket"},
+          %{"workflow" => "capture-demos", "when" => @scenarios},
+          %{"workflow" => "verify-a-ticket"}
+        ])
+
+      assert %{accept_entry: "verify-a-ticket"} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == {:run, "verify-a-ticket"}
+    end
+
+    test "the last entry: none, as the accept takes the stage to its gate", %{scope: scope} do
+      work_item = escalated_in_shape!(scope, [%{"workflow" => "shape-a-ticket"}])
+
+      assert %{accept_entry: nil, accept_needs: []} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == :none
+    end
+
+    # Shape requires no output: the accept passes over every later entry, the checks
+    # pass and the gate follows, and no run of the stage starts.
+    test "every later entry held back by its condition: none", %{scope: scope} do
+      work_item =
+        escalated_in_shape!(scope, [
+          %{"workflow" => "shape-a-ticket"},
+          %{"workflow" => "capture-demos", "when" => @scenarios}
+        ])
+
+      assert %{accept_entry: nil} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == :none
+    end
+
+    test "a work item that is not escalated: none", %{scope: scope} do
+      save!(scope, [explore_stage(), stage(@shape, "Shape", [%{"workflow" => "shape-a-ticket"}])])
+      work_item = take_in!(scope)
+
+      assert %{accept_entry: nil} = Stages.status(work_item, scope)
+    end
+  end
 end

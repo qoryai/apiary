@@ -245,7 +245,12 @@ place:
   close it, change nothing and keep what was typed on the page, and focus goes back to
   the button that opened it. An act that starts a run only in some states (Confirm,
   Approve, Request changes, Accept as it is, Move back, Check again) opens
-  the dialog only where it starts one, and acts at once otherwise.
+  the dialog only where it starts one, and acts at once otherwise. Where an accept of an
+  escalation starts a run of the stage, or an entry whose workflow the stage then waits
+  for, the card's button and its dialog read **Start** and the name of that entry, from
+  the process, else its workflow: "Start capture-demo?" and **Start capture-demo** in
+  place of "Accept as it is?" and **Accept as it is**. Where the accept takes the stage
+  to its gate, or the stage escalates again, the button stays **Accept as it is**.
 
 - **A form is a page** of its section at a separate path, never a dialog over a list:
   Invite people, New machine, a policy's New rule and Edit rule,

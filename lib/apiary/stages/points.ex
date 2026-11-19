@@ -17,13 +17,16 @@ defmodule Apiary.Stages.Points do
   # set to true, so the page adds no action sentence after it, and `missing_type`, the
   # output type that the run stored no version of. A round limit's point with
   # the words "pick Accept as it is" has `without_accept`, the fields that replace them
-  # where the card shows no Accept as it is. The page reads
+  # where the card shows no Accept as it is, and `open_findings`, the count of open
+  # findings, with which the page writes the fix where the card shows Start and the
+  # entry's name in place of Accept as it is (`start_fix/2`). The page reads
   # `ApiaryWeb.WorkItemLive.Workflow.accept?/2` when it shows the point, not when the
   # stage escalates: a member who assigns the work item to another process version
   # (`Apiary.Processes.assign/3`) while it is escalated changes which outputs are
-  # required. The point of a return limit has `return_stage`, the name of the stage the
-  # return goes to: the page writes its action from the controls the card shows
-  # (`return_action/2`).
+  # required. The page also reads the entry's name when it shows the point, so a stored
+  # point contains no workflow name. The point of a return limit has `return_stage`, the
+  # name of the stage the return goes to: the page writes its action from the controls
+  # the card shows (`return_action/2`).
   @moduledoc false
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -31,7 +34,9 @@ defmodule Apiary.Stages.Points do
   alias Apiary.Artifacts.Type
 
   @typedoc "A point of an escalation."
-  @type t :: %{required(String.t()) => String.t() | true | %{String.t() => String.t()}}
+  @type t :: %{
+          required(String.t()) => String.t() | true | pos_integer | %{String.t() => String.t()}
+        }
 
   # The words that open a stop cause and are written in lower case after "The run
   # stopped:", as in "The run stopped: a read-only run needs a wall".
@@ -41,8 +46,8 @@ defmodule Apiary.Stages.Points do
   # `findings`, the text of each review finding still open, in the verdict's order. The
   # point's text has their number, then each text. Its `fix` is to read them and pick
   # Accept as it is or Run another round; its `without_accept` fix is to read them and
-  # pick Run another round. With no open finding, the point has the sentence alone and
-  # no `fix`.
+  # pick Run another round; `open_findings` is their number. With no open finding, the
+  # point has the sentence alone and no `fix`.
   @doc false
   @spec round_limit(pos_integer, pos_integer, [String.t()]) :: [t]
   def round_limit(ran, rounds, findings \\ [])
@@ -54,6 +59,7 @@ defmodule Apiary.Stages.Points do
     run_again(Enum.join([sentence | texts], " "))
     |> Map.put("fix", default(fn -> findings_fix(count, true) end))
     |> Map.put("without_accept", %{"fix" => default(fn -> findings_fix(count, false) end)})
+    |> Map.put("open_findings", count)
     |> List.wrap()
   end
 
@@ -83,6 +89,20 @@ defmodule Apiary.Stages.Points do
         "Read the open finding, then pick Run another round.",
         "Read the %{count} open findings, then pick Run another round.",
         count
+      )
+
+  # start_fix/2 is the fix of a round limit's point with `count` open findings where the
+  # escalation card shows Start and the entry `workflow` in place of Accept as it is, in
+  # the calling process's locale.
+  @doc false
+  @spec start_fix(pos_integer, String.t()) :: String.t()
+  def start_fix(count, workflow),
+    do:
+      ngettext(
+        "Read the open finding, then pick Start %{workflow} or Run another round.",
+        "Read the %{count} open findings, then pick Start %{workflow} or Run another round.",
+        count,
+        workflow: workflow
       )
 
   # The sentence of the rounds that ran with `count` open findings. Its count is the
@@ -155,15 +175,27 @@ defmodule Apiary.Stages.Points do
 
   # return_action/2 is the member's action at a return limit to the stage `to`, for the
   # controls the escalation card shows: Move back and Accept as it is (`:accept`), Move
-  # back alone (`:move_back`), or the switch buttons, whose labels `labels` lists in one
-  # string (`{:switch, labels}`), in the calling process's locale.
+  # back and Start with the entry `workflow` (`{:start, workflow}`), Move back alone
+  # (`:move_back`), or the switch buttons, whose labels `labels` lists in one string
+  # (`{:switch, labels}`), in the calling process's locale.
   @doc false
-  @spec return_action(String.t(), :accept | :move_back | {:switch, String.t()}) :: String.t()
+  @spec return_action(
+          String.t(),
+          :accept | {:start, String.t()} | :move_back | {:switch, String.t()}
+        ) :: String.t()
   def return_action(to, :accept),
     do:
       gettext(
         "Pick Move back to return the work item to %{to} once more, or pick Accept as it is.",
         to: to
+      )
+
+  def return_action(to, {:start, workflow}),
+    do:
+      gettext(
+        "Pick Move back to return the work item to %{to} once more, or pick Start %{workflow}.",
+        to: to,
+        workflow: workflow
       )
 
   def return_action(to, :move_back),
