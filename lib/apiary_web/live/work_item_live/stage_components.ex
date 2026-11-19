@@ -26,7 +26,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   alias ApiaryWeb.{PauseWords, People, SettingsComponents}
   alias ApiaryWeb.WorkItemComponents
-  alias ApiaryWeb.WorkItemLive.Workflow
+  alias ApiaryWeb.WorkItemLive.{GateChanges, Workflow}
 
   @note_units 2 * 2_000
 
@@ -427,6 +427,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           started_no_run?(assigns.page) and Enum.all?(assigns.page.outputs, &is_nil(&1.version))
       )
 
+    assigns = with_changes(assigns)
+
     ~H"""
     <div id={@id} class="flex flex-col gap-2">
       <p :for={{draft, i} <- Enum.with_index(@drafts)} id={"#{@id}-draft-#{i}"}>
@@ -467,6 +469,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             {version_words(output.type, output.name, output.version)}
           </span>
           · <span id={"#{@id}-check-#{frame_key(output)}"}>{check_words(output)}</span>
+          <span :if={@changed[output[:version_id]]} phx-no-format> · <span id={"#{@id}-output-#{frame_key(output)}-changed"} class="text-warning">{@changed[output.version_id]}</span></span>
           <.approval_mark
             id={"#{@id}-mark-#{frame_key(output)}"}
             mark={@marks[{output.type, output.name}]}
@@ -482,8 +485,18 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             phx-no-format
           >{version_words(other.type, other.version.number)}<%= if other.name != "main" do %> · {other.name}<% end %></.link>
           <span :if={!@version_path} phx-no-format>{version_words(other.type, other.version.number)}<%= if other.name != "main" do %> · {other.name}<% end %></span>
+          <span :if={@changed[other.version.public_id]} phx-no-format> · <span id={"#{@id}-recorded-#{frame_key(other)}-changed"} class="text-warning">{@changed[other.version.public_id]}</span></span>
         </li>
       </ul>
+      <GateChanges.changes
+        :if={@criteria}
+        id={"#{@id}-criteria"}
+        lead={@lead && elem(@lead, 1)}
+        lead_id={@lead && "#{@id}-criteria-#{elem(@lead, 0)}"}
+        changes={@criteria.changes}
+        unchanged={@criteria.unchanged}
+        mark={@criteria.mark}
+      />
       <.needs
         :if={@page.missing_outputs != [] and not @page.confirm_gate}
         id={@id}
@@ -491,65 +504,138 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         types={@page.missing_outputs}
       />
       <p
-        :if={@decides and not @page.confirm_gate and match?({:listed, _ids}, @page.approvers)}
+        :if={
+          @decides and not @page.confirm_gate and match?({:listed, _ids}, @page.approvers) and
+            not match?({:approvers, _line}, @lead)
+        }
         id={"#{@id}-approvers"}
         class="text-xs opacity-70"
       >
         {gettext("Only the members this stage lists can approve.")}
       </p>
-      <%= if @page.can_decide and not @page.confirm_gate do %>
-        <%= if @asking == :changes and @decides do %>
-          <form
-            novalidate
-            id={"#{@id}-changes"}
-            phx-submit="stage_request_changes"
-            class="flex flex-col gap-2"
-          >
-            <input type="hidden" name="number" value={@number} />
-            <input type="hidden" name="seen" value={@page.stage.id} />
-            <label for={"#{@id}-changes-version"}>{gettext("About")}</label>
-            <select id={"#{@id}-changes-version"} name="version">
-              <option value="">{gettext("The whole stage")}</option>
-              <option :for={output <- @versions} value={output.version_id}>
-                {version_words(output.type, output.name, output.version)}
-              </option>
-            </select>
-            <.note
-              id={"#{@id}-changes-note"}
-              error={@error == :note && gettext("Write what needs to change.")}
-            />
-            <div class="q-wi-acts">
-              <.button id={"#{@id}-changes-go"} type="submit" variant="primary">
-                {gettext("Request changes")}
-              </.button>
-              <.button id={"#{@id}-changes-cancel"} type="button" phx-click="cancel_question">
-                {gettext("Cancel")}
-              </.button>
-            </div>
-          </form>
-        <% else %>
-          <form :if={@page.approvable} novalidate id={"#{@id}-approve"} phx-submit="stage_approve">
-            <input type="hidden" name="number" value={@number} />
-            <input type="hidden" name="seen" value={@page.stage.id} />
-            <input type="hidden" name="note" value="" />
-            <.button id={"#{@id}-approve-go"} type="submit" variant="primary">
-              <.icon name="hero-check-micro" class="size-3.5" />{gettext("Approve")}
-            </.button>
-          </form>
-          <div :if={@decides} class="q-wi-acts">
-            <.button
-              id={"#{@id}-ask-changes"}
-              type="button"
-              phx-click="stage_ask_changes"
-              phx-value-number={@number}
-            >
-              {gettext("Request changes")}
-            </.button>
-          </div>
-        <% end %>
-      <% end %>
+      <form
+        :if={:form in @controls}
+        novalidate
+        id={"#{@id}-changes"}
+        phx-submit="stage_request_changes"
+        class="flex flex-col gap-2"
+      >
+        <input type="hidden" name="number" value={@number} />
+        <input type="hidden" name="seen" value={@page.stage.id} />
+        <label for={"#{@id}-changes-version"}>{gettext("About")}</label>
+        <select id={"#{@id}-changes-version"} name="version">
+          <option value="">{gettext("The whole stage")}</option>
+          <option :for={output <- @versions} value={output.version_id}>
+            {version_words(output.type, output.name, output.version)}
+          </option>
+        </select>
+        <.note
+          id={"#{@id}-changes-note"}
+          error={@error == :note && gettext("Write what needs to change.")}
+        />
+        <div class="q-wi-acts">
+          <.button id={"#{@id}-changes-go"} type="submit" variant="primary">
+            {gettext("Request changes")}
+          </.button>
+          <.button id={"#{@id}-changes-cancel"} type="button" phx-click="cancel_question">
+            {gettext("Cancel")}
+          </.button>
+        </div>
+      </form>
+      <form
+        :if={:approve in @controls}
+        novalidate
+        id={"#{@id}-approve"}
+        phx-submit="stage_approve"
+      >
+        <input type="hidden" name="number" value={@number} />
+        <input type="hidden" name="seen" value={@page.stage.id} />
+        <input type="hidden" name="note" value="" />
+        <.button id={"#{@id}-approve-go"} type="submit" variant="primary">
+          <.icon name="hero-check-micro" class="size-3.5" />{gettext("Approve")}
+        </.button>
+      </form>
+      <div :if={:changes in @controls} class="q-wi-acts">
+        <.button
+          id={"#{@id}-ask-changes"}
+          type="button"
+          phx-click="stage_ask_changes"
+          phx-value-number={@number}
+        >
+          {gettext("Request changes")}
+        </.button>
+      </div>
     </div>
     """
+  end
+
+  # The gate card's controls (`gate_controls/2`), the mark of each changed version on its
+  # lines by public id (`changed`), and, where a line is a changed version of the
+  # acceptance criteria that the page compared with the version a person approved
+  # (`criteria`), its changes and the line above them (`lead`): what to do, as
+  # `{:action, text}`, which contains only controls that the card shows, or who decides, as
+  # `{:approvers, text}`, for a reader who may not.
+  defp with_changes(assigns) do
+    page = assigns.page
+    changes = page.changes
+    controls = gate_controls(page, assigns.asking)
+
+    ids =
+      for(o <- assigns.shown, do: o[:version_id]) ++
+        for(o <- assigns.others, do: o.version.public_id)
+
+    criteria =
+      Enum.find_value(ids, fn id ->
+        case changes[id] do
+          %{type: "acceptance-criteria", criteria: {:ok, compared}, whose: whose} ->
+            Map.merge(compared, %{whose: whose, mark: GateChanges.mark(whose)})
+
+          _other ->
+            nil
+        end
+      end)
+
+    lead =
+      cond do
+        is_nil(criteria) ->
+          nil
+
+        controls != [] ->
+          case GateChanges.action(criteria.whose, length(criteria.changes), controls) do
+            nil -> nil
+            text -> {:action, text}
+          end
+
+        not page.can_decide and assigns.decides and not page.confirm_gate and
+            is_binary(page.gate_approver_line) ->
+          {:approvers, page.gate_approver_line}
+
+        true ->
+          nil
+      end
+
+    assign(assigns,
+      controls: controls,
+      changed: Map.new(changes, fn {id, change} -> {id, GateChanges.mark(change.whose)} end),
+      criteria: criteria,
+      lead: lead
+    )
+  end
+
+  # The controls the gate card shows under its lines: `[:form]`, the form of Request
+  # changes; or `:approve` and `:changes`, Approve where the gate may pass
+  # (`page.approvable`) and Request changes where it takes a decision; none for a reader
+  # who may not decide, and at Explore's Confirm gate. Each text of the card with a
+  # control's name in it is chosen by this list, so it contains only controls the card
+  # shows.
+  defp gate_controls(page, asking) do
+    decides = page.gate_kind != "none"
+
+    cond do
+      not page.can_decide or page.confirm_gate -> []
+      asking == :changes and decides -> [:form]
+      true -> for {control, true} <- [approve: page.approvable, changes: decides], do: control
+    end
   end
 
   @doc false

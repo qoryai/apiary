@@ -143,7 +143,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   }
 
   alias ApiaryWeb.UserAuth
-  alias ApiaryWeb.WorkItemLive.{Comments, StageComponents, StageTab, VerifyTab, View, Workflow}
+  alias ApiaryWeb.WorkItemLive.{Comments, GateChanges, StageComponents, StageTab, VerifyTab}
+  alias ApiaryWeb.WorkItemLive.{View, Workflow}
 
   @comment_events Comments.events() -- ["cancel_question"]
   # As on the run's page (`ApiaryWeb.RunLive.Show`).
@@ -2326,6 +2327,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           do: Workflow.page(scope, row, proposal: explore.status == :confirm)
 
       {flow, reads} = with_drafts(flow, socket.assigns.stored_reads)
+      {flow, reads} = with_criteria(flow, reads)
 
       flow =
         flow &&
@@ -2459,8 +2461,31 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         sequences: sequences
     }
 
-    socket |> assign(:view, view) |> framed()
+    socket |> assign(:view, view) |> framed() |> marked()
   end
+
+  # The frames, each whose version is a change no person's approval lists yet
+  # (`flow.changes`, `Workflow.page/2`) with `changed`, its mark for the reader
+  # (`GateChanges.mark/1`), which the frame's caption shows after the version.
+  defp marked(%{assigns: %{frames: [_ | _] = frames, flow: %{changes: changes}}} = socket)
+       when changes != %{} do
+    marks =
+      Map.new(changes, fn {_id, change} ->
+        {{change.type, change.name, change.version.number}, GateChanges.mark(change.whose)}
+      end)
+
+    frames =
+      Enum.map(frames, fn frame ->
+        case marks[{frame.type, frame[:name] || "main", frame.version}] do
+          nil -> frame
+          mark -> Map.put(frame, :changed, mark)
+        end
+      end)
+
+    assign(socket, :frames, frames)
+  end
+
+  defp marked(socket), do: socket
 
   # The sessions of the stage tab's runs whose stage has `shared_run: true` in the run's
   # process version, and that stage's sequence there, each by the run's public id
@@ -2750,6 +2775,37 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   defp with_drafts(flow, reads), do: {flow, reads}
+
+  # The flow at a gate with each changed version of the acceptance criteria that a
+  # person's approval listed a version before (`flow.changes`, `earlier`) compared with
+  # that version (`GateChanges.compare/2`), as its `criteria`. Each JSON document is read
+  # once per version (`VerifyTab.stored_json/3`). Returns the flow and `reads`.
+  defp with_criteria(%{state: :at_gate, changes: changes} = flow, reads) when changes != %{} do
+    {changes, reads} =
+      Enum.map_reduce(changes, reads, fn
+        {id, %{type: "acceptance-criteria", earlier: %{public_id: before} = earlier} = change},
+        reads ->
+          reads =
+            reads
+            |> VerifyTab.stored_json(before, earlier)
+            |> VerifyTab.stored_json(id, change.version)
+
+          compared =
+            GateChanges.compare(
+              VerifyTab.criteria(reads[{:json, before}]),
+              VerifyTab.criteria(reads[{:json, id}])
+            )
+
+          {{id, Map.put(change, :criteria, compared)}, reads}
+
+        entry, reads ->
+          {entry, reads}
+      end)
+
+    {%{flow | changes: Map.new(changes)}, reads}
+  end
+
+  defp with_criteria(flow, reads), do: {flow, reads}
 
   # A frame as the tab draws it, once read: the Scenarios frame with its count, or none
   # where it has no scenario; a verification read as its parts with the model families and

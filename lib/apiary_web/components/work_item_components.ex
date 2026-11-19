@@ -3335,7 +3335,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :output, :map,
     required: true,
     doc:
-      "`:type`, `:name`, `:version`, `:open`, `:read` and `:approval`, the " <>
+      "`:type`, `:name`, `:version`, `:open`, `:read`; `:changed`, the mark after the " <>
+        "version of a version that a person's change made " <>
+        "(`ApiaryWeb.WorkItemLive.GateChanges.mark/1`), nil for none; `:approval`, the " <>
         "approval it shows, nil for none (`ApiaryWeb.WorkItemLive.StageTab.approved/3`); " <>
         "`:kind`, `:scenarios` for the Scenarios frame, `:verification` for a verification " <>
         "the page read as its parts and `:criteria` for acceptance criteria read as their " <>
@@ -3400,6 +3402,7 @@ defmodule ApiaryWeb.WorkItemComponents do
             <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
             <span :if={@output[:caption]}>{@output.caption}</span>
             <span :if={!@output[:caption]} phx-no-format>{gettext("Version %{version}", version: Format.number(@output.version))}</span>
+            <span :if={@output[:changed]} phx-no-format> · <span id={"#{@id}-changed"} class="text-warning">{@output.changed}</span></span>
           </p>
         </summary>
         <p
