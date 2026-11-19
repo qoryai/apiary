@@ -452,6 +452,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             work_item={@item}
             runs={@view.runs}
             skips={@view.skips}
+            sessions={@view.sessions}
+            recorded={@view.recorded}
             passed_over={@view.passed_over}
             proposal_version={@view.proposal_version}
             entries={@view.entries}
@@ -2410,9 +2412,25 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         artifacts: assigns.artifacts
       })
 
-    view = %{view | passed_over: passed_over_by(socket, view.passed_over)}
+    view = %{
+      view
+      | passed_over: passed_over_by(socket, view.passed_over),
+        sessions: sessions_of(view)
+    }
+
     socket |> assign(:view, view) |> framed()
   end
+
+  # The sessions of the stage tab's runs of a stage with `shared_run: true`
+  # (`Apiary.Stages.run_sessions/1`); none on another tab.
+  defp sessions_of(%{stage: %{}, runs: runs}) do
+    case for(%{id: id} when is_binary(id) <- runs, do: id) do
+      [] -> %{}
+      ids -> Stages.run_sessions(ids)
+    end
+  end
+
+  defp sessions_of(_view), do: %{}
 
   # The person of the approval that put the work item on the track that passed the stage over
   # (`Apiary.Stages.stage_skips/1`), as the components show a person, Former member for one

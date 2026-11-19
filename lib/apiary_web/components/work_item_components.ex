@@ -90,6 +90,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   alias Apiary.ExternalText
   alias Apiary.Harnesses.{Qory, Walk}
+  alias Apiary.Stages.Runner
   alias ApiaryWeb.BacklogComponents
   alias ApiaryWeb.HarnessComponents
   alias ApiaryWeb.PauseWords
@@ -2562,6 +2563,16 @@ defmodule ApiaryWeb.WorkItemComponents do
     default: [],
     doc: "the earlier take ins with the stage's runs and the entries the runner passed over"
 
+  attr :sessions, :map,
+    default: %{},
+    doc:
+      "the sessions of each of `runs` of a stage with `shared_run: true`, by the run's public id (`Apiary.Stages.run_sessions/1`)"
+
+  attr :recorded, :map,
+    default: %{},
+    doc:
+      "by a run's public id, the versions of demo videos and of pictures it wrote (`ApiaryWeb.WorkItemLive.StageTab.view/3`'s `recorded`)"
+
   attr :passed_over, :map,
     default: nil,
     doc:
@@ -2843,7 +2854,11 @@ defmodule ApiaryWeb.WorkItemComponents do
         id="work-item-record"
         number={@work_item.number}
         runs={@runs}
-        skips={if @entries == [], do: @skips, else: []}
+        skips={@skips}
+        outside={@entries == []}
+        sessions={@sessions}
+        sequence={@stage[:sequence] || []}
+        recorded={@recorded}
         latest={@run}
         pieces={@pieces}
         verdicts={@verdicts}
@@ -6221,7 +6236,25 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :skips, :list,
     default: [],
     doc:
-      "the workflow entries the runner passed over among `runs` (`Apiary.Stages.skips/1`): each a row before the first run after it"
+      "the workflow entries the runner passed over among `runs` (`Apiary.Stages.skips/1`): each a row inside the run of `sessions` it was passed over in, else before the first run after it"
+
+  attr :outside, :boolean,
+    default: true,
+    doc: "whether a skip that no run of `sessions` holds has a row; false hides it"
+
+  attr :sessions, :map,
+    default: %{},
+    doc:
+      "the sessions of each run of a stage with `shared_run: true`, by the run's public id (`Apiary.Stages.run_sessions/1`): such a run is a fold of its sessions; only the stage tab passes them"
+
+  attr :sequence, :list,
+    default: [],
+    doc: "the stage's sequence, for the round limit of a loop (`Apiary.Stages.Runner.rounds/2`)"
+
+  attr :recorded, :map,
+    default: %{},
+    doc:
+      "by a run's public id, the versions of demo videos and of pictures it wrote, as `%{videos:, pictures:}`"
 
   attr :latest, :map, default: nil, doc: "its latest run, where it is among `runs`"
 
@@ -6244,16 +6277,18 @@ defmodule ApiaryWeb.WorkItemComponents do
   # newest proposal's version where it has a number; opened, each
   # run's line (`run_parts/4`). An earlier run of Explore that wrote a proposal is a fold with
   # that version, one without a result a fold with what happened; the latest run, a run
-  # with nothing to show, and a later stage's run, a row. A workflow entry the runner passed
-  # over is a row with its workflow and the reason, before the first run queued after it
-  # (`skip_row/1`); the count leaves it out. A proposal the page has not read
-  # (`:unread`) is read when its fold opens (`"open_fold"`, with its version). The folds
-  # keep the state the reader gave them when the page draws again.
+  # with nothing to show, and a later stage's run, a row. A run with `sessions` is a fold
+  # of them (`shared_run/1`), open for the latest run. A workflow entry the runner passed
+  # over is a row with its workflow and the reason (`skip_row/1`): inside the run of
+  # `sessions` it was passed over in (`record_rows/3`), else before the first run queued
+  # after it, where `outside` is true; the count leaves it out. A proposal the page has
+  # not read (`:unread`) is read when its fold opens (`"open_fold"`, with its version). The
+  # folds keep the state the reader gave them when the page draws again.
   defp record(assigns) do
     assigns =
       assign(assigns,
         count: length(assigns.runs),
-        rows: record_rows(assigns.runs, assigns.skips),
+        rows: record_rows(assigns.runs, assigns.skips, assigns.sessions),
         pieces: assigns.pieces || explore_pieces(assigns.proposal),
         verdicts:
           for(%{attempt: n} = run <- assigns.verdicts, is_integer(n), into: %{}, do: {n, run})
@@ -6274,7 +6309,18 @@ defmodule ApiaryWeb.WorkItemComponents do
         </summary>
         <div class="q-xp-inner">
           <%= for {kind, run, i} <- @rows do %>
-            <.skip_row :if={kind == :skip} id={"#{@id}-skip-#{i}"} skip={run} />
+            <.skip_row :if={kind == :skip and @outside} id={"#{@id}-skip-#{i}"} skip={run} />
+            <.shared_run
+              :if={match?({:shared, _rows}, kind)}
+              id={"#{@id}-#{run_dom(run)}"}
+              run={run}
+              rows={elem(kind, 1)}
+              open={run == @latest}
+              stage_run={@verdicts[run[:attempt]]}
+              sequence={@sequence}
+              recorded={Map.get(@recorded, run[:id], %{})}
+              now={@now}
+            />
             <%= case kind == :run && run_shows(run, run == @latest) do %>
               <% false -> %>
               <% :row -> %>
@@ -6323,11 +6369,24 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
-  # The rows of the record's fold: each run, with each skip before the first run whose
-  # attempt is after the skip's `after_attempt`, and the skips after the last run at the
-  # end, as `{:run | :skip, row, place}`.
-  defp record_rows(runs, skips) do
-    runs = for run <- runs, do: {{run[:attempt] || 0, 1}, :run, run}
+  # The rows of the record's fold, as `{kind, row, place}`: each run, a run with `sessions`
+  # as `{:shared, rows}` with its sessions and the skips passed over in it
+  # (`shared_rows/2`), and each other skip before the first run whose attempt is after the
+  # skip's `after_attempt`, the skips after the last run at the end.
+  defp record_rows(runs, skips, sessions) do
+    {inside, skips} = skips_inside(runs, skips, sessions)
+
+    runs =
+      for run <- runs do
+        kind =
+          case Map.get(sessions, run[:id]) do
+            [_ | _] = held -> {:shared, shared_rows(held, Map.get(inside, run[:id], []))}
+            _none -> :run
+          end
+
+        {{run[:attempt] || 0, 1}, kind, run}
+      end
+
     skips = for skip <- skips, do: {{skip.after_attempt, 2}, :skip, skip}
 
     (runs ++ skips)
@@ -6335,6 +6394,232 @@ defmodule ApiaryWeb.WorkItemComponents do
     |> Enum.sort_by(fn {{key, _kind, _row}, place} -> {key, place} end)
     |> Enum.with_index()
     |> Enum.map(fn {{{_key, kind, row}, _place}, i} -> {kind, row, i} end)
+  end
+
+  # The skips passed over while a run with `sessions` ran, by the run's public id: those
+  # passed over between the run's start and its end, or now for a run that has not
+  # ended; and the other skips, oldest first.
+  defp skips_inside(runs, skips, sessions) do
+    windows =
+      for %{id: id, started_at: %DateTime{} = from} = run <- runs,
+          match?([_ | _], Map.get(sessions, id)),
+          do: {id, from, run[:ended_at]}
+
+    Enum.reduce(Enum.reverse(skips), {%{}, []}, fn skip, {inside, outside} ->
+      case Enum.find(windows, &in_window?(skip[:inserted_at], &1)) do
+        {id, _from, _to} -> {Map.update(inside, id, [skip], &[skip | &1]), outside}
+        nil -> {inside, [skip | outside]}
+      end
+    end)
+  end
+
+  defp in_window?(%DateTime{} = at, {_id, from, to}),
+    do: DateTime.compare(at, from) != :lt and (is_nil(to) or DateTime.compare(at, to) != :gt)
+
+  defp in_window?(_at, _window), do: false
+
+  # A run's sessions, in the order they ran, with each skip passed over in it before the
+  # first session whose place comes after the skip's (`place/1`): `{:session | :skip, row}`.
+  defp shared_rows(sessions, skips) do
+    {rows, left} =
+      Enum.flat_map_reduce(sessions, skips, fn session, skips ->
+        {before, later} = Enum.split_with(skips, &(place(&1) < place(session)))
+        {Enum.map(before, &{:skip, &1}) ++ [{:session, session}], later}
+      end)
+
+    rows ++ Enum.map(left, &{:skip, &1})
+  end
+
+  # The place of a session or a skip in its stage's sequence: its entry, then, inside a
+  # loop, its round and its entry in the loop's body.
+  defp place(%{stage_entry: entry, loop_entry: loop_entry} = row) when is_integer(loop_entry),
+    do: {entry || 0, row.round || 1, loop_entry}
+
+  defp place(%{stage_entry: entry}), do: {entry || 0, 0, 0}
+
+  attr :id, :string, required: true
+  attr :run, :map, required: true
+  attr :rows, :list, required: true, doc: "its sessions and skips (`shared_rows/2`)"
+  attr :open, :boolean, required: true
+  attr :stage_run, :map, default: nil
+  attr :sequence, :list, required: true
+  attr :recorded, :map, required: true
+  attr :now, :any, required: true
+
+  # A run of a stage with `shared_run: true`: a fold whose line has the run's attempt, how
+  # many workflows it ran or passed over, its round, of the loop's limit inside a loop, its
+  # verdict and when it ended (`shared_parts/5`); in it, a row for each session
+  # (`session_parts/4`) and each workflow passed over in the run, in the order they ran.
+  defp shared_run(assigns) do
+    assigns =
+      assign(assigns,
+        parts:
+          shared_parts(
+            assigns.run,
+            assigns.stage_run,
+            assigns.rows,
+            assigns.sequence,
+            assigns.now
+          )
+      )
+
+    ~H"""
+    <details id={@id} open={@open} phx-mounted={JS.ignore_attributes(["open"])}>
+      <summary id={"#{@id}-s"}>
+        <.icon name="hero-chevron-right-micro" class="q-xp-chev size-3.5" />
+        <span class="q-xp-parts">
+          <%= for part <- @parts do %>
+            <span class="q-xp-it"><.rich text={part} /></span>
+          <% end %>
+        </span>
+      </summary>
+      <div class="q-xp-inner">
+        <%= for {{kind, row}, i} <- Enum.with_index(@rows) do %>
+          <.skip_row
+            :if={kind == :skip}
+            id={"#{@id}-skip-#{i}"}
+            skip={row}
+            round={is_integer(row[:loop_entry]) && row[:round]}
+          />
+          <div :if={kind == :session} id={"#{@id}-session-#{row.sequence}"} class="q-xp-runrow">
+            <span class="q-xp-parts">
+              <%= for part <- session_parts(row, @run, @recorded, @now) do %>
+                <span class="q-xp-it"><.rich text={part} /></span>
+              <% end %>
+            </span>
+          </div>
+        <% end %>
+      </div>
+    </details>
+    """
+  end
+
+  # The line of a run with sessions: as `run_parts/4` with no workflow and no round, then
+  # after the attempt how many workflows the run ran or passed over, and the round: that
+  # of its newest session in a loop, with the loop's limit; else the round of its run.
+  defp shared_parts(run, stage_run, rows, sequence, now) do
+    workflows = rows |> Enum.map(fn {_kind, row} -> row.workflow end) |> Enum.uniq() |> length()
+
+    count =
+      ngettext("%{count} workflow", "%{count} workflows", workflows,
+        count: Format.number(workflows)
+      )
+
+    sessions = for {:session, session} <- rows, do: session
+
+    round =
+      case sessions |> Enum.filter(&is_integer(&1.loop_entry)) |> List.last() do
+        %{} = session ->
+          loop_round(session, Runner.rounds(%{"sequence" => sequence}, session.stage_entry))
+
+        nil ->
+          stage_run && stage_run.round &&
+            gettext("round %{round}", round: Format.number(stage_run.round))
+      end
+
+    # While the run is in a session, the verdict an earlier session stored is no verdict
+    # of the run's.
+    open? = match?(%{state: nil}, List.last(sessions)) and run[:state] == :running
+    stage_run = stage_run && %{stage_run | workflow: nil, round: nil}
+    stage_run = if stage_run && open?, do: %{stage_run | shows: :running}, else: stage_run
+    [attempt | rest] = run_parts(attempt_words(run), run, stage_run, now)
+    [attempt, count | List.wrap(round)] ++ rest
+  end
+
+  defp loop_round(session, rounds) when is_integer(rounds),
+    do:
+      gettext("round %{round} of %{rounds}",
+        round: Format.number(session.round),
+        rounds: Format.number(rounds)
+      )
+
+  defp loop_round(session, nil),
+    do: gettext("round %{round}", round: Format.number(session.round))
+
+  # The workflow of the harness that records the demos; its row reads what its run recorded.
+  @capture "capture-demos"
+
+  # A session's row: its workflow, its round inside a loop, its verdict and when it ended.
+  # A session no report ended reads running, with when it started, while its run runs,
+  # else the run's state. A session of capture-demos that ended reads what its run
+  # recorded (`recorded_words/1`) in place of its verdict, where it recorded any.
+  defp session_parts(session, run, recorded, now) do
+    round =
+      if is_integer(session.loop_entry),
+        do: gettext("round %{round}", round: Format.number(session.round))
+
+    said =
+      cond do
+        not is_nil(session.state) ->
+          ended = [session_verdict(session), session.ended_at && ended_ago(session.ended_at, now)]
+
+          case session.workflow == @capture && recorded_words(recorded) do
+            words when is_binary(words) -> [words, List.last(ended)]
+            _none -> ended
+          end
+
+        run[:cancelling] == true ->
+          [cancelling_word(%{run: run})]
+
+        run[:state] in [:failed, :lost, :cancelled, :paused] ->
+          [run_state_word(run), run[:ended_at] && ended_ago(run.ended_at, now)]
+
+        true ->
+          [
+            hd(
+              StageComponents.verdict_parts(
+                %{workflow: nil, round: nil, shows: :running},
+                running_word_class(run)
+              )
+            ),
+            rich_gettext("started %{when}", when: inline_ago(session.started_at, now))
+          ]
+      end
+
+    Enum.reject([{:b, session.workflow}, round | said], &is_nil/1)
+  end
+
+  defp session_verdict(session) do
+    shows =
+      case session.verdict do
+        :passed -> :passed
+        :failed -> :failed
+        nil -> :no_verdict
+      end
+
+    hd(StageComponents.verdict_parts(%{workflow: nil, round: nil, shows: shows}, nil))
+  end
+
+  # What a run of capture-demos recorded: its versions of demo videos and of pictures,
+  # each left out at 0; nil for none.
+  defp recorded_words(recorded) do
+    videos = Map.get(recorded, :videos, 0)
+    pictures = Map.get(recorded, :pictures, 0)
+
+    video_words =
+      ngettext("%{count} demo video", "%{count} demo videos", videos,
+        count: Format.number(videos)
+      )
+
+    picture_words =
+      ngettext("%{count} picture", "%{count} pictures", pictures, count: Format.number(pictures))
+
+    cond do
+      videos > 0 and pictures > 0 ->
+        gettext("recorded %{videos} and %{pictures}",
+          videos: video_words,
+          pictures: picture_words
+        )
+
+      videos > 0 ->
+        gettext("recorded %{media}", media: video_words)
+
+      pictures > 0 ->
+        gettext("recorded %{media}", media: picture_words)
+
+      true ->
+        nil
+    end
   end
 
   # Why a stage did not run: the approval that put the work item on the track that skips
@@ -6415,13 +6700,19 @@ defmodule ApiaryWeb.WorkItemComponents do
     doc:
       "`%{workflow:, input:, track:, negated:}` (and `changed:`, true for a condition on a change), or `%{workflow:, reason:, cause_entry:}`, `reason` `feedback` with `negated` for `{feedback: new}`"
 
-  # A workflow entry the runner passed over: its workflow, then why it did not run.
+  attr :round, :any, default: nil, doc: "the round of a skip inside a loop, nil for none"
+
+  # A workflow entry the runner passed over: its workflow, with its round inside a loop,
+  # then why it did not run.
   defp skip_row(assigns) do
     ~H"""
     <div id={@id} class="q-xp-runrow">
       <div class="grid min-w-0 flex-1 gap-0.5">
         <span class="q-xp-parts">
           <span class="q-xp-it"><b>{@skip.workflow}</b></span>
+          <span :if={is_integer(@round)} class="q-xp-it">
+            {gettext("round %{round}", round: Format.number(@round))}
+          </span>
         </span>
         <span>{skip_words(@skip)}</span>
       </div>
@@ -7409,7 +7700,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         </summary>
         <div class="q-xp-inner">
           <p>{gettext("These runs do not count toward the run limit of this take in.")}</p>
-          <%= for {kind, run, k} <- record_rows(take_in.runs, Map.get(take_in, :skips, [])) do %>
+          <%= for {kind, run, k} <- record_rows(take_in.runs, Map.get(take_in, :skips, []), %{}) do %>
             <.skip_row :if={kind == :skip} id={"#{@id}-#{i}-skip-#{k}"} skip={run} />
             <%= if kind == :run do %>
               <.run_line id={"#{@id}-#{i}-#{run_dom(run)}"} run={run} now={@now} />
