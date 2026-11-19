@@ -734,7 +734,8 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
 
     test "409 credential_unavailable, revealing nothing, for a key row of one provider with a key of the other",
          ctx do
-      # Checkout keys' row has the row id of the start provider's key in place of its key.
+      # Checkout keys' row has, in place of its key, the row id of the key of the default
+      # model provider credential's provider.
       %{secret_value_id: theirs} = hd(stored_keys(ctx.run))
 
       {1, _rows} =
