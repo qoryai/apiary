@@ -91,7 +91,7 @@ defmodule Apiary.ModelChoicesInUseTest do
                errors(Connections.delete_provider_key(scope, provider, "spare"))
 
       assert message ==
-               "Change the model choices that use the key spare first: github.example/acme/shop, hello runs."
+               "Change the model choices that use the key Anthropic API key first: github.example/acme/shop, hello runs."
 
       assert %{value_id: [^message]} =
                errors(Connections.rename_provider_key(scope, provider, "spare", "other"))

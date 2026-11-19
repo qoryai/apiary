@@ -2228,6 +2228,9 @@ defmodule Apiary.Connections do
       # The level the keys are at is read again from the secret's row
       # (`Apiary.Secrets`): the organisation's, or a workspace's.
       secret = %Secret{id: current.secret_id, organisation_id: current.organisation_id}
+      # Read before `fun` writes: a refusal below words its keys after a failed statement,
+      # when this transaction answers no read.
+      lines = Identity.lines_by_value_id(current)
 
       case fun.(scope, secret, current) do
         {:ok, :unchanged} ->
@@ -2252,7 +2255,7 @@ defmodule Apiary.Connections do
                do: {:ok, current}
 
         {:error, {:in_use, [%{kind: :model_choice, value_id: value_id} | _rest] = uses}} ->
-          identity = Identity.for_value_id(current, value_id)
+          identity = Map.get(lines, value_id, current.name)
 
           {:error,
            current
@@ -2278,7 +2281,7 @@ defmodule Apiary.Connections do
                "Choose another default key for %{provider} first: %{value} is its default key."
              ),
              provider: current.name,
-             value: Identity.for_value_id(current, current.default_value_id)
+             value: Map.get(lines, current.default_value_id, current.name)
            )}
 
         {:error, reason} ->

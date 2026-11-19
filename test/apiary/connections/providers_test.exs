@@ -370,7 +370,7 @@ defmodule Apiary.Connections.ProvidersTest do
         assert {:error, changeset} = refused
 
         assert errors_on(changeset).value_id == [
-                 "Choose another default key for OpenRouter first: main is its default key."
+                 "Choose another default key for OpenRouter first: OpenRouter · …6789 is its default key."
                ]
       end
 
