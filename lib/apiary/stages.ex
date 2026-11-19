@@ -416,9 +416,10 @@ defmodule Apiary.Stages do
   #     every entry of the stage shares), and `model_choice`, the workflow's runtime and
   #     model in `models` as the claim formed them
   #     (`Apiary.Dispatches.RunSettings.build/2`, `sessions`), present for every entry of
-  #     a claimed run, and `model_provider_credential_name`, the key the session starts on, for a
-  #     session on a provider other than the default model provider credential's; without
-  #     it, the session joins the group of the run's default model provider credential.
+  #     a claimed run, and `model_provider_credential_name`, the key the session starts
+  #     on, for a session on a provider other than the default model provider credential's;
+  #     without it, the session joins the group of the run's default model provider
+  #     credential.
   #     `next_session/2` reads these, so a change to the time limits or the model choices
   #     after the claim changes nothing for the run;
   #   * its first session (`Apiary.Stages.Session`), sequence 1, at the run's position,

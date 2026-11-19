@@ -538,8 +538,8 @@ defmodule Apiary.Dispatches.RunSettings do
   # a session on a provider other than the default model provider credential's,
   # `model_provider_credential_name`, the name of that provider's first free key
   # (`Apiary.ModelKeys.Order.first_free/2`), else its first key: the session starts on that
-  # key's group. A session with no `model_provider_credential_name` joins the group of the run's
-  # default model provider credential.
+  # key's group. A session with no `model_provider_credential_name` joins the group of the
+  # run's default model provider credential.
   #
   # `model_choice` is, for the choices of the workflow (`session_choice/4`):
   #   * the `runtime`, `model`, `effort`, `provider_models` and `tiers` of the choice on

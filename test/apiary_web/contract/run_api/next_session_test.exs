@@ -651,7 +651,8 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       body = json_response(request(ctx, ended(1)), 200)
 
       # Session 2 runs on Checkout keys: the choice's model, on its first key, in the
-      # member of the run contract's answer, which refuses the member's former name.
+      # member of the run contract's answer, whose schema fails a body with the member's
+      # former name.
       assert %{"runtime" => "claude", "model" => "claude-sonnet-5-5"} = body["model_choice"]
       assert body["model_provider_credential_name"] == "#{other.public_id}-1"
       refute Map.has_key?(body, "model_credential")
