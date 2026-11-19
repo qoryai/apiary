@@ -13,7 +13,7 @@ defmodule Apiary.Runs.ProviderCredential do
   # Each entry has, in the schema's order: `name`, the key's credential name as the run
   # keeps it; `format`, `endpoint` and `auth` of the API its row keeps, the same for every
   # key of one provider; `key_prefixes` when the API has them; and, as the claim wrote
-  # them, `resets_at`, `schedule_resets_at`, `pause_for_s`, `cooldown_until`, `chosen` and
+  # them, `resets_at`, `schedule_resets_at`, `pause_for_s`, `cooldown_until` and
   # `use_up_to_percent`, each where the row has it. A key with `use_up_to_percent` also
   # has `use_up_to_windows`, its provider's limit windows, which the claim wrote into the
   # row's API from the catalogue's entry; a row whose API has no windows has neither
@@ -75,8 +75,7 @@ defmodule Apiary.Runs.ProviderCredential do
   # The order the contract's `auth.schema.json` lists its members in.
   @auth_members ~w(scheme header username oauth)
   # The members a run keeps for each key, in the order of the contract's `api_credential`.
-  @key_members ~w(resets_at schedule_resets_at pause_for_s cooldown_until chosen
-                  use_up_to_percent)
+  @key_members ~w(resets_at schedule_resets_at pause_for_s cooldown_until use_up_to_percent)
 
   @doc false
   # for_run/1 is the model keys of `run` (`t/0`): nil for a run with none. The run's key
@@ -289,7 +288,6 @@ defmodule Apiary.Runs.ProviderCredential do
       {"schedule_resets_at", time(row.schedule_resets_at)},
       {"pause_for_s", row.pause_for_s},
       {"cooldown_until", time(row.cooldown_until)},
-      {"chosen", if(row.chosen, do: true)},
       {"use_up_to_percent", row.use_up_to_percent}
     ]
     |> Enum.reject(fn {_member, value} -> is_nil(value) end)

@@ -33,7 +33,6 @@ defmodule Apiary.Contract.KeyGroupsTest do
   defp entries do
     [
       ProviderCredential.entry("con_n0rthw1nd0000001-1", "con_n0rthw1nd0000001", @northwind, %{
-        "chosen" => true,
         "pause_for_s" => 60
       }),
       ProviderCredential.entry("con_n0rthw1nd0000001-2", "con_n0rthw1nd0000001", @northwind, %{

@@ -40,14 +40,12 @@ defmodule Apiary.Runs.ModelKey do
     field :resets_at, :utc_datetime
     field :schedule_resets_at, :utc_datetime
     field :cooldown_until, :utc_datetime
-    field :chosen, :boolean, default: false
     field :use_up_to_percent, :integer
   end
 
   # The fields a claim writes for a key, all but the run's id.
   @fields ~w(position name start secret_value_id connection_id secret_id chain api
-             pause_for_s resets_at schedule_resets_at cooldown_until chosen
-             use_up_to_percent)a
+             pause_for_s resets_at schedule_resets_at cooldown_until use_up_to_percent)a
 
   @doc false
   # fields/0 is the fields a claim writes for each key, besides `run_id`.

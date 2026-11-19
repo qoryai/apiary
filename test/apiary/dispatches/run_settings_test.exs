@@ -130,7 +130,6 @@ defmodule Apiary.Dispatches.RunSettingsTest do
           resets_at: nil,
           schedule_resets_at: nil,
           cooldown_until: nil,
-          chosen: false,
           use_up_to_percent: nil
         },
         Map.new(attrs)
@@ -143,7 +142,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       Map.take(
         key,
         ~w(secret_value_id name start pause_for_s resets_at schedule_resets_at cooldown_until
-           chosen use_up_to_percent)a
+           use_up_to_percent)a
       )
 
   defp value!(provider, value_id), do: key_value!(provider, value_id)
@@ -599,7 +598,6 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert name == "#{free.public_id}-1"
       assert key.secret_value_id == value!(free, "main").id
       assert key.pause_for_s == 60
-      refute key.chosen
     end
 
     test "come from a fallback on another runtime, with that runtime, an API it takes and the fallback's tiers",
@@ -755,7 +753,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       ended!(queued, dispatch, :secrets_not_allowed)
     end
 
-    test "are never built with a start key in cooldown, and none is chosen", ctx do
+    test "are never built with a start key in cooldown", ctx do
       choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id})
 
       for {cooled, n} <- Enum.with_index([[], ["main"], ["spare"]]) do
@@ -765,10 +763,9 @@ defmodule Apiary.Dispatches.RunSettingsTest do
         {{:ok, handed}, _queued, _dispatch} =
           handover!(ctx, %{external_ref: "acme/shop##{50 + n}"})
 
-        [start | _rest] = keys = stored_keys(handed.run)
+        [start | _rest] = stored_keys(handed.run)
 
         assert start.cooldown_until == nil, inspect(cooled)
-        refute Enum.any?(keys, & &1.chosen), inspect(cooled)
       end
     end
   end

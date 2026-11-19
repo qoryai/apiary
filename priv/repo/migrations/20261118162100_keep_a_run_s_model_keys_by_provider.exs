@@ -46,7 +46,6 @@ defmodule Apiary.Repo.Migrations.KeepARunSModelKeysByProvider do
       add :resets_at, :utc_datetime
       add :schedule_resets_at, :utc_datetime
       add :cooldown_until, :utc_datetime
-      add :chosen, :boolean, null: false, default: false
       add :use_up_to_percent, :integer
     end
 

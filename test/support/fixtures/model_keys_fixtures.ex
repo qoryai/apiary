@@ -105,8 +105,7 @@ defmodule Apiary.ModelKeysFixtures do
             secret_id: provider.secret_id,
             chain: "organisation",
             api: api,
-            pause_for_s: 60,
-            chosen: false
+            pause_for_s: 60
           },
           Map.delete(key, :provider)
         )

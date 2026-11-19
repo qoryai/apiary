@@ -46,7 +46,6 @@ defmodule Apiary.Repo.Migrations.DropARunSOneProviderColumns do
           'pause_for_s', o.pause_for_s,
           'resets_at', #{time("o.resets_at")},
           'schedule_resets_at', #{time("o.schedule_resets_at")},
-          'chosen', CASE WHEN o.chosen THEN true END,
           'cooldown_until', #{time("o.cooldown_until")},
           'use_up_to_percent', o.use_up_to_percent)) ORDER BY o.position)
         FROM run_model_keys o
