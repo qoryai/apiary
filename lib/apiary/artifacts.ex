@@ -74,9 +74,9 @@ defmodule Apiary.Artifacts do
   # nothing (`Apiary.Artifacts.Format` decides it from the bytes). The checks, in order,
   # each refusal `{:error, {code, detail}}`:
   #
-  #   1. the actor: a member action whose person `Apiary.Access` refuses
-  #      `work_item.review_comment` for the review comments, or `work_item.answer` for
-  #      any other type,
+  #   1. the actor: a member action whose person `Apiary.Access.authorize/3` returns an
+  #      error for `work_item.review_comment` on the review comments, or for
+  #      `work_item.answer` on any other type,
   #      `{:error, :not_found}`, `{:error, :forbidden}` or `{:error, :not_approver}`; a
   #      run of another work item, `{:error, :not_found}`;
   #   2. the type: a name of no type, or of a standard type the workspace hides,
@@ -1308,8 +1308,8 @@ defmodule Apiary.Artifacts do
   # goes to the feed of the adapter of the work item's target collection, the collection
   # the run's work entry comes from (`RunCredentials.work_collection/3`), and contains the
   # work item's public id and its stable url. `{:ok, {adapter, entry}}` for an entry,
-  # `{:ok, nil}` for none: a person's version, a version of another type, a run whose
-  # process version has no submit, a work item with no target, or a target that no
+  # `{:ok, nil}` for none: a member action's version, a version of another type, a run
+  # whose process version has no submit, a work item with no target, or a target that no
   # collection matches.
   #
   # The entry is formed before `keep/6`, and `append_watch/1` writes it after, in the

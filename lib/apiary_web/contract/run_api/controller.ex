@@ -680,7 +680,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
         "Add an MP4 or WebM video to the version of #{push.name}: " <>
           "a WebVTT file goes with a video."}}
 
-  # A run of another work item; the person's refusals never come to a run.
+  # A run of another work item; `:forbidden` is a member action's refusal, which a run's
+  # push does not return.
   defp refused(code, _push) when code in [:not_found, :forbidden], do: {:error, :not_found}
 
   # A run that ended after `live/1` read it, found ended under the work item's lock.

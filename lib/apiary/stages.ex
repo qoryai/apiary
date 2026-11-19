@@ -41,8 +41,8 @@ defmodule Apiary.Stages do
   # ## A person's change to an approved output
   #
   # A run of a later stage stores a new version of an approved output (vault 0261, 624
-  # (a)). The version links to the person's note that asked for it, its `decision`
-  # (`Apiary.Stages.Notes`). Every later
+  # (a)). The version links to a person's note, its `decision` (`Apiary.Stages.Notes`),
+  # which contains the change the person asked for. Every later
   # run reads that version in place of the approved one (`read_version/6`), and the next
   # approval by a person at a gate lists it (`approve/4`). A gate `none` lists no version
   # with a `decision`.
@@ -109,7 +109,7 @@ defmodule Apiary.Stages do
   # again from the gate, the entry `another_round`.
   #
   # A stage with no workflow waits at its gate while a required output is missing
-  # (`missing_outputs/1`); `approve/4` refuses it, `{:error, {:outputs_missing, types}}`.
+  # (`missing_outputs/1`); `approve/4` returns `{:error, {:outputs_missing, types}}`.
   #
   # ## What is told
   #
@@ -1444,9 +1444,9 @@ defmodule Apiary.Stages do
   end
 
   # resume/1 starts a stage that waits for a required input or for a workflow, once the
-  # input exists or the harness declares the workflow: after the harness changes. A stage in any other state, or of a work item that is not
-  # `:exploring`, is left as it is. `{:error, :not_placed}` for a work item the runner has
-  # not placed.
+  # input exists or the harness declares the workflow. At this commit only tests call it.
+  # A stage in any other state, or of a work item that is not `:exploring`, is left as it
+  # is. `{:error, :not_placed}` for a work item the runner has not placed.
   @doc false
   @spec resume(WorkItem.t()) :: {:ok, WorkItem.t()} | {:error, refusal}
   def resume(%WorkItem{id: id}) do
@@ -2209,8 +2209,8 @@ defmodule Apiary.Stages do
   # since (`departures/2`): the newest version of each of its outputs made in it from the
   # time the work item last entered it to the time it left, marked `from: :move` and not
   # required. Newest departure first, outputs in the stage's order. An output whose version
-  # `read` has already is left out. No approval lists these versions: they are not outputs
-  # of the work item's stage.
+  # `read` has already is left out. No approval lists such a version, unless it has a
+  # `decision`: then it is a change.
   defp moved_inputs(work_item, version, stage, artifacts, read) do
     ids = Enum.map(version.document["stages"], & &1["id"])
 
@@ -4707,9 +4707,9 @@ defmodule Apiary.Stages do
   end
 
   # A person's change to an output (vault 0261, 624 (a)): a version that has a `decision`,
-  # the person's note that asked for it, in any stage, that no approval lists (`listed`),
-  # and whose number is higher than that of every version of
-  # its artifact that an approval lists. A push numbers its version under the work item's
+  # a person's note that contains the change asked for, in any stage, that no approval
+  # lists (`listed`), and whose number is higher than that of every version of its
+  # artifact that an approval lists. A push numbers its version under the work item's
   # lock, as an approval reads the versions it lists, so the numbers order the two where a
   # time taken before the lock would not. A version of a withdrawn name, a withdrawal and a
   # version by a run a member cancelled are never one. Nor is a version of the questions or

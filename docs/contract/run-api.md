@@ -157,7 +157,7 @@ Returns `200` with the work item snapshot:
   a stage after it, and only for the take in of the move. A stage that the work item left
   twice counts by its newer move. An entry is left out when an input above it already has
   that version. The key `from` is present on these entries, and no approval lists such
-  a version.
+  a version, unless it has a `decision`: then it is a change.
 - After a run of a stage returns the work item to an earlier stage (the `return` key of a
   workflow entry), `inputs` ends with the newest `verdict` and then the newest
   `verification` made in the stage that returned it, each as

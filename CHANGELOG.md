@@ -322,8 +322,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the id of the escalation, `gate_decisions.escalation_id`; `notes` lists the escalation and
   leaves that decision out). The entries stay until the left stage's gate
   passes again (an approval of the stage, by a person or automatic) or a later move goes
-  to a stage after it, and are scoped to the take in. No approval lists these versions,
-  unless a person made one: that is a change. The page's missing inputs, the stage's checks
+  to a stage after it, and are scoped to the take in. No approval lists such a version,
+  unless it has a `decision`: then it is a change. The page's missing inputs, the stage's checks
   and the other entries of `inputs` stay as they were. A `move` decision keeps the stage it
   moved to and when the work item last entered the stage it left
   (`gate_decisions.to_stage_id`, `left_stage_entered_at`).
@@ -1458,11 +1458,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   or off, and each change is an audit entry. Forms and the stage editor offer only the
   types that are on. A push of a type that is off returns `422 unknown_type`, and the
   message says to switch the type on. `proposal`, `questions`, `review-comments` and
-  `verdict` are always on. A person adds no version of `questions` or `review-comments` by
-  hand: members answer questions on the **Questions** tab and write comments on the
-  **Explore** tab. A type stays on while an artifact of
-  the workspace has it, or while the current process or a process version in use includes
-  it. A workspace keeps every standard type until a person switches one off.
+  `verdict` are always on. A person adds no version of any type: members answer questions
+  on the **Questions** tab and write comments on the **Explore** tab. A type stays on
+  while an artifact of the workspace has it, or while the current process or a process
+  version in use includes it. A workspace keeps every standard type until a person
+  switches one off.
 - A stage's workflow runs at the level its harness declares. A stage entry's `access`, or
   a **Workflow** page row with that workflow, lowers it.
 - In the notes for the next run, a comment on Explore's proposal is labelled “Comment ·
