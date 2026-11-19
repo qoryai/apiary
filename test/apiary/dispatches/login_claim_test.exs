@@ -4,7 +4,7 @@ defmodule Apiary.Dispatches.LoginClaimTest do
   # the end of the run's time limit is refreshed in the background, and the claim calls no
   # provider (the `Req.Test` stub of `LoginRefresh` records no request). What the run's page
   # says while it waits (`Apiary.Runs.Waiting`), and what the run keeps of the provider's API
-  # (`runs.provider_api`, `runs.model_keys`) within the columns' bounds.
+  # (`run_model_keys.api`) within the column's bounds.
   use Apiary.DataCase, async: true
   use Oban.Testing, repo: Apiary.Repo
 
@@ -14,7 +14,8 @@ defmodule Apiary.Dispatches.LoginClaimTest do
   import Apiary.RunEventsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, ModelKeys}
+  alias Apiary.{Connections, Dispatches, ModelKeys}
+  alias Apiary.ModelChoicesFixtures
   alias Apiary.Connections.Connection
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
   alias Apiary.ModelKeys.{Login, LoginRefresh, LoginRefreshJob}
@@ -74,7 +75,7 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       })
 
     {:ok, _choice} =
-      ModelChoices.put_choice(ctx.scope, :workspace, %{
+      ModelChoicesFixtures.put_choice(ctx.scope, :workspace, %{
         provider: provider.public_id,
         runtime: "codex",
         model: "gpt-6-sol"
@@ -108,9 +109,9 @@ defmodule Apiary.Dispatches.LoginClaimTest do
 
   defp claim(ctx), do: walked_claim(ctx.key, Dispatches.now(), @body)
 
-  defp value_ids(%Run{model_keys: keys}) do
+  defp value_ids(%Run{id: run_id}) do
     by_id = Map.new(Repo.all(Value), &{&1.id, &1.value_id})
-    for %{"id" => id} <- keys, do: by_id[id]
+    for %{secret_value_id: id} <- stored_keys(run_id), do: by_id[id]
   end
 
   defp waiting!(queued, provider) do
@@ -411,8 +412,8 @@ defmodule Apiary.Dispatches.LoginClaimTest do
 
       assert {:ok, %{registered: run}} = claim(ctx)
 
-      assert %Run{provider_api: %{"paths" => ["/backend-api/codex/*"], "auth" => auth}} =
-               Repo.get!(Run, run.id)
+      assert [%{api: %{"paths" => ["/backend-api/codex/*"], "auth" => auth}}] =
+               stored_keys(run.id)
 
       assert auth["account_header"] == "chatgpt-account-id"
       assert auth["account_claim"] == "/https:~1~1api.openai.com~1auth/chatgpt_account_id"
@@ -425,7 +426,7 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       assert entry["auth"]["account_header"] == "chatgpt-account-id"
     end
 
-    test "a claim of 6 keys with every member stays within runs.model_keys and provider_api",
+    test "a claim of 6 keys with every member stays within the bounds of run_model_keys.api",
          ctx do
       names = for n <- 1..6, do: String.duplicate("k", 56) <> "-#{n}"
       provider = provider!(ctx, for(name <- names, do: {name, [tag: name]}))
@@ -447,30 +448,28 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       queued!(ctx)
       assert {:ok, %{registered: run}} = claim(ctx)
 
-      assert %Run{model_keys: keys} = Repo.get!(Run, run.id)
+      keys = stored_keys(run.id)
       assert length(keys) == 6
-      assert Enum.any?(keys, &Map.has_key?(&1, "cooldown_until"))
-      assert Enum.any?(keys, &Map.has_key?(&1, "schedule_resets_at"))
+      assert Enum.any?(keys, & &1.cooldown_until)
+      assert Enum.any?(keys, & &1.schedule_resets_at)
 
-      %{rows: [[keys_size, api_size]]} =
+      %{rows: [[api_size]]} =
         Repo.query!(
-          "SELECT octet_length(model_keys::text), octet_length(provider_api::text) " <>
-            "FROM runs WHERE id = $1",
+          "SELECT max(octet_length(api::text)) FROM run_model_keys WHERE run_id = $1",
           [Ecto.UUID.dump!(run.id)]
         )
 
-      assert keys_size <= 4096
       assert api_size <= 8192
     end
 
-    test "the paths and the account members of the real entry keep provider_api within 8192",
+    test "the paths and the account members of the real entry keep a key's api within 8192",
          ctx do
       provider = provider!(ctx, [{"main", []}])
       queued!(ctx)
       assert {:ok, %{registered: run}} = claim(ctx)
 
       %{rows: [[size]]} =
-        Repo.query!("SELECT octet_length(provider_api::text) FROM runs WHERE id = $1", [
+        Repo.query!("SELECT max(octet_length(api::text)) FROM run_model_keys WHERE run_id = $1", [
           Ecto.UUID.dump!(run.id)
         ])
 
@@ -478,7 +477,7 @@ defmodule Apiary.Dispatches.LoginClaimTest do
 
       # Past the bounds the check refuses: a path without its slash, 33 paths, an empty
       # list, a member the check does not list.
-      api = Repo.get!(Run, run.id).provider_api
+      [%{api: api} | _] = stored_keys(run.id)
       assert Repo.get!(Run, run.id).provider_connection_id == provider.id
 
       for bad <- [
@@ -487,8 +486,10 @@ defmodule Apiary.Dispatches.LoginClaimTest do
             Map.put(api, "paths", []),
             Map.put(api, "other", true)
           ] do
-        assert_raise Postgrex.Error, ~r/runs_provider_api_check/, fn ->
-          Repo.update_all(from(r in Run, where: r.id == ^run.id), set: [provider_api: bad])
+        assert_raise Postgrex.Error, ~r/run_model_keys_api_check/, fn ->
+          Repo.update_all(from(k in Apiary.Runs.ModelKey, where: k.run_id == ^run.id),
+            set: [api: bad]
+          )
         end
       end
     end

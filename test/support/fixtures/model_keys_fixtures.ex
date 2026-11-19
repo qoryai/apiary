@@ -274,16 +274,10 @@ defmodule Apiary.ModelKeysFixtures do
     %{run: run} =
       Apiary.DispatchedRunsFixtures.handed_over_fixture(scope, access_key, %{
         provider_connection_id: provider.id,
-        provider_secret_id: provider.secret_id,
-        provider_chain: "organisation",
-        provider_api: %{
-          "format" => "anthropic-messages",
-          "endpoint" => "https://api.model.example/anthropic",
-          "auth" => %{"scheme" => "x-api-key"}
-        },
-        model_keys: [%{"id" => value.id, "name" => name, "pause_for_s" => 60}],
         run_settings: %{}
       })
+
+    run_keys!(run, [%{provider: provider, secret_value_id: value.id, name: name}])
 
     :ok =
       Apiary.ModelKeys.keep_copies(run.id, [{value.id, value.value_set_at, copy_login_at}])

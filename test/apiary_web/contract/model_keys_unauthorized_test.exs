@@ -39,6 +39,10 @@ defmodule ApiaryWeb.Contract.ModelKeysUnauthorizedTest do
       |> Map.put(:scope, scope)
 
     values = Repo.all(from v in Value, where: v.secret_id == ^ctx.provider.secret_id)
+
+    # A secrets request sent both keys to the run: a run marks only a key it was sent.
+    :ok = ModelKeys.keep_copies(ctx.run.id, for(v <- values, do: {v.id, v.value_set_at, nil}))
+
     Map.put(ctx, :values, Map.new(values, &{&1.value_id, &1}))
   end
 
@@ -87,7 +91,7 @@ defmodule ApiaryWeb.Contract.ModelKeysUnauthorizedTest do
     assert id == first.secret_value_id
     assert DateTime.compare(rejected_at, elem(DateTime.from_iso8601(at), 1)) == :eq
 
-    keys = ctx.provider |> ModelKeys.claim_keys(nil, DateTime.utc_now()) |> Map.new(&{&1.id, &1})
+    keys = ctx.provider |> ModelKeys.claim_keys(DateTime.utc_now()) |> Map.new(&{&1.id, &1})
     assert keys[first.secret_value_id].blocked == :new_key
     assert keys[second.secret_value_id].blocked == nil
   end
@@ -230,7 +234,7 @@ defmodule ApiaryWeb.Contract.ModelKeysUnauthorizedTest do
   end
 
   describe "two reports at once" do
-    test "for two keys mark both, and for one key keep the later time", ctx do
+    test "for two keys mark both, and for one key keep the run's first mark", ctx do
       first = name(ctx, 1)
       second = name(ctx, 2)
       older = now_z(-60)
@@ -254,7 +258,8 @@ defmodule ApiaryWeb.Contract.ModelKeysUnauthorizedTest do
       assert %{rejected_at: at} =
                Enum.find(rows(), &(&1.secret_value_id == key_named(ctx, 1).secret_value_id))
 
-      assert DateTime.compare(at, elem(DateTime.from_iso8601(newer), 1)) == :eq
+      # A run marks a key once: the later reports of the key, at once or after, move nothing.
+      assert DateTime.compare(at, elem(DateTime.from_iso8601(older), 1)) == :eq
     end
 
     test "and a new value saved at the same time leave no key that counts as marked", ctx do

@@ -4447,7 +4447,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
       html =
         lv
-        |> form("#set-up-model-form", model: %{provider: "openai-subscription"})
+        |> form("#set-up-model-form",
+          model: %{
+            provider: "openai-subscription",
+            tiers: tiers(hd(models("openai-subscription")))
+          }
+        )
         |> render_submit()
 
       assert html =~ "then save. This key has no sign-in yet."
@@ -4472,7 +4477,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
       html =
         lv
-        |> form("#set-up-model-form", model: %{provider: "openai-subscription"})
+        |> form("#set-up-model-form",
+          model: %{
+            provider: "openai-subscription",
+            tiers: tiers(hd(models("openai-subscription")))
+          }
+        )
         |> render_submit()
 
       assert login_tokens_in(html, tokens) == []

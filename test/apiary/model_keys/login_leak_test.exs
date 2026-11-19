@@ -39,7 +39,7 @@ defmodule Apiary.ModelKeys.LoginLeakTest do
       })
 
     {:ok, _choice} =
-      ModelChoices.put_choice(scope, :workspace, %{
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
         provider: provider.public_id,
         runtime: "codex",
         model: "gpt-6-sol"
@@ -133,7 +133,7 @@ defmodule Apiary.ModelKeys.LoginLeakTest do
 
       now = DateTime.utc_now()
       before = DateTime.add(now, 3 * 3600)
-      keys = ModelKeys.claim_keys(ctx.provider, nil, now, expires_before: before, decrypt: false)
+      keys = ModelKeys.claim_keys(ctx.provider, now, expires_before: before, decrypt: false)
       assert Map.new(keys, &{&1.value_id, &1.blocked}) == %{"main" => :refreshing}
     end
 

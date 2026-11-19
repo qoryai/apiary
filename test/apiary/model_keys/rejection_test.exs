@@ -41,7 +41,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
     do: Repo.all(from r in Rejection, where: r.secret_value_id == ^id)
 
   defp claim_key(provider, value_id, now \\ DateTime.utc_now()) do
-    provider |> ModelKeys.claim_keys(nil, now) |> Enum.find(&(&1.value_id == value_id))
+    provider |> ModelKeys.claim_keys(now) |> Enum.find(&(&1.value_id == value_id))
   end
 
   defp claimable?(ids, now) do

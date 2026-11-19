@@ -11,12 +11,15 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
 
   import Ecto.Query, only: [from: 2]
   import Apiary.DispatchedRunsFixtures
-  import Apiary.ModelKeysFixtures, only: [stored_keys: 1, key_state!: 3, in_seconds: 1]
+
+  import Apiary.ModelKeysFixtures,
+    only: [stored_keys: 1, key_state!: 3, key_value!: 2, in_seconds: 1]
+
   import Apiary.RunEventsFixtures, only: [event_fixture: 4]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, Processes}
+  alias Apiary.{Connections, Dispatches, ModelChoices, ModelKeys, Processes}
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Pause, RunSettings}
   alias Apiary.Runs.{ModelKey, Projector, ProviderCredential, Run, Transcript}
   alias Apiary.Stages.StopCause
@@ -1092,6 +1095,69 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert run.provider_connection_id == storefront.id
       assert %{"session_id" => @session_id, "path" => @transcript} = run.resume
       assert %{"runtime" => "codex"} = run.run_settings
+    end
+
+    # The paused run's model keys report lists its key `value_id` of `provider` as
+    # `unauthorized`: a secrets request kept the key's copy for the run, and the report
+    # marks the key (`Apiary.ModelKeys.reject/4`).
+    defp rejected!(%Run{} = paused, provider, value_id) do
+      value = key_value!(provider, value_id)
+      :ok = ModelKeys.keep_copies(paused.id, [{value.id, value.value_set_at, nil}])
+      keys = ModelKeys.run_keys(paused)
+      key = Enum.find(keys, &(&1.secret_value_id == value.id))
+      now = DateTime.utc_now()
+      assert :ok = ModelKeys.reject(keys, [%{credential: key.name, at: now}], provider, now)
+      assert [%{secret_value_id: id}] = Repo.all(Apiary.ModelKeys.Rejection)
+      assert id == value.id
+    end
+
+    # A provider with two keys, `key-1` the default, chosen for the stage's one workflow.
+    defp two_keys!(ctx) do
+      provider = provider!(ctx.scope, "Northwind keys", count: 2)
+      choose!(ctx.scope, {:workspace, "plan-the-build"}, provider)
+      assert {:ok, _version} = save(ctx.scope, ~w(plan-the-build))
+      provider
+    end
+
+    test "a continuation after a 401 skips the key in new_key_needed and starts on the next key",
+         ctx do
+      provider = two_keys!(ctx)
+
+      # The run's report marked the start key `unauthorized`.
+      {paused, _dispatch_run, continuation} =
+        paused!(ctx, session: nil, before_exit: fn _run -> :ok end)
+
+      rejected!(paused, provider, "key-1")
+      assert continuation.report_wait_until == nil
+
+      assert {{:ok, run}, _queued} = claimed!(ctx, continuation)
+      second = key_value!(provider, "key-2")
+      assert [%ModelKey{start: true, secret_value_id: id}] = stored_keys(run)
+      assert id == second.id
+    end
+
+    test "a 401 pause whose report lists the key unauthorized continues on the next key before 60 s",
+         ctx do
+      provider = two_keys!(ctx)
+
+      {paused, _dispatch_run, continuation} =
+        paused!(ctx, session: nil, reason: "model_key_switch")
+
+      # The report window is open, and no report has marked a key: a claim takes no run.
+      assert %DateTime{} = wait = continuation.report_wait_until
+      assert DateTime.compare(wait, DateTime.utc_now()) == :gt
+      assert {:ok, :none} = walked_claim(ctx.key, Dispatches.now(), @body)
+      assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, continuation.id)
+
+      # The report lists the key `unauthorized`: the window is still open, and a claim
+      # takes the continuation, on the next key.
+      rejected!(paused, provider, "key-1")
+      assert %DispatchRun{report_wait_until: ^wait} = Repo.get!(DispatchRun, continuation.id)
+
+      assert {{:ok, run}, _queued} = claimed!(ctx, continuation)
+      second = key_value!(provider, "key-2")
+      assert [%ModelKey{start: true, secret_value_id: id}] = stored_keys(run)
+      assert id == second.id
     end
 
     test "is continued on the paused session's provider, which the default runtime can use, though session 1's cannot",

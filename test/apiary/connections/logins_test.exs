@@ -462,16 +462,18 @@ defmodule Apiary.Connections.LoginsTest do
       %{run: run} =
         Apiary.DispatchedRunsFixtures.handed_over_fixture(scope, key, %{
           provider_connection_id: provider.id,
-          provider_secret_id: provider.secret_id,
-          provider_chain: "organisation",
-          provider_api: %{
-            "format" => "openai-responses",
-            "endpoint" => "https://api.model.example/openai",
-            "auth" => %{"scheme" => "bearer", "oauth" => true}
-          },
-          model_keys: [%{"id" => value.id, "name" => "model-1", "pause_for_s" => 3600}],
           run_settings: %{}
         })
+
+      run_keys!(
+        run,
+        [%{provider: plain, secret_value_id: value.id, name: "model-1", pause_for_s: 3600}],
+        api: %{
+          "format" => "openai-responses",
+          "endpoint" => "https://api.model.example/openai",
+          "auth" => %{"scheme" => "bearer", "oauth" => true}
+        }
+      )
 
       :ok = ModelKeys.keep_copies(run.id, [{value.id, value.value_set_at}])
       next = login_tokens(tag: "copies")
