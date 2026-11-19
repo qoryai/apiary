@@ -446,7 +446,8 @@ defmodule Apiary.Dispatches.RunSettings do
   # every key of the choice's provider and of each usable later step (the default step
   # and the fallbacks) is in cooldown, with the choice's settings without keys and those
   # providers' row ids, the choice's first, and those of the later steps whose settings
-  # check ran out of time or crashed,
+  # check ran out of time or crashed, or where a later session's provider has no key and
+  # the keys of its later steps are all in cooldown, with those steps' providers,
   # `:unstable` where the choices changed while `hold/1` read them, `{:unchecked,
   # provider}` where the check of the settings of `provider`, the chosen one, ran out of
   # time or crashed (`Apiary.Connections.provider/1`), or `:unavailable` where the run
@@ -556,10 +557,13 @@ defmodule Apiary.Dispatches.RunSettings do
   # fails its integrity code, or `form/6` ends `provider_gone` for it. A session that
   # would have no key in the run ends the claim `session_key_missing`: its runtime uses
   # another API of a provider that an earlier session uses (`same_api/3`, `on_start/2`);
-  # its provider has no key (`key_gone`) and no later step has a free key; or the run's
+  # its provider has no key (`key_gone`) and no later step has a key; or the run's
   # first session runs on the machine's local model provider credential (`session_on/6`).
   # A settings check of the session's provider that ran out of time or crashed is
-  # `{:unchecked, provider}`, which leaves the run waiting as for the run's provider.
+  # `{:unchecked, provider}`, which leaves the run waiting as for the run's provider. A
+  # session whose provider has no key, and whose later steps' keys are all in cooldown,
+  # leaves the run waiting for those steps' providers (`cooling_steps/4`): `{:cooling,
+  # built, ids}`, once every session is checked.
   defp with_sessions({:ok, built}, start, context) do
     sessions = context.held.sessions
     context = Map.put(context, :claim_keys, session_keys(sessions, context))
@@ -567,12 +571,13 @@ defmodule Apiary.Dispatches.RunSettings do
     context.held
     |> Map.get(:shared, Map.keys(sessions))
     |> Enum.filter(&Map.has_key?(sessions, &1))
-    |> Enum.reduce_while({:ok, [], []}, fn workflow, {:ok, chosen, groups} ->
-      with {:ok, choice, group} <-
-             session_choice(Map.fetch!(sessions, workflow), built, start, context),
+    |> Enum.reduce_while({:ok, [], [], []}, fn workflow, {:ok, chosen, groups, cooling} ->
+      with {:ok, choice, group, ids} <-
+             session_choice(Map.fetch!(sessions, workflow), built, start, context)
+             |> waiting(),
            {:ok, choice, group} <- same_api(choice, group, groups) do
         groups = if is_map(group) and group not in groups, do: groups ++ [group], else: groups
-        {:cont, {:ok, chosen ++ [{workflow, choice, group}], groups}}
+        {:cont, {:ok, chosen ++ [{workflow, choice, group}], groups, cooling ++ ids}}
       else
         {:end, cause} = ended when cause in [:provider_gone, :session_key_missing] ->
           {:halt, ended}
@@ -582,10 +587,17 @@ defmodule Apiary.Dispatches.RunSettings do
       end
     end)
     |> case do
-      {:ok, chosen, groups} ->
-        if fits?(start, groups),
-          do: {:ok, merged(built, start, {chosen, groups}, context.now)},
-          else: {:end, :too_many_providers}
+      {:ok, chosen, groups, cooling} ->
+        cond do
+          not fits?(start, groups) ->
+            {:end, :too_many_providers}
+
+          cooling == [] ->
+            {:ok, merged(built, start, {chosen, groups}, context.now)}
+
+          true ->
+            {:cooling, merged(built, start, {chosen, groups}, context.now), Enum.uniq(cooling)}
+        end
 
       other ->
         other
@@ -593,6 +605,14 @@ defmodule Apiary.Dispatches.RunSettings do
   end
 
   defp with_sessions(other, _start, _context), do: other
+
+  # A session's result with the providers the run waits for: none for a session with a
+  # key; for a session that waits (`cooling_steps/4`), its choice with no group, and
+  # those providers. Every other session is checked before the run waits, so a cause that
+  # ends the run ends it first.
+  defp waiting({:ok, choice, group}), do: {:ok, choice, group, []}
+  defp waiting({:cooling, choice, ids}), do: {:ok, choice, nil, ids}
+  defp waiting(other), do: other
 
   # Whether the run's providers, the start key's and those of its later sessions' groups,
   # are at most `Apiary.ModelKeys.Order.max_keys/0`, so each gets a key (`merge/3`). The
@@ -776,9 +796,12 @@ defmodule Apiary.Dispatches.RunSettings do
           end
 
         # A provider with no key (`key_gone`): the session takes its first later step
-        # with a free key, else it would have no key in the run.
+        # with a free key; else the run waits for the later steps whose keys are all in
+        # cooldown; else the session would have no key in the run.
         {:end, :key_gone} when context.held.keyed ->
-          on_fallback(input, resolution, start, context) || {:end, :session_key_missing}
+          on_fallback(input, resolution, start, context) ||
+            cooling_steps(input, resolution, start, context) ||
+            {:end, :session_key_missing}
 
         other ->
           other
@@ -847,6 +870,35 @@ defmodule Apiary.Dispatches.RunSettings do
         _not_formed -> nil
       end
     end)
+  end
+
+  # The later steps of `resolution` (`later_steps/2`) that form, on a provider other than
+  # the start key's, with keys that are all in cooldown at the claim, as `on_fallback/4`
+  # found no free one: `{:cooling, choice, ids}`, the first such step's choice and those
+  # steps' providers in order, each once; nil for none.
+  defp cooling_steps(input, %Resolution{} = resolution, start, ctx) do
+    input
+    |> later_steps(resolution)
+    |> Enum.flat_map(fn %Resolution{connection_id: id} = fallen ->
+      provider = Map.fetch!(ctx.providers, id)
+
+      with false <- id == start.provider.id,
+           true <- Connections.intact?(provider),
+           {:ok, runtime} <- runtime(fallen),
+           {:ok, formed} <- session_form(fallen, provider, runtime, nil, ctx),
+           %{keys: [_ | _]} <- session_group(provider, formed, ctx) do
+        [{formed.stored, id}]
+      else
+        _no_keys_or_not_formed -> []
+      end
+    end)
+    |> case do
+      [] ->
+        nil
+
+      [{choice, _id} | _rest] = cooling ->
+        {:cooling, choice, cooling |> Enum.map(&elem(&1, 1)) |> Enum.uniq()}
+    end
   end
 
   # The group of `provider`'s keys for the API `formed` uses, at the claim's clock, where

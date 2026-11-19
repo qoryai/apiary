@@ -1932,15 +1932,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the choice's runtime or model is no longer valid, or its runtime is no longer in the
   catalogue. It has the default runtime alone where the workflow resolves to no model
   choice at any level: the session uses that runtime's default model. A choice whose
-  provider was removed ends the claim `provider_gone`. A run takes the keys of each
-  provider its sessions run on, each kept as a row of `run_model_keys`. The claim picks
-  at most 6 keys in this order: the start key's provider's keys, then one key of each
-  other provider, then the rest; `credentials` lists them provider by provider, the
-  start key's provider first. Each key's entry in the run configuration has `group`, its
-  provider's public id, so the gateway rotates each provider's keys apart from the
-  others. For a session on a key of a provider other than the start key's, the answer
-  has `model_credential`, the key that session starts on; without it, the session joins
-  the group of the run's start key.
+  provider was removed ends the claim `provider_gone`. Where the session's provider has
+  no key and the keys of its later steps are all in cooldown, the claim leaves the run
+  waiting for those steps' providers. A run takes the keys of each provider its sessions run on,
+  each kept as a row of `run_model_keys`. The claim picks at most 6 keys in this order:
+  the start key's provider's keys, then one key of each other provider, then the rest;
+  `credentials` lists them provider by provider, the start key's provider first. Each
+  key's entry in the run configuration has `group`, its provider's public id, so the
+  gateway rotates each provider's keys apart from the others. For a session on a key of
+  a provider other than the start key's, the answer has `model_credential`, the key that
+  session starts on; without it, the session joins the group of the run's start key.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `acceptance-criteria` and `verification` are structured types: a version is one JSON

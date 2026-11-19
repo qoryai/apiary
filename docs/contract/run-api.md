@@ -858,10 +858,12 @@ of the run contract. A next session of the same stage:
   run uses, the claim ends the run before it starts, with the end cause
   `session_key_missing`: one run uses one API of each provider. The claim ends the run so
   too where the session's provider has no key, and no provider of its later steps (the
-  default step under a workflow's override, then the fallbacks) has a key out of
-  cooldown. A run whose first session runs on the machine's local model provider
-  credential, as its workflow resolves to no model choice, gets no key: its claim ends it
-  `session_key_missing` where a later session runs on a model provider.
+  default step under a workflow's override, then the fallbacks) has a key. Where those
+  providers' keys are all in cooldown, the claim leaves the run waiting for them, as for
+  a run whose keys are all in cooldown. A run whose first session runs on the machine's
+  local model provider credential, as its workflow resolves to no model choice, gets no
+  key: its claim ends it `session_key_missing` where a later session runs on a model
+  provider.
 - `model_credential`, for a session on a key of a provider other than the start key's, is
   the credential name of the key the session starts on: that provider's first key out of
   cooldown, else its first key. The claim picks at most 6 keys in this order: the start

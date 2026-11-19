@@ -364,14 +364,26 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert names(stored_keys(run)) == ["#{northwind.public_id}-1", fallback]
     end
 
-    test "ends the build session_key_missing where the later session's provider and every later step have no free key",
+    test "leaves the run waiting for the later steps' providers where the later session's provider has no key and every later step's key is in cooldown",
          ctx do
       %{checkout: checkout, storefront: storefront} = cooling_later!(ctx)
       no_keys!(checkout)
-      key_state!(storefront, "key-1", until: in_seconds(3_600))
+      until = in_seconds(3_600)
+      key_state!(storefront, "key-1", until: until)
 
-      # The guard passes, as a later step has a key; the build finds none free.
-      assert built(queued!(ctx)) == {:end, :session_key_missing}
+      queued = queued!(ctx)
+      assert {:cooling, _built, ids} = built(queued)
+      assert ids == [storefront.id]
+
+      # The claim leaves the run waiting for Storefront keys alone: Checkout keys has no
+      # key to wait for, and Northwind keys has a free one.
+      assert {:ok, :none} = walked_claim(ctx.key, Dispatches.now(), @body)
+      waiting = Repo.get!(DispatchRun, queued.id)
+      assert %DispatchRun{state: :waiting} = waiting
+      assert waiting.model_provider_ids == [storefront.id]
+      assert stored_keys_of_queue(queued) == []
+      assert {:cooldown, "Storefront keys", at} = Apiary.Runs.Waiting.reason(waiting)
+      assert DateTime.compare(at, DateTime.truncate(until, :second)) == :eq
     end
 
     test "starts the later session on its provider's choice and keys where every fallback's key is in cooldown too",
