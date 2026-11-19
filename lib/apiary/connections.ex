@@ -1760,8 +1760,10 @@ defmodule Apiary.Connections do
       # The model choices and the runs that use the provider and may still read its keys
       # (`live_runs/1`), read without a lock under the provider's row lock. A claim holds
       # the row `FOR SHARE` until it commits (`Apiary.Dispatches.RunSettings`), so a run
-      # it registers is read here, and a claim that comes after reads the provider as
-      # deleted.
+      # it registers, with its key rows, is read here, and the deletion fails
+      # `provider_in_use`; a claim that comes after reads the provider as deleted. The
+      # claim takes neither the organisation's lock nor the integrations lock that this
+      # deletion takes before the provider (`Apiary.Dispatches.Handover`).
       # A workflow's choice whose workspace no longer keeps the workflow goes with the
       # provider (`ModelChoices.delete_leftovers_using/2`).
       with :ok <- not_used(ModelChoices.places_using(current), live_runs(current)),
@@ -1802,16 +1804,18 @@ defmodule Apiary.Connections do
   defp not_used(places, []), do: {:error, {:model_in_use, places}}
   defp not_used(places, runs), do: {:error, {:provider_in_use, %{places: places, runs: runs}}}
 
-  # The public ids of the runs that use `provider` and may still read its keys, oldest
-  # first: pending or running, or lost after their attach and not lost for good, which
-  # their gateway may attach again (`Apiary.Runs.Sender.live?/2`).
+  # The public ids of the runs that have a key of `provider` and may still read it,
+  # oldest first: pending or running, or lost after their attach and not lost for good,
+  # which their gateway may attach again (`Apiary.Runs.Sender.live?/2`). Any key row of
+  # such a run with the provider blocks the deletion, whichever session uses it.
   defp live_runs(%Connection{id: id}) do
     alive = dynamic([run: r], r.state in ^Run.alive_states())
+    keyed = from k in Apiary.Runs.ModelKey, where: k.connection_id == ^id, select: k.run_id
 
     Repo.all(
       from r in Run,
         as: :run,
-        where: r.provider_connection_id == ^id,
+        where: r.provider_connection_id == ^id or r.id in subquery(keyed),
         where: ^dynamic(^alive or ^Apiary.Runs.Sender.revivable(DateTime.utc_now())),
         order_by: [asc: r.inserted_at, asc: r.id],
         select: r.public_id

@@ -80,14 +80,15 @@ defmodule Apiary.ModelChoices.Resolution do
 
   @typedoc """
   What a resolution reads: the model choices of the organisation's chain at levels 2 to 6
-  (rows of other places are left out here), the run's workspace, target (nil for none) and
-  workflow (nil for none), and the providers the choices name, by their row id; and,
-  where given, the runtime of a choice that names none (`default_runtime`) and the effort
-  values of each runtime by its name (`effort_values`).
+  (rows of other places are left out here), the run's workspace (nil for a workspace not
+  yet made, which only level 6 reaches), target (nil for none) and workflow (nil for
+  none), and the providers the choices name, by their row id; and, where given, the
+  runtime of a choice that names none (`default_runtime`) and the effort values of each
+  runtime by its name (`effort_values`).
   """
   @type input :: %{
           required(:choices) => [ModelChoice.t()],
-          required(:workspace_id) => Ecto.UUID.t(),
+          required(:workspace_id) => Ecto.UUID.t() | nil,
           required(:target_id) => Ecto.UUID.t() | nil,
           required(:workflow) => String.t() | nil,
           required(:providers) => %{Ecto.UUID.t() => provider},

@@ -2989,6 +2989,91 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       end
     end
 
+    test "a run whose shared stage's model choices did not fit one run shows the fix while that fault remains" do
+      missing =
+        {:model_choice_missing, "write-acceptance-checks", "Claude Code", "Storefront keys"}
+
+      too_many = {:too_many_providers, 7, for(n <- 1..7, do: "Northwind #{n}")}
+
+      missing_again =
+        "Run the round again. A workflow of the stage had no model, and that workflow's runtime could not use the provider that the run would start on."
+
+      too_many_again =
+        "Run the round again. The workflows of the stage used more than 6 model providers, and one run takes keys of at most 6."
+
+      for {cause, detail, body} <- [
+            {:model_choice_missing, missing,
+             "Choose a model for workflow write-acceptance-checks. Without one it runs on Claude Code, and this stage's runs can start on Storefront keys, which Claude Code cannot use."},
+            {:model_choice_missing, nil, missing_again},
+            {:model_choice_missing, too_many, missing_again},
+            {:too_many_providers, too_many,
+             "Use at most 6 model providers in one stage. Its workflows use 7: Northwind 1, Northwind 2, Northwind 3, Northwind 4, Northwind 5, Northwind 6, Northwind 7."},
+            {:too_many_providers, nil, too_many_again},
+            {:too_many_providers, missing, too_many_again}
+          ] do
+        r =
+          run(%{
+            id: nil,
+            path: nil,
+            state: :failed,
+            outcome: :error,
+            end_cause: cause,
+            shared_models: detail,
+            proposal: nil,
+            started_at: nil,
+            ended_at: ago(3600),
+            duration: nil
+          })
+
+        html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+
+        assert texts(html, "#work-item-explore-none p") == ["The run did not start.", body],
+               inspect({cause, detail})
+      end
+    end
+
+    test "a run of a shared stage whose session would have no key in the run shows the fix while that fault remains" do
+      machine = {:session_key_missing, :machine, "plan-the-build"}
+      no_key = {:session_key_missing, :no_key, "write-acceptance-checks", "Checkout keys"}
+
+      other_api =
+        {:session_key_missing, :other_api, "write-acceptance-checks", "Anthropic Messages",
+         "Northwind keys", "plan-the-build"}
+
+      again =
+        "Run the round again. A workflow of the stage would run on a provider that has no key in the run, or on a second API of a provider that an earlier workflow uses."
+
+      for {detail, body} <- [
+            {machine,
+             "Choose a model for workflow plan-the-build, or remove the model choices of the later workflows. Without a model, plan-the-build runs on the machine's local model provider credential, so later workflows get no model provider credential."},
+            {no_key,
+             "Add a model key to Checkout keys, or choose a model of another provider for workflow write-acceptance-checks. Checkout keys has no model key."},
+            {other_api,
+             "Choose a model for workflow write-acceptance-checks that uses the Anthropic Messages API of Northwind keys, as workflow plan-the-build does, or a model of another provider. One run uses one API of each provider."},
+            {nil, again},
+            {{:too_many_providers, 7, for(n <- 1..7, do: "Northwind #{n}")}, again}
+          ] do
+        r =
+          run(%{
+            id: nil,
+            path: nil,
+            state: :failed,
+            outcome: :error,
+            end_cause: :session_key_missing,
+            shared_models: detail,
+            proposal: nil,
+            started_at: nil,
+            ended_at: ago(3600),
+            duration: nil
+          })
+
+        html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+
+        assert texts(html, "#work-item-explore-none p") == ["The run did not start.", body],
+               inspect(detail)
+      end
+    end
+
     test "a run of a shared stage that ended after a session says after which, with the fix" do
       for {cause, fix} <- [
             {:ticket_gone,

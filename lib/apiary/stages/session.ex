@@ -2,7 +2,7 @@ defmodule Apiary.Stages.Session do
   # A session of a run of a stage with `shared_run: true` (`Apiary.Processes.shared_run?/1`):
   # one row for each session the stage runner started in the run (`Apiary.Stages.next_session/2`).
   # `sequence` is Qory Apiary's number for the session in the run, from 1; the claim writes
-  # the first, at the run's position (`Apiary.Stages.claim_sessions!/2`). `forager_session`,
+  # the first, at the run's position (`Apiary.Stages.claim_sessions!/3`). `forager_session`,
   # `state` and `reason` are the session's end as the run reported it, nil until then.
   # `verdict_number` is the number of the run's newest `verdict` version at the step on
   # that end, so the next step reads only a newer one. `response` is the step's result, in

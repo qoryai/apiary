@@ -59,14 +59,18 @@ defmodule Apiary.Dispatches do
   # exit found its image missing and the next run of its take in was written so: its
   # page says so (`ApiaryWeb.RunLive.Show`).
   #
-  # `requeue_for_pause(dispatch_run, paused_until)` writes, inside the caller's
-  # transaction, in which the work item is locked `FOR UPDATE`, the run that continues a
-  # run whose exit paused it at its model keys' limit (`Apiary.Dispatches.RunEnd`):
-  # waiting, at the paused run's place in its work item's process, with its `attempt` and
-  # its `of` one more each, so the take in loses no attempt, its `queued_at` the paused
-  # run's, so it keeps the paused run's place in the queue, and `continues_id` the paused
-  # run. The paused run keeps `paused_until`. A continuation that pauses is continued
-  # again. It writes none for a prebuild, for a work item no longer in Explore, in another
+  # `requeue_for_pause(dispatch_run, paused_until, report_wait_until)` writes, inside the
+  # caller's transaction, in which the work item is locked `FOR UPDATE`, the run that
+  # continues a run whose exit paused it (`Apiary.Dispatches.RunEnd`): at its model keys'
+  # limit, or with `model_key_switch`, where Forager ended a session on a key that is out
+  # while another key of the run is usable. The continuation is waiting, at the paused
+  # run's place in its work item's process, with its `attempt` and its `of` one more each,
+  # so the take in loses no attempt, its `queued_at` the paused run's, so it keeps the
+  # paused run's place in the queue, `continues_id` the paused run, and
+  # `report_wait_until`, nil for a pause at the limit: a claim takes it only once that
+  # time has passed (`keys_free/2`), so the paused run's model keys report, which can
+  # arrive after the exit, is recorded before the claim orders the keys. The paused run
+  # keeps `paused_until`. A continuation that pauses is continued again. It writes none for a prebuild, for a work item no longer in Explore, in another
   # workspace or at another take in, for a work item placed at another stage or whose
   # stage does not run, or while another run of the take in has not ended: `{:error,
   # :not_requeued}`.
@@ -459,8 +463,9 @@ defmodule Apiary.Dispatches do
   # runner did not start. The run is queued on the machine type of its place, or on the
   # default type, with that type's spec (`machine_type/1`); a run requeued for its image
   # keeps the type and spec of the run before it.
-  # A continuation (`requeue_for_pause/2`) passes `continues`, the paused run: the new
-  # run's `continues_id` is set to it, and its `queued_at` to the paused run's.
+  # A continuation (`requeue_for_pause/3`) passes `continues`, the paused run: the new
+  # run's `continues_id` is set to it, and its `queued_at` to the paused run's; and
+  # `report_wait_until`, kept on the new run, nil for none.
   defp insert_run(
          work_item,
          take_in,
@@ -468,7 +473,8 @@ defmodule Apiary.Dispatches do
          of,
          image_requeue \\ false,
          stage \\ %{},
-         continues \\ nil
+         continues \\ nil,
+         report_wait_until \\ nil
        ) do
     %{id: id, organisation_id: organisation_id, workspace_id: workspace_id} = work_item
 
@@ -477,7 +483,8 @@ defmodule Apiary.Dispatches do
         organisation_id: organisation_id,
         workspace_id: workspace_id,
         image_requeue: image_requeue,
-        continues_id: continues && continues.id
+        continues_id: continues && continues.id,
+        report_wait_until: report_wait_until
       }
       |> struct!(stage)
       |> struct!(machine_type(stage))
@@ -827,12 +834,13 @@ defmodule Apiary.Dispatches do
 
   def requeue_for_image(%DispatchRun{}), do: {:error, :not_requeued}
 
-  # requeue_for_pause/2 writes the run that continues `dispatch_run`, which its end by an
-  # exit at its model keys' limit ended in the caller's transaction, in which its work
-  # item is locked `FOR UPDATE` (`Apiary.Dispatches.RunEnd`), and keeps `paused_until` on
-  # `dispatch_run` (the moduledoc); else `{:error, :not_requeued}`.
+  # requeue_for_pause/3 writes the run that continues `dispatch_run`, which its end by an
+  # exit that paused it ended in the caller's transaction, in which its work item is
+  # locked `FOR UPDATE` (`Apiary.Dispatches.RunEnd`), with `report_wait_until` (nil for
+  # none), and keeps `paused_until` on `dispatch_run` (the moduledoc); else `{:error,
+  # :not_requeued}`.
   @doc false
-  @spec requeue_for_pause(DispatchRun.t(), DateTime.t() | nil) ::
+  @spec requeue_for_pause(DispatchRun.t(), DateTime.t() | nil, DateTime.t() | nil) ::
           {:ok, DispatchRun.t()} | {:error, :not_requeued | Ecto.Changeset.t()}
   def requeue_for_pause(
         %DispatchRun{
@@ -844,10 +852,11 @@ defmodule Apiary.Dispatches do
           attempt: attempt,
           of: of
         } = dispatch_run,
-        paused_until
+        paused_until,
+        report_wait_until
       )
       when is_binary(id) and is_integer(take_in) and step != @prebuild do
-    in_transaction!("requeue_for_pause/2")
+    in_transaction!("requeue_for_pause/3")
 
     work_item =
       Repo.one!(
@@ -891,14 +900,16 @@ defmodule Apiary.Dispatches do
         of + 1,
         false,
         stage_place(dispatch_run),
-        dispatch_run
+        dispatch_run,
+        report_wait_until
       )
     else
       {:error, :not_requeued}
     end
   end
 
-  def requeue_for_pause(%DispatchRun{}, _paused_until), do: {:error, :not_requeued}
+  def requeue_for_pause(%DispatchRun{}, _paused_until, _report_wait_until),
+    do: {:error, :not_requeued}
 
   # With the workflow model, a run continues only at the stage its work item is placed
   # in, while that stage runs: a work item moved on, or whose stage waits for a person,
@@ -1663,11 +1674,29 @@ defmodule Apiary.Dispatches do
   # The condition, on a run of the queue bound `:run`, that not every key of each of its
   # model providers is in cooldown at `now` (`Apiary.ModelKeys.claimable/2`), the
   # providers `except` counted as cooling, while runs are given model keys
-  # (`Apiary.Runs.ProviderCredential.applies?/0`); any run else.
+  # (`Apiary.Runs.ProviderCredential.applies?/0`); and, whatever the features, that its
+  # report window has ended (`report_waited/1`).
   defp keys_free(now, except) do
+    now = now || now()
+
     if ProviderCredential.applies?(),
-      do: ModelKeys.claimable(now || now(), except: except),
-      else: dynamic([run: _r], true)
+      do: dynamic([run: _r], ^ModelKeys.claimable(now, except: except) and ^report_waited(now)),
+      else: report_waited(now)
+  end
+
+  # The condition, on a run of the queue bound `:run`, that it has no report window, or
+  # that its window has ended at `now`: `report_wait_until` is null or not after `now`
+  # (`requeue_for_pause/3`). The wait is about the paused run's report, not its keys.
+  #
+  # The report's arrival is to end the wait early as well: a key of the paused run's key
+  # rows (`continues_id`, its `runs` row, `run_model_keys.secret_value_id`) whose state is
+  # that it needs a new key. That state does not exist yet; the condition goes here, as a
+  # third alternative, once it does.
+  defp report_waited(now) do
+    dynamic(
+      [run: r],
+      is_nil(r.report_wait_until) or r.report_wait_until <= ^now
+    )
   end
 
   # The condition, on a run of the queue bound `:run`, that a claim may take it: a run

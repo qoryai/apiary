@@ -359,11 +359,25 @@ adds `machine` and `machine_spec`, the run's type and its spec, after `lease_unt
 pool that sends no offers takes only a run of the instance's default type, a run queued on
 the type that was the default then (`dispatch_runs.machine_type_was_default`), or a run
 queued before machine types, and the answer has neither, so the starter uses its default
-machine type. A run queued before machine types has no spec and is of the default type. An
-explore run's documents have `time_limit_minutes`, an integer from 15 to 1440, after
-`run_settings`, for a run with a workflow (`Apiary.Stacks.workflow/2`, or, with the
-workflow model, the workflow of its stage entry): the limit set for that workflow at the
-run's target, else the one set at its workspace (`Apiary.TimeLimits`), else 180 minutes.
+machine type. A run queued before machine types has no spec and is of the default type.
+Every explore run's documents have `run_settings`, a stage's runs among them, as the run
+contract requires (`documents.schema.json`); a prebuild's have none. `runtime` and `model` come from the first model choice in this order
+(`Apiary.ModelChoices.Resolution`): a locked choice of the workspace, the workflow's choice
+at the run's target, the target's choice, the workflow's choice at the workspace, the
+workspace's (Workspace settings › Model), and the organisation's default. With no choice,
+`run_settings` has `runtime` alone, the catalogue's default, and the run uses the gateway's
+key. Each later session of a run of a stage with `shared_run: true` gets its workflow's
+runtime and model in the next-session answer's `model_choice`, which always has `runtime`,
+and, for a session on a provider other than that of the run's default model provider
+credential, `model_credential`, the key the session starts on (`docs/contract/run-api.md`). A pool claims a run only with the feature `factory` on (`dispatch.claim`), and
+`factory` needs `secrets`. The code that builds `run_settings` runs with either feature off
+too: with `factory` or `secrets` off, it builds the choice's `runtime`, `model`, `effort`,
+`provider_models` and `tiers` and no key, and checks neither the chosen key nor the
+provider's endpoint. An explore run's documents have `time_limit_minutes`, an integer from
+15 to 1440, after `run_settings`, for a run with a workflow (`Apiary.Stacks.workflow/2`,
+or, with the workflow model, the workflow of its stage entry) and `factory` on: the limit
+set for that workflow at the run's target, else the one set at its workspace
+(`Apiary.TimeLimits`), else 180 minutes.
 With no workflow for the run, the member is absent, and the run takes the default of the
 workflow's stack, which the machine applies. After it come `shared_run`, `true` for a run
 of a stage with `shared_run: true`, and `full_suite`, `true` for a run with `write` access
@@ -884,65 +898,90 @@ on each node, until the node restarts or the table, at 4,096 results, empties.
 to a model provider gets the provider's keys at its claim
 (`Apiary.Dispatches.RunSettings`, `Apiary.ModelKeys.Order`), at most 6, so that the 16
 `credentials` of a run configuration hold them, the registry's credential, the work and
-push credentials, and the harness links.
-Each key is an API credential named `<provider's public id>-<n>`, from 1, with the
-provider's `format`, `endpoint` and `auth`, so the keys form one key group with the start
-key (the Forager contract, Several model keys). The claim orders the provider's keys at
-its clock: the keys with no known reset, or one already passed; then the keys by their known reset, the
-closest minute first; then the keys in cooldown, the earliest `cooldown_until` first. Ties
-go in tie order: the default key first, then the other keys by when each was added. A
-key's known reset is the earliest `resets_at` that a gateway reported, else the next reset
-of its weekly schedule; a key is in cooldown while one of its windows has a
-`cooldown_until` after the claim's clock, or while one of its provider's limit windows has
-a reported `utilization` at or above the key's Use up to percentage and a `resets_at`
-after the claim's clock (`Apiary.ModelKeys.cooldown/4`). The limit windows are
-`limit_windows` of the provider's model provider role in the integrations contract's
-description, vendored with the catalogue: `five_hour` and `seven_day` for the Claude
-subscription, none for an API key. The first key of that order is the start key,
-`model_credential`, never a key in cooldown. `credentials` lists the keys in the order the
-contract has the server send them: the keys out of cooldown in tie order, then the keys in cooldown in tie order. Each
-entry has `pause_for_s`, the key's Pause for, else 60 for an API key and 3600 for a
+push credentials, and the harness links. A run of a stage with `shared_run: true` also
+gets the keys of each provider its later sessions run on, one provider per session. The
+claim picks at most 6 keys in this order: the keys of the provider of the default model
+provider credential, at most 6 less the number of other providers; then one key of each
+other provider, in session order; then the other providers' remaining keys;
+`credentials` lists them provider by provider, the provider of the default model
+provider credential first. A run whose first session runs on the machine's local model
+provider credential, as its workflow resolves to no model choice, gets no key. The run
+keeps its keys in `run_model_keys`, one row per key. Each key is an API credential named
+`<provider's public id>-<n>`, `n` from 1 for each provider, with its provider's
+`format`, `endpoint` and `auth`, and `group`, the provider's public id, so each
+provider's keys form one key group, which the gateway rotates, cools and stops apart
+from every other group (the Forager contract, Several model keys). Where the workflows
+of a stage with `shared_run: true`, their later steps included (the default step under a
+workflow's override, then the fallbacks), use more than 6 providers, a save of the stage
+fails, and a claim of a run of the stage ends `too_many_providers`. A save of the stage
+also fails, and a claim of a run of the stage ends `session_key_missing`, in three
+cases. First, a later workflow's provider has no key, and neither has a provider of its
+later steps. Second, a workflow's runtime uses another API of a provider that an earlier
+workflow uses: one run uses one API of each provider. Third, the first workflow has no
+model choice, and a later workflow's choice is on a model provider. A later workflow
+with no model choice, which runs on the default runtime, never fails the save. The claim
+orders the provider's keys at its clock: the keys with no known reset, or one already
+passed; then the keys by their known reset, the closest minute first; then the keys in
+cooldown, the earliest `cooldown_until` first. Ties go in tie order: the default key
+first, then the other keys by when each was added. A key's known reset is the earliest
+`resets_at` that a gateway reported, else the next reset of its weekly schedule; a key
+is in cooldown while one of its windows has a `cooldown_until` after the claim's clock,
+or while one of its provider's limit windows has a reported `utilization` at or above
+the key's Use up to percentage and a `resets_at` after the claim's clock
+(`Apiary.ModelKeys.cooldown/4`). The limit windows are `limit_windows` of the provider's
+model provider role in the integrations contract's description, vendored with the
+catalogue: `five_hour` and `seven_day` for the Claude subscription, none for an API key.
+The first key of that order is the start key, `model_credential`, never a key in
+cooldown. `credentials` lists the keys in the order the contract has the server send
+them: the keys out of cooldown in tie order, then the keys in cooldown in tie order.
+Each entry has `pause_for_s`, the key's Pause for, else 60 for an API key and 3600 for a
 subscription, written into the run once: by its claim, or, for a run claimed before runs
 kept several keys, by the upgrade (20261111100000). Where the claim had them, an entry
 also has `resets_at`, `schedule_resets_at` and `cooldown_until`; no entry has `chosen`,
-since a model choice chooses a provider, not one of its keys. A key's
-`cooldown_until` is the latest end of its cooldown: a window's `cooldown_until`, or the
-`resets_at` of a limit window at the key's Use up to percentage. A key with a Use up to
-percentage, of a provider with limit windows, also has `use_up_to_percent` and
-`use_up_to_windows`, the provider's limit windows. Each key keeps its percentage
-(`runs.model_keys`), and the run keeps the windows once, in `runs.provider_api`, from the
-catalogue entry at the claim, so a later release does not change a live run's windows. An
-entry has both or neither: in a run claimed before runs kept the windows, no key has
-either member. The entries are fixed for the run: a later state reaches the gateway in the
-answer to its model keys report (The model keys report, below). Where every key of the
-provider is in cooldown, the claim takes the first of the choice's fallbacks, in their
-order, with a key out of cooldown, and the fallback's runtime and tiers: the run's
-`runtime` is the fallback's, and its `provider_api` the API of the fallback's provider for
-that runtime. Where every key of
-the provider and of each fallback is in cooldown, the claim registers nothing and the run
-of the queue waits again, its `dispatch_runs.model_provider_ids` set to those providers;
-no claim takes a run of the queue while every key of each of its providers is in cooldown
-(`Apiary.ModelKeys.claimable/1`). A change of a model choice, of its fallbacks, or of a
-model provider sets the providers of each waiting run it may change again, from the choice
-in effect, once the change has committed (`Apiary.Dispatches.refresh_model_providers/1`).
-A gateway's secrets request reveals each key in the request by the key's row id, under the
-value id the key has at the request: a key renamed since the claim is revealed, and a
-request for a key deleted since fails. A run stored before runs kept several keys keeps
-its one key, under the provider's public id, and its run configuration has the key's Pause
-for.
+since a model choice chooses a provider, not one of its keys. A key's `cooldown_until`
+is the latest end of its cooldown: a window's `cooldown_until`, or the `resets_at` of a
+limit window at the key's Use up to percentage. A key with a Use up to percentage, of a
+provider with limit windows, also has `use_up_to_percent` and `use_up_to_windows`, the
+provider's limit windows. Each key keeps its percentage and its provider's windows in
+its row of `run_model_keys`, from the catalogue entry at the claim, so a later release
+does not change a live run's windows. An entry has both or neither. The entries are
+fixed for the run: a later state reaches the gateway in the answer to its model keys
+report (The model keys report, below). Where every key of the provider is in cooldown,
+the claim takes the first of the choice's fallbacks, in their order, with a key out of
+cooldown, and the fallback's runtime and tiers: the run's `runtime` is the fallback's,
+and its `provider_api` the API of the fallback's provider for that runtime. Where every
+key of the provider and of each fallback is in cooldown, the claim registers nothing and
+the run of the queue waits again, its `dispatch_runs.model_provider_ids` set to those
+providers; no claim takes a run of the queue while every key of each of its providers is
+in cooldown (`Apiary.ModelKeys.claimable/1`). A change of a model choice, of its
+fallbacks, or of a model provider sets the providers of each waiting run it may change
+again, from the choice in effect, once the change has committed
+(`Apiary.Dispatches.refresh_model_providers/1`). A gateway's secrets request reveals
+each key in the request by the key's row id, from the secret of that key's provider
+alone, under the value id the key has at the request: a key renamed since the claim is
+revealed, and a request for a key deleted since fails. The checks of a provider run for
+each provider of the keys in the request, and one failure fails the whole request. A run
+claimed before runs kept their keys in `run_model_keys` has no key rows: its run
+configuration no longer has its model keys, and its gateway's secrets request is refused
+`410` `run_configuration_superseded`.
 
 **A run that continues a paused run.** The end of a run of a workspace's queue whose exit
 paused it (How a run ends) queues, in the same transaction, the run that continues it
-(`Apiary.Dispatches.requeue_for_pause/2`): of the same work item, take in and stage, at
-the paused run's place in the queue, its `continues_id` the paused run. It queues none for
+(`Apiary.Dispatches.requeue_for_pause/3`): of the same work item, take in and stage, at
+the paused run's place in the queue, its `continues_id` the paused run. After an exit
+`paused` with `model_key_switch`, which has no key, a claim takes the continuation only
+once 60 seconds have passed after the exit (`dispatch_runs.report_wait_until`), the time
+in which Qory Apiary still records the run's model keys report, so the report is recorded
+before the claim orders the keys. The end of a paused run queues no continuation for
 a prebuild, for a work item no longer in Explore, at another take in or placed at another
 stage, when the work item's stage does not run, such as one that waits for a person, or
 while another run of the take in has not ended. The paused run keeps
 `paused_until`, the earliest end of a cooldown among the keys of the provider of the
 session that paused (`Apiary.Runs.Run.session_provider_ids/2`), when every one of them is
 in cooldown then. The session that paused is the one whose `dev.qory.session.exited` is
-`paused` with `model_key_limit`, or `cancelled` with `model_key_limit` from a gateway of
-the earlier contract, which the projection folds into the run (`runs.paused_session`);
+`paused` with `model_key_limit` or `model_key_switch`, or `cancelled` with
+`model_key_limit` from a gateway of the earlier contract, which the projection folds into
+the run (`runs.paused_session`);
 Forager pauses only the last session of a run. The claim of the
 continuation stores its `resume` (`Apiary.Runs.Transcript.resume_at_claim/2`): the paused
 run's id, and `session_id` and `path` of the last `dev.qory.session.transcript` by
@@ -1454,7 +1493,8 @@ code, a lower-case letter and then up to 63 lower-case letters, digits and `_`
 (`^[a-z][a-z0-9_]{0,63}$`, matched from `\A` to `\z`). Forager's codes are reserved:
 `timeout`, `interrupted`, `no_session`, `stopped`, `session_lost`, `gateway_lost`,
 `batch_refused`, `run_closed`, `image_missing`, `image_access_denied`, `image_rate_limited`,
-`image_registry_unreachable` and `model_key_limit`, and so are old names Forager no longer
+`image_registry_unreachable`, `model_key_limit`, `model_key_switch` and
+`model_key_unauthorized`, and so are old names Forager no longer
 writes, which records written before may hold: `quiet`, `credential_expired`, `credential_check_unreachable`,
 `credential_check_invalid`, `run_ended_at_issuer`, `issuer_unreachable` and
 `issuer_answer_invalid`. Any other code is the one the run's
@@ -1488,10 +1528,13 @@ The fold maps an exit to a state by the first rule that applies
    run, under The run endpoint). `cancelled` with `model_key_limit`, the shape a gateway
    sent before the contract had `paused` (a gateway built with qoryai/forager#53 and
    before #54), is Paused too, while such gateways run. The contract allows `model_key_limit`
-   with `paused` alone, and `paused` with `model_key_limit` alone: with any other
-   `state`, or none, the reason changes nothing, as an unknown reason does, and `paused`
-   with another reason, or none, is read as an unknown `state`; the rules below apply,
-   and the fold logs one line.
+   with `paused` alone, and `paused` with `model_key_limit` or `model_key_switch` alone:
+   with any other `state`, or none, the reason changes nothing, as an unknown reason
+   does, and `paused` with a reason other than `model_key_limit` or `model_key_switch`,
+   or none, is read as an unknown `state`; the rules below apply,
+   and the fold logs one line. `paused` with `model_key_switch` is Paused too: the
+   gateway ended a Codex session on a key that is out while another key of the run is
+   usable, and the run that continues it resumes that session.
 
    A run of a workspace's queue that pushed its questions or a proposal during the run,
    not during an earlier attempt, and then paused, is Completed instead, with no reason:
@@ -2000,13 +2043,16 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   entry of the key's arrival records the gateway's address as `remote_ip`.
 - Model keys: the contract writes `model_key_limit` with `paused` alone, on
   `dev.qory.session.exited` and on `dev.qory.run.exited`, and `paused` with
-  `model_key_limit` alone; a step never ends `paused`. Qory Apiary reads that pair as
+  `model_key_limit` or `model_key_switch` alone; a step never ends `paused`. Qory Apiary reads that pair as
   Paused (How a run ends), so a run that paused is never read as a person's cancel or a
   failure, and reads `cancelled` with `model_key_limit`, which a gateway of the earlier
   contract sends, the same way. With another `state`, or none, Qory Apiary reads the
   exit by its state, with no pause and no continuation, and logs one line; an exit
-  `paused` with another reason, or none, is read as one of an unknown state, with one
-  line too.
+  `paused` with a reason other than `model_key_limit` or `model_key_switch`, or none, is
+  read as one of an unknown state, with one
+  line too. The contract also writes `model_key_switch` with `paused`, for a Codex run
+  whose key is out while another key is usable; Qory Apiary reads that pair as Paused as
+  well.
 - Model keys: the contract has the gateway send its last report within 10 seconds of the
   run's end. Qory Apiary records a report that arrives at most 60 seconds after the run
   ended, by the server's clock, at the first arrival of its `dev.qory.run.exited` or

@@ -27,7 +27,8 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # documents/1 is a run's documents (the run contract's `documents.schema.json`), in
   # this order: the run's `step`, the workspace's `domain`, the run's `access` and
   # `target` (none for a run without a target), its `target_version`, its `work_item`
-  # (none for a prebuild), its `run_settings` (none for none, a `Jason.OrderedObject`),
+  # (none for a prebuild), its `run_settings` (a `Jason.OrderedObject`; every run of the
+  # step explore has them, `Apiary.Dispatches.RunSettings`, and a prebuild none),
   # the members about its first session, `time_limit_minutes`, `shared_run` and
   # `full_suite`, each where present (`:session`, `{name, value}` members, none for a
   # prebuild), its `workflow`, `harness_hidden`, `harness` and `submit`

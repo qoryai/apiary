@@ -67,7 +67,55 @@
         },
         {
           "const": "environment_image_missing",
-          "description": "The prebuild's environment image (`environment_image` in the run documents) is not in the registry."
+          "description": "The prebuild's environment image, environment_image of the run documents, is not in the registry."
+        },
+        {
+          "const": "push_head_changed",
+          "description": "The branch head at the forge is not the commit that the run expected (its start commit, or its last push), or the branch is missing."
+        },
+        {
+          "const": "push_scope_refused",
+          "description": "A commit of the session changes a file that the session may not change: a file outside its plan's scope at the session's start, or any file outside .qory/ when the session has no plan."
+        },
+        {
+          "const": "push_key_found",
+          "description": "A commit of the session adds a key or a value of the run's secrets, or the commits are too large to verify, so qory pushed nothing."
+        },
+        {
+          "const": "run_documents_invalid",
+          "description": "The run's documents, or the response to the run code, fail qory's validation."
+        },
+        {
+          "const": "harness_invalid",
+          "description": "The harness that the run composes, from the run documents or the target's harness file, cannot be used: its source, fetch or composition fails, neither has one, its qory version does not fit, or the runtime has no headless start for the workflow."
+        },
+        {
+          "const": "machine_setup_invalid",
+          "description": "The machine cannot run the step: its forager.yaml, folders, home, proxies, image fit, runtime install, push verification or setup container fail, or this machine has no registry."
+        },
+        {
+          "const": "target_fetch_failed",
+          "description": "qory could not fetch the target of the run."
+        },
+        {
+          "const": "repository_check_failed",
+          "description": "A git or folder step on the run's repository failed."
+        },
+        {
+          "const": "forge_unreachable",
+          "description": "qory could not reach the forge of the run's repository."
+        },
+        {
+          "const": "history_rewritten",
+          "description": "The HEAD of the run's working folder does not descend from the commit that the run started from, so a push would not be a fast-forward."
+        },
+        {
+          "const": "run_api_failed",
+          "description": "A call from qory to the run API failed."
+        },
+        {
+          "const": "prebuild_failed",
+          "description": "A prebuild failed: its build, the pull of its base image, or the push or verification of the image it built."
         }
       ]
     }

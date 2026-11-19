@@ -75,7 +75,10 @@ defmodule Apiary.Dispatches.Handover do
   #      (`Apiary.Lingo.Domain.target_required?/1`) and is no test work item,
   #      `inputs_invalid`; a run of a stage whose workflows share one run, whose
   #      workflows would run with different access levels with the levels their harness
-  #      declares now (`Apiary.Stages.shared_access/1`), `shared_access_differs`; an
+  #      declares now (`Apiary.Stages.shared_access/1`), `shared_access_differs`; a run
+  #      of such a stage whose workflows' model choices no longer fit one run
+  #      (`Apiary.Stages.shared_models/1`), `too_many_providers`,
+  #      `model_choice_missing` or `session_key_missing`; an
   #      explore run of the Qory harness or of the built-in one,
   #      whose read of the harness for the claim failed (`at_claim/4`),
   #      `harness_unresolved`; an explore run whose model choice cannot be formed
@@ -136,10 +139,10 @@ defmodule Apiary.Dispatches.Handover do
   # where the instance has a largest prebuilt image. Its target is made in its workspace
   # where the workspace has no row of it.
   #
-  # An explore run has `run_settings` with the features `factory` and `secrets` on
-  # (`Apiary.Dispatches.RunSettings`), and keeps them on its registered run, with the
-  # provider's row id, its keys' secret's row id, its model keys in their order, the
-  # provider's chain and the API of the provider the run uses; later reads take those,
+  # An explore run has `run_settings` (`Apiary.Dispatches.RunSettings`), and keeps them on
+  # its registered run, with, where it is given its provider's key, the provider's row id,
+  # its keys' secret's row id, its model keys in their order, the provider's chain and the
+  # API of the provider the run uses; later reads take those,
   # never the choices. Where every key of the choice's provider, of the default step
   # under a workflow's override, and of each fallback that forms is in cooldown, the
   # claim registers nothing once the checks of step 1 pass: `register/2` returns
@@ -152,7 +155,7 @@ defmodule Apiary.Dispatches.Handover do
   # `time_limit_minutes`, its workflow's time limit, and `shared_run` and `full_suite`
   # where true. For a run of a stage with `shared_run: true`, the claim keeps the settings
   # of each entry of the stage on the run it registers and writes the run's first session
-  # (`Apiary.Stages.claim_sessions!/2`), which each later session reads. Its input is
+  # (`Apiary.Stages.claim_sessions!/3`), which each later session reads. Its input is
   # formed with the name of the workspace's domain (`Apiary.Lingo.Domain.name/1`) and the
   # run's target, or none for an explore run whose work item has none, and takes what the
   # rest of the run's documents leave of their limit: it leaves out its oldest comments
@@ -202,9 +205,18 @@ defmodule Apiary.Dispatches.Handover do
   # row, the gateway's row `FOR SHARE`, the records a lapse needs, the run of the queue it
   # took, and the dispatch it wrote): the rows of the model providers an explore run's
   # choices name `FOR SHARE`, then the rows of their keys' secrets `FOR SHARE`
-  # (`Apiary.Dispatches.RunSettings`), then the run record `FOR UPDATE`, updated. A change of a
-  # provider or of its keys locks nothing of the queue, so it and a claim take turns at
-  # the provider's row alone. Nothing else is locked: not the pool's connection, its
+  # (`Apiary.Dispatches.RunSettings`), then the run record `FOR UPDATE`, updated, then
+  # the run's key rows inserted (`run_model_keys`), whose foreign keys take the provider
+  # and secret rows `FOR KEY SHARE`, already held. A change of a provider or of its keys
+  # locks nothing of the queue, so it and a claim take turns at the provider's row alone.
+  # A provider's deletion (`Apiary.Connections.delete_provider/2`) takes the organisation
+  # `FOR SHARE` and the integrations lock, neither of which a claim takes, then the
+  # provider `FOR UPDATE`; both take the provider's row before its secret's. The one
+  # existing `runs` row a claim locks is its queued run, which has no key until the claim
+  # writes them, and the deletion's set-null writes touch only rows of ended runs, as a
+  # live run fails the deletion: so no deadlock, and only the deletion waits, at the
+  # provider's row. The check of a continuation's report window reads key states without
+  # a lock and writes nothing. Nothing else is locked: not the pool's connection, its
   # collection, the work item or the workspace.
 
   import Ecto.Query, only: [from: 2]
@@ -248,6 +260,7 @@ defmodule Apiary.Dispatches.Handover do
 
   alias Apiary.Runs.{
     About,
+    ModelKey,
     Number,
     ProviderCredential,
     Registration,
@@ -447,9 +460,17 @@ defmodule Apiary.Dispatches.Handover do
               through |> Map.put(:gateway_id, gateway.id) |> Map.put(:run_documents, documents)
             )
 
+          insert_keys!(run, formed.settings)
+
           if formed.work, do: RunCredentials.insert!(formed.work, run)
           if formed.push, do: RunCredentials.insert!(formed.push, run)
-          :ok = Apiary.Stages.claim_sessions!(locked.run, time_limits(locked))
+
+          :ok =
+            Apiary.Stages.claim_sessions!(
+              locked.run,
+              time_limits(locked),
+              session_models(formed)
+            )
 
           {:ok,
            %{run: run, run_code: code, gateway_url: grant.gateway_url, documents: formed.answer}}
@@ -769,7 +790,7 @@ defmodule Apiary.Dispatches.Handover do
   # either key may attach the run and ask for the entry's value. A run formed with a model
   # provider, with the features under which it is given its credential
   # (`Apiary.Runs.ProviderCredential.applies?/0`), ends `secrets_not_allowed` on the same
-  # keys, or when the provider's key may not be sealed for the gateway
+  # keys, or when the key of one of its providers may not be sealed for the gateway
   # (`Apiary.Runs.ProviderCredential.sealable_to?/3`). `run` is the run of the queue, read
   # under lock at the claim.
   defp sealable({:ok, %{work: %RunCredential{}}} = ok, gateway, run, keys) do
@@ -781,31 +802,41 @@ defmodule Apiary.Dispatches.Handover do
   defp sealable(formed, gateway, run, keys), do: model_sealable(formed, gateway, run, keys)
 
   @doc false
-  # model_sealable/4 is `formed` when the run's model key may be sealed for `gateway`, else
-  # `{:end, :secrets_not_allowed}`. The seal is checked for the organisation and the
-  # workspace of `dispatch_run`, the run of the queue read under lock at the claim, not
-  # for the workspace of the claiming pool.
+  # model_sealable/4 is `formed` when every model key of the run, of each of its
+  # providers, may be sealed for `gateway`, else `{:end, :secrets_not_allowed}`. The seal
+  # is checked for the organisation and the workspace of `dispatch_run`, the run of the
+  # queue read under lock at the claim, not for the workspace of the claiming pool.
   @spec model_sealable(term, Node.t(), DispatchRun.t(), [AccessKey.t()]) :: term
   def model_sealable(
-        {:ok, %{settings: %{columns: %{provider_chain: chain}}}} = ok,
+        {:ok, %{settings: settings}} = ok,
         %Node{} = gateway,
         %DispatchRun{organisation_id: organisation_id, workspace_id: workspace_id},
         keys
       ) do
     run = %{organisation_id: organisation_id, workspace_id: workspace_id}
+    chains = model_chains(settings)
 
     cond do
+      # A run formed with no model key: nothing to seal.
+      chains == [] -> ok
       not ProviderCredential.applies?() -> ok
       not Enum.all?(keys, & &1.allow_secrets) -> {:end, :secrets_not_allowed}
-      ProviderCredential.sealable_to?(chain, gateway, run) -> ok
+      Enum.all?(chains, &ProviderCredential.sealable_to?(&1, gateway, run)) -> ok
       true -> {:end, :secrets_not_allowed}
     end
   end
 
-  # A run formed with no model provider, or not formed: nothing to seal. Any gateway or
-  # run of the queue of another shape raises `FunctionClauseError`, so the seal is not
-  # skipped.
+  # A run not formed: nothing to seal. Any gateway or run of
+  # the queue of another shape raises `FunctionClauseError`, so the seal is not skipped.
   def model_sealable(formed, %Node{}, %DispatchRun{}, _keys), do: formed
+
+  # The chains of the run's keys; for a run whose keys are all in cooldown, which waits
+  # for them, the chain of its choice's provider, so that such a run ends before it waits.
+  defp model_chains(%{keys: [_ | _] = model_keys}),
+    do: model_keys |> Enum.map(& &1.chain) |> Enum.uniq()
+
+  defp model_chains(%{columns: %{provider_chain: chain}}) when is_binary(chain), do: [chain]
+  defp model_chains(_settings), do: []
 
   # The run's work credential entry, formed from what the run is formed from, with the
   # access level its documents have (`Apiary.Runs.RunCredentials.work_from/5`): nil for
@@ -875,6 +906,7 @@ defmodule Apiary.Dispatches.Handover do
 
     with false <- is_nil(target) and not test?(work_item) and Domain.target_required?(workspace),
          :ok <- shared_access(dispatch_run),
+         :ok <- shared_models(dispatch_run),
          {:ok, harness} <- harness(dispatch_run, target, locked.harness_read, locked.now),
          level = RunCredentials.run_access(dispatch_run),
          collection = RunCredentials.work_collection(dispatch_run, work_item, target),
@@ -918,6 +950,18 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
+  # A run of a stage whose workflows share one run, whose model choices no longer fit the
+  # one run, ends before its keys are stored (`Apiary.Stages.shared_models/1`): with more
+  # than 6 model providers, `too_many_providers`; with a workflow with no model choice
+  # whose runtime cannot use the provider the run starts on, `model_choice_missing`; with
+  # a workflow whose session would have no key in the run, `session_key_missing`.
+  defp shared_models(dispatch_run) do
+    case Apiary.Stages.shared_models(dispatch_run) do
+      :ok -> :ok
+      {:error, %{detail: detail}} -> {:end, elem(detail, 0)}
+    end
+  end
+
   # The members of an explore run's documents about its first session, after
   # `run_settings`: `time_limit_minutes`, the time limit of the run's workflow as
   # `RunSettings.hold/1` read it, where the run has a workflow and run settings; then
@@ -939,6 +983,12 @@ defmodule Apiary.Dispatches.Handover do
   # for a run with no run settings.
   defp time_limits(%{held: %{time_limits: limits}}), do: limits
   defp time_limits(_locked), do: %{}
+
+  # The runtimes and models of the later sessions of a shared run as the claim formed
+  # them (`RunSettings.build/2`): every shared run has them; none for a run with no run
+  # settings.
+  defp session_models(%{settings: %{sessions: sessions}}), do: sessions
+  defp session_models(_formed), do: %{}
 
   # The run settings, and the providers whose keys are all in cooldown, nil where the run
   # has keys: a run whose keys are all in cooldown is formed with the choice's settings,
@@ -1489,6 +1539,21 @@ defmodule Apiary.Dispatches.Handover do
         |> PublicId.Insert.insert!()
     end
   end
+
+  # The run's model keys as the claim formed them (`Apiary.Dispatches.RunSettings.build/2`),
+  # one `run_model_keys` row each, after the run's row, which the claim has locked
+  # `FOR UPDATE`. Their foreign keys take the provider and secret rows `FOR KEY SHARE`,
+  # which `Apiary.Dispatches.RunSettings.hold/1` has already locked `FOR SHARE`, so the insert
+  # waits for no lock that a provider's deletion takes first (`Apiary.Connections`). None
+  # for a run with no key.
+  defp insert_keys!(%Run{id: run_id}, %{keys: [_ | _] = keys}) do
+    rows = Enum.map(keys, &Map.put(Map.take(&1, ModelKey.fields()), :run_id, run_id))
+    {count, _rows} = Repo.insert_all(ModelKey, rows)
+    ^count = length(rows)
+    :ok
+  end
+
+  defp insert_keys!(_run, _settings), do: :ok
 
   # What the claim sets on the run it registers.
   defp registered(%{key: key, run: dispatch_run, now: now, body: body} = locked, formed, through) do

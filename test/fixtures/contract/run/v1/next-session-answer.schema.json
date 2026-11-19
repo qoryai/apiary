@@ -32,12 +32,12 @@
           "$ref": "https://qory.dev/contracts/run/v1/documents.schema.json#/$defs/workflow"
         },
         "model_choice": {
-          "description": "The model choice of the session, as the model, effort, provider_models and tiers of run_settings. Absent when no provider is chosen: the session uses the gateway's configured key and the runtime's default model.",
+          "description": "The model choice of the session, as the runtime, model, effort, provider_models and tiers of run_settings. Absent when the session runs on the runtime of run_settings and no provider is chosen: the session uses the default model of that runtime, with the key of its model_credential or, without one, of the group of the run's start key. A session that changes only the runtime has a model_choice with only runtime.",
           "$ref": "https://qory.dev/contracts/run/v1/documents.schema.json#/$defs/model_choice"
         },
         "model_credential": {
-          "description": "The credential of the run that the session joins with, such as <the provider's public id>-<its place from 1>: example-provider-1. The schema checks only the pattern of a credential's name in Forager's policy. A credential of the start key's provider is the active key of that provider's group. Absent when no provider is chosen.",
-          "$ref": "https://qory.dev/contracts/forager/v1/policy.schema.json#/properties/credentials/items/properties/name"
+          "description": "The credential of the run that the session joins with, such as <the provider's public id>-<its place from 1>: example-provider-1. The schema checks only the grammar of a credential's name in Forager's run configuration: 1 to 64 of a-z, 0-9, underscore, dot and dash, starting with a letter or a digit. A credential of the start key's provider is the active key of that provider's group. When absent, the session joins with the group of the run's start key. The control plane sets model_credential for every later session whose key is a credential of the run configuration outside that group. When model_choice has runtime, the control plane sets a model_credential only for a credential of an API whose runtimes, when present, list that runtime and whose format that runtime sends, as the model_provider role of the integration description says.",
+          "$ref": "https://qory.dev/contracts/forager/v1/run-configuration.schema.json#/$defs/credential_name"
         },
         "time_limit_minutes": {
           "description": "The time limit of the session, in minutes, from 15 to 1440.",

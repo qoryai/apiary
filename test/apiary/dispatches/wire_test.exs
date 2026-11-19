@@ -108,16 +108,17 @@ defmodule Apiary.Dispatches.WireTest do
   # The vendored contracts are at different integrations commits. The provisioner contract
   # is at 55a22cb8, which adds the access value write-no-push to the run documents. That
   # commit comes after 0506879f, which binds a group role to a list of agents. The run
-  # contract is at cd52a06e, which adds the next-session request and its answer,
+  # contract is at 5a005c9c, which adds the next-session request and its answer,
   # time_limit_minutes, shared_run and full_suite to the documents of a run of a stage,
-  # the tier balanced in place of fast, and the outcome of a run with its end codes.
+  # the tier balanced in place of fast, the outcome of a run with its end codes, a later
+  # session's runtime, and run_settings on every explore run.
   # The integration contract is at b5ae1a43, which adds `oauth_device` of an API to the
   # description of a model provider, `submissions` to the source role, and the submission
   # entry of the change feed with its reply and its failure report.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "55a22cb87e724df3008e511a7de84e1c710ac913"},
-          {"run/v1", "cd52a06e2fa55d658ede1a5fffdbc85901066303"},
+          {"run/v1", "5a005c9ca3b994616964ad4b11c57d8f1254d3a0"},
           {"integration/v1", "b5ae1a43582ee58a490f17edb0fce2e4c19a6c6d"},
           {"explore/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
           {"diagnostics/v1", "8178d27815cb87dea356ccce614254f35deb58f4"}
@@ -136,12 +137,12 @@ defmodule Apiary.Dispatches.WireTest do
     fixtures = Path.join(@vendored, "run/v1/fixtures")
     count = &(fixtures |> Path.join(&1) |> Path.wildcard() |> length())
 
-    assert count.("documents/*.json") == 33
+    assert count.("documents/*.json") == 32
     assert count.("next-session-request/*.json") == 6
-    assert count.("next-session-answer/*.json") == 3
-    assert count.("outcome/*.json") == 11
-    assert count.("invalid/*.json") == 174
-    assert count.("**/*.json") == 33 + 6 + 3 + 11 + 174
+    assert count.("next-session-answer/*.json") == 5
+    assert count.("outcome/*.json") == 23
+    assert count.("invalid/*.json") == 186
+    assert count.("**/*.json") == 32 + 6 + 5 + 23 + 186
 
     for path <- Path.wildcard(Path.join(fixtures, "**/*.json")) do
       relative = Path.relative_to(path, fixtures)
