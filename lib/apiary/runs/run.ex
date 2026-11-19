@@ -127,8 +127,9 @@ defmodule Apiary.Runs.Run do
     field :leaked_secrets_omitted, :integer, default: 0
     field :projected_sequence, :integer, default: 0
 
-    # The cost the run reported: the sum of `cost_usd` over its session result events
-    # (`Apiary.Runs.Fold`). Null until a result carried one; never zero for "unknown".
+    # The cost the run reported: the sum, over its sessions, of the `cost_usd` of each
+    # session's last result event (`Apiary.Runs.Fold`, `Apiary.Runs.Sessions`). Null until a
+    # result carried one; never zero for "unknown".
     field :cost_usd, :decimal
 
     # What the run's sessions used, from their `dev.qory.session.exited`

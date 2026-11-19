@@ -300,7 +300,7 @@ defmodule Apiary.Kinds.ServicesTest do
                     events/runtime.text.schema.json events/runtime.tool_result.schema.json
                     events/runtime.tool_denied.schema.json
                     events/session.transcript.schema.json
-                    events/run.target_write.schema.json)
+                    events/run.target_write.schema.json events/runtime.result.schema.json)
                  |> Enum.map(&("priv/contract/" <> &1))
                  |> Enum.concat(
                    for file <- ~w(sealed/invalid/bad-signature.json sealed/invalid/expired.json

@@ -275,6 +275,8 @@ defmodule Apiary.DeletionTest do
       held = counts(workspace_id: workspace.id)
       assert Enum.count(held, fn {_table, n} -> n > 0 end) >= 10, inspect(held)
       assert held["work_item_comments"] == 2
+      assert held["session_records"] >= 1
+      assert held["session_key_windows"] == 1
       kept_here = counts(workspace_id: scope.workspace.id)
       kept_there = counts(organisation_id: other.organisation.id)
 
@@ -769,7 +771,18 @@ defmodule Apiary.DeletionTest do
 
     run = Repo.one!(from r in Apiary.Runs.Run, where: r.node_run_id == ^subject)
     events_fixture(run, Enum.drop(record(), 2))
-    {:ok, _} = Projector.project(run)
+    {:ok, run} = Projector.project(run)
+
+    # The key windows of the run's first session, which has a record from its events.
+    :ok =
+      Apiary.Runs.Sessions.record_windows(run, 1, [
+        %{
+          secret_value_id: Ecto.UUID.generate(),
+          window: "five_hour",
+          utilization: 11,
+          observed_at: DateTime.utc_now()
+        }
+      ])
 
     {:ok, workspace} = Retention.update_retention(scope, %{events_retention_days: 3650})
     Retention.prune_workspace(workspace)
