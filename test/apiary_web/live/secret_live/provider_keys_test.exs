@@ -62,6 +62,13 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
     |> Enum.join(" ")
   end
 
+  # No page shows the value id Apiary gave a key (`key-<n>`). A row id may start with
+  # digits, so the UUIDs go first.
+  defp refute_key_names(html) do
+    uuid = ~r/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/
+    refute Regex.replace(uuid, html, "") =~ ~r/key-\d/
+  end
+
   defp refute_key(html) do
     refute html =~ @key
     refute html =~ "second-key"
@@ -90,7 +97,7 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
     assert has_element?(lv, "#{row} .q-title", secret.name)
     assert has_element?(lv, "#{row}-provider", "Claude keys")
     assert has_element?(lv, row, "Model provider key · 1 value")
-    assert text(lv, "#{row}-main-value-id") == line()
+    assert text(lv, "#{row}-#{row_id!(secret, "main")}-value-id") == line()
     refute html =~ "••••"
     assert has_element?(lv, "#{row}-used-by", "Claude keys")
     assert has_element?(lv, "#secrets-tabs-secrets .q-tabs-n", "2")
@@ -100,8 +107,8 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
     assert has_element?(lv, "#{row}-delete")
     refute has_element?(lv, "#{row}-edit")
     refute has_element?(lv, "#{row}-add")
-    assert has_element?(lv, "#{row}-main-change")
-    refute has_element?(lv, "#{row}-main-rename")
+    assert has_element?(lv, "#{row}-#{row_id!(secret, "main")}-change")
+    refute has_element?(lv, "#{row}-#{row_id!(secret, "main")}-rename")
 
     plain_row = "#secret-#{plain.public_id}"
     assert has_element?(lv, "#{plain_row}-add")
@@ -122,7 +129,7 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
 
     assert has_element?(
              lv,
-             ~s{#{row}-main-change[aria-label="Change value #{line()} of #{secret.name}"]}
+             ~s{#{row}-#{row_id!(secret, "main")}-change[aria-label="Change value #{line()} of #{secret.name}"]}
            )
   end
 
@@ -131,7 +138,7 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
     row = "#secret-#{secret.public_id}"
     {:ok, lv, _html} = live(conn, secrets_path(scope))
 
-    lv |> element("#{row}-main-change") |> render_click()
+    lv |> element("#{row}-#{row_id!(secret, "main")}-change") |> render_click()
     assert_patch(lv, change_path(scope, secret, "main"))
     assert has_element?(lv, "h1", "Change #{line()} of #{secret.name}")
 
@@ -165,7 +172,7 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
 
     {:ok, lv, _html} = live(conn, secrets_path(scope))
 
-    lv |> element("#{row}-main-change") |> render_click()
+    lv |> element("#{row}-#{row_id!(secret, "main")}-change") |> render_click()
     assert_patch(lv, change_path(scope, secret, "main"))
 
     html =
@@ -176,11 +183,21 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
     assert render(lv) =~ "#{line()} of #{secret.name} is saved."
     assert reveal(provider, "main") == {:ok, "changed-#{@key}"}
     assert has_element?(lv, row, "Model provider key · 2 values")
-    assert text(lv, "#{row}-key-1-value-id") == line("cdef")
+    assert text(lv, "#{row}-#{row_id!(secret, "key-1")}-value-id") == line("cdef")
 
-    lv |> element("#{row}-key-1-delete") |> render_click()
-    assert has_element?(lv, "#{row}-key-1-confirm", "Delete #{line("cdef")} of #{secret.name}?")
-    html = lv |> element("#{row}-key-1-confirm button", "Yes, delete") |> render_click()
+    lv |> element("#{row}-#{row_id!(secret, "key-1")}-delete") |> render_click()
+
+    assert has_element?(
+             lv,
+             "#{row}-#{row_id!(secret, "key-1")}-confirm",
+             "Delete #{line("cdef")} of #{secret.name}?"
+           )
+
+    html =
+      lv
+      |> element("#{row}-#{row_id!(secret, "key-1")}-confirm button", "Yes, delete")
+      |> render_click()
+
     refute_key(html)
     assert render(lv) =~ "#{line("cdef")} is deleted from #{secret.name}."
     assert reveal(provider, "key-1") == {:error, :not_found}
@@ -197,21 +214,68 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
     refute Repo.exists?(from e in Apiary.Audit.Entry, where: e.action == "secret.write")
   end
 
+  test "the source of the page has no value id that Apiary gave a key", ctx do
+    %{conn: conn, scope: scope} = ctx
+
+    {:ok, other} =
+      Connections.create_provider(
+        scope,
+        %{provider: "openrouter", keys: [%{value: @key}]},
+        :workspace
+      )
+
+    {:ok, other} = Connections.add_provider_key(scope, other, %{value: @second})
+    secret = Repo.get!(Secret, other.secret_id)
+
+    assert Repo.all(from v in Value, where: v.secret_id == ^secret.id, select: v.value_id)
+           |> Enum.sort() == ["key-1", "key-2"]
+
+    row = "#secret-#{secret.public_id}"
+
+    {:ok, lv, html} = live(conn, secrets_path(scope))
+    assert has_element?(lv, "#{row}-#{row_id!(secret, "key-2")}-value-id")
+    assert has_element?(lv, "#{row}-#{row_id!(secret, "key-2")}-menu")
+    refute_key_names(html)
+    refute_key_names(render(lv))
+
+    {:ok, lv, html} = live(conn, change_path(scope, secret, "key-2"))
+    assert has_element?(lv, "#secret-form")
+    refute_key_names(html)
+    refute_key_names(render(lv))
+
+    {:ok, lv, html} =
+      live(
+        conn,
+        secrets_path(scope, "/#{secret.public_id}/values/#{row_id!(secret, "key-1")}/delete")
+      )
+
+    assert has_element?(lv, "#{row}-#{row_id!(secret, "key-1")}-confirm")
+    refute_key_names(html)
+    refute_key_names(render(lv))
+  end
+
   test "the default key stays, with why on its confirmation", ctx do
     %{conn: conn, scope: scope, secret: secret, provider: provider} = ctx
     row = "#secret-#{secret.public_id}"
     {:ok, _provider} = Connections.add_provider_key(scope, provider, %{value: @second})
     {:ok, lv, _html} = live(conn, secrets_path(scope))
 
-    lv |> element("#{row}-main-delete") |> render_click()
+    lv |> element("#{row}-#{row_id!(secret, "main")}-delete") |> render_click()
 
     assert_patch(
       lv,
       secrets_path(scope, "/#{secret.public_id}/values/#{row_id!(secret, "main")}/delete")
     )
 
-    assert has_element?(lv, "#{row}-main-confirm", "Delete #{line()} of #{secret.name}?")
-    lv |> element("#{row}-main-confirm button", "Yes, delete") |> render_click()
+    assert has_element?(
+             lv,
+             "#{row}-#{row_id!(secret, "main")}-confirm",
+             "Delete #{line()} of #{secret.name}?"
+           )
+
+    lv
+    |> element("#{row}-#{row_id!(secret, "main")}-confirm button", "Yes, delete")
+    |> render_click()
 
     assert has_element?(
              lv,
