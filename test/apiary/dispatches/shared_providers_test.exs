@@ -621,5 +621,25 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
 
       assert {{:ended, :model_choice_missing}, _queued} = claimed!(ctx, continuation)
     end
+
+    test "on such a provider ends the continuation model_choice_missing though no choice uses that provider any more",
+         ctx do
+      northwind = provider!(ctx.scope, "Northwind keys")
+      storefront = provider!(ctx.scope, "Storefront keys", kind: "openai")
+      choose!(ctx.scope, {:workspace, "plan-the-build"}, northwind)
+      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, storefront)
+
+      assert {:ok, _version} =
+               save(ctx.scope, ~w(plan-the-build write-acceptance-checks review-the-build))
+
+      {paused, _dispatch_run, continuation} = paused!(ctx, session: 2)
+      assert Run.session_provider_ids(paused, 2) == [storefront.id]
+
+      # After the pause, write-acceptance-checks moves to Northwind keys: the continuation
+      # still starts on Storefront keys, which no choice of the stage uses now.
+      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, northwind)
+
+      assert {{:ended, :model_choice_missing}, _queued} = claimed!(ctx, continuation)
+    end
   end
 end
