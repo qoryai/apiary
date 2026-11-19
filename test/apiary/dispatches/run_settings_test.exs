@@ -474,8 +474,8 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                )
              ]
 
-      assert {:ok, %{name: start}} = Apiary.Runs.ProviderCredential.for_run(run)
-      assert start == "#{pid}-2"
+      assert {:ok, %{name: default_name}} = Apiary.Runs.ProviderCredential.for_run(run)
+      assert default_name == "#{pid}-2"
 
       # No key value, value id or key's row id in the documents' run settings.
       encoded = Jason.encode!(handed.run_settings)
@@ -510,9 +510,9 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       state!(ctx.provider, "main", until: until)
 
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
-      [start, cooling] = Enum.map(stored_keys(handed.run), &kept/1)
+      [default, cooling] = Enum.map(stored_keys(handed.run), &kept/1)
 
-      assert start ==
+      assert default ==
                key(
                  secret_value_id: value!(ctx.provider, "spare").id,
                  name: "#{pid}-1",
@@ -765,9 +765,9 @@ defmodule Apiary.Dispatches.RunSettingsTest do
         {{:ok, handed}, _queued, _dispatch} =
           handover!(ctx, %{external_ref: "acme/shop##{50 + n}"})
 
-        [start | _rest] = stored_keys(handed.run)
+        [default | _rest] = stored_keys(handed.run)
 
-        assert start.cooldown_until == nil, inspect(cooled)
+        assert default.cooldown_until == nil, inspect(cooled)
       end
     end
   end

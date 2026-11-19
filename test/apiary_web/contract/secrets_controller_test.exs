@@ -74,7 +74,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
     secrets_request(
       Keyword.get(attrs, :run, ctx.run),
       Keyword.get(attrs, :digest, ctx.attached.digest),
-      Keyword.get(attrs, :credentials, [start(ctx)]),
+      Keyword.get(attrs, :credentials, [default_name(ctx)]),
       Keyword.get(attrs, :now, SignedRequest.now())
     )
   end
@@ -83,7 +83,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
 
   # The credential name of the run's default model provider credential, its first: the
   # provider's public id and its place.
-  defp start(ctx), do: "#{ctx.provider.public_id}-1"
+  defp default_name(ctx), do: "#{ctx.provider.public_id}-1"
 
   defp seals, do: Repo.all(from e in Entry, where: e.action == "secret.seal")
 
@@ -115,7 +115,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
 
       assert Apiary.ForagerSchemas.validate("sealed-plaintext.schema.json", plaintext) == :ok
 
-      name = start(ctx)
+      name = default_name(ctx)
 
       assert plaintext ==
                ~s({"version":1,"run_configuration":"#{ctx.attached.digest}",) <>
@@ -381,7 +381,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
     end
 
     test "409 credentials_differ for a credential the run does not have", ctx do
-      for credentials <- [["forge"], [start(ctx), "forge"], [ctx.provider.public_id]] do
+      for credentials <- [["forge"], [default_name(ctx), "forge"], [ctx.provider.public_id]] do
         conn = post_secrets(ctx, request(ctx, credentials: credentials))
         assert conn.status == 409
         assert code(conn) == "credentials_differ"
@@ -457,7 +457,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert code(conn) == "credential_unavailable"
 
       assert log =~
-               "the key #{start(ctx)} of the model provider #{ctx.provider.public_id} " <>
+               "the key #{default_name(ctx)} of the model provider #{ctx.provider.public_id} " <>
                  "cannot be read (not_found)"
 
       refute log =~ model_key()
@@ -480,7 +480,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       conn = post_secrets(ctx, request(ctx))
       assert conn.status == 200
       assert {_bytes, %{"values" => [value]}} = opened(ctx, conn)
-      assert value == %{"credential" => start(ctx), "value" => model_key()}
+      assert value == %{"credential" => default_name(ctx), "value" => model_key()}
     end
 
     test "409 credential_unavailable for a key of another organisation on the run's list",
@@ -499,7 +499,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       {conn, log} = with_log(fn -> post_secrets(ctx, request(ctx)) end)
       assert conn.status == 409
       assert code(conn) == "credential_unavailable"
-      assert log =~ "the key #{start(ctx)} of the model provider"
+      assert log =~ "the key #{default_name(ctx)} of the model provider"
       refute log =~ model_key()
       assert seals() == []
     end
@@ -514,7 +514,10 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       # The provider's second key came after the claim: the run's list has the one key,
       # and a request for a second name finds no such credential.
       conn =
-        post_secrets(ctx, request(ctx, credentials: [start(ctx), "#{ctx.provider.public_id}-2"]))
+        post_secrets(
+          ctx,
+          request(ctx, credentials: [default_name(ctx), "#{ctx.provider.public_id}-2"])
+        )
 
       assert conn.status == 409
       assert code(conn) == "credentials_differ"
@@ -544,7 +547,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       log =
         capture_log(fn ->
           conn =
-            post_secrets(ctx, request(ctx, digest: digest, credentials: [start(ctx)]))
+            post_secrets(ctx, request(ctx, digest: digest, credentials: [default_name(ctx)]))
 
           assert conn.status == 409
           assert code(conn) == "credential_unavailable"
@@ -626,7 +629,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       digest
     end
 
-    defp both(ctx), do: [start(ctx), "#{ctx.checkout.public_id}-1"]
+    defp both(ctx), do: [default_name(ctx), "#{ctx.checkout.public_id}-1"]
 
     defp opened_at(ctx, conn, digest) do
       {key, seed} = ctx.secrets_key
@@ -651,7 +654,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       expected =
         Enum.sort_by(
           [
-            %{"credential" => start(ctx), "value" => model_key()},
+            %{"credential" => default_name(ctx), "value" => model_key()},
             %{"credential" => "#{ctx.checkout.public_id}-1", "value" => @checkout_key}
           ],
           & &1["credential"]
@@ -719,7 +722,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
     test "409 credentials_differ for a name of a provider's key the run has no row of", ctx do
       for credentials <- [
             both(ctx) ++ ["#{ctx.checkout.public_id}-2"],
-            [start(ctx), "#{ctx.checkout.public_id}-2"]
+            [default_name(ctx), "#{ctx.checkout.public_id}-2"]
           ] do
         conn = post_secrets(ctx, request(ctx, digest: ctx.digest, credentials: credentials))
         assert conn.status == 409, inspect(credentials)
@@ -978,7 +981,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       {bytes, plaintext} = opened(ctx, conn)
       assert Apiary.ForagerSchemas.validate("sealed-plaintext.schema.json", bytes) == :ok
       assert plaintext["credentials"] == Enum.sort(names(ctx))
-      assert %{"value" => model} = value(plaintext, start(ctx))
+      assert %{"value" => model} = value(plaintext, default_name(ctx))
       assert model == model_key()
       work = value(plaintext, "work-1")
       assert Map.keys(work) == ~w(apply credential expires_at value)
@@ -1806,7 +1809,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
 
   # The credential names of a run with a model key and a work entry, in the run
   # configuration's order, and of a write run, which has a push entry after it.
-  defp names(ctx), do: [start(ctx), "work-1"]
+  defp names(ctx), do: [default_name(ctx), "work-1"]
   defp all(ctx), do: names(ctx) ++ ["push-1"]
 
   defp provider(ctx), do: Repo.get!(Connection, ctx.provider.id)

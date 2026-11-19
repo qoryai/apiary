@@ -177,7 +177,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert {:ok, _version} = save(ctx.scope, workflows)
 
       {{:ok, run}, _queued} = claim!(ctx)
-      start = "#{northwind.public_id}-1"
+      default_name = "#{northwind.public_id}-1"
       other = "#{checkout.public_id}-1"
 
       # Session 1 starts on the default model provider credential; session 2 on the other
@@ -198,7 +198,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
                %ModelKey{
                  position: 1,
                  default_credential: true,
-                 connection_id: start_id,
+                 connection_id: default_id,
                  secret_id: secret
                },
                %ModelKey{
@@ -209,15 +209,15 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
                }
              ] = keys = stored_keys(run)
 
-      assert names(keys) == [start, other]
-      assert {start_id, secret} == {northwind.id, northwind.secret_id}
+      assert names(keys) == [default_name, other]
+      assert {default_id, secret} == {northwind.id, northwind.secret_id}
       assert {other_id, theirs} == {checkout.id, checkout.secret_id}
 
       # The run configuration sends both keys, and starts on the default model provider
       # credential.
       assert {:ok, credential} = ProviderCredential.for_run(run)
-      assert credential.name == start
-      assert Enum.map(credential.keys, & &1.entry["name"]) == [start, other]
+      assert credential.name == default_name
+      assert Enum.map(credential.keys, & &1.entry["name"]) == [default_name, other]
       assert Enum.map(credential.providers, & &1.id) == [northwind.id, checkout.id]
 
       # The document composed for the run has the default model provider credential's
@@ -225,7 +225,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       {:ok, members} = ComposedConfiguration.members(run)
       {:composed, document, nil} = ComposedConfiguration.shape(nil, nil, false, false, members)
       decoded = Jason.decode!(document)
-      assert decoded["default_model_provider_credential_name"] == start
+      assert decoded["default_model_provider_credential_name"] == default_name
       refute Map.has_key?(decoded, "model_credential")
       assert ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
     end
@@ -1087,11 +1087,11 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert Run.session_provider_ids(paused, 2) == [storefront.id]
 
       assert {{:ok, run}, _queued} = claimed!(ctx, continuation)
-      start = "#{storefront.public_id}-1"
+      default_name = "#{storefront.public_id}-1"
 
       assert run.provider_connection_id == storefront.id
-      assert [%ModelKey{name: ^start, default_credential: true} | _rest] = stored_keys(run)
-      assert {:ok, %{name: ^start}} = ProviderCredential.for_run(run)
+      assert [%ModelKey{name: ^default_name, default_credential: true} | _rest] = stored_keys(run)
+      assert {:ok, %{name: ^default_name}} = ProviderCredential.for_run(run)
       assert %{"session_id" => @session_id, "path" => @transcript} = run.resume
       assert Transcript.last(paused.id, 2) == %{session_id: @session_id, path: @transcript}
       assert %{"runtime" => "codex", "model" => "gpt-6-astra"} = run.run_settings

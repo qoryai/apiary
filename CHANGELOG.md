@@ -1914,8 +1914,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Forager's contract (`contracts/forager/v1`), which Qory Apiary copies at the commit that
   renames it; an API credential there has no `chosen`.
 - The same copy of Forager's contract adds the `runtime.result` event of a Codex launch,
-  and the member `agent` of a runtime in `runtimes.json`, which Qory Apiary skips when it
-  reads the file.
+  and `agent` under the `codex` runtime's `model` and its `effort` in `runtimes.json`,
+  which Qory Apiary keeps with the runtime's `model` and does not read.
 <!-- /feature -->
 <!-- feature: factory -->
 - The claim builds an Explore run's `run_settings`, a stage's runs among them, with the

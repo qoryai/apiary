@@ -6,7 +6,7 @@ defmodule Apiary.OneProviderColumns do
   rows' default credential column by its earlier name, `start`, so the later rename of
   the column (`RenameARunModelKeySStartToDefaultCredential`) runs down before it and up
   again after it. Ecto warns that an older migration ran after a newer one; a test that
-  calls `back!/0` captures the log.
+  runs an older migration up after `back!/0` captures the log.
   """
 
   @columns {20_261_118_162_200, Apiary.Repo.Migrations.DropARunSOneProviderColumns,
