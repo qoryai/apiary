@@ -548,8 +548,8 @@ defmodule Apiary.Dispatches.RunSettings do
   #     false); or the catalogue's default runtime
   #     (`Apiary.ModelChoices.default_runtime/0`), where the choices resolve to no choice
   #     at any level: the session joins the group of the run's start key, or, in a run
-  #     with no start key, runs on the machine's key. The session then uses the default
-  #     model of that runtime.
+  #     with no start key, runs on the machine's local model provider credential. The
+  #     session then uses the default model of that runtime.
   #
   # A session whose choice's provider is gone ends the claim `provider_gone`, as the run's
   # does: the choice is set to a provider that was removed, or its provider is not there,
@@ -557,9 +557,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # would have no key in the run ends the claim `session_key_missing`: its runtime uses
   # another API of a provider that an earlier session uses (`same_api/3`, `on_start/2`);
   # its provider has no key (`key_gone`) and no later step has a free key; or the run's
-  # first session runs on the machine's key (`session_on/6`). A settings check of the
-  # session's provider that ran out of time or crashed is `{:unchecked, provider}`, which
-  # leaves the run waiting as for the run's provider.
+  # first session runs on the machine's local model provider credential (`session_on/6`).
+  # A settings check of the session's provider that ran out of time or crashed is
+  # `{:unchecked, provider}`, which leaves the run waiting as for the run's provider.
   defp with_sessions({:ok, built}, start, context) do
     sessions = context.held.sessions
     context = Map.put(context, :claim_keys, session_keys(sessions, context))
@@ -738,8 +738,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # A run with no start key keeps no key, once the session's provider is checked for
   # `provider_gone`. Without the features under which a run is given keys (`keyed`
   # false), the session gets `runtime` alone. Else the run's first session runs on the
-  # machine's key, so a later session on a model provider would have no key in the run,
-  # whether its provider has keys or not: the claim ends the run `session_key_missing`.
+  # machine's local model provider credential, so a later session on a model provider
+  # would have no key in the run, whether its provider has keys or not: the claim ends
+  # the run `session_key_missing`.
   defp session_on(_input, resolution, runtime, built, nil, context) do
     provider = Map.fetch!(context.providers, resolution.connection_id)
 

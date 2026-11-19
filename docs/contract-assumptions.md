@@ -910,18 +910,18 @@ named `<provider's public id>-<n>`, `n` from 1 for each provider, with its provi
 `format`, `endpoint` and `auth`, and `group`, the provider's public id, so each
 provider's keys form one key group, which the gateway rotates, cools and stops apart from
 every other group (the Forager contract, Several model keys). Where the workflows of a
-stage with `shared_run: true`, fallbacks included, use more than 6 providers, a save of
-the stage fails, and a claim of a run of the stage ends `too_many_providers`. A save of
-the stage also fails, and a claim of a run of the stage ends `session_key_missing`, in
-three cases. First, a later workflow's provider has no key, and neither has a provider of
-its later steps (the default step under a workflow's override, then the fallbacks).
-Second, a workflow's runtime uses another API of a provider that an earlier workflow
-uses: one run uses one API of each provider. Third, the first workflow has no model
-choice, and a later workflow's choice is on a model provider. A later workflow with no
-model choice, which runs on the default runtime, never fails the save. The claim orders
-the provider's keys at its clock: the keys with no known reset, or one already passed;
-then the keys by their known reset, the closest minute first; then the keys in cooldown,
-the earliest `cooldown_until` first. Ties
+stage with `shared_run: true`, their later steps included (the default step under a
+workflow's override, then the fallbacks), use more than 6 providers, a save of the stage
+fails, and a claim of a run of the stage ends `too_many_providers`. A save of the stage
+also fails, and a claim of a run of the stage ends `session_key_missing`, in three cases.
+First, a later workflow's provider has no key, and neither has a provider of its later
+steps. Second, a workflow's runtime uses another API of a provider that an earlier
+workflow uses: one run uses one API of each provider. Third, the first workflow has no
+model choice, and a later workflow's choice is on a model provider. A later workflow with
+no model choice, which runs on the default runtime, never fails the save. The claim
+orders the provider's keys at its clock: the keys with no known reset, or one already
+passed; then the keys by their known reset, the closest minute first; then the keys in
+cooldown, the earliest `cooldown_until` first. Ties
 go in tie order: the default key first, then the other keys by when each was added. A
 key's known reset is the earliest `resets_at` that a gateway reported, else the next reset
 of its weekly schedule; a key is in cooldown while one of its windows has a

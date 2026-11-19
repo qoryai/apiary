@@ -278,19 +278,20 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   then compares the levels again and ends such a run before it starts, with the end
   cause `shared_access_differs` and the outcome error. Owners and admins see
   an escalation with the save's fix and "then run the round again" after it.
-- A save of a stage with `shared_run: true` fails when its workflows, their fallbacks
-  included, use more than 6 model providers, as one run takes keys of at most 6. The
-  error is "Use at most 6 model providers in one stage. Its workflows use 7: Northwind,
-  …". The save also fails when a workflow has no model choice and the stage's runs can
-  start on a provider that the default runtime cannot use. That error is "Choose a model
-  for workflow review. Without one it runs on Claude Code, and this stage's runs can start
-  on Northwind, which Claude Code cannot use." Update from harness shows the same lines.
+- A save of a stage with `shared_run: true` fails when its workflows, their later steps
+  included (the default step under a workflow's override, then the fallbacks), use more
+  than 6 model providers, as one run takes keys of at most 6. The error is "Use at most
+  6 model providers in one stage. Its workflows use 7: Northwind, …". The save also
+  fails when a workflow has no model choice and the stage's runs can start on a provider
+  that the default runtime cannot use. That error is "Choose a model for workflow
+  review. Without one it runs on Claude Code, and this stage's runs can start on
+  Northwind, which Claude Code cannot use." Update from harness shows the same lines.
   Making a workspace from a template shows the line alone, checked against the
   organisation's default. The claim checks both again, as a changed default provider, a
   cleared model choice or a harness change can break them after the save. It ends such a
-  run before it starts, with the end cause `too_many_providers` or `model_choice_missing`
-  and the outcome error. The work item and the stop line show the same fix while the
-  fault remains, and "Run the round again." once it is gone.
+  run before it starts, with the end cause `too_many_providers` or
+  `model_choice_missing` and the outcome error. The work item and the stop line show the
+  same fix while the fault remains, and "Run the round again." once it is gone.
 - A save of a stage with `shared_run: true` also fails, in three cases, where a later
   session would get no model key in the run. First, a later workflow's provider has no
   model key, and neither has a provider of its later steps (the default step under a
