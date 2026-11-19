@@ -1254,7 +1254,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
         |> String.trim()
 
       assert line ==
-               "Attempt 1 starts when the workspace's pool takes it. It reads the ticket and " <>
+               "Attempt 2 starts when the workspace's pool takes it. It reads the ticket and " <>
                  "the stage's inputs, then writes the spec, the decision record, the mockup and " <>
                  "the test features."
     end
