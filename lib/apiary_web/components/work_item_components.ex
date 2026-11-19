@@ -3402,7 +3402,10 @@ defmodule ApiaryWeb.WorkItemComponents do
             <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
             <span :if={@output[:caption]}>{@output.caption}</span>
             <span :if={!@output[:caption]} phx-no-format>{gettext("Version %{version}", version: Format.number(@output.version))}</span>
-            <span :if={@output[:changed]} phx-no-format> · <span id={"#{@id}-changed"} class="text-warning">{@output.changed}</span></span>
+            <span :if={@output[:changed]} phx-no-format> · </span>
+            <span :if={@output[:changed]} id={"#{@id}-changed"} class="text-warning">
+              {@output.changed}
+            </span>
           </p>
         </summary>
         <p
