@@ -902,20 +902,26 @@ for each other and never on each other at once:
    the rejection rows with the state rows, waits for it or comes before it, a rejection
    row whose `value_set_at` is no longer the key's counts for nothing, and a refresh of a
    sign-in, which writes the key's row too, is whole before the check that no refresh can
-   fix the 401 (`Apiary.ModelKeys.Login.rejectable?/2`) or waits for this transaction. An
-   entry whose `at` is more than 5 minutes before the run was registered is left out. A
-   run's gateway can mark any key of the run, and a key belongs to the whole organisation
-   or the provider, so one run marks the key for every run that uses it (the plan
-   accepts this).
+   fix the 401 (`Apiary.ModelKeys.Login.rejectable?/3`) or waits for this transaction. That
+   check reads database facts only: the sign-in time of the token the run's copy has
+   (`model_key_copies.login_at`), the sign-in's current time and the database's clock, not
+   the gateway's `at`. An entry whose `at` is more than 5 minutes before the run was
+   registered is left out. A run's gateway can mark any key of the run, and a key belongs
+   to the whole organisation or the provider, so one run marks the key for every run that
+   uses it.
    A secrets request reveals every model key through one function,
    `Apiary.ModelKeys.reveal_for_sealing/4`. For a key whose provider has an
    `oauth_refresh` it reads no stored value: it asks `Apiary.ModelKeys.Login` for the
    access token, which takes the lease of the sign-in as a refresh does (above) with no
    transaction open, waits for another caller's refresh until 2 seconds before the request's
    deadline (the work credential's call and the answer need that time), and then decrypts the token,
-   so the copy of the key keeps the `value_set_at` that was read first. A refresh keeps
-   `value_set_at`, so a run's copy of the key stays the key's value across refreshes, and a
-   new sign-in changes it.
+   so the copy of the key keeps the `value_set_at` and the sign-in time (`login_at`) that
+   were read first. A refresh keeps `value_set_at`, so a run's copy of the key stays the
+   key's value across refreshes, and a new sign-in changes it; a refresh changes the
+   sign-in time, which tells a run that has the current token from one that has an older
+   one. The renewal after a 401 serves a token newer than the run's copy as it is. A key
+   whose provider rejected its value (`model_key_rejections`) is refused by the same
+   function.
    A run's page that says why the run waits reads a sign-in's row alone
    (`Apiary.ModelKeys.Login.statuses/3` with `decrypt: false`): it decrypts no token, and a
    time limit it cannot read counts as no horizon, so the page never raises.

@@ -7,6 +7,11 @@ defmodule Apiary.ModelKeys.Copy do
   key's `value_set_at` at that time. A report of the run's keys leaves out a key whose
   `value_set_at` differs from the row's (`Apiary.ModelKeys.record/3`). The row goes with
   the run and with the key.
+
+  `login_at` is, for a key that is a sign-in (`Apiary.ModelKeys.Login`), the time of the
+  sign-in or of its last refresh when the request read the token it sealed: which token the
+  run has, since a refresh changes the token and not `value_set_at`. Nil for any other key
+  and for a row written before the column.
   """
 
   use Ecto.Schema
@@ -20,5 +25,6 @@ defmodule Apiary.ModelKeys.Copy do
     field :run_id, :binary_id, primary_key: true
     field :secret_value_id, :binary_id, primary_key: true
     field :value_set_at, :utc_datetime_usec
+    field :login_at, :utc_datetime_usec
   end
 end

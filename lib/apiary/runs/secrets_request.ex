@@ -640,13 +640,14 @@ defmodule Apiary.Runs.SecretsRequest do
   # (`Apiary.ModelKeys.reveal_for_sealing/4`): a key renamed since the claim is
   # revealed, and for one removed since, or no longer a value of the provider's secret,
   # this returns a refusal, `{:error, :credential_unavailable}`. With the copies,
-  # `[{secret_value_id, value_set_at}]`, when each revealed value was set, read with it
+  # `[{secret_value_id, value_set_at, login_at}]`, when each revealed value was set and, for
+  # a sign-in, the time of its sign-in or last refresh, read with it
   # (`Apiary.ModelKeys.keep_copies/2`).
   defp model_value(run, credential, unauthorized, deadline) do
     Enum.reduce_while(credential.keys, {:ok, [], []}, fn key, {:ok, values, copies} ->
       case key_value(run, credential.provider, key, key.name in unauthorized, deadline) do
-        {:ok, value, set_at} ->
-          {:cont, {:ok, values ++ [value], [{key.secret_value_id, set_at} | copies]}}
+        {:ok, value, set_at, login_at} ->
+          {:cont, {:ok, values ++ [value], [{key.secret_value_id, set_at, login_at} | copies]}}
 
         {:error, reason} ->
           Logger.error(
@@ -666,7 +667,9 @@ defmodule Apiary.Runs.SecretsRequest do
   # a model key (`Apiary.ModelKeys.reveal_for_sealing/4`). A key of a provider whose keys
   # are sign-ins is its access token, with `expires_at` its expiry so the gateway renews it
   # 5 minutes before; after a 401 of the provider to the key (`unauthorized?`) the renewal
-  # is a refresh, at most one in 5 minutes per sign-in. The wait for a refresh ends
+  # is a refresh, at most one in 5 minutes per sign-in, unless the sign-in holds a token newer
+  # than the one this run's last request sealed (`newer_than:`), which is served: the 401 was
+  # for the older token. The wait for a refresh ends
   # `@after_login_ms` before the request's deadline, which leaves that long for the seal,
   # the audit entry, the work credential's call (`issued/5`, which has the same deadline)
   # and the answer. A refresh that cannot be made now is `:unavailable`, which the gateway
@@ -674,9 +677,12 @@ defmodule Apiary.Runs.SecretsRequest do
   defp key_value(run, provider, key, unauthorized?, deadline) do
     wait = max(deadline - System.monotonic_time(:millisecond) - @after_login_ms, 0)
 
-    with {:ok, value, expires_at, set_at} <-
+    newer_than = if unauthorized?, do: ModelKeys.sealed_login_at(run.id, key.secret_value_id)
+
+    with {:ok, value, expires_at, set_at, login_at} <-
            ModelKeys.reveal_for_sealing(provider, key.secret_value_id, run,
              recover: unauthorized?,
+             newer_than: newer_than,
              wait: wait
            ) do
       entry = %{"credential" => key.name, "value" => value}
@@ -691,7 +697,7 @@ defmodule Apiary.Runs.SecretsRequest do
             ),
           else: entry
 
-      {:ok, entry, set_at}
+      {:ok, entry, set_at, login_at}
     end
   end
 

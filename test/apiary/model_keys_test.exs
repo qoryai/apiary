@@ -270,6 +270,7 @@ defmodule Apiary.ModelKeysTest do
                  secret_value_id: ctx.values["spare"].id,
                  organisation_id: ctx.scope.organisation.id,
                  copy_set_at: nil,
+                 copy_login_at: nil,
                  copy_kept: false
                },
                %{
@@ -277,6 +278,7 @@ defmodule Apiary.ModelKeysTest do
                  secret_value_id: ctx.values["main"].id,
                  organisation_id: ctx.scope.organisation.id,
                  copy_set_at: nil,
+                 copy_login_at: nil,
                  copy_kept: false
                }
              ]

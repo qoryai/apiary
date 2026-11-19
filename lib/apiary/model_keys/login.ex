@@ -642,43 +642,79 @@ defmodule Apiary.ModelKeys.Login do
   defp account_ok?(pointer, token), do: match?({:ok, _claim}, AccountClaim.read(token, pointer))
 
   @doc """
-  Whether a 401 that the model provider returned for the key's token at `at` (the
-  gateway's clock) leaves nothing that a refresh can fix, so the key needs a new sign-in:
-  the sign-in or its last refresh is no later than `at` and less than 5 minutes before it.
-  A renewal after a 401 refreshes at most once in 5 minutes (`access_token/3`, `recover:`),
-  so a 401 on a token that new gets no refresh; a 401 on an older token does, and its
-  refresh either works or ends the sign-in itself (`sign_in_needed`).
+  Whether a 401 that the model provider returned for the token a run has leaves nothing
+  that a refresh can fix, so the key needs a new sign-in. `sealed_at` is the sign-in time of
+  the token that was sealed for the run (`Apiary.ModelKeys.Copy`, `login_at`: the sign-in
+  time or last refresh time the secrets request read, `token_time/1`), and `now` is the
+  database's clock (`db_now/0`): both are database facts, and the gateway's clock is not
+  read. True when the run has the current token (`sealed_at` is the row's `token_time/1`)
+  and that token is less than 5 minutes old, since a renewal after a 401 refreshes at most
+  once in 5 minutes (`access_token/3`, `recover:`) and so makes no refresh now. False when
+  the run has an older token, since the renewal serves the newer one (`newer_than:`), when
+  the current token is 5 minutes old or older, since the renewal refreshes and either
+  works or ends the sign-in itself (`sign_in_needed`), and when `sealed_at` is nil (the
+  time is unknown).
   """
-  @spec rejectable?(t, DateTime.t()) :: boolean
-  def rejectable?(%__MODULE__{} = row, %DateTime{} = at) do
-    last = row.refreshed_at || row.signed_in_at
+  @spec rejectable?(t, DateTime.t() | nil, DateTime.t()) :: boolean
+  def rejectable?(%__MODULE__{} = row, %DateTime{} = sealed_at, %DateTime{} = now) do
+    current = token_time(row)
 
-    DateTime.compare(at, last) != :lt and
-      DateTime.diff(at, last, :second) < @recovery_gap_seconds
+    DateTime.compare(sealed_at, current) == :eq and
+      DateTime.diff(now, current, :second) < @recovery_gap_seconds
   end
 
+  def rejectable?(%__MODULE__{}, nil, %DateTime{}), do: false
+
+  # The time of the sign-in, or of its last refresh: when the stored token was made.
+  defp token_time(%__MODULE__{} = row), do: row.refreshed_at || row.signed_in_at
+
   @doc false
-  # The time the key's value was set (`secret_values.value_set_at`), `{:ok, time}`, read
-  # before the token is, for the copy of the key that a run keeps
-  # (`Apiary.ModelKeys.keep_copies/2`): a new sign-in between the two reads leaves the copy
-  # older than the value, which drops the run's reports about the key, never accepts a
-  # report about a value the run does not have. `:error` for a key that is gone.
-  @spec value_set_at(Connection.t(), Ecto.UUID.t()) :: {:ok, DateTime.t() | nil} | :error
-  def value_set_at(%Connection{secret_id: secret_id}, id) when is_binary(secret_id) do
+  # The times a run's copy of the key keeps (`Apiary.ModelKeys.keep_copies/2`), `{:ok,
+  # value_set_at, token_time}`, read before the token is: `value_set_at` is the time the
+  # key's value was set (`secret_values.value_set_at`), and `token_time` the time of the
+  # sign-in or of its last refresh (nil for a key with no sign-in). A new sign-in between
+  # the reads leaves the copy older than the value, which drops the run's reports about the
+  # key, and a refresh between them leaves the copy older than the token the run gets,
+  # which marks nothing and makes the renewal serve the newer token. Neither accepts a
+  # report about a value or a token the run does not have. `:error` for a key that is gone.
+  @spec seal_times(Connection.t(), Ecto.UUID.t()) ::
+          {:ok, DateTime.t() | nil, DateTime.t() | nil} | :error
+  def seal_times(%Connection{secret_id: secret_id}, id) when is_binary(secret_id) do
     with {:ok, id} <- Ecto.UUID.cast(id),
-         {set_at} <-
+         {set_at, refreshed_at, signed_in_at} <-
            Repo.one(
              from v in Value,
+               left_join: l in __MODULE__,
+               on: l.secret_value_id == v.id,
                where: v.id == ^id and v.secret_id == ^secret_id,
-               select: {v.value_set_at}
+               select: {v.value_set_at, l.refreshed_at, l.signed_in_at}
            ) do
-      {:ok, set_at}
+      {:ok, set_at, refreshed_at || signed_in_at}
     else
       _gone -> :error
     end
   end
 
-  def value_set_at(_provider, _id), do: :error
+  def seal_times(_provider, _id), do: :error
+
+  @doc false
+  # The time of the stored token of the key `id` (`token_time/1`) when that token is
+  # `token`, the one that `access_token/3` returned; nil otherwise, for a key that is
+  # gone and for a token that a refresh by another caller replaced since. The gate keeps
+  # it as the time of the run's token, so a run whose request made the refresh has the
+  # refresh's time. The time is read before the stored token is, so a refresh between
+  # the two reads makes the token differ and gives nil. The token goes no further than this
+  # function (`tokens/2`).
+  @spec time_of_token(Connection.t(), Ecto.UUID.t(), String.t()) :: DateTime.t() | nil
+  def time_of_token(%Connection{} = provider, id, token) when is_binary(token) do
+    with {:ok, _set_at, %DateTime{} = time} <- seal_times(provider, id),
+         {:ok, %{access_token: stored}} <- tokens(provider, id),
+         true <- stored == token do
+      time
+    else
+      _other -> nil
+    end
+  end
 
   @doc """
   The sign-in rows of the keys `ids` of `provider`, by id; none for a provider whose keys
@@ -721,12 +757,16 @@ defmodule Apiary.ModelKeys.Login do
   # it: the background refresh of a key a run's claim found expiring before the end of the
   # run's time limit (the job `LoginRefreshJob`).
   #
-  # `recover: true` is a renewal after the model provider returned 401 to the stored token
-  # (`unauthorized_recovery`). The token is then not served as it is, even when it is far
-  # from its expiry: the call refreshes with that reason, at most once per login in 5 minutes
-  # (the last refresh, or the last failed one, counts), and a caller inside those 5 minutes
-  # gets `{:error, :unavailable}`. A caller that waited for another caller's refresh or
-  # failure, begun after this call started, gets that refresh's token, or the same refusal.
+  # `recover: true` is a renewal after the model provider returned 401 to the token a run
+  # has. The stored token is then not served as it is, even when it is far from its expiry:
+  # the call refreshes with the reason `unauthorized_recovery`, at most once per login in 5
+  # minutes (the last refresh, or the last failed one, counts), and a caller inside those 5
+  # minutes gets `{:error, :unavailable}`. A caller that waited for another caller's refresh
+  # or failure, begun after this call started, gets that refresh's token, or the same refusal.
+  # With `newer_than:` (a time, the sign-in time of the token the run has,
+  # `Apiary.ModelKeys.Copy`), a login whose sign-in or last refresh is later than that holds
+  # a token newer than the run's, which the call serves as it is: the 401 was for the older
+  # token, and a refresh is no use.
   @doc false
   @spec access_token(Connection.t(), Ecto.UUID.t(), keyword) ::
           {:ok, String.t(), DateTime.t() | nil}
@@ -747,6 +787,7 @@ defmodule Apiary.ModelKeys.Login do
       now: Keyword.get(opts, :now),
       allowed: false,
       recover: Keyword.get(opts, :recover, false) == true,
+      newer_than: Keyword.get(opts, :newer_than),
       expires_before: Keyword.get(opts, :expires_before),
       started: nil
     }
@@ -1062,17 +1103,21 @@ defmodule Apiary.ModelKeys.Login do
   end
 
   # A renewal after a 401 (`recover: true`): the stored token is no good, whatever its
-  # `exp`, so there is no `:fresh`. The call is `{:due, "unauthorized_recovery"}` unless a
+  # `exp`, so there is no `:fresh`, unless it is newer than the run's (`newer_than:`, then
+  # `:refreshed`: it is served). The call is `{:due, "unauthorized_recovery"}` unless a
   # refresh or a failed one is less than 5 minutes old (`:blocked`: the caller gets
   # `{:error, :unavailable}`, and the gateway asks again 30 seconds later), or one ended
   # after this call started, when a refresh's token is served (`:refreshed`) and a
   # failure's refusal is `:blocked`. The last refresh (the sign-in, before the first) and the
   # last failed one are `refreshed_at` and `last_failure`: a refresh that works clears
   # `last_failure`.
-  defp decide(%__MODULE__{} = row, now, %{recover: true, started: started}) do
+  defp decide(%__MODULE__{} = row, now, %{recover: true, started: started} = ctx) do
     last = latest(row.refreshed_at || row.signed_in_at, row.last_failure)
 
     cond do
+      newer?(row, ctx.newer_than) ->
+        :refreshed
+
       last != nil and DateTime.compare(last, started) == :gt ->
         if row.refreshed_at != nil and DateTime.compare(row.refreshed_at, started) == :gt,
           do: :refreshed,
@@ -1085,6 +1130,12 @@ defmodule Apiary.ModelKeys.Login do
         {:due, "unauthorized_recovery"}
     end
   end
+
+  # Whether the stored token is newer than the one the run has.
+  defp newer?(_row, nil), do: false
+
+  defp newer?(row, %DateTime{} = sealed_at),
+    do: DateTime.compare(token_time(row), sealed_at) == :gt
 
   defp latest(nil, other), do: other
   defp latest(time, nil), do: time

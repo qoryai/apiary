@@ -32,11 +32,15 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
         from v in Value, where: v.secret_id == ^provider.secret_id and v.value_id == ^value_id
       )
 
+    # A run that has the key's current token: a sign-in's copy has its time.
+    login = Repo.get(Apiary.ModelKeys.Login, value.id)
+
     key = %{
       name: "model-1",
       secret_value_id: value.id,
       organisation_id: value.organisation_id,
       copy_set_at: value.value_set_at,
+      copy_login_at: login && (login.refreshed_at || login.signed_in_at),
       copy_kept: true
     }
 

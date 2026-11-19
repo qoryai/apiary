@@ -187,6 +187,65 @@ defmodule ApiaryWeb.Contract.SecretsLoginTest do
       assert requests() == []
     end
 
+    test "after a 401 for a token older than the one the key holds, serves the key's token, with no call",
+         ctx do
+      stub!()
+      aged!(ctx)
+
+      # The run is sealed the token the key had at its sign-in, as a gateway starts a run.
+      conn = post_secrets(ctx, request(ctx))
+      assert conn.status == 200
+      assert [%{"value" => first}] = opened(ctx, conn)["values"]
+      assert first == ctx.tokens.access_token
+      assert [%Copy{login_at: %DateTime{} = sealed}] = Repo.all(Copy)
+      assert sealed == Repo.one!(Login).signed_in_at
+
+      # Another run's request refreshes the key, 10 seconds ago.
+      renewed = login_tokens(tag: "renewed")
+      store_access_token!(ctx.provider, ctx.value.id, renewed.access_token)
+
+      {1, _rows} =
+        Repo.update_all(Login, set: [refreshed_at: DateTime.add(DateTime.utc_now(), -10)])
+
+      # The run's gateway got 401 for the token it has: the older one.
+      conn = post_secrets(ctx, request(ctx, [start(ctx)]))
+
+      assert conn.status == 200
+      assert [%{"value" => value}] = opened(ctx, conn)["values"]
+      assert value == renewed.access_token
+      assert requests() == []
+      assert Repo.one!(Login).state == "signed_in"
+      assert [%Copy{login_at: now_sealed}] = Repo.all(Copy)
+      assert now_sealed == Repo.one!(Login).refreshed_at
+    end
+
+    test "after a 401 for the token the key holds, refreshes it once, then 503 for 5 minutes",
+         ctx do
+      stub!()
+      aged!(ctx)
+
+      conn = post_secrets(ctx, request(ctx))
+      assert conn.status == 200
+      assert [%Copy{login_at: sealed}] = Repo.all(Copy)
+      assert sealed == Repo.one!(Login).signed_in_at
+
+      # The 401 is for the token the key holds: the renewal refreshes it.
+      conn = post_secrets(ctx, request(ctx, [start(ctx)]))
+      assert conn.status == 200
+      assert [%{"value" => value}] = opened(ctx, conn)["values"]
+      refute value == ctx.tokens.access_token
+      assert [%{"refresh_reason" => "unauthorized_recovery"}] = requests()
+
+      # The run's copy has the time of the refresh that made its token, so a 401 for that
+      # token is for the token the key holds, and no refresh is made inside 5 minutes.
+      assert [%Copy{login_at: refreshed}] = Repo.all(Copy)
+      assert refreshed == Repo.one!(Login).refreshed_at
+
+      conn = post_secrets(ctx, request(ctx, [start(ctx)]))
+      assert conn.status == 503
+      assert requests() == []
+    end
+
     test "409 credential_unavailable for a sign-in that needs a new one, with no call", ctx do
       stub!()
 

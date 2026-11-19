@@ -1,6 +1,6 @@
 defmodule Apiary.ModelKeys.LoginStatusTest do
   # What a claim reads of a sign-in without calling the provider
-  # (`Apiary.ModelKeys.Login.status/2`, `statuses/3`, `account?/2`, `rejectable?/2`), and the
+  # (`Apiary.ModelKeys.Login.status/2`, `statuses/3`, `account?/2`, `rejectable?/3`), and the
   # two refreshes a run causes: the one in the background for a sign-in that expires before
   # the end of the run's time limit (`expires_before:`), and the one after a 401
   # (`recover: true`, at most one in 5 minutes).
@@ -300,16 +300,32 @@ defmodule Apiary.ModelKeys.LoginStatusTest do
     end
   end
 
-  describe "rejectable?/2" do
-    test "is true only when no refresh can fix the 401: the token is under 5 minutes old", %{
+  describe "rejectable?/3" do
+    test "is true only for the token the run has, while it is under 5 minutes old", %{
       scope: scope
     } do
       {provider, _tokens} = subscription!(scope)
       login = row(provider)
+      signed = login.signed_in_at
 
-      assert Login.rejectable?(login, DateTime.add(login.signed_in_at, 60))
-      refute Login.rejectable?(login, DateTime.add(login.signed_in_at, 300))
-      refute Login.rejectable?(login, DateTime.add(login.signed_in_at, -1))
+      assert Login.rejectable?(login, signed, DateTime.add(signed, 60))
+      assert Login.rejectable?(login, signed, DateTime.add(signed, 299))
+      refute Login.rejectable?(login, signed, DateTime.add(signed, 300))
+    end
+
+    test "is false for a token older than the one the sign-in holds, and for an unknown one", %{
+      scope: scope
+    } do
+      {provider, _tokens} = subscription!(scope)
+      login = row(provider)
+      older = login.signed_in_at
+      refreshed = DateTime.add(older, 30)
+      login = %{login | refreshed_at: refreshed}
+      now = DateTime.add(refreshed, 10)
+
+      refute Login.rejectable?(login, older, now)
+      assert Login.rejectable?(login, refreshed, now)
+      refute Login.rejectable?(login, nil, now)
     end
   end
 

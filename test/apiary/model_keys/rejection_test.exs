@@ -91,6 +91,29 @@ defmodule Apiary.ModelKeys.RejectionTest do
       assert %{^main_id => %Rejection{rejected_at: ^at}} = ModelKeys.rejections(ctx.provider)
     end
 
+    test "makes the gate refuse the key, and a new value makes it serve it again", ctx do
+      main = ctx.values["main"]
+      spare = ctx.values["spare"]
+      provider = Repo.get!(Connection, ctx.provider.id)
+      run = %Apiary.Runs.Run{}
+
+      assert {:ok, "sk-ant-fixture-main-0123456789", nil, %DateTime{}, nil} =
+               ModelKeys.reveal_for_sealing(provider, main.id, run, wait: 100)
+
+      :ok = ModelKeys.reject([key(main)], [unauthorized()], ctx.provider, DateTime.utc_now())
+
+      assert ModelKeys.reveal_for_sealing(provider, main.id, run, wait: 100) ==
+               {:error, :new_key_needed}
+
+      assert {:ok, "sk-ant-fixture-spare-0123456789", nil, %DateTime{}, nil} =
+               ModelKeys.reveal_for_sealing(provider, spare.id, run, wait: 100)
+
+      new_value!(ctx.scope, ctx.provider, "main", "sk-ant-fixture-new-0123456789")
+
+      assert {:ok, "sk-ant-fixture-new-0123456789", nil, %DateTime{}, nil} =
+               ModelKeys.reveal_for_sealing(provider, main.id, run, wait: 100)
+    end
+
     test "leaves out a credential the run does not have, and a key that is gone", ctx do
       main = ctx.values["main"]
 
@@ -328,29 +351,72 @@ defmodule Apiary.ModelKeys.RejectionTest do
       %{subscription: provider, login: value}
     end
 
-    test "is marked only after a 401 on a token under 5 minutes old, not before",
-         ctx do
+    # The sign-in's row as a key of a run reads it, with `login_at` as the run's copy has it.
+    defp login_key(ctx, login_at),
+      do: key(ctx.login) |> Map.put(:copy_login_at, login_at)
+
+    defp token_time(ctx) do
       login = Repo.get!(Login, ctx.login.id)
+      login.refreshed_at || login.signed_in_at
+    end
 
-      Repo.update_all(from(l in Login, where: l.secret_value_id == ^ctx.login.id),
-        set: [signed_in_at: DateTime.add(DateTime.utc_now(), -3600)]
-      )
+    defp set_login!(ctx, changes) do
+      {1, _rows} =
+        Repo.update_all(from(l in Login, where: l.secret_value_id == ^ctx.login.id),
+          set: changes
+        )
+    end
 
-      :ok =
-        ModelKeys.reject([key(ctx.login)], [unauthorized()], ctx.subscription, DateTime.utc_now())
+    defp reject!(ctx, key),
+      do: :ok = ModelKeys.reject([key], [unauthorized()], ctx.subscription, DateTime.utc_now())
+
+    test "a 401 on the token the run has, under 5 minutes old, marks the key", ctx do
+      reject!(ctx, login_key(ctx, token_time(ctx)))
+
+      assert [_row] = rows(ctx.login)
+      assert %{blocked: :new_key} = claim_key(ctx.subscription, "login")
+    end
+
+    test "a 401 on the token the run has, a refreshed one, marks the key", ctx do
+      refreshed = DateTime.add(DateTime.utc_now(), -30)
+      set_login!(ctx, refreshed_at: refreshed)
+
+      reject!(ctx, login_key(ctx, token_time(ctx)))
+
+      assert [_row] = rows(ctx.login)
+    end
+
+    test "a 401 on a token 5 minutes old or older marks nothing: a refresh may renew it",
+         ctx do
+      set_login!(ctx, signed_in_at: DateTime.add(DateTime.utc_now(), -3600))
+      reject!(ctx, login_key(ctx, token_time(ctx)))
 
       assert rows(ctx.login) == []
       assert %{blocked: nil} = claim_key(ctx.subscription, "login")
 
-      Repo.update_all(from(l in Login, where: l.secret_value_id == ^ctx.login.id),
-        set: [signed_in_at: login.signed_in_at]
-      )
+      set_login!(ctx, refreshed_at: DateTime.add(DateTime.utc_now(), -301))
+      reject!(ctx, login_key(ctx, token_time(ctx)))
 
-      :ok =
-        ModelKeys.reject([key(ctx.login)], [unauthorized()], ctx.subscription, DateTime.utc_now())
+      assert rows(ctx.login) == []
+    end
 
-      assert [_row] = rows(ctx.login)
-      assert %{blocked: :new_key} = claim_key(ctx.subscription, "login")
+    test "a 401 on a token older than the one the sign-in holds, after a refresh, marks nothing",
+         ctx do
+      sealed = token_time(ctx)
+      set_login!(ctx, refreshed_at: DateTime.add(DateTime.utc_now(), 0))
+
+      reject!(ctx, login_key(ctx, sealed))
+
+      assert rows(ctx.login) == []
+      assert %{blocked: nil} = claim_key(ctx.subscription, "login")
+    end
+
+    test "a 401 for a run that holds no sign-in time marks nothing", ctx do
+      reject!(ctx, login_key(ctx, nil))
+      assert rows(ctx.login) == []
+
+      reject!(ctx, key(ctx.login))
+      assert rows(ctx.login) == []
     end
   end
 end

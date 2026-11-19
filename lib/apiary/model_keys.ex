@@ -71,14 +71,17 @@ defmodule Apiary.ModelKeys do
   `copy_kept`, true when `copy_set_at` is the `value_set_at` of a copy of the key for the
   run (`Apiary.ModelKeys.Copy`), which a secrets request kept (`keep_copies/2`) or
   migration 20261111220000 wrote for a run that was pending or running at the upgrade;
-  false when it is the time the run's row was written.
+  false when it is the time the run's row was written; and `copy_login_at`, for a sign-in,
+  the time of its sign-in or last refresh when the request read the token it sealed for
+  the run (`Apiary.ModelKeys.Copy`), nil when the key is no sign-in or the copy has none.
   """
   @type run_key :: %{
           name: String.t(),
           secret_value_id: Ecto.UUID.t(),
           organisation_id: Ecto.UUID.t(),
           copy_set_at: DateTime.t() | nil,
-          copy_kept: boolean
+          copy_kept: boolean,
+          copy_login_at: DateTime.t() | nil
         }
 
   ## Settings
@@ -329,8 +332,9 @@ defmodule Apiary.ModelKeys do
             name: name,
             secret_value_id: id,
             organisation_id: organisation_id,
-            copy_set_at: Map.get(copies, id, run.inserted_at),
-            copy_kept: Map.has_key?(copies, id)
+            copy_set_at: copies |> Map.get(id, {run.inserted_at, nil}) |> elem(0),
+            copy_kept: Map.has_key?(copies, id),
+            copy_login_at: copies |> Map.get(id, {nil, nil}) |> elem(1)
           }
     else
       []
@@ -341,12 +345,13 @@ defmodule Apiary.ModelKeys do
 
   # The `value_set_at` of the value of each key of `ids` that a secrets request sealed for
   # `run` last, or that migration 20261111220000 copied for a run pending or running at
-  # the upgrade, by the key's row id.
+  # the upgrade, with the sign-in time of the token sealed (`login_at`), by the key's row
+  # id: `{value_set_at, login_at}`.
   defp copies(%Run{id: run_id}, ids) when is_binary(run_id) do
     Repo.all(
       from c in Copy,
         where: c.run_id == ^run_id and c.secret_value_id in ^ids,
-        select: {c.secret_value_id, c.value_set_at}
+        select: {c.secret_value_id, {c.value_set_at, c.login_at}}
     )
     |> Map.new()
   end
@@ -355,16 +360,20 @@ defmodule Apiary.ModelKeys do
 
   @doc """
   Keeps, for the run `run_id`, which value of each of its keys a secrets request sealed:
-  `copies`, `[{secret_value_id, value_set_at}]`, each the key's row id and when the
-  sealed value was set, read from the row the value was read from.
+  `copies`, `[{secret_value_id, value_set_at}]` or, for a sign-in,
+  `[{secret_value_id, value_set_at, login_at}]`, each the key's row id, when the sealed
+  value was set, read from the row the value was read from, and the time of the sign-in or
+  of its last refresh when the token was read (`Apiary.ModelKeys.Copy`).
   One row per run and key (`Apiary.ModelKeys.Copy`), the last request's. Each statement
   takes the run's row and the key's row `FOR KEY SHARE`, in the order of the keys' ids,
   then the copy's row: a key or a run deleted since the request is left out, as a copy
   goes with either. In the caller's transaction. Returns `:ok`.
   """
-  @spec keep_copies(Ecto.UUID.t(), [{Ecto.UUID.t(), DateTime.t()}]) :: :ok
+  @spec keep_copies(Ecto.UUID.t(), [
+          {Ecto.UUID.t(), DateTime.t()} | {Ecto.UUID.t(), DateTime.t(), DateTime.t() | nil}
+        ]) :: :ok
   def keep_copies(run_id, copies) when is_binary(run_id) and is_list(copies) do
-    for {id, %DateTime{} = value_set_at} <- Enum.sort(copies) do
+    for {id, %DateTime{} = value_set_at, login_at} <- copies |> Enum.map(&copy/1) |> Enum.sort() do
       Repo.insert_all(
         Copy,
         from(v in Value,
@@ -375,15 +384,34 @@ defmodule Apiary.ModelKeys do
           select: %{
             run_id: r.id,
             secret_value_id: v.id,
-            value_set_at: type(^usec(value_set_at), :utc_datetime_usec)
+            value_set_at: type(^usec(value_set_at), :utc_datetime_usec),
+            login_at: type(^usec(login_at), :utc_datetime_usec)
           }
         ),
-        on_conflict: {:replace, [:value_set_at]},
+        on_conflict: {:replace, [:value_set_at, :login_at]},
         conflict_target: [:run_id, :secret_value_id]
       )
     end
 
     :ok
+  end
+
+  defp copy({id, set_at}), do: {id, set_at, nil}
+  defp copy({_id, _set_at, _login_at} = copy), do: copy
+
+  @doc """
+  The sign-in time (`Apiary.ModelKeys.Copy`, `login_at`) of the token that the last
+  secrets request sealed for the run `run_id` and the key `secret_value_id`: a time, or nil
+  for a key with no copy, a key that is no sign-in, and a copy that has none. The renewal
+  after a 401 serves a token newer than it (`Apiary.ModelKeys.Login`, the `newer_than:` option of its access token read).
+  """
+  @spec sealed_login_at(Ecto.UUID.t(), Ecto.UUID.t()) :: DateTime.t() | nil
+  def sealed_login_at(run_id, secret_value_id) do
+    Repo.one(
+      from c in Copy,
+        where: c.run_id == ^run_id and c.secret_value_id == ^secret_value_id,
+        select: c.login_at
+    )
   end
 
   ## Keys at a claim
@@ -516,42 +544,82 @@ defmodule Apiary.ModelKeys do
   `run`. Returns `{:ok, value, expires_at, value_set_at}`, `expires_at` nil for a key that
   has none, or `{:error, reason}`.
 
-  A key of a provider whose keys are sign-ins (`Apiary.ModelKeys.Login`) is not revealed:
-  its access token is, refreshed first when that is due, with the time the token expires,
-  and the refresh token never leaves the vault. The token is refused, as
-  `{:error, :sign_in_needed}`, when it has no account id, and no call is made to any
-  provider for that. Any other key is its stored value, read as `Apiary.Secrets` reads it
-  (`{:error, :not_found}` for a key that is gone, `{:error, :unavailable}` for one that
-  cannot be decrypted), and `expires_at` is nil.
+  A key that needs a new value, because its provider rejected the value it has
+  (`Apiary.ModelKeys.Rejection`), is not revealed: `{:error, :new_key_needed}`, as the
+  claim does not give it to a run. A key of a provider whose keys are sign-ins
+  (`Apiary.ModelKeys.Login`) is not revealed either: its access token is, refreshed first
+  when that is due, with the time the token expires, and the refresh token never leaves the
+  vault. The token is refused, as `{:error, :sign_in_needed}`, when it has no account id
+  (`Apiary.ModelKeys.Login.account?/2`), and no call is made to any provider for that. Any
+  other key is its stored value, read as `Apiary.Secrets` reads it (`{:error, :not_found}`
+  for a key that is gone, `{:error, :unavailable}` for one that cannot be decrypted), and
+  `expires_at` and `login_at` are nil. `login_at` is, for a sign-in, the time of the
+  sign-in or of its last refresh that was read before the token was, so that it is never
+  later than the token's (`Apiary.ModelKeys.Copy`).
 
   `opts` (for a sign-in): `recover: true`, the renewal after a 401 of the provider to the
-  key, at most once per sign-in in 5 minutes, and `wait:`, the milliseconds a call waits
-  for a refresh. The reasons of a sign-in are those of the access token read of
-  `Apiary.ModelKeys.Login`.
+  key, at most once per sign-in in 5 minutes; `newer_than:`, with it, the `login_at` the
+  run has: a sign-in that holds a token newer than that serves it; and `wait:`, the
+  milliseconds a call waits for a refresh. The reasons of a sign-in are those of the access
+  token read of `Apiary.ModelKeys.Login`.
   """
   @spec reveal_for_sealing(Connection.t(), Ecto.UUID.t(), Run.t(), keyword) ::
-          {:ok, String.t(), DateTime.t() | nil, DateTime.t() | nil}
-          | {:error, :not_found | :unavailable | :sign_in_needed}
+          {:ok, String.t(), DateTime.t() | nil, DateTime.t() | nil, DateTime.t() | nil}
+          | {:error, :not_found | :unavailable | :sign_in_needed | :new_key_needed}
   def reveal_for_sealing(%Connection{} = provider, secret_value_id, %Run{} = run, opts) do
-    if Login.provider?(provider) do
-      reveal_login(provider, secret_value_id, run, opts)
-    else
-      with {:ok, value, set_at} <-
-             Apiary.Secrets.reveal_key_and_set_at(provider, secret_value_id),
-           do: {:ok, value, nil, set_at}
+    cond do
+      rejected?(provider, secret_value_id) ->
+        {:error, :new_key_needed}
+
+      Login.provider?(provider) ->
+        reveal_login(provider, secret_value_id, run, opts)
+
+      true ->
+        with {:ok, value, set_at} <-
+               Apiary.Secrets.reveal_key_and_set_at(provider, secret_value_id),
+             do: {:ok, value, nil, set_at, nil}
     end
   end
 
+  # Whether the key's provider rejected the value it has (`Apiary.ModelKeys.Rejection`).
+  defp rejected?(%Connection{secret_id: secret_id}, secret_value_id) when is_binary(secret_id) do
+    case Ecto.UUID.cast(secret_value_id) do
+      {:ok, id} ->
+        from(r in Rejection,
+          as: :rejection,
+          join: v in Value,
+          as: :value,
+          on: v.id == r.secret_value_id,
+          where: v.id == ^id and v.secret_id == ^secret_id
+        )
+        |> Rejection.live()
+        |> Repo.exists?()
+
+      :error ->
+        false
+    end
+  end
+
+  defp rejected?(%Connection{}, _secret_value_id), do: false
+
+  # The sign-in time kept for the run (`login_at`) is the time of the token it gets
+  # (`Login.time_of_token/3`), so a run whose request made the refresh has the
+  # refresh's time. When another caller's refresh replaced the token between the reads, it
+  # is the time read before the token, which is older than the token: a 401 for it marks
+  # nothing, and the renewal that follows serves the stored token and keeps its time, so
+  # the next 401 marks the key.
   defp reveal_login(provider, secret_value_id, run, opts) do
-    with {:ok, set_at} <- Login.value_set_at(provider, secret_value_id),
+    with {:ok, set_at, login_at} <- Login.seal_times(provider, secret_value_id),
          {:ok, token, expires_at} <-
            Login.access_token(provider, secret_value_id,
              trigger: {:run, run.public_id},
              recover: Keyword.get(opts, :recover, false),
+             newer_than: Keyword.get(opts, :newer_than),
              wait: Keyword.fetch!(opts, :wait)
            ),
          true <- Login.account?(provider, token) || {:error, :sign_in_needed} do
-      {:ok, token, expires_at, set_at}
+      {:ok, token, expires_at, set_at,
+       Login.time_of_token(provider, secret_value_id, token) || login_at}
     else
       :error -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
@@ -996,8 +1064,10 @@ defmodule Apiary.ModelKeys do
   An entry of a credential that is not among `keys` is left out. So is one of a key whose
   value the run does not have (a new value was set since the run's request that sealed it:
   `record/3` reads that as it does for states), and one of a key of a provider whose keys are
-  sign-ins, unless no refresh can fix it (`Apiary.ModelKeys.Login.rejectable?/2`): the
-  gateway lists such a key while its renewal is pending. A refresh never changes the row;
+  sign-ins, unless no refresh can fix it for the token the run has
+  (`Apiary.ModelKeys.Login.rejectable?/3`, by the run's copy of the sign-in time and the
+  database's clock): the gateway lists such a key while its renewal is pending. A refresh
+  never changes the row;
   a new sign-in ends the state, as a new value of any key does. An entry that is older
   than the key's row keeps the row. The rows are written in the order of the keys' row
   ids, after the values' rows are locked `FOR SHARE`, as `record/3` does, so a new value
@@ -1013,6 +1083,7 @@ defmodule Apiary.ModelKeys do
   def reject(keys, entries, provider, %DateTime{} = now) do
     by_name = Map.new(keys, &{&1.name, &1})
     copies = Map.new(keys, &{&1.secret_value_id, {&1.copy_kept, &1.copy_set_at}})
+    sealed = Map.new(keys, &{&1.secret_value_id, Map.get(&1, :copy_login_at)})
 
     marked =
       for entry <- entries,
@@ -1031,23 +1102,26 @@ defmodule Apiary.ModelKeys do
         end
         |> Enum.sort_by(& &1.secret_value_id)
 
-      {:ok, :ok} = Repo.transact(fn -> {:ok, write_rejections(rows, copies, provider)} end)
+      {:ok, :ok} =
+        Repo.transact(fn -> {:ok, write_rejections(rows, copies, sealed, provider)} end)
     end
 
     :ok
   end
 
-  # A key that is no sign-in is marked. A sign-in that a refresh can still fix is not.
-  defp markable?(nil, _at), do: true
-  defp markable?(%Login{} = login, at), do: Login.rejectable?(login, at)
+  # A key that is no sign-in is marked. A sign-in is marked only when no refresh can fix it
+  # for the token the run has (`Login.rejectable?/3`), by the sign-in time of that token
+  # and the database's clock.
+  defp markable?(nil, _sealed_at, _now), do: true
+  defp markable?(%Login{} = login, sealed_at, now), do: Login.rejectable?(login, sealed_at, now)
 
   # The rows of the keys whose value the run has (`current?/3`), written after their
   # values' rows are locked in the order of their ids, as `write_states/2` has it, with the
   # time the value was set. A sign-in's row is read after that lock, so a refresh, which
   # writes the value's row too, is either whole before the read or waits for this
-  # transaction: a sign-in that a refresh can still fix (`Login.rejectable?/2`) is not
+  # transaction: a sign-in that a refresh can still fix (`Login.rejectable?/3`) is not
   # marked.
-  defp write_rejections(rows, copies, provider) do
+  defp write_rejections(rows, copies, sealed, provider) do
     ids = Enum.map(rows, & &1.secret_value_id)
 
     set =
@@ -1061,11 +1135,12 @@ defmodule Apiary.ModelKeys do
       |> Map.new()
 
     logins = if provider, do: Login.rows(provider, ids), else: %{}
+    now = Login.db_now()
 
     kept =
       for row <- rows,
           current?(row, set, copies),
-          markable?(logins[row.secret_value_id], row.rejected_at),
+          markable?(logins[row.secret_value_id], sealed[row.secret_value_id], now),
           do: Map.put(row, :value_set_at, set[row.secret_value_id])
 
     if kept != [] do

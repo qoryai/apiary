@@ -132,7 +132,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   gateway lists the key in `unauthorized` of its next request, and the request refreshes
   the token with the reason `unauthorized_recovery`, at most once in 5 minutes for each
   key; inside those 5 minutes the answer is `unavailable` (503) and the gateway asks again.
-  A key that needs a new sign-in is answered `credential_unavailable` (409), with no call.
+  When the 401 was for a token older than the one the key holds now, because a refresh
+  came between, the answer is the newer token, with no refresh. A key that needs a new
+  sign-in, or a new value, is answered `credential_unavailable` (409), with no call.
   The run keeps `paths` from the provider's catalogue entry (up to 32) and the header and
   the claim of the account id in its API, once for the run; the claim is a JSON pointer
   into the access token. The server reads the account id and the expiry from the access
@@ -167,7 +169,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   help to get a key; **Edit key** says under **New value**: “Enter a new value: the stored
   one no longer works.” A key of an OpenAI subscription shows **Needs a new sign-in**, as
   when OpenAI rejects its refresh, unless a refresh can still renew its token: the gateway
-  lists such a key while its renewal is pending. The report's `unauthorized` list is checked
+  lists such a key while its renewal is pending. The key is marked only when the run has the
+  key's current token and that token is less than 5 minutes old by the database's clock; a
+  401 for an older token marks nothing. The report's `unauthorized` list is checked
   as the contract has it: 1 to 6 entries with `credential` and `at`, each credential once;
   an entry for a credential that is not one of the run's is ignored, as is one whose `at` is
   more than 5 minutes before the run was registered. A run's gateway can mark any key of its
