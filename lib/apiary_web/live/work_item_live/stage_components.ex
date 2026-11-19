@@ -1273,8 +1273,9 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   def frame_key(%{type: type, name: name}) when name != "main", do: "#{type}--#{name}--"
   def frame_key(%{type: type}), do: type
 
-  @doc "Artifact types in a sentence: \"acceptance criteria and mockup\"."
-  def outputs_words(types), do: types |> Enum.map(&type_words/1) |> words_list()
+  @doc "Artifact types in a sentence, each with \"the\": \"the acceptance criteria and the mockup\"."
+  def outputs_words(types),
+    do: types |> Enum.map(&gettext("the %{type}", type: type_words(&1))) |> words_list()
 
   defp words_list([]), do: ""
   defp words_list([one]), do: one

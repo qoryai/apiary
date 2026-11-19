@@ -1231,7 +1231,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert has_element?(view, "#work-item-tab-wait", "Shape is running")
 
       assert html =~
-               "reads the ticket and the stage&#39;s inputs, then writes spec, decision record, mockup and test features."
+               "reads the ticket and the stage&#39;s inputs, then writes the spec, the decision record, the mockup and the test features."
 
       refute has_element?(view, "#work-item-record")
     end

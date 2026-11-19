@@ -2929,7 +2929,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                "#work-item-stage-gate-line",
-               "Shape needs acceptance criteria and explainer"
+               "Shape needs the acceptance criteria and the explainer"
              )
 
       assert has_element?(view, "#work-item-stage-gate-input-acceptance-criteria")
@@ -2971,7 +2971,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item = at_shape_gate(scope, ["acceptance-criteria"], gate)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-stage-gate-line", "Shape needs acceptance criteria")
+      assert has_element?(
+               view,
+               "#work-item-stage-gate-line",
+               "Shape needs the acceptance criteria"
+             )
+
       refute has_element?(view, "#work-item-stage-gate-approve")
     end
 
@@ -3012,7 +3017,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, _work_item} = Processes.assign(scope, work_item, save!(scope, required))
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-stage-gate-line", "Shape needs acceptance criteria")
+      assert has_element?(
+               view,
+               "#work-item-stage-gate-line",
+               "Shape needs the acceptance criteria"
+             )
+
       refute has_element?(view, "#work-item-stage-gate-approve")
 
       render_hook(view, "stage_approve", %{
@@ -3024,7 +3034,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert decisions(work_item, :approve) |> Enum.filter(&(&1.stage_id == @shape)) == []
 
       assert line(view, "#work-item-stage-notice") ==
-               "Pick Request changes to write acceptance criteria. Approve needs them."
+               "Pick Request changes to write the acceptance criteria. Approve needs them."
 
       # The gate card shows the control the notice names, and no Move back.
       assert has_element?(view, "#work-item-stage-gate-ask-changes", "Request changes")
@@ -3072,7 +3082,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       })
 
       assert line(view, "#work-item-stage-notice") ==
-               "Pick Request changes to send the work item back to Build. Approve needs explainer."
+               "Pick Request changes to send the work item back to Build. Approve needs the explainer."
 
       assert has_element?(view, "#work-item-stage-gate-ask-changes", "Request changes")
     end
@@ -3084,7 +3094,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item = at_shape_gate(scope, ["acceptance-criteria"], %{"kind" => "none"})
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-stage-gate-line", "Shape needs acceptance criteria")
+      assert has_element?(
+               view,
+               "#work-item-stage-gate-line",
+               "Shape needs the acceptance criteria"
+             )
+
       refute has_element?(view, "#work-item-stage-gate-approvers")
       refute has_element?(view, "#work-item-stage-gate-ask-changes")
       refute has_element?(view, "#work-item-stage-gate-approve")
@@ -3875,7 +3890,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       refute has_element?(view, "#work-item-step-explore", "Read Qory's proposal")
-      assert has_element?(view, "#work-item-stage-gate-line", "Shape needs acceptance criteria")
+
+      assert has_element?(
+               view,
+               "#work-item-stage-gate-line",
+               "Shape needs the acceptance criteria"
+             )
+
       assert has_element?(view, "#work-item-stage-gate-output-acceptance-criteria")
       assert has_element?(view, "#work-item-stage-gate-ask-changes")
       refute has_element?(view, "#work-item-stage-gate-approve")
@@ -3897,7 +3918,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert decisions(work_item, :approve) == []
 
       assert line(view, "#work-item-stage-notice") ==
-               "Give this stage a workflow that writes acceptance criteria in Workspace " <>
+               "Give this stage a workflow that writes the acceptance criteria in Workspace " <>
                  "settings › Workflows. Approve needs them."
     end
   end
@@ -4092,7 +4113,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-stage-state", "Waits for inputs")
-      assert has_element?(view, "#work-item-stage-line", "Build needs acceptance criteria")
+      assert has_element?(view, "#work-item-stage-line", "Build needs the acceptance criteria")
       refute has_element?(view, "#work-item-stage-input-mockup")
       assert has_element?(view, "#work-item-stage-input-acceptance-criteria")
       refute has_element?(view, "#work-item-stage-add-acceptance-criteria")
