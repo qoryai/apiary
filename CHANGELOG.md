@@ -1976,11 +1976,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the run contract there allows a session time limit of 1 to 1440 minutes, and Qory
   Apiary still saves a time limit of 15 minutes or more. A save whose workflow sets
   `plan` without `access: write`, or sets `time_limit`, fails with a message that starts
-  with the fix and names the workflow. A next-session request is checked in the order of
-  the run contract's refusals: a run of Explore, or one whose stage no longer runs it, is
-  refused before its body is read, a repeat of the newest session still gets its stored
-  answer, `names` contains an unknown member whatever the length of its name, and
-  without `workflow_model` the answer is `404` `not_found` as JSON.
+  with the fix and contains the workflow's name.
+<!-- feature: workflow_model -->
+- Qory Apiary checks a next-session request in the order of the run contract's refusals.
+  A run of Explore gets `404` `not_found`, and a run whose stage no longer runs it gets
+  `409` `run_ended`, before Qory Apiary reads the body. A repeat of the newest session
+  still gets its stored answer. `names` contains an unknown member at any length of its
+  name. Without `workflow_model`, the request gets `404` `not_found` as JSON.
+<!-- /feature -->
 <!-- feature: factory, secrets -->
 - The run configuration's `model_credential` is now
   `default_model_provider_credential_name`, the default model provider credential, as in
