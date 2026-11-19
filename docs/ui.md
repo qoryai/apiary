@@ -452,7 +452,8 @@ replaces the navigation it is in.
   (`ApiaryWeb.Format.week_time/2`). The windows read 5-hour, 7-day, 7-day Opus, 7-day
   Sonnet, Extra usage, Requests per minute, Tokens per minute, Input tokens per minute,
   Output tokens per minute, Spend limit and Limit; a window of another code shows its
-  code. The page shows no key and no part of one. Every member reads it
+  code. The page shows no key and no token; a row has, in its identity line (below), the
+  last 4 characters of a pasted API key or the email of a sign-in. Every member reads it
   (`connection.read`); owners and admins (`provider.write`) have **Add key** in the
   section's actions and **Edit** at the right of each row, its label "Edit key" and the
   key's identity line, and anyone else neither. A key has no name that a person gives: a

@@ -36,6 +36,16 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
     "#{base(scope)}/#{provider.public_id}/keys/#{value.id}/edit"
   end
 
+  # The id of the key `value_id` in the page source: its row id.
+  defp key_dom(provider, value_id) do
+    value =
+      Repo.one!(
+        from v in Value, where: v.secret_id == ^provider.secret_id and v.value_id == ^value_id
+      )
+
+    "provider-key-#{value.id}"
+  end
+
   defp reject!(provider, value_id, at) do
     value =
       Repo.one!(
@@ -80,14 +90,14 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
 
     {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
 
-    assert has_element?(lv, "#provider-key-main-new-key", "Needs a new key")
+    assert has_element?(lv, "##{key_dom(provider, "main")}-new-key", "Needs a new key")
 
-    assert text(lv, "#provider-key-main-new-key") =~
+    assert text(lv, "##{key_dom(provider, "main")}-new-key") =~
              ~r/\ANeeds a new keyAnthropic rejected it on .*2026.*\./
 
-    refute has_element?(lv, "#provider-key-main-state")
-    assert has_element?(lv, "#provider-key-spare-state")
-    refute has_element?(lv, "#provider-key-spare-new-key")
+    refute has_element?(lv, "##{key_dom(provider, "main")}-state")
+    assert has_element?(lv, "##{key_dom(provider, "spare")}-state")
+    refute has_element?(lv, "##{key_dom(provider, "spare")}-new-key")
     refute html =~ "sk-ant-fixture"
   end
 
@@ -109,8 +119,8 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
     assert ModelKeys.rejections(Repo.get!(Apiary.Connections.Connection, provider.id)) == %{}
 
     {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
-    refute has_element?(lv, "#provider-key-main-new-key")
-    assert has_element?(lv, "#provider-key-main-state")
+    refute has_element?(lv, "##{key_dom(provider, "main")}-new-key")
+    assert has_element?(lv, "##{key_dom(provider, "main")}-state")
     refute html =~ "sk-ant-fixture"
   end
 
@@ -144,8 +154,8 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
         {lv, html}
       end)
 
-    assert has_element?(lv, "#provider-key-main-login", "Needs a new sign-in")
-    refute has_element?(lv, "#provider-key-main-new-key")
+    assert has_element?(lv, "##{key_dom(provider, "main")}-login", "Needs a new sign-in")
+    refute has_element?(lv, "##{key_dom(provider, "main")}-new-key")
 
     for text <- [html, log] do
       refute_secrets(text, [tokens.access_token, tokens.refresh_token, tokens.account_id])

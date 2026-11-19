@@ -56,6 +56,9 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
   defp edit_path(scope, provider, value_id),
     do: "#{page(scope, provider)}/keys/#{value!(provider, value_id).id}/edit"
 
+  # The id of the key `value_id` in the page source: its row id.
+  defp key_dom(provider, value_id), do: "provider-key-#{value!(provider, value_id).id}"
+
   # The Change value page of the key `value_id` of `secret`, at its row id.
   defp change_path(scope, provider, secret, value_id),
     do: secrets_path(scope, "/#{secret.public_id}/values/#{value!(provider, value_id).id}/change")
@@ -167,14 +170,19 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
       )
 
       {:ok, lv, _html} = live(conn, page(scope, provider))
-      assert has_element?(lv, "#provider-key-key-1-state", "In cooldown until")
-      assert has_element?(lv, "#provider-key-key-1-state", "5-hour at 90%, this key's Use up to")
+      assert has_element?(lv, "##{key_dom(provider, "key-1")}-state", "In cooldown until")
+
+      assert has_element?(
+               lv,
+               "##{key_dom(provider, "key-1")}-state",
+               "5-hour at 90%, this key's Use up to"
+             )
 
       # Above the window's use, the key is available, with its use.
       {:ok, _} = put_key_setting(scope, value, %{"use_up_to_percent" => 95})
       {:ok, lv, _html} = live(conn, page(scope, provider))
-      assert has_element?(lv, "#provider-key-key-1-state", "Available")
-      assert has_element?(lv, "#provider-key-key-1-state", "5-hour 93%")
+      assert has_element?(lv, "##{key_dom(provider, "key-1")}-state", "Available")
+      assert has_element?(lv, "##{key_dom(provider, "key-1")}-state", "5-hour 93%")
     end
   end
 

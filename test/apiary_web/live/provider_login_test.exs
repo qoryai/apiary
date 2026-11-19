@@ -92,6 +92,16 @@ defmodule ApiaryWeb.ProviderLoginTest do
     Repo.get!(Login, value.id)
   end
 
+  # The id of the key `value_id` in the page source: its row id.
+  defp key_dom(provider, value_id), do: "provider-key-#{key_value!(provider, value_id).id}"
+
+  # No page shows the value id Apiary gave a key (`key-<n>`). A row id may start with
+  # digits, so the UUIDs go first.
+  defp refute_key_names(html) do
+    uuid = ~r/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/
+    refute Regex.replace(uuid, html, "") =~ ~r/key-\d/
+  end
+
   describe "Add key" do
     test "has the button and its hint in place of a Sign-in field", ctx do
       %{conn: conn, scope: scope} = ctx
@@ -569,8 +579,8 @@ defmodule ApiaryWeb.ProviderLoginTest do
       {:ok, lv, html} = live(conn, path)
       refute_tokens(html, tokens)
 
-      assert text(lv, "#provider-key-main-login") == "Signed in." <> @stored
-      assert has_element?(lv, "#provider-key-main-state", "Available")
+      assert text(lv, "##{key_dom(provider, "main")}-login") == "Signed in." <> @stored
+      assert has_element?(lv, "##{key_dom(provider, "main")}-state", "Available")
 
       value = key_value!(provider, "main")
       refreshed_at = ~U[2026-11-12 10:04:00.000000Z]
@@ -581,7 +591,10 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
       {:ok, lv, html} = live(conn, path)
       refute_tokens(html, tokens)
-      assert text(lv, "#provider-key-main-login") =~ ~r/\ASigned in\. Last refresh .*2026.*\.\z/
+
+      assert text(lv, "##{key_dom(provider, "main")}-login") =~
+               ~r/\ASigned in\. Last refresh .*2026.*\.\z/
+
       refute_in_assigns(lv, tokens)
     end
 
@@ -608,7 +621,9 @@ defmodule ApiaryWeb.ProviderLoginTest do
         end)
 
       {:ok, lv, html} = live(conn, path)
-      assert text(lv, "#provider-key-main-login") =~ ~r/\ASigned in\. Last refresh .*\.\z/
+
+      assert text(lv, "##{key_dom(provider, "main")}-login") =~
+               ~r/\ASigned in\. Last refresh .*\.\z/
 
       for text <- [html, log],
           token <- [
@@ -638,7 +653,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
       {:ok, lv, html} = live(conn, path)
 
-      assert text(lv, "#provider-key-main-login") =~
+      assert text(lv, "##{key_dom(provider, "main")}-login") =~
                ~r/\ANeeds a new sign-inOpenAI rejected it on .*\.\z/
 
       refute html =~ "refresh_token_reused"
@@ -660,14 +675,14 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
       {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
 
-      assert has_element?(lv, "#provider-key-main-login", "Needs a new sign-in")
+      assert has_element?(lv, "##{key_dom(provider, "main")}-login", "Needs a new sign-in")
 
-      assert text(lv, "#provider-key-main-login") =~
+      assert text(lv, "##{key_dom(provider, "main")}-login") =~
                ~r/\ANeeds a new sign-inOpenAI rejected it on .*2026.*\.\z/
 
       refute html =~ "codex login"
 
-      refute has_element?(lv, "#provider-key-main-state")
+      refute has_element?(lv, "##{key_dom(provider, "main")}-state")
       refute html =~ "refresh_token_reused"
     end
 
@@ -689,7 +704,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
         )
 
         {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
-        line = text(lv, "#provider-key-main-login")
+        line = text(lv, "##{key_dom(provider, "main")}-login")
 
         cond do
           cause == "token_not_stored" ->
@@ -727,8 +742,8 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
       {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
 
-      refute has_element?(lv, "#provider-key-main-login")
-      assert has_element?(lv, "#provider-key-main-state")
+      refute has_element?(lv, "##{key_dom(provider, "main")}-login")
+      assert has_element?(lv, "##{key_dom(provider, "main")}-state")
     end
   end
 
@@ -761,11 +776,11 @@ defmodule ApiaryWeb.ProviderLoginTest do
       {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
 
       for {id, email} <- Enum.zip(ids, emails) do
-        assert text(lv, "#provider-key-#{id}-name") == line(provider, email)
+        assert text(lv, "##{key_dom(provider, id)}-name") == line(provider, email)
 
         assert has_element?(
                  lv,
-                 ~s{#provider-key-#{id}-edit[aria-label="Edit key #{line(provider, email)}"]}
+                 ~s{##{key_dom(provider, id)}-edit[aria-label="Edit key #{line(provider, email)}"]}
                )
       end
 
@@ -781,8 +796,8 @@ defmodule ApiaryWeb.ProviderLoginTest do
       {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
 
       # "acct-fixture-a" ends in "re-a".
-      assert text(lv, "#provider-key-main-name") == "#{provider.name} · account …re-a"
-      assert text(lv, "#provider-key-key-1-name") == line(provider, "kim@example.com")
+      assert text(lv, "##{key_dom(provider, "main")}-name") == "#{provider.name} · account …re-a"
+      assert text(lv, "##{key_dom(provider, "key-1")}-name") == line(provider, "kim@example.com")
 
       {:ok, edit, _html} = live(conn, edit_path(scope, provider, "main"))
       assert has_element?(edit, "h1", "#{provider.name} · account …re-a")
@@ -794,8 +809,8 @@ defmodule ApiaryWeb.ProviderLoginTest do
       set_login!(provider, "main", email: nil, account_id: "acct-9d81c27e7c1d")
 
       {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
-      assert text(lv, "#provider-key-main-name") == "#{provider.name} · account …7c1d"
-      refute has_element?(lv, "#provider-key-main-name", "dana@example.com")
+      assert text(lv, "##{key_dom(provider, "main")}-name") == "#{provider.name} · account …7c1d"
+      refute has_element?(lv, "##{key_dom(provider, "main")}-name", "dana@example.com")
     end
 
     test "a provider named differently from its kind shows its name in the line", ctx do
@@ -807,7 +822,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
       )
 
       {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
-      assert text(lv, "#provider-key-main-name") == "Web shop key · dana@example.com"
+      assert text(lv, "##{key_dom(provider, "main")}-name") == "Web shop key · dana@example.com"
     end
   end
 
@@ -838,10 +853,65 @@ defmodule ApiaryWeb.ProviderLoginTest do
       needs_sign_in!(provider, "main")
       {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
 
-      assert text(lv, "#provider-key-main-sign-in-start") == "Sign in with ChatGPT"
-      refute has_element?(lv, "#provider-key-main-sign-in-hint")
-      refute has_element?(lv, "#provider-key-spare-sign-in")
+      assert text(lv, "##{key_dom(provider, "main")}-sign-in-start") == "Sign in with ChatGPT"
+      refute has_element?(lv, "##{key_dom(provider, "main")}-sign-in-hint")
+      refute has_element?(lv, "##{key_dom(provider, "spare")}-sign-in")
       refute html =~ "codex login"
+    end
+
+    test "has the row id of each key in the button and no value id in the source", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(pending: :never)
+
+      {:ok, provider} =
+        Connections.create_provider(scope, %{
+          provider: "openai-subscription",
+          keys: [%{value: device_login(tag: "a")}]
+        })
+
+      {:ok, provider} =
+        Connections.add_provider_key(scope, provider, %{value: device_login(tag: "b")})
+
+      for value_id <- ~w(key-1 key-2), do: needs_sign_in!(provider, value_id)
+      {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+
+      for value_id <- ~w(key-1 key-2) do
+        row_id = key_value!(provider, value_id).id
+
+        assert has_element?(
+                 lv,
+                 ~s{##{key_dom(provider, value_id)}-sign-in-start[phx-value-key="#{row_id}"]}
+               )
+      end
+
+      refute_key_names(html)
+      refute_key_names(render(lv))
+
+      sign_in!(lv, "#{key_dom(provider, "key-2")}-sign-in")
+      assert device_of(lv).key == key_value!(provider, "key-2").id
+      refute_key_names(render(lv))
+    end
+
+    test "stores no sign-in started for a key the page never rendered", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(tokens: login_tokens(tag: "stray"), hold: true)
+      provider = subscription!(scope)
+      needs_sign_in!(provider, "main")
+      {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+      before = login_of(provider, "main")
+
+      for key <- [Ecto.UUID.generate(), "key-1", "main"] do
+        render_click(lv, "device_sign_in", %{"key" => key})
+        eventually(fn -> assert device_of(lv).state == :code end)
+        Stub.approve()
+
+        eventually(fn -> assert %{state: :failed, cause: :store, key: ^key} = device_of(lv) end)
+
+        refute render(lv) =~ "is saved."
+        assert login_of(provider, "main") == before
+        assert login_of(provider, "main").state == "sign_in_needed"
+        Stub.put(tokens: login_tokens(tag: "stray"), hold: true)
+      end
     end
 
     test "has no button while the description has no device sign-in", ctx do
@@ -850,8 +920,8 @@ defmodule ApiaryWeb.ProviderLoginTest do
       needs_sign_in!(provider, "main")
       {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
 
-      assert has_element?(lv, "#provider-key-main-login", "Needs a new sign-in")
-      refute has_element?(lv, "#provider-key-main-sign-in")
+      assert has_element?(lv, "##{key_dom(provider, "main")}-login", "Needs a new sign-in")
+      refute has_element?(lv, "##{key_dom(provider, "main")}-sign-in")
     end
 
     test "signs in from the row and stores the sign-in at once", ctx do
@@ -861,16 +931,16 @@ defmodule ApiaryWeb.ProviderLoginTest do
       needs_sign_in!(provider, "main")
       {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
 
-      sign_in!(lv, "provider-key-main-sign-in")
-      assert text(lv, "#provider-key-main-sign-in-code") == "7QKD-M4TPX"
-      assert has_element?(lv, "#provider-key-main-sign-in-cancel")
+      sign_in!(lv, "#{key_dom(provider, "main")}-sign-in")
+      assert text(lv, "##{key_dom(provider, "main")}-sign-in-code") == "7QKD-M4TPX"
+      assert has_element?(lv, "##{key_dom(provider, "main")}-sign-in-cancel")
       Stub.approve()
 
-      eventually(fn -> assert text(lv, "#provider-key-main-login") =~ "Signed in." end)
+      eventually(fn -> assert text(lv, "##{key_dom(provider, "main")}-login") =~ "Signed in." end)
 
-      assert text(lv, "#provider-key-main-login") == "Signed in." <> @stored
+      assert text(lv, "##{key_dom(provider, "main")}-login") == "Signed in." <> @stored
       assert render(lv) =~ "#{line(provider)} is saved."
-      refute has_element?(lv, "#provider-key-main-sign-in")
+      refute has_element?(lv, "##{key_dom(provider, "main")}-sign-in")
 
       assert %Login{state: "signed_in", generation: 2, account_id: account} =
                login_of(provider, "main")
@@ -887,21 +957,22 @@ defmodule ApiaryWeb.ProviderLoginTest do
       needs_sign_in!(provider, "main")
       {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
 
-      sign_in!(lv, "provider-key-main-sign-in")
+      dom = key_dom(provider, "main")
+      sign_in!(lv, "#{dom}-sign-in")
       value = key_value!(provider, "main")
       Repo.delete_all(from l in Login, where: l.secret_value_id == ^value.id)
       Repo.delete_all(from v in Apiary.Secrets.Value, where: v.id == ^value.id)
       Stub.approve()
 
-      eventually(fn -> assert has_element?(lv, "#provider-key-main-sign-in-fix") end)
+      eventually(fn -> assert has_element?(lv, "##{dom}-sign-in-fix") end)
 
-      assert text(lv, "#provider-key-main-sign-in-fix") ==
+      assert text(lv, "##{dom}-sign-in-fix") ==
                "Click Sign in with ChatGPT for a new code."
 
-      assert text(lv, "#provider-key-main-sign-in-cause") ==
+      assert text(lv, "##{dom}-sign-in-cause") ==
                "Qory Apiary could not save the sign-in."
 
-      assert has_element?(lv, "#provider-key-main-sign-in-start")
+      assert has_element?(lv, "##{dom}-sign-in-start")
       refute_tokens(render(lv), tokens)
       refute_in_assigns(lv, tokens)
     end
@@ -921,15 +992,15 @@ defmodule ApiaryWeb.ProviderLoginTest do
       needs_sign_in!(provider, "spare")
       {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
 
-      refute has_element?(lv, "#provider-key-spare-sign-in-start[disabled]")
-      sign_in!(lv, "provider-key-main-sign-in")
+      refute has_element?(lv, "##{key_dom(provider, "spare")}-sign-in-start[disabled]")
+      sign_in!(lv, "#{key_dom(provider, "main")}-sign-in")
 
-      assert has_element?(lv, "#provider-key-spare-sign-in-start[disabled]")
-      refute has_element?(lv, "#provider-key-main-sign-in-start")
+      assert has_element?(lv, "##{key_dom(provider, "spare")}-sign-in-start[disabled]")
+      refute has_element?(lv, "##{key_dom(provider, "main")}-sign-in-start")
 
-      lv |> element("#provider-key-main-sign-in-cancel") |> render_click()
-      refute has_element?(lv, "#provider-key-spare-sign-in-start[disabled]")
-      assert has_element?(lv, "#provider-key-main-sign-in-start")
+      lv |> element("##{key_dom(provider, "main")}-sign-in-cancel") |> render_click()
+      refute has_element?(lv, "##{key_dom(provider, "spare")}-sign-in-start[disabled]")
+      assert has_element?(lv, "##{key_dom(provider, "main")}-sign-in-start")
     end
 
     test "Cancel in a row stops the sign-in", ctx do
@@ -939,12 +1010,12 @@ defmodule ApiaryWeb.ProviderLoginTest do
       needs_sign_in!(provider, "main")
       {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
 
-      sign_in!(lv, "provider-key-main-sign-in")
+      sign_in!(lv, "#{key_dom(provider, "main")}-sign-in")
       pid = device_of(lv).pid
-      lv |> element("#provider-key-main-sign-in-cancel") |> render_click()
+      lv |> element("##{key_dom(provider, "main")}-sign-in-cancel") |> render_click()
 
       assert_ended(pid)
-      assert has_element?(lv, "#provider-key-main-sign-in-start")
+      assert has_element?(lv, "##{key_dom(provider, "main")}-sign-in-start")
     end
 
     test "gives a member who may not write no button", ctx do
@@ -959,8 +1030,8 @@ defmodule ApiaryWeb.ProviderLoginTest do
         |> log_in_user(member.user)
         |> live("#{base(scope)}/#{provider.public_id}")
 
-      assert has_element?(lv, "#provider-key-main-login", "Needs a new sign-in")
-      refute has_element?(lv, "#provider-key-main-sign-in")
+      assert has_element?(lv, "##{key_dom(provider, "main")}-login", "Needs a new sign-in")
+      refute has_element?(lv, "##{key_dom(provider, "main")}-sign-in")
     end
   end
 
@@ -991,9 +1062,10 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
       {:ok, lv, _html} = live(conn, secrets_path(scope, ""))
       row = "#secret-#{secret.public_id}"
-      assert has_element?(lv, "#{row}-main-value-id", line(provider))
+      row_id = key_value!(provider, "main").id
+      assert has_element?(lv, "#{row}-#{row_id}-value-id", line(provider))
       refute has_element?(lv, "#{row}-add")
-      refute has_element?(lv, "#{row}-main-rename")
+      refute has_element?(lv, "#{row}-#{row_id}-rename")
     end
 
     test "has the button on Change value of a login key, and Save stores the sign-in", ctx do

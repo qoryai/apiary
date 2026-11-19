@@ -354,8 +354,8 @@ defmodule ApiaryWeb.SecretLive.Index do
       id="secrets"
       label={gettext("Secrets")}
       rows={secret_rows(@shown)}
-      row_id={&row_id/1}
-      confirming={secret_confirming(@act, @secret, @value)}
+      row_id={&row_id(&1, @identities)}
+      confirming={secret_confirming(@act, @secret, @value, @identities)}
     >
       <:col :let={row} label={gettext("Name")} kind="title">
         <%= case row do %>
@@ -365,7 +365,7 @@ defmodule ApiaryWeb.SecretLive.Index do
               <span :if={secret.note} class="q-side" title={secret.note}>{secret.note}</span>
               <span
                 :if={@keys[secret.id]}
-                id={"#{row_id(row)}-provider"}
+                id={"#{row_id(row, @identities)}-provider"}
                 class="q-side"
                 title={@keys[secret.id].name}
               >
@@ -377,11 +377,15 @@ defmodule ApiaryWeb.SecretLive.Index do
               <.icon name="hero-arrow-turn-down-right-micro" class="size-3.5 text-faint" />
               <span
                 :if={@keys[secret.id]}
-                id={"#{row_id(row)}-value-id"}
+                id={"#{row_id(row, @identities)}-value-id"}
               >
                 {@identities[value.id]}
               </span>
-              <span :if={!@keys[secret.id]} class="font-mono" id={"#{row_id(row)}-value-id"}>
+              <span
+                :if={!@keys[secret.id]}
+                class="font-mono"
+                id={"#{row_id(row, @identities)}-value-id"}
+              >
                 {value.value_id}
               </span>
             </span>
@@ -409,7 +413,7 @@ defmodule ApiaryWeb.SecretLive.Index do
             </span>
             <span
               :if={Map.get(@uses, secret.id, []) != []}
-              id={"#{row_id(row)}-used-by"}
+              id={"#{row_id(row, @identities)}-used-by"}
               class="q-cut"
               title={used_by(@uses, secret.id)}
             >
@@ -466,8 +470,14 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp key_row?({:secret, secret}, keys), do: Map.has_key?(keys, secret.id)
   defp key_row?({:value, secret, _value}, keys), do: Map.has_key?(keys, secret.id)
 
-  defp row_id({:secret, secret}), do: "secret-#{secret.public_id}"
-  defp row_id({:value, secret, value}), do: "secret-#{secret.public_id}-#{value.value_id}"
+  # The id of a row in the page's source. A model key has no value id in it (`key-<n>`, which
+  # no page shows): its row has the key's row id, which is in `identities`.
+  defp row_id({:secret, secret}, _identities), do: "secret-#{secret.public_id}"
+
+  defp row_id({:value, secret, value}, identities) do
+    segment = if Map.has_key?(identities, value.id), do: value.id, else: value.value_id
+    "secret-#{secret.public_id}-#{segment}"
+  end
 
   # The names of what uses a secret, as its Used by cell shows them and as its title holds
   # them whole.
@@ -570,21 +580,21 @@ defmodule ApiaryWeb.SecretLive.Index do
       assign(assigns,
         secret: secret,
         value: value,
-        id: row_id(assigns.row),
+        id: row_id(assigns.row, assigns.identities),
         shown: value_name(assigns.identities, value)
       )
 
     ~H"""
     <.row_menu
       id={"#{@id}-menu"}
-      label={gettext("Actions for %{value_id} of %{name}", value_id: @shown, name: @secret.name)}
+      label={gettext("Actions for %{value} of %{name}", value: @shown, name: @secret.name)}
     >
       <.menu_item
         id={"#{@id}-change"}
         patch={value_path(@scope, @secret, @value, :change, @key)}
         aria-label={
-          gettext("Change value %{value_id} of %{name}",
-            value_id: @shown,
+          gettext("Change value %{value} of %{name}",
+            value: @shown,
             name: @secret.name
           )
         }
@@ -610,8 +620,8 @@ defmodule ApiaryWeb.SecretLive.Index do
         id={"#{@id}-delete"}
         patch={value_path(@scope, @secret, @value, :delete, @key)}
         aria-label={
-          gettext("Delete value %{value_id} of %{name}",
-            value_id: @shown,
+          gettext("Delete value %{value} of %{name}",
+            value: @shown,
             name: @secret.name
           )
         }
@@ -1288,8 +1298,8 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   defp form_title(%{act: :change_value, secret: secret, value: value, identities: identities}),
     do:
-      gettext("Change %{value_id} of %{name}",
-        value_id: value_name(identities, value),
+      gettext("Change %{value} of %{name}",
+        value: value_name(identities, value),
         name: secret.name
       )
 
@@ -1354,13 +1364,13 @@ defmodule ApiaryWeb.SecretLive.Index do
   ## The confirmations in place
 
   # The row of the secrets that asks to confirm: a secret's, or one of its values'.
-  defp secret_confirming(:delete_secret, %Secret{} = secret, _value),
-    do: row_id({:secret, secret})
+  defp secret_confirming(:delete_secret, %Secret{} = secret, _value, identities),
+    do: row_id({:secret, secret}, identities)
 
-  defp secret_confirming(:delete_value, %Secret{} = secret, %Value{} = value),
-    do: row_id({:value, secret, value})
+  defp secret_confirming(:delete_value, %Secret{} = secret, %Value{} = value, identities),
+    do: row_id({:value, secret, value}, identities)
 
-  defp secret_confirming(_act, _secret, _value), do: nil
+  defp secret_confirming(_act, _secret, _value, _identities), do: nil
 
   attr :row, :any, required: true
   attr :identities, :map, default: %{}, doc: "the identity line of each model key, by row id"
@@ -1402,14 +1412,14 @@ defmodule ApiaryWeb.SecretLive.Index do
       assign(assigns,
         secret: secret,
         value: value,
-        id: row_id(assigns.row),
+        id: row_id(assigns.row, assigns.identities),
         shown: value_name(assigns.identities, value)
       )
 
     ~H"""
     <.inline_confirm
       id={"#{@id}-confirm"}
-      question={gettext("Delete %{value_id} of %{name}?", value_id: @shown, name: @secret.name)}
+      question={gettext("Delete %{value} of %{name}?", value: @shown, name: @secret.name)}
       cancel={@cancel}
     >
       {gettext("The value is deleted, and the secret keeps its other values. This cannot be undone.")}
@@ -2384,8 +2394,8 @@ defmodule ApiaryWeb.SecretLive.Index do
            socket,
            if(value.value_id,
              do:
-               gettext("%{value_id} of %{name} is saved.",
-                 value_id:
+               gettext("%{value} of %{name} is saved.",
+                 value:
                    if(provider, do: Identity.for_key(provider, value.id), else: value.value_id),
                  name: secret.name
                ),
@@ -2452,8 +2462,8 @@ defmodule ApiaryWeb.SecretLive.Index do
         {:noreply,
          saved(
            socket,
-           gettext("%{value_id} is deleted from %{name}.",
-             value_id: shown,
+           gettext("%{value} is deleted from %{name}.",
+             value: shown,
              name: secret.name
            )
          )}
