@@ -3146,9 +3146,9 @@ defmodule Apiary.Stages do
   # `number` among `artifacts` (the work item's artifacts, `Apiary.Artifacts.list/1`), newest
   # first: the versions of the artifact `verdict`, name `main`, that the run which wrote the
   # report wrote, that are no withdrawal and that no cancelled run wrote
-  # (`Artifacts.cancelled?/1`). [] where the report has no run (a person wrote it) or that run
-  # pushed no verdict. A verdict of another run or another stage is never the result of the
-  # work the report is about.
+  # (`Artifacts.cancelled?/1`). [] where the report has no run, or that run pushed no
+  # verdict. A verdict of another run or another stage is never the result of the work the
+  # report is about.
   @spec full_suite_versions([Artifacts.Artifact.t()], pos_integer) :: [map]
   def full_suite_versions(artifacts, number) do
     with %{run_id: run_id} when is_binary(run_id) <- report_version(artifacts, number) do
