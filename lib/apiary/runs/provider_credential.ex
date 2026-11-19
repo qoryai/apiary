@@ -51,11 +51,12 @@ defmodule Apiary.Runs.ProviderCredential do
   alias Apiary.Runs.ModelKey
 
   @typedoc """
-  A run's model keys: `name`, the start key's credential name, the run configuration's
-  `model_credential`; `keys`, each key's credential `name`, row id (`secret_value_id`),
-  `entry` as the run configuration writes it, the provider's row it was read from
-  (`provider`) and the run's row of it (`row`), in order; the `hosts` the run reaches
-  them on; and the rows of the keys' providers, each once, in the order of their keys.
+  A run's model keys: `name`, the credential name of the default model provider
+  credential, the run configuration's `model_credential`; `keys`, each key's credential
+  `name`, row id (`secret_value_id`), `entry` as the run configuration writes it, the
+  provider's row it was read from (`provider`) and the run's row of it (`row`), in order;
+  the `hosts` the run reaches them on; and the rows of the keys' providers, each once, in
+  the order of their keys.
   """
   @type t :: %{
           name: String.t(),

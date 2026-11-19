@@ -92,14 +92,14 @@ defmodule Apiary.Dispatches.RunSettings do
   # out of time or crashed. The queue keeps the same providers in the same order for the
   # claim's filter (`model_providers/1`).
   #
-  # A run of a stage with `shared_run: true` also takes the keys of each provider its later
-  # sessions run on, one provider per session (`with_sessions/3`). The run gets at most 6
-  # keys across its providers (`merge/3`): the default model provider credential's
-  # provider's keys, picked in the order of `Apiary.ModelKeys.Order`, the first of that
-  # order the default model provider credential, never one in cooldown; at least one key
-  # of each other provider; then the rest. Each provider's keys are kept in the order the
-  # run configuration sends them (`Apiary.ModelKeys.Order.sent/2`), the default model
-  # provider credential marked.
+  # A run of a stage with `shared_run: true` also takes the keys of each provider its
+  # later sessions run on, one provider per session (`with_sessions/3`). The run gets at
+  # most 6 keys across its providers (`merge/3`): the keys of the provider of the default
+  # model provider credential, picked in the order of `Apiary.ModelKeys.Order`, the first
+  # of that order being the default model provider credential, never one in cooldown; at
+  # least one key of each other provider; then the rest. Each provider's keys are kept in
+  # the order the run configuration sends them (`Apiary.ModelKeys.Order.sent/2`), the
+  # default model provider credential marked.
   #
   # A deny rule of the security policy is not asked: it never blocks a host of an
   # integration.
@@ -123,7 +123,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # of each workflow of that stage (`Apiary.Stages.shared_workflows/1`), which the claim
   # keeps on the run (`Apiary.Stages.claim_sessions!/3`). The process document has no
   # time limit. The workflows and the limits are read without a lock. Beside it, the run
-  # keeps the default model provider credential's provider's row id
+  # keeps the row id of the provider of the default model provider credential
   # (`provider_connection_id`) and its keys (`run_model_keys`, `Apiary.Runs.ModelKey`:
   # each key's place, its row id, its credential name `<provider's public id>-<place from
   # 1>`, the place counted per provider, `start` on the default model provider
@@ -555,9 +555,9 @@ defmodule Apiary.Dispatches.RunSettings do
   #     false); or the catalogue's default runtime
   #     (`Apiary.ModelChoices.default_runtime/0`), where the choices resolve to no choice
   #     at any level: the session joins the group of the run's default model provider
-  #     credential, or, in a run with no default model provider credential, runs on the
-  #     machine's local model provider credential. The session then uses the default
-  #     model of that runtime.
+  #     credential, or, in a run whose first session starts on the machine's local model
+  #     provider credential (so the run has no default model provider credential), runs
+  #     on that credential. The session then uses the default model of that runtime.
   #
   # A session whose choice's provider is gone ends the claim `provider_gone`, as the run's
   # does: the choice is set to a provider that was removed, or its provider is not there,
@@ -655,7 +655,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # The run's keys, at most `Apiary.ModelKeys.Order.max_keys/0`, as `keys` (`merge/3`),
   # `columns` with the default model provider credential's provider, and each session's
   # entry with the name of its group's default model provider credential as
-  # `model_credential`. A run with no default model provider credential keeps no key.
+  # `model_credential`. A run whose first session starts on the machine's local model
+  # provider credential (so the run has no default model provider credential) keeps no
+  # key.
   defp merged(built, nil, {chosen, _groups}, _now) do
     sessions = Map.new(chosen, fn {workflow, choice, _group} -> {workflow, entry(choice)} end)
     built |> Map.put(:keys, []) |> Map.put(:sessions, sessions)
@@ -764,7 +766,8 @@ defmodule Apiary.Dispatches.RunSettings do
     end
   end
 
-  # A run with no default model provider credential keeps no key, once the session's
+  # A run whose first session starts on the machine's local model provider credential (so
+  # the run has no default model provider credential) keeps no key, once the session's
   # provider is checked for `provider_gone`. Without the features under which a run is
   # given keys (`keyed` false), the session gets `runtime` alone. Else the run's first
   # session runs on the machine's local model provider credential, so a later session on
