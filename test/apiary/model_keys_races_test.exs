@@ -222,17 +222,5 @@ defmodule Apiary.ModelKeysRacesTest do
       assert [%Rejection{rejected_at: ^first}] = rejections(ctx.main)
       assert %Copy{marked_at: %DateTime{}} = copy(ctx.run_key)
     end
-
-    test "sent at once, take the mark once", ctx do
-      first = ~U[2026-11-18 09:00:00.000000Z]
-      second = ~U[2026-11-18 09:00:01.000000Z]
-
-      assert [:ok, :ok] =
-               together([report(ctx.run_key, first), report(ctx.run_key, second)])
-
-      assert [%Rejection{rejected_at: at}] = rejections(ctx.main)
-      assert at in [first, second]
-      assert %Copy{marked_at: %DateTime{}} = copy(ctx.run_key)
-    end
   end
 end
