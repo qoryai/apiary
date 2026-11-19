@@ -906,7 +906,14 @@ for each other and never on each other at once:
    fix the 401 (`Apiary.ModelKeys.Login.rejectable?/3`) or waits for this transaction. That
    check reads database facts only: the sign-in time of the token the run's copy has
    (`model_key_copies.login_at`), the sign-in's current time and the database's clock, not
-   the gateway's `at`. An entry whose `at` is more than 5 minutes before the run was
+   the gateway's `at`. The `at` of an entry is compared with one stored time alone: an
+   entry of a sign-in whose `at` is before `model_key_copies.login_sealed_at`, the
+   database's `clock_timestamp()` at the request that sealed the run's current token, is
+   for an earlier token (a report sent again after a renewal, a 401 of a request in flight
+   before it, or a report repeated because the renewal's answer was lost) and marks
+   nothing. That is the narrow rule: a report that names the token the gateway sent would
+   decide it exactly, and it is a change of the contract with Forager, which A-51 does not
+   make. An entry whose `at` is more than 5 minutes before the run was
    registered is left out. A run's gateway can mark any key of the run, and a key belongs
    to the whole organisation or the provider, so one run marks the key for every run that
    uses it.
@@ -916,8 +923,13 @@ for each other and never on each other at once:
    access token, which takes the lease of the sign-in as a refresh does (above) with no
    transaction open, waits for another caller's refresh until 2 seconds before the request's
    deadline (the work credential's call and the answer need that time), and then decrypts the token,
-   so the copy of the key keeps the `value_set_at` and the sign-in time (`login_at`) that
-   were read first. A refresh keeps `value_set_at`, so a run's copy of the key stays the
+   so the copy of the key keeps the `value_set_at` and the sign-in time (`login_at`). The
+   gate reads both first (`Apiary.ModelKeys.Login.seal_times/2`), then the token
+   (`access_token/3`), then the sign-in time again with the token it sealed
+   (`time_of_token/3`): when the stored token is still the one sealed, the copy keeps
+   that second time, so a run whose request made the refresh has the refresh's time; when
+   another caller's refresh replaced the token between the reads, it keeps the first,
+   older one, so a report for that token marks nothing. A refresh keeps `value_set_at`, so a run's copy of the key stays the
    key's value across refreshes, and a new sign-in changes it; a refresh changes the
    sign-in time, which tells a run that has the current token from one that has an older
    one. The renewal after a 401 serves a token newer than the run's copy as it is. A key

@@ -223,4 +223,61 @@ defmodule Apiary.ModelKeys.AccountClaimTest do
       assert read(~s({"id":"acct-\\ud800"}), "/id") == :error
     end
   end
+
+  # Each case is a probe of `credential.AccountClaim` in forager (`credential.go`, Go
+  # 1.27.4), whose result is in the test name. Go trims `=` at the end of the payload, then
+  # decodes without padding, skipping a carriage return and a line feed: any `=` that is
+  # left is an error.
+  describe "read/2 reads the padding of the payload as the gateway's decoder does" do
+    @json ~s({"id":"acct-1","pad":"x"})
+
+    defp padded(suffix, opts \\ []) do
+      encoded = Base.url_encode64(@json, padding: false)
+
+      encoded =
+        if prefix = opts[:inside],
+          do: String.slice(encoded, 0, prefix) <> "=" <> String.slice(encoded, prefix..-1//1),
+          else: encoded
+
+      "e30." <> encoded <> suffix <> ".sig"
+    end
+
+    test "Go: padding at the end, once or twice, is read" do
+      assert AccountClaim.read(padded("="), "/id") == {:ok, "acct-1"}
+      assert AccountClaim.read(padded("=="), "/id") == {:ok, "acct-1"}
+    end
+
+    test "Go: a line feed before the padding is read, and inside the payload" do
+      assert AccountClaim.read(padded("\n="), "/id") == {:ok, "acct-1"}
+      assert AccountClaim.read(padded("\r\n"), "/id") == {:ok, "acct-1"}
+    end
+
+    test "Go: padding and then a line feed is refused" do
+      assert AccountClaim.read(padded("=\n"), "/id") == :error
+    end
+
+    test "Go: padding and then a carriage return and a line feed is refused" do
+      assert AccountClaim.read(padded("=\r\n"), "/id") == :error
+    end
+
+    test "Go: padding inside the payload is refused" do
+      assert AccountClaim.read(padded("", inside: 4), "/id") == :error
+    end
+
+    test "Go: padding, a line feed and padding again is refused" do
+      assert AccountClaim.read(padded("=\n="), "/id") == :error
+    end
+
+    test "Go: padding, a carriage return and padding again is refused" do
+      assert AccountClaim.read(padded("=\r="), "/id") == :error
+    end
+
+    test "Go: padding before the payload is refused" do
+      assert AccountClaim.read(
+               "e30.=" <> Base.url_encode64(@json, padding: false) <> ".sig",
+               "/id"
+             ) ==
+               :error
+    end
+  end
 end

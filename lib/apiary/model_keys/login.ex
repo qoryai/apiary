@@ -410,12 +410,13 @@ defmodule Apiary.ModelKeys.Login do
 
   @doc """
   Writes the row of the key `value`'s new login `parsed`, in the caller's transaction: the
-  state `signed_in`, no failure, no lease, `refreshed_at` nil and `signed_in_at` `now`;
-  `generation` is 1 for a new key, and the key's plus 1 for a sign-in over another.
+  state `signed_in`, no failure, no lease, `refreshed_at` nil and `signed_in_at` `now`,
+  by default the database's clock (`db_now/0`), as every other writer of this module reads
+  it; `generation` is 1 for a new key, and the key's plus 1 for a sign-in over another.
   `{:ok, row}`.
   """
   @spec put(Value.t(), parsed, DateTime.t()) :: {:ok, t} | {:error, Ecto.Changeset.t()}
-  def put(%Value{id: id, organisation_id: organisation_id}, parsed, now \\ DateTime.utc_now()) do
+  def put(%Value{id: id, organisation_id: organisation_id}, parsed, now \\ db_now()) do
     now = DateTime.truncate(now, :microsecond)
 
     fresh = [
@@ -790,8 +791,9 @@ defmodule Apiary.ModelKeys.Login do
   # or failure, begun after this call started, gets that refresh's token, or the same refusal.
   # With `newer_than:` (a time, the sign-in time of the token the run has,
   # `Apiary.ModelKeys.Copy`), a login whose sign-in or last refresh is later than that holds
-  # a token newer than the run's, which the call serves as it is: the 401 was for the older
-  # token, and a refresh is no use.
+  # a token newer than the run's: the 401 was for the older token, and the call is decided as
+  # one with no `recover:`, so the newer token is served while no refresh is due, and
+  # refreshed as any token is when it has expired or is about to.
   @doc false
   @spec access_token(Connection.t(), Ecto.UUID.t(), keyword) ::
           {:ok, String.t(), DateTime.t() | nil}
@@ -1128,8 +1130,10 @@ defmodule Apiary.ModelKeys.Login do
   end
 
   # A renewal after a 401 (`recover: true`): the stored token is no good, whatever its
-  # `exp`, so there is no `:fresh`, unless it is newer than the run's (`newer_than:`, then
-  # `:refreshed`: it is served). The call is `{:due, "unauthorized_recovery"}` unless a
+  # `exp`, so there is no `:fresh`, unless it is newer than the run's (`newer_than:`): the
+  # 401 was for the older token, and the call is then decided as one with no `recover`, so a
+  # newer token that has expired, or is about to, is refreshed or held as any token is. The
+  # call is `{:due, "unauthorized_recovery"}` unless a
   # refresh or a failed one is less than 5 minutes old (`:blocked`: the caller gets
   # `{:error, :unavailable}`, and the gateway asks again 30 seconds later), or one ended
   # after this call started, when a refresh's token is served (`:refreshed`) and a
@@ -1141,7 +1145,7 @@ defmodule Apiary.ModelKeys.Login do
 
     cond do
       newer?(row, ctx.newer_than) ->
-        :refreshed
+        decide(row, now, %{ctx | recover: false})
 
       last != nil and DateTime.compare(last, started) == :gt ->
         if row.refreshed_at != nil and DateTime.compare(row.refreshed_at, started) == :gt,

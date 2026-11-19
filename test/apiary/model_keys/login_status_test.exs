@@ -371,6 +371,58 @@ defmodule Apiary.ModelKeys.LoginStatusTest do
                requests()
     end
 
+    test "serves a token that is newer than the run's, with no refresh", %{scope: scope} do
+      {provider, tokens} = subscription!(scope, expires_in: 864_000)
+      set_login!(provider, signed_in_at: -3600, refreshed_at: -10)
+      stub!(new_tokens("never"))
+      older = DateTime.add(DateTime.utc_now(), -600)
+
+      assert {:ok, access, _at} = token(provider, recover: true, newer_than: older)
+      assert access == tokens.access_token
+      assert requests() == []
+    end
+
+    test "refreshes a newer token that is about to expire, as any token is", %{scope: scope} do
+      {provider, tokens} = subscription!(scope, expires_in: 100)
+      set_login!(provider, signed_in_at: -3600, refreshed_at: -120)
+      stub!(new_tokens("renewed"))
+      older = DateTime.add(DateTime.utc_now(), -600)
+
+      assert {:ok, access, _at} = token(provider, recover: true, newer_than: older)
+      refute access == tokens.access_token
+      assert [%{"refresh_reason" => "proactive_expiry"}] = requests()
+    end
+
+    test "serves no newer token that has expired and was refreshed 60 seconds ago or less",
+         %{scope: scope} do
+      {provider, _tokens} = subscription!(scope, expires_in: 864_000)
+      set_login!(provider, signed_in_at: -3600, refreshed_at: -10, access_expires_at: -60)
+
+      store_access_token!(
+        provider,
+        value(provider).id,
+        login_tokens(expires_in: -60).access_token
+      )
+
+      stub!(new_tokens("never"))
+      older = DateTime.add(DateTime.utc_now(), -600)
+
+      assert {:error, :unavailable} = token(provider, recover: true, newer_than: older)
+      assert requests() == []
+    end
+
+    test "refuses the older token's 401 with no refresh when the sign-in was refreshed since but not newer",
+         %{scope: scope} do
+      {provider, _tokens} = subscription!(scope, expires_in: 864_000)
+      set_login!(provider, signed_in_at: -3600, refreshed_at: -10)
+      stub!(new_tokens("never"))
+      current = Repo.get!(Login, value(provider).id).refreshed_at
+
+      # The run has the current token: the renewal is the 401 of the token the key holds.
+      assert {:error, :unavailable} = token(provider, recover: true, newer_than: current)
+      assert requests() == []
+    end
+
     test "refreshes at most once in 5 minutes per sign-in", %{scope: scope} do
       {provider, _tokens} = subscription!(scope, expires_in: 864_000)
       set_login!(provider, signed_in_at: -600)

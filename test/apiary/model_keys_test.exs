@@ -271,6 +271,7 @@ defmodule Apiary.ModelKeysTest do
                  organisation_id: ctx.scope.organisation.id,
                  copy_set_at: nil,
                  copy_login_at: nil,
+                 copy_login_sealed_at: nil,
                  copy_kept: false
                },
                %{
@@ -279,6 +280,7 @@ defmodule Apiary.ModelKeysTest do
                  organisation_id: ctx.scope.organisation.id,
                  copy_set_at: nil,
                  copy_login_at: nil,
+                 copy_login_sealed_at: nil,
                  copy_kept: false
                }
              ]
