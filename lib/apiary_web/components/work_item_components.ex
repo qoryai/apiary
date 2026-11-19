@@ -6633,7 +6633,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           ]
 
         run[:state] in @stopped ->
-          [row_stopped_word(run), run[:ended_at] && ended_ago(run.ended_at, now)]
+          [stopped_word(run), run[:ended_at] && ended_ago(run.ended_at, now)]
 
         true ->
           ended_parts(session, run[:ended_at], recorded, now)
@@ -6674,19 +6674,15 @@ defmodule ApiaryWeb.WorkItemComponents do
     end
   end
 
-  # A shared run's line and its session rows read the state of a run that stopped in lower
-  # case, as the verdict words beside it. On the run's line, a run that reached its time
-  # limit and any other state keep the word of the top line (`run_state_word/1`); a session
-  # row reads the time limit in lower case (`row_stopped_word/1`).
-  defp stopped_word(%{place: :time_limit} = run), do: run_state_word(run)
+  # A shared run's line and its session rows read the state of a run that stopped, and a
+  # run that reached its time limit, in lower case, as the verdict words beside it; any
+  # other state keeps the word of the top line (`run_state_word/1`).
+  defp stopped_word(%{place: :time_limit}), do: gettext("time limit reached")
 
   defp stopped_word(%{state: state}) when state in @stopped,
     do: session_state_word(Atom.to_string(state))
 
   defp stopped_word(run), do: run_state_word(run)
-
-  defp row_stopped_word(%{place: :time_limit}), do: gettext("time limit reached")
-  defp row_stopped_word(run), do: stopped_word(run)
 
   defp session_state_word("failed"), do: gettext("failed")
   defp session_state_word("cancelled"), do: gettext("cancelled")

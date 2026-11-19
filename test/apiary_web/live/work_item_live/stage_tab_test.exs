@@ -2407,7 +2407,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert List.last(rows) =~ ~r/^implement-changes · round 2 · failed · /
     end
 
-    test "a session row of a shared run that reached its time limit reads it in lower case",
+    test "a shared run that reached its time limit reads it in lower case, line and row",
          %{conn: conn, scope: scope} do
       {work_item, run, registered} = shared_build!(scope, looped())
       :ok = to_round_2!(run)
@@ -2424,7 +2424,10 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
 
       assert [line | rows] = fold_rows(view)
-      assert line =~ ~r/^Attempt 3 \(Run #{registered.number}\) · 4 workflows · round 2 of 3 · /
+
+      assert untimed(line) ==
+               "Attempt 3 (Run #{registered.number}) · 4 workflows · round 2 of 3 · time limit reached"
+
       assert untimed(List.last(rows)) == "implement-changes · round 2 · time limit reached"
     end
 

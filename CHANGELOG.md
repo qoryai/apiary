@@ -1804,8 +1804,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   a row in the run, with its round in a loop, also where the table of the stage's entries
   shows; it counts as one of the run's workflows. A session that reported failed or
   cancelled reads that state. The run's line and its rows show the state of a run that
-  stopped in lower case, like "passed": failed, lost, cancelled or paused; a session row
-  shows "time limit reached". The Ticket tab and the Thread show the run as before.
+  stopped in lower case, like "passed": failed, lost, cancelled, paused or
+  "time limit reached". The Ticket tab and the Thread show the run as before.
 - In the list of a work item's outputs and on an artifact's page, a version that a run of a
   stage with `shared_run: true` wrote shows the round of the session that wrote it, "Run 3 ·
   round 2", and "Run 3 · round 1" for a run of a stage with no loop. In a stage with a
