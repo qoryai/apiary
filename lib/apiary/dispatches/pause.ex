@@ -65,7 +65,16 @@ defmodule Apiary.Dispatches.Pause do
              ]), %{until: d.paused_until, number: next.number, workspace_id: next.workspace_id}}
       )
 
-    paused = Map.new(rows, fn {_value, run, _rest} -> {run.id, provider_id(run)} end)
+    # The runs' key rows and sessions, each read once for every run.
+    runs = rows |> Enum.map(&elem(&1, 1)) |> Repo.preload(:model_keys)
+    sessions = runs |> Enum.map(& &1.dispatch_run_id) |> Enum.reject(&is_nil/1)
+    sessions = Apiary.Stages.run_sessions(sessions)
+
+    paused =
+      Map.new(runs, fn run ->
+        {run.id, provider_id(run, Map.get(sessions, run.dispatch_run_id, []))}
+      end)
+
     ids = paused |> Map.values() |> Enum.reject(&is_nil/1) |> Enum.uniq()
 
     providers =
@@ -87,8 +96,8 @@ defmodule Apiary.Dispatches.Pause do
 
   # The provider of the session that paused (`Apiary.Runs.Run.session_provider_ids/2`),
   # its first for a session not known; nil for a run with none.
-  defp provider_id(%Run{} = run) do
-    case Run.session_provider_ids(run, run.paused_session) do
+  defp provider_id(%Run{} = run, sessions) do
+    case Run.session_provider_ids(run, run.paused_session, sessions) do
       [id | _rest] -> id
       [] -> nil
     end

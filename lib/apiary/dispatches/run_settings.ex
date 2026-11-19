@@ -556,6 +556,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # which leaves the run waiting as for the run's provider.
   defp with_sessions({:ok, built}, start, context) do
     sessions = context.held.sessions
+    context = Map.put(context, :claim_keys, session_keys(sessions, context))
 
     context.held
     |> Map.get(:shared, Map.keys(sessions))
@@ -575,12 +576,28 @@ defmodule Apiary.Dispatches.RunSettings do
       end
     end)
     |> case do
-      {:ok, chosen, groups} -> {:ok, merged(built, start, {chosen, groups}, context.now)}
-      other -> other
+      {:ok, chosen, groups} ->
+        if fits?(start, groups),
+          do: {:ok, merged(built, start, {chosen, groups}, context.now)},
+          else: {:end, :too_many_providers}
+
+      other ->
+        other
     end
   end
 
   defp with_sessions(other, _start, _context), do: other
+
+  # Whether the run's providers, the start key's and those of its later sessions' groups,
+  # are at most `Apiary.ModelKeys.Order.max_keys/0`, so each gets a key (`merge/3`). The
+  # claim's guard checks the stage's choices before `hold/1` reads them
+  # (`Apiary.Stages.shared_models/1`); a choice saved in between can add a provider, and
+  # the claim then ends the run `too_many_providers`, as the guard would.
+  defp fits?(start, groups) do
+    start_ids = if start, do: [start.provider.id], else: []
+    ids = Enum.uniq(start_ids ++ Enum.map(groups, & &1.provider.id))
+    length(ids) <= Order.max_keys()
+  end
 
   # A session's group, where an earlier session's group of the same provider uses the
   # same API, is that group; where it uses another API, the session gets `runtime` alone:
@@ -745,14 +762,14 @@ defmodule Apiary.Dispatches.RunSettings do
         start != nil and provider.id == start.provider.id ->
           on_start(formed, runtime, start)
 
-        group = free_group(provider, formed, context.now) ->
+        group = free_group(provider, formed, context) ->
           {:ok, formed.stored, group}
 
         fallen = on_fallback(input, resolution, start, context) ->
           fallen
 
         true ->
-          case group(provider, formed, context.now) do
+          case session_group(provider, formed, context) do
             %{keys: [_ | _]} = group -> {:ok, formed.stored, group}
             _no_key -> {:ok, %{"runtime" => runtime.name}, nil}
           end
@@ -806,7 +823,7 @@ defmodule Apiary.Dispatches.RunSettings do
             if same_api?(formed.columns.provider_api, start.api),
               do: {:ok, formed.stored, nil}
 
-          group = free_group(provider, formed, ctx.now) ->
+          group = free_group(provider, formed, ctx) ->
             {:ok, formed.stored, group}
 
           true ->
@@ -818,12 +835,37 @@ defmodule Apiary.Dispatches.RunSettings do
     end)
   end
 
-  # The group of `provider`'s keys for the API `formed` uses, at `now`, where one of them
-  # is free; else nil.
-  defp free_group(provider, formed, now) do
-    group = group(provider, formed, now)
-    if Order.start(group.keys, now), do: group
+  # The group of `provider`'s keys for the API `formed` uses, at the claim's clock, where
+  # one of them is free; else nil.
+  defp free_group(provider, formed, context) do
+    group = session_group(provider, formed, context)
+    if Order.start(group.keys, context.now), do: group
   end
+
+  # The group of a later session on `provider` (`group/3`), from the keys
+  # `session_keys/2` read once for the claim.
+  defp session_group(provider, formed, context) do
+    keys = Map.get_lazy(context.claim_keys, provider.id, fn -> claim_keys(provider, context) end)
+    %{provider: provider, api: formed.columns.provider_api, keys: keys}
+  end
+
+  # The keys at the claim of each provider that the later sessions' choices and their
+  # fallbacks name, in their order (`Apiary.ModelKeys.Order.order/2`), by provider id:
+  # each provider's keys read once, however many sessions use it. A run given no key
+  # (`keyed` false) reads none.
+  defp session_keys(_sessions, %{held: %{keyed: false}}), do: %{}
+
+  defp session_keys(sessions, context) do
+    for {_workflow, session} <- sessions,
+        id <- provider_ids(session),
+        provider = Map.get(context.providers, id),
+        uniq: true,
+        into: %{},
+        do: {id, claim_keys(provider, context)}
+  end
+
+  defp claim_keys(provider, context),
+    do: provider |> ModelKeys.claim_keys(context.now) |> Order.order(context.now)
 
   # The keys of `provider` a run gets at `now` (`Apiary.ModelKeys.Order.order/2`), with
   # the provider and the API of `formed`.

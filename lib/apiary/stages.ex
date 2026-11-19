@@ -785,20 +785,19 @@ defmodule Apiary.Stages do
   # (`claim_sessions!/3`): the key whose group that session starts on. The session is the
   # one a report numbered `session` ended, else the open session (`open_session/1`), the
   # one a run that paused was in. Nil for a session of the start key's group, and for a
-  # run with no session settings.
+  # run with no session settings. `sessions`, the run's sessions as `run_sessions/1` reads
+  # them, is read here where it is nil.
   @doc false
-  @spec session_credential(map, pos_integer) :: String.t() | nil
+  @spec session_credential(map, pos_integer, [Session.t()] | nil) :: String.t() | nil
+  def session_credential(run, session, sessions \\ nil)
+
   def session_credential(
         %{dispatch_run_id: dispatch_run_id, session_settings: %{} = settings},
-        session
+        session,
+        sessions
       )
       when is_binary(dispatch_run_id) and is_integer(session) do
-    sessions =
-      Repo.all(
-        from s in Session,
-          where: s.dispatch_run_id == ^dispatch_run_id,
-          order_by: [desc: s.sequence]
-      )
+    sessions = sessions || Map.get(run_sessions([dispatch_run_id]), dispatch_run_id, [])
 
     case Enum.find(sessions, &(&1.forager_session == session)) ||
            Enum.find(sessions, &is_nil(&1.forager_session)) do
@@ -810,7 +809,22 @@ defmodule Apiary.Stages do
     end
   end
 
-  def session_credential(_run, _session), do: nil
+  def session_credential(_run, _session, _sessions), do: nil
+
+  # run_sessions/1 is the sessions of the runs of the queue `dispatch_run_ids`, by run of
+  # the queue, each run's newest first: one read for every run.
+  @doc false
+  @spec run_sessions([Ecto.UUID.t()]) :: %{Ecto.UUID.t() => [Session.t()]}
+  def run_sessions([]), do: %{}
+
+  def run_sessions(dispatch_run_ids) when is_list(dispatch_run_ids) do
+    Repo.all(
+      from s in Session,
+        where: s.dispatch_run_id in ^Enum.uniq(dispatch_run_ids),
+        order_by: [asc: s.dispatch_run_id, desc: s.sequence]
+    )
+    |> Enum.group_by(& &1.dispatch_run_id)
+  end
 
   # open_session/1 is the newest session of `run` that no report ended
   # (`newest_session/1`): the session a run that paused was in; nil for none.
