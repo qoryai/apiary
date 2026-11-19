@@ -11,9 +11,12 @@ defmodule Apiary.Repo.Migrations.DropARunSOneProviderColumns do
   #
   # Rolled back, the columns and their checks come back, filled from the key rows of each
   # run's start key's provider; a run with no such rows loses `provider_connection_id`.
+  # The check of `provider_api` comes back with the members and the paths that the migration
+  # `20261118160000` gave it, so the API of a key row with `paths` is kept.
   @uuid "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
   @name "^[a-z0-9][a-z0-9_.-]{0,63}$"
   @window "^[a-z][a-z0-9_]{0,63}$"
+  @path "^/"
 
   def up do
     drop constraint(:runs, :runs_model_keys_check)
@@ -77,7 +80,7 @@ defmodule Apiary.Repo.Migrations.DropARunSOneProviderColumns do
                  "AND jsonb_typeof(provider_api -> 'endpoint') = 'string' " <>
                  "AND jsonb_typeof(provider_api -> 'auth') = 'object' " <>
                  "AND (provider_api - ARRAY['format', 'endpoint', 'auth', 'key_prefixes', " <>
-                 "'use_up_to_windows']) = '{}'::jsonb" <>
+                 "'use_up_to_windows', 'paths']) = '{}'::jsonb" <>
                  " AND CASE WHEN NOT provider_api ? 'use_up_to_windows' THEN true " <>
                  "WHEN jsonb_typeof(provider_api -> 'use_up_to_windows') <> 'array' " <>
                  "THEN false " <>
@@ -85,6 +88,12 @@ defmodule Apiary.Repo.Migrations.DropARunSOneProviderColumns do
                  "BETWEEN 1 AND 11 AND NOT jsonb_path_exists(provider_api, " <>
                  "'lax $.use_up_to_windows[*] ? (@.type() != \"string\" " <>
                  "|| !(@ like_regex \"#{@window}\"))') END" <>
+                 " AND CASE WHEN NOT provider_api ? 'paths' THEN true " <>
+                 "WHEN jsonb_typeof(provider_api -> 'paths') <> 'array' THEN false " <>
+                 "ELSE jsonb_array_length(provider_api -> 'paths') BETWEEN 1 AND 32 " <>
+                 "AND NOT jsonb_path_exists(provider_api, " <>
+                 "'lax $.paths[*] ? (@.type() != \"string\" " <>
+                 "|| !(@ like_regex \"#{@path}\"))') END" <>
                  " AND octet_length(provider_api::text) <= 8192)"
            )
 
