@@ -744,10 +744,10 @@ verdict." with **Run another round**, and with the accept button where an output
 version or no output is required. Where the accept does not take the stage to its gate,
 the button is **Start** and the name of the entry the accept starts: its `name` in the
 process, else its workflow, such as **Start verify-a-ticket**. Where the accept takes the
-stage to its gate, the button is **Accept as it is**. An accept that takes the stage to its gate, after the
-sequence's last entry, also needs every required output: while one has no version, the
-page shows no **Accept as it is**. `changes-requested` outside a loop goes on to the next
-entry, as `passed` does. In a loop, a run with no verdict runs the next workflow of the
+stage to its gate, the button is **Accept as it is**. An accept that takes the stage to
+its gate, after the sequence's last entry, also needs every required output: while one
+has no version, the page shows no **Accept as it is**. `changes-requested` outside a loop
+goes on to the next entry, as `passed` does. In a loop, a run with no verdict runs the next workflow of the
 ring. A test work item's run needs no verdict. Nor does a run of Explore whose take in has
 a proposal, or that left open questions: Explore's result is its proposal or its
 questions. A run of Explore that pushes `passed` or `changes-requested` goes on to the

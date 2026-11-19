@@ -2284,10 +2284,10 @@ defmodule Apiary.Stages do
   # required output types whose Exists check fails (`missing_outputs/1`); while it has
   # one, the gate of the stage is not approvable. `accept_needs` is the missing required
   # output types that Accept as it is requires (`accept_needs/4`). `accept_entry` is the
-  # entry that an accept of the open escalation starts, where it starts the next entry
-  # (`accept_entry/4`), else nil. `loop` is whether the work item is in a loop of its
-  # stage: `rounds` is that loop's limit, or, past the last loop, the limit of the loop it
-  # left, which a later entry's runs do not count by.
+  # entry that an accept of the open escalation starts, where the accept does not take
+  # the stage to its gate (`accept_entry/5`), else nil. `loop` is whether the work item is
+  # in a loop of its stage: `rounds` is that loop's limit, or, past the last loop, the
+  # limit of the loop it left, which a later entry's runs do not count by.
   # `escalation` is the open escalation with its `points` (`shown_points/5`), also while
   # the stage waits for answers; `gaps` is why a stage waits for a workflow, else the
   # failed checks that started its round, nil with an escalation.
