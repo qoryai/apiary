@@ -686,16 +686,16 @@ The body, at most 64 KiB:
   points ends the last round of a loop, the stage escalates at its round limit with one
   point. Its text is "3 of 3 rounds ran, and 2 review findings are still open." followed
   by the `text` of each point, and its fix is "Read the 2 open findings, then pick Accept
-  as it is or Run another round." Where the accept does not take the stage to its gate,
-  the page shows **Start** and the name of the entry the accept starts in place of
-  **Accept as it is** (the accept button, in the paragraph on a run that ends with no
-  verdict in [POST verdict](#post-verdict)), and the fix is "Read the 2 open findings,
-  then pick Start verify-a-ticket or Run another round." Where the page shows neither,
-  the fix is "Read the 2 open findings, then pick Run another round." With no points, the
-  text is "3 of 3 rounds ran." The stage runner writes this point, and the limit of one
-  sentence and 500 characters below does not apply to it: with points, its text is more
-  than one sentence and can be longer than 500 characters. With `passed`, a verdict has
-  none.
+  as it is or Run another round." Where the accept starts a run of the stage, or an
+  entry whose workflow the stage then waits for, the page shows **Start** and the name of
+  that entry in place of **Accept as it is** (the accept button, in the paragraph on a
+  run that ends with no verdict in [POST verdict](#post-verdict)), and the fix is "Read
+  the 2 open findings, then pick Start verify-a-ticket or Run another round." Where the
+  page shows neither, the fix is "Read the 2 open findings, then pick Run another round."
+  With no points, the text is "3 of 3 rounds ran." The stage runner writes this point,
+  and the limit of one sentence and 500 characters below does not apply to it: with
+  points, its text is more than one sentence and can be longer than 500 characters. With
+  `passed`, a verdict has none.
   Each point has `text`, one plain sentence on one line of 1 to 500 characters that
   states what is wrong, with no action, and `action`: `answer`, with `question`, the id of
   an open question, or `run_again`, without `question`. A `run_again` point may also have
@@ -741,17 +741,17 @@ A run of a workflow entry outside a loop must push a verdict. Make `qory run ver
 passed` the last step of the workflow, on a first run and on a rerun. A run that ends with
 no verdict and no open question stops the stage: a member sees "The run stopped before its
 verdict." with **Run another round**, and with the accept button where an output has a
-version or no output is required. Where the accept does not take the stage to its gate,
-the button is **Start** and the name of the entry the accept starts: its `name` in the
-process, else its workflow, such as **Start verify-a-ticket**. Where the accept takes the
-stage to its gate, the button is **Accept as it is**. An accept that takes the stage to
-its gate, after the sequence's last entry, also needs every required output: while one
-has no version, the page shows no **Accept as it is**. `changes-requested` outside a loop
-goes on to the next entry, as `passed` does. In a loop, a run with no verdict runs the next workflow of the
-ring. A test work item's run needs no verdict. Nor does a run of Explore whose take in has
-a proposal, or that left open questions: Explore's result is its proposal or its
-questions. A run of Explore that pushes `passed` or `changes-requested` goes on to the
-stage's checks.
+version or no output is required. Where the accept starts a run of the stage, or an entry
+whose workflow the stage then waits for, the button is **Start** and the name of that
+entry: its `name` in the process, else its workflow, such as **Start verify-a-ticket**.
+Where the accept takes the stage to its gate, or the stage escalates again, the button is
+**Accept as it is**. An accept that takes the stage to its gate, after the sequence's last
+entry, also needs every required output: while one has no version, the page shows no
+**Accept as it is**. `changes-requested` outside a loop goes on to the next entry, as
+`passed` does. In a loop, a run with no verdict runs the next workflow of the ring. A test
+work item's run needs no verdict. Nor does a run of Explore whose take in has a proposal,
+or that left open questions: Explore's result is its proposal or its questions. A run of
+Explore that pushes `passed` or `changes-requested` goes on to the stage's checks.
 
 Checks: a body over 64 KiB is `413` `payload_too_large`; a body with a member other than
 `verdict`, `points`, `track` and `full_suite`, or a `verdict` that is not one of the
