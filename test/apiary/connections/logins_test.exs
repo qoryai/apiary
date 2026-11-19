@@ -729,12 +729,24 @@ defmodule Apiary.Connections.LoginsTest do
       provider = subscription!(scope)
       value = key_value!(provider, "main")
 
-      before = Login.db_now()
-      assert {:ok, %Login{signed_in_at: signed_in_at}} = Login.put(value, device_login(tag: "x"))
-      after_put = Login.db_now()
+      # `db_now/0` runs an unqualified `SELECT clock_timestamp()`. A function of that name
+      # in a schema that comes first in the search path of this transaction answers a time
+      # in 2030: only a time that is read from the database has it. (A temporary schema
+      # does not serve for this: PostgreSQL does not look up functions in it.) The schema
+      # goes with the test's transaction.
+      Repo.query!("CREATE SCHEMA fixed_clock")
 
-      assert DateTime.compare(signed_in_at, before) != :lt
-      assert DateTime.compare(signed_in_at, after_put) != :gt
+      Repo.query!(
+        "CREATE FUNCTION fixed_clock.clock_timestamp() RETURNS timestamptz " <>
+          "LANGUAGE sql AS $$ SELECT '2030-01-01T00:00:00Z'::timestamptz $$"
+      )
+
+      Repo.query!("SET LOCAL search_path = fixed_clock, public, pg_catalog")
+
+      assert Login.db_now() == ~U[2030-01-01 00:00:00.000000Z]
+
+      assert {:ok, %Login{signed_in_at: signed_in_at}} = Login.put(value, device_login(tag: "x"))
+      assert DateTime.compare(signed_in_at, ~U[2030-01-01 00:00:00.000000Z]) == :eq
     end
 
     test "writes signed_in_at at the time it is given", %{scope: scope} do
