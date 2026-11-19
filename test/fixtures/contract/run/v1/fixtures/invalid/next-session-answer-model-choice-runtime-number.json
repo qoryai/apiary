@@ -27,7 +27,7 @@
     },
     "runtime": 1
   },
-  "model_credential": "example-provider-1",
+  "model_provider_credential_name": "example-provider-1",
   "time_limit_minutes": 60,
   "full_suite": false,
   "inputs": {
