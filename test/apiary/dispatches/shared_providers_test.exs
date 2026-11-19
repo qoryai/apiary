@@ -472,15 +472,22 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
 
       # The workspace's choice, on Northwind keys, is the default step that the workflow's
       # choice walks after its provider: a later step with a key.
-      choose!(ctx.scope, :workspace, northwind)
+      choose!(ctx.scope, :workspace, northwind, %{model: "claude-sonnet-5-5"})
       assert {:ok, _version} = save(ctx.scope, workflows)
 
-      # The claim gives the later session that step: on the start key's provider, it
-      # joins the start key's group, and the run keeps Northwind keys' key alone.
+      # The claim gives the later session that step, with its model: on the start key's
+      # provider, it joins the start key's group, and the run keeps Northwind keys' key
+      # alone.
       {{:ok, run}, _queued} = claim!(ctx)
       assert run.provider_connection_id == northwind.id
+      assert run.run_settings["model"] == "claude-opus-5-5"
       assert %{"1" => second} = run.session_settings
-      assert %{"workflow" => "write-acceptance-checks"} = second
+
+      assert %{
+               "workflow" => "write-acceptance-checks",
+               "model_choice" => %{"model" => "claude-sonnet-5-5"}
+             } = second
+
       refute Map.has_key?(second, "model_credential")
       assert names(stored_keys(run)) == ["#{northwind.public_id}-1"]
     end
