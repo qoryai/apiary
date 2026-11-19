@@ -561,7 +561,7 @@ defmodule ApiaryWeb.StagesLiveTest do
         Draft.update_stage(
           Processes.default_document("software"),
           id_of("Explore"),
-          &Draft.add_artifact(&1, "outputs", "explainer")
+          &Draft.add_artifact(&1, "outputs", "walkthrough")
         )
 
       {:ok, _version} = Processes.save(scope, scope.workspace, document)
@@ -577,7 +577,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(
                view,
                ~s(#stages-check [data-problem="missing_type"]),
-               Words.missing_type("Explore", "explainer")
+               Words.missing_type("Explore", "walkthrough")
              )
 
       assert has_element?(

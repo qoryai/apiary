@@ -350,7 +350,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   not start when a film ends. A film or pictures that no scenario has show no queue, and
   a set of pictures that no scenario has stays a stack of pictures.
 - On that tab, every output frame is open, the other outputs' frames, such as Demo
-  evidence and Explainer, show the version and the artifact rows only, and a row names
+  evidence and Walkthrough, show the version and the artifact rows only, and a row names
   the artifact as the gate card does, such as “demo video scenario-1 v1”. The gate card lists the
   films and pictures together, in scenario order.
 - On that tab, an output frame lists the artifact row of each name of its type, `main`
@@ -1958,6 +1958,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   file that matches `acceptance-criteria.schema.json` or `verification.schema.json`, and
   any other file, Markdown too, is `422` `invalid_artifact`. A criterion's id is once in
   the criteria. Qory Apiary reads no output's Markdown for data.
+- The standard artifact type `explainer` is now `walkthrough`, a document of one Markdown
+  file of up to 1 MiB, as before. A run's push of `explainer` is `422` `unknown_type`, and
+  a template whose `artifact_types` lists `explainer` by name alone fails its check, as
+  any name that is no standard type. A workspace with a saved list of shown standard
+  types shows `walkthrough` after a person switches it on in Workspace settings ›
+  Artifact types. A stored version of `explainer` stays, and its page has a download
+  link for the file.
 - A work item has one set of acceptance criteria, under the name `main`. A run's push of
   `acceptance-criteria` under another name is `422` `invalid_artifact`, with `name` in
   `names` and a message that starts "Name the acceptance criteria main: a work item has

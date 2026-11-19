@@ -1043,19 +1043,19 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
   describe "the input frames beside a Scenarios frame" do
     # The frames of a Verify gate as `StageTab.verify_frames/2` and `input_frames/2` return
     # them: a film and pictures are one Scenarios frame, and Verify's inputs are a film,
-    # pictures and an explainer.
+    # pictures and an walkthrough.
     test "fold every film and picture into the Scenarios frame" do
       stage = %{outputs: ~w(verification demo-video screenshot)}
       outputs = StageTab.verify_frames(stage, %{"demo-video" => 1, "screenshot" => 2})
 
       inputs =
-        for {type, place} <- Enum.with_index(~w(demo-video screenshot explainer)) do
+        for {type, place} <- Enum.with_index(~w(demo-video screenshot walkthrough)) do
           %{type: type, name: "main", version: 1, open: place == 0, kind: :output}
         end
 
       assert [%{type: "demo-video", kind: :scenarios, version: 2}] = outputs
 
-      assert [%{kind: :scenarios}, %{type: "explainer", open: false}] =
+      assert [%{kind: :scenarios}, %{type: "walkthrough", open: false}] =
                StageTab.with_inputs(outputs, inputs)
     end
   end
@@ -4519,7 +4519,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       process!(scope, %{}, %{"sequence" => [%{"workflow" => "build-it"}]})
       work_item = at_gate!(scope)
       {:ok, at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
-      {at_build, explainer} = change_at_build!(scope, at_build, "explainer", "## Explainer")
+      {at_build, walkthrough} = change_at_build!(scope, at_build, "walkthrough", "## Walkthrough")
 
       {:ok, moved} = Stages.move(scope, at_build, @shape, nil, expect_stage: @build)
       work_item = moved |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
@@ -4527,11 +4527,11 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-tab-output-explainer", "Version 1")
-      refute has_element?(view, "#work-item-tab-output-explainer", "Version 1 ·")
+      assert has_element?(view, "#work-item-tab-output-walkthrough", "Version 1")
+      refute has_element?(view, "#work-item-tab-output-walkthrough", "Version 1 ·")
 
       {:ok, _approved} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
-      assert explainer.public_id in recorded(work_item, @shape)
+      assert walkthrough.public_id in recorded(work_item, @shape)
     end
   end
 

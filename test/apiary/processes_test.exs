@@ -1127,7 +1127,7 @@ defmodule Apiary.ProcessesTest do
             %{
               stage
               | "inputs" => [%{"type" => "proposal", "required" => true}],
-                "outputs" => [%{"type" => "explainer", "required" => false}],
+                "outputs" => [%{"type" => "walkthrough", "required" => false}],
                 "gate" => %{"kind" => "none"}
             }
 
@@ -1293,7 +1293,7 @@ defmodule Apiary.ProcessesTest do
   end
 
   describe "placement_check/3" do
-    @types ~w(proposal explainer change acceptance-criteria)
+    @types ~w(proposal walkthrough change acceptance-criteria)
 
     test "lists nothing for the default process, with explore-a-ticket declared" do
       assert Processes.placement_check(default(), ["explore-a-ticket"], @types) == []
@@ -1344,7 +1344,7 @@ defmodule Apiary.ProcessesTest do
         |> put_sequence(@shape, [%{"workflow" => "write-specs"}])
         |> edit(fn
           %{"id" => @shape} = stage ->
-            %{stage | "outputs" => [%{"type" => "explainer", "required" => true}]}
+            %{stage | "outputs" => [%{"type" => "walkthrough", "required" => true}]}
 
           stage ->
             stage
