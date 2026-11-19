@@ -5,6 +5,7 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesTest do
 
   import Phoenix.LiveViewTest, only: [render_component: 2]
 
+  alias ApiaryWeb.WorkItemComponents
   alias ApiaryWeb.WorkItemLive.{GateChanges, VerifyTab}
 
   @ac1 %{"id" => "ac-1", "text" => "A member cancels a booking.", "check" => "Cancel one."}
@@ -220,6 +221,80 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesTest do
 
     assert doc |> LazyHTML.query("#gate-criteria-ac-5-earlier") |> Enum.to_list() == []
     assert doc |> LazyHTML.query("#gate-criteria-ac-5-new") |> Enum.to_list() == []
+  end
+
+  # The acceptance criteria schema requires a check, so a pushed version always has one;
+  # `VerifyTab.criteria/1` reads a criterion with none as a check of nil.
+  test "a criterion with no check: its two texts, and the mark alone where a check comes " <>
+         "or goes" do
+    earlier = %{"id" => "ac-2", "text" => "Up to 24 hours."}
+    new = %{"id" => "ac-2", "text" => "Up to 12 hours."}
+    {:ok, compared} = compare([@ac1, earlier], [@ac1, new])
+
+    assert compared.changes == [
+             %{
+               id: "ac-2",
+               kind: :text,
+               earlier: "Up to 24 hours.",
+               new: "Up to 12 hours.",
+               earlier_check: nil,
+               new_check: nil,
+               reason: nil
+             }
+           ]
+
+    html =
+      render_component(&GateChanges.changes/1,
+        id: "gate-criteria",
+        changes: compared.changes,
+        unchanged: compared.unchanged,
+        mark: GateChanges.mark(:you)
+      )
+
+    assert html
+           |> LazyHTML.from_fragment()
+           |> LazyHTML.query("#gate-criteria-ac-2 p")
+           |> Enum.map(&(&1 |> LazyHTML.text() |> String.split() |> Enum.join(" "))) == [
+             "AC-2 · Changed on your request",
+             "Earlier: Up to 24 hours.",
+             "New: Up to 12 hours."
+           ]
+
+    # A check that comes or goes, and an added criterion with no check.
+    assert compare([earlier], [Map.put(new, "check", "Try 11.")]) == :none
+    assert compare([Map.put(earlier, "check", "Try 25.")], [new]) == :none
+    assert compare([@ac1], [@ac1, new]) == :none
+  end
+
+  # On a page, a stage's gate lists each change it reads, so the change's frame is one of
+  # the gate's, with no source; an input frame with a source and a mark is drawn here.
+  test "a frame's caption with the run that made the version, then the mark" do
+    html =
+      render_component(&WorkItemComponents.output_frame/1,
+        id: "frame",
+        number: 1,
+        output: %{
+          type: "build-report",
+          name: "main",
+          version: 2,
+          open: false,
+          read: :unread,
+          kind: :output,
+          source: %{stage: "Build", attempt: 2, run: 7},
+          changed: GateChanges.mark(:you)
+        }
+      )
+
+    doc = LazyHTML.from_fragment(html)
+
+    assert doc |> LazyHTML.query("#frame-s .q-xp-cap") |> LazyHTML.text() |> String.split() ==
+             String.split("Version 2 · from Build, Attempt 2 (Run 7) · Changed on your request")
+
+    assert doc
+           |> LazyHTML.query("#frame-changed.text-warning")
+           |> LazyHTML.text()
+           |> String.trim() ==
+             "Changed on your request"
   end
 
   test "two unchanged criteria: one line for both" do

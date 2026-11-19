@@ -23,6 +23,7 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
 
   @moduletag needs: [:factory, :workflow_model]
 
+  @explore "st_r79kph11eg"
   @shape "st_p9w5cvh311"
   @build "st_6ns22c4pav"
   @verify "st_m1mqbeywdg"
@@ -137,12 +138,18 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
   end
 
   # The default process with Shape writing the spec and the acceptance criteria, Build
-  # reading them and writing a build report, its gate listing `approvers`, and Verify.
-  defp process!(scope, approvers) do
+  # reading them and writing the build report, which it requires, its gate listing
+  # `approvers`, and Verify. With `none?`, Build's gate is a gate `none`, and Verify's
+  # entry does not run on the track "fast-track", so on that track Verify starts no run and
+  # waits at its gate.
+  defp process!(scope, approvers, none? \\ false) do
     document = Processes.default_document("software")
 
     stages =
       Enum.map(document["stages"], fn
+        %{"id" => @explore, "gate" => gate} = stage when none? ->
+          %{stage | "gate" => Map.put(gate, "tracks", ["standard", "fast-track"])}
+
         %{"id" => @shape} = stage ->
           Map.merge(stage, %{
             "sequence" => [%{"workflow" => "shape-a-ticket"}],
@@ -160,8 +167,12 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
               %{"type" => "acceptance-criteria", "required" => false}
             ],
             "sequence" => [%{"workflow" => "plan-the-build"}],
-            "outputs" => [%{"type" => "build-report", "required" => false}],
-            "gate" => %{"kind" => "person", "approvers" => %{"members" => approvers}}
+            "outputs" => [%{"type" => "build-report", "required" => true}],
+            "gate" =>
+              if(none?,
+                do: %{"kind" => "none"},
+                else: %{"kind" => "person", "approvers" => %{"members" => approvers}}
+              )
           })
 
         %{"id" => @verify} = stage ->
@@ -170,7 +181,12 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
               %{"type" => "acceptance-criteria", "required" => false},
               %{"type" => "build-report", "required" => false}
             ],
-            "sequence" => [%{"workflow" => "verify-a-ticket"}],
+            "sequence" => [
+              Map.merge(
+                %{"workflow" => "verify-a-ticket"},
+                if(none?, do: %{"unless" => %{"track" => "fast-track"}}, else: %{})
+              )
+            ],
             "outputs" => [],
             "gate" => %{"kind" => "person", "approvers" => "members"}
           })
@@ -179,6 +195,10 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
           stage
       end)
 
+    tracks =
+      for id <- ~w(standard fast-track), none?, do: %{"id" => id, "name" => id}
+
+    document = if tracks == [], do: document, else: Map.put(document, "tracks", tracks)
     {:ok, _version} = Processes.save(scope, scope.workspace, %{document | "stages" => stages})
   end
 
@@ -467,6 +487,101 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
     assert_criteria(view, mark)
     assert has_element?(view, "#{@card}-approve-go", "Approve")
     assert has_element?(view, "#{@card}-ask-changes", "Request changes")
+  end
+
+  test "with a required output missing, the card shows only Request changes, and the line " <>
+         "contains it alone",
+       %{conn: conn, scope: scope, sam: sam} do
+    work_item = changed!(scope)
+
+    Repo.delete_all(
+      from a in Artifacts.Artifact,
+        where: a.work_item_id == ^work_item.id and a.type == "build-report"
+    )
+
+    assert %{missing_outputs: ["build-report"]} = Stages.status(work_item, scope)
+
+    conn = log_in_user(conn, sam)
+    {:ok, view, _html} = live(conn, page(scope, work_item.number, "/stages/#{@build}"))
+
+    assert text(view, "#{@list}-action") ==
+             "Check that these 3 changes to the acceptance criteria match your request. If they do not, pick Request changes."
+
+    assert has_element?(view, "#{@list}-action b", "Request changes")
+    refute has_element?(view, "#{@list}-action b", "Approve")
+    refute has_element?(view, "#{@card}-approve-go")
+    assert has_element?(view, "#{@card}-ask-changes", "Request changes")
+    assert_criteria(view, "Changed on your request")
+  end
+
+  test "a change that Build's gate none passed: Verify's gate, which started no run, marks " <>
+         "it and lists its criteria",
+       %{conn: conn, scope: scope, sam: sam, alex: alex} do
+    process!(scope, [sam.id, alex.id], true)
+    work_item = scope |> taken_in_fixture() |> end_run!(understood_result())
+    {:ok, _confirmed} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+
+    work_item =
+      end_run(work_item, fn run, _registered ->
+        markdown!(run, "spec", "## Spec\n\nLet members cancel a booking.")
+        json!(run, "acceptance-criteria", @criteria_one)
+        passed!(run)
+      end)
+
+    {:ok, _at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+
+    work_item =
+      end_run(work_item, fn run, _registered ->
+        markdown!(run, "build-report", "## Build report\n\nA cancel rule of 24 hours.")
+        passed!(run)
+      end)
+
+    # Verify's entry does not run on the track: the work item waits at its gate with no run.
+    assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+    {:ok, _moved} = Stages.move(scope, work_item, @build, @note, expect_stage: @verify)
+
+    decision =
+      Repo.one!(
+        from d in Stages.GateDecision,
+          where: d.work_item_id == ^work_item.id and d.kind == :move,
+          select: d.public_id
+      )
+
+    work_item =
+      end_run(work_item, fn run, _registered ->
+        json!(run, "acceptance-criteria", @criteria_two, decision: decision)
+        markdown!(run, "build-report", "## Build report\n\nA cancel rule of 12 hours.")
+        passed!(run)
+      end)
+
+    # Build's gate none passed the change on; no person's approval lists it.
+    assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+
+    conn = log_in_user(conn, sam)
+    {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+    mark = "Changed on your request"
+
+    # Verify's gate lists the change, so its frame is one of the gate's (`recorded`), with
+    # the version and the mark. The build report, which has no decision, is an input frame
+    # with the run that made it.
+    assert text(view, "#work-item-tab-output-acceptance-criteria-s .q-xp-cap") ==
+             "Version 2 · #{mark}"
+
+    assert has_element?(
+             view,
+             "#work-item-tab-output-acceptance-criteria-changed.text-warning",
+             mark
+           )
+
+    assert text(view, "#work-item-tab-output-build-report-s .q-xp-cap") =~
+             ~r/\AVersion 2 · from Build, Attempt 4 \(Run \d+\)\z/
+
+    assert text(view, "#{@list}-action") ==
+             "Check that these 3 changes to the acceptance criteria match your request, then pick Approve or Request changes."
+
+    assert_criteria(view, mark)
+    assert has_element?(view, "#{@card}-approve-go", "Approve")
   end
 
   test "after a person's approval lists the version, no mark and no criteria",
