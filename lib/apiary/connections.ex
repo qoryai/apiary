@@ -1864,9 +1864,9 @@ defmodule Apiary.Connections do
   add_provider_key/4 adds a key to a model provider's keys (`provider.write`): `attrs`
   has `value` and, optionally, `value_id`, as `Apiary.Secrets.add_value/4` takes them, the
   `value` without the whitespace at its ends (`String.trim/1`). With no `value_id` the
-  key gets `key-<n>` (`Apiary.Secrets.Value.next_key_id/1`); no page sends one. `settings` is the key's
-  settings (`Apiary.ModelKeys.Setting.changeset/3`, with the provider's limit windows),
-  nil for none. For a provider whose keys are logins the `value` is the sign-in of a
+  key gets `key-<n>` (`Apiary.Secrets.Value.next_key_id/1`); no page sends one. `settings`
+  is the key's settings (`Apiary.ModelKeys.Setting.changeset/3`, with the provider's limit
+  windows), nil for none. For a provider whose keys are logins the `value` is the sign-in of a
   device sign-in (`t:Apiary.ModelKeys.Login.parsed/0`), and any text is refused with
   "is invalid". The key and its settings are written in one transaction.
   `{:ok, provider}`, or `{:error, refusal}` as `Apiary.Secrets.add_value/4` returns, or a
@@ -1970,6 +1970,9 @@ defmodule Apiary.Connections do
 
     write_keys(scope, provider, fn scope, secret, current ->
       with %Value{} = value <- Enum.find(current.secret.values, &(&1.value_id == value_id)),
+           # Only a rename can be refused for a key in use, with the line the key has now.
+           renaming = new_value_id not in [nil, value_id],
+           before_line = if(renaming, do: Identity.for_value_id(current, value_id)),
            changeset =
              ModelKeys.change_setting(
                value,
@@ -1979,7 +1982,10 @@ defmodule Apiary.Connections do
            :ok <- valid(changeset),
            :ok <-
              if(new_value, do: set_key(scope, secret, current, value_id, new_value), else: :ok),
-           {:ok, renamed} <- rename_key(scope, secret, current, value_id, new_value_id),
+           {:ok, renamed} <-
+             scope
+             |> rename_key(secret, current, value_id, new_value_id)
+             |> with_identity(before_line),
            {:ok, _setting} <- write_setting(changeset) do
         set = if new_value, do: %{value_set: true}, else: %{}
         shown = (renamed && new_value_id) || value_id
@@ -2139,6 +2145,10 @@ defmodule Apiary.Connections do
     end)
   end
 
+  # Adds the line `identity` to the refusal of a key in use that `Apiary.Secrets` returns.
+  defp with_identity({:error, {:in_use, uses}}, identity), do: {:error, {:in_use, uses, identity}}
+  defp with_identity(result, _identity), do: result
+
   # A rename of the key `value_id` to `new_value_id`: `{:ok, true}` once renamed,
   # `{:ok, false}` for the same value id.
   defp rename_key(_scope, _secret, _current, value_id, value_id), do: {:ok, false}
@@ -2188,9 +2198,12 @@ defmodule Apiary.Connections do
         provider,
         fn scope, secret, current ->
           new_value_id = Value.normalise_value_id(new_value_id)
+          identity = Identity.for_value_id(current, value_id)
 
           with {:ok, _secret} <-
-                 Secrets.rename_value(scope, secret, value_id, new_value_id, provider: current),
+                 scope
+                 |> Secrets.rename_value(secret, value_id, new_value_id, provider: current)
+                 |> with_identity(identity),
                do: {:ok, %{before: %{value_id: value_id}, after: %{value_id: new_value_id}}}
         end
       )
@@ -2209,7 +2222,10 @@ defmodule Apiary.Connections do
         # Read before the key goes: the entry has the line the key had.
         identity = Identity.for_value_id(current, value_id)
 
-        with {:ok, _secret} <- Secrets.delete_value(scope, secret, value_id, provider: current),
+        with {:ok, _secret} <-
+               scope
+               |> Secrets.delete_value(secret, value_id, provider: current)
+               |> with_identity(identity),
              do:
                {:ok,
                 %{
@@ -2218,19 +2234,19 @@ defmodule Apiary.Connections do
                 }}
       end)
 
-  # A write to a provider's keys, under the provider's locks: `fun` of the scope, the
-  # keys' secret and the provider, as `Apiary.Secrets` writes it, answers the `before`,
-  # `after` and `details` of the change, which the provider's `provider_keys_changed`
-  # entry records, or `:unchanged`, which records none. A key that is the default key
-  # stays, with the reason on `value_id`.
+  # A write to a provider's keys, under the provider's locks. `fun` takes the scope, the
+  # keys' secret and the provider, as `Apiary.Secrets` writes it, and returns `{:ok, change}`,
+  # where `change` has the `before`, `after` and `details` that the provider's
+  # `provider_keys_changed` entry records, or `{:ok, :unchanged}`, which records none. A key
+  # that is the default key stays, with the reason on `value_id`.
+  # A refusal of a key in use has the identity line of the key as a third element
+  # (`with_identity/2`): the failed statement ends this transaction's reads, so the line is
+  # read before the write.
   defp write_keys(scope, provider, fun) do
     write_provider(scope, provider, fn scope, _organisation, current ->
       # The level the keys are at is read again from the secret's row
       # (`Apiary.Secrets`): the organisation's, or a workspace's.
       secret = %Secret{id: current.secret_id, organisation_id: current.organisation_id}
-      # Read before `fun` writes: a refusal below words its keys after a failed statement,
-      # when this transaction answers no read.
-      lines = Identity.lines_by_value_id(current)
 
       case fun.(scope, secret, current) do
         {:ok, :unchanged} ->
@@ -2254,9 +2270,9 @@ defmodule Apiary.Connections do
                  ),
                do: {:ok, current}
 
-        {:error, {:in_use, [%{kind: :model_choice, value_id: value_id} | _rest] = uses}} ->
-          identity = Map.get(lines, value_id, current.name)
-
+        # A refusal for a key in use has the key's line, which `fun` read before its write: the
+        # failed statement ends this transaction's reads.
+        {:error, {:in_use, [%{kind: :model_choice} | _rest] = uses, identity}} ->
           {:error,
            current
            |> change()
@@ -2270,7 +2286,7 @@ defmodule Apiary.Connections do
              places: ModelChoices.listed_words(Enum.map(uses, & &1.name))
            )}
 
-        {:error, {:in_use, [%{kind: :model_provider} | _uses]}} ->
+        {:error, {:in_use, [%{kind: :model_provider} | _uses], identity}} ->
           {:error,
            current
            |> change()
@@ -2281,7 +2297,7 @@ defmodule Apiary.Connections do
                "Choose another default key for %{provider} first: %{value} is its default key."
              ),
              provider: current.name,
-             value: Map.get(lines, current.default_value_id, current.name)
+             value: identity
            )}
 
         {:error, reason} ->

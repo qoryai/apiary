@@ -25,8 +25,9 @@ defmodule Apiary.Runs.Waiting do
   #         `{:new_key, provider, key}`, a provider rejected a key's value: nobody but a
   #         person's new value ends either. `provider` is the provider's public id, `key`
   #         `%{id: row id, identity: identity line}` of the key, for the link to the key's
-  #         page and its name (`Apiary.ModelKeys.Identity`); a provider of another
-  #         organisation has none of these two;
+  #         page and its name (`Apiary.ModelKeys.Identity`; the id is nil for a key deleted
+  #         since the reason was found, and the line is the provider's name); a provider of
+  #         another organisation has none of these two;
   #   * `{:image, target, build}`, it is held for the build of its target's environment
   #     image on every serving pool (`Apiary.Environments.held/1`): `build` is `:queued`
   #     while a prebuild of the target waits, `:running` while one is claimed or handed
@@ -60,7 +61,7 @@ defmodule Apiary.Runs.Waiting do
           | {:no_fit, String.t(), String.t() | :instance}
           | {:cooldown, String.t() | nil, DateTime.t()}
           | {:refreshing | :restart | :sign_in | :new_key, String.t(),
-             %{id: Ecto.UUID.t(), identity: String.t()}}
+             %{id: Ecto.UUID.t() | nil, identity: String.t()}}
           | {:image, String.t(), :queued | :running | nil}
           | {:busy, String.t(), non_neg_integer, pos_integer}
           | {:busy, :instance}
@@ -127,14 +128,13 @@ defmodule Apiary.Runs.Waiting do
     {:cooldown, name, until}
   end
 
-  # A reason about a key names it by its row id, for the link to its page, and its identity
-  # line (`Apiary.ModelKeys.Identity`); none for a key that was deleted meanwhile.
+  # A reason about a key has the key's row id, for the link to its page, and its identity
+  # line (`Apiary.ModelKeys.Identity`). For a key deleted since the reason was found, the run
+  # keeps the reason: the row id is nil, and the line is the provider's name.
   defp words({kind, %Connection{} = provider, value_id}, queued) do
-    with true <- provider.organisation_id == queued.organisation_id,
-         {row_id, identity} <- Identity.ref(provider, value_id) do
+    if provider.organisation_id == queued.organisation_id do
+      {row_id, identity} = Identity.ref(provider, value_id) || {nil, provider.name}
       {kind, provider.public_id, %{id: row_id, identity: identity}}
-    else
-      _none -> nil
     end
   end
 
