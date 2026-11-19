@@ -2560,6 +2560,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # (`StageTab.frames/1`).
   defp output_frames(assigns, stage) do
     if StageTab.verify?(stage) do
+      # `assigns.view.artifacts` has only the versions made at the tab's stage
+      # (`StageTab.artifacts/3`), so `StageTab.newest/3`, which filters by take in, sees
+      # only this stage's versions: a stage that started no run has no output frame.
       newest =
         assigns.row
         |> ExploreView.newest_outputs(stage.id, stage.outputs)
