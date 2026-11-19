@@ -471,6 +471,30 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   links to that version's page, and the gate also links every further version that an
   approval would record. In `GET artifacts`, each version has `decision` and
   `decision_at`, the time of that note.
+- The work item page marks a version that a run stored with a `decision` until a person's
+  approval lists it: "Changed on your request" for the person who wrote the note,
+  "Changed on sam's request" for any other reader, with the part of the writer's email
+  before "@", and "Changed on a member's request" where the writer's account is gone. The
+  mark shows on the version's line of the gate card ("acceptance criteria v2 · Changed on
+  your request"), after an output's check ("acceptance criteria v2 · Passed · Changed on
+  your request"), and on the caption of the version's frame on the stage's tab ("Version 2
+  · Changed on your request"). For acceptance criteria that a person approved before, the
+  gate card compares each criterion by its id with that version and lists each changed,
+  added or removed one: its id with the mark, then "**Earlier:**" and "**New:**" with the
+  two texts, then "**Earlier check:**" and "**New check:**" where its check changed. An
+  added criterion shows "**Earlier:** none. This criterion is new." and its new check; a
+  removed one shows "**New:** Removed. Reason: …" and no check line; a criterion whose
+  check alone changed shows "**Text:**" and the two check lines. "AC-1 is unchanged." (or
+  "AC-1 and AC-5 are unchanged.") follows the list. Above the list, a reader who may
+  approve sees "Check that these 3 changes to the acceptance criteria match your request,
+  then pick **Approve** or **Request changes**." ("Check that this change to the
+  acceptance criteria matches your request, …" for one), or, where the card shows only
+  **Request changes**, "Check that these 3 changes to the acceptance criteria match your
+  request. If they do not, pick **Request changes**." The line contains only controls that
+  the card shows, and does not show while the form of Request changes is open. A reader
+  who may not approve sees who decides, such as "An approver of Build decides: sam and
+  alex.", in place of that line and of "Only the members this stage lists can approve."
+  A changed version of any other type shows the mark only.
 - Explore's gate lists the tracks it offers above Approve, each with its description, in the
   gate's order, under "Track to run after you approve". The track that the stage's runs
   proposed is selected and has the badge "Proposed by <stage>" and, where the run gave a
