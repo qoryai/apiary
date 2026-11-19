@@ -4705,8 +4705,8 @@ defmodule Apiary.Stages do
     end
   end
 
-  # A stage is approved only once every required output exists. The refusal says whether people make the outputs (a stage with no workflow, § 4) or
-  # the stage's runs do.
+  # A stage is approved only once every required output exists. The refusal is set by
+  # who makes the outputs: people (a stage with no workflow, § 4) or the stage's runs.
   defp outputs_exist(work_item, version, stage) do
     case missing(outputs(work_item, version, stage, Artifacts.list(work_item))) do
       [] ->
