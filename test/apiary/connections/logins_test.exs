@@ -166,10 +166,11 @@ defmodule Apiary.Connections.LoginsTest do
 
       assert Login.by_key(provider) == %{}
 
-      assert Secrets.reveal_key_for_sealing(
-               Repo.get!(Connection, provider.id),
-               key_value!(provider, "main").id
-             ) == {:ok, "sk-proj-an-api-key"}
+      assert {:ok, "sk-proj-an-api-key", %DateTime{}} =
+               Secrets.reveal_key_and_set_at(
+                 Repo.get!(Connection, provider.id),
+                 key_value!(provider, "main").id
+               )
 
       assert Repo.all(Login) == []
     end
@@ -413,11 +414,10 @@ defmodule Apiary.Connections.LoginsTest do
       plain = Repo.get!(Connection, provider.id)
       value = key_value!(provider, "main")
 
-      assert Secrets.reveal_key_for_sealing(plain, value.id) == {:error, :login}
       assert Secrets.reveal_key_and_set_at(plain, value.id) == {:error, :login}
 
       Repo.delete_all(Login)
-      assert Secrets.reveal_key_for_sealing(plain, value.id) == {:error, :login}
+      assert Secrets.reveal_key_and_set_at(plain, value.id) == {:error, :login}
     end
 
     test "reveal_login/2 is for a provider of logins alone", %{scope: scope} do
@@ -669,7 +669,7 @@ defmodule Apiary.Connections.LoginsTest do
                %{nonce: before.nonce, value_set_at: before.value_set_at}
              ) == {:error, :not_found}
 
-      assert Secrets.reveal_key_for_sealing(plain, foreign_id) == {:error, :login}
+      assert Secrets.reveal_key_and_set_at(plain, foreign_id) == {:error, :login}
       refute Map.has_key?(Login.by_key(plain), foreign_id)
       assert Map.keys(Login.by_key(plain)) == [key_value!(provider, "main").id]
 

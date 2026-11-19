@@ -36,7 +36,12 @@ defmodule Apiary.ModelKeys.GateTest do
 
   test "no module reads a key's value for sealing but the gate and the sign-in refresh" do
     assert files_with(~r/Secrets\.reveal_key_and_set_at\(/) == ["apiary/model_keys.ex"]
-    assert files_with(~r/Secrets\.reveal_key_for_sealing\(/) == []
+    assert files_with(~r/reveal_key_for_sealing/) == []
+  end
+
+  test "only Login reads the document of a sign-in, with its refresh token" do
+    assert files_with(~r/Secrets\.reveal_login/) == ["apiary/model_keys/login.ex"]
+    assert files_with(~r/import Apiary\.Secrets\b/) == []
   end
 
   test "no module outside Login calls Login.tokens/2" do

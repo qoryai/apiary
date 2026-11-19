@@ -39,7 +39,7 @@ defmodule ApiaryWeb.ProviderKeyFieldsTest do
   defp key_value(provider, value_id) do
     provider = Repo.get!(Connection, provider.id)
     value = Repo.get_by!(Value, secret_id: provider.secret_id, value_id: value_id)
-    Secrets.reveal_key_for_sealing(provider, value.id)
+    Apiary.ModelKeysFixtures.revealed_key(provider, value.id)
   end
 
   defp new_password?(lv, selector),

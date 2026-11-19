@@ -12,6 +12,17 @@ defmodule Apiary.ModelKeysFixtures do
     do: Repo.one!(from v in Value, where: v.secret_id == ^secret_id and v.value_id == ^value_id)
 
   @doc """
+  The plaintext of the key `secret_value_id` of the model provider `provider`, as the gate
+  reads a key that is no sign-in (`Apiary.Secrets.reveal_key_and_set_at/2`), without the
+  time the value was set: `{:ok, plaintext}` or `{:error, reason}`.
+  """
+  def revealed_key(provider, secret_value_id) do
+    with {:ok, plaintext, _set_at} <-
+           Apiary.Secrets.reveal_key_and_set_at(provider, secret_value_id),
+         do: {:ok, plaintext}
+  end
+
+  @doc """
   Writes the state of the key `value_id` of `provider` in its 5-hour window, as a
   gateway's report of a run with the key's value writes it (`Apiary.ModelKeys.record/3`).
   With `until`, the key is in
@@ -140,6 +151,27 @@ defmodule Apiary.ModelKeysFixtures do
     else
       _no_exp -> login
     end
+  end
+
+  @doc """
+  Replaces the access token in the stored document of the sign-in `secret_value_id` of
+  `provider` with `access_token`, as a refresh writes it, and keeps the refresh token and
+  the sign-in's row. For a test of a stored token that a device sign-in refuses to make,
+  such as one with no account id (`login_tokens(account: false)`).
+  """
+  def store_access_token!(provider, secret_value_id, access_token) do
+    plain = Repo.get!(Connection, provider.id)
+    {:ok, plaintext, snapshot} = Apiary.Secrets.reveal_login_snapshot(plain, secret_value_id)
+    %{"refresh_token" => refresh_token} = Jason.decode!(plaintext)
+
+    document =
+      Jason.encode!(%{
+        "version" => 1,
+        "access_token" => access_token,
+        "refresh_token" => refresh_token
+      })
+
+    :ok = Apiary.Secrets.write_refreshed_key(plain, secret_value_id, document, snapshot)
   end
 
   @doc "A JWT with `claims` and a signature that checks nothing."

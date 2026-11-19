@@ -1080,37 +1080,25 @@ defmodule Apiary.Secrets do
     end
   end
 
-  # With the `factory` feature: reveal_key_for_sealing/2 is the plaintext of the key of the
+  # With the `factory` feature: reveal_key_and_set_at/2 is the plaintext of the key of the
   # model provider `provider`, a row of `Apiary.Connections` the caller has read and
   # checked (`Apiary.Connections.intact?/1`), whose row id (`secret_values.id`) is
-  # `secret_value_id`, for the secrets endpoint alone (`Apiary.Runs.SecretsRequest`). The
-  # key is a value of the secret that the provider's row links (`secret_id`), read at the
-  # level that secret is at, as `reveal_for_sealing/3` reads it, with the same results:
-  # for the organisation's secret, under the organisation's data key; for a workspace's,
-  # under that workspace's data key. The caller checks that the run is of that workspace
-  # (`provider_keys_workspace/1`). The edition is not called: the core keeps the
-  # provider's keys whatever the edition returns for the organisation's other secrets. The
-  # key is decrypted under the value id it has now, which its associated data binds, so a
-  # key renamed since a run's claim is revealed. `{:error, :not_found}` for a provider that
-  # links no secret, and for a key that is not a value of that secret, or is gone;
-  # `{:error, :login}` for a key of a provider whose API has `oauth_refresh`, a login whose
-  # document `Apiary.ModelKeys.Login` alone reads (`reveal_login/2`); the gate
-  # (`Apiary.ModelKeys.reveal_for_sealing/4`) seals only its access token.
-  @doc false
-  @spec reveal_key_for_sealing(Connection.t(), Ecto.UUID.t()) ::
-          {:ok, binary} | {:error, :not_found | :unavailable | :login}
-  def reveal_key_for_sealing(provider, secret_value_id) do
-    case reveal_key_and_set_at(provider, secret_value_id) do
-      {:ok, plaintext, _value_set_at} -> {:ok, plaintext}
-      {:error, reason} -> {:error, reason}
-    end
-  end
-
-  # reveal_key_and_set_at/2 is `reveal_key_for_sealing/2` with the time the revealed
-  # value was set (`secret_values.value_set_at`), read from the same row:
-  # `{:ok, plaintext, value_set_at}`. The catalogue entry decides `{:error, :login}`, not
-  # a row of the key: a key of such a provider is never revealed, so a login that has no
-  # row yet is not sealed whole, refresh token included.
+  # `secret_value_id`, and the time the revealed value was set (`secret_values.value_set_at`),
+  # read from the same row: `{:ok, plaintext, value_set_at}`. It is for the gate alone
+  # (`Apiary.ModelKeys.reveal_for_sealing/4`). The key is a value of the secret that the
+  # provider's row links (`secret_id`), read at the level that secret is at, as
+  # `reveal_for_sealing/3` reads it, with the same results: for the organisation's secret,
+  # under the organisation's data key; for a workspace's, under that workspace's data key.
+  # The caller checks that the run is of that workspace (`provider_keys_workspace/1`). The
+  # edition is not called: the core keeps the provider's keys whatever the edition returns
+  # for the organisation's other secrets. The key is decrypted under the value id it has
+  # now, which its associated data binds, so a key renamed since a run's claim is revealed.
+  # `{:error, :not_found}` for a provider that links no secret, and for a key that is not a
+  # value of that secret, or is gone; `{:error, :login}` for a key of a provider whose API
+  # has `oauth_refresh`, a login whose document `Apiary.ModelKeys.Login` alone reads
+  # (`reveal_login/2`); the gate seals only its access token. The catalogue entry decides
+  # `{:error, :login}`, not a row of the key: a key of such a provider is never revealed, so
+  # a login that has no row yet is not sealed whole, refresh token included.
   @doc false
   @spec reveal_key_and_set_at(Connection.t(), Ecto.UUID.t()) ::
           {:ok, binary, DateTime.t()} | {:error, :not_found | :unavailable | :login}
@@ -1132,7 +1120,7 @@ defmodule Apiary.Secrets do
   # reveal_login/2 is the plaintext of the key `secret_value_id` of `provider`, a provider
   # whose API has `oauth_refresh`: the document of its login, for `Apiary.ModelKeys.Login`
   # alone, which sends the refresh token to the provider. `{:error, :not_found}` for a
-  # provider whose keys are not logins, and as `reveal_key_for_sealing/2` for a key that
+  # provider whose keys are not logins, and as `reveal_key_and_set_at/2` for a key that
   # is gone. The plaintext goes to the token endpoint and nowhere else.
   @doc false
   @spec reveal_login(Connection.t(), Ecto.UUID.t()) ::

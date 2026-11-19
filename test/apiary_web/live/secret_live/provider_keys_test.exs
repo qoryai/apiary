@@ -45,7 +45,7 @@ defmodule ApiaryWeb.SecretLive.ProviderKeysTest do
              where: v.secret_id == ^provider.secret_id and v.value_id == ^value_id
          ) do
       nil -> {:error, :not_found}
-      value -> Secrets.reveal_key_for_sealing(provider, value.id)
+      value -> Apiary.ModelKeysFixtures.revealed_key(provider, value.id)
     end
   end
 

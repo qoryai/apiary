@@ -132,7 +132,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
   # The key `value_id` of `provider`, as a run's sealing reads it.
   defp key_value(provider, value_id),
     do:
-      Apiary.Secrets.reveal_key_for_sealing(
+      Apiary.ModelKeysFixtures.revealed_key(
         Repo.get!(Connection, provider.id),
         values(provider)[value_id].id
       )
@@ -885,7 +885,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert {setting.reset_weekday, setting.reset_time} == {1, ~T[09:00:00]}
       assert {setting.reset_time_zone, setting.pause_seconds} == {"Europe/Berlin", 7200}
 
-      assert Apiary.Secrets.reveal_key_for_sealing(Repo.get!(Connection, provider.id), value.id) ==
+      assert Apiary.ModelKeysFixtures.revealed_key(Repo.get!(Connection, provider.id), value.id) ==
                {:ok, @key <> "-2"}
     end
 
@@ -1115,7 +1115,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert ModelKeys.setting(value.id).pause_seconds == 300
       assert values(provider)["spare"].value_set_at == value.value_set_at
 
-      assert Apiary.Secrets.reveal_key_for_sealing(Repo.get!(Connection, provider.id), value.id) ==
+      assert Apiary.ModelKeysFixtures.revealed_key(Repo.get!(Connection, provider.id), value.id) ==
                {:ok, @key}
 
       {:ok, lv, _html} = live(conn, key_path(scope, provider, "spare/edit"))
@@ -1134,10 +1134,10 @@ defmodule ApiaryWeb.ProviderLiveTest do
       saved = values(provider)["spare"]
       assert DateTime.compare(saved.value_set_at, value.value_set_at) == :gt
 
-      assert Apiary.Secrets.reveal_key_for_sealing(Repo.get!(Connection, provider.id), value.id) ==
+      assert Apiary.ModelKeysFixtures.revealed_key(Repo.get!(Connection, provider.id), value.id) ==
                {:ok, new_value}
 
-      assert Apiary.Secrets.reveal_key_for_sealing(
+      assert Apiary.ModelKeysFixtures.revealed_key(
                Repo.get!(Connection, provider.id),
                values(provider)["main"].id
              ) == {:ok, @key}
@@ -1234,7 +1234,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert values(provider)["spare"].value_set_at == value.value_set_at
       refute ModelKeys.setting(value.id)
 
-      assert Apiary.Secrets.reveal_key_for_sealing(Repo.get!(Connection, provider.id), value.id) ==
+      assert Apiary.ModelKeysFixtures.revealed_key(Repo.get!(Connection, provider.id), value.id) ==
                {:ok, @key}
     end
 
@@ -1297,7 +1297,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert Map.keys(values(provider)) |> Enum.sort() == ["main", "spare"]
       refute ModelKeys.setting(values(provider)["spare"].id)
 
-      assert Apiary.Secrets.reveal_key_for_sealing(
+      assert Apiary.ModelKeysFixtures.revealed_key(
                Repo.get!(Connection, provider.id),
                values(provider)["spare"].id
              ) == {:ok, @key}
