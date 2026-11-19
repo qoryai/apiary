@@ -106,9 +106,9 @@ defmodule Apiary.Dispatches.WireTest do
     "reason" => "The job could not start."
   }
   # The vendored contracts are at different integrations commits. The provisioner contract
-  # is at 55a22cb8, which adds the access value write-no-push to the run documents. That
-  # commit comes after 0506879f, which binds a group role to a list of agents. The run
-  # contract is at 8d859a1d, which allows time_limit_minutes from 1 to 1440. That commit
+  # is at 8d859a1d, after 6fed8c73, which describes a machine's dispatch as dispatch_id in
+  # place of key, and after 55a22cb8, which adds the access value write-no-push to the run
+  # documents. The run contract is at 8d859a1d, which allows time_limit_minutes from 1 to 1440. That commit
   # comes after 6fed8c73, which adds the refusals of the next-session request, and plan
   # and tier in place of time_limit on a workflow of a stack that a harness section
   # defines, and after 283f8809, which adds the next-session request and
@@ -122,7 +122,7 @@ defmodule Apiary.Dispatches.WireTest do
   # `paths` and `oauth_refresh` of an API, to the description of a model provider.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
-          {"provisioner/v1", "55a22cb87e724df3008e511a7de84e1c710ac913"},
+          {"provisioner/v1", "8d859a1d5bd0693bd647e0543d29aa8651230c3f"},
           {"run/v1", "8d859a1d5bd0693bd647e0543d29aa8651230c3f"},
           {"integration/v1", "805a7bdb09a16441b8275857e9b50cdfe8227e2d"},
           {"explore/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
