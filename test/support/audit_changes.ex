@@ -1149,8 +1149,8 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"workspace", scope.workspace.id}, before: before}
   end
 
-  # A person stores a version of an artifact on a work item of the workspace: the work
-  # item's entry.
+  # A member action stores a version of the review comments on a work item of the
+  # workspace: the work item's entry.
   def make(:"artifact.write", %{scope: scope} = ctx) do
     work_item = prepare(:"artifact.write", ctx)
     before = entries()
@@ -1487,6 +1487,17 @@ defmodule Apiary.AuditChanges do
     before = entries()
 
     {before, Apiary.Dispatches.report_machine_end(other, dispatch.public_id, %{state: :gone})}
+  end
+
+  # No role takes `artifact.write`: a member action allows it. A person who was a member
+  # when the scope was loaded and is no longer, whose `work_item.review_comment` is
+  # refused.
+  def refuse(:"artifact.write", %{scope: scope} = ctx) do
+    %{scope: member, membership: membership} = member_fixture(scope)
+    work_item = prepare(:"artifact.write", ctx)
+    {:ok, _} = Organisations.remove_member(scope, membership.id)
+    before = entries()
+    {before, attempt(:"artifact.write", member, work_item)}
   end
 
   # A member where the change is an owner's or an admin's; where every member may make it,
@@ -1988,8 +1999,12 @@ defmodule Apiary.AuditChanges do
     Application.put_env(:apiary, :artifacts_dir, dir)
 
     try do
-      Apiary.Artifacts.push({:person, scope}, work_item, "explainer", [
-        %{filename: "notes.md", binary: "# Notes\n\nThe gift card field."}
+      Apiary.Artifacts.push({:member_action, scope}, work_item, "review-comments", [
+        %{
+          filename: "review-comments.json",
+          content_type: "application/json",
+          binary: ~s({"review_comments":[]})
+        }
       ])
     after
       Application.put_env(:apiary, :artifacts_dir, previous)

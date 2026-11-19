@@ -10,12 +10,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   # frame's address; a version of pictures as its type.
   #
   # Every member who may read the work item reads it (`work_item.read`); a number, or a
-  # version id, of no work item or version the reader may read is not found. A reader who
-  # may add a version (`artifact.write`) has Add a version on a version of a type the add
-  # page lists (`Apiary.Artifacts.person_types/1`), so not on the questions or the review
-  # comments, which members write through Explore's actions, nor on the type that the
-  # process's `submit` sets (`Apiary.Artifacts.submit_types/1`). Add a version opens the add
-  # page with the type and the name filled in (`ApiaryWeb.ArtifactLive.New`).
+  # version id, of no work item or version the reader may read is not found.
   #
   # **A player page.** A version of a `demo-video` or `screenshot` that is a scenario of the
   # work item's verification stage (`ApiaryWeb.WorkItemLive.VerifyTab.queue/4`, for the
@@ -73,14 +68,6 @@ defmodule ApiaryWeb.ArtifactLive.Show do
             date: Format.datetime(@version.inserted_at, zone: true)
           )}
         </:description>
-        <:actions :if={@writes}>
-          <.button
-            id="artifact-add"
-            navigate={add_path(@current_scope, @number, @version.artifact)}
-          >
-            {gettext("Add a version")}
-          </.button>
-        </:actions>
       </.page_header>
 
       <div class="q-art-cols grid gap-8">
@@ -369,9 +356,6 @@ defmodule ApiaryWeb.ArtifactLive.Show do
          content: if(connected?(socket), do: Load.content(type, version), else: :pending),
          stage: Load.stage_name(work_item, version.stage_id),
          note: Apiary.ExternalText.present_lines(version.note),
-         writes:
-           Access.can?(scope, :"artifact.write", work_item) and
-             person_type?(scope, version.artifact.type),
          page_title: ArtifactComponents.title(version.artifact, version)
        )
        |> assign(:reads, %{})
@@ -385,7 +369,7 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   # The scenarios of the verification stage that the version's film or pictures belong
   # to (`VerifyTab.queue/4`), as the Verify tab lists them for the version's take in, and
   # `scenario`, the one whose version this page shows, with its `place` in the queue. A
-  # version in no scenario (a person's, an older one, a withdrawal, one of a cancelled run,
+  # version in no scenario (an older one, a withdrawal, one of a cancelled run,
   # another type) has neither, so the page shows no queue.
   defp load_queue(socket) do
     %{work_item: work_item, version: version, reads: reads} = socket.assigns
@@ -503,16 +487,4 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   end
 
   def handle_info(_message, socket), do: {:noreply, socket}
-
-  # True for exactly the types of `Artifacts.person_types/1`: `Artifacts.type/2` returns a
-  # type for exactly the names in `Artifacts.types/1`, and `submit_types/1` is the rest.
-  defp person_type?(scope, name) do
-    name not in Artifacts.member_types() and Artifacts.type(scope.workspace, name) != nil and
-      name not in Artifacts.submit_types(scope.workspace)
-  end
-
-  defp add_path(scope, number, artifact),
-    do:
-      ArtifactComponents.new_path(scope, number) <>
-        "?" <> URI.encode_query(type: artifact.type, name: artifact.name)
 end

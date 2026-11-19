@@ -826,9 +826,8 @@ defmodule ApiaryWeb.Routes do
               live "/work/:number/stages/:stage_id", WorkItemLive.Show, :stage
               live "/work/:number/questions", WorkItemLive.Show, :questions
               live "/work/:number/thread", WorkItemLive.Show, :thread
-              # A work item's artifacts, with the `workflow_model` feature: Add a version by
-              # hand, and one version's page, by the version's public id (`av_…`).
-              live "/work/:number/artifacts/new", ArtifactLive.New, :new
+              # One version of a work item's artifact, with the `workflow_model` feature, by
+              # the version's public id (`av_…`).
               live "/work/:number/artifacts/:version_id", ArtifactLive.Show, :show
               live "/backlog", BacklogLive.Index, :index
               live "/backlog/:item_id", BacklogLive.Ticket, :show

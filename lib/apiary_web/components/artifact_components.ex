@@ -39,11 +39,6 @@ defmodule ApiaryWeb.ArtifactComponents do
   def version_path(scope, number, version_id),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}/artifacts/#{version_id}"
 
-  @doc "new_path/2 is the address of the page that adds a version by hand to work item `number`."
-  @spec new_path(Apiary.Accounts.Scope.t(), integer | String.t()) :: String.t()
-  def new_path(scope, number),
-    do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}/artifacts/new"
-
   @doc """
   file_path/4 is the download address of `file`, a file of the version `version_id` of
   work item `number`. Its last segment is the filename, percent-encoded.
@@ -153,12 +148,10 @@ defmodule ApiaryWeb.ArtifactComponents do
       newest first, their files, and their `user` and `run` where the version has one,
       as `Apiary.Artifacts.list/1` reads them.
     * `scope` and `number`: the reader's scope and the work item's number, for the links
-      to each version's page and to Add a version. Without both, the rows have no links.
+      to each version's page. Without both, the rows have no links.
     * `checks`: a map from a type's name to `:passed`, `:missing` or `:not_checked`, the
       Exists check of the stage's output of that type (piece R's `Apiary.Stages.status/1`,
       `outputs`). A type with no entry shows no check.
-    * `add`: whether the reader may add a version by hand (`artifact.write`); true shows
-      Add a version, which needs `scope` and `number`.
     * `round`: whether a run's writer shows its round (`writer/2`); false in the Explore
       tab's fold at the Explore stage, true elsewhere.
     * `label`: a function of an artifact and the version its row shows to the row's
@@ -169,7 +162,6 @@ defmodule ApiaryWeb.ArtifactComponents do
   attr :scope, :any, default: nil
   attr :number, :any, default: nil
   attr :checks, :map, default: %{}
-  attr :add, :boolean, default: false
   attr :round, :boolean, default: true
   attr :label, :any, default: nil
 
@@ -206,15 +198,6 @@ defmodule ApiaryWeb.ArtifactComponents do
           </span>
         </li>
       </ul>
-      <.button
-        :if={@add && @links?}
-        id={"#{@id}-add"}
-        navigate={new_path(@scope, @number)}
-        variant="link"
-        class="mt-2 text-[13px]"
-      >
-        {gettext("Add a version")}
-      </.button>
     </div>
     """
   end

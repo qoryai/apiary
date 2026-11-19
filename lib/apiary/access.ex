@@ -655,9 +655,10 @@ defmodule Apiary.Access do
       feature: :workflow_model,
       roles: @members
     ),
-    Action.new(:"artifact.write", "store a version of an artifact on a work item",
-      feature: :workflow_model,
-      roles: @members
+    Action.new(
+      :"artifact.write",
+      "store a member's answer or review comment as a version on a work item: recorded in the audit; no role takes it, because work_item.answer or work_item.review_comment allows it",
+      feature: :workflow_model
     ),
     Action.new(:"artifact_type.edit", "add, change or remove the workspace's artifact types",
       feature: :workflow_model,
@@ -1052,11 +1053,14 @@ defmodule Apiary.Access do
   only.
 
   An action taken on the strength of something other than a role, a sign-up, an
-  invitation's token or a release command run on the instance's machine, is in the list
-  for the audit trail (`Apiary.Audit`), whose entries name the actions of this list, and
-  no role of the core has it: the context function checks the sign-up or the token, and
-  asks nothing here; whoever runs a release command controls the instance already. A
+  invitation's token, a release command run on the instance's machine or another action,
+  is in the list for the audit trail (`Apiary.Audit`), whose entries contain the actions
+  of this list, and no role of the core has it. The context function checks the sign-up
+  or the token, or calls `authorize/3` for the other action, and makes no check for the
+  action itself; whoever runs a release command controls the instance already. A
   sign-up's `organisation.create` is one: the account does not exist yet.
+  `artifact.write` is another: `work_item.answer` or `work_item.review_comment` allows
+  it.
 
   ## The levels a person may be given
 

@@ -129,6 +129,27 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     version
   end
 
+  # A film or pictures of the scenario `name` that `run` pushes, as one file `filename`:
+  # the first bytes of an MP4 film or a PNG picture.
+  defp media!(run, work_item, type, name, filename) do
+    binary =
+      if type == "demo-video",
+        do: <<0, 0, 0, 24, "ftypisom", 0, 0, 2, 0, "isomiso2">>,
+        else: <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, "IHDR">>
+
+    {:ok, version} =
+      Artifacts.push(
+        {:run, run},
+        reload(work_item),
+        type,
+        [%{filename: filename, content_type: "application/octet-stream", binary: binary}],
+        name: name,
+        stage_id: run.stage_id
+      )
+
+    version
+  end
+
   defp passed!(run) do
     {:ok, _version} =
       Stages.Artifacts.push_json(
@@ -138,6 +159,53 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
         %{"verdict" => "passed"},
         stage_id: run.stage_id
       )
+  end
+
+  # A person's change at Build, whose sequence runs build-it, to an output of an earlier
+  # stage (vault 0261, 624 (a)): Build's running run ends, a person requests changes with a
+  # note at Build's gate, and the next run pushes `text` as a new version of `type` with
+  # that note as its `decision`, then passes. The work item at Build's gate, and the
+  # version.
+  defp change_at_build!(scope, at_build, type, text) do
+    at_build = at_build |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
+    assert %WorkItem{stage_id: @build, stage_state: :at_gate} = at_build
+
+    {:ok, _round} =
+      Stages.request_changes(scope, at_build, "Change the #{type}.", nil, expect_stage: @build)
+
+    note =
+      Repo.one(
+        from d in Stages.GateDecision,
+          where: d.work_item_id == ^at_build.id and d.kind == :request_changes,
+          order_by: [desc: d.inserted_at],
+          limit: 1,
+          select: d.public_id
+      )
+
+    parent = self()
+
+    work_item =
+      at_build
+      |> reload()
+      |> end_run!(fn run, _registered ->
+        {:ok, version} =
+          Artifacts.push(
+            {:run, run},
+            reload(at_build),
+            type,
+            [%{filename: "#{type}.md", content_type: "text/markdown", binary: text}],
+            stage_id: run.stage_id,
+            decision: note
+          )
+
+        send(parent, {:changed, version})
+        passed!(run)
+      end)
+      |> reload()
+
+    assert_received {:changed, version}
+    assert %WorkItem{stage_id: @build, stage_state: :at_gate} = work_item
+    {work_item, version}
   end
 
   # A work item at Shape: Explore's proposal confirmed, and Shape's first run queued.
@@ -512,20 +580,20 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       conn: conn,
       scope: scope
     } do
-      # Each upload at Shape's gate is a person's change, so each name has a frame:
-      # scenario-1 at version 2, scenario-1-v2, h and h-s.
-      work_item = at_gate!(scope)
+      # Each name of the spec that Shape's run wrote has a frame: scenario-1 at version 2,
+      # scenario-1-v2, h and h-s.
+      work_item = at_shape!(scope)
 
-      for name <- ["scenario-1", "scenario-1", "scenario-1-v2", "h", "h-s"] do
-        {:ok, _version} =
-          Stages.add_version(
-            scope,
-            reload(work_item),
-            "spec",
-            [%{filename: "spec.md", content_type: "text/markdown", binary: "## #{name}"}],
-            name: name
-          )
-      end
+      work_item =
+        work_item
+        |> end_run!(fn run, _registered ->
+          for name <- ["scenario-1", "scenario-1", "scenario-1-v2", "h", "h-s"],
+              do: push!(run, work_item, "spec", "## #{name}", name)
+
+          push!(run, work_item, "test-features", "## The features text")
+          passed!(run)
+        end)
+        |> reload()
 
       {:ok, view, html} = live(conn, stage(scope, work_item.number))
 
@@ -765,14 +833,23 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
   end
 
-  describe "a person's version's caption" do
-    test "has the member's short name, or Former member for an account that is gone" do
-      recorded =
-        for user <- [%Apiary.Accounts.User{email: "sam@example.com"}, nil],
-            do: %{type: "spec", name: "main", version: %{number: 1, writer: :person, user: user}}
+  describe "the input frames beside a Scenarios frame" do
+    # The frames of a Verify gate as `StageTab.verify_frames/2` and `input_frames/2` return
+    # them: a film and pictures are one Scenarios frame, and Verify's inputs are a film,
+    # pictures and an explainer.
+    test "fold every film and picture into the Scenarios frame" do
+      stage = %{outputs: ~w(verification demo-video screenshot)}
+      outputs = StageTab.verify_frames(stage, %{"demo-video" => 1, "screenshot" => 2})
 
-      assert [%{writer: "sam"}, %{writer: "Former member"}] =
-               ApiaryWeb.WorkItemLive.StageTab.frames(recorded)
+      inputs =
+        for {type, place} <- Enum.with_index(~w(demo-video screenshot explainer)) do
+          %{type: type, name: "main", version: 1, open: place == 0, kind: :output}
+        end
+
+      assert [%{type: "demo-video", kind: :scenarios, version: 2}] = outputs
+
+      assert [%{kind: :scenarios}, %{type: "explainer", open: false}] =
+               StageTab.with_inputs(outputs, inputs)
     end
   end
 
@@ -952,7 +1029,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       refute has_element?(view, "#work-item-record")
     end
 
-    test "on the stage's tab: kept for Add a version with no run and no artifact", %{
+    test "on the stage's tab: kept with no run and no artifact", %{
       conn: conn,
       scope: scope
     } do
@@ -965,7 +1042,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
       assert has_element?(view, "#work-item-record")
-      assert has_element?(view, "#work-item-artifact-list-add", "Add a version")
+      assert has_element?(view, "#work-item-artifact-list-empty", "No artifacts yet.")
+      refute has_element?(view, "#work-item-artifact-list-add")
     end
 
     test "on the Ticket tab and the Thread: kept during a first run", %{
@@ -2400,16 +2478,13 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     test "Shape's tab and gate show the spec that a person's approval at Build listed",
          %{conn: conn, scope: scope} do
       # Shape's run pushes spec 1, and a person approves it.
+      process!(scope, %{}, %{"sequence" => [%{"workflow" => "build-it"}]})
       work_item = at_gate!(scope, "## Spec one")
-      {:ok, _at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      {:ok, at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
 
-      # At Build, a person adds spec 2, and Build's approval lists it.
-      {:ok, _version} =
-        Stages.add_version(scope, reload(work_item), "spec", [
-          %{filename: "spec.md", content_type: "text/markdown", binary: "## Spec two"}
-        ])
-
-      {:ok, at_verify} = Stages.approve(scope, reload(work_item), nil, expect_stage: @build)
+      # At Build, a run changes the spec to version 2, and Build's approval lists it.
+      {at_build, _version} = change_at_build!(scope, at_build, "spec", "## Spec two")
+      {:ok, at_verify} = Stages.approve(scope, at_build, nil, expect_stage: @build)
       [spec] = for a <- Artifacts.list(at_verify), a.type == "spec", do: a
       assert [%{number: 2} = two, %{number: 1}] = spec.versions
 
@@ -2430,19 +2505,16 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       refute html =~ "Spec one"
     end
 
-    test "Shape's tab and gate show a spec that a person added at Build, which no approval " <>
+    test "Shape's tab and gate show a spec that a run changed at Build, which no approval " <>
            "lists yet",
          %{conn: conn, scope: scope} do
+      process!(scope, %{}, %{"sequence" => [%{"workflow" => "build-it"}]})
       work_item = at_gate!(scope, "## Spec one")
-      {:ok, _at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
-
-      {:ok, _version} =
-        Stages.add_version(scope, reload(work_item), "spec", [
-          %{filename: "spec.md", content_type: "text/markdown", binary: "## Spec two"}
-        ])
+      {:ok, at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      {at_build, _version} = change_at_build!(scope, at_build, "spec", "## Spec two")
 
       # A person moves the work item back to Shape; its run pushes no spec.
-      {:ok, moved} = Stages.move(scope, reload(work_item), @shape, nil, expect_stage: @build)
+      {:ok, moved} = Stages.move(scope, at_build, @shape, nil, expect_stage: @build)
       work_item = moved |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
       assert %WorkItem{stage_id: @shape} = work_item
 
@@ -2487,25 +2559,6 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
           select: d.versions
       )
       |> List.first()
-    end
-
-    defp add_spec!(scope, work_item, text) do
-      {:ok, version} =
-        Stages.add_version(scope, reload(work_item), "spec", [
-          %{filename: "spec.md", content_type: "text/markdown", binary: text}
-        ])
-
-      version
-    end
-
-    # Whether the spec frame's caption has version `number` and the short name of the
-    # scope's member, not the address.
-    defp caption?(view, scope, number) do
-      frame = "#work-item-tab-output-spec"
-      short = ApiaryWeb.People.short(scope.user.email)
-
-      has_element?(view, frame, "Version #{number} · #{short}") and
-        not has_element?(view, frame, "Version #{number} · #{scope.user.email}")
     end
 
     # The tab of `stage_id` drawn, then its gate approved: the versions the approval
@@ -2570,23 +2623,6 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert Enum.sort(recorded) == Enum.sort(drawn)
     end
 
-    test "a version that only a person uploaded, with who uploaded it",
-         %{conn: conn, scope: scope} do
-      process!(scope, %{"outputs" => [%{"type" => "spec", "required" => false}]})
-      work_item = scope |> at_shape!() |> end_run!(fn run, _registered -> passed!(run) end)
-      add_spec!(scope, work_item, "## Spec by hand")
-
-      # Before the approval, the frame's caption has who uploaded it.
-      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
-      assert caption?(view, scope, 1)
-
-      {recorded, drawn, _view, html} = approved_and_drawn(conn, scope, work_item, @shape)
-
-      assert [_one] = recorded
-      assert recorded -- drawn == []
-      assert html =~ "Spec by hand"
-    end
-
     test "a version that only an earlier take in made", %{conn: conn, scope: scope} do
       process!(scope, %{"outputs" => [%{"type" => "spec", "required" => false}]})
       ticket = backlog_ticket_fixture(scope)
@@ -2619,10 +2655,11 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
 
     test "a change that a person's approval lists", %{conn: conn, scope: scope} do
+      process!(scope, %{}, %{"sequence" => [%{"workflow" => "build-it"}]})
       work_item = at_gate!(scope, "## Spec one")
-      {:ok, _at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
-      add_spec!(scope, work_item, "## Spec two")
-      {:ok, at_verify} = Stages.approve(scope, reload(work_item), nil, expect_stage: @build)
+      {:ok, at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      {at_build, _version} = change_at_build!(scope, at_build, "spec", "## Spec two")
+      {:ok, at_verify} = Stages.approve(scope, at_build, nil, expect_stage: @build)
 
       {:ok, moved} = Stages.move(scope, at_verify, @shape, nil, expect_stage: at_verify.stage_id)
       work_item = moved |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
@@ -2640,12 +2677,10 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       process!(scope, %{}, %{"sequence" => [%{"workflow" => "build-it"}]})
       work_item = at_gate!(scope, "## Spec one")
       {:ok, at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
-      add_spec!(scope, at_build, "## Spec two")
-      at_build = at_build |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
-      assert %WorkItem{stage_id: @build, stage_state: :at_gate} = at_build
+      {at_build, _version} = change_at_build!(scope, at_build, "spec", "## Spec two")
 
       {:ok, view, _html} = live(conn, stage(scope, at_build.number, @build))
-      assert caption?(view, scope, 2)
+      assert has_element?(view, "#work-item-tab-output-spec", "Version 2")
 
       {recorded, drawn, _view, html} = approved_and_drawn(conn, scope, at_build, @build)
 
@@ -2654,69 +2689,11 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert html =~ "Spec two"
     end
 
-    # At Shape's gate after its run wrote spec v1: `first` and then `second` each add one
-    # spec version, with a round between them that the person asks for. The approval and
-    # the frames have one spec version, the highest.
-    defp one_spec_version!(conn, scope, first, second) do
-      work_item = at_gate!(scope, "## Spec one")
-      work_item = first.(work_item)
-
-      {:ok, _round} =
-        Stages.request_changes(scope, reload(work_item), "Again.", nil, expect_stage: @shape)
-
-      work_item = work_item |> reload() |> second.() |> reload()
-      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
-
-      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
-      frames = :sys.get_state(view.pid).socket.assigns.frames
-      {:ok, _approved} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
-
-      [spec] = for a <- Artifacts.list(work_item), a.type == "spec", do: a
-      spec_ids = MapSet.new(spec.versions, & &1.public_id)
-      three = Enum.find(spec.versions, &(&1.number == 3)).public_id
-
-      assert [%{version: 3}] = Enum.filter(frames, &(&1.type == "spec"))
-      assert Enum.filter(recorded(work_item, @shape), &(&1 in spec_ids)) == [three]
-    end
-
-    test "a person's upload, then a run's version: one frame, the run's",
-         %{conn: conn, scope: scope} do
-      one_spec_version!(
-        conn,
-        scope,
-        fn work_item ->
-          add_spec!(scope, work_item, "## Spec two")
-          work_item
-        end,
-        fn work_item ->
-          end_run!(work_item, fn run, _registered ->
-            push!(run, work_item, "spec", "## Spec three")
-            passed!(run)
-          end)
-        end
-      )
-    end
-
-    test "a run's version, then a person's upload: one frame, the upload",
-         %{conn: conn, scope: scope} do
-      one_spec_version!(conn, scope, & &1, fn work_item ->
-        work_item =
-          end_run!(work_item, fn run, _registered ->
-            push!(run, work_item, "spec", "## Spec two")
-            passed!(run)
-          end)
-
-        add_spec!(scope, reload(work_item), "## Spec three")
-        work_item
-      end)
-    end
-
     test "a past stage's tab frames what its approval recorded", %{conn: conn, scope: scope} do
       process!(scope, %{}, %{"sequence" => [%{"workflow" => "build-it"}]})
       work_item = at_gate!(scope, "## Spec one")
       {:ok, at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
-      add_spec!(scope, at_build, "## Spec two")
-      at_build = at_build |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
+      {at_build, _version} = change_at_build!(scope, at_build, "spec", "## Spec two")
       {:ok, moved_on} = Stages.approve(scope, at_build, nil, expect_stage: @build)
 
       assert moved_on.stage_id != @build
@@ -2725,26 +2702,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       {:ok, view, html} = live(conn, stage(scope, work_item.number, @build))
 
       assert spec_two in drawn(view, work_item)
-      assert caption?(view, scope, 2)
+      assert has_element?(view, "#work-item-tab-output-spec", "Version 2")
       assert html =~ "Spec two"
-    end
-
-    test "the runs' summary lists the version the runs wrote, not the upload",
-         %{conn: conn, scope: scope} do
-      work_item = at_gate!(scope, "## Spec one")
-      add_spec!(scope, work_item, "## Spec two")
-      {:ok, moved_on} = Stages.approve(scope, reload(work_item), nil, expect_stage: @shape)
-      assert moved_on.stage_id != @shape
-
-      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
-
-      assert [%{version: 2}] =
-               Enum.filter(:sys.get_state(view.pid).socket.assigns.frames, &(&1.type == "spec"))
-
-      summary = "#work-item-record-fold > summary"
-      assert has_element?(view, summary, "1 run")
-      assert has_element?(view, summary, "spec v1")
-      refute has_element?(view, summary, "spec v2")
     end
 
     # The gate card's line of `type` links to the page of `version`, as the Artifacts list
@@ -2754,21 +2713,6 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     defp gate_link?(view, scope, work_item, key, version) do
       path = ApiaryWeb.ArtifactComponents.version_path(scope, work_item.number, version)
       has_element?(view, ~s(#work-item-stage-gate-output-#{key} a[href="#{path}"]))
-    end
-
-    test "the gate card links an upload at a stage with no workflow to its version",
-         %{conn: conn, scope: scope} do
-      process!(scope, %{"sequence" => [], "outputs" => [%{"type" => "spec", "required" => false}]})
-
-      work_item = at_shape!(scope)
-      version = add_spec!(scope, work_item, "## Spec by hand")
-      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
-
-      {:ok, view, _html} = live(conn, page(scope, work_item.number))
-
-      assert has_element?(view, "#work-item-tabs-ticket[aria-current=page]")
-      assert has_element?(view, "#work-item-stage-gate-output-spec a", "spec v1")
-      assert gate_link?(view, scope, work_item, "spec", version.public_id)
     end
 
     test "the gate card links a run's version at a stage with a workflow",
@@ -2784,10 +2728,11 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     test "after a move back to Shape, the gate card links the version a later approval " <>
            "listed, not Shape's newest",
          %{conn: conn, scope: scope} do
+      process!(scope, %{}, %{"sequence" => [%{"workflow" => "build-it"}]})
       work_item = at_gate!(scope, "## Spec one")
-      {:ok, _at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
-      spec_two = add_spec!(scope, work_item, "## Spec two")
-      {:ok, at_verify} = Stages.approve(scope, reload(work_item), nil, expect_stage: @build)
+      {:ok, at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      {at_build, spec_two} = change_at_build!(scope, at_build, "spec", "## Spec two")
+      {:ok, at_verify} = Stages.approve(scope, at_build, nil, expect_stage: @build)
 
       {:ok, moved} = Stages.move(scope, at_verify, @shape, nil, expect_stage: at_verify.stage_id)
       work_item = moved |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
@@ -2831,9 +2776,16 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
     test "the gate card lists a version the approval records that no output line shows",
          %{conn: conn, scope: scope} do
-      # Verify runs no workflow, has no outputs, and a member approves its gate.
+      # Verify runs no workflow, has no outputs, and a member approves its gate. Build's
+      # gate `none` lists no version with a `decision`, so Verify's approval lists Build's
+      # change to the spec.
       verify = "st_m1mqbeywdg"
-      version = process!(scope, %{}, %{"sequence" => [%{"workflow" => "build-it"}]})
+
+      version =
+        process!(scope, %{}, %{
+          "sequence" => [%{"workflow" => "build-it"}],
+          "gate" => %{"kind" => "none"}
+        })
 
       assert %{"outputs" => [], "gate" => %{"kind" => "person"}} =
                stage = Enum.find(version.document["stages"], &(&1["id"] == verify))
@@ -2842,11 +2794,66 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       work_item = at_gate!(scope, "## Spec one")
       {:ok, at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
-      at_build = at_build |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
-      {:ok, at_verify} = Stages.approve(scope, at_build, nil, expect_stage: @build)
-      assert %WorkItem{stage_id: ^verify, stage_state: :at_gate} = reload(at_verify)
 
-      spec_two = add_spec!(scope, at_verify, "## Spec two")
+      # Build's first run escalates; a person runs another round with a note, and the
+      # next run changes the spec with that note as its decision.
+      at_build =
+        at_build
+        |> end_run!(fn run, _registered ->
+          {:ok, _version} =
+            Stages.Artifacts.push_json(
+              {:run, run},
+              reload(at_build),
+              "verdict",
+              %{
+                "verdict" => "escalate",
+                "points" => [%{"text" => "Ask.", "action" => "run_again"}]
+              },
+              stage_id: run.stage_id
+            )
+        end)
+        |> reload()
+
+      assert at_build.stage_state == :escalated
+
+      {:ok, _round} =
+        Stages.resolve_escalation(scope, at_build, :another_round, "Change the spec.",
+          expect_stage: @build
+        )
+
+      note =
+        Repo.one(
+          from e in Stages.Escalation,
+            where: e.work_item_id == ^at_build.id,
+            order_by: [desc: e.inserted_at],
+            limit: 1,
+            select: e.public_id
+        )
+
+      parent = self()
+
+      at_verify =
+        at_build
+        |> reload()
+        |> end_run!(fn run, _registered ->
+          {:ok, version} =
+            Artifacts.push(
+              {:run, run},
+              reload(at_build),
+              "spec",
+              [%{filename: "spec.md", content_type: "text/markdown", binary: "## Spec two"}],
+              stage_id: run.stage_id,
+              decision: note
+            )
+
+          send(parent, {:changed, version})
+          passed!(run)
+        end)
+        |> reload()
+
+      assert_received {:changed, spec_two}
+      assert %WorkItem{stage_id: ^verify, stage_state: :at_gate} = at_verify
+
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       line = "#work-item-stage-gate-recorded-spec"
@@ -2870,29 +2877,22 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       refute has_element?(view, "#work-item-stage-gate-recorded")
     end
 
-    test "after a move back, Shape's gate frames a person's upload at Build, which its " <>
+    test "after a move back, Shape's gate frames a run's change at Build, which its " <>
            "approval records",
          %{conn: conn, scope: scope} do
       process!(scope, %{}, %{"sequence" => [%{"workflow" => "build-it"}]})
       work_item = at_gate!(scope)
       {:ok, at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      {at_build, explainer} = change_at_build!(scope, at_build, "explainer", "## Explainer")
 
-      {:ok, explainer} =
-        Stages.add_version(scope, at_build, "explainer", [
-          %{filename: "explainer.md", content_type: "text/markdown", binary: "## Explainer"}
-        ])
-
-      {:ok, moved} = Stages.move(scope, reload(at_build), @shape, nil, expect_stage: @build)
+      {:ok, moved} = Stages.move(scope, at_build, @shape, nil, expect_stage: @build)
       work_item = moved |> end_run!(fn run, _registered -> passed!(run) end) |> reload()
       assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
 
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
-      assert has_element?(
-               view,
-               "#work-item-tab-output-explainer",
-               "Version 1 · #{ApiaryWeb.People.short(scope.user.email)}"
-             )
+      assert has_element?(view, "#work-item-tab-output-explainer", "Version 1")
+      refute has_element?(view, "#work-item-tab-output-explainer", "Version 1 ·")
 
       {:ok, _approved} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
       assert explainer.public_id in recorded(work_item, @shape)
@@ -3609,51 +3609,6 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
              )
     end
 
-    test "Verify's input frame shows a person's version, but the run's for the submit type",
-         %{conn: conn, scope: scope} do
-      work_item = at_verify_gate!(scope)
-
-      ran =
-        Repo.one(
-          from v in Artifacts.Version,
-            join: a in Artifacts.Artifact,
-            on: a.id == v.artifact_id,
-            where: a.work_item_id == ^work_item.id and a.type == "test-features",
-            select: v
-        )
-
-      {:ok, person} =
-        Stages.add_version(
-          scope,
-          reload(work_item),
-          "test-features",
-          [%{filename: "test-features.md", content_type: "text/markdown", binary: "## By hand"}],
-          name: "main"
-        )
-
-      frame = "#work-item-tab-output-test-features"
-
-      # With no submit type, the person's version is a change, and the input frame has it.
-      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
-      assert has_element?(view, frame, "Version #{person.number}")
-
-      # With test-features as the submit type, the person's version is no change.
-      template = %{
-        "commit" => String.duplicate("a", 40),
-        "submit" => %{"type" => "test-features", "send" => "end_of_run"}
-      }
-
-      {_n, _rows} =
-        Repo.update_all(
-          from(v in Processes.Version, where: v.workspace_id == ^scope.workspace.id),
-          set: [template: template]
-        )
-
-      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
-      assert has_element?(view, frame, "Version #{ran.number}")
-      refute has_element?(view, frame, "Version #{person.number}")
-    end
-
     test "only Explore's gate offers tracks: Verify's gate shows the track and no choice", %{
       conn: conn,
       scope: scope
@@ -4016,6 +3971,55 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert gate =~ ~s(id="work-item-stage-gate-approve-go")
       assert report =~ "The report text"
+    end
+
+    test "Verify's gate with no Verify run shows Build's film and pictures as two inputs", %{
+      conn: conn,
+      scope: scope
+    } do
+      media = ~w(demo-video screenshot)
+      screens!(scope)
+
+      # Build writes a film and pictures; Verify verifies them and reads them as inputs.
+      document = Processes.current(scope.workspace).document
+
+      stages =
+        Enum.map(document["stages"], fn
+          %{"id" => @build} = stage ->
+            %{stage | "outputs" => Enum.map(media, &%{"type" => &1, "required" => false})}
+
+          %{"id" => @verify} = stage ->
+            Map.merge(stage, %{
+              "inputs" => Enum.map(media, &%{"type" => &1, "required" => false}),
+              "outputs" =>
+                Enum.map(["verification" | media], &%{"type" => &1, "required" => false})
+            })
+
+          stage ->
+            stage
+        end)
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, %{document | "stages" => stages})
+
+      work_item = scope |> taken_in_fixture() |> end_run!(proposing("fast-track"))
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+
+      work_item =
+        work_item
+        |> reload()
+        |> end_run!(fn run, _registered ->
+          media!(run, work_item, "demo-video", "scenario-1", "scenario-1.mp4")
+          media!(run, work_item, "screenshot", "scenario-2", "scenario-2-step-1.png")
+          passed!(run)
+        end)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      # Verify has no output frame, so no Scenarios frame folds the two inputs together.
+      assert has_element?(view, "#work-item-stage-gate-no-run")
+      refute has_element?(view, "#work-item-tab-scenarios")
+      assert has_element?(view, "#work-item-tab-output-demo-video")
+      assert has_element?(view, "#work-item-tab-output-screenshot")
     end
 
     test "a workspace of another domain reads the engine's wording on Verify's gate and Shape's tab",

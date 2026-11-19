@@ -99,7 +99,6 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :id, :string, default: "work-item-stage"
   attr :page, :map, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.page/2`"
   attr :number, :integer, required: true, doc: "the work item's number"
-  attr :add_path, :any, required: true, doc: "a function of an artifact type: Add's path"
 
   attr :version_path, :any,
     default: nil,
@@ -159,7 +158,6 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         id={@id}
         page={@page}
         number={@number}
-        add_path={@add_path}
         version_path={@version_path}
         recorded={@recorded}
         answers_path={@answers_path}
@@ -251,7 +249,6 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :id, :string, required: true
   attr :page, :map, required: true
   attr :number, :integer, required: true
-  attr :add_path, :any, required: true
   attr :version_path, :any, default: nil
   attr :recorded, :list, default: []
   attr :answers_path, :string, default: nil
@@ -282,7 +279,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       )
 
     ~H"""
-    <.needs id={@id} page={@page} types={@missing} add_path={@add_path} />
+    <.needs id={@id} page={@page} types={@missing} />
     <.move_back
       :if={@page.can_decide and @page.earlier != []}
       id={"#{@id}-move"}
@@ -357,7 +354,6 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       id={"#{@id}-gate"}
       page={@page}
       number={@number}
-      add_path={@add_path}
       version_path={@version_path}
       recorded={@recorded}
       asking={@asking}
@@ -377,9 +373,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :id, :string, required: true
   attr :page, :map, required: true
   attr :types, :list, required: true
-  attr :add_path, :any, required: true
 
-  # What the stage needs, and an Add for each type for a person who may add it.
+  # What the stage needs: a line, then each type.
   defp needs(assigns) do
     ~H"""
     <p id={"#{@id}-line"}>
@@ -391,14 +386,6 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     <ul id={"#{@id}-inputs"} class="flex flex-col gap-1">
       <li :for={type <- @types} id={"#{@id}-input-#{type}"} class="flex items-center gap-2">
         <span class="q-grow">{type_words(type)}</span>
-        <.button
-          :if={@page.can_add}
-          id={"#{@id}-add-#{type}"}
-          navigate={@add_path.(type)}
-          aria-label={gettext("Add %{type}", type: type_words(type))}
-        >
-          <.icon name="hero-plus-micro" class="size-3.5" />{gettext("Add")}
-        </.button>
       </li>
     </ul>
     """
@@ -407,7 +394,6 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :id, :string, required: true
   attr :page, :map, required: true
   attr :number, :integer, required: true
-  attr :add_path, :any, required: true
   attr :version_path, :any, default: nil
   attr :recorded, :list, default: []
   attr :asking, :atom, default: nil
@@ -502,7 +488,6 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         id={@id}
         page={@page}
         types={@page.missing_outputs}
-        add_path={@add_path}
       />
       <p
         :if={@decides and not @page.confirm_gate and match?({:listed, _ids}, @page.approvers)}

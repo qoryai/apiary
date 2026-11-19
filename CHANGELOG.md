@@ -47,8 +47,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `operator_infrastructure` flag on, the step for the organisation's owners and admins in a
   workspace that an operator operates is to ask the operator. With the flag off, the link
   shows. The change and the delete are refused on the server too. A type that an older
-  process version in use sets stays set. **Add a version** does not offer the type, and a
-  person's push of it is refused with `unknown_type`, as for `questions`.
+  process version in use sets stays set.
 <!-- /feature -->
 <!-- feature: factory -->
 - **OpenAI API key** and **OpenAI subscription** are model providers, and **Codex** is a
@@ -361,8 +360,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the id of the escalation, `gate_decisions.escalation_id`; `notes` lists the escalation and
   leaves that decision out). The entries stay until the left stage's gate
   passes again (an approval of the stage, by a person or automatic) or a later move goes
-  to a stage after it, and are scoped to the take in. No approval lists these versions,
-  unless a person made one: that is a change. The page's missing inputs, the stage's checks
+  to a stage after it, and are scoped to the take in. No approval lists such a version,
+  unless it has a `decision`: then it is a change. The page's missing inputs, the stage's checks
   and the other entries of `inputs` stay as they were. A `move` decision keeps the stage it
   moved to and when the work item last entered the stage it left
   (`gate_decisions.to_stage_id`, `left_stage_entered_at`).
@@ -417,8 +416,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   refuses a value that is not such an id. A run can change the criterion of an open
   question. While a question stays answered, its criterion stays as it was, set or absent.
 <!-- feature: workflow_model -->
-- A run of a later stage, or a person by upload, can store a new version of an approved
-  output, and every later run reads that version in place of the approved one. A run's
+- A run of a later stage can store a new version of an approved output, and every later
+  run reads that version in place of the approved one. A run's
   `POST artifacts` takes an optional `decision`: the `id` of the person's note that asked
   for the version, also on a withdrawal. In `notes` of `GET work-item`, a request for
   changes and a move have an `id` `gd_…`, and an escalation an `id` `es_…`; an answer and
@@ -431,18 +430,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   page. An approval at a gate records a version of each name of each output type, and
   the gate card lists one row for each name. The tab of a stage with no
   `verification` output has a frame for every version that an approval at its gate
-  records: one for each name of a type, one that only a person uploaded, one of an
-  earlier take in, and a change. A frame of an artifact not named `main` has the name
-  after the type in its heading. A person's version has the caption "Version <n> · <the
-  member's short name>". Once the work item has left a stage that a person approved, the
-  stage's tab shows a frame for each version that approval recorded. The tab of a stage
+  records: one for each name of a type, one of an earlier take in, and a change. A frame
+  of an artifact not named `main` has the name after the type in its heading. Once the
+  work item has left a stage that a person approved, the stage's tab shows a frame for
+  each version that approval recorded. The tab of a stage
   with a `verification` output keeps the frames of the Verify tab, which show only the
-  versions that the take in's runs wrote. A person's version of the type in
-  `submit.type` is not a change: no approval lists it, the gate card leaves it out of
-  its outputs, its Exists check and its approval marks, and runs read the run's version.
-  The tab has no frame or Submissions row for it, as only a run's submit step writes a
-  submission. The gate card's draft line reads only a run's submission, whatever the
-  process version's `submit.type` is. In a stage that started no run, the input frames
+  versions that the take in's runs wrote. In a stage that started no run, the input frames
   follow the output frames, folded. On the stage card, each output's version at the gate
   links to that version's page, and the gate also links every further version that an
   approval would record. In `GET artifacts`, each version has `decision` and
@@ -621,8 +614,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   show `:token` in the token's place. After an hour, reload the page.
   A run's push of a mockup page that runs a script, loads an outside address, sends a
   form or links to a page that is not a screen fails with `422` `invalid_artifact`,
-  and its message has the file and the fix. A version of pictures, and
-  every version added on **Add a version**, shows as before, under “Image”.
+  and its message has the file and the fix. A version of pictures shows as before, under
+  “Image”.
 - On an integration's page in **Organisation settings › Integrations**, each collection
   assigned to a workspace, such as a repository, has **Unassign** for owners and admins.
   **Unassign** shows a confirmation in the row's place, then unassigns the collection:
@@ -1287,8 +1280,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   At the Explore stage, the stage's runs and artifacts no longer show above the tabs; its
   notes stay there. At every stage after Explore, the runs and artifacts move to one
   closed fold at the foot of the **Ticket** tab and the **Thread**: its first line shows
-  how many runs the take in has and the versions of the current stage's outputs, each
-  attempt links to its run, and **Add a version** is inside it. A stage's tab has the
+  how many runs the take in has and the versions of the current stage's outputs, and
+  each attempt links to its run. A stage's tab has the
   same fold for that stage's runs and outputs. Each row of the fold, on every tab, shows
   the attempt, the workflow, the round, the verdict and the time, for example
   “Attempt 2 (Run 14) · shape-a-ticket · round 1 · passed · 12 hours ago”. Until a run has
@@ -1535,17 +1528,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   workflow, shows that workflow and where the harness comes from on the run's page and
   on the work item.
 - In Workspace settings › Artifact types, owners and admins switch each standard type on
-  or off, and each change is an audit entry. Forms and the stage editor offer only the
-  types that are on. A push of a type that is off returns `422 unknown_type`, and the
-  message says to switch the type on. `proposal`, `questions`, `review-comments` and
-  `verdict` are always on. A person adds no version of `questions` or `review-comments` by
-  hand: members answer questions on the **Questions** tab and write comments on the
-  **Explore** tab. A type stays on while an artifact of
-  the workspace has it, or while the current process or a process version in use includes
-  it. A workspace keeps every standard type until a person switches one off.
-- The version page of a questions or review-comments artifact has no **Add a version**
-  button. People answer questions on the work item's **Questions** tab and write comments on its
-  **Explore** tab.
+  or off, and each change is an audit entry. The stage editor offers only the types that
+  are on. A push of a type that is off returns `422 unknown_type`, and the message says
+  to switch the type on. `proposal`, `questions`, `review-comments` and `verdict` are
+  always on. No form adds a version: a member's answers on the **Questions** tab and
+  comments on the **Explore** tab write the versions of `questions` and
+  `review-comments`. A type stays on
+  while an artifact of the workspace has it, or while the current process or a process
+  version in use includes it. A workspace keeps every standard type until a person
+  switches one off.
 - A stage's workflow runs at the level its harness declares. A stage entry's `access`, or
   a **Workflow** page row with that workflow, lowers it.
 - In the notes for the next run, a comment on Explore's proposal is labelled “Comment ·
@@ -1887,8 +1878,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `acceptance-criteria` under another name is `422` `invalid_artifact`, with `name` in
   `names` and a message that starts "Name the acceptance criteria main: a work item has
   one set of acceptance criteria, and this push has the name" and ends with the pushed
-  name, such as "… this push has the name other." **Add a version** shows the same line
-  under **Name** and stores nothing.
+  name, such as "… this push has the name other."
 - A question has `about` in place of `criterion`: `{"work_item": true}`, or the type and
   name of an output of the work item, with an `item` such as `ac-4`. A pushed question
   whose `about` points at an output the work item lacks, or at a criterion that no version
@@ -2041,8 +2031,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   versions out too.
 - The gate button of a stage read "Approve" and the stage's name, for example "Approve
   Shape". It reads **Approve** now. The confirmation dialog is titled "Approve this
-  stage?" and its button reads **Approve**. The line about a missing output reads "Add
-  <outputs> before you approve this stage.", where it ended with the stage's name.
+  stage?" and its button reads **Approve**. The line about a missing output reads "Move
+  this stage back, or give it a workflow that writes <outputs>. Approve needs them.",
+  where it ended with the stage's name.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - The notes for the next run, on the work item and in `GET work-item`, list only open
@@ -2283,7 +2274,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   stage card's Run another round and Rebuild open it on every click. Explore's **Run
   another round** opens it where it sends an answer, a comment or open comments; Run the
   test opens it for a line that is not blank while no test run is running. Approve,
-  Request changes, Accept as it is, Move back, Check again and Add version open it only
+  Request changes, Accept as it is, Move back and Check again open it only
   where they start a run: a stage with no workflow starts none.
 <!-- feature: factory -->
 - Take in, Take in again and Take in here open a wide dialog before anything starts:
