@@ -8467,9 +8467,11 @@ defmodule Apiary.StagesTest do
 
       assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
       second_id = criteria(work_item, 2).public_id
+      shaped_id = criteria(work_item, 1).public_id
 
-      assert [^second_id] =
-               Map.keys(Stages.unapproved_changes(work_item, Artifacts.list(work_item)))
+      # No person approved v1; Shape's gate none did, so v1 is the earlier version.
+      assert [{^second_id, %{earlier: %{public_id: ^shaped_id}}}] =
+               Map.to_list(Stages.unapproved_changes(work_item, Artifacts.list(work_item)))
 
       # Moved back to Shape, whose run writes v3; Shape's gate none lists v3, a later
       # version of the criteria, so v2 has no mark.

@@ -2804,9 +2804,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp with_drafts(flow, reads), do: {flow, reads}
 
-  # The flow at a gate with each changed version of the acceptance criteria that a
-  # person's approval listed a version before (`flow.changes`, `earlier`) compared with
-  # that version (`GateChanges.compare/2`), as its `criteria`. Each JSON document is read
+  # The flow at a gate with each changed version of the acceptance criteria that has a
+  # version approved before it (`flow.changes`, `earlier`) compared with that version
+  # (`GateChanges.compare/2`), as its `criteria`. Each JSON document is read
   # once per version (`VerifyTab.stored_json/3`). Returns the flow and `reads`.
   defp with_criteria(%{state: :at_gate, changes: changes} = flow, reads) when changes != %{} do
     {changes, reads} =

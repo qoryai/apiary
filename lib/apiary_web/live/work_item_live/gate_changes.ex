@@ -1,6 +1,6 @@
 defmodule ApiaryWeb.WorkItemLive.GateChanges do
   # A version that a run stored on a person's request, as the work item page shows it until
-  # a person's approval lists it (`Apiary.Stages.unapproved_changes/2`, vault 0261, 624
+  # an approval lists it (`Apiary.Stages.unapproved_changes/2`, vault 0261, 624
   # (a)): the mark "Changed on your request" on the version's line of the gate card and on
   # its frame's caption, and, for acceptance criteria, each changed, added or removed
   # criterion with its earlier and its new text and check, under one line with the next
@@ -39,7 +39,7 @@ defmodule ApiaryWeb.WorkItemLive.GateChanges do
 
   @doc false
   # compare/2 is what changed between two acceptance criteria documents, each read as
-  # `VerifyTab.criteria/1` reads one: `earlier`, the version a person's approval listed,
+  # `VerifyTab.criteria/1` reads one: `earlier`, the version approved before the change,
   # and `new`, the changed version. Each criterion is compared by its id. `{:ok, %{changes:,
   # unchanged:}}`: `changes` is each changed, added or removed criterion in the order of
   # `new`, and `unchanged` the id of each criterion with the same text, check and removal

@@ -571,7 +571,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   # The gate card's controls (`gate_controls/2`), the mark of each changed version on its
   # lines by public id (`changed`), and, where a line is a changed version of the
-  # acceptance criteria that the page compared with the version a person approved
+  # acceptance criteria that the page compared with the version approved before it
   # (`criteria`), its changes and the line above them (`lead`): what to do, as
   # `{:action, text}`, which contains only controls that the card shows, or who decides, as
   # `{:approvers, text}`, for a reader who may not.
