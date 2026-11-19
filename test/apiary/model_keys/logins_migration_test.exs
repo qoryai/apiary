@@ -69,7 +69,9 @@ defmodule Apiary.ModelKeys.LoginsMigrationTest do
 
     up!()
     assert table() == "model_key_logins"
-    assert Repo.all(Login) == []
+    # Counted in SQL: the table made by this migration alone has no `email` column, which a
+    # later migration adds and the schema reads.
+    assert %{rows: [[0]]} = Repo.query!("SELECT count(*) FROM model_key_logins")
 
     assert constraints() == [
              "model_key_logins_account_id_check",

@@ -289,11 +289,19 @@ defmodule Apiary.AuditCase do
   @doc """
   refute_personal/2 asserts that no email address of any account, nor its local part,
   which a name made from it would carry, and not `secret`, when given, is anywhere in what
-  the entry keeps: its `before`, `after` and `details`.
+  the entry keeps: its `before`, `after` and `details`. One field is left out: `identity` of
+  `details`, the line of a model key (`Apiary.ModelKeys.Identity`), which for a sign-in has
+  the email of the ChatGPT account that the key signs in with, a vendor account and no
+  account of Qory Apiary. The entry stores it so that an Activity line keeps the text it had
+  when the entry was written. The line is still checked for the accounts' emails above.
   """
   @spec refute_personal(Entry.t(), String.t() | nil) :: :ok
   def refute_personal(%Entry{} = entry, secret) do
-    kept = Jason.encode!([entry.before, entry.after, entry.details])
+    details =
+      if is_map(entry.details), do: Map.delete(entry.details, "identity"), else: entry.details
+
+    kept = Jason.encode!([entry.before, entry.after, details])
+    identity = if is_map(entry.details), do: entry.details["identity"], else: nil
 
     for email <- Repo.all(from u in User, where: not is_nil(u.email), select: u.email),
         text <- [email, email |> String.split("@") |> hd()] do
@@ -301,6 +309,12 @@ defmodule Apiary.AuditCase do
     end
 
     refute kept =~ "@", "the entry keeps something like an email address: #{kept}"
+
+    for email <- Repo.all(from u in User, where: not is_nil(u.email), select: u.email),
+        is_binary(identity) do
+      refute identity =~ email, "the entry's identity line keeps #{email}"
+    end
+
     if secret, do: refute(kept =~ secret, "the entry keeps the secret")
     :ok
   end
