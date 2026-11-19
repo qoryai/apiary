@@ -4393,6 +4393,11 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
       tokens = Apiary.ModelKeysFixtures.login_tokens(tag: "setup")
       {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
+      # A save needs a model in every tier, whatever the key.
+      {:ok, subscription} = Apiary.Kinds.Providers.fetch("openai-subscription")
+      [codex | _rest] = Apiary.Kinds.Providers.runtimes(subscription)
+      [model | _rest] = for m <- ModelChoices.suggestions(subscription, codex), do: m.id
+
       # The form's Runtime follows the provider chosen, as a person's choice changes it.
       lv
       |> form("#set-up-model-form", model: %{provider: "openai-subscription"})
@@ -4404,7 +4409,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
           ] do
         html =
           lv
-          |> form("#set-up-model-form", model: %{provider: "openai-subscription", key: key})
+          |> form("#set-up-model-form",
+            model: %{provider: "openai-subscription", key: key, tiers: tiers(model)}
+          )
           |> render_submit()
 
         assert login_tokens_in(html, tokens) == []
@@ -4430,7 +4437,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
         |> form("#set-up-model-form",
           model: %{
             provider: "openai-subscription",
-            key: Apiary.ModelKeysFixtures.login_paste(tokens: tokens)
+            key: Apiary.ModelKeysFixtures.login_paste(tokens: tokens),
+            tiers: tiers(model)
           }
         )
         |> render_submit()
