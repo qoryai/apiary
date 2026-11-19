@@ -65,10 +65,12 @@ defmodule Apiary.Stages.Runner do
   #     stage with an entry that has a return key, it returns the work item to that key's
   #     stage instead, at its first entry, with a note too, and counts no return.
   #   * An escalation accepted counts the loop as passed: the sequence goes on with its
-  #     next workflow, or, after its last, to the gate without the Exists checks; an
-  #     escalation at the end of the sequence goes to the gate too. An accept that goes to
-  #     the gate needs every required output (`Apiary.Stages`); one that starts the
-  #     next entry does not, as the checks run at the sequence's end. At a gate `none` the accept is the approval: `Apiary.Stages`
+  #     next workflow, or, after its last, to the gate; an escalation at the end of the
+  #     sequence goes to the gate too. The runner runs no Exists checks there.
+  #     `Apiary.Stages` returns an error for an accept that would take the stage to its
+  #     gate while a required output is missing (`accept_to_gate?/3`); an accept that
+  #     starts the next entry needs no output, as the checks run at the sequence's end.
+  #     At a gate `none` the accept is the approval: `Apiary.Stages`
   #     records it with the member who accepted. Another round runs
   #     one more round: the same workflow for a stopped run, the loop's first workflow
   #     otherwise, the last loop for an escalation at the end, or the sequence from its
@@ -863,7 +865,8 @@ defmodule Apiary.Stages.Runner do
       failed == [] ->
         gate(stage, position)
 
-      # No run makes the outputs of a stage with no workflow: people add them at its gate.
+      # No run makes the outputs of a stage with no workflow, so it waits at its gate,
+      # where Approve needs a workflow that writes them (`Apiary.Stages`).
       people?(stage) ->
         %{state: :at_gate, position: position, actions: []}
 

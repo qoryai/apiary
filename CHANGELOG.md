@@ -1870,19 +1870,21 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Changed
 
 <!-- feature: workflow_model -->
-- A stage passes only with every required output. **Accept as it is** that takes the
-  stage to its gate, after the last entry of its sequence, shows, and works, only where
-  every required output of the stage has a version; an accept before the last entry
-  starts the next entry, as before. The gate of every stage shows no **Approve**, and
-  takes no approval, while a required output is missing. Before, a member could accept a
-  stage whose run stored no acceptance criteria, and only the gate of a stage with no
-  workflow checked its outputs. The point of a missing output reads "Run another round:
-  the run stored no acceptance criteria.", with the output type's words; before, it read
-  "No acceptance-criteria was stored in this stage. Run another round." Where the stage
-  offers no **Accept as it is**, the round limit's fix reads "Read the open finding, then
-  pick Run another round." and the return limit's point reads "Pick Move back to return
-  the work item to Build once more."
-  An optional output never stops either action.
+- **Accept as it is** and **Approve** need every required output. Where an accept takes
+  the stage to its gate, after the last entry of its sequence, **Accept as it is** shows,
+  and works, only while every required output of the stage has a version. An accept
+  before the last entry starts the next entry, as before. While a required output is
+  missing, the gate of every stage shows no **Approve** and takes no approval. For a
+  stage with a workflow, a sent approval then reads "Run another round to write
+  acceptance criteria, or move this stage back. Approve needs them." Before, a member
+  could accept a stage whose run stored no acceptance criteria, and only the gate of a
+  stage with no workflow checked its outputs. The point of a missing output reads "Run
+  another round: the run stored no acceptance criteria.", with the output type's words;
+  before, it read "No acceptance-criteria was stored in this stage. Run another round."
+  Where the page shows no **Accept as it is**, the round limit's fix reads "Read the open
+  finding, then pick Run another round." and the return limit's point reads "Pick Move
+  back to return the work item to Build once more." An optional output never stops
+  either action.
 - `acceptance-criteria` and `verification` are structured types: a version is one JSON
   file that matches `acceptance-criteria.schema.json` or `verification.schema.json`, and
   any other file, Markdown too, is `422` `invalid_artifact`. A criterion's id is once in

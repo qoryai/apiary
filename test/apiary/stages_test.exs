@@ -2691,7 +2691,7 @@ defmodule Apiary.StagesTest do
     end
   end
 
-  describe "required outputs at Accept as it is and Approve (838 (a))" do
+  describe "required outputs at Accept as it is and Approve" do
     # Explore with `outputs`, then Shape, a stage with no workflow.
     defp outputs_process!(scope, outputs) do
       save!(scope, [
@@ -2704,26 +2704,36 @@ defmodule Apiary.StagesTest do
 
     test "Approve is refused at the gate of a stage with a workflow while a required output is missing",
          %{scope: scope} do
-      outputs_process!(scope, [@proposal])
-      work_item = take_in!(scope) |> end_run!(understood_result())
-      assert %WorkItem{stage_id: @explore, stage_state: :at_gate} = work_item
+      shape = fn outputs ->
+        save!(scope, [
+          explore_stage(),
+          stage(@shape, "Shape", [%{"workflow" => "shape-a-ticket"}], %{"outputs" => outputs})
+        ])
+      end
 
-      # A version that also requires an explainer, which no run of Explore wrote; the work
-      # item keeps its gate when it moves to it.
-      version = outputs_process!(scope, [@proposal, %{"type" => "explainer", "required" => true}])
+      shape.([])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
+      work_item = work_item |> reload() |> end_run!(verdict("passed"))
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+
+      # A version whose Shape also requires an explainer, which no run of Shape wrote; the
+      # work item keeps its gate when it moves to it.
+      version = shape.([%{"type" => "explainer", "required" => true}])
       {:ok, work_item} = Processes.assign(scope, work_item, version)
-      assert %WorkItem{stage_id: @explore, stage_state: :at_gate} = reload(work_item)
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
 
       assert %{missing_outputs: ["explainer"], gate: %{approvable?: false}} =
                Stages.status(work_item, scope)
 
       assert Stages.starts(work_item, :approve) == :none
 
-      assert Stages.approve(scope, work_item, nil, expect_stage: @explore) ==
+      assert Stages.approve(scope, work_item, nil, expect_stage: @shape) ==
                {:error, {:outputs_not_written, ["explainer"]}}
 
-      assert decisions(work_item) == []
-      assert %WorkItem{stage_id: @explore, stage_state: :at_gate} = reload(work_item)
+      # Explore's confirmation is the one decision.
+      assert [%GateDecision{stage_id: @explore}] = decisions(work_item)
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
     end
 
     test "Accept as it is before the last entry starts the next entry with a required output missing; at the last entry it is refused",

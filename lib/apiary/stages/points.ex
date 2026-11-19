@@ -14,11 +14,13 @@ defmodule Apiary.Stages.Points do
   # `round_limit` point with open findings is its sentence followed by the text of each
   # finding, up to the verdict's 20 points, so it is longer than one sentence. A point of
   # a failed check opens with its action, "Run another round:", and has `action_in_text`
-  # set to true, so the page adds no action sentence after it. A point whose words pick
-  # Accept as it is has `without_accept`, the fields that replace them where the card
-  # offers no Accept as it is: the page chooses at display time
-  # (`ApiaryWeb.WorkItemLive.Workflow.accept?/2`), as a person's version of an output
-  # can change that between the escalation and the display.
+  # set to true, so the page adds no action sentence after it. A point with the words
+  # "pick Accept as it is" has `without_accept`, the fields that replace them where the
+  # card shows no Accept as it is. The page reads
+  # `ApiaryWeb.WorkItemLive.Workflow.accept?/2` when it shows the point, not when the
+  # stage escalates: a member who assigns the work item to another process version
+  # (`Apiary.Processes.assign/3`) while it is escalated changes which outputs are
+  # required.
   @moduledoc false
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -118,7 +120,7 @@ defmodule Apiary.Stages.Points do
     end
   end
 
-  # return_limit/4 is the point of an entry whose run asked for changes after `returns`
+  # return_limit/3 is the point of an entry whose run asked for changes after `returns`
   # returns of the work item from the stage `stage` to the earlier stage `to`, the most its
   # return key allows (`Apiary.Stages.Runner`). The member's action comes first, in
   # `text`, and the count after it, in `fix`, which the page shows after the text in place

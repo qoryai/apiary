@@ -169,12 +169,12 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       drafts: [],
       earlier: if(at, do: Enum.take(all, at), else: []),
       # The tracks an escalation offers a switch to (`Apiary.Stages.switch_tracks/1`), each
-      # with its `id`, `name`, `gate`, `first` and `later`; with any, the card offers no
+      # with its `id`, `name`, `gate`, `first` and `later`; with any, the card shows no
       # Accept as it is and no Move back.
       switch: switch,
       missing_workflows: List.wrap(get(status, :waiting_workflow)),
       missing_outputs: List.wrap(get(status, :missing_outputs)),
-      # The missing required outputs that Accept as it is waits for.
+      # The missing required outputs that Accept as it is requires.
       accept_needs: List.wrap(get(status, :accept_needs)),
       confirm_gate: false,
       explore: false,
@@ -508,10 +508,10 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   defp escalation(_scope, nil, _runs, _outputs, _missing, _switch), do: nil
 
-  # `missing` is the required output types that Accept as it is waits for
+  # `missing` is the missing required output types that Accept as it is requires
   # (`accept_needs` of `Apiary.Stages.status/2`: the missing ones where the accept takes
   # the stage to its gate): with any, the stage has no result to accept. `accept` is
-  # whether the card offers Accept as it is (`accept?/2`), and the points' words follow
+  # whether the card shows Accept as it is (`accept?/2`), and the points' words follow
   # it (`points/2`).
   defp escalation(scope, escalation, runs, outputs, missing, switch) do
     cause = get(escalation, :cause)
@@ -528,7 +528,6 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
     %{
       cause: cause,
-      result: result,
       accept: accept,
       points: points(get(escalation, :points), accept),
       round: get(escalation, :round),
@@ -561,8 +560,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     Map.put(escalation, :entry, workflow && ((named && get(named, :name)) || workflow))
   end
 
-  # accept?/2 is whether the escalation card offers Accept as it is: where the stage has
-  # a result to accept (`result`, `escalation/6`) and the card offers no switch
+  # accept?/2 is whether the escalation card shows Accept as it is: where the stage has
+  # a result to accept (`result`, `escalation/6`) and the card shows no switch
   # (`switch`). The button, the check of a sent accept (`checked/2`) and the points'
   # words (`points/2`) read it.
   @doc false
@@ -572,7 +571,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # An escalation's points as the block "What the run needs from you" shows them: each
   # with its text, its action (`:answer` or `:run_again`) and, for `:answer`, the id of
   # its question; a `:run_again` point with `in_text` true where its text opens with its
-  # action (`Apiary.Stages.Points.check_failed/1`). Where the card offers no Accept as it
+  # action (`Apiary.Stages.Points.check_failed/1`). Where the card shows no Accept as it
   # is (`accept` false), a point's `without_accept` fields replace those that pick it
   # (`Apiary.Stages.Points`). A point without text is left out.
   defp points(points, accept) when is_list(points) do
@@ -607,11 +606,13 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   defp worded(point, _accept), do: point
 
-  # Whether the stage has a result to accept as it is, where the accept waits for no
-  # required output (`escalation/5`): a version of one of its outputs; for a stage with
-  # no outputs, a run that did not stop before its verdict; or a run of the stage that ended with no verdict
-  # (`no_verdict`, `Apiary.Stages.status/2`) where no output is required. The run of an escalation the migration placed has no stage, so the
-  # page lists it nowhere (`Apiary.Stages.runs/1`) and that clause does not apply to it.
+  # Whether the stage has a result to accept as it is, where the check of the accept
+  # requires no missing output (`escalation/6`): a version of one of its outputs; for a
+  # stage with no outputs, a run that did not stop before its verdict; or a run of the
+  # stage that ended with no verdict (`no_verdict`, `Apiary.Stages.status/2`) where no
+  # output is required. The run of an escalation the migration placed has no stage, so
+  # the page lists it nowhere (`Apiary.Stages.runs/1`) and that clause does not apply to
+  # it.
   defp result?(:run_stopped, outputs, true, %{}),
     do: Enum.any?(outputs, & &1.version_id) or not Enum.any?(outputs, & &1.required)
 
@@ -852,12 +853,11 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp checked({:request_changes, _note, _id}, %{confirm_gate: true}),
     do: {:error, :confirm_gate}
 
-  # Accept as it is only where the card offers it (`accept?/2`).
+  # Accept as it is only where the card shows it (`accept?/2`).
   defp checked({:resolve, :accept, _note}, %{escalation: %{accept: false}}),
     do: {:error, :invalid}
 
-  # Move back, where the card offers a switch: it offers no Move back.
-
+  # Move back, where the card shows a switch: it shows no Move back then.
   defp checked({:resolve, {:move_back, _id}, _note}, %{switch: [_ | _]}),
     do: {:error, :invalid}
 

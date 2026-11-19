@@ -4433,7 +4433,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                "Pick Move back to return the work item to Shape once more. Verify's run " <>
                  "asked for changes again after 2 returns to Shape, the most that Verify allows."
 
-      # With a version of the explainer, the card offers Accept as it is and the action
+      # With a version of the explainer, the card shows Accept as it is and the action
       # has it.
       stored!(work_item, "explainer", @verify)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
@@ -4443,6 +4443,40 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                "Pick Move back to return the work item to Shape once more, or pick Accept " <>
                  "as it is. Verify's run asked for changes again after 2 returns to Shape, " <>
                  "the most that Verify allows."
+    end
+
+    test "at the round limit of the last loop, with a required output missing: no Accept as it is, and the fix leaves it out",
+         %{conn: conn, scope: scope} do
+      # Build's loop is its last entry, so an accept would take Build to its gate; the
+      # explainer has a version, and the demo video has none.
+      work_item = at_build(scope, :escalated, round: 3, loop_entry: 1)
+      stored!(work_item, "explainer", @build)
+
+      escalate!(
+        work_item,
+        :round_limit,
+        Apiary.Stages.Points.round_limit(3, 3, ["The export has no title."])
+      )
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      refute has_element?(view, "#work-item-stage-escalation-accept")
+
+      assert texts(view, "#work-item-needs-points li") == [
+               "3 of 3 rounds ran, and 1 review finding is still open. The export has no " <>
+                 "title. Read the open finding, then pick Run another round."
+             ]
+
+      # With a version of the demo video too, the card shows Accept as it is and the fix
+      # has it.
+      stored!(work_item, "demo-video", @build)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert has_element?(view, "#work-item-stage-escalation-accept")
+
+      assert texts(view, "#work-item-needs-points li") == [
+               "3 of 3 rounds ran, and 1 review finding is still open. The export has no " <>
+                 "title. Read the open finding, then pick Accept as it is or Run another round."
+             ]
     end
 
     test "at the return limit, Move back offers the return's stage first", %{
@@ -4510,7 +4544,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
             close: "#work-item-stage-escalation-close"
           ] do
         work_item = at_build(scope, :escalated, round: 3)
-        # Build's required outputs, so the card offers Accept as it is.
+        # Build's required outputs, so the card shows Accept as it is.
         stored!(work_item, "explainer", @build)
         stored!(work_item, "demo-video", @build)
         escalate!(work_item, :escalate, "Blocked")
@@ -5092,7 +5126,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
           stage_id: @build
         )
 
-      # Build's other required output, so the Standard card offers Accept as it is.
+      # Build's other required output, so the Standard card shows Accept as it is.
       {:ok, _version} =
         Artifacts.push({:run, escalated}, work_item, "demo-video", [sample("demo-video")],
           stage_id: @build
@@ -7999,7 +8033,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "Accept as it is: the dialog where the next workflow starts; none where the gate follows",
          %{conn: conn, scope: scope} do
-      # Build's required outputs are stored, so the card offers Accept as it is.
+      # Build's required outputs are stored, so the card shows Accept as it is.
       at_gate = at_build(scope, :escalated, round: 3)
       stored!(at_gate, "explainer", @build)
       stored!(at_gate, "demo-video", @build)
@@ -8014,10 +8048,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert %Escalation{resolution: :accept} = escalation(at_gate)
 
       # At implement, the first entry, Accept goes on to the loop's capture-demo.
-      work_item = at_build(scope, :escalated)
-
-      {1, _rows} =
-        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id), set: [stage_entry: 0])
+      work_item = at_build(scope, :escalated, entry: 0)
 
       stored!(work_item, "explainer", @build)
       escalate!(work_item, :escalate, "Blocked")
@@ -8049,10 +8080,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
          %{conn: conn, scope: scope} do
       # At implement, the first entry, Accept goes on to the loop, whose checks run later.
       # The explainer is the stage's result; the demo video is missing.
-      work_item = at_build(scope, :escalated)
-
-      {1, _rows} =
-        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id), set: [stage_entry: 0])
+      work_item = at_build(scope, :escalated, entry: 0)
 
       stored!(work_item, "explainer", @build)
       escalate!(work_item, :escalate, "Blocked")
@@ -8345,10 +8373,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       )
 
       # Accept as it is at implement, which goes on to capture-demo.
-      accept = at_build(scope, :escalated)
-
-      {1, _rows} =
-        Repo.update_all(from(w in WorkItem, where: w.id == ^accept.id), set: [stage_entry: 0])
+      accept = at_build(scope, :escalated, entry: 0)
 
       stored!(accept, "explainer", @build)
       escalate!(accept, :escalate, "Blocked")

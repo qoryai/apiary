@@ -1654,8 +1654,8 @@ defmodule Apiary.Stages do
   # switch it to another track of the gate that recorded its track (`{:switch, track}`,
   # `switch_tracks/1`), or close it. A work item that is offered a switch (`switch_tracks/1`
   # is not empty) is offered no accept and no move back: both are refused with `:invalid`.
-  # An accept that would take the stage to its gate is refused with `:invalid` too while a
-  # required output of the stage is missing (`accept_needs/4`).
+  # An accept that would take the stage to its gate returns `{:error, :invalid}` too while
+  # a required output of the stage is missing (`accept_needs/4`).
   @doc false
   @spec resolve_escalation(Scope.t(), WorkItem.t(), resolution, String.t() | nil, expect) ::
           {:ok, WorkItem.t()} | {:error, refusal}
@@ -1967,7 +1967,7 @@ defmodule Apiary.Stages do
   defp would_start(work_item, version, stage, {:noted, act}),
     do: would_start(work_item, version, stage, act)
 
-  # Accept as it is that `resolve_escalation/5` refuses starts nothing.
+  # An accept that fails the outputs check of `resolve_escalation/5` starts nothing.
   defp would_start(work_item, version, stage, :accept) do
     case accept_outputs(work_item, version, stage, :accept) do
       :ok -> resolved_starts(work_item, version, stage, :accept, & &1)
@@ -1976,7 +1976,7 @@ defmodule Apiary.Stages do
   end
 
   defp would_start(work_item, version, stage, act)
-       when act in [:accept, :another_round] or
+       when act == :another_round or
               (is_tuple(act) and elem(act, 0) in [:move, :switch]),
        do: resolved_starts(work_item, version, stage, act, & &1)
 
@@ -2146,7 +2146,7 @@ defmodule Apiary.Stages do
   # records (`gate_names/4`). `missing_outputs` is the
   # required output types whose Exists check fails (`missing_outputs/1`); while it has
   # one, the gate of the stage is not approvable. `accept_needs` is the missing required
-  # output types that Accept as it is waits for (`accept_needs/4`). `loop` is whether the
+  # output types that Accept as it is requires (`accept_needs/4`). `loop` is whether the
   # work item is in a loop of its stage: `rounds` is that loop's limit, or, past the last
   # loop, the limit of the loop it left, which a later entry's runs do not count by.
   # `escalation` is the open escalation with its `points` (`shown_points/5`), also while
@@ -4691,7 +4691,7 @@ defmodule Apiary.Stages do
 
   defp missing(outputs), do: for(%{required: true, check: :missing, type: t} <- outputs, do: t)
 
-  # The required output types that Accept as it is waits for: `missing`, where an accept
+  # The required output types that Accept as it is requires: `missing`, where an accept
   # at the work item's place takes the stage to its gate (`Runner.accept_to_gate?/3`, on
   # `facts`); none where it starts the next entry, as the checks run at the sequence's
   # end. A work item with no place in the sequence, as the migration placed some, counts

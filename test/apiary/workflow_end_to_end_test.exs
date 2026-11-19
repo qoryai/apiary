@@ -29,7 +29,7 @@ defmodule Apiary.WorkflowEndToEndTest do
   # Test 8 drives steps 1 and 2, then step 8 (decision 838 (a)): Dana saves version 2, in
   # which Shape runs shape-a-ticket and requires a spec and acceptance criteria. Shape's
   # run pushes a spec alone and passes; Shape escalates with the point "Run another round:
-  # the run stored no acceptance criteria.", and the page offers no Accept as it is. Run
+  # the run stored no acceptance criteria.", and the page shows no Accept as it is. Run
   # another round's run pushes the criteria, and Shape reaches its gate, where Approve
   # works with the optional outputs still missing.
   #
@@ -610,7 +610,7 @@ defmodule Apiary.WorkflowEndToEndTest do
   # 8. Dana saves version 2, whose Shape runs shape-a-ticket with a spec and acceptance
   # criteria required, and a decision record, a mockup and demo scenarios optional, and
   # confirms Explore. Shape's run pushes a spec and passes: the Exists check of the
-  # criteria fails, and Shape escalates `check_failed`. Accept as it is is neither offered
+  # criteria fails, and Shape escalates `check_failed`. Accept as it is is neither shown
   # nor taken. Dana runs another round; its run pushes the criteria and passes, Shape is at
   # its gate, and Dana approves it.
   defp step_8(ctx) do
@@ -653,7 +653,7 @@ defmodule Apiary.WorkflowEndToEndTest do
 
     assert Stages.missing_outputs(work_item) == ["acceptance-criteria"]
 
-    # The page shows the point once, with no second "Run another round.", and offers Run
+    # The page shows the point once, with no second "Run another round.", and shows Run
     # another round, Move back and Close, and no Accept as it is.
     conn = log_in_user(build_conn(), scope.user)
     path = ~p"/#{scope.organisation}/#{scope.workspace}/work/#{work_item.number}"
