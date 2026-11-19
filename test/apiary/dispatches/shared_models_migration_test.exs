@@ -37,6 +37,13 @@ defmodule Apiary.Dispatches.SharedModelsMigrationTest do
 
   defp refused(pattern, fun), do: assert_raise(Postgrex.Error, pattern, fun)
 
+  # The whole text of down's refusal, to its full stop.
+  @refusal "Delete the runs of the queue and dispatches ended model_choice_missing or " <>
+             "too_many_providers, then roll back again: the causes before this migration " <>
+             "do not include them."
+
+  defp refusal, do: ~r/#{Regex.escape(@refusal)}/
+
   defp update!(table, id, assignments) do
     Repo.query!("UPDATE #{table} SET #{assignments} WHERE id = $1", [Ecto.UUID.dump!(id)])
   end
@@ -75,18 +82,12 @@ defmodule Apiary.Dispatches.SharedModelsMigrationTest do
       cause = unquote(cause)
       update!("dispatch_runs", ctx.run.id, ended(cause) <> ", result_outcome = 'error'")
 
-      refused(
-        ~r/Delete the runs of the queue and dispatches ended model_choice_missing or too_many_providers/,
-        &down!/0
-      )
+      refused(refusal(), &down!/0)
 
       update!("dispatch_runs", ctx.run.id, "end_cause = 'released', result_outcome = NULL")
       update!("dispatches", ctx.dispatch.id, "ended_at = now(), end_cause = '#{cause}'")
 
-      refused(
-        ~r/Delete the runs of the queue and dispatches ended model_choice_missing or too_many_providers/,
-        &down!/0
-      )
+      refused(refusal(), &down!/0)
 
       update!("dispatches", ctx.dispatch.id, "end_cause = 'released'")
       down!()
