@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/run/v1/documents.schema.json",
   "title": "Run documents",
-  "description": "The run's documents: one object of the members step, domain, inputs, access, target, target_version, work_item, run_settings, workflow, harness_hidden, harness, submit_module, submit, image_destination, environment_destination and environment_image, which the control plane writes and the job reads. The object is the documents member of Forager's run answer: the machine receives it, signed, in the 201 of the run code's redemption, https://qory.dev/contracts/forager/v1/enrolment.schema.json, beside the run key. Forager passes it on unread. step, domain and inputs are present for every run. access is present exactly when target is, and target_version only when target is. workflow is present exactly when harness_hidden is, and a run with workflow has harness, target_version, or both. submit is present only with workflow and with access write. submit_module is present only with submit. When the run composes a harness, the harness comes from one of two places. If target_version is present and the read of the harness file of the target returned a file whose harness section extends a stack or defines one, harness is absent. For a target that is a repository, the machine composes that file at target_version, as described there. A harness section extends a stack when it has extends, a base, and defines one when it has no extends and lists at least one module. The run documents contain harness in three cases: target_version is present and the read returned a file whose harness section is absent, or has no extends and lists no module; target_version is present and the read returned found: false; or target_version is absent, because the run has no target or the control plane read no harness file of the target. When harness is present, the machine composes harness instead of the harness section of the harness file of the target. Of that file, the machine applies the qory version that the file requires, the worktree section, and the tiers of the harness section, as described under run_settings.tiers. If the machine's qory version does not meet that requirement, the run stops. It reads none of the other machine keys of that file and none of its git and env sections, so the harness file of the target does not set how the run starts. A run of the step explore has work_item. A run of the step prebuild has access, target, image_destination and exactly one of environment_destination and environment_image, has no target_version, no work_item, no run_settings, no workflow, no harness_hidden, no harness, no submit_module and no submit, and its inputs are prebuild_inputs. run_settings is present only for the step explore, and image_destination, environment_destination and environment_image only for the step prebuild. A member this schema does not define is refused.",
+  "description": "The run's documents: one object of the members step, domain, inputs, access, target, target_version, work_item, run_settings, time_limit_minutes, shared_run, full_suite, workflow, harness_hidden, harness, submit_module, submit, image_destination, environment_destination, environment_image and largest_prebuilt_image_bytes, which the control plane writes and the job reads. The object is the documents member of Forager's run answer: the machine receives it, signed, in the 201 of the run code's redemption, https://qory.dev/contracts/forager/v1/enrolment.schema.json, beside the run key. Forager passes it on unread. step, domain and inputs are present for every run. access is present exactly when target is, and target_version only when target is. workflow is present exactly when harness_hidden is, and a run with workflow has harness, target_version, or both. submit is present only with workflow and with access write. submit_module is present only with submit. When the run composes a harness, the harness comes from one of two places. If target_version is present and the read of the harness file of the target returned a file whose harness section extends a stack or defines one, harness is absent. For a target that is a repository, the machine composes that file at target_version, as described there. A harness section extends a stack when it has extends, a base, and defines one when it has no extends and lists at least one module. The run documents contain harness in three cases: target_version is present and the read returned a file whose harness section is absent, or has no extends and lists no module; target_version is present and the read returned found: false; or target_version is absent, because the run has no target or the control plane read no harness file of the target. When harness is present, the machine composes harness instead of the harness section of the harness file of the target. Of that file, the machine applies the qory version that the file requires, the worktree section, and the tiers of the harness section, as described under run_settings.tiers. If the machine's qory version does not meet that requirement, the run stops. It reads none of the other machine keys of that file and none of its git and env sections, so the harness file of the target does not set how the run starts. A run of the step explore has work_item. A run of the step prebuild has access, target, image_destination and exactly one of environment_destination and environment_image, has no target_version, no work_item, no run_settings, no time_limit_minutes, no shared_run, no full_suite, no workflow, no harness_hidden, no harness, no submit_module and no submit, and its inputs are prebuild_inputs. run_settings, time_limit_minutes, shared_run and full_suite are present only for the step explore, and image_destination, environment_destination, environment_image and largest_prebuilt_image_bytes only for the step prebuild. The run documents are the documents of session 1: its workflow, its run_settings, its time_limit_minutes, its full_suite and its inputs. With shared_run true, qory asks for each later session after the session before it ends, and the answer, https://qory.dev/contracts/run/v1/next-session-answer.schema.json, sets that session's workflow, model_choice, model_credential, time_limit_minutes, full_suite and inputs. A member this schema does not define is refused.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -35,6 +35,15 @@
     "run_settings": {
       "$ref": "#/$defs/run_settings"
     },
+    "time_limit_minutes": {
+      "$ref": "#/$defs/time_limit_minutes"
+    },
+    "shared_run": {
+      "$ref": "#/$defs/shared_run"
+    },
+    "full_suite": {
+      "$ref": "#/$defs/full_suite"
+    },
     "workflow": {
       "$ref": "#/$defs/workflow"
     },
@@ -58,6 +67,9 @@
     },
     "environment_image": {
       "$ref": "#/$defs/environment_image"
+    },
+    "largest_prebuilt_image_bytes": {
+      "$ref": "#/$defs/largest_prebuilt_image_bytes"
     }
   },
   "allOf": [
@@ -130,8 +142,27 @@
     },
     {
       "if": {
-        "required": [
-          "run_settings"
+        "anyOf": [
+          {
+            "required": [
+              "run_settings"
+            ]
+          },
+          {
+            "required": [
+              "time_limit_minutes"
+            ]
+          },
+          {
+            "required": [
+              "shared_run"
+            ]
+          },
+          {
+            "required": [
+              "full_suite"
+            ]
+          }
         ]
       },
       "then": {
@@ -170,7 +201,8 @@
       "else": {
         "properties": {
           "environment_destination": false,
-          "environment_image": false
+          "environment_image": false,
+          "largest_prebuilt_image_bytes": false
         }
       }
     },
@@ -322,7 +354,7 @@
       }
     },
     "run_settings": {
-      "description": "The runtime and model settings the job composes the agent's harness with. The control plane sets run_settings only for the step explore: a run of the step prebuild has no run_settings. run_settings contains no key or secret. With no provider chosen, model, effort, provider_models and tiers are absent: the run uses the gateway's configured key and the runtime's default model. The control plane guarantees four rules that this schema cannot check: the ids in provider_models are unique; effort is listed for model in provider_models; each tier's model is in provider_models; and a tier's effort is listed for that tier's model in provider_models. The job writes the values as given, and maps no model or effort value to another. The control plane keeps the serialized signed 201 of the run code's redemption within 1 MiB. When that 201 with run_settings would exceed it, the control plane drops the oldest comments from inputs and sets comments_omitted, as the 768 KiB rule for inputs does, until the 201 fits.",
+      "description": "The runtime and model settings the job composes the agent's harness with. The control plane sets run_settings only for the step explore: a run of the step prebuild has no run_settings. run_settings are the settings of session 1: the runtime is the runtime of every session of the run, and model, effort, provider_models and tiers are the model choice of session 1. The model choice of each later session is the model_choice of the answer to the next-session call. run_settings contains no key or secret. With no provider chosen, model, effort, provider_models and tiers are absent: the run uses the gateway's configured key and the runtime's default model. The control plane guarantees four rules that this schema cannot check: the ids in provider_models are unique; effort is listed for model in provider_models; each tier's model is in provider_models; and a tier's effort is listed for that tier's model in provider_models. The job writes the values as given, and maps no model or effort value to another. The control plane keeps the serialized signed 201 of the run code's redemption within 1 MiB. When that 201 with run_settings would exceed it, the control plane drops the oldest comments from inputs and sets comments_omitted, as the 768 KiB rule for inputs does, until the 201 fits.",
       "type": "object",
       "additionalProperties": false,
       "required": [
@@ -386,7 +418,7 @@
           }
         },
         "tiers": {
-          "description": "The tier map the control plane resolved for the run: a model, and optionally an effort value, for each tier it maps. Present only with model. Its only keys are light, fast and thinking. A tier the control plane does not map is absent. For a run with a target, a tier the control plane maps applies instead of the entry for that tier in the tier map set at the run's target, and the tier map set at the run's target fills only the tiers left absent. A run with no target has no such tier map: only the tiers the control plane maps apply.",
+          "description": "The tier map the control plane resolved for the run: a model, and optionally an effort value, for each tier it maps. Present only with model. Its only keys are light, balanced and thinking. A tier the control plane does not map is absent. For a run with a target, a tier the control plane maps applies instead of the entry for that tier in the tier map set at the run's target, and the tier map set at the run's target fills only the tiers left absent. A run with no target has no such tier map: only the tiers the control plane maps apply.",
           "type": "object",
           "additionalProperties": false,
           "properties": {
@@ -394,8 +426,8 @@
               "description": "The model of the tier light.",
               "$ref": "#/$defs/tier"
             },
-            "fast": {
-              "description": "The model of the tier fast.",
+            "balanced": {
+              "description": "The model of the tier balanced.",
               "$ref": "#/$defs/tier"
             },
             "thinking": {
@@ -403,14 +435,55 @@
               "$ref": "#/$defs/tier"
             }
           }
-        },
-        "time_limit_minutes": {
-          "description": "The time limit that the client set for the run, in minutes, from 15 to 1440. Present only when the client set one. The machine sets it as the session's time limit.",
-          "type": "integer",
-          "minimum": 15,
-          "maximum": 1440
         }
       }
+    },
+    "model_choice": {
+      "description": "The model choice of one session after session 1: the members model, effort, provider_models and tiers of run_settings, with the meaning they have there. It has no runtime, because every session of the run uses the runtime of run_settings. With no provider chosen, the four members are absent, and the four rules that run_settings lists for the control plane apply to the members that are present.",
+      "type": "object",
+      "additionalProperties": false,
+      "dependentRequired": {
+        "effort": [
+          "model"
+        ],
+        "tiers": [
+          "model"
+        ],
+        "model": [
+          "provider_models"
+        ],
+        "provider_models": [
+          "model"
+        ]
+      },
+      "properties": {
+        "model": {
+          "$ref": "#/$defs/run_settings/properties/model"
+        },
+        "effort": {
+          "$ref": "#/$defs/run_settings/properties/effort"
+        },
+        "provider_models": {
+          "$ref": "#/$defs/run_settings/properties/provider_models"
+        },
+        "tiers": {
+          "$ref": "#/$defs/run_settings/properties/tiers"
+        }
+      }
+    },
+    "time_limit_minutes": {
+      "description": "The time limit of one session, in minutes, from 15 to 1440. In the run documents, it is the limit of session 1, present only when the control plane sets one, and the machine sets it as that session's time limit. The limit of each later session is the time_limit_minutes of the answer to the next-session call.",
+      "type": "integer",
+      "minimum": 15,
+      "maximum": 1440
+    },
+    "shared_run": {
+      "description": "Whether qory sends the next-session request after each session, https://qory.dev/contracts/run/v1/next-session-request.schema.json, and runs the session that the answer sets. Absent and false mean the same: qory sends no request, and the run has session 1 only.",
+      "type": "boolean"
+    },
+    "full_suite": {
+      "description": "Whether session 1 runs the full test suite after the agent ends: true runs it, and absent and false run none. The flag of each later session is the full_suite of the answer to the next-session call.",
+      "type": "boolean"
     },
     "workflow": {
       "description": "The workflow of the harness that the run starts, such as hello. qory starts the first of these that the harness has: the skill workflow-hello, the command workflow-hello, the skill hello, the command hello. At most 55 characters, so that workflow-<name> stays within 64. Present exactly when harness_hidden is present. A run of the step prebuild has no workflow.",
@@ -522,7 +595,7 @@
           ]
         },
         "time_limit": {
-          "description": "How long a run of the workflow may run, counted from the run's open, as a duration above zero in the form of a Go duration, such as 7h, 45m or 1h30m. The run's run_settings.time_limit_minutes, when the control plane sets it, applies instead.",
+          "description": "How long a run of the workflow may run, counted from the run's open, as a duration above zero in the form of a Go duration, such as 7h, 45m or 1h30m. The time_limit_minutes of the run documents, when the control plane sets it, applies instead.",
           "type": "string",
           "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+$",
           "not": {
@@ -790,6 +863,12 @@
     "environment_image": {
       "description": "The organisation's existing environment image for this environment definition: a place at the registry, then @sha256: and 64 lower-case hexadecimal digits, as image_by_digest defines an image by its digest. The build starts the target image from it and builds no environment image. A run of the step prebuild has exactly one of environment_destination and environment_image, and a run of any other step has neither.",
       "$ref": "#/$defs/image_by_digest"
+    },
+    "largest_prebuilt_image_bytes": {
+      "description": "The largest size, in decimal bytes, that the target image of the build may have: an integer of at least 1 and at most 9223372036854775807 (the largest 64-bit signed integer). When the member is absent, the image has no size limit. A run of the step prebuild may have largest_prebuilt_image_bytes, and a run of any other step has none.",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 9223372036854775807
     },
     "image_place": {
       "description": "A place at the registry, with no tag and no digest: a host, an optional port, then a path, as the OCI distribution spec writes an image name. The host is DNS labels joined by dots, each of lower-case letters, digits and hyphens that starts and ends with a letter or a digit, and a port is a colon and 1 to 5 digits. The host contains a dot, has a port, or is exactly localhost. A Docker Hub host, docker.io, index.docker.io, registry-1.docker.io, registry.hub.docker.com or registry.docker.com, in any case and with or without a port, is refused. Docker reads a lower-case first part with no dot, no port and other than localhost, such as registry/env, as a path on Docker Hub, so such a name is refused. The path is one or more components, each after a /; a component is runs of lower-case letters and digits, joined by a dot, one or two underscores, or one or more hyphens. At most 255 characters.",

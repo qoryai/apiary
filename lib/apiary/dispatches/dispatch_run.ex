@@ -30,8 +30,10 @@ defmodule Apiary.Dispatches.DispatchRun do
   #
   # `state` is `:waiting`, `:claimed`, `:handed_over` or `:ended`. An ended run has its
   # end cause, `end_cause`, and only an ended one has it (`end_causes/0`). `end_detail` is
-  # the refusal's code of a run ended `run_refused`, or the failure code of a run ended
-  # `harness_unresolved`, nil for any other. `queued_at`
+  # the refusal's code of a run ended `run_refused`, the failure code of a run ended
+  # `harness_unresolved`, or `names_<count>` or `bytes_<bytes>` of a run ended
+  # `variables_invalid` for the variables of its workspace and target, nil for any other.
+  # `queued_at`
   # orders the queue, oldest first.
   #
   # `result_outcome` is what the run gave once Qory reads it as decided
@@ -92,7 +94,10 @@ defmodule Apiary.Dispatches.DispatchRun do
   # longer reaches it, with the outcome `error`, which no code gives yet;
   # `write_without_work_item`, a claimed run with write access and no work item, so with
   # no branch to limit its push credential to (`Apiary.Runs.RunCredentials`), with the
-  # outcome `error`.
+  # outcome `error`; `shared_access_differs`, a claimed run of a stage whose workflows
+  # share one run, whose workflows would run with different access levels, as an update
+  # from the harness changed a level after the process was saved
+  # (`Apiary.Stages.shared_access/1`), with the outcome `error`.
   @end_causes [
     :released,
     :closed,
@@ -114,7 +119,8 @@ defmodule Apiary.Dispatches.DispatchRun do
     :build_failed,
     :harness_unresolved,
     :target_access_gone,
-    :write_without_work_item
+    :write_without_work_item,
+    :shared_access_differs
   ]
 
   # What a run of Explore gave once it ended (`Apiary.Explore.Outcome`); `:error` and
@@ -165,6 +171,12 @@ defmodule Apiary.Dispatches.DispatchRun do
     field :stage_entry, :integer
     field :loop_entry, :integer
     field :workflow, :string
+    # The stage the run returned its work item to, at the end of a run of an entry with a
+    # return key that asked for changes (`Apiary.Stages.Runner`); nil for every other run.
+    # The stage runner counts an entry's returns by it. No changeset casts it.
+    field :returned_to, :string
+    # When the run returned its work item, written with `returned_to` and never again.
+    field :returned_at, :utc_datetime_usec
     # The machine type the run is queued on, and its spec as the provisioner contract
     # writes it, both as they were when the run was queued (`Apiary.MachineTypes.resolve/1`),
     # and whether the type was the default type then: a pool without offers takes such a

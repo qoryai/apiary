@@ -21,13 +21,22 @@ defmodule Apiary.Stages.Runner do
   #     or a run with no verdict, runs the next workflow of the ring; after the last one the
   #     ring goes back to the first, which starts the next round. At the round limit the
   #     stage escalates, `round_limit`, with a point that says so
-  #     (`Apiary.Stages.Points`).
+  #     (`Apiary.Stages.Points`). Where the last run of the round ended
+  #     `changes-requested`, the point also has its open findings, the verdict's points:
+  #     their number and the text of each.
   #   * A workflow entry outside a loop with `first_attempt: true` ends the sequence when its
   #     run ends `passed`: each workflow after it is passed over (`{:skip, spec}` with the
   #     reason `first_attempt_passed`, those in a loop's body included), and the Exists
   #     checks and the gate follow. Another verdict acts as for any entry.
   #   * Outside a loop, the sequence goes on after a run with `passed` or
-  #     `changes-requested`. A run with no verdict escalates, `run_stopped`, with a point
+  #     `changes-requested`, except on an entry with a return key (`return`, choice 10):
+  #     its `changes-requested` returns the work item to the key's stage, an earlier stage
+  #     (`facts.earlier`), which it enters at its first entry (`{:return, stage_id}`).
+  #     The stage's runs of this take in that returned it before count
+  #     (`facts.returns`); at the key's `limit`, 2 by default, the stage escalates,
+  #     `return_limit`, with a point with the member's action and the count of returns,
+  #     then the verdict's points.
+  #     A run with no verdict escalates, `run_stopped`, with a point
   #     that says so, on a first run and on a rerun. A test work item's run with no verdict
   #     goes on (`facts.test`): the built-in `hello` writes no verdict
   #     (`Apiary.Harnesses.Builtin`). So does a run of Explore whose take in has a
@@ -37,7 +46,8 @@ defmodule Apiary.Stages.Runner do
   #   * `escalate` escalates, `escalate`, with the verdict's points; a run that stopped
   #     escalates, `run_stopped`, with a point of its cause.
   #   * Questions wait for answers (`:waiting_answers`), in any round and at any count of
-  #     runs; the answers run the same workflow again, as the loop's next round. Open
+  #     runs; the answers run the same workflow again, as the loop's next round, unless
+  #     they are feedback (below). Open
   #     questions come first: a run that asked them and escalated waits for answers, and
   #     its escalation is kept with its points (`{:questions, texts, points}`).
   #   * At the end of the sequence the Exists checks run. When every required output
@@ -53,7 +63,9 @@ defmodule Apiary.Stages.Runner do
   #     a person adds in the stage (`:version_added`) runs the checks again: once every
   #     required output passes, a gate `none` passes on and a person gate keeps waiting.
   #   * Request changes runs the sequence again from its first loop, round 1, or from its
-  #     start when it has no loop.
+  #     start when it has no loop; with a note, it is feedback (below). At the gate of a
+  #     stage with an entry that has a return key, it returns the work item to that key's
+  #     stage instead, at its first entry, with a note too, and counts no return.
   #   * An escalation accepted counts the loop as passed: the sequence goes on with its
   #     next workflow, or, after its last, to the gate without the Exists checks, where
   #     a failed check stays shown (§ 6); an escalation at the end of the sequence goes to
@@ -61,7 +73,19 @@ defmodule Apiary.Stages.Runner do
   #     records it with the member who accepted. Another round runs
   #     one more round: the same workflow for a stopped run, the loop's first workflow
   #     otherwise, the last loop for an escalation at the end, or the sequence from its
-  #     start for a stage with no loop.
+  #     start for a stage with no loop. Each reads the condition of the entry it starts
+  #     again.
+  #   * Feedback starts the stage again at its first entry, round 1, with no check of its
+  #     inputs or workflows first, as Request changes does, in a stage with a workflow
+  #     entry whose condition is `{feedback: new}` (`feedback_stage?/1`), while
+  #     `facts.feedback` is true: Another round while feedback other than a plain answer is
+  #     unhandled (`facts.feedback_noted`); answers that resolve an open escalation
+  #     (`facts.escalation_answer`) or come with a comment or a reply that no run handled
+  #     (`facts.feedback_comment`); and Request changes with a note (`facts.feedback_note`).
+  #     A plain answer, one given while no escalation was open, starts nothing again: it
+  #     stays unhandled until a run of the stage handles it. Another round with no such
+  #     feedback, and every such event in a stage without that condition, runs as the rules
+  #     before this one, and answers as the rule of questions (`feedback_entry?/3`).
   #   * A queued run's access level is the lower of the entry's and the workflow's
   #     declaration (addition 10); its machine type is the entry's, else the document's.
   #     An entry has no time limit: the runs of a workflow take its limit in
@@ -69,6 +93,12 @@ defmodule Apiary.Stages.Runner do
   #   * A stage, a loop, a workflow entry, an input and an output take `when` and `unless`,
   #     each with one condition: `{input: T}`, met while `T` counts (the version of `T`
   #     that the stage reads has a file of more than 0 bytes, `facts.counted`), or
+  #     `{input: T, changed: true}`, met while `T` has a version and the workflow entry has no
+  #     run on the work item that ended `passed`, or that version was stored after the newest
+  #     such run was queued (`facts.stored`, `facts.passed`, `changed?/3`); on any other item
+  #     it is met while `T` has a version; or `{feedback: new}`, met on a workflow entry
+  #     while a member's feedback is unhandled (`facts.feedback`), and on any other item
+  #     never; or
   #     `{track: ID}`, met while the work item is on the track `ID`
   #     (`facts.track`, `Apiary.Stages.track/1`). `when`
   #     holds the item back while its condition is not met, `unless` while it is met
@@ -91,6 +121,7 @@ defmodule Apiary.Stages.Runner do
   alias Apiary.Stages.Points
 
   @default_rounds 3
+  @default_returns 2
 
   @typedoc "Where a work item is in its stage's sequence."
   @type position :: %{
@@ -110,7 +141,7 @@ defmodule Apiary.Stages.Runner do
           | :done
 
   @typedoc "Why a stage escalates."
-  @type cause :: :round_limit | :escalate | :check_failed | :run_stopped
+  @type cause :: :round_limit | :escalate | :check_failed | :run_stopped | :return_limit
 
   @typedoc "A point of an escalation (`Apiary.Stages.Points`)."
   @type point :: %{required(String.t()) => String.t()}
@@ -144,16 +175,38 @@ defmodule Apiary.Stages.Runner do
   (`declarations`), whether the work item is a test work item (`test`) and, at a run's
   end, whether the run is a run of Explore whose take in has a proposal, or that left open
   questions (`explore_result`), and whether it is a run of Explore that pushed `passed` or
-  `changes-requested` (`explore_verdict`); and the input types of the stage's conditions
-  that count, each whose version the stage reads has a file of more than 0 bytes
-  (`counted`); the id of the track the work item is on (`track`, nil for none); and, for
-  an entry of a stage that a person moved the work item into, `forced`, true: the stage's
-  own condition then does not pass it over.
+  `changes-requested` (`explore_verdict`); the stages before this one in the document, by
+  id with their names (`earlier`), the count of the stage's runs in the work item's take
+  in that returned the work item to an earlier stage (`returns`), and the input types of
+  the stage's conditions that count, each whose version the stage reads has a file of
+  more than 0 bytes (`counted`); the id of the track the work item is on (`track`, nil for
+  none); and, for an entry of a stage that a person moved the work item into, `forced`,
+  true: the condition on the stage then does not pass it over. For a stage with
+  `{feedback: new}` (`feedback_stage?/1`): `feedback`, true while a member's note that is
+  feedback is open, or a run returned the work item to the stage, and no run handled it:
+  no run of an entry with that condition, or of any entry for an answer given while no
+  escalation was open, was queued after the note or the return and ended with a verdict
+  `passed` or `changes-requested` (`Apiary.Stages`); `feedback_noted`, the same for
+  feedback other than such a plain answer; `feedback_comment`, the same for a comment or a
+  reply alone; `escalation_answer`, true for answers that resolve an open escalation; and
+  `feedback_note`, true for Request changes with a note. For the conditions
+  `{input: T, changed: true}` of the stage's workflow entries (`changed?/3`): `stored`,
+  the versions of each such `T` as `%{at:, by:}`, when each was stored and the entry key
+  `{entry, loop_entry, workflow}` of the run that stored it, nil for a version that no
+  run of the stage stored; and `passed`, the runs of those entries' workflows on the
+  work item that ended `passed`, as `%{entry:, loop_entry:, workflow:, queued_at:}`.
   """
   @type facts :: %{
           optional(:missing_inputs) => [String.t()],
           optional(:counted) => [String.t()],
           optional(:track) => String.t() | nil,
+          optional(:stored) => %{String.t() => [stored_version]},
+          optional(:passed) => [passed_run],
+          optional(:feedback) => boolean,
+          optional(:feedback_noted) => boolean,
+          optional(:feedback_comment) => boolean,
+          optional(:escalation_answer) => boolean,
+          optional(:feedback_note) => boolean,
           optional(:forced) => boolean,
           optional(:undeclared) => [String.t()],
           optional(:failed_checks) => [String.t()],
@@ -161,27 +214,50 @@ defmodule Apiary.Stages.Runner do
           optional(:declarations) => %{String.t() => map | nil},
           optional(:test) => boolean,
           optional(:explore_result) => boolean,
-          optional(:explore_verdict) => boolean
+          optional(:explore_verdict) => boolean,
+          optional(:earlier) => %{String.t() => String.t()},
+          optional(:returns) => non_neg_integer
+        }
+
+  @typedoc "A version of an input type, for `{input: T, changed: true}`."
+  @type stored_version :: %{at: DateTime.t(), by: entry_key | nil}
+
+  @typedoc "A run of the stage that ended `passed`, at the place it ran."
+  @type passed_run :: %{
+          entry: non_neg_integer,
+          loop_entry: non_neg_integer | nil,
+          workflow: String.t(),
+          queued_at: DateTime.t()
         }
 
   @typedoc """
   Why an item is held back: the condition that holds it, `{input: T}` as `kind: :input` with
-  the type, or `{track: ID}` as `kind: :track` with the id, and `negated` true where the
-  condition is an `unless` that is met.
+  the type, `{input: T, changed: true}` as `kind: :input` with the type and `changed` true,
+  `{track: ID}` as `kind: :track` with the id, or `{feedback: new}` as `kind: :feedback`
+  with the value `new`, and `negated` true where the condition is an `unless` that is met.
   """
-  @type reason :: %{kind: :input | :track, value: String.t(), negated: boolean}
+  @type reason ::
+          %{
+            :kind => :input | :track | :feedback,
+            :value => String.t(),
+            :negated => boolean,
+            optional(:changed) => true
+          }
 
   @typedoc """
-  A workflow entry passed over, at the position it would run at: its workflow and the
-  condition that held it back, as `input` (a type) or `track` (an id), exactly one of them,
-  with `negated` for an `unless`; or, with neither, `reason` `first_attempt_passed` and
-  `cause_entry`, the name of the first attempt's entry, else its workflow.
+  A workflow entry passed over, at the position it would run at: its workflow and the condition
+  that held it back, as `input` (a type) or `track` (an id), exactly one of them, with `negated`
+  for an `unless`, and `changed` true for the condition `{input: T, changed: true}` (no key for
+  any other); or, with neither, `reason` `feedback` for the condition `{feedback: new}`, with
+  `negated`, or `reason` `first_attempt_passed` and `cause_entry`, the name of the first
+  attempt's entry, else its workflow.
   """
   @type skip_spec :: %{
           :workflow => String.t(),
           :input => String.t() | nil,
           :track => String.t() | nil,
           :negated => boolean,
+          optional(:changed) => true,
           optional(:reason) => String.t(),
           optional(:cause_entry) => String.t(),
           :entry => non_neg_integer,
@@ -201,9 +277,9 @@ defmodule Apiary.Stages.Runner do
 
   @typedoc "A stage passed over whole: the condition that held it back."
   @type stage_skip_spec :: %{
-          input: String.t() | nil,
-          track: String.t() | nil,
-          negated: boolean
+          :input => String.t() | nil,
+          :track => String.t() | nil,
+          :negated => boolean
         }
 
   @typedoc "An action for `Apiary.Stages` to apply."
@@ -213,6 +289,7 @@ defmodule Apiary.Stages.Runner do
           | {:skip_stage, stage_skip_spec}
           | {:escalate, cause, [point]}
           | {:checks_failed, pos_integer, String.t()}
+          | {:return, String.t()}
           | :approve
           | :advance
 
@@ -245,15 +322,19 @@ defmodule Apiary.Stages.Runner do
   def step(stage, position, {:run, result}, facts), do: run_ended(stage, position, result, facts)
 
   def step(stage, position, :answered, facts) do
-    if in_loop?(position),
-      do: start(stage, %{position | round: position.round + 1}, facts),
-      else: start(stage, position, facts)
+    cond do
+      feedback_entry?(stage, :answered, facts) -> restart(stage, facts)
+      in_loop?(position) -> start(stage, %{position | round: position.round + 1}, facts)
+      true -> start(stage, position, facts)
+    end
   end
 
-  def step(stage, _position, :request_changes, facts) do
-    case List.first(loops(stage, facts)) do
-      nil -> start(stage, at(stage, 0, 1, facts), facts)
-      index -> start(stage, %{entry: index, loop_entry: 0, round: 1}, facts)
+  def step(stage, position, :request_changes, facts) do
+    cond do
+      stage_id = gate_return(stage, facts) -> leave(position, stage_id)
+      feedback_entry?(stage, :request_changes, facts) -> restart(stage, facts)
+      index = List.first(loops(stage, facts)) -> start(stage, first_round(index), facts)
+      true -> restart(stage, facts)
     end
   end
 
@@ -275,8 +356,11 @@ defmodule Apiary.Stages.Runner do
       else: %{state: :at_gate, position: position, actions: []}
   end
 
-  def step(stage, position, {:another_round, cause}, facts) do
+  def step(stage, position, {:another_round, cause} = event, facts) do
     cond do
+      feedback_entry?(stage, event, facts) ->
+        restart(stage, facts)
+
       at_end?(stage, position) ->
         case List.last(loops(stage, facts)) do
           nil -> start(stage, at(stage, 0, position.round, facts), facts)
@@ -294,12 +378,76 @@ defmodule Apiary.Stages.Runner do
     end
   end
 
+  # feedback_entry?/3 is whether `event` starts `stage` again at its first entry, round 1:
+  # Another round while feedback other than a plain answer is unhandled
+  # (`facts.feedback_noted`); answers that resolve an open escalation
+  # (`facts.escalation_answer`) or come with a comment or a reply that no run handled
+  # (`facts.feedback_comment`); or Request changes with a note (`facts.feedback_note`); in
+  # a stage with a workflow entry whose condition is `{feedback: new}`, while a member's
+  # feedback is unhandled (`facts.feedback`).
+  @doc false
+  @spec feedback_entry?(map, event, map) :: boolean
+  def feedback_entry?(stage, event, facts) do
+    feedback_event?(event, facts) and Map.get(facts, :feedback, false) == true and
+      feedback_stage?(stage)
+  end
+
+  defp feedback_event?({:another_round, _cause}, facts),
+    do: Map.get(facts, :feedback_noted, false) == true
+
+  defp feedback_event?(:answered, facts),
+    do:
+      Map.get(facts, :escalation_answer, false) == true or
+        Map.get(facts, :feedback_comment, false) == true
+
+  defp feedback_event?(:request_changes, facts),
+    do: Map.get(facts, :feedback_note, false) == true
+
+  defp feedback_event?(_event, _facts), do: false
+
+  # feedback_stage?/1 is whether a workflow entry of `stage`, one in a loop's body included,
+  # has the condition `{feedback: new}` in its `when` or `unless`: only such a stage reads
+  # `facts.feedback`.
+  @doc false
+  @spec feedback_stage?(map) :: boolean
+  def feedback_stage?(stage), do: feedback_keys(stage) != []
+
+  # feedback_keys/1 is the entry key `{entry, loop_entry, workflow}` of each workflow entry
+  # of `stage` with the condition `{feedback: new}` in its `when` or `unless`, `loop_entry`
+  # nil outside a loop: a run at one of them handles the feedback it read
+  # (`Apiary.Stages`).
+  @doc false
+  @spec feedback_keys(map) :: [{non_neg_integer, non_neg_integer | nil, String.t()}]
+  def feedback_keys(stage) do
+    stage
+    |> sequence()
+    |> Enum.with_index()
+    |> Enum.flat_map(fn
+      {%{"loop" => %{"body" => body}}, i} ->
+        for {entry, j} <- Enum.with_index(body), feedback?(entry), do: {i, j, entry["workflow"]}
+
+      {entry, i} ->
+        if feedback?(entry), do: [{i, nil, entry["workflow"]}], else: []
+    end)
+  end
+
+  defp feedback?(%{"workflow" => workflow} = entry) when is_binary(workflow),
+    do: Enum.any?(["when", "unless"], &match?(%{"feedback" => "new"}, entry[&1]))
+
+  defp feedback?(_entry), do: false
+
   ## Entering and starting
 
   defp enter(stage, facts) do
     position = at(stage, 0, 1, facts)
     start_checked(stage, position, facts)
   end
+
+  # The sequence again from its start, round 1, with no check of the inputs and workflows
+  # first: Request changes and feedback.
+  defp restart(stage, facts), do: start(stage, at(stage, 0, 1, facts), facts)
+
+  defp first_round(index), do: %{entry: index, loop_entry: 0, round: 1}
 
   # A stage whose condition holds it back is passed over whole: no run, no wait, no gate.
   # The work item goes on to the next stage, or the work item ends after the last.
@@ -321,7 +469,7 @@ defmodule Apiary.Stages.Runner do
         %{state: :waiting_inputs, position: position, actions: []}
 
       Enum.any?(
-        workflows(stage, Map.get(facts, :counted, []), Map.get(facts, :track)),
+        workflows_met(stage, facts),
         &(&1 in undeclared(facts))
       ) ->
         %{state: :waiting_workflow, position: position, actions: []}
@@ -349,9 +497,11 @@ defmodule Apiary.Stages.Runner do
   # nil for none.
   defp held_back(stage, position, facts) do
     loop_reason =
-      if in_loop?(position), do: unmet(Enum.at(sequence(stage), position.entry), facts)
+      if in_loop?(position),
+        do: unmet(Enum.at(sequence(stage), position.entry), facts)
 
-    loop_reason || unmet(entry_at(stage, position), facts)
+    entry = entry_at(stage, position)
+    loop_reason || unmet(entry, facts, {position.entry, position.loop_entry, entry["workflow"]})
   end
 
   # Passes over the workflow at `position`, whose condition is not met: outside a loop the
@@ -387,37 +537,91 @@ defmodule Apiary.Stages.Runner do
      })}
   end
 
-  # A reason as the fields a record keeps: `input` or `track`, and `negated`.
+  # A reason as the fields a record keeps: `input` or `track`, `negated`, and `changed` for
+  # the condition `{input: T, changed: true}`.
+  defp reason_spec(%{kind: :input, value: type, negated: negated, changed: true}),
+    do: %{input: type, track: nil, negated: negated, changed: true}
+
   defp reason_spec(%{kind: :input, value: type, negated: negated}),
     do: %{input: type, track: nil, negated: negated}
 
   defp reason_spec(%{kind: :track, value: id, negated: negated}),
     do: %{input: nil, track: id, negated: negated}
 
+  defp reason_spec(%{kind: :feedback, negated: negated}),
+    do: %{input: nil, track: nil, negated: negated, reason: "feedback"}
+
   defp skipped(skips, outcome), do: %{outcome | actions: skips ++ outcome.actions}
 
   # unmet/2 is the reason `item` is held back with `facts`, `t:reason/0`; nil for an item that
   # nothing holds back. `item` is a stage, a loop entry, a workflow entry, an input or an
   # output. Its `when` holds it back while that condition is not met, its `unless` while that
-  # condition is met. A condition of another form holds nothing back.
+  # condition is met. A condition of another form holds nothing back. `key` is the entry key
+  # of a workflow entry, which `{input: T, changed: true}` reads the runs of; for any other
+  # item it is nil, and that condition holds nothing back (a save refuses it,
+  # `:condition_changed_entry_only`).
   @doc false
-  @spec unmet(map, map) :: reason | nil
-  def unmet(item, facts) do
-    held(item["when"], false, facts) || held(item["unless"], true, facts)
+  @spec unmet(map, map, entry_key | nil) :: reason | nil
+  def unmet(item, facts, key \\ nil) do
+    held(item["when"], false, facts, key) || held(item["unless"], true, facts, key)
   end
+
+  @typedoc """
+  A workflow entry of a stage: its position in the sequence, its position in the loop's body
+  (nil outside a loop) and its workflow. The runs of that workflow at that position are the
+  entry's runs.
+  """
+  @type entry_key :: {non_neg_integer, non_neg_integer | nil, String.t()}
 
   # `negated` is false for `when`, which holds the item back when its condition is not met,
   # and true for `unless`, which holds it back when it is met.
-  defp held(%{"input" => type}, negated, facts) when is_binary(type),
-    do: held(type in Map.get(facts, :counted, []), :input, type, negated)
+  defp held(%{"input" => type, "changed" => true}, negated, facts, {_, _, _} = key)
+       when is_binary(type),
+       do: hold(changed?(type, key, facts), :input, type, negated, %{changed: true})
 
-  defp held(%{"track" => id}, negated, facts) when is_binary(id),
-    do: held(Map.get(facts, :track) == id, :track, id, negated)
+  defp held(%{"input" => _type, "changed" => true}, _negated, _facts, nil), do: nil
 
-  defp held(_condition, _negated, _facts), do: nil
+  defp held(%{"input" => type}, negated, facts, _key) when is_binary(type),
+    do: hold(type in Map.get(facts, :counted, []), :input, type, negated)
 
-  defp held(met?, kind, value, negated),
-    do: if(met? == negated, do: %{kind: kind, value: value, negated: negated})
+  defp held(%{"track" => id}, negated, facts, _key) when is_binary(id),
+    do: hold(Map.get(facts, :track) == id, :track, id, negated)
+
+  defp held(%{"feedback" => "new"}, negated, facts, {_, _, _}),
+    do: hold(Map.get(facts, :feedback, false) == true, :feedback, "new", negated)
+
+  defp held(_condition, _negated, _facts, _key), do: nil
+
+  defp hold(met?, kind, value, negated, extra \\ %{}),
+    do: if(met? == negated, do: Map.merge(%{kind: kind, value: value, negated: negated}, extra))
+
+  # changed?/3 is whether `{input: T, changed: true}` is met for the workflow entry `key`:
+  # `T` has a version, and the entry has no run on the work item that ended `passed`
+  # (`facts.passed`), or that version was stored after the newest such run was queued. A
+  # version that a run of that entry stored is the entry's output and is left out. A version
+  # counts whatever the size of its files.
+  @doc false
+  @spec changed?(String.t(), entry_key, map) :: boolean
+  def changed?(type, {_entry, _loop_entry, _workflow} = key, facts) do
+    stored =
+      for %{at: at, by: by} <- Map.get(Map.get(facts, :stored, %{}), type, []),
+          by == nil or by != key,
+          do: at
+
+    newest =
+      for %{entry: entry, loop_entry: loop_entry, workflow: workflow, queued_at: queued_at} <-
+            Map.get(facts, :passed, []),
+          {entry, loop_entry, workflow} == key,
+          reduce: nil do
+        nil -> queued_at
+        newest -> if DateTime.compare(queued_at, newest) == :gt, do: queued_at, else: newest
+      end
+
+    case Enum.max(stored, DateTime, fn -> nil end) do
+      nil -> false
+      at -> is_nil(newest) or DateTime.compare(at, newest) == :gt
+    end
+  end
 
   # input_required?/2 is whether the stage waits for `input`, an input of a stage: its
   # `required`, while nothing holds the input back with `facts` (`unmet/2`).
@@ -426,9 +630,9 @@ defmodule Apiary.Stages.Runner do
   def input_required?(input, facts),
     do: input["required"] == true and is_nil(unmet(input, facts))
 
-  # condition_inputs/1 is the input types that the conditions of `stage` name, on the stage,
-  # its inputs, its loops, its workflow entries, those in a loop included, and its outputs,
-  # each once.
+  # condition_inputs/1 is the input types that the conditions `{input: T}` of `stage` name,
+  # on the stage, its inputs, its loops, its workflow entries, those in a loop included, and
+  # its outputs, each once.
   @doc false
   @spec condition_inputs(map) :: [String.t()]
   def condition_inputs(stage) do
@@ -440,10 +644,32 @@ defmodule Apiary.Stages.Runner do
 
     for item <- items,
         key <- ["when", "unless"],
-        %{"input" => type} <- [item[key]],
+        %{"input" => type} = condition <- [item[key]],
         is_binary(type),
+        condition["changed"] != true,
         uniq: true,
         do: type
+  end
+
+  # changed_inputs/1 is the input types of the conditions `{input: T, changed: true}` on the
+  # workflow entries of `stage`, each once; changed_workflows/1 is the workflows of those
+  # entries, each once. A stage with none has no use for the runs of its workflows.
+  @doc false
+  @spec changed_inputs(map) :: [String.t()]
+  def changed_inputs(stage),
+    do: Enum.uniq(for {_workflow, type} <- changed_conditions(stage), do: type)
+
+  @doc false
+  @spec changed_workflows(map) :: [String.t()]
+  def changed_workflows(stage),
+    do: Enum.uniq(for {workflow, _type} <- changed_conditions(stage), do: workflow)
+
+  defp changed_conditions(stage) do
+    for %{"workflow" => workflow} = entry <- entries(stage),
+        key <- ["when", "unless"],
+        %{"input" => type, "changed" => true} <- [entry[key]],
+        is_binary(type),
+        do: {workflow, type}
   end
 
   # required?/2 is whether `output`, an output of a stage, is required, with the facts of
@@ -516,10 +742,15 @@ defmodule Apiary.Stages.Runner do
   defp run_ended(_stage, position, {:verdict, :escalate, points}, _facts),
     do: escalate(:escalate, points || [], position)
 
-  defp run_ended(stage, position, {:verdict, verdict, _points}, facts) do
+  defp run_ended(stage, position, {:verdict, verdict, points}, facts) do
+    key = return_key(stage, position, facts)
+
     cond do
       in_loop?(position) ->
-        ring(stage, position, facts)
+        ring(stage, position, facts, findings(verdict, points))
+
+      verdict == :changes_requested and key != nil ->
+        return_or_escalate(stage, position, key, points, facts)
 
       is_nil(verdict) and not no_verdict_goes_on?(facts) ->
         escalate(:run_stopped, Points.no_verdict(), position)
@@ -549,8 +780,9 @@ defmodule Apiary.Stages.Runner do
   end
 
   # The next workflow of the loop's ring, or the next round from its first, or the round
-  # limit.
-  defp ring(stage, position, facts) do
+  # limit, whose point has `findings`, the open findings of the run that ended the round
+  # (`findings/2`).
+  defp ring(stage, position, facts, findings \\ []) do
     body = body(stage, position.entry)
     rounds = rounds(stage, position.entry)
 
@@ -559,12 +791,78 @@ defmodule Apiary.Stages.Runner do
         start(stage, %{position | loop_entry: position.loop_entry + 1}, facts)
 
       position.round >= rounds ->
-        escalate(:round_limit, Points.round_limit(position.round, rounds), position)
+        escalate(:round_limit, Points.round_limit(position.round, rounds, findings), position)
 
       true ->
         start(stage, %{position | loop_entry: 0, round: position.round + 1}, facts)
     end
   end
+
+  # The open findings of a run that ended `changes-requested`: the text of each point of
+  # its verdict. None for any other verdict.
+  defp findings(:changes_requested, points),
+    do: for(%{"text" => text} <- points || [], is_binary(text), do: text)
+
+  defp findings(_verdict, _points), do: []
+
+  ## The return to an earlier stage (choice 10)
+
+  # A return while the stage's runs returned the work item fewer times than its limit;
+  # at the limit, the escalation.
+  defp return_or_escalate(stage, position, %{"stage" => stage_id} = key, points, facts) do
+    returns = Map.get(facts, :returns, 0)
+
+    if returns < returns_limit(key) do
+      leave(position, stage_id)
+    else
+      to = Map.fetch!(earlier(facts), stage_id)
+      limit_point = Points.return_limit(returns, stage["name"], to)
+      escalate(:return_limit, limit_point ++ (points || []), position)
+    end
+  end
+
+  # The stage is left for the earlier stage `stage_id`, which `Apiary.Stages` enters.
+  defp leave(position, stage_id),
+    do: %{state: :done, position: position, actions: [{:return, stage_id}]}
+
+  # return_key/3 is the return key of the workflow entry at `position`, outside a loop,
+  # where its stage is one of the earlier stages (`facts.earlier`); nil otherwise.
+  # `Apiary.Processes.validate/1` returns an error for a key in a loop's body and for a
+  # key to a stage that is not earlier.
+  @doc false
+  @spec return_key(map, position | nil, facts) :: map | nil
+  def return_key(stage, %{entry: index, loop_entry: nil}, facts) do
+    case Enum.at(sequence(stage), index) do
+      %{"workflow" => _name, "return" => %{"stage" => stage_id} = key} ->
+        if Map.has_key?(earlier(facts), stage_id), do: key
+
+      _other ->
+        nil
+    end
+  end
+
+  def return_key(_stage, _position, _facts), do: nil
+
+  # The stage that Request changes at the gate returns the work item to: the stage of the
+  # first entry with a return key, nil for none.
+  defp gate_return(stage, facts) do
+    stage
+    |> sequence()
+    |> Enum.with_index()
+    |> Enum.find_value(fn {_entry, index} ->
+      case return_key(stage, %{entry: index, loop_entry: nil}, facts) do
+        %{"stage" => stage_id} -> stage_id
+        nil -> nil
+      end
+    end)
+  end
+
+  # returns_limit/1 is the most returns of a return key, 2 by default (choice 22).
+  @doc false
+  @spec returns_limit(map) :: pos_integer
+  def returns_limit(key), do: Map.get(key, "limit") || @default_returns
+
+  defp earlier(facts), do: Map.get(facts, :earlier, %{})
 
   ## The end of the sequence
 
@@ -732,7 +1030,10 @@ defmodule Apiary.Stages.Runner do
     body = body(stage, index)
 
     body != [] and
-      (unmet(Enum.at(sequence(stage), index), facts) != nil or Enum.all?(body, &unmet(&1, facts)))
+      (unmet(Enum.at(sequence(stage), index), facts) != nil or
+         body
+         |> Enum.with_index()
+         |> Enum.all?(fn {entry, j} -> unmet(entry, facts, {index, j, entry["workflow"]}) end))
   end
 
   # workflows/1 is the stage's workflow names, in order, each once; workflows/3 those of
@@ -744,15 +1045,30 @@ defmodule Apiary.Stages.Runner do
 
   @doc false
   @spec workflows(map, [String.t()], String.t() | nil) :: [String.t()]
-  def workflows(stage, counted, track \\ nil) do
-    facts = %{counted: counted, track: track}
+  def workflows(stage, counted, track \\ nil),
+    do: workflows_met(stage, %{counted: counted, track: track})
 
+  # workflows_met/2 is the workflows of the entries of `stage` that nothing holds back
+  # with `facts`, each entry read with the runs of its workflow at its position (`unmet/3`).
+  @doc false
+  @spec workflows_met(map, map) :: [String.t()]
+  def workflows_met(stage, facts) do
     sequence(stage)
+    |> Enum.with_index()
     |> Enum.flat_map(fn
-      %{"loop" => %{"body" => body}} = loop -> if unmet(loop, facts), do: [], else: body
-      entry -> [entry]
+      {%{"loop" => %{"body" => body}} = loop, index} ->
+        if unmet(loop, facts),
+          do: [],
+          else:
+            body
+            |> Enum.with_index()
+            |> Enum.map(fn {entry, j} -> {entry, {index, j, entry["workflow"]}} end)
+
+      {entry, index} ->
+        [{entry, {index, nil, entry["workflow"]}}]
     end)
-    |> Enum.filter(&is_nil(unmet(&1, facts)))
+    |> Enum.filter(fn {entry, key} -> is_nil(unmet(entry, facts, key)) end)
+    |> Enum.map(&elem(&1, 0))
     |> names()
   end
 

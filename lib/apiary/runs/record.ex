@@ -320,6 +320,16 @@ defmodule Apiary.Runs.Record do
               e.data,
               e.data
             ),
+          # The runtime a session's start names, nil on every other type: the timeline counts
+          # the hook events of the sessions whose runtime sends hooks.
+          runtime:
+            fragment(
+              "CASE WHEN ? = ? AND jsonb_typeof(? -> 'runtime') = 'string' THEN left(? ->> 'runtime', 64) END",
+              e.type,
+              ^@session_started,
+              e.data,
+              e.data
+            ),
           # A text event's kind, "prompt" for a user's text, or "empty" for a block with no
           # text, which makes no item.
           text_kind:

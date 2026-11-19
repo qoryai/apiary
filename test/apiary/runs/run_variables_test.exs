@@ -12,6 +12,74 @@ defmodule Apiary.Runs.RunVariablesTest do
   # A segment of `n` characters.
   defp segment(n), do: String.duplicate("a", n)
 
+  describe "with_resolved/2" do
+    @own %{"QORY_RUN_SYSTEM" => "git.example.com", "QORY_RUN_REPOSITORIES" => "acme/shop"}
+
+    defp names(count),
+      do: Map.new(1..count, &{"V" <> String.pad_leading(Integer.to_string(&1), 3, "0"), "x"})
+
+    test "merges what a workspace and target set into the run's two names" do
+      assert RunVariables.with_resolved(@own, %{"NODE_ENV" => "production", "EMPTY" => ""}) ==
+               {:ok, Map.merge(@own, %{"NODE_ENV" => "production", "EMPTY" => ""})}
+    end
+
+    test "is nil for a run with no two names and none resolved" do
+      assert RunVariables.with_resolved(nil, %{}) == {:ok, nil}
+      assert RunVariables.with_resolved(nil, %{"A" => "1"}) == {:ok, %{"A" => "1"}}
+      assert RunVariables.with_resolved(@own, %{}) == {:ok, @own}
+    end
+
+    test "takes 126 names, the contract's 128 less the run's two, and refuses 127" do
+      assert RunVariables.max_resolved() == 126
+      assert {:ok, all} = RunVariables.with_resolved(@own, names(126))
+      assert map_size(all) == 128
+      assert RunVariables.with_resolved(@own, names(127)) == {:error, {:too_many_names, 127}}
+      assert RunVariables.with_resolved(nil, names(127)) == {:error, {:too_many_names, 127}}
+    end
+
+    test "takes 65,536 bytes of names and values, and refuses one byte more" do
+      big =
+        for n <- 1..15, into: %{}, do: {"V#{String.pad_leading("#{n}", 2, "0")}_", segment(4096)}
+
+      rest = 65_536 - 15 * 4100 - 1
+
+      assert {:ok, _all} = RunVariables.with_resolved(@own, Map.put(big, "W", segment(rest)))
+
+      assert RunVariables.with_resolved(@own, Map.put(big, "W", segment(rest + 1))) ==
+               {:error, {:too_large, 65_537}}
+    end
+
+    test "refuses a name or a value that breaks the contract's rule, by its name" do
+      for {name, value} <- [
+            {"1BAD", "x"},
+            {"HAS-DASH", "x"},
+            {"TWO_LINES", "a\nb"},
+            {"RETURN", "a\rb"},
+            {"NUL", "a\0b"},
+            {"LONG", segment(4097)},
+            {"NOT_UTF8", <<255, 254>>},
+            {String.duplicate("A", 129), "x"}
+          ] do
+        assert RunVariables.with_resolved(@own, %{name => value, "OK" => "1"}) ==
+                 {:error, {:invalid, name}}
+      end
+
+      # A value of 4096 bytes is within it.
+      assert {:ok, _all} = RunVariables.with_resolved(@own, %{"LONG" => segment(4096)})
+    end
+
+    test "the variables document of the result is within the contract's schema" do
+      {:ok, all} = RunVariables.with_resolved(@own, names(126))
+      document = %{"version" => 1, "variables" => RunVariables.document(all)}
+
+      assert :ok =
+               Apiary.ForagerSchemas.validate(
+                 "run-configuration.schema.json",
+                 Jason.encode!(document)
+               )
+    end
+  end
+
   describe "for_target/2" do
     test "names the system and the target's repository, first, then the picked ones" do
       assert RunVariables.for_target(target()) ==

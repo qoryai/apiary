@@ -260,6 +260,44 @@ test("a loop is a group of its workflows with its label inside one card; a workf
   assert.equal(stages(view).length, 3)
 })
 
+test("a workflow with a return reaches the card with its line, as text; one with none has no line", () => {
+  const v = {
+    ...view,
+    stages: [{...view.stages[1], sequence: [{workflow: "build"}, {workflow: "verify", returns: "Returns to <b>Build</b>, at most 2 times"}]}],
+  }
+  assert.deepEqual(stages(v)[0].data.sequence, [
+    {workflow: "build"},
+    {workflow: "verify", returns: "Returns to <b>Build</b>, at most 2 times"},
+  ])
+  // An empty line is no line.
+  const empty = {...view, stages: [{...view.stages[1], sequence: [{workflow: "build", returns: ""}]}]}
+  assert.deepEqual(stages(empty)[0].data.sequence, [{workflow: "build"}])
+})
+
+test("a card draws a workflow's return under the workflow, 14 px and muted, and adds its height", () => {
+  const line = "Returns to Build, at most 2 times"
+  const data = {...stages(view)[1].data, sequence: [{workflow: "build"}, {workflow: "verify", returns: line}]}
+  const card = drawn(data)
+  const step = byKey(card, "s1")
+  const returns = byKey(step, "r")
+
+  assert.equal(returns.type, "p")
+  assert.deepEqual(returns.children, [line])
+  assert.equal(returns.props.title, line)
+  const classes = returns.props.className.split(" ")
+  for (const name of ["text-[14px]/5", "text-muted"]) assert.ok(classes.includes(name), name)
+  assert.equal(step.children.indexOf(returns), step.children.indexOf(byKey(step, "w")) + 1)
+
+  // Under a check or a cross the line starts where the name does; a workflow with none has no line.
+  assert.ok(!classes.includes("pl-5"))
+  const marked = drawn({...data, marks: {verify: {listed: true, label: "verify: a stage can run it"}}})
+  assert.ok(byKey(byKey(marked, "s1"), "r").props.className.split(" ").includes("pl-5"))
+  assert.equal(byKey(drawn({...data, sequence: [{workflow: "build"}]}), "s0").props.key, "s0")
+
+  const without = {...data, sequence: [{workflow: "build"}, {workflow: "verify"}]}
+  assert.ok(estimateHeight(data) > estimateHeight(without))
+})
+
 test("a + sits above the first card, in each gap and below the last, and adds a stage there", () => {
   const nodes = layout(view, heights).nodes
   const adds = nodes.filter(n => n.type === "add")

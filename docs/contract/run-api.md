@@ -1,7 +1,8 @@
 # The run API
 
 A run, an agent on a machine, uses the run API to read its work item and the work
-item's artifacts, to push artifacts and its verdict, and to report the commits it pushed. Each request is signed with the
+item's artifacts, to push artifacts and its verdict, to report the commits it pushed, and,
+in a stage whose workflows share one run, to get its next session. Each request is signed with the
 access key of the gateway the run goes through; the run has no access key.
 
 The run API is part of the feature `workflow_model`, which is off by default. On an
@@ -45,6 +46,7 @@ serves, and a request for a run the key does not serve gets `404` `not_found`.
 | `POST artifacts` | Stores a new version of an artifact, or a withdrawal of its name; returns the version |
 | `POST verdict` | Stores the run's verdict as a version of the `verdict` artifact |
 | `POST pushed-commits` | Adds the commits the run pushed to the run's list |
+| `POST next-session` | Steps the stage on the end of a session of a shared run; returns the next session or the end |
 | `GET resume/transcript` | The transcript of the paused run that the run continues, as a download |
 
 ### Signing and the order of checks
@@ -134,7 +136,9 @@ Returns `200` with the work item snapshot:
   version that has a `decision` (`POST artifacts`) or that a person uploaded, in any
   stage, that no approval lists, and whose number is higher than that of every version
   of its artifact that an approval lists. A withdrawal, a version of a withdrawn name and
-  a version by a run that a member cancelled are never a change. Each name's change is
+  a version by a run that a member cancelled are never a change. A person's version of the
+  type in `submit.type` of the work item's process version is not a change: no approval
+  lists it, `outputs` leaves it out, and runs read the run's version. Each name's change is
   its highest-numbered one, and the input is the newest of those by time. Every later run
   reads that version in place of the approved one, until an approval lists it. Where an
   approval lists several versions of one name, the input is the highest-numbered one.
@@ -143,8 +147,32 @@ Returns `200` with the work item snapshot:
   run after that approval, in any stage, also after a move back to a stage at or before
   that approval.
   `questions` and `review-comments` are never a change.
+  After a person moves the work item to an earlier stage (a move back, an
+  escalation's move back or a switch of track), `inputs` ends with one more entry for each output of each stage
+  that the work item left that way and that comes after its current stage:
+  `{"type": "demo-video", "required": false, "version": {"id": "av_...", "number": 3},
+  "from": "move"}`. `version` is the newest version of that type made in the left stage
+  from the time the work item last entered it to the time it left, leaving out
+  withdrawals, withdrawn names and versions by a run a member cancelled; an output with no
+  such version has no entry. The entries last until the left stage's gate passes again (an
+  approval of that stage, by a person or automatic) or a later move takes the work item to
+  a stage after it, and only for the take in of the move. A stage that the work item left
+  twice counts by its newer move. An entry is left out when an input above it already has
+  that version. The key `from` is present on these entries, and no approval lists such
+  a version, unless a person made it: that is a change.
+- After a run of a stage returns the work item to an earlier stage (the `return` key of a
+  workflow entry), `inputs` ends with the newest `verdict` and then the newest
+  `verification` made in the stage that returned it, each as
+  `{"type": "verdict", "required": false, "version": {"id": "av_...", "number": 2},
+  "from": "return"}`. A type with no such version has no entry, and an entry is left out
+  when an input above it already has that version. The entries last until the gate of the
+  stage that the work item returned to passes again (an approval of that stage) or the
+  work item leaves that stage by a move, after the return; a Request changes at its gate
+  and a decision in another stage end nothing. A later return lists the newer versions. No
+  approval lists them, and `notes` does not.
 - `outputs` contains each output of the current stage with the version its gate shows
-  and its check: `passed`, `missing` or `not_checked`. The version is the newest one
+  and its check: `passed`, `missing` or `not_checked`. For the type in `submit.type`,
+  only a run's version passes the check. The version is the newest one
   made in the stage, or a higher-numbered version of that artifact that a person's
   approval lists or that is a change, which every later run reads, also after a move
   back to the stage.
@@ -160,9 +188,11 @@ Returns `200` with the work item snapshot:
   `ticket`.
 - `notes` contains what people wrote on the work item and the gaps of failed checks,
   oldest first. `kind` is `request_changes`, a request for changes at the gate of the
-  stage `stage_id`, which may point at one version in `artifact_version_id`; `move`, a
-  move of the work item out of the stage `stage_id`; `escalation`, an escalation that a
-  person resolved with a note; `answer`, an answer to a run's questions, a review comment
+  stage `stage_id`, whose `note` is never empty, and which may point at one version in
+  `artifact_version_id`; `move`, a
+  move of the work item out of the stage `stage_id`, not one that resolves an escalation
+  (a move back or a switch of track), which the escalation's entry stands for;
+  `escalation`, an escalation that a person resolved with a note; `answer`, an answer to a run's questions, a review comment
   on Explore's proposal or a reply to one, whose `stage_id` is null when the run it was
   given at has no stage; or `check`, the Exists
   checks of the stage `stage_id` that failed and started another round, with one line
@@ -241,9 +271,14 @@ Returns `200` with the index:
 ```
 
 `approved_version` is the id of the newest version that a gate approved, or null for
-none; `newest_version` is the number of the newest version. `changed_after_approval` is
-true when the newest version is newer than the approved one and was made in a stage
-other than the work item's stage. A version
+none; `newest_version` is the number of the newest version, leaving out versions by a
+run a member cancelled, and null when a run a member cancelled wrote every version.
+`changed_after_approval` is true when that newest version is
+newer than the approved one and was made in a stage other than the work item's stage.
+For the type in `submit.type` of the work item's process version, `changed_after_approval`
+compares the newest version a run wrote in place of `newest_version`, as a person's
+version of that type is not a change.
+A version
 written by a run has `"writer": {"kind": "run", "run_id": "..."}`, with the `run_id` of
 the answer to the redemption of the run code; a version written
 by a person has `"writer": {"kind": "person", "name": "dana"}`. `cancelled` is true when
@@ -262,8 +297,10 @@ such a stage, the approval has the member in `by` and `automatic` false. `decisi
 the id of the person's note that asked for the version (`POST artifacts`), and
 `decision_at` the time of that note, as `at` of the note in `GET work-item`; both are
 null for a version with none. A gate `none` lists no version that has a `decision`.
-The next approval by a person at a gate lists, beside the stage's newest versions, the
-change of each type that `inputs` in `GET work-item` reads. The index
+The next approval by a person at a gate lists the newest version of each name of each
+output type made in the stage, or a higher-numbered version of that name that a person's
+approval lists or that is a change, and beside them the change of each type that
+`inputs` in `GET work-item` reads. The index
 contains no file contents; `GET artifacts/<version_id>/files/<filename>` returns them.
 
 ## GET artifacts/<version_id>/files/<filename>
@@ -361,7 +398,11 @@ Checks, in order, after the checks of every request:
    may have a `criterion`, the id of the acceptance criterion it is about: `ac-` and a
    number from 1 to 9999 with no leading zero, such as `ac-3`. Qory Apiary stores it as
    the run pushed it. Another value, such as `AC-3`, is refused at
-   `#/questions/0/criterion`.
+   `#/questions/0/criterion`. An option of a question with a `criterion` may have a
+   `proposal`, the new wording of that criterion that the run proposes, 1 to 2,000
+   characters with line breaks allowed; the page shows it in a field that a member may
+   edit before answering. For a `proposal` on a question with no `criterion`, the push
+   fails with `422` `invalid_artifact`.
 
    A version of `proposal` has at most 10 files and 5 MiB (5242880 bytes) together:
 
@@ -554,17 +595,20 @@ Apiary reads them itself, and a run pushes a new version of them instead. It can
 withdraw a name of a type whose entry in the template's `artifact_types` sets
 `withdrawable: false`, a standard type with an entry of `name` and `withdrawable` alone or
 a custom type (`withdrawable` is true when the entry has none). It cannot withdraw a name
-whose newest version a member approved at a gate, and pushes a new version instead. An
-approval that the runner recorded for a gate `none` does not count, and neither does an
-approval of an older version.
+of the type in `submit.type` of its process version or of its work item's process
+version: Qory Apiary reads the newest version of that type as the run's submission.
+Versions stored earlier stay listed. It cannot withdraw a name whose newest version a member approved at a
+gate, and pushes a new version instead. An approval that the runner recorded for a gate
+`none` does not count, and neither does an approval of an older version.
 
 Checks, in order, after the checks of every request:
 
 1. A body that is not the push's object, as for a push: `400` `invalid_request`.
 2. A type the workspace does not have, or a standard type it hides: `422`
    `unknown_type`.
-3. `questions`, `review-comments`, `verdict` or `proposal`, or a type with
-   `withdrawable: false`: `422` `type_not_withdrawable`.
+3. `questions`, `review-comments`, `verdict` or `proposal`, a type with
+   `withdrawable: false`, or the type in `submit.type` of the run's process version or of
+   the work item's: `422` `type_not_withdrawable`.
 4. A `files` list with one file or more: `422` `withdrawal_with_files`.
 5. Under the work item's lock, with the check of a run that ended, by the newest version
    of the name, leaving out versions by a run a member cancelled: one that a member
@@ -574,6 +618,36 @@ Checks, in order, after the checks of every request:
 6. A `decision`, as check 8 of a push: `422` `unknown_decision`.
 
 No version is stored for a refused withdrawal.
+
+## The submission the pages list
+
+Qory Apiary lists the versions of the type in `submit.type` of the work item's process
+version on the work item's pages (the Submissions list and a run's Submission block). It
+reads these members of a version's JSON file, at most 1 MiB, and leaves out any value that
+is not of the form below. A stored text is cut to its first 200 characters.
+
+- `ref`: the branch, a string.
+- `repositories`: at most 20 objects, each with `system`, `path`, `commit` (the head, 40 or
+  64 lowercase hex characters) and, optionally:
+  - `commit_url`: an `https` address of the head commit, at most 2048 characters.
+  - `base`: `{commit, commit_url}`, the commit the run started at.
+  - `commits`: `[{commit, step, commit_url}]`, the run's commits in the order it made
+    them, the last the head. `step` is `deliverable:<id>`, the id of a row in the Id column
+    of the build plan's Deliverables table, or `fix:<finding id>`; an entry whose `commit`
+    is not a full hex id is left out. The head is marked on the last entry whose `commit`
+    is the repository's `commit`; where no entry is, none is marked and the list is shown as
+    read. A page lists at most 100 entries of a repository: the first 100, or the first 99
+    and the head where the head is a later entry; the count has every entry.
+  - `draft`: `{number, url, title}` for a draft sent to the destination, or `{none: <reason>}`.
+
+A link that is not `https` is not shown as a link. The Base line says "the head of Run <n>" ("the result of Run <n>" outside a software workspace)
+where an earlier submission of the work item, among the newest 50 versions, ends at the base
+commit in the same repository. Where a version that is not listed (older than those, or
+written by a run a member cancelled) may end at it, the line shows the commit alone.
+
+The text of a change comes from the Change column of the first 200 rows of the build plan
+(`build-plan`, the file `build-plan.md`) that was newest when the version was stored. A plan
+over 256 KiB gives no change texts, and a stored submission over 1 MiB lists no repository.
 
 ## POST verdict
 
@@ -593,7 +667,14 @@ The body, at most 64 KiB:
 - `points`: what is wrong or missing, 1 to 20 points. With `escalate`, points are
   required, and a person reads them when the stage escalates. With `changes-requested`,
   points are optional, and each point's `action` is `run_again`; the verdict's page shows
-  them as it shows every other member of the file. With `passed`, a verdict has none.
+  them as it shows every other member of the file. If a `changes-requested` verdict with
+  points ends the last round of a loop, the stage escalates at its round limit with one
+  point. Its text is "3 of 3 rounds ran, and 2 review findings are still open." followed
+  by the `text` of each point, and its fix is "Read the 2 open findings, then pick Accept
+  as it is or Run another round." With no points, the text is "3 of 3 rounds ran." The
+  stage runner writes this point, and the limit of one sentence and 500 characters below
+  does not apply to it: with points, its text is more than one sentence and can be
+  longer than 500 characters. With `passed`, a verdict has none.
   Each point has `text`, one plain sentence on one line of 1 to 500 characters that
   states what is wrong, with no action, and `action`: `answer`, with `question`, the id of
   an open question, or `run_again`, without `question`. A `run_again` point may also have
@@ -610,11 +691,24 @@ The body, at most 64 KiB:
   one sentence on one line of 1 to 300 characters. Both are required when `track` is
   present. When a person approves the gate with no track chosen, the approval records
   this track, if the gate offers it. A verdict with no `track` proposes none.
+- `full_suite`: optional, for any verdict. The result of the run of the full test suite, as
+  the run reports it. `state` is required and is `passed`, `failed` or `not_run`.
+  - With `passed` or `failed`, `minutes` is required: how long the run took, a number from 0
+    to 100,000. `passed`, `failed` and `skipped` are the counts of tests, each a whole number
+    from 0 to 1,000,000,000, either all three or none of them: one or two of the three is
+    refused. `reason` is not allowed.
+  - With `not_run`, `reason` is required: why the suite did not run, one sentence on one
+    line of 1 to 300 characters, as `track.reason` is. The counts and `minutes` are not
+    allowed.
+  - Any other member, a state other than the three, and a value of another type are
+    refused. A verdict with no `full_suite` reports no result.
 
 The verdict is stored as a new version of the artifact `verdict`, name `main`, with one
-file, `verdict.json`, `{"verdict": ..., "points": ..., "track": ...}`, without `points`
-or `track` when the body has none. A body with `"track": null` has none: it is stored
-without `track`, as `"points": null` is stored without `points`. A run of any workflow may
+file, `verdict.json`, `{"verdict": ..., "points": ..., "track": ..., "full_suite": ...}`,
+without `points`, `track` or `full_suite` when the body has none. `full_suite` is stored as
+the run sent it. A body with `"track": null` has none: it is stored
+without `track`, as `"points": null` is stored without `points`, and `"full_suite": null`
+is stored without `full_suite`. A run of any workflow may
 push a verdict. A `changes-requested` verdict moves the stage in the same way with points
 as without them. For a run of Explore, only
 `escalate` changes what happens: the stage escalates with the points. Explore treats
@@ -633,8 +727,9 @@ that left open questions: Explore's result is its proposal or its questions. A r
 Explore that pushes `passed` or `changes-requested` goes on to the stage's checks.
 
 Checks: a body over 64 KiB is `413` `payload_too_large`; a body with a member other than
-`verdict`, `points` and `track`, or a `verdict` that is not one of the three, is `400`
-`invalid_request`; points or a track the schema refuses are `422` `invalid_artifact`. A
+`verdict`, `points`, `track` and `full_suite`, or a `verdict` that is not one of the
+three, is `400` `invalid_request`; points, a track or a `full_suite` the schema refuses are
+`422` `invalid_artifact`. A
 `track.id` that the gate of the run's stage does not offer is `422` `invalid_artifact`
 with `names` `["track"]` and the message in "The messages", for a push of the artifact
 `verdict` too. The question
@@ -680,6 +775,81 @@ that is not a full commit id, is `400` `invalid_request`, with the first member 
 in `names`, such as `repositories[1].commit`; `body` for a body that is not a JSON object,
 and `repositories` for a list that is empty, over 64 or not a list.
 
+## POST next-session
+
+A run of a stage with `shared_run: true` runs the stage's workflows one after the other as
+sessions of one run. After each session that did not pause, qory sends this request from
+the run's host, never from a container, over the gateway's link; the gateway sends it here
+signed with its access key, as every request of the run API. The run's documents have
+`shared_run` true. The body, at most 4 KiB, is `next-session-request.schema.json` of the
+run contract:
+
+```json
+{"session": 1, "state": "succeeded", "reason": null}
+```
+
+- `session`: Forager's number of the session that ended, from 1.
+- `state`: `succeeded`, `failed` or `cancelled`, the state of its
+  `dev.qory.session.exited`.
+- `reason`: the reason of that event, a code of a lower-case letter, then lower-case
+  letters, digits and `_`, up to 64 characters, or null for none. A `cancelled` session
+  has a reason; `timeout` and `interrupted` are for a `cancelled` session only, and
+  `gateway_lost` for a `failed` session only.
+
+Qory Apiary steps the stage on the session's end as on the end of a run of a stage that
+does not share its run: the open questions of the run's take in, else the newest
+`verdict` version the run stored after the previous step, else, for `failed` or
+`cancelled`, a run that stopped without a result. Then it returns `200`, signed, with
+`Content-Type: application/json` and one of two bodies, `next-session-answer.schema.json`
+of the run contract. A next session of the same stage:
+
+```json
+{"next": "session", "session": 2, "workflow": "write-acceptance-checks",
+ "time_limit_minutes": 180, "full_suite": false, "inputs": {"version": 1, "...": "..."}}
+```
+
+- `session`: Qory Apiary's number of the session in the run, from 1; the claim's session is
+  1. It is not Forager's number.
+- `workflow`, `time_limit_minutes` and `full_suite`: the entry's, as the claim kept them,
+  so a time limit saved after the claim changes nothing for the run.
+- `inputs`: the input of the session, in the shape of the documents' `inputs`.
+- `model_choice` and `model_credential` are left out: every session uses the run's model
+  choice and key.
+
+Or the end of the run, where the stage runs no further workflow in this run: an
+escalation, open questions, the gate, or the next stage, whose run is queued as any run:
+
+```json
+{"next": "end"}
+```
+
+- A body is at most 1 MiB, the largest `200` the gateway passes back. `inputs` takes what
+  the rest of the body leaves, with the oldest comments of the ticket left out first and
+  counted in `comments_omitted`.
+- A second request for the same session returns the same body, byte for byte, and steps
+  nothing, whatever the newer verdicts: qory may send it again after a `5xx` or a
+  transport failure. A request for an older session than the newest one the run reported
+  is `409` `session_mismatch`.
+- The step and the record of the session are stored in one transaction, under the lock of
+  the work item that a push, a verdict, the end of a run and a cancel also take. An error
+  writes nothing, except the end of the run for inputs that cannot be formed.
+
+Checks, after checks 1 to 4 of the order of checks: a body over 4 KiB is `413`
+`payload_too_large`; a body outside the request's schema is `400` `invalid_request`, with
+the first member that failed in `names`, `body` for a body that is not a JSON object; then:
+
+- a run of a stage without `shared_run`, a run of Explore, and a run that no claim of such
+  a stage registered are `404` `not_found`;
+- a run that the stage no longer runs, or whose last step returned `end`, is `409`
+  `run_ended`;
+- a store that cannot read the run's newest verdict or questions is `503` `unavailable`;
+- a ticket that is no longer kept, or inputs that break the rules of Explore's input or do
+  not fit the body's 1 MiB with every comment left out, end the run, as a claim ends a run
+  it cannot form, with the cause `ticket_gone` or `inputs_invalid` and the outcome `error`,
+  and are `409` `run_ended`. The stage escalates `run_stopped`.
+
+Qory Apiary never returns `410` to this request, as the gateway turns a `410` into a `502`.
+
 ## GET resume/transcript
 
 The session of a run that continues a paused run reads the paused run's transcript with
@@ -704,11 +874,13 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 
 | Status | `error` | Other members | When |
 |---|---|---|---|
-| `400` | `invalid_request` | `names`, and `message` for a report of pushed commits | A body that is not the request's object, a report of pushed commits over its limits or with a commit that is not a full commit id, or a content that is not strict base64 |
+| `400` | `invalid_request` | `names`, and `message` for a report of pushed commits and a next-session request | A body that is not the request's object, a report of pushed commits over its limits or with a commit that is not a full commit id, a next-session request outside its schema, or a content that is not strict base64 |
 | `401` | `unauthorized` | | The request does not verify; unsigned |
-| `404` | `not_found` | | An unknown run, a run of another gateway, an unknown version or file; for `GET resume/transcript`, a run that ended, has no `resume`, or whose transcript cannot be served |
+| `404` | `not_found` | | An unknown run, a run of another gateway, an unknown version or file; for `GET resume/transcript`, a run that ended, has no `resume`, or whose transcript cannot be served; for `POST next-session`, a run of a stage without `shared_run` |
 | `404` | (the error page) | | The instance does not have `workflow_model`, or for `GET resume/transcript`, `observability` |
 | `409` | `run_ended` | `message` | A push or a verdict after the run ended or a member cancelled it, checked before the push and again when the version is stored; a report of pushed commits after the run ended (a cancel does not refuse it), checked before and again under the work item's lock |
+| `409` | `run_ended` | `message` | A next-session request after the run ended or a member cancelled it, after the stage stopped running the run, or for inputs that ended the run |
+| `409` | `session_mismatch` | `message` | A next-session request for an older session than the newest one the run reported |
 | `409` | `not_writable` | `message` | A report of pushed commits from a run whose access is not `write` |
 | `409` | `inputs_invalid` | | A ticket value that breaks Explore's input rules |
 | `409` | `no_version` | `type`, `message` | A withdrawal of a name that has no version outside cancelled runs |
@@ -719,7 +891,7 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type, or hides the standard type |
 | `422` | `too_many_files` | `type`, `limit`, `message` | More files than the type's maximum |
 | `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes; for `questions` and `review-comments`, as stored, with each number that is an integer in value written as an integer |
-| `422` | `type_not_withdrawable` | `type`, `message` | A withdrawal of `questions`, `review-comments`, `verdict` or `proposal`, of a name of a type with `withdrawable: false`, or of a name whose newest version a member approved at a gate |
+| `422` | `type_not_withdrawable` | `type`, `message` | A withdrawal of `questions`, `review-comments`, `verdict` or `proposal`, of a name of a type with `withdrawable: false`, of a name of the type in `submit.type` of the run's process version or the work item's, or of a name whose newest version a member approved at a gate |
 | `422` | `withdrawal_with_files` | `type`, `message` | A withdrawal with one file or more |
 | `422` | `unknown_decision` | `message` | A push's `decision` is not the id of a person's note on the run's work item |
 | `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, a verdict's `answer` point is about a question that is not open, or a verdict's `track.id` is a track the gate of the run's stage does not offer (`names` is `["track"]`) |
@@ -732,6 +904,16 @@ The messages:
   artifacts or give a verdict."
 - `run_ended`, for a report of pushed commits: "Start a new run to record pushed commits.
   This run ended, so it records no more commits."
+- `run_ended`, for a next-session request: "Close the run. It ended, so it starts no more
+  sessions." For a run a member cancelled: "Close the run. A member cancelled it, so it
+  starts no more sessions." For a ticket that is no longer kept: "Close the run. The ticket
+  of its work item is no longer in Qory Apiary, so the run ended." For inputs that cannot
+  be formed: "Close the run. The input of its next session breaks a rule for the agent's
+  input, such as its size limit, so the run ended."
+- `session_mismatch`: "Send the number of the session that ended last. A later session of
+  this run ended already."
+- `invalid_request`, for a next-session request: "Send session, state and reason as the
+  run contract's next-session request has them."
 - `not_writable`: "Record pushed commits only from a run with write access. This run cannot
   push."
 - `invalid_request`, for a report of pushed commits: "Send 1 to 64 repositories, each with
@@ -752,6 +934,9 @@ The messages:
 - `type_not_withdrawable`, for a type with `withdrawable: false`: "Push a new
   version of demo-script instead. The artifact type demo-script has withdrawable set to
   false, so a run cannot withdraw its names."
+- `type_not_withdrawable`, for the type in `submit.type` of the run's process version:
+  "Push a new version of submission instead. Qory Apiary reads its newest version as the
+  run's submission, so a run cannot withdraw it."
 - `type_not_withdrawable`, for a name whose newest version a member approved: "Push a new
   version of demo-script/scenario-2 instead. A member approved its newest version, v3, so
   a run cannot withdraw the name."

@@ -82,6 +82,24 @@ defmodule Apiary.Dispatches.SchemaTest do
   # decisions: down first, up last.
   @move_stage_version 20_261_116_170_000
   @move_stage Apiary.Repo.Migrations.KeepTheStageAMoveEnters
+  # The later migration that keeps the sessions of a shared run, whose table links to the
+  # runs of the queue: down first, up last.
+  @sessions_version 20_261_118_130_000
+  @sessions Apiary.Repo.Migrations.KeepTheSessionsOfASharedRun
+
+  # The later migrations that keep where a move went and the switch of an escalation, whose
+  # key and check are on the gate decisions and the escalations: down first, newest first,
+  # up last, in order. The switch's down clears the escalation a switch resolved, so it
+  # runs before the down that drops the column. The index migration (`20261117090100`) runs
+  # outside a transaction, so `down!` and `up!` drop and create its index by statement.
+  @move_went_version 20_261_117_090_000
+  @move_went Apiary.Repo.Migrations.KeepWhereAMoveWentAndWhatItLeft
+  @move_valid_version 20_261_117_090_200
+  @move_valid Apiary.Repo.Migrations.ValidateTheEscalationOfAMove
+  @switch_version 20_261_117_100_000
+  @switch Apiary.Repo.Migrations.KeepASwitchAsAResolution
+  @switch_valid_version 20_261_117_100_100
+  @switch_valid Apiary.Repo.Migrations.ValidateASwitchAsAResolution
 
   setup_all do
     for {version, migration, name} <- [
@@ -98,7 +116,12 @@ defmodule Apiary.Dispatches.SchemaTest do
           {@machine_end_version, @machine_end, "keep_what_a_starter_reports_of_a_machine_s_end"},
           {@declined_version, @declined, "close_every_declined_work_item"},
           {@model_keys_version, @model_keys, "keep_a_run_s_model_keys"},
-          {@move_stage_version, @move_stage, "keep_the_stage_a_move_enters"}
+          {@move_stage_version, @move_stage, "keep_the_stage_a_move_enters"},
+          {@move_went_version, @move_went, "keep_where_a_move_went_and_what_it_left"},
+          {@move_valid_version, @move_valid, "validate_the_escalation_of_a_move"},
+          {@switch_version, @switch, "keep_a_switch_as_a_resolution"},
+          {@switch_valid_version, @switch_valid, "validate_a_switch_as_a_resolution"},
+          {@sessions_version, @sessions, "keep_the_sessions_of_a_shared_run"}
         ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
@@ -277,7 +300,7 @@ defmodule Apiary.Dispatches.SchemaTest do
                      "('variables_invalid', 'ticket_gone', 'inputs_invalid', 'provider_gone', " <>
                      "'runtime_unserved', 'key_gone', 'model_gone', 'secrets_not_allowed', " <>
                      "'build_failed', 'harness_unresolved', 'target_access_gone', " <>
-                     "'write_without_work_item') " <>
+                     "'write_without_work_item', 'shared_access_differs') " <>
                      "THEN 'error' END",
                    [Atom.to_string(cause)]
                  )
@@ -1079,6 +1102,16 @@ defmodule Apiary.Dispatches.SchemaTest do
   @options [log: false, migration_lock: false]
 
   defp down! do
+    assert :ok = Ecto.Migrator.down(Repo, @sessions_version, @sessions, @options)
+
+    assert :ok =
+             Ecto.Migrator.down(Repo, @switch_valid_version, @switch_valid, @options)
+
+    assert :ok = Ecto.Migrator.down(Repo, @switch_version, @switch, @options)
+    assert :ok = Ecto.Migrator.down(Repo, @move_valid_version, @move_valid, @options)
+    # The down of `20261117090100`, without CONCURRENTLY, which a transaction refuses.
+    Repo.query!("DROP INDEX gate_decisions_escalation_id_index")
+    assert :ok = Ecto.Migrator.down(Repo, @move_went_version, @move_went, @options)
     assert :ok = Ecto.Migrator.down(Repo, @move_stage_version, @move_stage, @options)
     assert :ok = Ecto.Migrator.down(Repo, @model_keys_version, @model_keys, @options)
     assert :ok = Ecto.Migrator.down(Repo, @declined_version, @declined, @options)
@@ -1109,6 +1142,18 @@ defmodule Apiary.Dispatches.SchemaTest do
     assert :ok = Ecto.Migrator.up(Repo, @declined_version, @declined, @options)
     assert :ok = Ecto.Migrator.up(Repo, @model_keys_version, @model_keys, @options)
     assert :ok = Ecto.Migrator.up(Repo, @move_stage_version, @move_stage, @options)
+    assert :ok = Ecto.Migrator.up(Repo, @move_went_version, @move_went, @options)
+
+    Repo.query!(
+      "CREATE INDEX gate_decisions_escalation_id_index ON gate_decisions (escalation_id) " <>
+        "WHERE escalation_id IS NOT NULL"
+    )
+
+    assert :ok = Ecto.Migrator.up(Repo, @move_valid_version, @move_valid, @options)
+    assert :ok = Ecto.Migrator.up(Repo, @switch_version, @switch, @options)
+    assert :ok = Ecto.Migrator.up(Repo, @switch_valid_version, @switch_valid, @options)
+
+    assert :ok = Ecto.Migrator.up(Repo, @sessions_version, @sessions, @options)
 
     # `DispatchRun` writes `image_requeue` and `machine_type_was_default`, of migrations
     # left down, on every insert.

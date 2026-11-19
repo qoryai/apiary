@@ -269,6 +269,22 @@ defmodule Apiary.Runs.RegistrationTest do
       assert Repo.get!(AccessKey, key.id).last_used_at
     end
 
+    test "a run registered outside the workspace's queue has no run variables", %{
+      key: key,
+      scope: scope
+    } do
+      no_policy_version!(scope.workspace)
+
+      {:ok, _variable} =
+        Apiary.Variables.create_variable(scope, :workspace, %{
+          name: "NODE_ENV",
+          value: "production"
+        })
+
+      assert {:ok, %{run: %Run{id: id}}} = register(key, body())
+      assert Repo.get!(Run, id).registration_variables == nil
+    end
+
     test "an instance beyond the node's limit stores nothing, and the refusal counts",
          %{key: key} do
       assert {:ok, _} = register(key, body(), "i_one")

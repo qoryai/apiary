@@ -137,6 +137,10 @@ defmodule Apiary.Runs.Run do
     # until a session reported one.
     field :peak_memory_bytes, :integer
     field :cpu_time_ms, :integer
+    # The number of the session that paused at the limit of the run's model keys, from its
+    # `dev.qory.session.exited` (`Apiary.Runs.Fold`); null while no session paused. The run
+    # that continues a paused run resumes this session (`Apiary.Runs.Transcript`).
+    field :paused_session, :integer
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -210,6 +214,13 @@ defmodule Apiary.Runs.Run do
     field :model_keys, {:array, :map}, redact: true
     field :provider_chain, :string
     field :provider_api, :map, redact: true
+
+    # For a run of a stage with `shared_run: true`, the settings of each workflow entry of
+    # the stage as the claim read them (`Apiary.Stages.claim_sessions!/2`): by the entry's
+    # place, `"0"`, or `"2.1"` for an entry of a loop's body, a map of `"workflow"`,
+    # `"time_limit_minutes"` and `"full_suite"`. Written by the claim; nil for every
+    # other run. Not folded: a rebuild keeps it.
+    field :session_settings, :map
 
     # The run's outcome, as its starter gave it (`Apiary.Runs.Outcome`): its state,
     # `succeeded`, `failed` or `cancelled`, and its reason, nil when it gave none; the
@@ -514,6 +525,18 @@ defmodule Apiary.Runs.Run do
           not is_nil(r.cancel_requested_at),
       select: 1
   end
+
+  @doc """
+  The ids of the model providers whose keys the session number `session` of `run` runs
+  on: the run's provider (`provider_connection_id`), for every session, because a run
+  has one provider; none for a run with no provider. The end of a paused run, with
+  `session` the session that paused (`paused_session`, nil when it is not known), keeps
+  the earliest end of a cooldown among the keys of these providers alone as
+  `dispatch_runs.paused_until` of the run's run of the queue.
+  """
+  @spec session_provider_ids(t() | map(), pos_integer() | nil) :: [Ecto.UUID.t()]
+  def session_provider_ids(%{provider_connection_id: id}, _session) when is_binary(id), do: [id]
+  def session_provider_ids(_run, _session), do: []
 
   @doc "Whether the run paused (`paused_states/0`)."
   @spec paused?(t() | map()) :: boolean()

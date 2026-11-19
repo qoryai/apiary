@@ -1,10 +1,12 @@
 defmodule ApiaryWeb.WorkItemLive.Show do
   # One work item, by its number in the workspace: its Ticket tab (`:ticket`), one tab for
   # each stage that runs a workflow and has a run or is the current stage (`:stage`,
-  # `/work/:number/stages/:stage_id`, `ApiaryWeb.WorkItemLive.StageTab`) and its Thread
-  # (`:thread`). The tabs are live actions of this one LiveView, so a tab is a patch and the
-  # header stays. The address with no tab (`:open`) shows the tab the work item opens on
-  # (`home/3`), once, when the address loads. A stage's id in the address is stable, so a
+  # `/work/:number/stages/:stage_id`, `ApiaryWeb.WorkItemLive.StageTab`), its Questions
+  # tab (`:questions`, once a question exists) and its Thread (`:thread`). The tabs are live
+  # actions of this one LiveView, so a tab is a patch and the header stays. The address with
+  # no tab (`:open`) shows the tab the work item opens on
+  # (`home/4`), once, when the address loads: the tab of the stage that waits, while the
+  # work item needs answers. A stage's id in the address is stable, so a
   # stage renamed by an owner keeps its address.
   #
   # **`/explore`** (`:explore`) is Explore's tab with no stage card. With one, it patches to
@@ -52,8 +54,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # **What a reader does.** Undo, Close, Run Explore again, Run another round, Confirm,
   # and a reply to a review comment on its form page (`?reply=<id>`), each
   # sent with the work item the page last read and the attempt of its latest run, so an
-  # action from a page that read an earlier state fails (`Apiary.WorkItems.Moves`). Run
-  # another round, from the questions form or the gate of the current stage's tab, sends
+  # action from a page that read an earlier state fails (`Apiary.WorkItems.Moves`). A
+  # member answers the questions in the frame Open questions of the current stage's tab,
+  # or of the Questions tab: both forms read and write the page's one draft (`answers`,
+  # `comment`, `drafts/2`), so an answer picked on one tab shows on the other until the
+  # page loads again. Run another round, from either questions form or the gate of the
+  # current stage's tab, sends
   # the answers given, one comment on the whole round and the open review comments of
   # that stage in one move, which starts one run (`Apiary.WorkItems.another_round/4`);
   # the open review comments and the comment go only from a reader who may send review
@@ -124,11 +130,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   import ApiaryWeb.WorkItemComponents
 
   alias Apiary.{Access, AccessKeys, Artifacts, Edition, Gateways, Processes, Runs, Stages}
-  alias Apiary.{WorkItems, WorkspaceSetup}
+  alias Apiary.{Submissions, WorkItems, WorkspaceSetup}
   alias Apiary.Runs.Run
-  alias Apiary.WorkItems.ExploreView
+  alias Apiary.WorkItems.{ExploreView, Proposal}
   alias ApiaryWeb.{ArtifactComponents, HarnessComponents, SpendDialog, UserAuth}
-  alias ApiaryWeb.WorkItemLive.{Comments, StageComponents, StageTab, View, Workflow}
+  alias ApiaryWeb.WorkItemLive.{Comments, StageComponents, StageTab, VerifyTab, View, Workflow}
 
   @comment_events Comments.events() -- ["cancel_question"]
   # As on the run's page (`ApiaryWeb.RunLive.Show`).
@@ -144,7 +150,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   @actions ~w(undo ask_close close explore_again answer_draft answer confirm reply page_draft open_fold open_frame)
   # The statuses where no run runs, so the page shows Reply and its form page
   # (`can_review?/3`).
-  @no_run [:questions, :confirm, :no_result, :lost, :cancelled, :used_up]
+  # The statuses of a run that gave no result: Run Explore again follows.
+  @no_result [:no_result, :lost, :time_limit, :cancelled]
+  @no_run [:questions, :confirm, :no_result, :lost, :time_limit, :cancelled, :used_up]
   # The statuses of today's Explore (`Apiary.WorkItems.explore/3`) while the work item is
   # at Explore, its gate included.
   @explore_statuses [
@@ -154,6 +162,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     :used_up,
     :no_result,
     :lost,
+    :time_limit,
     :cancelled,
     :confirm
   ]
@@ -247,9 +256,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             add_path={&add_path(@current_scope, @number, &1)}
             version_path={&ArtifactComponents.version_path(@current_scope, @number, &1)}
             recorded={@gate_recorded}
-            answers_path={
-              tab_path(@current_scope, @number, StageTab.current(@flow) || :explore, @flow)
-            }
+            answers_path={answers_path(@current_scope, @number, @flow)}
             asking={@stage_asking}
             error={@stage_error}
             check={@stage_check}
@@ -267,6 +274,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             can_close={@can.close}
             previous={@previous}
             explore_path={if @tab != :explore, do: tab_path(@current_scope, @number, :explore, @flow)}
+            questions_path={if @tab != :explore, do: answers_path(@current_scope, @number, @flow)}
             item_noun={@source.item_noun}
             now={@now}
             stage_name={if one_card?(@flow, @item), do: @flow.stage.name}
@@ -302,8 +310,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
                 (&reply_path(@current_scope, @number, list_tab(@tab, @flow), @flow, &1))
             }
             reading={reading(@item, @tab, @flow)}
-            explore_path={tab_path(@current_scope, @number, list_tab(@tab, @flow), @flow)}
-            questions_id={questions_id(list_tab(@tab, @flow))}
+            explore_path={tab_path(@current_scope, @number, :questions)}
+            question_numbers={tab_numbers(@questions, @flow)}
             level="h2"
             tip="tooltip-right"
           />
@@ -321,12 +329,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             <StageComponents.needs_block
               :if={!@flow.explore and needs?(@flow)}
               page={@flow}
+              scope={@current_scope}
+              number={@number}
               questions={@questions}
-              question_path={
-                if @tab != questions_tab(@flow),
-                  do: tab_path(@current_scope, @number, questions_tab(@flow), @flow)
-              }
-              questions_id={questions_id(questions_tab(@flow))}
+              question_path={if @tab != :questions, do: tab_path(@current_scope, @number, :questions)}
               class="mb-3"
             />
             <StageComponents.stage_runs
@@ -348,6 +354,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             ticket_path={tab_path(@current_scope, @number, :ticket)}
             explore_path={tab_path(@current_scope, @number, :explore)}
             stages={stage_tabs(@current_scope, @number, @flow)}
+            questions_path={asked?(@questions) && tab_path(@current_scope, @number, :questions)}
+            open_questions={Enum.count(@questions, &(&1.state == :open))}
             thread_path={tab_path(@current_scope, @number, :thread)}
             comment_count={@comment_count}
             item_noun={@source.item_noun}
@@ -371,7 +379,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             earlier_take_ins={@view.take_ins}
             proposal={@proposal}
             questions={@view.questions}
-            questions_version={@view.questions_version}
+            waiting={@view.waiting}
+            questions_path={tab_path(@current_scope, @number, :questions)}
+            question_numbers={tab_numbers(@questions, @flow)}
             review_comments={@view.review_comments}
             can_act={@can.act and acts?(@tab, @flow, @item)}
             can_send={@can.send and acts?(@tab, @flow, @item)}
@@ -395,8 +405,34 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             track_offer={track_offer(@flow, @track)}
             cancel={@cancel}
           >
+            <:open_questions>
+              <.tab_questions
+                id="work-item-explore-questions"
+                number={@number}
+                questions={@questions}
+                flow={@flow}
+                tab={@tab}
+                can={@can}
+                item={@item}
+                answers={@answers}
+                comment={@comment}
+                errors={@errors}
+                form_error={@form_error}
+                submits={@submits}
+                move_error={@move_error}
+                proposal={@proposal}
+                review_comments={@view.review_comments}
+                now={@now}
+              />
+            </:open_questions>
             <:needs :if={@flow && @flow.explore && needs?(@flow)}>
-              <StageComponents.needs_block page={@flow} questions={@questions} />
+              <StageComponents.needs_block
+                page={@flow}
+                scope={@current_scope}
+                number={@number}
+                questions={@questions}
+                question_path={tab_path(@current_scope, @number, :questions)}
+              />
             </:needs>
             <:artifacts :if={@flow && (@flow.explore or !@flow.at_explore)}>
               <.artifacts_section
@@ -426,7 +462,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             has_outputs={@output_frames}
             runs_on_track={StageTab.runs_on_track?(@flow, @view.stage)}
             wrote={@view.wrote}
+            suite={@suite}
+            submissions={@submissions}
             questions={@view.questions}
+            waiting={@view.waiting}
+            questions_path={tab_path(@current_scope, @number, :questions)}
+            question_numbers={tab_numbers(@questions, @flow)}
             review_comments={@view.review_comments}
             current={StageTab.current(@flow) == @tab}
             can_act={@can.act and acts?(@tab, @flow, @item)}
@@ -456,6 +497,26 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             now={@now}
             cancel={@cancel}
           >
+            <:open_questions>
+              <.tab_questions
+                id="work-item-tab-questions"
+                number={@number}
+                questions={@questions}
+                flow={@flow}
+                tab={@tab}
+                can={@can}
+                item={@item}
+                answers={@answers}
+                comment={@comment}
+                errors={@errors}
+                form_error={@form_error}
+                submits={@submits}
+                move_error={@move_error}
+                proposal={@proposal}
+                review_comments={@view.review_comments}
+                now={@now}
+              />
+            </:open_questions>
             <:artifacts :if={!lists_above?(@flow)}>
               <.artifacts_section
                 flow={@flow}
@@ -463,19 +524,65 @@ defmodule ApiaryWeb.WorkItemLive.Show do
                 index={@view.index}
                 scope={@current_scope}
                 number={@number}
+                label={verify_label(@view.stage)}
               />
             </:artifacts>
             <:row :let={output}>
-              <ArtifactComponents.list
-                id={"work-item-tab-output-#{StageComponents.frame_key(output)}-row"}
-                artifacts={
-                  Enum.filter(@artifacts, &(&1.type == output.type and &1.name == output.name))
-                }
+              <VerifyTab.verification_body
+                :if={output.kind == :verification}
+                id={"work-item-tab-output-#{output.type}-parts"}
+                verification={elem(output.read, 1)}
+                accepted={output[:accepted]}
+                anchors={output[:anchors] || %{}}
+              >
+                <ArtifactComponents.list
+                  id={"work-item-tab-output-#{output.type}-row"}
+                  artifacts={row_artifacts(@artifacts, output, @view, @row, @submit_type)}
+                  scope={@current_scope}
+                  number={@number}
+                  label={verify_label(@view.stage)}
+                />
+              </VerifyTab.verification_body>
+              <VerifyTab.scenarios_body
+                :if={output.kind == :scenarios}
+                id="work-item-tab-scenarios"
+                scenarios={elem(output.read, 1)}
                 scope={@current_scope}
                 number={@number}
               />
+              <ArtifactComponents.list
+                :if={output.kind not in [:verification, :scenarios]}
+                id={"work-item-tab-output-#{StageComponents.frame_key(output)}-row"}
+                artifacts={row_artifacts(@artifacts, output, @view, @row, @submit_type)}
+                scope={@current_scope}
+                number={@number}
+                label={verify_label(@view.stage)}
+              />
             </:row>
           </.stage_tab>
+          <.questions_tab
+            :if={@tab == :questions}
+            number={@number}
+            questions={@view.questions}
+            stages={question_stages(@flow)}
+            fallback={question_fallback(@flow)}
+            stage={stage_now(@flow)}
+            stage_id={stage_id_now(@flow)}
+            form={answering?(@can, @item)}
+            answers={@answers}
+            comment={@comment}
+            errors={@errors}
+            form_error={@form_error}
+            submits={@submits}
+            move_error={answering?(@can, @item) && @move_error}
+            commenting={@can.send and (question_updates(@flow) == :outputs or @proposal != nil)}
+            open_comments={
+              if @can.send, do: Enum.count(@view.review_comments, &(&1.state == :open)), else: 0
+            }
+            change={@can.change}
+            updates={question_updates(@flow)}
+            now={@now}
+          />
           <.thread :if={@tab == :thread}>
             <%= for {event, i} <- Enum.with_index(@thread, 1) do %>
               <Comments.comment_line
@@ -534,6 +641,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   attr :number, :integer, required: true
   attr :round, :boolean, default: true, doc: "whether a run's writer shows its round"
   attr :index, :list, default: nil, doc: "the approval marks; nil for all of `flow`'s"
+  attr :label, :any, default: nil, doc: "`ArtifactComponents.list/1`'s `label`"
 
   # The work item's artifacts, with their approval marks and Add a version.
   defp artifacts_section(assigns) do
@@ -548,6 +656,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         number={@number}
         add={@flow.can_add}
         round={@round}
+        label={@label}
       />
     </section>
     """
@@ -605,7 +714,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            view: nil,
            frames: [],
            output_frames: false,
+           suite: nil,
+           suite_reads: %{},
+           submissions: nil,
+           submission_reads: %{},
+           submit_type: nil,
            frame_texts: %{},
+           stored_reads: %{},
            opened_frames: MapSet.new(),
            stage_asking: nil,
            stage_error: nil,
@@ -636,7 +751,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
        errors: %{}
      )
      |> ask_page(asked_page(action, params))
-     |> load()
+     |> read_page()
      |> addressed(params)
      |> opened()
      |> ticketed()}
@@ -652,7 +767,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # An address that is not the tab it shows. `/explore` under the workflow model patches to
   # the tab of the first stage with a `proposal` output, with its query, or to the work
   # item's address for none; on a first draw it shows that tab, so a link to it loads
-  # (`current_tab/1`). A stage with no tab here patches to the work item's address.
+  # (`current_tab/1`). A stage with no tab here, and `/questions` of a work item with no
+  # question, patch to the work item's address.
   defp addressed(%{redirected: redirected} = socket, _params) when not is_nil(redirected),
     do: socket
 
@@ -669,6 +785,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             ),
           else: socket
     end
+  end
+
+  defp addressed(%{assigns: %{live_action: :questions, questions: questions}} = socket, _params) do
+    if asked?(questions),
+      do: socket,
+      else: push_patch(socket, to: tab_path(scope(socket), socket.assigns.number, :open))
   end
 
   defp addressed(%{assigns: %{live_action: :stage, flow: flow, tab: tab}} = socket, _params) do
@@ -783,12 +905,24 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp ticketed(socket), do: socket
 
-  # The tab the work item opens on. With a stage card: the tab of its current stage while it
+  # The tab the work item opens on. The tab of the stage that waits, with its Open questions
+  # frame, while the work item needs answers: its stage waits for them (`flow.state`) and a
+  # question is open, or, with no stage card, Explore waits for them. Else, with a stage
+  # card: the tab of its current stage while it
   # is live, whatever Explore's status, because a moved-back work item has a confirmation and
   # a stopped run stops at its stage; else the Ticket tab. A test work item has no ticket, so
   # it opens on that tab even after it ended, else on the Thread. With none, Explore's for a
   # test work item and for an open work item with no stage, which is at Explore too
   # (`at_explore?/2`), by its status; else the Ticket tab.
+  defp home(row, status, flow, questions) do
+    if open?(questions) and waits_for_answers?(status, flow),
+      do: if(flow, do: StageTab.current(flow) || :questions, else: :explore),
+      else: home(row, status, flow)
+  end
+
+  defp waits_for_answers?(status, nil), do: status == :questions
+  defp waits_for_answers?(_status, flow), do: flow.state == :waiting_answers and not flow.ended
+
   defp home(%{test: true}, _status, nil), do: :explore
   defp home(%{test: true}, _status, flow), do: StageTab.current(flow) || :thread
 
@@ -833,6 +967,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   def handle_event("spend_cancel", _params, socket), do: {:noreply, assign(socket, :spend, nil)}
+
+  # The note typed in the spend's dialog, where it changes the run that starts.
+  def handle_event("spend_note", params, %{assigns: %{spend: %{} = spend}} = socket),
+    do: {:noreply, assign(socket, :spend, SpendDialog.noted(spend, params["note"]))}
+
+  def handle_event("spend_note", _params, socket), do: {:noreply, socket}
 
   def handle_event("show_earlier_comments", _params, socket),
     do: {:noreply, socket |> assign(:all_comments, true) |> load()}
@@ -963,10 +1103,21 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp spend("answer", params, socket) do
     if round_sends?(socket, drafted(params), comment_of(params)) do
+      # The questions form names the stage that waits, on its button and in its dialog.
+      {title, action} =
+        if questions_form?(socket) do
+          stage = stage_now(socket.assigns.flow)
+
+          {gettext("Run another round of %{stage}?", stage: stage),
+           gettext("Run another round of %{stage}", stage: stage)}
+        else
+          {gettext("Run another round?"), gettext("Run another round")}
+        end
+
       SpendDialog.ask("answer", params,
-        title: gettext("Run another round?"),
-        action: gettext("Run another round"),
-        line: run_line(socket, :next_run),
+        title: title,
+        action: action,
+        line: run_line(socket, :next_run, comment_of(params) != nil),
         return_to: round_button(socket)
       )
     end
@@ -990,15 +1141,23 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp spend(_event, _params, _socket), do: nil
 
-  # The Run another round button the dialog's focus goes back to: the gate's or the
-  # questions form's, on Explore's tab or a stage's.
+  # The Run another round button the dialog's focus goes back to: the questions form's, on
+  # the Questions tab, and on Explore's tab or a stage's while the questions wait; else the
+  # gate's.
+  defp round_button(%{assigns: %{tab: :questions}}), do: "work-item-questions-open-go"
+
   defp round_button(socket) do
     tab = if is_binary(socket.assigns.tab), do: "work-item-tab", else: "work-item-explore"
 
-    if round_status(socket) == :confirm,
-      do: "#{tab}-gate-send",
-      else: "#{tab}-questions-go"
+    if questions_form?(socket),
+      do: "#{tab}-questions-open-go",
+      else: "#{tab}-gate-send"
   end
+
+  # Whether Run another round comes from a questions form: on the Questions tab, or while
+  # the questions wait, when the tab has no gate.
+  defp questions_form?(socket),
+    do: socket.assigns.tab == :questions or round_status(socket) == :questions
 
   defp stage_spend("stage_approve", params, socket) do
     ask_if_run("stage_approve", params, socket, :approve,
@@ -1033,7 +1192,18 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       title: gettext("Run another round?"),
       action: gettext("Run another round"),
       line: run_line(socket, :another_round),
+      noted_line: run_line(socket, :another_round, true),
       return_to: "work-item-stage-escalation-another",
+      note: escalation_note()
+    )
+  end
+
+  defp stage_spend("stage_resolve", %{"switch" => track} = params, socket)
+       when is_binary(track) do
+    ask_if_run("stage_resolve", params, socket, {:switch, track},
+      title: gettext("Switch to %{track}?", track: switch_name(socket, track)),
+      action: gettext("Switch to %{track}", track: switch_name(socket, track)),
+      return_to: "work-item-stage-escalation-switch-#{track}",
       note: escalation_note()
     )
   end
@@ -1072,27 +1242,61 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp stage_spend(_event, _params, _socket), do: nil
 
+  # The name of the track `id` that the escalation card offers a switch to; its id for none.
+  defp switch_name(socket, id) do
+    Enum.find_value(socket.assigns.flow.switch, id, &(&1.id == id && &1.name))
+  end
+
   # The note of the escalation card, which goes to the next run.
   defp escalation_note,
     do: [hint: gettext("A note you add goes to the next run as work item data.")]
 
-  # The dialog of `event` where `act` starts a run, named by its workflow; else nil.
+  # The dialog of `event` where `act` starts a run, named by its workflow; else nil. With
+  # the note of the click (`params["note"]`) or none, as the act stores it: a note is
+  # feedback where a stage has `{feedback: new}`, so the workflow can differ. A dialog with
+  # a note field has the line for each, and shows the one for the note typed
+  # (`SpendDialog.noted/2`).
   defp ask_if_run(event, params, socket, act, opts) do
-    case Stages.starts(socket.assigns.row, act) do
+    noted = note(params) != nil
+
+    case Stages.starts(socket.assigns.row, act, noted) do
       {:run, workflow} ->
-        line = SpendDialog.run_line({:workflow, workflow}, scope(socket).workspace)
-        SpendDialog.ask(event, params, [line: line] ++ opts)
+        line = workflow_line(socket, {:run, workflow})
+
+        lines =
+          if Keyword.has_key?(opts, :note) do
+            {plain, with_note} =
+              if noted,
+                do: {Stages.starts(socket.assigns.row, act), {:run, workflow}},
+                else: {{:run, workflow}, Stages.starts(socket.assigns.row, act, true)}
+
+            [line: run_or_none(socket, plain), noted_line: run_or_none(socket, with_note)]
+          else
+            [line: line]
+          end
+
+        SpendDialog.ask(event, params, lines ++ opts)
 
       :none ->
         nil
     end
   end
 
-  # What `act` starts: a run of its workflow where the stage runner finds it, else the
-  # next run of the work item's stage, or of Explore with no stage.
-  defp run_line(socket, act) do
+  # The line of a run of `workflow`.
+  defp workflow_line(socket, {:run, workflow}),
+    do: SpendDialog.run_line({:workflow, workflow}, scope(socket).workspace)
+
+  # The line of a run of `workflow`; nil where the act starts no run, so the dialog shows
+  # no line for it.
+  defp run_or_none(socket, {:run, _workflow} = run), do: workflow_line(socket, run)
+  defp run_or_none(_socket, :none), do: nil
+
+  # What `act` starts, with a note or a comment for `noted` (`Apiary.Stages.starts/3`): a
+  # run of its workflow where the stage runner finds it, else the next run of the work
+  # item's stage, or of Explore with no stage.
+  defp run_line(socket, act, noted \\ false) do
     what =
-      case Stages.starts(socket.assigns.row, act) do
+      case Stages.starts(socket.assigns.row, act, noted) do
         {:run, workflow} -> {:workflow, workflow}
         :none -> {:stage, stage_now(socket.assigns.flow)}
       end
@@ -1102,6 +1306,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp stage_now(%{stage: %{name: name}}) when is_binary(name), do: name
   defp stage_now(_flow), do: gettext("Explore")
+
+  # The id of the stage that waits, nil with no stage card.
+  defp stage_id_now(%{stage: %{id: id}}), do: id
+  defp stage_id_now(_flow), do: nil
 
   # Whether Run another round sends anything: an answer, a changed decision, the
   # comment, or, with none, the open review comments (`comments_only?/1`).
@@ -1142,7 +1350,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # (`can_change`, `can/4`). `answer_list/2` keeps a decided question only where the
   # draft changes it.
   @spec answers(map, [map], atom, boolean) ::
-          {:ok, [%{String.t() => String.t() | nil}]} | {:error, %{String.t() => atom}}
+          {:ok, [%{String.t() => String.t() | nil}]} | {:error, %{String.t() => term}}
   def answers(draft, questions, status, can_change) do
     open = if status == :questions, do: Enum.filter(questions, &(&1.state == :open)), else: []
 
@@ -1324,6 +1532,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end
   end
 
+  defp stage_act("stage_resolve", %{"switch" => track} = params, socket)
+       when is_binary(track) do
+    fresh(socket, params, &decided(&1, &2, {:resolve, {:switch, track}, note(params)}))
+  end
+
   defp stage_act("stage_resolve", params, socket) do
     case Map.fetch(@resolutions, params["how"]) do
       {:ok, how} -> fresh(socket, params, &decided(&1, &2, {:resolve, how, note(params)}))
@@ -1417,6 +1630,17 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     )
   end
 
+  # A switch names the gate that recorded the work item's track, not the stage it is in.
+  def refused({:track_not_offered, track, gate}, _flow) do
+    gettext("Choose a track that the gate of %{stage} offers. It does not offer %{track}.",
+      stage: gate,
+      track: track
+    )
+  end
+
+  def refused({:already_on, track}, _flow),
+    do: gettext("The work item is already on %{track}.", track: track)
+
   def refused({:track_not_offered, track}, flow) do
     gettext("Choose a track that the gate of %{stage} offers. It does not offer %{track}.",
       stage: flow.stage.name,
@@ -1443,6 +1667,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   def refused({:invalid, :note}, _flow),
     do: gettext("Shorten the note to 4,000 characters or fewer.")
+
+  def refused(:note_missing, _flow), do: gettext("Add a note that says what to change.")
 
   def refused(_reason, _flow),
     do:
@@ -1654,10 +1880,27 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # The drafts of the questions form and of the comment, as the reader changes them.
   defp drafts(socket, params) do
     socket
-    |> assign(:answers, drafted(params))
+    |> assign(:answers, params |> drafted() |> wording_picks(params, socket.assigns.questions))
     |> assign(:comment, if(is_binary(params["comment"]), do: params["comment"], else: ""))
     |> assign(:track, track_draft(params, socket.assigns.track))
   end
+
+  # The draft after an edit of the criterion's new wording (`_target` is the field
+  # `answers[<id>][wording]`) where no option is picked: the option with that wording
+  # (`change_option/1`) picked, so the edit counts when the round runs.
+  defp wording_picks(draft, %{"_target" => ["answers", id, "wording"]}, questions)
+       when is_binary(id) do
+    with %{} = given <- draft[id],
+         nil <- given["option"],
+         %{} = question <- Enum.find(questions, &(&1.id == id)),
+         %{place: place} <- change_option(question) do
+      Map.put(draft, id, Map.put(given, "option", Integer.to_string(place)))
+    else
+      _other -> draft
+    end
+  end
+
+  defp wording_picks(draft, _params, _questions), do: draft
 
   # The track draft after a change of the gate's form: the radio's value where the reader
   # changed the radios (`_target` is `["track"]`), else the draft as it was. A change of the
@@ -1801,7 +2044,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp unread_of(_proposal), do: nil
 
   # The questions form's draft: by question id, each `%{"option" => choice, "note" =>
-  # text}` with only text in it.
+  # text}` with only text in it, and `"wording"`, the text of the field of the option that
+  # changes a criterion (`ApiaryWeb.WorkItemComponents.change_option/1`), where it has one.
   defp drafted(params) do
     case params["answers"] do
       %{} = given ->
@@ -1809,7 +2053,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
           {id,
            for(
              {field, text} <- value,
-             field in ["option", "note"],
+             field in ["option", "note", "wording"],
              is_binary(text),
              into: %{},
              do: {field, text}
@@ -1832,16 +2076,27 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # where the draft does not change it: the run's option, or nothing, picked, and an
   # empty field (`ApiaryWeb.WorkItemComponents.decision_changed?/2`). `{:error, errors}`
   # by question id, `:note_required` for Give your own option with an empty field.
+  #
+  # The option that changes a question's criterion
+  # (`ApiaryWeb.WorkItemComponents.change_option/1`), picked with a wording other than the
+  # agent's, keeps its title, and the note starts with the option's label and that
+  # wording, "Change AC-4: <wording>", a blank line before the note written. With the
+  # agent's wording, the answer is the option as for any other. A
+  # wording that would make the note longer than `Proposal.max_answer/0` characters, that
+  # has a character the note refuses, or an empty field, is the error `{:wording, error}`
+  # of its question (`ApiaryWeb.WorkItemComponents.wording_error/1`).
   @spec answer_list(map, [map]) ::
-          {:ok, [%{String.t() => String.t() | nil}]} | {:error, %{String.t() => atom}}
+          {:ok, [%{String.t() => String.t() | nil}]} | {:error, %{String.t() => term}}
   def answer_list(draft, open) when is_map(draft) and is_list(open) do
     checked =
       for %{id: id, options: options} = question <- open,
           not decided?(question) or decision_changed?(question, draft[id]) do
         given = Map.get(draft, id, %{})
         note = if blank?(given["note"]), do: nil, else: given["note"]
+        {note, wording_error} = with_wording(note, given, change_option(question))
 
         case {picked(given["option"], options), note} do
+          _any when wording_error != nil -> {:error, id, {:wording, wording_error}}
           {:own, nil} -> {:error, id, :note_required}
           {:own, note} -> {:ok, %{"id" => id, "option" => nil, "note" => note}}
           {nil, nil} -> :none
@@ -1857,6 +2112,46 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   end
 
   defp decided?(question), do: question[:state] == :decided and question[:decision] != nil
+
+  # The note of an answer that picks the option changing a criterion (`change`), with the
+  # member's wording where it differs from the agent's, line breaks compared as line feeds,
+  # and nil; or the note as given and the wording's error: `{:too_long, count}` where the
+  # note would pass `Proposal.max_answer/0` characters, `count` what the wording may take
+  # beside the label and the note, `:characters` for a character the note refuses, or
+  # `{:blank, criterion}` for an empty field, `criterion` such as "AC-4": the answer then
+  # sends nothing, not the agent's wording.
+  defp with_wording(note, %{"option" => option, "wording" => wording}, %{} = change)
+       when is_binary(wording) do
+    edited = line_feeds(wording)
+
+    cond do
+      option != Integer.to_string(change.place) or edited == line_feeds(change.proposal) ->
+        {note, nil}
+
+      edited == "" ->
+        {note, {:blank, change.criterion}}
+
+      not Proposal.text?(edited) ->
+        {note, :characters}
+
+      true ->
+        changed = change.label <> " " <> edited
+        composed = if note, do: changed <> "\n\n" <> note, else: changed
+        max = Proposal.max_answer()
+
+        if length(String.codepoints(composed)) > max and
+             (is_nil(note) or length(String.codepoints(line_feeds(note))) <= max) do
+          rest = max - length(String.codepoints(composed)) + length(String.codepoints(edited))
+          {note, {:too_long, max(rest, 0)}}
+        else
+          {composed, nil}
+        end
+    end
+  end
+
+  defp with_wording(note, _given, _change), do: {note, nil}
+
+  defp line_feeds(text), do: text |> String.replace(~r/\r\n?/, "\n") |> String.trim()
 
   # The option of a choice: `:own`, an option's title by its place from 1, or nil.
   defp picked("own", _options), do: :own
@@ -1953,9 +2248,19 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     if socket.redirected, do: socket, else: socket |> load() |> next.()
   end
 
+  # Everything the page draws, read again with its scope. A reader on the Questions tab
+  # whose read leaves no question to show lands on the work item's address, as an address
+  # with no question does (`addressed/2`).
+  defp load(socket) do
+    case read_page(socket) do
+      %{assigns: %{live_action: :questions}} = read -> addressed(read, %{})
+      read -> read
+    end
+  end
+
   # Everything the page draws, read again with its scope. A work item no longer readable
   # here: the page's tab loads again, and is then not found.
-  defp load(socket) do
+  defp read_page(socket) do
     scope = scope(socket)
     now = DateTime.utc_now()
     comments = if socket.assigns.all_comments, do: :all, else: :latest
@@ -1976,6 +2281,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       flow =
         if Workflow.on?(scope),
           do: Workflow.page(scope, row, proposal: explore.status == :confirm)
+
+      {flow, reads} = with_drafts(flow, socket.assigns.stored_reads)
 
       flow =
         flow &&
@@ -2015,7 +2322,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
       assign(socket,
         row: row,
-        home: home(row, explore.status, flow),
+        home: home(row, explore.status, flow, page.questions),
         now: now,
         page_title: gettext("Work item #%{number}", number: row.number),
         source: words(row, source),
@@ -2052,6 +2359,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         cancel: cancel(scope, socket.assigns.cancel),
         flow: flow,
         gate_recorded: gate_recorded(row, flow),
+        stored_reads: reads,
         artifacts: if(flow, do: shown_artifacts(row), else: []),
         no_pool: no_pool(scope, page.work_item),
         no_fit: no_fit(scope, row, page.work_item)
@@ -2110,7 +2418,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp framed(%{assigns: %{tab: tab, view: %{stage: %{} = stage}} = assigns} = socket)
        when is_binary(tab) do
-    outputs = assigns |> recorded(stage.id) |> StageTab.frames()
+    outputs = output_frames(assigns, stage)
 
     frames =
       outputs
@@ -2120,25 +2428,146 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       |> StageTab.approved(stage, assigns.flow.index)
       |> Enum.map(&approver(socket, &1))
 
+    # The scenarios are read whatever the frame's fold, so a tab with none has no frame. A
+    # frame of the kind `:row` shows no text, so none is read for it.
     wanted =
-      for %{type: type, name: name, version: version, open: open} <- frames,
-          open or MapSet.member?(assigns.opened_frames, {type, name}),
-          do: {type, name, version}
+      for %{type: type, name: name, open: open} = frame <- frames,
+          frame.kind != :row,
+          open or frame.kind == :scenarios or MapSet.member?(assigns.opened_frames, {type, name}),
+          do: read_key(frame, assigns)
 
-    texts =
-      Enum.reduce(wanted, assigns.frame_texts, fn key, texts ->
-        Map.put_new_lazy(texts, key, fn -> read_output(socket, key) end)
+    {texts, reads} =
+      Enum.reduce(wanted, {assigns.frame_texts, assigns.stored_reads}, fn key, {texts, reads} ->
+        if Map.has_key?(texts, key) do
+          {texts, reads}
+        else
+          {read, reads} = read_output(socket, key, reads)
+          {Map.put(texts, key, read), reads}
+        end
       end)
 
-    frames =
-      Enum.map(frames, fn %{type: type, name: name, version: version} = frame ->
-        Map.put(frame, :read, Map.get(texts, {type, name, version}, :unread))
+    {frames, reads} =
+      Enum.flat_map_reduce(frames, reads, fn
+        %{kind: :row} = frame, reads ->
+          {[Map.put(frame, :read, nil)], reads}
+
+        frame, reads ->
+          frame
+          |> Map.put(:read, Map.get(texts, read_key(frame, assigns), :unread))
+          |> verify_frame(socket, reads)
       end)
 
-    assign(socket, frames: frames, output_frames: outputs != [], frame_texts: texts)
+    frames = anchored(frames)
+    {submissions, submission_reads} = submissions(socket, frames)
+    {submit_type, submission_reads} = Submissions.type_cached(assigns.row, submission_reads)
+    {suite, suite_reads} = suite(assigns, frames)
+
+    assign(socket,
+      frames: frames,
+      output_frames: outputs != [],
+      frame_texts: texts,
+      stored_reads: reads,
+      submissions: submissions,
+      submission_reads: submission_reads,
+      submit_type: submit_type,
+      suite: suite,
+      suite_reads: suite_reads
+    )
   end
 
-  defp framed(socket), do: assign(socket, frames: [], output_frames: false)
+  defp framed(socket),
+    do:
+      assign(socket,
+        frames: [],
+        output_frames: false,
+        suite: nil,
+        submissions: nil,
+        submit_type: nil
+      )
+
+  # The Submissions list, in place of the frame of the submission type with name `main`,
+  # on the tab of a stage that outputs it: `%{type:, rows:, names:}`, nil on any other tab
+  # and where the work item has no submission to list. The rows have the address of their
+  # run's page where the reader may read runs (`Apiary.Submissions.list/4`).
+  defp submissions(%{assigns: %{view: %{stage: stage}, row: row} = assigns} = socket, frames) do
+    reads = assigns.submission_reads
+
+    if frames == [] do
+      {nil, reads}
+    else
+      {type, reads} = Submissions.type_cached(row, reads)
+
+      with true <-
+             is_binary(type) and type in stage.outputs and
+               Enum.any?(frames, &(&1.type == type and &1.name == "main")),
+           {[_row | _more] = rows, reads} <-
+             Submissions.list_cached(row, type, assigns.artifacts, nil, reads) do
+        scope = scope(socket)
+        ctx = %{scope: scope, readable: View.readable(scope, Enum.map(rows, & &1.workspace_id))}
+
+        rows =
+          Enum.map(rows, fn row ->
+            path = View.run_path(ctx, %{number: row.run, workspace_id: row.workspace_id})
+            Map.put(row, :path, path)
+          end)
+
+        names = Submissions.system_names(assigns.row, Submissions.draft_systems(rows))
+        {%{type: type, rows: rows, names: names}, reads}
+      else
+        _none -> {nil, reads}
+      end
+    end
+  end
+
+  # The full test suite result under the build report's frame, from the newest verdict
+  # with a result of the run that wrote the shown report version (`Stages.full_suite/3`),
+  # and only where the tab has that frame (name `main`). Returns it and the reads kept so
+  # far (`suite_reads`, a verdict version's read by its public id, as `frame_texts` keeps
+  # a frame's text).
+  defp suite(assigns, frames) do
+    with %{version: number} <-
+           Enum.find(frames, &(&1.type == "build-report" and &1.name == "main")),
+         {%{} = suite, reads} <- Stages.full_suite(assigns.artifacts, number, assigns.suite_reads) do
+      {Map.put(suite, :fast, StageTab.fast_track?(assigns.flow)), reads}
+    else
+      {nil, reads} -> {nil, reads}
+      _no_report -> {nil, assigns.suite_reads}
+    end
+  end
+
+  # The output frames of the tab of `stage`: on a tab whose stage has a `verification`
+  # output (`StageTab.verify?/1`), the verification, the Scenarios frame and the row frames
+  # of the newest versions the take in's runs wrote (`StageTab.verify_frames/2`); on any
+  # other tab, one frame for each version an approval of the stage records
+  # (`StageTab.frames/1`).
+  defp output_frames(assigns, stage) do
+    if StageTab.verify?(stage) do
+      newest =
+        assigns.row
+        |> ExploreView.newest_outputs(stage.id, stage.outputs)
+        |> StageTab.newest(assigns.view.artifacts, assigns.row.take_in)
+
+      StageTab.verify_frames(stage, newest)
+    else
+      assigns |> recorded(stage.id) |> StageTab.frames()
+    end
+  end
+
+  # The frames, the verification's with `anchors`: the DOM id of each scenario of the
+  # Scenarios frame by its number, which the matrix's Evidence cells link to
+  # (`VerifyTab.evidence_parts/2`).
+  defp anchored(frames) do
+    anchors =
+      for %{kind: :scenarios, read: {:scenarios, scenarios}} <- frames,
+          %{number: number, key: key} when is_integer(number) <- scenarios,
+          reduce: %{} do
+        anchors -> Map.put_new(anchors, number, "work-item-tab-scenarios-#{key}")
+      end
+
+    for frame <- frames do
+      if frame.kind == :verification, do: Map.put(frame, :anchors, anchors), else: frame
+    end
+  end
 
   # The member of a frame's approval (`StageTab.approved/3`) as the components show a
   # person (`View.person/2`), Former member for one whose account is gone: read for that
@@ -2150,8 +2579,185 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp approver(_socket, frame), do: frame
 
-  defp read_output(%{assigns: %{row: row, number: number}} = socket, {type, name, version}),
+  # A frame's key among the texts the page read: its type, name and version; for the
+  # Scenarios frame, the stage, the take in and the newest version of each name of the types
+  # its scenarios are read from, so a new version of any of them reads them again.
+  defp read_key(%{kind: :scenarios}, %{view: view, artifacts: artifacts, row: row}) do
+    ids =
+      for artifact <- artifacts,
+          artifact.type in ["verification", "demo-evidence", "demo-script" | VerifyTab.media()],
+          %{public_id: id} <- [Artifacts.newest_counted(artifact)],
+          do: id
+
+    {:scenarios, view.stage.id, row.take_in, Enum.sort(ids)}
+  end
+
+  defp read_key(%{type: type, name: name, version: version}, _assigns),
+    do: {type, name, version}
+
+  # A verification is read as its parts (`VerifyTab.verification/1`), else, as any other
+  # output, as Markdown. The scenarios are those of the verified commit, that of the
+  # stage's verification, where it has one (`VerifyTab.scenarios/5`). `reads` is what the
+  # page read from the store before (`stored_reads`), by version: a version never
+  # changes, so each is read once. Each clause returns the read and `reads`.
+  defp read_output(%{assigns: assigns}, {:scenarios, stage_id, take_in, _ids}, reads) do
+    {scenarios, reads} =
+      VerifyTab.queue(assigns.row, assigns.artifacts, stage_id, take_in, reads)
+
+    {{:scenarios, scenarios}, reads}
+  end
+
+  defp read_output(socket, {"verification", "main", number} = key, reads) do
+    case VerifyTab.verification_parts(socket.assigns.row, number, reads) do
+      {%{} = verification, reads} -> {{:verification, verification}, reads}
+      {nil, reads} -> {shown_output(socket, key), reads}
+    end
+  end
+
+  defp read_output(socket, key, reads), do: {shown_output(socket, key), reads}
+
+  defp shown_output(%{assigns: %{row: row, number: number}} = socket, {type, name, version}),
     do: View.shown_output(scope(socket), number, ExploreView.output(row, type, version, name))
+
+  # The flow with the drafts of the newest submission (`Submissions.repositories/1`), its JSON
+  # document read once per version (`VerifyTab.stored_json/3`), and `reads`.
+  defp with_drafts(%{submission: %{id: id} = version} = flow, reads) do
+    reads = VerifyTab.stored_json(reads, id, version)
+    {%{flow | drafts: Submissions.repositories(reads[{:json, id}])}, reads}
+  end
+
+  defp with_drafts(flow, reads), do: {flow, reads}
+
+  # A frame as the tab draws it, once read: the Scenarios frame with its count, or none
+  # where it has no scenario; a verification read as its parts with the model families and
+  # the member who accepted the stage's escalation (`accepted/3`); a verification shown as
+  # its Markdown with that member too. Returns the frames and `reads`.
+  defp verify_frame(%{kind: :scenarios, read: {:scenarios, []}}, _socket, reads), do: {[], reads}
+
+  defp verify_frame(%{kind: :scenarios, read: {:scenarios, scenarios}} = frame, _socket, reads) do
+    count = length(scenarios)
+
+    caption =
+      ngettext(
+        "Version %{version} · %{count} scenario",
+        "Version %{version} · %{count} scenarios",
+        count,
+        version: ApiaryWeb.Format.number(frame.version)
+      )
+
+    {[Map.put(frame, :caption, caption)], reads}
+  end
+
+  defp verify_frame(%{read: {:verification, verification}} = frame, socket, reads) do
+    caption =
+      if verification.families != [],
+        do:
+          gettext("Version %{version} · Model families: %{families}",
+            version: ApiaryWeb.Format.number(frame.version),
+            families: Enum.join(verification.families, " · ")
+          )
+
+    {frame, reads} =
+      %{frame | kind: :verification} |> Map.put(:caption, caption) |> accepted(socket, reads)
+
+    {[frame], reads}
+  end
+
+  defp verify_frame(%{type: "verification", read: read} = frame, socket, reads)
+       when is_map(read) do
+    {frame, reads} = accepted(frame, socket, reads)
+    {[frame], reads}
+  end
+
+  defp verify_frame(frame, _socket, reads), do: {[frame], reads}
+
+  # The member who accepted as it is the newest escalation of the stage after the run
+  # pushed the frame's verification (`Apiary.Stages.accepted/2`), by name, as the page
+  # shows a person (`View.person/2`); nil for none. It is read again only when the stage's
+  # place changes (stage, state, round or entry), as an accept changes the state: `reads`
+  # keeps the one answer of the newest place.
+  defp accepted(%{version: number} = frame, %{assigns: assigns} = socket, reads) do
+    %{row: row, view: %{stage: stage}} = assigns
+
+    key =
+      {:accepted, stage.id, number,
+       {row.stage_id, row.stage_state, row.stage_round, row.stage_entry}}
+
+    case reads do
+      %{^key => name} ->
+        {Map.put(frame, :accepted, name), reads}
+
+      _unread ->
+        name = accepted_name(frame, socket)
+
+        reads =
+          reads
+          |> Map.reject(fn {read, _name} -> match?({:accepted, _, _, _}, read) end)
+          |> Map.put(key, name)
+
+        {Map.put(frame, :accepted, name), reads}
+    end
+  end
+
+  defp accepted_name(%{type: type, version: number}, %{assigns: assigns} = socket) do
+    pushed =
+      for %{type: ^type, name: "main"} = artifact <- assigns.view.artifacts,
+          %{number: ^number, inserted_at: at} <- artifact.versions,
+          do: at
+
+    with [at] <- pushed,
+         %{by: id, at: accepted} <- Stages.accepted(assigns.row, assigns.view.stage.id),
+         false <- DateTime.before?(accepted, at) do
+      socket |> scope() |> View.people(List.wrap(id)) |> View.person(id) |> Map.get(:name)
+    else
+      _none -> nil
+    end
+  end
+
+  # The artifacts of `type` that a frame of the tab lists, `main` first and then by name
+  # (`Apiary.Artifacts.name_order/1`): `main`, and each other name with a version that a
+  # run of the take in wrote at the stage (`StageTab.of_take_in/2`), so an earlier take
+  # in's names stay off the tab.
+  defp named(artifacts, type, view, row) do
+    taken =
+      for artifact <- StageTab.of_take_in(view.artifacts, row.take_in),
+          into: MapSet.new(),
+          do: {artifact.type, artifact.name}
+
+    artifacts
+    |> Enum.filter(&(&1.type == type and (&1.name == "main" or {type, &1.name} in taken)))
+    |> Enum.sort_by(&Artifacts.name_order(&1.name))
+  end
+
+  # The artifacts a frame's row lists: on the tab of a stage with a `verification` output,
+  # those of the frame's type (`named/4`); elsewhere, the artifact of the frame's type and
+  # name. An artifact of `submit_type`, the type in `submit.type`, has its runs' versions
+  # alone, so the row links the run's newest, as only a run's submit step writes a
+  # submission; one with no run's version is left out.
+  defp row_artifacts(artifacts, output, view, row, submit_type) do
+    listed =
+      if StageTab.verify?(view.stage),
+        do: named(artifacts, output.type, view, row),
+        else: Enum.filter(artifacts, &(&1.type == output.type and &1.name == output.name))
+
+    for artifact <- listed,
+        artifact = runs_only(artifact, submit_type),
+        artifact.versions != [],
+        do: artifact
+  end
+
+  defp runs_only(%{type: type} = artifact, type),
+    do: %{artifact | versions: Enum.filter(artifact.versions, &(&1.writer == :run))}
+
+  defp runs_only(artifact, _submit_type), do: artifact
+
+  # The words of the artifact rows in a frame: on the tab of a stage with a `verification`
+  # output, today's plain form (`VerifyTab.label/2`); elsewhere `ArtifactComponents.title/2`.
+  defp verify_label(%{outputs: outputs}) when is_list(outputs) do
+    if "verification" in outputs, do: &VerifyTab.label/2
+  end
+
+  defp verify_label(_stage), do: nil
 
   # Every run the page read, of any take in, for which stages have a tab.
   defp every_run(explore) do
@@ -2307,7 +2913,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
       case status do
         :questions -> :"work_item.answer"
         :confirm -> :"work_item.confirm"
-        status when status in [:no_result, :lost, :cancelled] -> :"work_item.explore_again"
+        status when status in @no_result -> :"work_item.explore_again"
         :used_up -> :"work_item.close"
         _other -> nil
       end
@@ -2641,7 +3247,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp foot(_flow, _item, _earlier_runs), do: nil
 
   defp escalated?(%{state: :escalated, escalation: %{}}, status)
-       when status in [:no_result, :lost, :cancelled, :used_up, :confirm],
+       when status in [:no_result, :lost, :time_limit, :cancelled, :used_up, :confirm],
        do: true
 
   defp escalated?(_flow, _status), do: false
@@ -2691,12 +3297,120 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp run_of_tab?(run, tab, flow),
     do: StageTab.key(flow, run[:stage_id] || flow.explore_id) == tab
 
-  # The tab with the current stage's questions, which the block "What the run needs from
-  # you" links to.
-  defp questions_tab(flow), do: StageTab.current(flow) || :explore
+  # Whether the work item has a question the Questions tab shows: a run's decision that no
+  # member answered is not one, it is in the Decisions frame of its stage's tab, unless a
+  # question is open.
+  defp asked?(questions), do: Enum.any?(questions, &(not decision?(&1)))
 
-  defp questions_id(:explore), do: "work-item-explore-questions"
-  defp questions_id(_tab), do: "work-item-tab-questions"
+  defp open?(questions), do: Enum.any?(questions, &(not decision?(&1) and &1.state == :open))
+
+  # Whether the reader may answer the open questions now: the work item waits for answers.
+  attr :id, :string, required: true
+  attr :number, :integer, required: true
+  attr :questions, :list, required: true
+  attr :flow, :map, default: nil
+  attr :tab, :any, required: true
+  attr :can, :map, required: true
+  attr :item, :map, required: true
+  attr :answers, :map, required: true
+  attr :comment, :any, required: true
+  attr :errors, :map, required: true
+  attr :form_error, :any, required: true
+  attr :submits, :integer, required: true
+  attr :move_error, :any, required: true
+  attr :proposal, :any, required: true
+  attr :review_comments, :list, required: true
+  attr :now, :any, required: true
+
+  # The frame Open questions of the tab `tab`, Explore's or a stage's
+  # (`ApiaryWeb.WorkItemComponents.open_questions/1`), from the page's assigns.
+  defp tab_questions(assigns) do
+    ~H"""
+    <.open_questions
+      id={@id}
+      number={@number}
+      questions={@questions}
+      stages={question_stages(@flow)}
+      fallback={question_fallback(@flow)}
+      stage={stage_now(@flow)}
+      stage_id={stage_id_now(@flow)}
+      only={tab_only(@tab, @flow)}
+      form={answering?(@can, @item) and is_nil(tab_only(@tab, @flow))}
+      answers={@answers}
+      comment={@comment}
+      errors={@errors}
+      form_error={@form_error}
+      submits={@submits}
+      move_error={answering?(@can, @item) && @move_error}
+      commenting={@can.send and (question_updates(@flow) == :outputs or @proposal != nil)}
+      open_comments={open_count(@can, @review_comments)}
+      change={@can.change}
+      updates={question_updates(@flow)}
+      now={@now}
+    />
+    """
+  end
+
+  defp answering?(can, item), do: can.act and item.status == :questions
+
+  # The open review comments a round sends, for a reader who may send them; else 0.
+  defp open_count(%{send: true}, comments), do: Enum.count(comments, &(&1.state == :open))
+  defp open_count(_can, _comments), do: 0
+
+  # The stages of the Questions tab's answered questions, in the process order: the stages
+  # of the process, or Explore alone with no stage card, whose questions have no stage.
+  defp question_stages(nil), do: [%{id: nil, name: gettext("Explore")}]
+  defp question_stages(flow), do: Enum.map(flow.stages, &%{id: &1.id, name: &1.name})
+
+  # The stage whose group holds a question of a stage that the process no longer has,
+  # as a run with no stage belongs to Explore's.
+  defp question_fallback(nil), do: nil
+  defp question_fallback(flow), do: flow.explore_id
+
+  # The numbers of the questions that the Questions tab draws, as
+  # `ApiaryWeb.WorkItemComponents.tab_numbers/4` reads them.
+  defp tab_numbers(questions, flow),
+    do: tab_numbers(questions, question_stages(flow), question_fallback(flow), stage_id_now(flow))
+
+  # Where Answer the questions leads: the Open questions frame of the current stage's tab,
+  # or of Explore's with no stage card; the Questions tab where the current stage has no
+  # tab.
+  defp answers_path(scope, number, nil),
+    do: tab_path(scope, number, :explore) <> "#work-item-explore-questions-open"
+
+  defp answers_path(scope, number, flow) do
+    case StageTab.current(flow) do
+      nil ->
+        tab_path(scope, number, :questions)
+
+      :explore ->
+        tab_path(scope, number, :explore, flow) <> "#work-item-explore-questions-open"
+
+      tab ->
+        tab_path(scope, number, tab, flow) <> "#work-item-tab-questions-open"
+    end
+  end
+
+  # The open questions the Open questions frame of a stage's tab, or of Explore's, shows
+  # (`ApiaryWeb.WorkItemComponents.open_questions/1`): every one on the current stage's
+  # tab (`tab_only/2` nil); on another stage's tab, the questions asked in that stage.
+  defp tab_only(_tab, nil), do: nil
+
+  defp tab_only(tab, flow) do
+    cond do
+      StageTab.current(flow) == tab -> nil
+      tab == :explore -> flow.explore_id
+      is_binary(tab) -> tab
+      true -> nil
+    end
+  end
+
+  # What the next run updates, where the questions wait: Explore's proposal, or the outputs
+  # of a later stage.
+  defp question_updates(nil), do: :proposal
+
+  defp question_updates(flow),
+    do: if(StageTab.current(flow) == :explore, do: :proposal, else: :outputs)
 
   # The stage tabs `work_item_tabs/1` draws; nil with no stage card, for Explore's alone.
   defp stage_tabs(_scope, _number, nil), do: nil
@@ -2737,6 +3451,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp tab_path(scope, number, :explore),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}/explore"
+
+  defp tab_path(scope, number, :questions),
+    do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}/questions"
 
   defp tab_path(scope, number, :thread),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/work/#{number}/thread"

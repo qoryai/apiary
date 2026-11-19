@@ -200,9 +200,10 @@ defmodule ApiaryWeb.RunComponents do
   `Apiary.Runs.Record.fetch_run/2` loads them; without them the first sentence reads "the
   run's workflow". qory's four codes for a read-only run it closed read
   "read-only run with no wall", "setup runs inside the agent's container", "image has
-  nested Docker" and "setup container not removed". Any other code is the one the run's
-  starter gave, shown as given with spaces for underscores: `no_longer_needed` reads "no
-  longer needed".
+  nested Docker" and "setup container not removed". `write_needs_wall`, which it gives a
+  run that writes on a machine with no wall, reads "write run with no wall". Any other
+  code is the one the run's starter gave, shown as given with spaces for underscores:
+  `no_longer_needed` reads "no longer needed".
 
   A run refused at its start is given as `%{refused: code}`, the code of its
   `dev.qory.run.refused`, an earlier name read as the new one. A code of a check of the
@@ -416,6 +417,10 @@ defmodule ApiaryWeb.RunComponents do
 
   defp words_of("read_needs_no_nested_docker", _run), do: gettext("image has nested Docker")
   defp words_of("read_needs_setup_removed", _run), do: gettext("setup container not removed")
+
+  # qory closes a run that writes with this one when the machine has no wall
+  # (`Apiary.Runs.WriteNeeds`). The work item has the fix.
+  defp words_of("write_needs_wall", _run), do: gettext("write run with no wall")
 
   defp words_of("run_closed", _run), do: nil
   defp words_of(code, _run), do: String.replace(code, "_", " ")

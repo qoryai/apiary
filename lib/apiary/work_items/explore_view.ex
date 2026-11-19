@@ -39,10 +39,13 @@ defmodule Apiary.WorkItems.ExploreView do
   #   * `questions`: the questions of the work item's newest questions that a run of the
   #     current take in wrote (`asked.run`) or reopened last (the `reopened.run` of the
   #     last entry of its `history` that has one), in their order, each `%{id:, number:,
-  #     text:, context:, options:, state:, asked_run:, stage_id:, answer:, history:,
-  #     follows:, decision:}`: `stage_id` the stage of the run that wrote or reopened it
-  #     last, `number` its row's place on the Explore tab, from 1, top to bottom
-  #     (`shown_numbers/1`), `state` `:open`,
+  #     text:, context:, criterion:, options:, state:, asked_run:, run:, run_workspace_id:,
+  #     stage_id:, answer:, history:, follows:, decision:}`: `criterion` the id of the
+  #     acceptance criterion the question is about, such as `ac-3`, nil for none; `run`
+  #     the number of the run that wrote
+  #     or reopened it last, `run_workspace_id` the workspace of that run, `stage_id` the
+  #     stage of that run, `number` its place from 1 in the order closed questions, decisions, open
+  #     questions (`shown_numbers/1`), `state` `:open`,
   #     `:answered`, `:decided` or `:withdrawn`, `decision` nil or the run's choice,
   #     `%{option:, reason:, run:, at:}`, kept after a member answered, `answer` nil or
   #     `%{option:, recommended:, note:, by_id:, by:, at:}` (`by_id` by the move that
@@ -83,7 +86,9 @@ defmodule Apiary.WorkItems.ExploreView do
   # workflow its harness had no skill for and where that harness came from
   # (`Apiary.Harnesses.WorkflowGap`), nil for any other run, `read_needs`, for a run qory
   # closed with a `read_needs_*` reason, the reason and whether the run's pool is the
-  # instance's (`Apiary.Runs.ReadNeeds`), nil for any other run,
+  # instance's (`Apiary.Runs.ReadNeeds`), nil for any other run, `write_needs`, for a run
+  # qory closed with `write_needs_wall`, the same facts (`Apiary.Runs.WriteNeeds`), nil for
+  # any other run,
   # and by what it gave: `proposal`, `%{message: text}`, the Markdown of the newest version
   # of the work item's proposal a run of the take in up to it pushed, nil for none, with
   # `version`, that version's number (`Apiary.WorkItems.Explore.proposal_version/3`), nil
@@ -137,8 +142,8 @@ defmodule Apiary.WorkItems.ExploreView do
   #     `duration_ms`), `:proposed` (`run`, `duration_ms`, `owner_id`), `:no_result`
   #     (`run`, `outcome`, the end cause and its code, `end_cause` and `end_detail`, as a
   #     run map has them, and `wrote`, the version of the proposal a failed run pushed
-  #     before it failed, nil for none), `:lost` or `:cancelled` (`run`). A run that
-  #     waits on an earlier run's open questions and wrote or reopened none ends as
+  #     before it failed, nil for none), `:lost`, `:time_limit` or `:cancelled` (`run`). A
+  #     run that waits on an earlier run's open questions and wrote or reopened none ends as
   #     `:proposed` with no `owner_id` where it wrote a proposal, as `:replied` (`run`,
   #     `replies`, how many replies to review comments it wrote, `duration_ms`) where it
   #     wrote none but at least one such reply, else as `:no_result` with `outcome`
@@ -166,7 +171,7 @@ defmodule Apiary.WorkItems.ExploreView do
   alias Apiary.Dispatches.{DispatchRun, Pause}
   alias Apiary.Harnesses.{RunHarness, WorkflowGap}
   alias Apiary.Nodes.Node
-  alias Apiary.Runs.ReadNeeds
+  alias Apiary.Runs.{ReadNeeds, WriteNeeds}
   alias Apiary.Explore.{Given, Questions, ReviewComments}
   alias Apiary.WorkItems.{Confirmation, Explore, Proposal, State, WorkItem}
 
@@ -362,6 +367,7 @@ defmodule Apiary.WorkItems.ExploreView do
     for %{"id" => id} = question <- (ctx.questions || %{})["questions"] || [],
         current_take_in?(question, ctx) do
       %{options: options} = Proposal.question(question)
+      run = question_run(question, ctx)
       history = question["history"] || []
       moves = Enum.filter(given, &(&1.id == id))
 
@@ -370,10 +376,13 @@ defmodule Apiary.WorkItems.ExploreView do
         number: numbers[id],
         text: question["question"],
         context: question["context"],
+        criterion: question["criterion"],
         options: options,
         state: question_state(question["state"]),
         asked_run: get_in(question, ["asked", "run"]),
-        stage_id: question_stage(question, ctx),
+        run: run && run.number,
+        run_workspace_id: run && run.workspace_id,
+        stage_id: run && run.stage_id,
         answer: given_answer(question["answer"], Enum.at(moves, length(history)), options),
         history:
           for(
@@ -393,11 +402,9 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp decision(_none), do: nil
 
-  # The number of each question the Explore tab shows (`current_take_in?/2`), by its id:
-  # its row's place from 1, top to bottom. With an open question, the questions frame has
-  # the closed questions, the decisions, then the open questions. With none, the Decisions
-  # frame comes first, then the frame of the closed questions
-  # (`ApiaryWeb.WorkItemComponents.explore_tab/1`).
+  # The number of each question of the current take in (`current_take_in?/2`), by its id:
+  # its place from 1 in the order closed questions, decisions, then open questions. With
+  # no open question, the order is the decisions, then the closed questions.
   defp shown_numbers(ctx) do
     {decisions, questions} =
       ((ctx.questions || %{})["questions"] || [])
@@ -426,19 +433,24 @@ defmodule Apiary.WorkItems.ExploreView do
       MapSet.member?(ctx.current_runs, reopened_run(question))
   end
 
-  # The stage of the run of the current take in that reopened the question last, else of
-  # the run that wrote it; nil for a run with no stage.
-  defp question_stage(question, ctx) do
+  # The run of the current take in that reopened the question last, else the run that wrote
+  # it, as `%{number:, workspace_id:, stage_id:}`: the stage and the run the page shows
+  # for the question are this pair. nil for a run the page has no step for. A run with no
+  # stage has a nil `stage_id`.
+  defp question_run(question, ctx) do
     reopened = reopened_run(question)
 
-    run =
+    number =
       if MapSet.member?(ctx.current_runs, reopened),
         do: reopened,
         else: get_in(question, ["asked", "run"])
 
-    case Map.get(ctx.by_number, run) do
-      %{dispatch_run: %{stage_id: stage_id}} -> stage_id
-      _none -> nil
+    case Map.get(ctx.by_number, number) do
+      %{dispatch_run: %{stage_id: stage_id, workspace_id: workspace_id}} ->
+        %{number: number, workspace_id: workspace_id, stage_id: stage_id}
+
+      _none ->
+        nil
     end
   end
 
@@ -750,10 +762,18 @@ defmodule Apiary.WorkItems.ExploreView do
       outcome: step.outcome,
       end_cause: step.dispatch_run.end_cause,
       end_detail: step.dispatch_run.end_detail,
+      # The session after which a run of a stage with `shared_run: true` ended, when the
+      # input of its next session could not be formed (`Apiary.Stages.ended_after_session/1`).
+      ended_after_session: ended_after_session(step.dispatch_run),
+      # For a run that ended before it started as its stage's workflows would run with
+      # different access, the difference as the harness declares the levels now
+      # (`Apiary.Stages.shared_access/1`); nil for none.
+      shared_access: shared_access(step.dispatch_run),
       adapter_failure: adapter_failure(step.dispatch_run),
       harness_failure: harness_failure(step.dispatch_run),
       workflow_gap: workflow_gap(step, work_item),
       read_needs: ReadNeeds.of_run(step.run),
+      write_needs: WriteNeeds.of_run(step.run),
       heard: heard(step.run),
       proposal: nil,
       version: nil,
@@ -791,6 +811,21 @@ defmodule Apiary.WorkItems.ExploreView do
       [] -> view
     end
   end
+
+  defp ended_after_session(%{end_cause: cause} = dispatch_run)
+       when cause in [:ticket_gone, :inputs_invalid],
+       do: Apiary.Stages.ended_after_session(dispatch_run)
+
+  defp ended_after_session(_dispatch_run), do: nil
+
+  defp shared_access(%{end_cause: :shared_access_differs} = dispatch_run) do
+    case Apiary.Stages.shared_access(dispatch_run) do
+      {:error, %{detail: detail}} -> detail
+      :ok -> nil
+    end
+  end
+
+  defp shared_access(_dispatch_run), do: nil
 
   defp confirmed_result(
          %{take_in: take_in, attempt: attempt},
@@ -1441,7 +1476,7 @@ defmodule Apiary.WorkItems.ExploreView do
           }
         ]
 
-      place when place in [:lost, :cancelled] ->
+      place when place in [:lost, :time_limit, :cancelled] ->
         [%{kind: place, at: at, run: run}]
     end
   end

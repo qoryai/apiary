@@ -39,6 +39,7 @@ defmodule Apiary.Runs.FoldTest do
     cost_usd: nil,
     peak_memory_bytes: nil,
     cpu_time_ms: nil,
+    paused_session: nil,
     terminal_cols: nil,
     terminal_rows: nil
   }
@@ -689,6 +690,58 @@ defmodule Apiary.Runs.FoldTest do
         ])
 
       assert run.cpu_time_ms == largest
+    end
+
+    defp session_end(session, state, reason) do
+      data = %{"session" => session, "state" => state, "exit_code" => 1, "reason" => reason}
+      event(session + 3, "session.exited", data)
+    end
+
+    test "keeps the number of the session that paused at the model keys' limit" do
+      events = [
+        session_end(1, "succeeded", nil),
+        session_end(2, "paused", "model_key_limit")
+      ]
+
+      for order <- [events, Enum.reverse(events)] do
+        assert Fold.fold(@run, order).run.paused_session == 2
+      end
+
+      # The shape of a pause from a gateway of the earlier contract counts too.
+      assert Fold.fold(@run, [session_end(3, "cancelled", "model_key_limit")]).run.paused_session ==
+               3
+    end
+
+    test "of two sessions that paused keeps the higher number, in any order and pass" do
+      events = [
+        session_end(2, "paused", "model_key_limit"),
+        session_end(3, "paused", "model_key_limit")
+      ]
+
+      for order <- [events, Enum.reverse(events)] do
+        assert Fold.fold(@run, order).run.paused_session == 3
+        run = Enum.reduce(order, @run, fn event, run -> Fold.fold(run, [event]).run end)
+        assert run.paused_session == 3
+      end
+    end
+
+    test "an end that is no pause, or that has no session number, keeps no session" do
+      ends = [
+        session_end(2, "failed", "model_key_limit"),
+        session_end(2, "paused", nil),
+        session_end(2, "paused", "stopped"),
+        session_end(2, "succeeded", "model_key_limit"),
+        event(5, "session.exited", %{"state" => "paused", "reason" => "model_key_limit"}),
+        event(5, "session.exited", %{
+          "session" => 0,
+          "state" => "paused",
+          "reason" => "model_key_limit"
+        })
+      ]
+
+      for event <- ends do
+        assert Fold.fold(@run, [event]).run.paused_session == nil, inspect(event.data)
+      end
     end
   end
 

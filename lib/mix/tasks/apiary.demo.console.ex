@@ -50,7 +50,8 @@ defmodule Mix.Tasks.Apiary.Demo.Console do
       one with two values; variables of the workspace, two locked, and of a few
       repositories; the claude runtime, the npm and Sentry services, and two
       integrations found from releases on github.com, served from here rather than
-      fetched, and one release whose fetch failed. A run receives only its security policy.
+      fetched, and one release whose fetch failed. A run receives its security policy and the
+      variables of its workspace and repository.
     * Where the edition allows an organisation a second workspace, **Shop ops**
       (`shop-ops`) is made too, with a smaller, separate history; the core's allows
       one.

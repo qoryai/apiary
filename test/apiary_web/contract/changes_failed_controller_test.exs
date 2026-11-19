@@ -7,7 +7,11 @@ defmodule ApiaryWeb.Contract.ChangesFailedControllerTest do
   # feed, posted, or marked already; the Backlog told once a comment changes, and an open
   # page of the ticket's work item read again after a report and after an echo; and a
   # comment's way from its take in to a failure, a post again, and the adapter's echo.
-  use ApiaryWeb.ConnCase, async: true
+  #
+  # The window's edge is tested at 301 seconds, under the contract's clock pinned to one
+  # second (`pin_clock/0`), so a second ticking over between the test and the server
+  # moves nothing. The clock is the application's environment, so this module is not async.
+  use ApiaryWeb.ConnCase, async: false
 
   import Ecto.Query
   import Phoenix.LiveViewTest
@@ -59,6 +63,14 @@ defmodule ApiaryWeb.Contract.ChangesFailedControllerTest do
     |> Path.wildcard()
     |> Enum.map(&Path.relative_to(&1, @fixtures))
     |> Enum.sort()
+  end
+
+  # Pins the contract's clock (`ApiaryWeb.Contract.SignedRequest.now/0`) to this second
+  # until the test ends: the test's times and the server's check read the same second.
+  defp pin_clock do
+    now = System.os_time(:second)
+    Application.put_env(:apiary, :contract_now, fn -> now end)
+    on_exit(fn -> Application.delete_env(:apiary, :contract_now) end)
   end
 
   defp now_time(offset \\ 0),
@@ -211,6 +223,7 @@ defmodule ApiaryWeb.Contract.ChangesFailedControllerTest do
   end
 
   test "a time more than 300 seconds off is 401, unsigned", ctx do
+    pin_clock()
     {_ticket, comment} = posting(ctx)
 
     for offset <- [-301, 301] do

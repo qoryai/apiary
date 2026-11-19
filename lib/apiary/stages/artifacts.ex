@@ -1,9 +1,9 @@
 defmodule Apiary.Stages.Artifacts do
   # Artifacts is the one place the stage runner (`Apiary.Stages`) reaches a work item's
-  # artifacts through: `push/5`, `list/1`, `exists?/3`, `cancelled?/1`, `withdrawn?/1` and
-  # `member_types/0` of `Apiary.Artifacts`, and
-  # `push_json/5`, `newest_of_run/3`, `read_json/1` and `stored_json/1`, which this module
-  # adds.
+  # artifacts through: `push/5`, `list/1`, `exists?/3`, `cancelled?/1`, `withdrawn?/1`,
+  # `member_types/0`, `newest_counted/1`, `name_order/1` and `submit_type/1` of
+  # `Apiary.Artifacts`, and `push_json/5`, `newest_of_run/3`, `read_json/1` and
+  # `stored_json/1`, which this module adds.
   @moduledoc false
 
   import Ecto.Query, only: [from: 2]
@@ -62,6 +62,23 @@ defmodule Apiary.Stages.Artifacts do
   @spec withdrawn?(map) :: boolean
   def withdrawn?(artifact), do: Artifacts.withdrawn?(artifact)
 
+  # newest_counted/1 is the newest version of `artifact` that no cancelled run wrote
+  # (`Apiary.Artifacts.newest_counted/1`).
+  @doc false
+  @spec newest_counted(map) :: map | nil
+  def newest_counted(artifact), do: Artifacts.newest_counted(artifact)
+
+  # name_order/1 is the sort key of an artifact's name (`Apiary.Artifacts.name_order/1`).
+  @doc false
+  @spec name_order(String.t()) :: {boolean, [String.t() | integer]}
+  def name_order(name), do: Artifacts.name_order(name)
+
+  # submit_type/1 is the type in `submit.type` of the work item's process version, which
+  # the Submissions list reads (`Apiary.Artifacts.submit_type/1`); nil for none.
+  @doc false
+  @spec submit_type(struct) :: String.t() | nil
+  def submit_type(work_item), do: Artifacts.submit_type(work_item)
+
   # newest_of_run/3 is the newest version of the artifact of `type` and `name` that the
   # run of the queue `run` pushed, with its files in the order of their names; nil for
   # none.
@@ -76,6 +93,23 @@ defmodule Apiary.Stages.Artifacts do
         where: a.type == ^type and a.name == ^name,
         order_by: [desc: v.number],
         limit: 1,
+        preload: [files: ^from(f in ArtifactFile, order_by: f.filename)]
+    )
+  end
+
+  # version_of_run/4 is the version `number` of the artifact of `type` and `name`, which
+  # the run of the queue `run` pushed, with its files in the order of their names; nil for
+  # none.
+  @doc false
+  @spec version_of_run(DispatchRun.t(), String.t(), String.t(), pos_integer) ::
+          Version.t() | nil
+  def version_of_run(%DispatchRun{id: run_id, workspace_id: workspace_id}, type, name, number) do
+    Repo.one(
+      from v in Version,
+        join: a in Artifact,
+        on: a.id == v.artifact_id,
+        where: v.run_id == ^run_id and a.workspace_id == ^workspace_id,
+        where: a.type == ^type and a.name == ^name and v.number == ^number,
         preload: [files: ^from(f in ArtifactFile, order_by: f.filename)]
     )
   end

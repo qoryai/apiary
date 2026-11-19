@@ -1,7 +1,8 @@
 defmodule Apiary.Contract.PushRefFixturesTest do
-  # The Forager contract's fixtures of an apply item with `push_ref`, vendored at the commit
-  # in `.forager-contract-ref`: the valid fixture passes the run configuration schema as
-  # Forager and Qory Apiary read it, and each invalid one is refused by both.
+  # The Forager contract's fixtures of an apply item with `push_ref` and of a push
+  # credential, vendored at the commit in `.forager-contract-ref`: each valid fixture passes
+  # the run configuration schema as Forager and Qory Apiary read it, and each invalid one is
+  # refused by both.
   use ExUnit.Case, async: true
 
   alias Apiary.ForagerSchemas
@@ -30,5 +31,22 @@ defmodule Apiary.Contract.PushRefFixturesTest do
       assert {:error, _} = ForagerSchemas.validate("run-configuration.schema.json", bytes), file
       assert {:error, _} = Schema.validate(bytes), file
     end
+  end
+
+  test "the push credential fixture passes the run configuration schema" do
+    bytes = fixture("run-configuration/push.json")
+    assert ForagerSchemas.validate("run-configuration.schema.json", bytes) == :ok
+    assert Schema.validate(bytes) == :ok
+  end
+
+  test "a credential purpose other than harness, work and push fails the schema" do
+    document = "run-configuration/push.json" |> fixture() |> Jason.decode!()
+
+    bytes =
+      update_in(document, ["credentials", Access.at(1), "purpose"], fn _push -> "merge" end)
+      |> Jason.encode!()
+
+    assert {:error, _} = ForagerSchemas.validate("run-configuration.schema.json", bytes)
+    assert {:error, _} = Schema.validate(bytes)
   end
 end

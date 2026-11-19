@@ -14,21 +14,23 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   features (`Apiary.Features`, `QORY_FEATURES`; an opt-in feature only where it is on),
   with the `secrets` feature whether an integration may come from an address
   (`Apiary.Integrations.Source.url_sources?/0`, `INTEGRATION_URL_SOURCES`), how long the
-  audit trail keeps an entry and its address, the grace period before a deleted workspace
-  or organisation is purged, the invitations an organisation sends a day
-  (`Apiary.InstanceConfig`), the support address (`Apiary.SupportAddress`), read only
-  here and changed on General unless `SUPPORT_ADDRESS` sets it, and whether and when the
-  server prunes runs by their workspace's retention (`Apiary.Retention.Scheduler`, the application's configuration,
+  audit trail keeps an entry and its address, the largest image a prebuild may keep, the
+  grace period before a deleted workspace or organisation is purged, the invitations an
+  organisation sends a day (`Apiary.InstanceConfig`), the support address
+  (`Apiary.SupportAddress`), read only here and changed on General unless
+  `SUPPORT_ADDRESS` sets it, and whether and when the server prunes runs by their
+  workspace's retention (`Apiary.Retention.Scheduler`, the application's configuration,
   which no setting of the environment changes).
 
-  The audit trail's two periods, the grace period and the invitations a day are forms an
-  instance admin saves after a recent sign-in (`Apiary.InstanceConfig.save/3`), each part
-  with its Save, unless the environment sets the value, which wins and shows read only;
-  the edition's parts (`c:ApiaryWeb.Edition.configuration_parts/1`) follow. The features
-  are read only here, with where they come from (`QORY_FEATURES`, the list saved in
-  Instance settings › Features, or the defaults), and a line under them links to Instance
-  settings › Features (`ApiaryWeb.InstanceLive.Features`), where they change. The
-  integration sources and run pruning are read when the server starts, read only.
+  The audit trail's two periods, the largest prebuilt image (with the `registry` feature
+  only, as prebuilds run only with it), the grace period and the invitations a day are
+  forms an instance admin saves after a recent sign-in (`Apiary.InstanceConfig.save/3`),
+  each part with its Save, unless the environment sets the value, which wins and shows
+  read only; the edition's parts (`c:ApiaryWeb.Edition.configuration_parts/1`) follow.
+  The features are read only here, with where they come from (`QORY_FEATURES`, the list
+  saved in Instance settings › Features, or the defaults), and a line under them links to
+  Instance settings › Features (`ApiaryWeb.InstanceLive.Features`), where they change.
+  The integration sources and run pruning are read when the server starts, read only.
 
   The page asks for a recent sign-in, as Mail does (`ApiaryWeb.UserAuth`'s sudo mode): a
   shorter retention deletes what it no longer keeps. A save after the sign-in has grown
@@ -50,7 +52,12 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
 
   # The parts with a form, by the name their hidden `part` field gives: nothing else is
   # saved.
-  @parts %{"retention" => :retention, "deletion" => :deletion, "invitations" => :invitations}
+  @parts %{
+    "retention" => :retention,
+    "prebuilds" => :prebuilds,
+    "deletion" => :deletion,
+    "invitations" => :invitations
+  }
 
   @impl true
   def render(assigns) do
@@ -175,6 +182,31 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
           </.part_form>
         </SettingsComponents.part>
 
+        <SettingsComponents.part
+          :if={@registry}
+          id="config-prebuilds"
+          title={gettext("Prebuilds")}
+        >
+          <.part_form part={:prebuilds} form={@forms.prebuilds}>
+            <dl class="grid gap-4">
+              <.config_setting
+                id="config-prebuilt-image"
+                key={:prebuilt_image_max_gb}
+                label={gettext("Largest prebuilt image")}
+                config={@config}
+                form={@forms.prebuilds}
+              >
+                {gettext(
+                  "How large an image a prebuild may keep. A prebuild whose image is larger fails."
+                )}
+              </.config_setting>
+            </dl>
+            <:note>
+              {pgettext("plain", "A change applies to prebuilds that start after it.")}
+            </:note>
+          </.part_form>
+        </SettingsComponents.part>
+
         <SettingsComponents.part id="config-deletion" title={gettext("Deletion")}>
           <.part_form part={:deletion} form={@forms.deletion}>
             <dl class="grid gap-4">
@@ -286,7 +318,11 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   attr :id, :string, required: true
   attr :key, :atom, required: true
   attr :label, :string, required: true
-  attr :variable, :string, required: true, doc: "the variable of the environment that sets it"
+
+  attr :variable, :string,
+    default: nil,
+    doc: "the variable of the environment that sets it, nil for a setting without one"
+
   attr :config, :map, required: true, doc: "what the page read of the settings (`config/1`)"
   attr :form, :any, required: true
   slot :inner_block, required: true
@@ -333,8 +369,8 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
         errors: errors,
         input_id: input_id,
         described_by: described_by,
-        placeholder: Integer.to_string(default),
-        hint: gettext("Empty: %{default}.", default: shown(assigns.key, default))
+        placeholder: placeholder(assigns.key, default),
+        hint: hint(assigns.key, default)
       )
 
     ~H"""
@@ -358,14 +394,24 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
           aria-invalid={@errors != [] && "true"}
           aria-describedby={@described_by}
         />
-        <span :if={@key != :invitations_per_day} id={"#{@id}-unit"} class="text-muted">
-          {gettext("days")}
-        </span>
+        <span :if={unit(@key)} id={"#{@id}-unit"} class="text-muted">{unit(@key)}</span>
       </:field>
       {render_slot(@inner_block)}
     </ConfigurationComponents.setting>
     """
   end
+
+  # The placeholder and the hint of an empty field: the default, or no limit for the
+  # largest prebuilt image, which has no default.
+  defp placeholder(:prebuilt_image_max_gb, nil), do: gettext("No limit")
+  defp placeholder(_key, default), do: Integer.to_string(default)
+
+  defp hint(:prebuilt_image_max_gb, nil), do: gettext("Empty: no limit.")
+  defp hint(key, default), do: gettext("Empty: %{default}.", default: shown(key, default))
+
+  defp unit(:invitations_per_day), do: nil
+  defp unit(:prebuilt_image_max_gb), do: gettext("GB")
+  defp unit(_days), do: gettext("days")
 
   defp error_id(id, {_message, 0}), do: "#{id}-error"
   defp error_id(id, {_message, i}), do: "#{id}-error-#{i + 1}"
@@ -385,6 +431,8 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
          features: features(),
          # The Integrations part asks `on?(:secrets)`, of the instance.
          secrets: Features.on?(:secrets),
+         # Prebuilds run only with the `registry` feature (`Apiary.Registry.configured?/0`).
+         registry: Features.on?(:registry),
          url_sources: Source.url_sources?(),
          pruning: Scheduler.enabled?() && pruning_hour(),
          sources: sources(),
@@ -398,7 +446,11 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
     end
   end
 
+  # Without the `registry` feature the page has no Prebuilds part: nothing to save.
   @impl true
+  def handle_event("save", %{"part" => "prebuilds"}, %{assigns: %{registry: false}} = socket),
+    do: {:noreply, socket}
+
   def handle_event("save", %{"part" => name} = params, socket) when is_map_key(@parts, name) do
     part = Map.fetch!(@parts, name)
 
@@ -444,6 +496,7 @@ defmodule ApiaryWeb.InstanceLive.Configuration do
   end
 
   defp saved(:retention), do: gettext("Retention saved.")
+  defp saved(:prebuilds), do: gettext("Largest prebuilt image saved.")
   defp saved(:deletion), do: gettext("Grace period saved.")
   defp saved(:invitations), do: gettext("Invitations a day saved.")
 

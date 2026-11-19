@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "acme-cloud",
+  "title": "Acme cloud",
+  "program_version": "0.1.0",
+  "settings": {"type": "object"},
+  "roles": {
+    "model_provider": {
+      "apis": [
+        {"format": "anthropic-messages", "endpoint": "https://api.acme-cloud.example", "auth": {"scheme": "bearer", "oauth": true}, "runtimes": ["runtime-0", "runtime-1", "runtime-2", "runtime-3", "runtime-4", "runtime-5", "runtime-6", "runtime-7", "runtime-8", "runtime-9", "runtime-10", "runtime-11", "runtime-12", "runtime-13", "runtime-14", "runtime-15", "runtime-16"]}
+      ],
+      "models": [{"id": "acme-large-2", "title": "Acme Large 2"}]
+    }
+  }
+}

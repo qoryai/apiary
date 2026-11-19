@@ -13452,6 +13452,84 @@
       grid-template-columns: minmax(0, 1fr) 18rem;
     }
   }
+  /* A version's page with a player (`ArtifactComponents.view/1`, `player`): Cinema, whose button
+     the ArtifactPlayer hook presses (`aria-pressed="true"`; a patch of the page leaves an
+     ignored element's `aria-*` alone but removes its `data-*`), takes the player out of the left
+     column and puts it above both columns, as wide as the page. The left column and the
+     player's section become cells of the page's grid, so the film stays in the page and is
+     not loaded again; the queue and Details stay in the right column, now under the player.
+     The button is hidden under 1024 px, so the rule is too, and in a browser with no `:has()`. */
+  @supports selector(:has(*)) {
+    @media (min-width: 1024px) {
+      .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) > .q-art-main {
+        display: contents;
+      }
+      .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) #artifact-view-part {
+        grid-column: 1 / -1;
+        grid-row: 1;
+      }
+      .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) .q-art-rest {
+        grid-column: 1;
+        grid-row: 2;
+        min-width: 0;
+        align-content: start;
+      }
+      .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) > aside {
+        grid-column: 2;
+        grid-row: 2;
+      }
+      .q-art-cols:has([data-cinema-toggle][aria-pressed="true"]) .q-player > video {
+        width: 100%;
+      }
+    }
+  }
+  /* A browser with no `:has()` cannot move the player, so it has no Cinema button. */
+  @supports not selector(:has(*)) {
+    [data-cinema-toggle] {
+      display: none !important;
+    }
+  }
+  /* The player's box in the browser's full screen: the film or the picture fills it, the line
+     under it (Speed, or Previous picture and Next picture, and Leave full screen) stays at the
+     foot, and the file name and Cinema are left out. */
+  .q-player:fullscreen {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    background: #000;
+    color: var(--color-neutral-content);
+  }
+  .q-player:fullscreen > video {
+    flex: 1 1 0;
+    min-height: 0;
+    width: 100%;
+    max-width: none;
+    max-height: none;
+    border-radius: 0;
+  }
+  .q-player:fullscreen > .q-player-stage {
+    flex: 1 1 0;
+    min-height: 0;
+    padding: 0;
+    border-radius: 0;
+    background: #000;
+  }
+  .q-player:fullscreen > .q-player-stage > img {
+    height: 100%;
+    max-height: 100%;
+    border: 0;
+    border-radius: 0;
+  }
+  .q-player:fullscreen > .q-player-bar {
+    padding: 12px 16px;
+  }
+  .q-player:fullscreen .text-muted {
+    color: var(--color-neutral-content);
+  }
+  .q-player:fullscreen > figcaption,
+  .q-player:fullscreen [data-cinema-toggle] {
+    display: none;
+  }
   /* A version's page: the text stays in its column, a wide table scrolls in a frame and a long
      word wraps, so neither runs under Details. The Explore tab's `.q-xp-md` has the same frame
      for a table, and wraps a long word outside a table with `overflow-wrap: anywhere`. */
@@ -14330,6 +14408,29 @@
     margin-top: 14px;
     font-size: 0.8125rem;
   }
+  /* The headings of a run's report inside the block "What the run needs from you" are
+     small bold lines, as `.q-xp-sub`; other pages show them as `.q-ticket-formatted`
+     does. */
+  .q-xp-needs-outputs .q-ticket-formatted :where(h3, h4, h5, h6) {
+    margin: 14px 0 6px;
+    font-size: 0.8125rem;
+    font-weight: 600;
+  }
+  /* Values of the approved picture: the report's title, its first heading, is
+     `.q-xp-sub` at 0.9375rem with 8px under it; the text is `.q-xp-md`, 0.875rem on
+     1.375rem; the points follow the outputs 14px below, as the picture's inline style
+     sets (the page's `mt-6` is 24px). */
+  .q-xp-needs-outputs .q-ticket-formatted {
+    font-size: 0.875rem;
+    line-height: 1.375rem;
+  }
+  .q-xp-needs-outputs .q-ticket-formatted > :where(h3, h4, h5, h6):first-child {
+    margin: 0 0 8px;
+    font-size: 0.9375rem;
+  }
+  .q-xp-needs-outputs + .q-xp-needs-points {
+    margin-top: 14px;
+  }
   .q-xp-sec {
     padding-top: 14px;
   }
@@ -14402,14 +14503,19 @@
     border-radius: var(--radius-box);
     background-color: var(--color-base-100);
   }
-  .q-xp-opt-pick {
+  /* Only the radio and its label take the pointer. */
+  .q-xp-opt-pick,
+  .q-xp-opt-box > input,
+  .q-xp-opt-box label {
     cursor: pointer;
   }
-  .q-xp-opt-pick:has(input:checked) {
+  .q-xp-opt-pick:has(input:checked),
+  .q-xp-opt-box:has(input[type="radio"]:checked) {
     border-color: var(--color-primary);
     background-color: var(--q-primary-soft);
   }
-  .q-xp-opt-pick:has(input:focus-visible) {
+  .q-xp-opt-pick:has(input:focus-visible),
+  .q-xp-opt-box:has(input[type="radio"]:focus-visible) {
     outline: 2px solid var(--q-ring);
     outline-offset: 1px;
   }
@@ -14922,6 +15028,16 @@
     margin-right: 0;
   }
   .q-xp-frame-fold[open] > summary .q-xp-chev {
+    rotate: 90deg;
+  }
+  /* The commits of a submission: a fold inside a row of the Submissions list. */
+  .q-sub-fold > summary::-webkit-details-marker {
+    display: none;
+  }
+  .q-sub-fold > summary > .q-sub-chev {
+    transition: rotate 120ms var(--q-ease-out);
+  }
+  .q-sub-fold[open] > summary > .q-sub-chev {
     rotate: 90deg;
   }
   .q-xp-frame-fold:not([open]) > summary .q-xp-cap {

@@ -202,12 +202,29 @@ defmodule Apiary.Artifacts.WatchTest do
     assert Feed.entries(forge) == []
   end
 
-  test "a person's version of the submission type adds no entry", ctx do
+  test "a person's push of the submission type is refused and adds no entry", ctx do
     submits!(ctx, @submit)
     forge = forge!(ctx)
 
-    assert {:ok, %Version{writer: :person}} =
+    assert {:error, {:unknown_type, "submission"}} =
              Artifacts.push({:person, ctx.scope}, ctx.work_item, "submission", submission())
+
+    assert Feed.entries(forge) == []
+  end
+
+  test "a person's version of a type the process's submit does not set adds no entry", ctx do
+    submits!(ctx, @submit)
+    forge = forge!(ctx)
+
+    {:ok, _type} =
+      Artifacts.create_type(ctx.scope, ctx.scope.workspace, %{
+        "name" => "findings",
+        "base_view" => "structured",
+        "json_schema" => %{"type" => "object"}
+      })
+
+    assert {:ok, %Version{writer: :person}} =
+             Artifacts.push({:person, ctx.scope}, ctx.work_item, "findings", submission())
 
     assert Feed.entries(forge) == []
   end
@@ -290,7 +307,7 @@ defmodule Apiary.Artifacts.WatchTest do
     assert entries(ctx.source) == [watch(ctx.work_item)]
   end
 
-  test "a withdrawal of a submission version adds no entry", ctx do
+  test "a refused withdrawal of the submission type adds no entry", ctx do
     submits!(ctx, @submit)
     forge = forge!(ctx)
 
@@ -299,10 +316,11 @@ defmodule Apiary.Artifacts.WatchTest do
 
     assert [%{seq: 1}] = Feed.entries(forge)
 
-    assert {:ok, %Version{number: 2}} =
+    assert {:error, {:withdraw, :submit_type}} =
              Artifacts.withdraw({:run, ctx.run}, ctx.work_item, "submission")
 
     assert Enum.map(Feed.entries(forge), & &1.seq) == [1]
+    assert Repo.aggregate(Version, :count) == 1
   end
 
   test "a push refused because the run ended adds no entry", ctx do
@@ -350,10 +368,15 @@ defmodule Apiary.Artifacts.WatchTest do
 
     assert Feed.entries(forge) == []
 
-    # A push of the submission type reads it, so the count above can see a read.
-    assert {{:ok, %Version{}}, 1} =
+    # A push of the submission type reads it twice, once to find the schema of the run's
+    # harness commit and once for the entry, so the count above can see a read. The run is
+    # read again: the push takes the process version from the run it is given, as the run
+    # API's push does.
+    run = Repo.get!(DispatchRun, ctx.run.id)
+
+    assert {{:ok, %Version{}}, 2} =
              harness_reads(fn ->
-               Artifacts.push({:run, ctx.run}, ctx.work_item, "submission", submission())
+               Artifacts.push({:run, run}, ctx.work_item, "submission", submission())
              end)
 
     assert [%{kind: "watch"}] = Feed.entries(forge)

@@ -44,6 +44,18 @@ defmodule ApiaryWeb.RunPageComponentsTest do
     refute html =~ "\e"
   end
 
+  describe "titles_list/1" do
+    test "is one title, two titles with and, and three or more with a serial comma" do
+      assert RunPageComponents.titles_list(["Claude Code"]) == "Claude Code"
+      assert RunPageComponents.titles_list(["Claude Code", "Codex"]) == "Claude Code and Codex"
+
+      assert RunPageComponents.titles_list(["Claude Code", "Codex", "Gemini CLI"]) ==
+               "Claude Code, Codex, and Gemini CLI"
+
+      assert RunPageComponents.titles_list(["A", "B", "C", "D"]) == "A, B, C, and D"
+    end
+  end
+
   describe "the header's line" do
     test "shows the kind cleaned, isolated in <bdi>" do
       html = header(%{about_kind: dirty("Fix")})

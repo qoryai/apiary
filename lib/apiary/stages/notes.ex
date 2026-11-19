@@ -17,13 +17,16 @@ defmodule Apiary.Stages.Notes do
   @type note :: %{id: String.t(), at: DateTime.t()}
 
   # gate_decisions/1 is the query of the work item's decisions that are notes: each
-  # request for changes and each move.
+  # request for changes and each move, but a move that resolves an escalation (a move back
+  # or a switch of track), which has no note: the escalation stands for it.
   @doc false
   @spec gate_decisions(Ecto.UUID.t()) :: Ecto.Query.t()
   def gate_decisions(work_item_id),
     do:
       from(d in GateDecision,
-        where: d.work_item_id == ^work_item_id and d.kind in [:request_changes, :move]
+        where:
+          d.work_item_id == ^work_item_id and d.kind in [:request_changes, :move] and
+            is_nil(d.escalation_id)
       )
 
   # escalations/1 is the query of the work item's escalations that are notes: each one a

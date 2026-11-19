@@ -177,7 +177,7 @@ defmodule Apiary.Kinds.ServicesTest do
       end
     end
 
-    test "builds its auth on the schemes and members of the contract's auth, but oauth" do
+    test "builds its auth on the schemes and members of the contract's auth, but those of oauth" do
       contract =
         Application.app_dir(:apiary, ["priv", "contract", "auth.schema.json"])
         |> File.read!()
@@ -190,11 +190,15 @@ defmodule Apiary.Kinds.ServicesTest do
         |> get_in(["properties", "auth"])
 
       # `oauth` marks a model key, which comes from a model provider; a service's value
-      # is never one.
-      assert Map.has_key?(contract["properties"], "oauth")
-      refute Map.has_key?(own["properties"], "oauth")
+      # is never one, and `account_header` and `account_claim` go only with `oauth`.
+      oauth = ~w(oauth account_header account_claim)
 
-      for member <- Map.keys(contract["properties"]) -- ["oauth"] do
+      for member <- oauth do
+        assert Map.has_key?(contract["properties"], member), member
+        refute Map.has_key?(own["properties"], member), member
+      end
+
+      for member <- Map.keys(contract["properties"]) -- oauth do
         assert own["properties"][member]["$ref"] ==
                  contract["$id"] <> "#/properties/" <> member,
                member
@@ -247,6 +251,36 @@ defmodule Apiary.Kinds.ServicesTest do
       assert Runtimes.fetch("nothing") == :error
     end
 
+    test "the catalogue lists Codex with its model format, keys, effort and no endpoint variable" do
+      assert {:ok, runtime} = Runtimes.fetch("codex")
+      assert runtime.title == "Codex"
+      assert runtime.declares == []
+      assert runtime.one_of == []
+      assert Runtimes.formats(runtime) == ["openai-responses"]
+      assert Runtimes.hosts(runtime) == []
+      assert runtime.egress_hosts == []
+
+      assert runtime.model_keys == [
+               %{
+                 "format" => "openai-responses",
+                 "auth" => %{"scheme" => "bearer"},
+                 "variable" => "OPENAI_API_KEY"
+               },
+               %{
+                 "format" => "openai-responses",
+                 "auth" => %{"scheme" => "bearer", "oauth" => true},
+                 "variable" => "OPENAI_API_KEY"
+               }
+             ]
+
+      assert runtime.effort_values == ~w(none low medium high xhigh max ultra)
+      assert runtime.endpoint_variable == nil
+      assert runtime.model["endpoint"] == %{"setting" => "model_providers.qory.base_url"}
+      assert "OPENAI_API_KEY" in Runtimes.variables()
+      assert Enum.map(Runtimes.dispatched(), & &1.name) == ["claude", "codex"]
+      assert Runtimes.egress_hosts() |> Enum.map(& &1.runtime.name) == ["claude"]
+    end
+
     @tag :contract
     test "every vendored file .forager-contract-ref lists is the contract's" do
       dir = Apiary.ContractFixtures.contract_dir()
@@ -259,7 +293,8 @@ defmodule Apiary.Kinds.ServicesTest do
       assert Enum.sort(vendored) ==
                Enum.sort(
                  ~w(api-format.schema.json auth.schema.json policy.schema.json
-                    run-configuration.schema.json runtimes.json secrets-request.schema.json
+                    run-configuration.schema.json runtimes.json denied-variables.json
+                    secrets-request.schema.json
                     secrets-answer.schema.json sealed-plaintext.schema.json
                     model-keys-report.schema.json model-keys-answer.schema.json
                     events/runtime.text.schema.json events/runtime.tool_result.schema.json
@@ -332,6 +367,7 @@ defmodule Apiary.Kinds.ServicesTest do
                                   invalid/event-target-write-unknown-state.json
                                   invalid/event-target-write-without-path.json
                                   run-configuration/credentials-forge-push.json
+                                  run-configuration/push.json
                                   invalid/run-configuration-credentials-push-ref-branch-name.json
                                   invalid/run-configuration-credentials-push-ref-tag.json
                                   model-keys-report/report-session.json

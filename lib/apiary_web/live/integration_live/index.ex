@@ -335,6 +335,9 @@ defmodule ApiaryWeb.IntegrationLive.Index do
   defp runtime_line(%{name: "claude"}),
     do: gettext("Anthropic's coding agent.")
 
+  defp runtime_line(%{name: "codex"}),
+    do: gettext("OpenAI's coding agent.")
+
   defp runtime_line(_runtime), do: gettext("A coding agent Forager can start.")
 
   # The line under a built-in API's name: what the API is, said by the console; one it

@@ -151,6 +151,9 @@ defmodule Apiary.Kinds.Bounds do
       into a document of `documents`, or a `const` or `enum` that holds a list or an
       object.
 
+  `dependentRequired` only makes members required, so it adds no bound and is not read
+  further.
+
   The members of `allOf`, `anyOf`, `oneOf`, `not`, `if`, `then` and `else` narrow the
   value their schema describes, which that schema bounds: they need no `type`. The
   members of `properties` and `$defs` are read by name, never as keywords.
@@ -172,7 +175,7 @@ defmodule Apiary.Kinds.Bounds do
 
   @read ~w($schema $id $ref $defs title description type const enum required properties
            additionalProperties items minItems maxItems uniqueItems minLength maxLength
-           pattern allOf anyOf oneOf not if then else)
+           pattern minimum maximum allOf anyOf oneOf not if then else dependentRequired)
   @described ~w(items properties additionalProperties)
   @narrowing ~w(not if then else)
 

@@ -287,7 +287,8 @@ defmodule Apiary.WorkItemsFixtures do
   (`push_decided!/3`). A run ended `run_ended` or `lost` is then settled as its end
   settles it (`Apiary.Dispatches.Settle.settle_locked/1`, unless `settle: false`). A run
   ended for a cause its handover gives (`variables_invalid`, `ticket_gone`,
-  `inputs_invalid`, `target_access_gone`, `write_without_work_item`) has the outcome `:error`, as the handover writes
+  `inputs_invalid`, `target_access_gone`, `write_without_work_item`,
+  `shared_access_differs`) has the outcome `:error`, as the handover writes
   it. Returns `%{dispatch_run: dispatch_run, run: run_or_nil}`.
   """
   def explore_run_fixture(%WorkItem{} = work_item, opts \\ []) do
@@ -334,7 +335,10 @@ defmodule Apiary.WorkItemsFixtures do
           else: [state: state, end_cause: end_cause]
         )
       )
-      |> Ecto.Changeset.change(result_outcome: unformed_outcome(end_cause))
+      |> Ecto.Changeset.change(
+        result_outcome: unformed_outcome(end_cause),
+        end_detail: Keyword.get(opts, :end_detail)
+      )
       |> Repo.insert!()
 
     registered? =
@@ -431,7 +435,8 @@ defmodule Apiary.WorkItemsFixtures do
   for `understood_result/1`, its `message` as a version of the work item's proposal; for
   `questions_result/1`, its questions added, open, to the newest questions, each with the
   id `q<n>` and asked by the run. A question of more than one line keeps its first line
-  as the question and the whole as its context.
+  as the question and the whole as its context. A question given as a map with a
+  `"criterion"` keeps it, and one with a `"context"` keeps that context.
   """
   def push_output!(%DispatchRun{} = dispatch_run, %Run{} = run, %{"verdict" => verdict} = result) do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
@@ -523,9 +528,14 @@ defmodule Apiary.WorkItemsFixtures do
       "asked" => asked
     }
 
-    if String.contains?(String.trim(text), "\n"),
-      do: Map.put(entry, "context", String.trim(text)),
-      else: entry
+    entry =
+      cond do
+        is_binary(question["context"]) -> Map.put(entry, "context", question["context"])
+        String.contains?(String.trim(text), "\n") -> Map.put(entry, "context", String.trim(text))
+        true -> entry
+      end
+
+    if question["criterion"], do: Map.put(entry, "criterion", question["criterion"]), else: entry
   end
 
   @doc """
@@ -586,6 +596,7 @@ defmodule Apiary.WorkItemsFixtures do
               :inputs_invalid,
               :target_access_gone,
               :write_without_work_item,
+              :shared_access_differs,
               :build_failed,
               :harness_unresolved
             ],

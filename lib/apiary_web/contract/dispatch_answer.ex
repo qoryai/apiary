@@ -13,8 +13,7 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   version, nil for none; the workflow and `harness_hidden`; the access level the walk
   resolved, lowered by the run's stage entry; and the harness document the walk took, nil
   where the target's harness file applies. A run with write access whose process version
-  has a submit step also has `submit` and `submit_module`, nil for none
-  (`Apiary.Dispatches.Handover`).
+  has a submit step also has `submit` (`Apiary.Dispatches.Handover`).
   """
   @type harness :: %{
           required(:target_version) => String.t() | nil,
@@ -22,19 +21,21 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
           required(:harness_hidden) => boolean,
           required(:access) => :read | :write_no_push | :write,
           required(:harness) => map | nil,
-          optional(:submit) => %{type: String.t(), send: String.t()},
-          optional(:submit_module) => map | nil
+          optional(:submit) => %{type: String.t(), send: String.t()}
         }
 
   # documents/1 is a run's documents (the run contract's `documents.schema.json`), in
   # this order: the run's `step`, the workspace's `domain`, the run's `access` and
   # `target` (none for a run without a target), its `target_version`, its `work_item`
   # (none for a prebuild), its `run_settings` (none for none, a `Jason.OrderedObject`),
-  # its `workflow`, `harness_hidden`, `harness`, `submit_module` and `submit`
-  # (`harness/1`), a prebuild's
-  # destinations, `image_destination` and then `environment_destination` or
-  # `environment_image` (`:destinations`, `{name, value}` members, none for any other
-  # run), and its `inputs`. The claim measures them (`Apiary.Dispatches.Handover`).
+  # the members about its first session, `time_limit_minutes`, `shared_run` and
+  # `full_suite`, each where present (`:session`, `{name, value}` members, none for a
+  # prebuild), its `workflow`, `harness_hidden`, `harness` and `submit`
+  # (`harness/1`), a prebuild's destinations, `image_destination` and then
+  # `environment_destination` or `environment_image`, and
+  # `largest_prebuilt_image_bytes` where it has one (`:destinations`, `{name, value}`
+  # members, none for any other run), and its `inputs`. The claim measures them
+  # (`Apiary.Dispatches.Handover`).
   @doc false
   @spec documents(%{
           required(:step) => String.t(),
@@ -44,7 +45,8 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
           required(:run_settings) => Jason.OrderedObject.t() | nil,
           required(:harness) => harness | nil,
           required(:inputs) => Jason.OrderedObject.t(),
-          optional(:destinations) => [{String.t(), String.t()}],
+          optional(:session) => [{String.t(), pos_integer | boolean}],
+          optional(:destinations) => [{String.t(), String.t() | pos_integer}],
           optional(atom) => term
         }) :: Jason.OrderedObject.t()
   def documents(%{step: step} = run) do
@@ -57,7 +59,9 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
         reach(run.harness, run.target) ++
         target_version(run.harness) ++
         work_item ++
-        run_settings ++ harness(run.harness) ++ destinations ++ [{"inputs", run.inputs}]
+        run_settings ++
+        Map.get(run, :session, []) ++
+        harness(run.harness) ++ destinations ++ [{"inputs", run.inputs}]
     )
   end
 
@@ -70,8 +74,7 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # `harness`, `{"harness": document}`, where the walk took a document other than the
   # target's harness file: a stack chosen for the target, the workspace's or the
   # organisation's harness choice, or the Qory harness. The machine composes the
-  # target's file at `target_version` where `harness` is absent. Then `submit_module`,
-  # as the adapter of the forge declared it, where there is one, and `submit`, `{type,
+  # target's file at `target_version` where `harness` is absent. Then `submit`, `{type,
   # send}`, where the run has a submit step.
   defp harness(nil), do: []
 
@@ -80,15 +83,8 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
     [{"workflow", workflow}, {"harness_hidden", hidden}] ++ harness ++ submit(members)
   end
 
-  defp submit(%{submit: %{type: type, send: send}} = members) do
-    module =
-      case Map.get(members, :submit_module) do
-        %{} = module -> [{"submit_module", module}]
-        nil -> []
-      end
-
-    module ++ [{"submit", Jason.OrderedObject.new([{"type", type}, {"send", send}])}]
-  end
+  defp submit(%{submit: %{type: type, send: send}}),
+    do: [{"submit", Jason.OrderedObject.new([{"type", type}, {"send", send}])}]
 
   defp submit(_members), do: []
 

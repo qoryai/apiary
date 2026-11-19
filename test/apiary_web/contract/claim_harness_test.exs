@@ -16,7 +16,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Dispatches, Repo, Stacks, WorkItems}
+  alias Apiary.{Dispatches, Repo, Stacks, TimeLimits, WorkItems}
   alias Apiary.Harnesses.{Builtin, Reader}
   alias Apiary.Nodes.Node
   alias Apiary.Policy.ComposedConfiguration
@@ -147,6 +147,17 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
     work_item
   end
 
+  # Saves the instance's largest prebuilt image, `gb` GB, nil for no limit, as Instance
+  # settings › Configuration saves it (`Apiary.InstanceConfig`).
+  defp largest_prebuilt_image!(gb) do
+    Repo.insert_all(
+      Apiary.InstanceConfig.Row,
+      [%{id: true, prebuilt_image_max_gb: gb, updated_at: DateTime.utc_now()}],
+      on_conflict: {:replace, [:prebuilt_image_max_gb]},
+      conflict_target: :id
+    )
+  end
+
   defp section do
     {:ok, section} = Reader.document(@document)
     section
@@ -237,6 +248,14 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       valid!(documents)
     end
 
+    test "has no largest_prebuilt_image_bytes, whatever the instance's largest prebuilt image",
+         ctx do
+      largest_prebuilt_image!(20)
+      workflow!(ctx)
+      explore!(ctx, origin: :file, target_version: @version)
+      refute Map.has_key?(documents(claim(ctx)), "largest_prebuilt_image_bytes")
+    end
+
     test "with no workflow has none of the harness members, and no machine", ctx do
       {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @document)
 
@@ -279,14 +298,6 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
     @describetag needs: [:factory, :workflow_model]
 
     @submit %{"type" => "code-change", "send" => "end_of_run"}
-    @submit_module %{
-      "name" => "forge-submit",
-      "source" => %{
-        "git" => "https://modules.example.org/example-org/forge-module",
-        "ref" => "3f2a91c4d5e6f708192a3b4c5d6e7f8091a2b3c4",
-        "module" => "forge-submit"
-      }
-    }
 
     # The workspace's process: one stage whose sequence runs `explore-a-ticket`, with
     # `access` when given. Its version's template record has `submit`, none for nil. The
@@ -323,24 +334,6 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       version
     end
 
-    # A collection of the workspace that can change the target of `work_item`, as a
-    # forge's is, whose adapter's latest start-up declared `module`, none for nil.
-    defp forge!(ctx, work_item, module) do
-      collection =
-        collection_fixture(ctx.scope,
-          target_system: work_item.target_system,
-          target_path: work_item.target_path,
-          environment_ref: nil
-        )
-
-      {1, _rows} =
-        Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
-          set: [targets: true, submit_module: module]
-        )
-
-      collection
-    end
-
     # A work item's explore run whose walk resolved `access`, from the stacks' document.
     defp walked!(ctx, access) do
       explore!(ctx,
@@ -351,91 +344,39 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       )
     end
 
-    test "of a write run has submit, and the submit_module of the forge's adapter, after harness",
-         ctx do
+    test "of a write run has submit and no submit_module, after harness", ctx do
       process!(ctx, @submit)
-      work_item = walked!(ctx, :write)
-      forge!(ctx, work_item, @submit_module)
+      walked!(ctx, :write)
       stored = stored(claim(ctx))
       documents = Jason.decode!(stored)
 
-      assert %{
-               "access" => "write",
-               "workflow" => "explore-a-ticket",
-               "submit" => @submit,
-               "submit_module" => @submit_module
-             } = documents
+      assert %{"access" => "write", "workflow" => "explore-a-ticket", "submit" => @submit} =
+               documents
+
+      refute Map.has_key?(documents, "submit_module")
 
       assert stored |> members() |> Enum.filter(&(&1 in ~w(harness submit_module submit inputs))) ==
-               ~w(harness submit_module submit inputs)
+               ~w(harness submit inputs)
 
       valid!(documents)
     end
 
-    test "puts the host of the submit_module's source in the run's stack_hosts", ctx do
+    test "of a write run on a target a forge's collection reaches has no submit_module", ctx do
       process!(ctx, @submit)
       work_item = walked!(ctx, :write)
-      forge!(ctx, work_item, @submit_module)
 
-      run =
-        ctx
-        |> claim()
-        |> registered()
+      collection =
+        collection_fixture(ctx.scope,
+          target_system: work_item.target_system,
+          target_path: work_item.target_path,
+          environment_ref: nil
+        )
 
-      assert {:ok, members} = ComposedConfiguration.members(run)
-      assert members.stack_hosts == ["modules.example.org"]
+      {1, _rows} =
+        Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
+          set: [targets: true]
+        )
 
-      # A run whose documents have no submit_module: no such host.
-      Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^run.id),
-        set: [run_documents: ~s({"step":"explore","inputs":{}})]
-      )
-
-      assert {:ok, without} = ComposedConfiguration.members(Repo.get!(Apiary.Runs.Run, run.id))
-      assert without == nil or without.stack_hosts == []
-    end
-
-    test "of a write run whose forge's adapter declared no submit_module is submit alone",
-         ctx do
-      process!(ctx, @submit)
-      work_item = walked!(ctx, :write)
-      forge!(ctx, work_item, nil)
-      documents = documents(claim(ctx))
-
-      assert %{"access" => "write", "submit" => @submit} = documents
-      refute Map.has_key?(documents, "submit_module")
-    end
-
-    test "takes no submit_module from a tracker's adapter or another workspace's", ctx do
-      process!(ctx, @submit)
-      work_item = walked!(ctx, :write)
-      target = [target_system: work_item.target_system, target_path: work_item.target_path]
-
-      # A tracker's collection on the run's target, whose adapter declares a module but
-      # did not say its collections have targets.
-      tracker = collection_fixture(ctx.scope, target ++ [environment_ref: nil])
-
-      # A forge's collection on the same target, in another workspace of the organisation.
-      other = workspace_fixture(ctx.scope.organisation)
-
-      elsewhere =
-        collection_fixture(ctx.scope, target ++ [environment_ref: nil, workspace_id: other.id])
-
-      for {collection, targets?} <- [{tracker, false}, {elsewhere, true}] do
-        {1, _rows} =
-          Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
-            set: [targets: targets?, submit_module: @submit_module]
-          )
-      end
-
-      documents = documents(claim(ctx))
-
-      assert %{"access" => "write", "submit" => @submit} = documents
-      refute Map.has_key?(documents, "submit_module")
-    end
-
-    test "of a write run with no forge's collection for its target is submit alone", ctx do
-      process!(ctx, @submit)
-      walked!(ctx, :write)
       documents = documents(claim(ctx))
 
       assert %{"access" => "write", "submit" => @submit} = documents
@@ -444,8 +385,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
 
     test "is absent where the process version has no submit", ctx do
       process!(ctx, nil)
-      work_item = walked!(ctx, :write)
-      forge!(ctx, work_item, @submit_module)
+      walked!(ctx, :write)
       documents = documents(claim(ctx))
 
       assert documents["access"] == "write"
@@ -455,8 +395,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
 
     test "is absent from a read run", ctx do
       process!(ctx, @submit)
-      work_item = walked!(ctx, :read)
-      forge!(ctx, work_item, @submit_module)
+      walked!(ctx, :read)
       documents = documents(claim(ctx))
 
       assert %{"access" => "read", "workflow" => "explore-a-ticket"} = documents
@@ -466,8 +405,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
 
     test "is absent from a write run that a stage entry with read access lowers", ctx do
       process!(ctx, @submit, "read")
-      work_item = walked!(ctx, :write)
-      forge!(ctx, work_item, @submit_module)
+      walked!(ctx, :write)
       documents = documents(claim(ctx))
 
       assert %{"access" => "read", "workflow" => "explore-a-ticket"} = documents
@@ -477,13 +415,242 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
 
     test "is absent from a run with no workflow", ctx do
       process!(ctx, @submit)
-      work_item = explore!(ctx, access_level: :write)
-      forge!(ctx, work_item, @submit_module)
+      explore!(ctx, access_level: :write)
       documents = documents(claim(ctx))
 
       assert Map.take(documents, @harness) == %{}
       refute Map.has_key?(documents, "submit")
       refute Map.has_key?(documents, "submit_module")
+    end
+  end
+
+  describe "a run of a stage" do
+    @describetag needs: [:factory, :workflow_model]
+
+    @build "st_6ns22c4pav"
+
+    # The workspace's process: one stage, Build, with `sequence` and `extra`, whose first
+    # workflow, plan-the-build, has a stack row. The runs queued after it are of this
+    # version.
+    defp build!(ctx, sequence, extra) do
+      {:ok, _stack} =
+        Stacks.put_stack(
+          ctx.scope,
+          {:workspace, ctx.scope.workspace, "plan-the-build"},
+          @document
+        )
+
+      stage =
+        Map.merge(
+          %{
+            "id" => @build,
+            "name" => "Build",
+            "inputs" => [],
+            "sequence" => sequence,
+            "outputs" => [],
+            "gate" => %{"kind" => "person", "approvers" => "members"}
+          },
+          extra
+        )
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => [stage]}
+      {:ok, _version} = Apiary.Processes.save(ctx.scope, ctx.scope.workspace, document)
+    end
+
+    # The run of the queue of `work_item`, its run record and its sessions.
+    defp claimed(work_item) do
+      run = Repo.get_by!(Apiary.Dispatches.DispatchRun, work_item_id: work_item.id)
+
+      sessions =
+        Repo.all(
+          from s in Apiary.Stages.Session,
+            where: s.dispatch_run_id == ^run.id,
+            order_by: s.sequence
+        )
+
+      {Repo.get_by!(Apiary.Runs.Run, dispatch_run_id: run.id), sessions}
+    end
+
+    # The members of the documents from `run_settings` to `workflow`.
+    defp around_settings(json) do
+      json
+      |> members()
+      |> Enum.drop_while(&(&1 != "run_settings"))
+      |> Enum.take_while(&(&1 != "workflow"))
+    end
+
+    test "with shared_run, of a write run, has the first session's limit, shared_run and full_suite, and the claim keeps each entry's settings and the first session",
+         ctx do
+      build!(
+        ctx,
+        [
+          %{"workflow" => "plan-the-build", "first_attempt" => true},
+          %{
+            "loop" => %{
+              "rounds" => 3,
+              "body" => [%{"workflow" => "implement-changes"}, %{"workflow" => "review-changes"}]
+            }
+          }
+        ],
+        %{"shared_run" => true}
+      )
+
+      {:ok, _limit} = TimeLimits.put_limit(ctx.scope, :workspace, "plan-the-build", 45)
+      {:ok, _limit} = TimeLimits.put_limit(ctx.scope, :workspace, "review-changes", 90)
+      work_item = walked!(ctx, :write)
+      json = claim(ctx) |> stored()
+      documents = Jason.decode!(json)
+      valid!(documents)
+
+      assert %{
+               "workflow" => "plan-the-build",
+               "time_limit_minutes" => 45,
+               "shared_run" => true,
+               "full_suite" => true
+             } = documents
+
+      refute Map.has_key?(documents["run_settings"], "time_limit_minutes")
+      assert around_settings(json) == ~w(run_settings time_limit_minutes shared_run full_suite)
+
+      {run, sessions} = claimed(work_item)
+
+      assert run.session_settings == %{
+               "0" => %{
+                 "workflow" => "plan-the-build",
+                 "time_limit_minutes" => 45,
+                 "full_suite" => true
+               },
+               "1.0" => %{
+                 "workflow" => "implement-changes",
+                 "time_limit_minutes" => 180,
+                 "full_suite" => true
+               },
+               "1.1" => %{
+                 "workflow" => "review-changes",
+                 "time_limit_minutes" => 90,
+                 "full_suite" => true
+               }
+             }
+
+      assert [%{sequence: 1, workflow: "plan-the-build", stage_entry: 0, forager_session: nil}] =
+               sessions
+    end
+
+    test "without shared_run has neither member where both are false, and the claim keeps nothing for sessions",
+         ctx do
+      build!(ctx, [%{"workflow" => "plan-the-build"}], %{})
+      work_item = walked!(ctx, :read)
+      json = claim(ctx) |> stored()
+      documents = Jason.decode!(json)
+      valid!(documents)
+
+      assert %{"workflow" => "plan-the-build", "time_limit_minutes" => 180} = documents
+      refute Map.has_key?(documents, "shared_run")
+      refute Map.has_key?(documents, "full_suite")
+      assert around_settings(json) == ~w(run_settings time_limit_minutes)
+
+      assert {%{session_settings: nil}, []} = claimed(work_item)
+    end
+
+    test "without shared_run has full_suite for an entry with first_attempt of a write run",
+         ctx do
+      build!(ctx, [%{"workflow" => "plan-the-build", "first_attempt" => true}], %{})
+      walked!(ctx, :write)
+      documents = documents(claim(ctx))
+
+      assert %{"access" => "write", "full_suite" => true} = documents
+      refute Map.has_key?(documents, "shared_run")
+    end
+
+    test "with shared_run ends before it starts where the harness changed a workflow's access after the save",
+         ctx do
+      build!(
+        ctx,
+        [%{"workflow" => "plan-the-build"}, %{"workflow" => "implement-changes"}],
+        %{"shared_run" => true}
+      )
+
+      # An update from the harness sets implement-changes to read after the save.
+      :ok =
+        Apiary.Processes.record_declared(ctx.scope.workspace, %{
+          "plan-the-build" => :write,
+          "implement-changes" => :read
+        })
+
+      work_item = walked!(ctx, :write)
+      :ok = Apiary.DispatchedRunsFixtures.walks_resolved!()
+
+      # The claim ends the run and finds no other: no run to hand over.
+      claim = signed(ctx, "/v1/pools/claim", %{"version" => 1, "wait_seconds" => 0})
+      assert claim.status == 204
+
+      assert %Apiary.Dispatches.DispatchRun{
+               state: :ended,
+               end_cause: :shared_access_differs,
+               result_outcome: :error
+             } = Repo.get_by!(Apiary.Dispatches.DispatchRun, work_item_id: work_item.id)
+
+      assert {_run, []} = claimed(work_item)
+      work_item = Repo.get!(WorkItems.WorkItem, work_item.id)
+      assert work_item.stage_state == :escalated
+
+      assert [%{points: [%{"text" => text, "fix" => fix}]}] =
+               Repo.all(
+                 from e in Apiary.Stages.Escalation, where: e.work_item_id == ^work_item.id
+               )
+
+      assert text ==
+               "The run stopped: it did not start, because the workflows of Build would run with different access: implement-changes runs with read access, because its harness sets read."
+
+      assert fix ==
+               "Move implement-changes to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access, then run the round again."
+    end
+
+    test "of Explore, whose entry is a loop, has no full_suite with write access", ctx do
+      workflow!(ctx)
+
+      stage = %{
+        "id" => "st_r79kph11eg",
+        "name" => "Explore",
+        "inputs" => [],
+        "sequence" => [
+          %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "explore-a-ticket"}]}}
+        ],
+        "outputs" => [],
+        "gate" => %{"kind" => "person", "approvers" => "members"}
+      }
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => [stage]}
+      {:ok, _version} = Apiary.Processes.save(ctx.scope, ctx.scope.workspace, document)
+      work_item = walked!(ctx, :write)
+      documents = documents(claim(ctx))
+
+      assert %{"access" => "write", "workflow" => "explore-a-ticket"} = documents
+      refute Map.has_key?(documents, "full_suite")
+
+      assert %Apiary.Dispatches.DispatchRun{explore: true} =
+               Repo.get_by!(Apiary.Dispatches.DispatchRun, work_item_id: work_item.id)
+    end
+
+    test "of a run that reads or does not push has no full_suite, nor does any session", ctx do
+      build!(
+        ctx,
+        [
+          %{"workflow" => "plan-the-build", "first_attempt" => true},
+          %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "implement-changes"}]}}
+        ],
+        %{"shared_run" => true}
+      )
+
+      work_item = walked!(ctx, :write_no_push)
+      documents = documents(claim(ctx))
+
+      assert %{"access" => "write-no-push", "shared_run" => true} = documents
+      refute Map.has_key?(documents, "full_suite")
+      {run, _sessions} = claimed(work_item)
+
+      assert %{"0" => %{"full_suite" => false}, "1.0" => %{"full_suite" => false}} =
+               run.session_settings
     end
   end
 
@@ -557,14 +724,14 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       assert documents["inputs"] == %{"version" => 1, "environment_ref" => "env-1"}
     end
 
-    test "has no submit and no submit_module, where its collection's adapter declares one",
+    test "has no submit and no submit_module, where its collection's adapter has targets",
          ctx do
       workflow!(ctx)
       collection = collection_fixture(ctx.scope)
 
       {1, _rows} =
         Repo.update_all(from(n in Node, where: n.id == ^collection.adapter_id),
-          set: [targets: true, submit_module: @submit_module]
+          set: [targets: true]
         )
 
       documents = prebuild_documents(ctx, collection)
@@ -623,6 +790,32 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       assert second["environment_image"] == image
       refute Map.has_key?(second, "environment_destination")
       refute second["image_destination"] == first["image_destination"]
+    end
+
+    test "has largest_prebuilt_image_bytes, the instance's largest prebuilt image in bytes, after its destinations",
+         ctx do
+      largest_prebuilt_image!(20)
+
+      {:ok, _run} =
+        Repo.transact(fn ->
+          Dispatches.queue_prebuild(collection_fixture(ctx.scope), ctx.pool, "env-1")
+        end)
+
+      claim = claim(ctx)
+      documents = documents(claim)
+
+      assert documents["largest_prebuilt_image_bytes"] == 20_000_000_000
+
+      assert claim |> stored() |> members() |> Enum.take(-3) ==
+               ~w(environment_destination largest_prebuilt_image_bytes inputs)
+    end
+
+    test "has no largest_prebuilt_image_bytes where the instance has no largest prebuilt image",
+         ctx do
+      largest_prebuilt_image!(nil)
+      documents = prebuild_documents(ctx, collection_fixture(ctx.scope))
+      refute Map.has_key?(documents, "largest_prebuilt_image_bytes")
+      assert is_binary(documents["image_destination"])
     end
 
     test "makes its target where its workspace has none, for the target image's name", ctx do

@@ -3,6 +3,7 @@
   "name": "anthropic",
   "title": "Anthropic API key",
   "description": "Runs use Anthropic's API with an API key from the Claude Console. Anthropic bills the key's account.",
+  "vendor": "Anthropic",
   "settings": {"type": "object", "properties": {}, "additionalProperties": false},
   "egress_hosts": ["api.anthropic.com"],
   "roles": {

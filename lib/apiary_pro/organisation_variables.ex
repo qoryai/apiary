@@ -20,7 +20,7 @@ defmodule ApiaryPro.OrganisationVariables do
     bytes of one line (`ApiaryPro.OrganisationVariables.Variable`, with the core's
     sentences); and a write at either level, the organisation's or a workspace's, is
     refused where it would raise one holder's set of variables, the resolution of the
-    organisation's variables alone, a workspace's or a repository's, above 128 names or
+    organisation's variables alone, a workspace's or a repository's, above 126 names or
     64 KiB of names and values.
 
   The limits and the one spelling are checked on every write, at either level, and on
@@ -32,8 +32,11 @@ defmodule ApiaryPro.OrganisationVariables do
   the deletion of an unlocked one, says so and is refused, naming the workspace; the
   workspace clears it by changing or deleting its variable.
 
-  A run receives only its security policy: the core keeps and resolves variables at every
-  level, and the run configuration does not carry them.
+  A run receives what its workspace and target inherit: the core resolves the chain,
+  this level first, when a claim registers the run (`Apiary.Variables.for_run/2`), and
+  the run configuration carries the result in its `variables`. A later change reaches the next
+  run. With the instance's `organisation_variables` feature off, a run inherits none
+  (`for_above/1`).
 
   ## Who
 
@@ -438,7 +441,10 @@ defmodule ApiaryPro.OrganisationVariables do
         refuse(
           changeset,
           :name,
-          dgettext_noop("errors", "would raise a target's variables above %{limit}"),
+          dgettext_noop(
+            "errors",
+            "Remove variables at any level until each target has at most %{limit}. A run takes at most %{limit} variables, and this change would raise a target's variables above %{limit}."
+          ),
           limit: Resolution.max_names()
         )
 
@@ -520,7 +526,10 @@ defmodule ApiaryPro.OrganisationVariables do
     refuse(
       changeset,
       :name,
-      dgettext_noop("errors", "would raise a target's variables in %{workspace} above %{limit}"),
+      dgettext_noop(
+        "errors",
+        "Remove variables at any level until each target has at most %{limit}. A run takes at most %{limit} variables, and this change would raise a target's variables in %{workspace} above %{limit}."
+      ),
       workspace: workspace.name,
       limit: Resolution.max_names()
     )
