@@ -6284,6 +6284,11 @@ msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
+msgid "Ask an admin to give this stage a workflow in Workspace settings › %{workflows}. Approve needs %{outputs}."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
 msgid "Ask an approver of %{stage} to act on it."
 msgstr ""
 
@@ -11185,11 +11190,6 @@ msgstr ""
 msgid "Give the loop 1 to 10 rounds."
 msgstr ""
 
-#: lib/apiary_web/live/work_item_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Give this stage a workflow that writes %{outputs} in Workspace settings › %{workflows}. Approve needs them."
-msgstr ""
-
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Give your own option"
@@ -11680,6 +11680,11 @@ msgstr ""
 #: lib/apiary_web/components/tick_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "In %{workspace} (cannot be ticked)"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "In Workspace settings › %{workflows}, give this stage a workflow that writes %{outputs}. Approve needs %{outputs}."
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -16625,7 +16630,7 @@ msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Pick Request changes to write %{outputs}. Approve needs them."
+msgid "Pick Request changes to write %{outputs}. Approve needs %{outputs}."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex

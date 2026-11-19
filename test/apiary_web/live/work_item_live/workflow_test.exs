@@ -3034,7 +3034,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert decisions(work_item, :approve) |> Enum.filter(&(&1.stage_id == @shape)) == []
 
       assert line(view, "#work-item-stage-notice") ==
-               "Pick Request changes to write the acceptance criteria. Approve needs them."
+               "Pick Request changes to write the acceptance criteria. Approve needs the acceptance criteria."
 
       # The gate card shows the control the notice names, and no Move back.
       assert has_element?(view, "#work-item-stage-gate-ask-changes", "Request changes")
@@ -3918,8 +3918,30 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert decisions(work_item, :approve) == []
 
       assert line(view, "#work-item-stage-notice") ==
-               "Give this stage a workflow that writes the acceptance criteria in Workspace " <>
-                 "settings › Workflows. Approve needs them."
+               "In Workspace settings › Workflows, give this stage a workflow that writes the " <>
+                 "acceptance criteria. Approve needs the acceptance criteria."
+    end
+
+    test "a stale Approve of a member who may not edit the process: the notice says to ask an admin",
+         %{scope: scope} do
+      work_item = at_shape_gate(scope, ["acceptance-criteria"])
+      member = member_fixture(scope, :member)
+      member_scope = Apiary.Organisations.load_scope(Apiary.Accounts.Scope.for_user(member.user))
+      refute Apiary.Access.can?(member_scope, :"process.edit", scope.workspace)
+      conn = log_in_user(build_conn(), member.user)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      render_hook(view, "stage_approve", %{
+        "number" => "#{work_item.number}",
+        "seen" => @shape,
+        "note" => ""
+      })
+
+      assert decisions(work_item, :approve) == []
+
+      assert line(view, "#work-item-stage-notice") ==
+               "Ask an admin to give this stage a workflow in Workspace settings › Workflows. " <>
+                 "Approve needs the acceptance criteria."
     end
   end
 
@@ -5277,6 +5299,18 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       # With Move back on the card, the action is Move back's.
       assert %{"text" => "Pick Move back to return the work item to Build once more."} =
                ApiaryWeb.WorkItemLive.Workflow.worded(point, %{none | earlier: [%{id: @build}]})
+    end
+
+    test "worded/2 joins two switch buttons' words with \"or\"" do
+      [point] = Apiary.Stages.Points.return_limit(2, "Verify", "Build")
+      tracks = [%{id: "standard", name: "Standard"}, %{id: "hotfix", name: "Hotfix"}]
+
+      assert %{"text" => "Pick Switch to Standard or Switch to Hotfix."} =
+               ApiaryWeb.WorkItemLive.Workflow.worded(point, %{
+                 accept: false,
+                 switch: tracks,
+                 earlier: [%{id: @build}]
+               })
     end
 
     test "a return limit's point uses the switch button's words, where the card shows a switch",
