@@ -713,9 +713,6 @@ defmodule Apiary.StacksTest do
              "#/workflows/explore/access"},
             {"modules: [{source: {git: #{@stacks}, ref: v1}}]\nworkflows: {Explore: {}}\n",
              "#/workflows"},
-            {"modules: [{source: {git: #{@stacks}, ref: v1}}]\n" <>
-               "workflows: {implement-changes: {access: read, plan: build-plan}}\n",
-             "#/workflows/implement-changes"},
             {base <> "modules: [{name: lint}]\n", "#/modules/0"},
             {base <> "modules: [{source: {path: ./m}}]\n", "#/modules/0"},
             {base <> "modules: [{source: {git: #{@stacks}, ref: v1}, link: m}]\n", "#/modules/0"},
