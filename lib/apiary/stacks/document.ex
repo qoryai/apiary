@@ -35,12 +35,12 @@ defmodule Apiary.Stacks.Document do
   #      address's shape. Then each text `ref` of those sources (`ref_error/1`).
   #   6. The run contract's `harness_section` (`documents.schema.json` beside this file,
   #      vendored from the integrations contract at the commit in `.contract-ref`
-  #      beside it, with the tier rename of integrations `b22085a` applied on top),
-  #      validated with JSV: git sources and exports only, no `{path}` source, no module
-  #      by name alone, no `link`. A bare `{git, ref}` source, the root of a remote
-  #      source, is allowed. A document with `extends` extends that base and has no
-  #      `workflows`; one without `extends` defines a stack: it lists at least one module
-  #      and may contain `workflows`.
+  #      beside it), validated with JSV: git sources and exports only, no `{path}`
+  #      source, no module by name alone, no `link`. A bare `{git, ref}` source, the root
+  #      of a remote source, is allowed. A document with `extends` extends that base and
+  #      has no `workflows`; one without `extends` defines a stack: it lists at least one
+  #      module and may contain `workflows`, each with `access`, `plan` and `tier` only.
+  #      A workflow with `plan` has `access: write`.
   @moduledoc false
 
   @behaviour JSV.Resolver

@@ -221,14 +221,15 @@ defmodule Apiary.Runs.Diagnostics do
     |> put("variables", variables(run.registration_variables))
   end
 
-  # The machine type the run used: the key of its dispatch's claim answer, else the key its
-  # queued run has, with the name of the type that has the key today. Nil where neither
-  # has a key, or the run has the key `default` of a run queued before machine types.
+  # The machine type the run used, as `type`: the type of its dispatch's claim answer,
+  # else the type its queued run has, with the name of the machine type whose key is that
+  # value today. Nil where neither has a type, or the run has the type `default` of a run
+  # queued before machine types.
   defp machine(dispatch, dispatch_run) do
     keys = [dispatch && dispatch.machine_type, dispatch_run && dispatch_run.machine_type]
 
     with key when is_binary(key) <- Enum.find(keys, &Apiary.MachineTypes.MachineType.key?/1) do
-      put(%{"key" => key}, "name", Apiary.MachineTypes.get(key) |> type_name())
+      put(%{"type" => key}, "name", Apiary.MachineTypes.get(key) |> type_name())
     end
   end
 

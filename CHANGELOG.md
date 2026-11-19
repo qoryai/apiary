@@ -1968,6 +1968,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   shows "Only owners and admins add a machine's access keys.", "Only owners and admins
   manage a machine's access keys." and "Reload the page: this machine's access keys
   changed, and that access key or code is gone."
+- In a run's diagnostics, the machine type is `run.machine.type`, in place of
+  `run.machine.key`. A harness document without `extends` may set `plan` and `tier` on a
+  workflow, as `qory-stack.yaml` does, and a document whose workflow sets `time_limit` is
+  refused at the save. The copies of the integrations run and diagnostics contracts are at
+  the commit that makes these changes, which also adds the refusals of the next-session
+  request.
 <!-- feature: factory, secrets -->
 - The run configuration's `model_credential` is now
   `default_model_provider_credential_name`, the default model provider credential, as in

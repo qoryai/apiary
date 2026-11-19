@@ -651,7 +651,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
       end
     end
 
-    test "has the machine type: the claim's key, else the queued run's, with the type's name",
+    test "has the machine type: the claim's type, else the queued run's, with its name",
          %{schema: schema, scope: scope, run: run, dispatch: dispatch} = ctx do
       machine = fn ->
         valid!(schema, Jason.decode!(Diagnostics.encode(run, scope)))["run"]["machine"]
@@ -667,15 +667,15 @@ defmodule Apiary.Runs.DiagnosticsTest do
 
       set.(Apiary.Dispatches.Dispatch, dispatch.id, "browser")
       set.(Apiary.Dispatches.DispatchRun, ctx.dispatch_run.id, "standard")
-      assert machine.() == %{"key" => "browser", "name" => "Browser tests"}
+      assert machine.() == %{"type" => "browser", "name" => "Browser tests"}
 
-      # A dispatch of an answer with no offers has no key; the queued run has one.
+      # A dispatch of an answer with no offers has no type; the queued run has one.
       set.(Apiary.Dispatches.Dispatch, dispatch.id, nil)
-      assert machine.() == %{"key" => "standard", "name" => "Standard"}
+      assert machine.() == %{"type" => "standard", "name" => "Standard"}
 
-      # A key no type has today: the key alone.
+      # A type that no machine type has today: the type alone.
       set.(Apiary.Dispatches.DispatchRun, ctx.dispatch_run.id, "gone")
-      assert machine.() == %{"key" => "gone"}
+      assert machine.() == %{"type" => "gone"}
 
       # A run queued before machine types: no record of the type.
       set.(Apiary.Dispatches.DispatchRun, ctx.dispatch_run.id, "default")

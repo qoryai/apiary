@@ -307,13 +307,24 @@ defmodule Apiary.StacksTest do
       for document <- [
             "modules: [{source: {git: #{@stacks}, ref: v1}}]\n",
             "name: web\nmodules:\n  - source: {git: #{@stacks}, ref: v1, module: web}\n" <>
-              "workflows:\n  explore: {access: write, time_limit: 45m}\n  review: {}\n"
+              "workflows:\n  explore: {access: write, tier: thinking}\n  review: {}\n"
           ] do
         assert {:ok, stack} =
                  Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document)
 
         Repo.delete!(stack)
       end
+    end
+
+    test "take a document without extends whose write workflow sets a plan", ctx do
+      document =
+        "modules: [{source: {git: #{@stacks}, ref: v1}}]\n" <>
+          "workflows:\n  implement-changes: {access: write, plan: build-plan}\n"
+
+      assert {:ok, %Stack{harness: ^document}} =
+               Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document,
+                 choice: :repository
+               )
     end
 
     test "take modules by git, by export and at the root, with the other keys", ctx do
@@ -702,6 +713,9 @@ defmodule Apiary.StacksTest do
              "#/workflows/explore/access"},
             {"modules: [{source: {git: #{@stacks}, ref: v1}}]\nworkflows: {Explore: {}}\n",
              "#/workflows"},
+            {"modules: [{source: {git: #{@stacks}, ref: v1}}]\n" <>
+               "workflows: {implement-changes: {access: read, plan: build-plan}}\n",
+             "#/workflows/implement-changes"},
             {base <> "modules: [{name: lint}]\n", "#/modules/0"},
             {base <> "modules: [{source: {path: ./m}}]\n", "#/modules/0"},
             {base <> "modules: [{source: {git: #{@stacks}, ref: v1}, link: m}]\n", "#/modules/0"},
@@ -711,6 +725,18 @@ defmodule Apiary.StacksTest do
         assert error =~ "does not follow the harness format at #{place}", document
         assert error =~ ~r/^does not follow the harness format at #[^:]*: .+/
       end
+    end
+
+    test "refuse a workflow's time_limit", ctx do
+      document =
+        "modules: [{source: {git: #{@stacks}, ref: v1}}]\n" <>
+          "workflows:\n  implement-changes: {access: write, time_limit: 45m}\n"
+
+      assert refused(ctx, document) == [
+               "does not follow the harness format at " <>
+                 "#/workflows/implement-changes/time_limit: " <>
+                 "value was rejected from boolean schema: false"
+             ]
     end
 
     test "refuse a document the reader refuses", ctx do

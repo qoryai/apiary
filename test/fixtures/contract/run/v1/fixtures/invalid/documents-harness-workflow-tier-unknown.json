@@ -30,7 +30,7 @@
       ],
       "workflows": {
         "hello": {
-          "time_limit": "0s"
+          "tier": "fast"
         }
       }
     }
