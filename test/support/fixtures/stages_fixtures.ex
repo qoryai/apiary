@@ -192,9 +192,9 @@ defmodule Apiary.StagesFixtures do
 
   @doc """
   A live run of the queue at the stage `stage_id` (nil for the work item's stage), handed
-  over as a claim and its handover leave it: the work item's newest run when it is at that
-  stage and has not ended, else a new run there, with the next attempt. A run not yet
-  handed over is handed over, with a registered run (`Apiary.Runs.Run`) that is running.
+  over: the work item's newest run when it is at that stage and has not ended, else a new
+  run there, with the next attempt. A run not yet handed over is handed over, with a
+  registered run (`Apiary.Runs.Run`) that is running, as after the run's first events.
   For a test that needs a live run where the stage runner starts none: at a stage that
   runs no workflow, or at a stage whose runs ended, for a push after them. No step of the
   stage runner follows.
@@ -231,18 +231,28 @@ defmodule Apiary.StagesFixtures do
     end
   end
 
-  # The run handed over, with its registered run, running: what a claim and its handover
-  # write.
+  # The run handed over, with a registered run that is running, as after the run's first
+  # events: the registered run a claim wrote, else a new one. `insert_run!/2` writes a new
+  # one onto the record written when the run was queued, where it has one.
   defp hand_over!(%DispatchRun{} = run) do
-    %Run{
-      number: Apiary.RunEventsFixtures.next_run_number(run.organisation_id, run.workspace_id),
-      organisation_id: run.organisation_id,
-      workspace_id: run.workspace_id,
-      node_run_id: run.run_id,
-      dispatch_run_id: run.id
-    }
-    |> Ecto.Changeset.change(state: "running", started_at: DateTime.utc_now())
-    |> Apiary.RunEventsFixtures.insert_run!()
+    started = %{state: "running", started_at: DateTime.utc_now()}
+    claimed = from r in Run, where: r.dispatch_run_id == ^run.id and not is_nil(r.registered_at)
+
+    case Repo.one(claimed) do
+      %Run{} = claimed ->
+        claimed |> Ecto.Changeset.change(started) |> Repo.update!()
+
+      nil ->
+        %Run{
+          number: Apiary.RunEventsFixtures.next_run_number(run.organisation_id, run.workspace_id),
+          organisation_id: run.organisation_id,
+          workspace_id: run.workspace_id,
+          node_run_id: run.run_id,
+          dispatch_run_id: run.id
+        }
+        |> Ecto.Changeset.change(started)
+        |> Apiary.RunEventsFixtures.insert_run!()
+    end
 
     run |> Ecto.Changeset.change(state: :handed_over) |> Repo.update!()
   end
@@ -273,13 +283,17 @@ defmodule Apiary.StagesFixtures do
     run = newest_run(work_item)
     now = DateTime.utc_now()
 
-    # A run that `live_stage_run!/2` handed over has its registered run already.
-    running = from r in Run, where: r.dispatch_run_id == ^run.id and r.state == "running"
+    # A run that a claim registered or `live_stage_run!/2` handed over has its registered
+    # run already; it ends that one.
+    live =
+      from r in Run,
+        where: r.dispatch_run_id == ^run.id and not is_nil(r.registered_at),
+        where: r.state not in ^Run.ended_states()
 
     registered =
-      case Repo.one(running) do
-        %Run{} = running ->
-          running
+      case Repo.one(live) do
+        %Run{} = live ->
+          live
 
         nil ->
           %Run{
