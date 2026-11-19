@@ -1911,6 +1911,33 @@ defmodule Apiary.Dispatches.HandoverTest do
       end
     end
 
+    # A run's keys may be of several providers, each of its chain: every chain is checked,
+    # not only the start key's.
+    test "is checked for the chain of each of the run's keys" do
+      organisation_id = Ecto.UUID.generate()
+      workspace_id = Ecto.UUID.generate()
+      keys = [%AccessKey{allow_secrets: true}]
+      run = %DispatchRun{organisation_id: organisation_id, workspace_id: workspace_id}
+
+      gateway = %Node{
+        kind: :gateway,
+        organisation_id: organisation_id,
+        workspace_id: workspace_id
+      }
+
+      one_chain =
+        {:ok, %{settings: %{keys: [%{chain: "organisation"}, %{chain: "organisation"}]}}}
+
+      assert Apiary.Dispatches.Handover.model_sealable(one_chain, gateway, run, keys) == one_chain
+
+      # The second provider's key is of the operator's chain, which no gateway of the
+      # organisation may receive.
+      two_chains = {:ok, %{settings: %{keys: [%{chain: "organisation"}, %{chain: "operator"}]}}}
+
+      assert Apiary.Dispatches.Handover.model_sealable(two_chains, gateway, run, keys) ==
+               {:end, :secrets_not_allowed}
+    end
+
     # A wrong argument raises, with a model provider or without one, so the seal is not
     # skipped. `Apiary.Dispatches.RunSettingsTest` checks the seal through the claim.
     test "raises for a gateway or a run of the queue of another shape" do
