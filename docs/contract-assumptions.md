@@ -899,10 +899,11 @@ to a model provider gets the provider's keys at its claim
 (`Apiary.Dispatches.RunSettings`, `Apiary.ModelKeys.Order`), at most 6, so that the 16
 `credentials` of a run configuration hold them, the registry's credential, the work and
 push credentials, and the harness links. A run of a stage with `shared_run: true` also
-gets the keys of each provider its later sessions run on, one provider per session, at
-most 6 keys across them: the start key's provider's keys, at most 6 less the number of
-other providers; then one key of each other provider, in session order; then the other
-providers' remaining keys. A run whose first session runs on the machine's key, as its
+gets the keys of each provider its later sessions run on, one provider per session. The
+claim picks at most 6 keys in this order: the start key's provider's keys, at most 6 less
+the number of other providers; then one key of each other provider, in session order;
+then the other providers' remaining keys; `credentials` lists them provider by provider,
+the start key's provider first. A run whose first session runs on the machine's key, as its
 workflow resolves to no model choice, has no start key: its 6 keys fill from the
 providers of its later sessions, in session order, at least one key each, its run
 configuration has no `model_credential`, and none of its keys is in the group of the
@@ -912,11 +913,10 @@ key is an API credential named `<provider's public id>-<n>`, `n` from 1 for each
 provider, with its provider's `format`, `endpoint` and `auth`, and `group`, the
 provider's public id, so each provider's keys form one key group, which the gateway
 rotates, cools and stops apart from every other group (the Forager contract, Several
-model keys). A save of a stage
-with `shared_run: true` fails, and its claim ends `too_many_providers`, where its
-workflows, fallbacks included, use more than 6 providers. The claim orders the provider's keys at
-its clock: the keys with no known reset, or one already passed; then the keys by their
-known reset, the
+model keys). Where the workflows of a stage with `shared_run: true`, fallbacks included,
+use more than 6 providers, a save of the stage fails, and a claim of a run of the stage
+ends `too_many_providers`. The claim orders the provider's keys at its clock: the keys
+with no known reset, or one already passed; then the keys by their known reset, the
 closest minute first; then the keys in cooldown, the earliest `cooldown_until` first. Ties
 go in tie order: the default key first, then the other keys by when each was added. A
 key's known reset is the earliest `resets_at` that a gateway reported, else the next reset
@@ -956,7 +956,8 @@ the secret of that key's provider alone, under the value id the key has at the r
 key renamed since the claim is revealed, and a request for a key deleted since fails. The
 checks of a provider run for each provider of the keys in the request, and one failure
 fails the whole request. A run claimed before runs kept their keys in `run_model_keys`
-has no key rows, and its secrets requests fail.
+has no key rows: its run configuration no longer has its model keys, and its gateway's
+secrets request is refused `410` `run_configuration_superseded`.
 
 **A run that continues a paused run.** The end of a run of a workspace's queue whose exit
 paused it (How a run ends) queues, in the same transaction, the run that continues it
@@ -965,7 +966,7 @@ the paused run's place in the queue, its `continues_id` the paused run. After an
 `paused` with `model_key_switch`, which has no key, a claim takes the continuation only
 once 60 seconds have passed after the exit (`dispatch_runs.report_wait_until`), the time
 in which Qory Apiary still records the run's model keys report, so the report is recorded
-before the claim orders the keys. It queues none for
+before the claim orders the keys. The end of a paused run queues no continuation for
 a prebuild, for a work item no longer in Explore, at another take in or placed at another
 stage, when the work item's stage does not run, such as one that waits for a person, or
 while another run of the take in has not ended. The paused run keeps
@@ -1521,9 +1522,10 @@ The fold maps an exit to a state by the first rule that applies
    run, under The run endpoint). `cancelled` with `model_key_limit`, the shape a gateway
    sent before the contract had `paused` (a gateway built with qoryai/forager#53 and
    before #54), is Paused too, while such gateways run. The contract allows `model_key_limit`
-   with `paused` alone, and `paused` with `model_key_limit` alone: with any other
-   `state`, or none, the reason changes nothing, as an unknown reason does, and `paused`
-   with another reason, or none, is read as an unknown `state`; the rules below apply,
+   with `paused` alone, and `paused` with `model_key_limit` or `model_key_switch` alone:
+   with any other `state`, or none, the reason changes nothing, as an unknown reason
+   does, and `paused` with a reason other than `model_key_limit` or `model_key_switch`,
+   or none, is read as an unknown `state`; the rules below apply,
    and the fold logs one line. `paused` with `model_key_switch` is Paused too: the
    gateway ended a Codex session on a key that is out while another key of the run is
    usable, and the run that continues it resumes that session.
@@ -2035,12 +2037,13 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   entry of the key's arrival records the gateway's address as `remote_ip`.
 - Model keys: the contract writes `model_key_limit` with `paused` alone, on
   `dev.qory.session.exited` and on `dev.qory.run.exited`, and `paused` with
-  `model_key_limit` alone; a step never ends `paused`. Qory Apiary reads that pair as
+  `model_key_limit` or `model_key_switch` alone; a step never ends `paused`. Qory Apiary reads that pair as
   Paused (How a run ends), so a run that paused is never read as a person's cancel or a
   failure, and reads `cancelled` with `model_key_limit`, which a gateway of the earlier
   contract sends, the same way. With another `state`, or none, Qory Apiary reads the
   exit by its state, with no pause and no continuation, and logs one line; an exit
-  `paused` with another reason, or none, is read as one of an unknown state, with one
+  `paused` with a reason other than `model_key_limit` or `model_key_switch`, or none, is
+  read as one of an unknown state, with one
   line too. The contract also writes `model_key_switch` with `paused`, for a Codex run
   whose key is out while another key is usable; Qory Apiary reads that pair as Paused as
   well.

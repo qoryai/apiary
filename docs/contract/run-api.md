@@ -854,12 +854,12 @@ of the run contract. A next session of the same stage:
   an earlier session of the run uses, or where its provider has no key; and the
   catalogue's default runtime alone where the workflow resolves to
   no model choice at any level. The session uses the default model of that runtime.
-- `model_credential`, for a session on a provider other than that of the run's start key,
-  is the credential name of the key the session starts on: that provider's first key out
-  of cooldown, else its first key. The run's `credentials` have at most 6 keys across the
-  providers of its sessions: the start key's provider's keys, at most 6 less the number
-  of other providers; then one key of each other provider, in session order; then the
-  other providers' remaining keys. Where `model_credential` is left out, the session joins
+- `model_credential`, for a session on a key of a provider other than the start key's, is
+  the credential name of the key the session starts on: that provider's first key out of
+  cooldown, else its first key. The claim picks at most 6 keys in this order: the start
+  key's provider's keys, at most 6 less the number of other providers; then one key of
+  each other provider, in session order; then the other providers' remaining keys;
+  `credentials` lists them provider by provider, the start key's provider first. Where `model_credential` is left out, the session joins
   the group of the run's start key. A run whose first session runs on the machine's key,
   as its workflow resolves to no model choice, has no start key and no `model_credential`
   in its run configuration: its 6 keys fill from the providers of its later sessions, in

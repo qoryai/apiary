@@ -279,18 +279,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   cause `shared_access_differs` and the outcome error. Owners and admins see
   an escalation with the save's fix and "then run the round again" after it.
 - A save of a stage with `shared_run: true` fails when its workflows, their fallbacks
-  included, use more than 6 model providers, with "Use at most 6 model providers in one
-  stage. Its workflows use 7: Northwind, …", as one run takes keys of at most 6. It also
-  fails when a workflow has no model choice and the stage's runs can start on a provider
-  that the default runtime cannot use, with "Choose a model for workflow review. Without
-  one it runs on Claude Code, and this stage's runs can start on Northwind, which Claude
-  Code cannot use." Update from harness shows the same lines, and making a workspace from
-  a template shows the line alone, checked against the organisation's default. The claim
-  checks both again, as a changed default provider, a cleared model choice or a harness
-  change can break them after the save, and ends such a run before it starts, with the
-  end cause `too_many_providers` or `model_choice_missing` and the outcome error. The work
-  item and the stop line show the same fix while the fault remains, and "Run the round
-  again." once it is gone.
+  included, use more than 6 model providers, as one run takes keys of at most 6. The
+  error is "Use at most 6 model providers in one stage. Its workflows use 7: Northwind,
+  …". The save also fails when a workflow has no model choice and the stage's runs can
+  start on a provider that the default runtime cannot use. That error is "Choose a model
+  for workflow review. Without one it runs on Claude Code, and this stage's runs can start
+  on Northwind, which Claude Code cannot use." Update from harness shows the same lines.
+  Making a workspace from a template shows the line alone, checked against the
+  organisation's default. The claim checks both again, as a changed default provider, a
+  cleared model choice or a harness change can break them after the save. It ends such a
+  run before it starts, with the end cause `too_many_providers` or `model_choice_missing`
+  and the outcome error. The work item and the stop line show the same fix while the
+  fault remains, and "Run the round again." once it is gone.
 - `full_suite` is `true` only for a session of an entry with access `write` that is in a
   loop or has `first_attempt`, whether the stage has `shared_run` or not. A run with
   access `read` or `write-no-push`, and a run of Explore, gets `false` for every session.
@@ -1917,11 +1917,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   runtime, where the workflow resolves to no model choice at
   any level: the session uses that runtime's default model. A choice whose provider was
   removed ends the claim `provider_gone`. A run takes the keys of each provider its
-  sessions run on, at most 6 across them: the start key's provider's keys, then one key
-  of each other provider, then the rest, each kept as a row of `run_model_keys`. Each
-  key's entry in the run configuration has `group`, its provider's public id, so the
-  gateway rotates each provider's keys apart from the others. For a
-  session on a provider other than the start key's, the answer has `model_credential`,
+  sessions run on, each kept as a row of `run_model_keys`. The claim picks at most 6
+  keys in this order: the start key's provider's keys, then one key of each other
+  provider, then the rest; `credentials` lists them provider by provider, the start
+  key's provider first. Each key's entry in the run configuration has `group`, its
+  provider's public id, so the gateway rotates each provider's keys apart from the
+  others. For a session on a key of a provider other than the start key's, the answer has `model_credential`,
   the key that session starts on; without it, the session joins the group of the run's
   start key. A run whose first session runs on the machine's key has no start key: it
   takes the keys of its later sessions' providers, in session order, at least one each,
@@ -2975,6 +2976,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Migrations
 
 <!-- feature: factory, secrets -->
+- `dispatch_runs` and `dispatches` (20261118162000): the checks on `end_cause` and on
+  `dispatch_runs.result_outcome` take the causes `model_choice_missing` and
+  `too_many_providers`. Each new check scans its table as it is added, under a lock that
+  blocks reads and writes. It changes no row.
 - `run_model_keys` (20261118162100): a new table, one row for each model key a run's
   claim stored, at most 6 per run, with its foreign keys to `runs`,
   `organisation_connections` and `secrets`, and its indexes and checks. It changes no
@@ -2982,15 +2987,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - `runs` (20261118162200): the columns `provider_secret_id`, `provider_chain`,
   `provider_api` and `model_keys` and their checks are dropped; `provider_connection_id`
   stays. No run's keys are copied, so a run claimed before the upgrade and still running
-  has no keys to fetch, and its secrets requests fail. Rolled back, the columns come back,
+  has no key rows: its run configuration no longer has its model keys, and its gateway's
+  secrets request is refused `410` `run_configuration_superseded`. Rolled back, the columns come back,
   filled from the key rows of each run's start key's provider.
 - `dispatch_runs` (20261118162300): a nullable column `report_wait_until`, the end of the
   report window of a run that continues a run paused with `model_key_switch`. It changes
   no row.
-- `dispatch_runs` and `dispatches` (20261118162000): the checks on `end_cause` and on
-  `dispatch_runs.result_outcome` take the causes `model_choice_missing` and
-  `too_many_providers`. Each new check scans its table as it is added, under a lock that
-  blocks reads and writes. It changes no row.
 - `runs` (20261118151000): a nullable column `paused_session`, the number of the session
   where a run paused at its keys' limit. It changes no row.
 - `model_choices` and `model_choice_fallbacks` (20261118163000): `model_choices` drops
