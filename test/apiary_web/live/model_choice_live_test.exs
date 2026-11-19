@@ -41,7 +41,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
   defp openai_key("openai-subscription" = kind),
     do: %{
       provider: kind,
-      keys: [%{value_id: "main", value: Apiary.ModelKeysFixtures.login_paste()}]
+      keys: [%{value_id: "main", value: Apiary.ModelKeysFixtures.device_login()}]
     }
 
   defp openai_key(kind),

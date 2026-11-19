@@ -45,7 +45,7 @@ defmodule Apiary.ModelKeys.LoginSweepPositionTest do
 
     # 22 logins of the refused organisation, 30 days old, and one of the allowed one, 8 days.
     for name <- ["One", "Two"] do
-      keys = for n <- 1..11, do: %{value_id: "k#{n}", value: login_paste(tag: "#{name}-#{n}")}
+      keys = for n <- 1..11, do: %{value_id: "k#{n}", value: device_login(tag: "#{name}-#{n}")}
 
       {:ok, _provider} =
         Connections.create_provider(refused, %{
@@ -58,7 +58,7 @@ defmodule Apiary.ModelKeys.LoginSweepPositionTest do
     {:ok, provider} =
       Connections.create_provider(scope, %{
         provider: "openai-subscription",
-        keys: [%{value_id: "main", value: login_paste(tag: "allowed")}]
+        keys: [%{value_id: "main", value: device_login(tag: "allowed")}]
       })
 
     Repo.update_all(from(l in Login, where: l.organisation_id == ^refused.organisation.id),

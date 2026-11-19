@@ -1375,7 +1375,9 @@ defmodule Apiary.Connections do
       each address setting by `Apiary.Kinds.Endpoint.check/1`;
     * `keys`, its keys: a list of maps of `value_id` and `value`, or a map of them by
       index, as `Apiary.Secrets.create_provider_keys/2` takes them, each `value` without
-      the whitespace at its ends (`String.trim/1`);
+      the whitespace at its ends (`String.trim/1`); for a provider whose keys are logins
+      (`Apiary.ModelKeys.Login`) the `value` is the sign-in of a device sign-in
+      (`t:Apiary.ModelKeys.Login.parsed/0`), and any text is refused with "is invalid";
     * `default_key`, the value id of its default key, the first key's by default;
     * `chain`, `"organisation"` by default; any other chain is refused with
       `:forbidden`.
@@ -1839,7 +1841,9 @@ defmodule Apiary.Connections do
   has `value_id` and `value`, as `Apiary.Secrets.add_value/4` takes them, the `value`
   without the whitespace at its ends (`String.trim/1`), and `settings` the key's
   settings (`Apiary.ModelKeys.Setting.changeset/3`, with the provider's limit windows),
-  nil for none. The key and its settings are written in one transaction.
+  nil for none. For a provider whose keys are logins the `value` is the sign-in of a
+  device sign-in (`t:Apiary.ModelKeys.Login.parsed/0`), and any text is refused with
+  "is invalid". The key and its settings are written in one transaction.
   `{:ok, provider}`, or `{:error, refusal}` as `Apiary.Secrets.add_value/4` returns, or a
   changeset of the settings, which leaves no key added.
   """
@@ -1861,14 +1865,21 @@ defmodule Apiary.Connections do
   @doc """
   set_provider_key/5 replaces the value of a model provider's key with the value id
   `value_id` (`provider.write`) by `value` without the whitespace at its ends
-  (`String.trim/1`), and, with `settings`, its settings, in one transaction, which also
-  deletes the key's states (`Apiary.ModelKeys.clear_states/2`): the new value
-  is out of cooldown. The details of its `provider_keys_changed` entry have
-  `value_set: true`. `{:ok, provider}`, or `{:error, refusal}` as
-  `Apiary.Secrets.set_value/5` returns, or a changeset of the settings, which leaves the
-  value and the states as they were.
+  (`String.trim/1`; for a provider whose keys are logins, the sign-in of a device sign-in,
+  `t:Apiary.ModelKeys.Login.parsed/0`, and any text is refused with "is invalid"), and,
+  with `settings`, its settings, in one transaction, which also deletes the key's states
+  (`Apiary.ModelKeys.clear_states/2`): the new value is out of cooldown. The details of
+  its `provider_keys_changed` entry have `value_set: true`. `{:ok, provider}`, or
+  `{:error, refusal}` as `Apiary.Secrets.set_value/5` returns, or a changeset of the
+  settings, which leaves the value and the states as they were.
   """
-  @spec set_provider_key(Scope.t(), Connection.t(), String.t(), String.t(), map | nil) ::
+  @spec set_provider_key(
+          Scope.t(),
+          Connection.t(),
+          String.t(),
+          String.t() | Login.parsed(),
+          map | nil
+        ) ::
           {:ok, Connection.t()} | {:error, refusal}
   def set_provider_key(
         %Scope{} = scope,
@@ -1959,37 +1970,40 @@ defmodule Apiary.Connections do
   end
 
   # The value of a key of `provider` as it is stored. For a provider whose keys are logins
-  # (`Apiary.ModelKeys.Login`), the paste in `attrs["value"]` is read and the document it
-  # makes replaces it: `{:ok, attrs, parsed}`, or `{:error, changeset}` whose error is on
-  # `value` and has none of the paste. A blank value is left for the checks of the value.
+  # (`Apiary.ModelKeys.Login`), `attrs["value"]` is the sign-in a device sign-in made
+  # (`t:Apiary.ModelKeys.Login.parsed/0`), and the document of it replaces it:
+  # `{:ok, attrs, parsed}`. A text is no sign-in: `{:error, changeset}` whose error is on
+  # `value` and has none of the text. A blank value is left for the checks of the value.
   # The attrs of any other provider are returned with `nil`.
   defp login_attrs(%Connection{} = provider, attrs) do
-    with true <- Login.provider?(provider),
-         value when is_binary(value) <- attrs["value"],
-         true <- String.trim(value) != "" do
-      case Login.parse(value) do
-        {:ok, parsed} -> {:ok, Map.put(attrs, "value", parsed.document), parsed}
-        {:error, reason} -> {:error, login_refused(%Value{}, :value, reason)}
+    with true <- Login.provider?(provider) do
+      case attrs["value"] do
+        %Login.Parsed{} = parsed -> {:ok, Map.put(attrs, "value", parsed.document), parsed}
+        value when is_binary(value) -> blank_or_refused(attrs, value, %Value{}, :value)
+        _other -> {:ok, attrs, nil}
       end
     else
       _not_a_login -> {:ok, attrs, nil}
     end
   end
 
-  # The changeset of a refused paste: an error on `field` and nothing of the paste.
-  defp login_refused(schema, field, reason) do
-    {message, opts} = Login.refusal(reason)
+  defp blank_or_refused(attrs, value, schema, field) do
+    if String.trim(value) == "",
+      do: {:ok, attrs, nil},
+      else: {:error, login_refused(schema, field)}
+  end
 
+  # The changeset of a text that is no sign-in: an error on `field` and nothing of the text.
+  defp login_refused(schema, field) do
     schema
     |> change()
-    |> add_error(field, message, opts)
+    |> add_error(field, dgettext_noop("errors", "is invalid"))
     |> Map.put(:action, :validate)
   end
 
   # The keys a new provider is created with: for a provider whose keys are logins, each
-  # key's paste read and replaced by its document, with the parsed logins by value id;
-  # `{:error, changeset}` with the refusal on the keys' secret's `values` for a paste that
-  # is no login.
+  # key's sign-in replaced by its document, with the logins by value id;
+  # `{:error, changeset}` with the refusal on the keys' secret's `values` for a text.
   defp login_keys(%Provider{name: name}, keys) do
     if Login.provider?(name), do: read_logins(keys, [], %{}), else: {:ok, keys, %{}}
   end
@@ -1997,21 +2011,21 @@ defmodule Apiary.Connections do
   defp read_logins([], stored, logins), do: {:ok, Enum.reverse(stored), logins}
 
   defp read_logins([%{} = key | rest], stored, logins) do
-    with value when is_binary(value) <- key["value"],
-         true <- String.trim(value) != "" do
-      case Login.parse(value) do
-        {:ok, parsed} ->
-          read_logins(
-            rest,
-            [Map.put(key, "value", parsed.document) | stored],
-            Map.put(logins, Value.normalise_value_id(key["value_id"]), parsed)
-          )
+    case key["value"] do
+      %Login.Parsed{} = parsed ->
+        read_logins(
+          rest,
+          [Map.put(key, "value", parsed.document) | stored],
+          Map.put(logins, Value.normalise_value_id(key["value_id"]), parsed)
+        )
 
-        {:error, reason} ->
-          {:error, login_refused(%Secret{}, :values, reason)}
-      end
-    else
-      _blank -> read_logins(rest, [key | stored], logins)
+      value when is_binary(value) ->
+        if String.trim(value) == "",
+          do: read_logins(rest, [key | stored], logins),
+          else: {:error, login_refused(%Secret{}, :values)}
+
+      _blank ->
+        read_logins(rest, [key | stored], logins)
     end
   end
 

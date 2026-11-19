@@ -35,7 +35,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
     {:ok, provider} =
       Connections.create_provider(scope, %{
         provider: "openai-subscription",
-        keys: [%{value_id: "main", value: login_paste(tokens: tokens)}]
+        keys: [%{value_id: "main", value: device_login(tokens: tokens)}]
       })
 
     {provider, tokens}
@@ -485,27 +485,27 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
   end
 
   describe "a result that is dropped" do
-    test "a login pasted during the call stays, and the result is dropped", %{scope: scope} do
+    test "a sign-in stored during the call stays, and the result is dropped", %{scope: scope} do
       {provider, _tokens} = subscription!(scope, expires_in: 60)
-      pasted = login_tokens(tag: "pasted")
+      stored_in = login_tokens(tag: "stored-in")
       fresh = new_tokens("lost")
 
       stub!(fn conn, _body ->
         {:ok, _} =
           Connections.update_provider_key(scope, plain(provider), "main", %{
             "value_id" => "main",
-            "value" => login_paste(tokens: pasted)
+            "value" => device_login(tokens: stored_in)
           })
 
         Req.Test.json(conn, fresh)
       end)
 
       assert {:ok, access, _at} = token(provider)
-      assert access == pasted.access_token
+      assert access == stored_in.access_token
 
       assert stored(provider) == %{
-               access_token: pasted.access_token,
-               refresh_token: pasted.refresh_token
+               access_token: stored_in.access_token,
+               refresh_token: stored_in.refresh_token
              }
 
       assert %Login{generation: 2, lease_id: nil, failures: 0} = row(provider)
@@ -521,7 +521,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       {:ok, provider} =
         Connections.add_provider_key(scope, provider, %{
           value_id: "spare",
-          value: login_paste(tag: "spare")
+          value: device_login(tag: "spare")
         })
 
       spare_id = value(provider, "spare").id
@@ -549,7 +549,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       {:ok, provider} =
         Connections.add_provider_key(scope, provider, %{
           value_id: "spare",
-          value: login_paste(tokens: spare)
+          value: device_login(tokens: spare)
         })
 
       id = value(provider, "spare").id
@@ -641,22 +641,22 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       end
     end
 
-    test "a new login pasted over a key that needs a sign-in starts it again", %{scope: scope} do
+    test "a new sign-in stored over a key that needs a sign-in starts it again", %{scope: scope} do
       {provider, _tokens} = subscription!(scope, expires_in: 60)
       stub!({401, %{"error" => "refresh_token_reused"}})
       assert token(provider) == {:error, :sign_in_needed}
 
-      pasted = login_tokens(tag: "again")
+      stored_in = login_tokens(tag: "again")
 
       {:ok, _} =
         Connections.update_provider_key(scope, plain(provider), "main", %{
           "value_id" => "main",
-          "value" => login_paste(tokens: pasted)
+          "value" => device_login(tokens: stored_in)
         })
 
       assert %Login{state: "signed_in", sign_in_cause: nil, generation: 2} = row(provider)
       assert {:ok, access, _at} = token(provider)
-      assert access == pasted.access_token
+      assert access == stored_in.access_token
     end
   end
 
@@ -981,7 +981,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
              ]
     end
 
-    test "a login pasted over the key ends the streak with no entry", %{scope: scope} do
+    test "a sign-in stored over the key ends the streak with no entry", %{scope: scope} do
       {provider, _tokens} = subscription!(scope, expires_in: 100)
       stub!({503, %{}})
       token(provider)
@@ -990,7 +990,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       {:ok, _} =
         Connections.update_provider_key(scope, plain(provider), "main", %{
           "value_id" => "main",
-          "value" => login_paste(tag: "pasted", expires_in: 100)
+          "value" => device_login(tag: "stored-in", expires_in: 100)
         })
 
       assert %Login{failing_since: nil, failures: 0, retry_at: nil} = row(provider)
@@ -1044,7 +1044,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       {:ok, _} =
         Connections.update_provider_key(scope, plain(provider), "main", %{
           "value_id" => "main",
-          "value" => login_paste(tag: "again")
+          "value" => device_login(tag: "again")
         })
 
       assert %Login{state: "signed_in", failing_since: nil} = row(provider)
@@ -1318,11 +1318,10 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       set_login!(provider, access_expires_at: 10, refreshed_at: -120)
       assert token(provider) == {:error, :sign_in_needed}
 
-      assert {:sign_in_needed, rejected, help} =
+      assert {:sign_in_needed, rejected} =
                ApiaryWeb.ModelKeyComponents.login(row(provider), plain(provider))
 
       assert rejected =~ "OpenAI rejected it on"
-      assert help == "Run codex login --device-auth and replace the key."
 
       # The Activity line of each entry, as the page renders it.
       lines =
@@ -1414,7 +1413,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       {:ok, provider} =
         Enum.reduce(~w(old young refreshed failing leased needed), {:ok, provider}, fn name,
                                                                                        {:ok, p} ->
-          Connections.add_provider_key(scope, p, %{value_id: name, value: login_paste(tag: name)})
+          Connections.add_provider_key(scope, p, %{value_id: name, value: device_login(tag: name)})
         end)
 
       aged!(provider, 3, "main")
@@ -1462,7 +1461,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       {:ok, provider} =
         Connections.add_provider_key(scope, provider, %{
           value_id: "second",
-          value: login_paste(tag: "second")
+          value: device_login(tag: "second")
         })
 
       aged!(provider, 8, "main")
@@ -1511,7 +1510,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       for name <- ["First", "Second"] do
         keys =
           for n <- 1..26,
-              do: %{value_id: "k#{n}", value: login_paste(tag: "#{name}-k#{n}")}
+              do: %{value_id: "k#{n}", value: device_login(tag: "#{name}-k#{n}")}
 
         {:ok, _provider} =
           Connections.create_provider(scope, %{
@@ -1558,7 +1557,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
 
       # 51 logins in the refused organisation, the oldest, and one in the allowed one.
       for name <- ["One", "Two"] do
-        keys = for n <- 1..26, do: %{value_id: "k#{n}", value: login_paste(tag: "#{name}-#{n}")}
+        keys = for n <- 1..26, do: %{value_id: "k#{n}", value: device_login(tag: "#{name}-#{n}")}
 
         Connections.create_provider(refused, %{
           provider: "openai-subscription",
@@ -1589,14 +1588,14 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       {:ok, refused_provider} =
         Connections.create_provider(refused, %{
           provider: "openai-subscription",
-          keys: for(n <- 1..2, do: %{value_id: "r#{n}", value: login_paste(tag: "r#{n}")})
+          keys: for(n <- 1..2, do: %{value_id: "r#{n}", value: device_login(tag: "r#{n}")})
         })
 
       {provider, _tokens} = subscription!(scope, expires_in: 3600)
 
       {:ok, provider} =
         Enum.reduce(~w(b c), {:ok, provider}, fn name, {:ok, p} ->
-          Connections.add_provider_key(scope, p, %{value_id: name, value: login_paste(tag: name)})
+          Connections.add_provider_key(scope, p, %{value_id: name, value: device_login(tag: name)})
         end)
 
       set_login!(refused_provider, [signed_in_at: -20 * @day, refreshed_at: nil], "r1")
@@ -1670,7 +1669,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
 
       # 22 logins of a refused organisation, the oldest, then the allowed one's.
       for name <- ["One", "Two"] do
-        keys = for n <- 1..11, do: %{value_id: "k#{n}", value: login_paste(tag: "#{name}-#{n}")}
+        keys = for n <- 1..11, do: %{value_id: "k#{n}", value: device_login(tag: "#{name}-#{n}")}
 
         Connections.create_provider(refused, %{
           provider: "openai-subscription",

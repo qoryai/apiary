@@ -34,7 +34,7 @@ defmodule Apiary.ModelKeys.LoginRefreshStoppingTest do
       Connections.create_provider(scope, %{
         provider: "openai-subscription",
         keys: [
-          %{value_id: "main", value: login_paste(tokens: login_tokens(expires_in: expires_in))}
+          %{value_id: "main", value: device_login(tokens: login_tokens(expires_in: expires_in))}
         ]
       })
 

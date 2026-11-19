@@ -496,7 +496,7 @@ defmodule Apiary.DeletionTest do
       {:ok, _} =
         Apiary.Connections.create_provider(scope, %{
           provider: "openai-subscription",
-          keys: [%{value_id: "main", value: Apiary.ModelKeysFixtures.login_paste()}]
+          keys: [%{value_id: "main", value: Apiary.ModelKeysFixtures.device_login()}]
         })
 
       %{scope: other} = sign_up_fixture()
@@ -504,7 +504,7 @@ defmodule Apiary.DeletionTest do
       {:ok, kept} =
         Apiary.Connections.create_provider(other, %{
           provider: "openai-subscription",
-          keys: [%{value_id: "main", value: Apiary.ModelKeysFixtures.login_paste(tag: "k")}]
+          keys: [%{value_id: "main", value: Apiary.ModelKeysFixtures.device_login(tag: "k")}]
         })
 
       id = scope.organisation.id

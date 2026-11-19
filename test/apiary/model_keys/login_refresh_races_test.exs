@@ -8,11 +8,11 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
   # The rules under test:
   #
   #   * one lease for a login: callers at once make one request;
-  #   * a login pasted over the key while the call ran drops the result, and the paste stays;
+  #   * a sign-in stored over the key while the call ran drops the result, and the new sign-in stays;
   #   * a key renamed while the call ran keeps the result, under the new name;
   #   * a key deleted while the call ran drops the result, and nothing is left of it;
   #   * the write of an outcome takes the organisation `FOR SHARE`, the keys' secret
-  #     `FOR UPDATE`, then the login's row, as the pastes, renames and deletions do, so no
+  #     `FOR UPDATE`, then the login's row, as the new sign-ins, renames and deletions do, so no
   #     order of them deadlocks.
   use ExUnit.Case, async: false
 
@@ -64,7 +64,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
         keys: [
           %{
             value_id: "main",
-            value: login_paste(tokens: login_tokens(tag: "main", expires_in: 60))
+            value: device_login(tokens: login_tokens(tag: "main", expires_in: 60))
           }
         ]
       })
@@ -108,7 +108,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     {:ok, _provider} =
       Connections.add_provider_key(scope, provider, %{
         value_id: name,
-        value: login_paste(tokens: login_tokens(tag: tag, expires_in: 60))
+        value: device_login(tokens: login_tokens(tag: tag, expires_in: 60))
       })
 
     key_id(provider, name)
@@ -123,11 +123,11 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
       )
 
   # Pastes a login that is due over the key `name`.
-  defp paste_due!(scope, provider, name, tag) do
+  defp new_sign_in_due!(scope, provider, name, tag) do
     {:ok, _provider} =
       Connections.update_provider_key(scope, provider, name, %{
         "value_id" => name,
-        "value" => login_paste(tokens: login_tokens(tag: tag, expires_in: 60))
+        "value" => device_login(tokens: login_tokens(tag: tag, expires_in: 60))
       })
 
     :ok
@@ -180,32 +180,32 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
       assert %Login{lease_id: nil, failures: 0} = Repo.get!(Login, id)
 
       # The next round starts from a login that is due again.
-      paste_due!(ctx.scope, ctx.provider, "main", "again")
+      new_sign_in_due!(ctx.scope, ctx.provider, "main", "again")
     end
 
     assert length(entries(ctx.provider)) == 2
   end
 
-  test "a login pasted while the call ran stays, and the result is dropped", ctx do
+  test "a sign-in stored while the call ran stays, and the result is dropped", ctx do
     id = key_id(ctx.provider, "main")
     stub_held!(answer("dropped"))
 
     caller = start(fn -> refresh(ctx.provider, id) end)
     assert_receive {:request, call}, 5_000
 
-    pasted = login_tokens(tag: "pasted")
+    stored_in = login_tokens(tag: "stored-in")
 
     {:ok, _provider} =
       Connections.update_provider_key(ctx.scope, ctx.provider, "main", %{
         "value_id" => "main",
-        "value" => login_paste(tokens: pasted)
+        "value" => device_login(tokens: stored_in)
       })
 
     send(call, :go)
 
     assert {:ok, access, _at} = Task.await(caller.task, 10_000)
-    assert access == pasted.access_token
-    assert tokens!(ctx.provider, id).refresh_token == pasted.refresh_token
+    assert access == stored_in.access_token
+    assert tokens!(ctx.provider, id).refresh_token == stored_in.refresh_token
 
     assert %Login{generation: 2, lease_id: nil, failures: 0, refreshed_at: nil} =
              Repo.get!(Login, id)
@@ -213,13 +213,14 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     assert entries(ctx.provider) == []
   end
 
-  test "a paste and the write of an outcome at once leave the paste, in each order", ctx do
+  test "a new sign-in and the write of an outcome at once leave the new sign-in, in each order",
+       ctx do
     id = key_id(ctx.provider, "main")
     stub_answer!(answer("raced"))
-    pasted = login_tokens(tag: "last")
+    stored_in = login_tokens(tag: "last")
 
     for _round <- 1..8 do
-      paste_due!(ctx.scope, ctx.provider, "main", "before")
+      new_sign_in_due!(ctx.scope, ctx.provider, "main", "before")
 
       together([
         fn -> refresh(ctx.provider, id) end,
@@ -227,12 +228,12 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
           {:ok, _provider} =
             Connections.update_provider_key(ctx.scope, ctx.provider, "main", %{
               "value_id" => "main",
-              "value" => login_paste(tokens: pasted)
+              "value" => device_login(tokens: stored_in)
             })
         end
       ])
 
-      assert tokens!(ctx.provider, id).refresh_token == pasted.refresh_token
+      assert tokens!(ctx.provider, id).refresh_token == stored_in.refresh_token
       assert %Login{lease_id: nil} = Repo.get!(Login, id)
     end
   end
@@ -267,7 +268,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     id = add_key!(ctx.scope, ctx.provider, "r0", "r0")
 
     for round <- 1..8 do
-      paste_due!(ctx.scope, ctx.provider, "r#{round - 1}", "before#{round}")
+      new_sign_in_due!(ctx.scope, ctx.provider, "r#{round - 1}", "before#{round}")
 
       together([
         fn -> refresh(ctx.provider, id) end,
@@ -715,7 +716,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     end
   end
 
-  test "a refresh, a paste, a rename and a deletion of a provider at once do not deadlock",
+  test "a refresh, a new sign-in, a rename and a deletion of a provider at once do not deadlock",
        ctx do
     stub_answer!(answer("many"))
 
@@ -727,11 +728,11 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
           keys: [
             %{
               value_id: "main",
-              value: login_paste(tokens: login_tokens(tag: "m", expires_in: 60))
+              value: device_login(tokens: login_tokens(tag: "m", expires_in: 60))
             },
             %{
               value_id: "spare",
-              value: login_paste(tokens: login_tokens(tag: "s", expires_in: 60))
+              value: device_login(tokens: login_tokens(tag: "s", expires_in: 60))
             }
           ]
         })
@@ -739,7 +740,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
       provider = Repo.get!(Connection, provider.id)
       main = key_id(provider, "main")
       spare = key_id(provider, "spare")
-      pasted = login_paste(tokens: login_tokens(tag: "p#{round}"))
+      stored_in = device_login(tokens: login_tokens(tag: "p#{round}"))
 
       results =
         together([
@@ -748,7 +749,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
           fn ->
             Connections.update_provider_key(ctx.scope, provider, "main", %{
               "value_id" => "main",
-              "value" => pasted
+              "value" => stored_in
             })
           end,
           fn -> Connections.rename_provider_key(ctx.scope, provider, "spare", "moved") end,

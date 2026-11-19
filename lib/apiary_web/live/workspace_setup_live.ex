@@ -236,6 +236,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     HarnessTargets,
     IntegrationComponents,
     ModelKeyComponents,
+    ModelKeyDevice,
     NodeComponents,
     OverviewComponents,
     SetUpComponents,
@@ -257,7 +258,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
 
     {:ok,
-     assign(socket,
+     socket
+     |> ModelKeyDevice.attach()
+     |> assign(
        view: nil,
        flow: nil,
        step: nil,
@@ -284,6 +287,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   def handle_params(params, _uri, socket) do
     # A URL change closes the spend's dialog (`ApiaryWeb.SpendDialog`), confirming nothing.
     socket = assign(socket, :spend, nil)
+
+    # A sign-in that the Model step began ends with the step: the code is for that form.
+    socket =
+      if socket.assigns.live_action == :step and params["step"] == "model",
+        do: socket,
+        else: ModelKeyDevice.for_provider(socket, nil)
+
     scope = socket.assigns.current_scope
     organisation = scope.organisation
     creates = Access.can?(scope, :"workspace.create", organisation)
@@ -1001,7 +1011,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
     values = Enum.reduce(errors, values, fn {field, _}, v -> Map.put_new(v, "#{field}", "") end)
 
-    assign(socket,
+    socket
+    |> ModelKeyDevice.for_provider(if source == :add, do: ProviderPage.login_kind(chosen))
+    |> assign(
       form: to_form(values, as: :model, errors: errors),
       source: source,
       everywhere: everywhere?(socket.assigns.current_scope, source, params),
@@ -1181,7 +1193,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # reaches that workspace alone (`Apiary.Connections.create_provider/3`, `:workspace`);
   # with the setting shown and on, the provider is the organisation's, reaching every
   # workspace, its key a secret of the organisation (`Apiary.Connections.reach_at_add/3`).
-  defp model_provider(:add, scope, flow, params) do
+  defp model_provider(:add, scope, flow, params, key) do
     with %Provider{} = provider <- catalogue(params["provider"]) || {:error, :provider_unknown},
          runtime = Enum.find(Runtimes.list(), &(&1.name == params["runtime"])),
          :ok <- if(runtime, do: serves(provider, runtime), else: :ok) do
@@ -1189,7 +1201,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
       attrs = %{
         "provider" => provider.name,
-        "keys" => [%{"value_id" => "key-1", "value" => params["key"] || ""}],
+        "keys" => [%{"value_id" => "key-1", "value" => key}],
         "settings" => Map.new(ProviderPage.address_names(provider.name), &{&1, params[&1] || ""})
       }
 
@@ -1203,7 +1215,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  defp model_provider(provider, _scope, _flow, _params), do: {:ok, provider}
+  defp model_provider(provider, _scope, _flow, _params, _key), do: {:ok, provider}
 
   defp serves(provider, runtime) do
     case ModelChoices.serves(provider, runtime) do
@@ -1586,7 +1598,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   end
 
   defp save_model(socket, scope, source, params) do
-    case model_provider(source, scope, socket.assigns.flow, params) do
+    case model_provider(
+           source,
+           scope,
+           socket.assigns.flow,
+           params,
+           ModelKeyDevice.value(socket, ProviderPage.login?(socket.assigns.chosen), params["key"])
+         ) do
       {:ok, provider} ->
         # After a refusal of the choice, the form shows the provider as one to reuse.
         params = Map.put(params, "source", provider.public_id)
@@ -2175,23 +2193,23 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             label={gettext("Provider")}
             options={ProviderPage.provider_options()}
           />
+          <ModelKeyComponents.sign_in_with_chatgpt
+            :if={ProviderPage.login?(@chosen)}
+            id="set-up-model-sign-in"
+            device={@device}
+            errors={ModelKeyDevice.errors(@form[:key])}
+          />
           <.input
+            :if={!ProviderPage.login?(@chosen)}
             field={@form[:key]}
             id={"set-up-model-key-#{@attempt}"}
             type="password"
             value={nil}
-            label={
-              if ProviderPage.login?(@chosen),
-                do: ModelKeyComponents.sign_in_label(),
-                else: gettext("Key")
-            }
+            label={gettext("Key")}
             hint={
-              if ProviderPage.login?(@chosen),
-                do: ModelKeyComponents.sign_in_hint(),
-                else:
-                  gettext(
-                    "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
-                  )
+              gettext(
+                "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
+              )
             }
             autocomplete="new-password"
             spellcheck="false"

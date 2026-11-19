@@ -819,10 +819,10 @@ for each other and never on each other at once:
    The write of the outcome of a key's sign-in refresh (`Apiary.ModelKeys.Login`, the
    instance's, with no person) takes the organisation `FOR SHARE`, then the keys'
    secret's row `FOR UPDATE`, then the sign-in's row in `model_key_logins` `FOR UPDATE`,
-   the order of a change to the keys, so it waits for a paste, a rename or a deletion of
+   the order of a change to the keys, so it waits for a new sign-in, a rename or a deletion of
    a key that came first and is seen by one that comes after. The lease and the call
    hold no lock: the lease is one conditional `UPDATE` of the sign-in's row, and the call
-   runs with no transaction open. A new value of the key (a paste) takes the sign-in's
+   runs with no transaction open. A new sign-in of the key takes the sign-in's
    row after the secret's, as the write does.
    A write of a model choice (`Apiary.ModelChoices`) at levels 2 to 5 takes the security
    policy's order, then the provider's row `FOR SHARE`, then the rows of the fallbacks'

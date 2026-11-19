@@ -75,47 +75,65 @@ defmodule Apiary.ModelKeysFixtures do
   def in_seconds(seconds),
     do: DateTime.utc_now() |> DateTime.add(seconds) |> DateTime.truncate(:second)
 
+  @doc "The JSON pointer of the account id in the access token of a login, as the catalogue has it."
+  def account_claim, do: "/https:~1~1api.openai.com~1auth/chatgpt_account_id"
+
   @doc """
-  The tokens of a login as `codex login` writes them: a map with `access_token`, a JWT that
-  expires `expires_in` seconds from now (default 10 days) or at `exp`, `refresh_token`,
-  `id_token` and `account_id`. `tag` makes the values differ between logins.
+  The tokens of a login as a device sign-in returns them: a map with `access_token`, a JWT
+  that expires `expires_in` seconds from now (default 10 days) or at `exp` and has the
+  account id in its claim, `refresh_token`, `id_token` and `account_id`. `tag` makes the
+  values differ between logins.
   """
   def login_tokens(opts \\ []) do
     tag = Keyword.get(opts, :tag, "a")
+    account_id = "acct-fixture-#{tag}"
 
     exp =
       Keyword.get(opts, :exp, System.os_time(:second) + Keyword.get(opts, :expires_in, 864_000))
 
     %{
-      access_token: jwt(%{"exp" => exp, "client_id" => "app-fixture", "jti" => "access-#{tag}"}),
+      access_token:
+        jwt(%{
+          "exp" => exp,
+          "client_id" => "app-fixture",
+          "jti" => "access-#{tag}",
+          "https://api.openai.com/auth" => %{"chatgpt_account_id" => account_id}
+        }),
       refresh_token: "rt-fixture-refresh-token-#{tag}-0123456789",
       id_token:
         jwt(%{"exp" => exp - 860_000, "email" => "dana@example.com", "jti" => "id-#{tag}"}),
-      account_id: "acct-fixture-#{tag}"
+      account_id: account_id
     }
   end
 
   @doc """
-  The contents of an `auth.json` as `codex login` writes it, printed over several lines,
-  with the tokens of `login_tokens/1` and the members the server drops.
+  The sign-in that a device sign-in makes (`Apiary.ModelKeys.Login.from_tokens/3`), with the
+  tokens of `login_tokens/1`: what a form passes to `Apiary.Connections` as a key's value.
   """
-  def login_paste(opts \\ []) do
+  def device_login(opts \\ []) do
     tokens = Keyword.get_lazy(opts, :tokens, fn -> login_tokens(opts) end)
 
-    Jason.encode!(
-      %{
-        "auth_mode" => "chatgpt",
-        "OPENAI_API_KEY" => nil,
-        "tokens" => %{
-          "id_token" => tokens.id_token,
+    {:ok, login} =
+      Apiary.ModelKeys.Login.from_tokens(
+        %{
           "access_token" => tokens.access_token,
           "refresh_token" => tokens.refresh_token,
-          "account_id" => tokens.account_id
+          "id_token" => tokens.id_token
         },
-        "last_refresh" => "2026-11-18T09:00:00Z"
-      },
-      pretty: true
-    )
+        account_claim()
+      )
+
+    # `from_tokens/3` keeps an `exp` only from 1 second to 366 days ahead, as a device
+    # sign-in's tokens have it. A test of a refresh needs a token that has expired, or one
+    # that expires in a year, as a stored row has them after a refresh, so the fixture
+    # sets the expiry from the token's `exp` as it is.
+    with [_header, payload, _signature] <- String.split(tokens.access_token, "."),
+         {:ok, json} <- Base.url_decode64(payload, padding: false),
+         {:ok, %{"exp" => exp}} when is_integer(exp) <- Jason.decode(json) do
+      %{login | access_expires_at: %{DateTime.from_unix!(exp) | microsecond: {0, 6}}}
+    else
+      _no_exp -> login
+    end
   end
 
   @doc "A JWT with `claims` and a signature that checks nothing."

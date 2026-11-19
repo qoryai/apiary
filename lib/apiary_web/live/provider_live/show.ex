@@ -13,7 +13,9 @@ defmodule ApiaryWeb.ProviderLive.Show do
   #
   # Owners and admins (`provider.write`) have Add key above the keys and Edit on each
   # key's row, each a separate page (`ApiaryWeb.ProviderLive.Key`); anyone else has
-  # neither.
+  # neither. For a key that needs a new sign-in, they have the button Sign in with ChatGPT
+  # in its row, which starts a device sign-in there (`ApiaryWeb.ModelKeyDevice`) and stores
+  # it once the person has signed in.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -26,7 +28,7 @@ defmodule ApiaryWeb.ProviderLive.Show do
 
   alias Apiary.{Access, Connections, ModelKeys}
   alias Apiary.ModelKeys.Login
-  alias ApiaryWeb.{ModelKeyComponents, SettingsComponents}
+  alias ApiaryWeb.{ModelKeyComponents, ModelKeyDevice, SettingsComponents}
 
   @impl true
   def mount(%{"provider_id" => public_id}, _session, socket) do
@@ -34,44 +36,87 @@ defmodule ApiaryWeb.ProviderLive.Show do
 
     case Connections.get_provider(scope, public_id) do
       {:ok, provider} ->
-        now = DateTime.utc_now()
-        states = ModelKeys.provider_states(provider, now)
-        percents = ModelKeys.use_up_to_percents(provider)
-        windows = ModelKeys.limit_windows(provider)
-        logins = Login.by_key(provider)
+        writes = Access.can?(scope, :"provider.write", scope.organisation)
 
         {:ok,
-         assign(socket,
+         socket
+         |> ModelKeyDevice.attach(
+           (writes and Login.provider?(provider)) && provider.provider_kind,
+           signed_in: &store/1
+         )
+         |> assign(
            provider: provider,
-           keys:
-             for key <- in_order(provider) do
-               state =
-                 ModelKeyComponents.state(
-                   Map.get(states, key.id, []),
-                   now,
-                   Map.get(percents, key.id),
-                   windows
-                 )
-
-               %{
-                 value_id: key.value_id,
-                 state: state,
-                 login: ModelKeyComponents.login(Map.get(logins, key.id), provider)
-               }
-             end,
-           writes: Access.can?(scope, :"provider.write", scope.organisation),
+           writes: writes,
            sections: SettingsComponents.sections(scope, :organisation),
            page_title:
              SettingsComponents.page_title(scope, :organisation, [
                provider.name,
                gettext("Model providers")
              ])
-         )}
+         )
+         |> assign_keys()}
 
       {:error, _reason} ->
         raise ApiaryWeb.NotFound
     end
   end
+
+  defp assign_keys(%{assigns: %{provider: provider}} = socket) do
+    now = DateTime.utc_now()
+    states = ModelKeys.provider_states(provider, now)
+    percents = ModelKeys.use_up_to_percents(provider)
+    windows = ModelKeys.limit_windows(provider)
+    logins = Login.by_key(provider)
+
+    assign(socket,
+      keys:
+        for key <- in_order(provider) do
+          state =
+            ModelKeyComponents.state(
+              Map.get(states, key.id, []),
+              now,
+              Map.get(percents, key.id),
+              windows
+            )
+
+          %{
+            value_id: key.value_id,
+            state: state,
+            login: ModelKeyComponents.login(Map.get(logins, key.id), provider)
+          }
+        end
+    )
+  end
+
+  # Stores the sign-in that the person made from a key's row as the key's new value, and
+  # shows the key as it is then. A sign-in that cannot be stored shows as one that failed.
+  defp store(%{assigns: %{device: %{key: value_id}}} = socket) when is_binary(value_id) do
+    %{current_scope: scope, provider: provider} = socket.assigns
+
+    with {:ok, login} <- ModelKeyDevice.login(socket),
+         {:ok, provider} <- Connections.set_provider_key(scope, provider, value_id, login) do
+      socket
+      |> ModelKeyDevice.reset()
+      |> assign(provider: provider)
+      |> assign_keys()
+      |> put_flash(:info, gettext("%{name} is saved.", name: value_id))
+    else
+      _refused -> ModelKeyDevice.fail(socket)
+    end
+  end
+
+  defp store(socket), do: socket
+
+  # The sign-in of a key's row: the one that is going on for the key, else the idle button.
+  defp row_device(%{key: key} = device, %{value_id: key}), do: device
+  defp row_device(device, _key), do: %{device | state: :idle, key: nil}
+
+  # Whether the sign-in of another row has a code or is about to have one: the button of
+  # this row does nothing until it ends.
+  defp busy_elsewhere?(%{key: key, state: state}, %{value_id: value_id}),
+    do: key != value_id and state in [:starting, :code]
+
+  defp busy_elsewhere?(_device, _key), do: false
 
   # The provider's keys in its order: the default key first, then by when each was added.
   defp in_order(%{secret: %{values: values}, default_value_id: default}) when is_list(values),
@@ -126,6 +171,14 @@ defmodule ApiaryWeb.ProviderLive.Show do
                 :if={key.login}
                 id={"provider-key-#{key.value_id}-login"}
                 login={key.login}
+              />
+              <ModelKeyComponents.sign_in_with_chatgpt
+                :if={@device && ModelKeyComponents.sign_in_needed?(key.login)}
+                id={"provider-key-#{key.value_id}-sign-in"}
+                device={row_device(@device, key)}
+                key={key.value_id}
+                hint={false}
+                disabled={busy_elsewhere?(@device, key)}
               />
               <.link
                 :if={@writes}

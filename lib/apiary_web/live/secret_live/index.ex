@@ -40,10 +40,10 @@ defmodule ApiaryWeb.SecretLive.Index do
     `Apiary.Connections.delete_provider_key/3`), under `provider.write`; Add value and
     Change value also take the key's settings, Resets and Pause for
     (`Apiary.ModelKeys.Setting`), written with it. For a provider whose keys are logins
-    (`Apiary.ModelKeys.Login`), Add value and Change value take the contents of the
-    `auth.json` that `codex login` writes in a field named Sign-in, and refuse a paste that
-    is not one. Delete secret is refused while the provider links the secret, and Edit name
-    and note is not offered.
+    (`Apiary.ModelKeys.Login`), Add value and Change value have the button Sign in with
+    ChatGPT in place of the Value field (a device sign-in, `Apiary.ModelKeys.DeviceSignIn`),
+    and refuse a save before the person has signed in. Delete secret is refused while the
+    provider links the secret, and Edit name and note is not offered.
   - **Variables** (`Apiary.Variables`): the workspace's variables, each with its value, which
     is plain configuration, its lock, and the targets that override the value or whose
     value a lock sets aside, from their resolution
@@ -66,7 +66,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   alias Apiary.ModelKeys.{Login, Setting}
   alias Apiary.Secrets.{Secret, Value}
   alias Apiary.Variables.{Denied, Variable}
-  alias ApiaryWeb.{ModelKeyComponents, People, SettingsComponents, UserAuth}
+  alias ApiaryWeb.{ModelKeyComponents, ModelKeyDevice, People, SettingsComponents, UserAuth}
   alias ApiaryWeb.SecretLive.Query
 
   # The acts of each view, each at a path of its own.
@@ -1044,7 +1044,13 @@ defmodule ApiaryWeb.SecretLive.Index do
         class="font-mono"
         phx-mounted={!@unnamed && JS.focus()}
       />
-      <.value_field form={@form} login={Login.provider?(@provider)} />
+      <ModelKeyComponents.sign_in_with_chatgpt
+        :if={Login.provider?(@provider)}
+        id="secret-sign-in"
+        device={@device}
+        errors={ModelKeyDevice.errors(@form[:value])}
+      />
+      <.value_field :if={!Login.provider?(@provider)} form={@form} />
       <ModelKeyComponents.settings_fields
         :if={@key_form}
         form={@key_form}
@@ -1068,12 +1074,13 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp form_page(%{act: :change_value} = assigns) do
     ~H"""
     <.form for={@form} id="secret-form" phx-submit="set_value" class="grid gap-4" novalidate>
-      <.value_field
-        form={@form}
-        label={gettext("New value")}
-        login={Login.provider?(@provider)}
-        focus
+      <ModelKeyComponents.sign_in_with_chatgpt
+        :if={Login.provider?(@provider)}
+        id="secret-sign-in"
+        device={@device}
+        errors={ModelKeyDevice.errors(@form[:value])}
       />
+      <.value_field :if={!Login.provider?(@provider)} form={@form} label={gettext("New value")} focus />
       <ModelKeyComponents.settings_fields
         :if={@key_form}
         form={@key_form}
@@ -1537,30 +1544,18 @@ defmodule ApiaryWeb.SecretLive.Index do
   attr :label, :string, default: nil
   attr :focus, :boolean, default: false, doc: "whether the field takes the focus as it mounts"
   attr :disabled, :boolean, default: false, doc: "off while its choice is not taken"
-  attr :login, :boolean, default: false, doc: "whether it takes a model key's login"
 
   # The value of a secret: written, sent once, and never rendered back. The field's
-  # value is always empty, whatever the form holds. For a model key that is a login, the
-  # field is the Sign-in, whatever its label, and its hint says what to paste.
+  # value is always empty, whatever the form holds.
   defp value_field(assigns) do
     ~H"""
     <.input
       field={@form[:value]}
       type="textarea"
       value=""
-      label={
-        cond do
-          @login -> ModelKeyComponents.sign_in_label()
-          @label -> @label
-          true -> gettext("Value")
-        end
-      }
+      label={@label || gettext("Value")}
       rows="4"
-      hint={
-        if @login,
-          do: ModelKeyComponents.sign_in_hint(),
-          else: gettext("Stored encrypted. Nobody sees it again once it is saved.")
-      }
+      hint={gettext("Stored encrypted. Nobody sees it again once it is saved.")}
       autocomplete="off"
       spellcheck="false"
       class="font-mono"
@@ -1785,6 +1780,7 @@ defmodule ApiaryWeb.SecretLive.Index do
 
     socket =
       socket
+      |> ModelKeyDevice.attach()
       |> assign(
         page_title:
           SettingsComponents.page_title(scope, :workspace, [gettext("Secrets and variables")]),
@@ -1887,6 +1883,7 @@ defmodule ApiaryWeb.SecretLive.Index do
 
     socket =
       socket
+      |> ModelKeyDevice.for_provider(nil)
       |> assign(view: view, switched: switched)
       |> assign(
         act: nil,
@@ -2067,7 +2064,9 @@ defmodule ApiaryWeb.SecretLive.Index do
     setting = value && ModelKeys.setting(value.id)
     params = ModelKeyComponents.params(setting, socket.assigns.current_scope, subscription)
 
-    assign(socket,
+    socket
+    |> ModelKeyDevice.for_provider(Login.provider?(provider) && provider.provider_kind)
+    |> assign(
       key_form: key_form(params),
       key_errors: %{},
       subscription: subscription,
@@ -2276,7 +2275,9 @@ defmodule ApiaryWeb.SecretLive.Index do
        when is_map(params) do
     %{current_scope: scope, secret: secret, provider: provider} = socket.assigns
     sent = params
-    params = Map.take(params, ~w(value_id value first_value_id))
+
+    params =
+      params |> Map.take(~w(value_id value first_value_id)) |> ModelKeyDevice.put_login(socket)
 
     added =
       if provider,
@@ -2305,7 +2306,7 @@ defmodule ApiaryWeb.SecretLive.Index do
          )}
 
       {:settings, errors} ->
-        value = Value.changeset(%Value{}, trimmed(params), value_id: :required)
+        value = value_changeset(params, value_id: :required)
         {:noreply, assign(socket, form: value_form(value), key_errors: errors)}
 
       {:error, %Ecto.Changeset{data: %Setting{}} = changeset} ->
@@ -2326,6 +2327,7 @@ defmodule ApiaryWeb.SecretLive.Index do
        )
        when is_map(params) do
     %{current_scope: scope, secret: secret, value: value, provider: provider} = socket.assigns
+    params = ModelKeyDevice.put_login(params, socket)
 
     set =
       cond do
@@ -2371,7 +2373,7 @@ defmodule ApiaryWeb.SecretLive.Index do
          )}
 
       {:settings, errors} ->
-        value = Value.changeset(%Value{}, trimmed(Map.take(params, ["value"])))
+        value = value_changeset(Map.take(params, ["value"]), [])
         # An empty New value keeps the key's value: only the settings' errors show.
         value = if blank?(params["value"]), do: fresh(value), else: value
         {:noreply, assign(socket, form: value_form(value), key_errors: errors)}
@@ -2660,10 +2662,19 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   ## After a change, and its refusals
 
+  defp blank?(%Login.Parsed{}), do: false
   defp blank?(value), do: not is_binary(value) or String.trim(value) == ""
 
   # A provider's key as `Apiary.Connections` checks it, without the whitespace at its
   # ends, so the errors shown with the settings' are those of the save.
+  defp value_changeset(%{"value" => %Login.Parsed{}} = params, opts) do
+    # A sign-in is no text: its value has nothing to check, and no error of it shows.
+    changeset = Value.changeset(%Value{}, Map.delete(params, "value"), opts)
+    %{changeset | errors: Keyword.delete(changeset.errors, :value)}
+  end
+
+  defp value_changeset(params, opts), do: Value.changeset(%Value{}, trimmed(params), opts)
+
   defp trimmed(%{"value" => value} = params),
     do: %{params | "value" => Connections.trim_key(value)}
 

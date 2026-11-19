@@ -59,26 +59,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   of the catalogue.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
-- A key of an **OpenAI subscription** is a sign-in. Every form that takes it, **Add key**
-  and **Edit key** of the provider, **New model provider**, the Model step of a workspace's
-  set-up, and **Add value** and **Change value** of its secret on **Secrets and
-  variables**, names the field **Sign-in**, not **Key**, **New value** or **Value**. The
-  field takes the contents of the `auth.json` that `codex login` writes, with the hint
-  “Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it
-  again. Run codex login with a separate CODEX_HOME, and don't use that login anywhere
-  else.” A key of any other provider keeps its names and its hint. Qory Apiary stores the
-  access and refresh tokens of the paste encrypted, like any key, and drops every other
-  member, the ID token included. A paste that is no `auth.json` with an access token that
-  has an expiry, a refresh token and an account id is refused with “Paste the whole
-  auth.json that codex login wrote.”; a paste without a refresh token adds “This text has
-  no refresh token.” Saving makes no call to OpenAI. The provider's page shows “Signed in.”
-  beside each such key. The states “Signed in. Last refresh” with a time, and **Needs a new
-  sign-in** with “OpenAI rejected it on” the time and “Run codex login --device-auth and
-  replace the key.”, are set by the refresh, below. The second replaces the key's state
-  line. A new value for the key starts a new sign-in and clears the key's states, as it
-  does for any key. No token appears in a page, a log
-  line or an audit entry. A run that claims the key stops at the secrets request with
-  `credential_unavailable`.
+- A key of an **OpenAI subscription** is made with a device sign-in. Each key form
+  (**Add key**, **Edit key**, **New model provider**, the set-up's Model step, and a
+  secret's **Add value** and **Change value**) has the button **Sign in with ChatGPT**. The
+  form shows the page to open, the code with **Copy**, the time it works until, and
+  **Cancel**. Qory Apiary polls until the person approves, cancels or leaves, or the code
+  expires, and **Save** stores the tokens encrypted. A failed sign-in
+  (an expired code, device code sign-in off, a failed call to OpenAI, a response with no
+  account id, a sign-in that cannot be saved) shows a fix line and a cause line. A save
+  before the sign-in shows what to click. A key that needs a new sign-in has the button in
+  **Edit key** and in its row. An entry without `oauth_device` has no button. No token or
+  code appears in a page, a log line or an audit entry.
 - Qory Apiary refreshes the sign-in of an **OpenAI subscription** key, one refresh at a time
   for each key, in the way `codex` does: when the access token's `exp` is near, or, for a
   token whose `exp` cannot be read, 8 days after the last refresh. A run's request refreshes
@@ -97,8 +88,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   key's states and the copies that runs hold. The call and the write of its result run in a
   task that is linked to no caller, so the new refresh token is stored even when the caller
   stops waiting; a caller that stops waiting gets the old access token while it is valid. A
-  key renamed while a call is in flight keeps the result under its new name. A sign-in
-  pasted, or a key deleted, while a call is in flight keeps what the key has, and the result
+  key renamed while a call is in flight keeps the result under its new name. A new
+  sign-in, or a key deleted, while a call is in flight keeps what the key has, and the result
   is dropped. A new refresh token that the key cannot store, such as one past the size of a
   value, is written once more at once; if that fails too, the key shows **Needs a new
   sign-in** with the cause `token_not_stored` and the line “Qory Apiary could not save the
@@ -115,7 +106,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `refresh_token_reused`. The deploy recipe is not changed. When OpenAI rejects the refresh
   token for good (an expired, used or revoked token, `invalid_grant`, or a 401), the key
   shows **Needs a new sign-in**, with the time of the rejection, and no further call is made
-  until a new sign-in is pasted. When a call fails for a reason that may pass (a 5xx or 429
+  until a new sign-in is made. When a call fails for a reason that may pass (a 5xx or 429
   answer, a timeout, a network error or an answer that is no refresh), the next call is made
   30 seconds later at the earliest, then twice as long for each failure in a row, up to 10
   minutes, and the key keeps its access token while that token is valid. The organisation's

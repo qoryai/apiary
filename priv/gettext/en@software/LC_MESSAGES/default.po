@@ -1673,6 +1673,7 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/node_live/show.ex
 #: lib/apiary_web/live/provider_live/key.ex
+#: lib/apiary_web/live/provider_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is saved."
@@ -6212,6 +6213,11 @@ msgstr[1] ""
 msgid "Approve the proposal, or add a comment and run another round."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Approve the sign-in at OpenAI before %{time}."
+msgstr "The code works until %{time}."
+
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Approve this stage?"
@@ -6793,6 +6799,7 @@ msgstr ""
 #: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/components/integration_components.ex
+#: lib/apiary_web/components/model_key_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/settings_components.ex
@@ -7846,6 +7853,16 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Clearing"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Click %{label}, then save. This key has no sign-in yet."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Click Sign in with ChatGPT for a new code."
 msgstr ""
 
 #: lib/apiary/runs/preparation.ex
@@ -16050,6 +16067,11 @@ msgctxt "backlog view"
 msgid "Open"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Open %{address} and enter this code."
+msgstr ""
+
 #: lib/apiary_web/components/backlog_components.ex
 #: lib/apiary_web/live/adapter_live/index.ex
 #, elixir-autogen, elixir-format
@@ -16201,6 +16223,16 @@ msgstr ""
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "OpenAI returned HTTP 401 to the refresh"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI returned no account id for this sign-in."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI returned no code, because device code sign-in for Codex is off for this ChatGPT account."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/index.ex
@@ -16547,11 +16579,6 @@ msgstr ""
 #: lib/apiary/artifacts/type_rules.ex
 #, elixir-autogen, elixir-format
 msgid "Paste a JSON Schema: one JSON object of at most 64 KiB that Qory Apiary can build."
-msgstr ""
-
-#: lib/apiary_web/components/model_key_components.ex
-#, elixir-autogen, elixir-format
-msgid "Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it again. Run codex login with a separate CODEX_HOME, and don't use that login anywhere else."
 msgstr ""
 
 #: lib/apiary_web/live/target_live/show.ex
@@ -17185,6 +17212,16 @@ msgstr ""
 msgid "Qory Apiary could not check the credential from the adapter"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not complete the sign-in with OpenAI (HTTP %{status})."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not complete the sign-in with OpenAI."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary could not connect to OpenAI"
@@ -17229,6 +17266,11 @@ msgstr ""
 #: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary could not save the new sign-in on %{time}."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not save the sign-in."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
@@ -17355,6 +17397,11 @@ msgstr ""
 msgid "Qory Apiary ships these types, and their limits cannot be changed. Forms and the stage editor offer only the types that are on."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary signs in to ChatGPT for this key. You enter a code on OpenAI's page, and you paste nothing."
+msgstr ""
+
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary stopped reading %{source} after %{seconds} seconds, before it read every file. Try again."
@@ -17369,6 +17416,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary stores the sign-in encrypted, and no page shows it."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
@@ -18814,11 +18866,6 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Run cancelled: %{reason}."
-msgstr ""
-
-#: lib/apiary_web/components/model_key_components.ex
-#, elixir-autogen, elixir-format
-msgid "Run codex login --device-auth and replace the key."
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
@@ -20319,7 +20366,7 @@ msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format
-msgid "Sign-in"
+msgid "Sign in with ChatGPT"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/registration.ex
@@ -22783,6 +22830,11 @@ msgstr ""
 msgid "The sha256 of the policy this run ran under. Two runs with the same digest had the same policy."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "The sign-in expired before it was approved."
+msgstr "The code expired before the sign-in was approved."
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "The size the runtime ran at"
@@ -23919,6 +23971,11 @@ msgstr ""
 msgid "Turn it on again in the AWS stack or the Compose file to give it a new key."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Turn on %{label} in ChatGPT's security settings, or ask your ChatGPT workspace admin to turn it on."
+msgstr ""
+
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
 msgid "Turn on mail for %{name}"
@@ -24662,6 +24719,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Waiting for the run to start"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for you to approve the sign-in on OpenAI's page."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex

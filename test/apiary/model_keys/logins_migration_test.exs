@@ -58,7 +58,7 @@ defmodule Apiary.ModelKeys.LoginsMigrationTest do
     {:ok, provider} =
       Connections.create_provider(scope, %{
         provider: "openai-subscription",
-        keys: [%{value_id: "main", value: login_paste()}]
+        keys: [%{value_id: "main", value: device_login()}]
       })
 
     value = key_value!(provider, "main")
@@ -86,7 +86,7 @@ defmodule Apiary.ModelKeys.LoginsMigrationTest do
     {:ok, provider} =
       Connections.create_provider(scope, %{
         provider: "openai-subscription",
-        keys: [%{value_id: "main", value: login_paste()}]
+        keys: [%{value_id: "main", value: device_login()}]
       })
 
     %Value{id: id} = key_value!(provider, "main")
@@ -125,7 +125,7 @@ defmodule Apiary.ModelKeys.LoginsMigrationTest do
     {:ok, provider} =
       Connections.create_provider(scope, %{
         provider: "openai-subscription",
-        keys: [%{value_id: "main", value: login_paste()}]
+        keys: [%{value_id: "main", value: device_login()}]
       })
 
     %Value{id: id} = key_value!(provider, "main")
@@ -149,8 +149,8 @@ defmodule Apiary.ModelKeys.LoginsMigrationTest do
       Connections.create_provider(scope, %{
         provider: "openai-subscription",
         keys: [
-          %{value_id: "main", value: login_paste()},
-          %{value_id: "spare", value: login_paste(tag: "b")}
+          %{value_id: "main", value: device_login()},
+          %{value_id: "spare", value: device_login(tag: "b")}
         ]
       })
 

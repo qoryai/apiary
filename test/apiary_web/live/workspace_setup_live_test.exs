@@ -4346,16 +4346,28 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
   end
 
   describe "the Model step's Add a key, for a subscription's login" do
-    @login_hint "Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it again. Run codex login with a separate CODEX_HOME, and don't use that login anywhere else."
+    alias Apiary.DeviceSignInStub, as: Stub
+
+    @login_hint "Qory Apiary signs in to ChatGPT for this key. You enter a code on OpenAI's page, and you paste nothing."
 
     defp login_tokens_in(text, tokens),
       do:
         Enum.filter(
-          [tokens.access_token, tokens.refresh_token, tokens.id_token, "auth_mode"],
+          [
+            tokens.access_token,
+            tokens.refresh_token,
+            tokens.id_token,
+            "device-auth-fixture",
+            "authorization-code-fixture",
+            "verifier-fixture"
+          ],
           &(text =~ &1)
         )
 
-    test "names the field Sign-in with the hint, and Key for an API key", %{conn: conn} do
+    defp eventually(fun), do: Stub.eventually(fun)
+
+    test "has the button with the hint, and Key for an API key", %{conn: conn} do
+      Stub.put()
       %{user: user, organisation: organisation} = sign_up_fixture()
       {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
@@ -4363,23 +4375,34 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
       |> form("#set-up-model-form", model: %{provider: "openai-subscription"})
       |> render_change()
 
-      assert words(lv, ~s{#set-up-model-form label[for^="set-up-model-key-"]}) == "Sign-in"
-
-      assert words(lv, ~s{#set-up-model-form [id^="set-up-model-key-"][id$="-hint"]}) ==
-               @login_hint
+      assert words(lv, "#set-up-model-sign-in-start") == "Sign in with ChatGPT"
+      assert words(lv, "#set-up-model-sign-in-hint") == @login_hint
+      refute has_element?(lv, ~s{#set-up-model-form label[for^="set-up-model-key-"]})
 
       lv |> form("#set-up-model-form", model: %{provider: "openai"}) |> render_change()
 
+      refute has_element?(lv, "#set-up-model-sign-in")
       assert words(lv, ~s{#set-up-model-form label[for^="set-up-model-key-"]}) == "Key"
 
       assert words(lv, ~s{#set-up-model-form [id^="set-up-model-key-"][id$="-hint"]}) ==
                "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
     end
 
-    test "adds the provider for a valid login and refuses another paste, showing no token",
+    test "has no button while the description has no device sign-in", %{conn: conn} do
+      %{user: user, organisation: organisation} = sign_up_fixture()
+      {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+      lv
+      |> form("#set-up-model-form", model: %{provider: "openai-subscription"})
+      |> render_change()
+
+      refute has_element?(lv, "#set-up-model-sign-in-start")
+    end
+
+    test "refuses the step before the sign-in, and adds the provider after it, with no token",
          %{conn: conn} do
       %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
-      tokens = Apiary.ModelKeysFixtures.login_tokens(tag: "setup")
+      tokens = Stub.put(tokens: Apiary.ModelKeysFixtures.login_tokens(tag: "setup"), hold: true)
       {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
       # The form's Runtime follows the provider chosen, as a person's choice changes it.
@@ -4387,52 +4410,63 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
       |> form("#set-up-model-form", model: %{provider: "openai-subscription"})
       |> render_change()
 
-      for key <- [
-            "sk-proj-an-api-key",
-            Apiary.ModelKeysFixtures.login_paste(tokens: tokens) <> "}"
-          ] do
-        html =
-          lv
-          |> form("#set-up-model-form", model: %{provider: "openai-subscription", key: key})
-          |> render_submit()
+      html =
+        lv
+        |> form("#set-up-model-form", model: %{provider: "openai-subscription"})
+        |> render_submit()
 
-        assert login_tokens_in(html, tokens) == []
-        assert login_tokens_in(render(lv), tokens) == []
-        refute html =~ "sk-proj-an-api-key"
-
-        assert has_element?(
-                 lv,
-                 "#set-up-model-form",
-                 "Paste the whole auth.json that codex login wrote."
-               )
-
-        assert login_tokens_in(
-                 inspect(:sys.get_state(lv.pid), limit: :infinity, printable_limit: :infinity),
-                 tokens
-               ) == []
-      end
-
+      assert html =~ "then save. This key has no sign-in yet."
+      assert has_element?(lv, "#set-up-model-sign-in-error-1 b", "Sign in with ChatGPT")
+      refute html =~ "be blank"
       assert {:ok, []} = Connections.list_providers(scope)
+
+      lv |> element("#set-up-model-sign-in-start") |> render_click()
+      eventually(fn -> assert has_element?(lv, "#set-up-model-sign-in-code") end)
+      assert words(lv, "#set-up-model-sign-in-code") == "7QKD-M4TPX"
+      assert has_element?(lv, "#set-up-model-sign-in-cancel", "Cancel")
+      Stub.approve()
+
+      eventually(fn -> assert has_element?(lv, "#set-up-model-sign-in-state", "Signed in.") end)
+
+      assert login_tokens_in(render(lv), tokens) == []
+
+      assert login_tokens_in(
+               inspect(:sys.get_state(lv.pid), limit: :infinity, printable_limit: :infinity),
+               tokens
+             ) == []
 
       html =
         lv
-        |> form("#set-up-model-form",
-          model: %{
-            provider: "openai-subscription",
-            key: Apiary.ModelKeysFixtures.login_paste(tokens: tokens)
-          }
-        )
+        |> form("#set-up-model-form", model: %{provider: "openai-subscription"})
         |> render_submit()
 
       assert login_tokens_in(html, tokens) == []
-      assert login_tokens_in(render(lv), tokens) == []
       assert {:ok, [provider]} = Connections.list_providers(scope)
       assert provider.provider_kind == "openai-subscription"
 
       value = Apiary.ModelKeysFixtures.key_value!(provider, "key-1")
 
-      assert %Apiary.ModelKeys.Login{account_id: "acct-fixture-setup"} =
+      assert %Apiary.ModelKeys.Login{state: "signed_in", refreshed_at: nil, account_id: account} =
                Repo.get!(Apiary.ModelKeys.Login, value.id)
+
+      assert account == tokens.account_id
+    end
+
+    test "stops the sign-in when the person goes back to another step", %{conn: conn} do
+      %{user: user, organisation: organisation} = sign_up_fixture()
+      Stub.put(pending: :never)
+      {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+      lv
+      |> form("#set-up-model-form", model: %{provider: "openai-subscription"})
+      |> render_change()
+
+      lv |> element("#set-up-model-sign-in-start") |> render_click()
+      eventually(fn -> assert has_element?(lv, "#set-up-model-sign-in-code") end)
+      pid = :sys.get_state(lv.pid).socket.assigns.device.pid
+
+      GenServer.stop(lv.pid)
+      Stub.assert_ended(pid)
     end
   end
 

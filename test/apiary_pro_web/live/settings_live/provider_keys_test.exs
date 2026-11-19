@@ -386,13 +386,15 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
   end
 
   describe "the key of a subscription, a login" do
-    @hint "Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it again. Run codex login with a separate CODEX_HOME, and don't use that login anywhere else."
+    alias Apiary.DeviceSignInStub, as: Stub
+
+    @hint "Qory Apiary signs in to ChatGPT for this key. You enter a code on OpenAI's page, and you paste nothing."
 
     setup %{scope: scope} do
       {:ok, subscription} =
         Connections.create_provider(scope, %{
           provider: "openai-subscription",
-          keys: [%{value_id: "main", value: Apiary.ModelKeysFixtures.login_paste()}]
+          keys: [%{value_id: "main", value: Apiary.ModelKeysFixtures.device_login()}]
         })
 
       %{subscription: subscription, login_secret: Repo.get!(Secret, subscription.secret_id)}
@@ -409,26 +411,43 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
     end
 
     defp refute_tokens(html, tokens) do
-      for secret <- [tokens.access_token, tokens.refresh_token, tokens.id_token, "auth_mode"],
+      for secret <- [
+            tokens.access_token,
+            tokens.refresh_token,
+            tokens.id_token,
+            "device-auth-fixture",
+            "authorization-code-fixture",
+            "verifier-fixture"
+          ],
           do: refute(html =~ secret)
     end
 
-    test "names the field Sign-in on Add value and Change value, with the hint", ctx do
+    test "has the button on Add value and Change value, with the hint", ctx do
       %{conn: conn, scope: scope, login_secret: secret} = ctx
+      Stub.put()
 
       {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
-      assert words(lv, ~s{#secret-form label[for="secret_value_value"]}) == "Sign-in"
-      assert words(lv, "#secret_value_value-hint") == @hint
+      assert words(lv, "#secret-sign-in-start") == "Sign in with ChatGPT"
+      assert words(lv, "#secret-sign-in-hint") == @hint
+      refute has_element?(lv, "#secret-form textarea")
 
       {:ok, lv, _html} =
         live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
 
-      assert words(lv, ~s{#secret-form label[for="secret_value_value"]}) == "Sign-in"
-      assert words(lv, "#secret_value_value-hint") == @hint
+      assert words(lv, "#secret-sign-in-start") == "Sign in with ChatGPT"
+      assert words(lv, "#secret-sign-in-hint") == @hint
+    end
+
+    test "has no button while the description has no device sign-in", ctx do
+      %{conn: conn, scope: scope, login_secret: secret} = ctx
+
+      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
+      refute has_element?(lv, "#secret-sign-in-start")
     end
 
     test "keeps Value and New value, and their hint, for an API key", ctx do
       %{conn: conn, scope: scope, secret: secret} = ctx
+      Stub.put()
 
       {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
       assert words(lv, ~s{#secret-form label[for="secret_value_value"]}) == "Value"
@@ -442,51 +461,44 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
       assert words(lv, ~s{#secret-form label[for="secret_value_value"]}) == "New value"
     end
 
-    test "adds a valid login and refuses another paste, showing no token", ctx do
+    test "refuses Add value before the sign-in, then stores the sign-in, showing no token",
+         ctx do
       %{conn: conn, scope: scope, login_secret: secret, subscription: subscription} = ctx
-      tokens = Apiary.ModelKeysFixtures.login_tokens(tag: "pro")
+      tokens = Stub.put(tokens: Apiary.ModelKeysFixtures.login_tokens(tag: "pro"), hold: true)
       {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
 
-      for paste <- [
-            "sk-proj-an-api-key",
-            Apiary.ModelKeysFixtures.login_paste(tokens: tokens) <> "}"
-          ] do
-        html =
-          lv
-          |> form("#secret-form", secret_value: %{value_id: "spare", value: paste})
-          |> render_submit()
+      lv |> form("#secret-form", secret_value: %{value_id: "spare"}) |> render_submit()
 
-        refute html =~ "sk-proj-an-api-key"
-        refute_tokens(html, tokens)
-        refute_tokens(render(lv), tokens)
-
-        assert has_element?(
-                 lv,
-                 "#secret_value_value-error",
-                 "Paste the whole auth.json that codex login wrote."
-               )
-      end
+      assert words(lv, "#secret-sign-in-error-1") ==
+               "Click Sign in with ChatGPT, then save. This key has no sign-in yet."
 
       assert [%{value_id: "main"}] =
                Repo.all(from v in Secrets.Value, where: v.secret_id == ^subscription.secret_id)
 
-      html =
-        lv
-        |> form("#secret-form",
-          secret_value: %{
-            value_id: "spare",
-            value: Apiary.ModelKeysFixtures.login_paste(tokens: tokens)
-          }
-        )
-        |> render_submit()
+      lv |> element("#secret-sign-in-start") |> render_click()
+      Stub.eventually(fn -> assert has_element?(lv, "#secret-sign-in-code") end)
+      assert words(lv, "#secret-sign-in-code") == "7QKD-M4TPX"
+      Stub.approve()
+      Stub.eventually(fn -> assert has_element?(lv, "#secret-sign-in-state", "Signed in.") end)
+
+      refute_tokens(render(lv), tokens)
+
+      refute_tokens(
+        inspect(:sys.get_state(lv.pid), limit: :infinity, printable_limit: :infinity),
+        tokens
+      )
+
+      html = lv |> form("#secret-form", secret_value: %{value_id: "spare"}) |> render_submit()
 
       refute_tokens(html, tokens)
       refute_tokens(render(lv), tokens)
 
       value = Apiary.ModelKeysFixtures.key_value!(subscription, "spare")
 
-      assert %Apiary.ModelKeys.Login{account_id: "acct-fixture-pro"} =
+      assert %Apiary.ModelKeys.Login{account_id: account} =
                Repo.get!(Apiary.ModelKeys.Login, value.id)
+
+      assert account == tokens.account_id
     end
   end
 end

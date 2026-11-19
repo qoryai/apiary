@@ -22,7 +22,7 @@ defmodule Apiary.ModelKeys.LoginRefreshFeaturesTest do
     {:ok, provider} =
       Connections.create_provider(scope, %{
         provider: "openai-subscription",
-        keys: [%{value_id: "main", value: login_paste(tokens: tokens)}]
+        keys: [%{value_id: "main", value: device_login(tokens: tokens)}]
       })
 
     Application.put_env(:apiary, :features, features)

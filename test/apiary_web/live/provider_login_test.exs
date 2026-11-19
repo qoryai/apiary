@@ -1,22 +1,26 @@
 defmodule ApiaryWeb.ProviderLoginTest do
   # The sign-in of an OpenAI subscription's key (`Apiary.ModelKeys.Login`) on Organisation
-  # settings › Model providers: Add key and Edit key take the pasted `auth.json` in a
-  # field named Sign-in, refuse a paste that is no login with the reason, and never show
-  # a token; the provider's page shows each key's sign-in, Signed in or Needs a new
-  # sign-in; the workspace's Secrets page takes the same paste for a workspace's key.
+  # settings › Model providers: Add key, Edit key and New model provider have the button
+  # Sign in with ChatGPT, which starts a device sign-in (`Apiary.ModelKeys.DeviceSignIn`)
+  # against a stub of the provider, and never show a token; the provider's page shows each
+  # key's sign-in, Signed in or Needs a new sign-in, and starts a sign-in from the row; the
+  # workspace's Secrets page has the same button for a workspace's key.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query, only: [from: 2]
   import ExUnit.CaptureLog
   import Phoenix.LiveViewTest
   import Apiary.ModelKeysFixtures
+  import Apiary.DeviceSignInStub, only: [eventually: 1, assert_ended: 1]
 
   alias Apiary.{Connections, Repo}
+  alias Apiary.DeviceSignInStub, as: Stub
   alias Apiary.ModelKeys.Login
 
   @moduletag needs: [:factory, :secrets]
 
-  @hint "Paste the contents of auth.json. Qory Apiary stores it encrypted, and nobody can view it again. Run codex login with a separate CODEX_HOME, and don't use that login anywhere else."
+  @hint "Qory Apiary signs in to ChatGPT for this key. You enter a code on OpenAI's page, and you paste nothing."
+  @stored "Qory Apiary stores the sign-in encrypted, and no page shows it."
   @key_hint "Qory Apiary stores the key encrypted, and nobody can view it again."
 
   setup :register_and_log_in_user
@@ -30,7 +34,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
         scope,
         %{
           provider: "openai-subscription",
-          keys: [%{value_id: "main", value: login_paste(tokens: tokens)}]
+          keys: [%{value_id: "main", value: device_login(tokens: tokens)}]
         },
         place
       )
@@ -48,11 +52,28 @@ defmodule ApiaryWeb.ProviderLoginTest do
     |> Enum.join(" ")
   end
 
-  # No token of `tokens`, nor the paste's other members, in `html`.
+  # No token of `tokens`, nor any code of the device sign-in, in `html`.
   defp refute_tokens(html, tokens) do
-    for secret <- [tokens.access_token, tokens.refresh_token, tokens.id_token, "auth_mode"],
+    for secret <- [
+          tokens.access_token,
+          tokens.refresh_token,
+          tokens.id_token,
+          "device-auth-fixture",
+          "authorization-code-fixture",
+          "verifier-fixture"
+        ],
         do: refute(html =~ secret)
   end
+
+  defp device_of(lv), do: :sys.get_state(lv.pid).socket.assigns.device
+
+  # Clicks the button and waits for the code, then for the sign-in.
+  defp sign_in!(lv, id) do
+    lv |> element("##{id}-start") |> render_click()
+    eventually(fn -> assert has_element?(lv, "##{id}-code") end)
+  end
+
+  defp signed_in!(lv, id), do: eventually(fn -> assert has_element?(lv, "##{id}-state") end)
 
   defp refute_in_assigns(lv, tokens) do
     state = inspect(:sys.get_state(lv.pid), limit: :infinity, printable_limit: :infinity)
@@ -65,19 +86,23 @@ defmodule ApiaryWeb.ProviderLoginTest do
   end
 
   describe "Add key" do
-    test "names the field Sign-in and says what to paste, for a subscription's login", ctx do
+    test "has the button and its hint in place of a Sign-in field", ctx do
       %{conn: conn, scope: scope} = ctx
+      Stub.put()
       provider = subscription!(scope)
-      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+      {:ok, lv, html} = live(conn, key_path(scope, provider, "new"))
 
-      assert has_element?(lv, ~s{#key-form label[for="key-value-0"]}, "Sign-in")
-
-      assert text(lv, "#key-value-0-hint") == @hint
-      assert has_element?(lv, ~s{#key-form input#key-value-0[type=password]:not([value])})
+      assert text(lv, "#key-sign-in-start") == "Sign in with ChatGPT"
+      assert text(lv, "#key-sign-in-hint") == @hint
+      assert has_element?(lv, ~s{#key-form label[for="key_value_id"]}, "Name")
+      refute has_element?(lv, "#key-form input[type=password]")
+      refute html =~ "Sign-in"
+      refute html =~ "auth.json"
     end
 
     test "keeps the names Key and its hint for any other provider", ctx do
       %{conn: conn, scope: scope} = ctx
+      Stub.put()
 
       {:ok, provider} =
         Connections.create_provider(scope, %{
@@ -88,135 +113,346 @@ defmodule ApiaryWeb.ProviderLoginTest do
       {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
 
       assert has_element?(lv, ~s{#key-form label[for="key-value-0"]}, "Key")
-
       assert text(lv, "#key-value-0-hint") == @key_hint
+      refute has_element?(lv, "#key-sign-in")
     end
 
-    test "stores a pasted login, on several lines or on one, and shows no token", ctx do
-      %{conn: conn, scope: scope} = ctx
-      provider = subscription!(scope)
-
-      for {name, newlines?} <- [{"spare", true}, {"third", false}] do
-        tokens = login_tokens(tag: name)
-        paste = login_paste(tokens: tokens)
-        paste = if newlines?, do: paste, else: String.replace(paste, "\n", "")
-        {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
-
-        log =
-          capture_log(fn ->
-            lv
-            |> form("#key-form", key: %{value_id: name, key: paste})
-            |> render_submit()
-
-            assert_redirect(lv, "#{base(scope)}/#{provider.public_id}")
-          end)
-
-        refute_tokens(log, tokens)
-        assert %Login{state: "signed_in", account_id: account} = login_of(provider, name)
-        assert account == tokens.account_id
-      end
-    end
-
-    test "refuses a paste that is no login on the Sign-in, with the Name's errors", ctx do
+    test "has no button while the description has no device sign-in, and refuses a save", ctx do
       %{conn: conn, scope: scope} = ctx
       provider = subscription!(scope)
       {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
 
-      html =
-        lv
-        |> form("#key-form", key: %{value_id: "Bad Name", key: "sk-proj-an-api-key"})
-        |> render_submit()
+      refute has_element?(lv, "#key-sign-in-start")
+      refute has_element?(lv, "#key-form input[type=password]")
 
-      refute html =~ "sk-proj-an-api-key"
-      assert has_element?(lv, "#key_value_id-error")
+      lv |> form("#key-form", key: %{value_id: "spare"}) |> render_submit()
 
-      assert has_element?(
-               lv,
-               "#key-value-1-error",
-               "Paste the whole auth.json that codex login wrote."
-             )
+      assert text(lv, "#key-sign-in-error-1") ==
+               "Click Sign in with ChatGPT, then save. This key has no sign-in yet."
 
-      assert has_element?(lv, ~s{#key-form input#key-value-1[type=password]:not([value])})
-
-      lv
-      |> form("#key-form", key: %{value_id: "spare", key: "sk-proj-an-api-key"})
-      |> render_submit()
-
-      assert text(lv, "#key-value-2-error") ==
-               "Paste the whole auth.json that codex login wrote."
+      assert has_element?(lv, "#key-sign-in-error-1 b", "Sign in with ChatGPT")
 
       assert [%{value_id: "main"}] =
                Repo.all(from v in Apiary.Secrets.Value, where: v.secret_id == ^provider.secret_id)
     end
 
-    test "says why a login without a refresh token is refused", ctx do
+    test "shows the code, waits, then Signed in, and Save stores the sign-in", ctx do
       %{conn: conn, scope: scope} = ctx
+      tokens = Stub.put(hold: true)
       provider = subscription!(scope)
       {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
 
-      no_refresh =
-        login_paste()
-        |> Jason.decode!()
-        |> update_in(["tokens"], &Map.delete(&1, "refresh_token"))
-        |> Jason.encode!()
+      sign_in!(lv, "key-sign-in")
 
-      lv |> form("#key-form", key: %{value_id: "spare", key: no_refresh}) |> render_submit()
+      assert text(lv, "#key-sign-in-open") ==
+               "Open auth.example.test/device and enter this code."
 
-      assert text(lv, "#key-value-1-error") ==
-               "Paste the whole auth.json that codex login wrote. This text has no refresh token."
+      assert has_element?(
+               lv,
+               ~s{#key-sign-in-open a[href="https://auth.example.test/device"][target=_blank]}
+             )
+
+      assert text(lv, "#key-sign-in-code") == "7QKD-M4TPX"
+      assert has_element?(lv, "#key-sign-in-copy", "Copy")
+      assert text(lv, "#key-sign-in-until") =~ ~r/\AThe code works until \d{1,2}:\d{2}.*\.\z/
+
+      assert text(lv, "#key-sign-in-waiting") ==
+               "Waiting for you to approve the sign-in on OpenAI's page."
+
+      assert has_element?(lv, "#key-sign-in-cancel", "Cancel")
+      # The page's Cancel leaves the form: two Cancel buttons while the code shows.
+      assert has_element?(lv, "#key-save a", "Cancel")
+      refute has_element?(lv, "#key-sign-in-start")
+
+      Stub.approve()
+      signed_in!(lv, "key-sign-in")
+      assert text(lv, "#key-sign-in-state") == "Signed in."
+      assert render(lv) =~ @stored
+      refute has_element?(lv, "#key-sign-in-code")
+      refute has_element?(lv, "#key-sign-in-start")
+
+      log =
+        capture_log(fn ->
+          lv |> form("#key-form", key: %{value_id: "spare"}) |> render_submit()
+          assert_redirect(lv, "#{base(scope)}/#{provider.public_id}")
+        end)
+
+      refute_tokens(log, tokens)
+
+      assert %Login{state: "signed_in", account_id: account, refreshed_at: nil, generation: 1} =
+               login_of(provider, "spare")
+
+      assert account == tokens.account_id
     end
 
-    test "keeps no token in the page's assigns", ctx do
+    test "keeps no token, code or device id in the page or its assigns", ctx do
       %{conn: conn, scope: scope} = ctx
+      tokens = Stub.put()
       provider = subscription!(scope)
-      tokens = login_tokens(tag: "assigns")
       {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
 
-      html =
-        lv
-        |> form("#key-form", key: %{value_id: "spare", key: login_paste(tokens: tokens) <> "}"})
-        |> render_submit()
+      sign_in!(lv, "key-sign-in")
+      signed_in!(lv, "key-sign-in")
 
-      # Refused: the paste is a login followed by a stray brace. The page the refusal
-      # draws, and the page drawn again, show none of it.
-      assert has_element?(lv, "#key-value-1-error")
-      refute_tokens(html, tokens)
       refute_tokens(render(lv), tokens)
       refute_in_assigns(lv, tokens)
+
+      # A refused save (a name with a space) draws the page again.
+      html = lv |> form("#key-form", key: %{value_id: "Bad Name"}) |> render_submit()
+      assert has_element?(lv, "#key_value_id-error")
+      assert has_element?(lv, "#key-sign-in-state")
+      refute_tokens(html, tokens)
+      refute_in_assigns(lv, tokens)
+
+      # The device assign has the user code and nothing else of the sign-in.
+      assert Map.keys(device_of(lv)) |> Enum.sort() ==
+               ~w(cause expires_at key kind pid ref state user_code verification_url)a
+    end
+
+    test "Cancel beside the code stops the sign-in and shows the button again", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(pending: :never)
+      provider = subscription!(scope)
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+
+      sign_in!(lv, "key-sign-in")
+      pid = device_of(lv).pid
+      lv |> element("#key-sign-in-cancel") |> render_click()
+
+      assert has_element?(lv, "#key-sign-in-start")
+      refute has_element?(lv, "#key-sign-in-code")
+      assert_ended(pid)
+    end
+
+    test "leaving the form stops the polling", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(pending: :never)
+      provider = subscription!(scope)
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+
+      sign_in!(lv, "key-sign-in")
+      pid = device_of(lv).pid
+      GenServer.stop(lv.pid)
+
+      assert_ended(pid)
+    end
+
+    test "shows an expired code with the fix first, and a new code on the next click", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(pending: :never, expires_at: DateTime.add(DateTime.utc_now(), 1))
+      provider = subscription!(scope)
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+
+      sign_in!(lv, "key-sign-in")
+      eventually(fn -> assert has_element?(lv, "#key-sign-in-fix") end)
+
+      assert text(lv, "#key-sign-in-fix") == "Click Sign in with ChatGPT for a new code."
+      assert text(lv, "#key-sign-in-cause") == "The code expired before the sign-in was approved."
+      refute has_element?(lv, "#key-sign-in-hint")
+
+      Stub.put(pending: :never)
+      sign_in!(lv, "key-sign-in")
+      assert text(lv, "#key-sign-in-code") == "7QKD-M4TPX"
+    end
+
+    test "says device code sign-in is off, with the retry button", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(usercode: 404)
+      provider = subscription!(scope)
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+
+      lv |> element("#key-sign-in-start") |> render_click()
+      eventually(fn -> assert has_element?(lv, "#key-sign-in-fix") end)
+
+      assert text(lv, "#key-sign-in-fix") ==
+               "Turn on Enable device code sign-in for Codex in ChatGPT's security settings, or ask your ChatGPT workspace admin to turn it on."
+
+      assert has_element?(lv, "#key-sign-in-fix b", "Enable device code sign-in for Codex")
+
+      assert text(lv, "#key-sign-in-cause") ==
+               "OpenAI returned no code, because device code sign-in for Codex is off for this ChatGPT account."
+
+      assert has_element?(lv, "#key-sign-in-start", "Sign in with ChatGPT")
+    end
+
+    test "shows the fix and the status of the response that failed the sign-in", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(usercode: 500)
+      provider = subscription!(scope)
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+
+      lv |> element("#key-sign-in-start") |> render_click()
+      eventually(fn -> assert has_element?(lv, "#key-sign-in-fix") end)
+
+      assert text(lv, "#key-sign-in-fix") == "Click Sign in with ChatGPT for a new code."
+
+      assert text(lv, "#key-sign-in-cause") ==
+               "Qory Apiary could not complete the sign-in with OpenAI (HTTP 500)."
+
+      assert has_element?(lv, "#key-sign-in-start")
+    end
+
+    test "leaves the status out of the cause when the failure has none", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(code: "")
+      provider = subscription!(scope)
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+
+      lv |> element("#key-sign-in-start") |> render_click()
+      eventually(fn -> assert has_element?(lv, "#key-sign-in-fix") end)
+
+      assert text(lv, "#key-sign-in-cause") ==
+               "Qory Apiary could not complete the sign-in with OpenAI."
+    end
+
+    test "shows the fix and the cause for tokens with no account id", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(tokens: %{login_tokens(tag: "x") | access_token: "not.a.jwt"})
+      provider = subscription!(scope)
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+
+      lv |> element("#key-sign-in-start") |> render_click()
+      eventually(fn -> assert has_element?(lv, "#key-sign-in-fix") end)
+
+      assert text(lv, "#key-sign-in-fix") == "Click Sign in with ChatGPT for a new code."
+
+      assert text(lv, "#key-sign-in-cause") ==
+               "OpenAI returned no account id for this sign-in."
+    end
+
+    test "copies the code as text, with no white space around it", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(hold: true)
+      provider = subscription!(scope)
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+
+      sign_in!(lv, "key-sign-in")
+      assert lv |> element("#key-sign-in-code") |> render() =~ ~r/>7QKD-M4TPX<\/code>\z/
+      assert lv |> element("#key-sign-in-copy") |> render() =~ ~s{data-copy="7QKD-M4TPX"}
+      refute lv |> element("#key-sign-in-copy") |> render() =~ "data-copy-target"
+    end
+
+    test "refuses a save before the sign-in, with the Name's errors", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put()
+      provider = subscription!(scope)
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+
+      lv |> form("#key-form", key: %{value_id: "Bad Name"}) |> render_submit()
+
+      assert has_element?(lv, "#key_value_id-error")
+
+      assert text(lv, "#key-sign-in-error-1") ==
+               "Click Sign in with ChatGPT, then save. This key has no sign-in yet."
+
+      assert has_element?(lv, "#key-sign-in-start")
     end
   end
 
   describe "Edit key" do
-    test "names the field Sign-in, takes a new login and refuses another paste", ctx do
+    test "has the button and its hint, and no Sign-in field", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put()
+      provider = subscription!(scope)
+      {:ok, lv, html} = live(conn, key_path(scope, provider, "main/edit"))
+
+      assert text(lv, "#key-sign-in-start") == "Sign in with ChatGPT"
+      assert text(lv, "#key-sign-in-hint") == @hint
+      refute has_element?(lv, "#key-form input[type=password]")
+      refute html =~ "Leave it empty to keep the value."
+      refute has_element?(lv, "#key-sign-in-needed")
+    end
+
+    test "shows a sign-in that needs renewing above the button", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put()
+      provider = subscription!(scope)
+      value = key_value!(provider, "main")
+
+      Repo.update_all(from(l in Login, where: l.secret_value_id == ^value.id),
+        set: [
+          state: "sign_in_needed",
+          sign_in_cause: "refresh_token_reused",
+          last_failure: ~U[2026-11-18 10:04:00.000000Z]
+        ]
+      )
+
+      {:ok, lv, html} = live(conn, key_path(scope, provider, "main/edit"))
+
+      assert text(lv, "#key-sign-in-needed") =~
+               ~r/\ANeeds a new sign-inOpenAI rejected it on .*2026.*\.\z/
+
+      assert has_element?(lv, "#key-sign-in-start", "Sign in with ChatGPT")
+      assert text(lv, "#key-sign-in-hint") == @hint
+      refute html =~ "codex login"
+
+      sign_in!(lv, "key-sign-in")
+      signed_in!(lv, "key-sign-in")
+      refute has_element?(lv, "#key-sign-in-needed")
+
+      lv |> form("#key-form", key: %{value_id: "main"}) |> render_submit()
+      assert_redirect(lv, "#{base(scope)}/#{provider.public_id}")
+
+      assert %Login{state: "signed_in", generation: 2, sign_in_cause: nil} =
+               login_of(provider, "main")
+    end
+
+    test "keeps the reason of a key that needs a new sign-in after a failed attempt", ctx do
       %{conn: conn, scope: scope} = ctx
       provider = subscription!(scope)
+      value = key_value!(provider, "main")
+
+      Repo.update_all(from(l in Login, where: l.secret_value_id == ^value.id),
+        set: [
+          state: "sign_in_needed",
+          sign_in_cause: "refresh_token_reused",
+          last_failure: ~U[2026-11-18 10:04:00.000000Z]
+        ]
+      )
+
+      for {script, fix} <- [
+            {[usercode: 404], "Turn on"},
+            {[usercode: 500], "Click Sign in with ChatGPT for a new code."},
+            {[pending: :never, expires_at: DateTime.add(DateTime.utc_now(), 1)],
+             "Click Sign in with ChatGPT for a new code."}
+          ] do
+        Stub.put(script)
+        {:ok, lv, _html} = live(conn, key_path(scope, provider, "main/edit"))
+        lv |> element("#key-sign-in-start") |> render_click()
+        eventually(fn -> assert has_element?(lv, "#key-sign-in-fix") end)
+
+        assert text(lv, "#key-sign-in-fix") =~ fix
+
+        assert text(lv, "#key-sign-in-needed") =~
+                 ~r/\ANeeds a new sign-inOpenAI rejected it on .*2026.*\.\z/
+
+        assert has_element?(lv, "#key-sign-in-start")
+      end
+    end
+
+    test "stores a new sign-in over the key's, and keeps the key when none is made", ctx do
+      %{conn: conn, scope: scope} = ctx
+      tokens = Stub.put(tokens: login_tokens(tag: "edit"))
+      provider = subscription!(scope)
+
       {:ok, lv, _html} = live(conn, key_path(scope, provider, "main/edit"))
-
-      assert has_element?(lv, ~s{#key-form label[for="key-value-0"]}, "Sign-in")
-      refute has_element?(lv, ~s{#key-form label[for="key-value-0"]}, "New value")
-      assert text(lv, "#key-value-0-hint") == @hint <> " Leave it empty to keep the value."
-
-      lv
-      |> form("#key-form", key: %{value_id: "main", key: "sk-proj-an-api-key"})
-      |> render_submit()
-
-      assert text(lv, "#key-value-1-error") ==
-               "Paste the whole auth.json that codex login wrote."
-
-      assert %Login{generation: 1} = login_of(provider, "main")
-
-      tokens = login_tokens(tag: "edit")
-
-      lv
-      |> form("#key-form", key: %{value_id: "main", key: login_paste(tokens: tokens)})
-      |> render_submit()
-
+      lv |> form("#key-form", key: %{value_id: "main"}) |> render_submit()
       assert_redirect(lv, "#{base(scope)}/#{provider.public_id}")
-      assert %Login{generation: 2, account_id: "acct-fixture-edit"} = login_of(provider, "main")
+      assert %Login{generation: 1, account_id: "acct-fixture-a"} = login_of(provider, "main")
+
+      {:ok, lv, _html} = live(conn, key_path(scope, provider, "main/edit"))
+      sign_in!(lv, "key-sign-in")
+      signed_in!(lv, "key-sign-in")
+      lv |> form("#key-form", key: %{value_id: "main"}) |> render_submit()
+      assert_redirect(lv, "#{base(scope)}/#{provider.public_id}")
+
+      assert %Login{generation: 2, account_id: account} = login_of(provider, "main")
+      assert account == tokens.account_id
     end
 
     test "keeps New value and its hint for a key that is no login", ctx do
       %{conn: conn, scope: scope} = ctx
+      Stub.put()
 
       {:ok, provider} =
         Connections.create_provider(scope, %{
@@ -227,100 +463,84 @@ defmodule ApiaryWeb.ProviderLoginTest do
       {:ok, lv, _html} = live(conn, key_path(scope, provider, "main/edit"))
 
       assert has_element?(lv, ~s{#key-form label[for="key-value-0"]}, "New value")
-      assert has_element?(lv, "#key-value-0-hint", "Leave it empty to keep the value.")
-    end
-
-    test "keeps the sign-in when the Sign-in is left empty", ctx do
-      %{conn: conn, scope: scope} = ctx
-      provider = subscription!(scope)
-      {:ok, lv, _html} = live(conn, key_path(scope, provider, "main/edit"))
-
-      lv |> form("#key-form", key: %{value_id: "main", key: ""}) |> render_submit()
-      assert_redirect(lv, "#{base(scope)}/#{provider.public_id}")
-      assert %Login{generation: 1} = login_of(provider, "main")
+      assert text(lv, "#key-value-0-hint") == "Leave it empty to keep the value."
+      refute has_element?(lv, "#key-sign-in")
     end
   end
 
   describe "New model provider" do
     defp new_path(scope), do: "#{base(scope)}/new"
 
-    test "names the field Sign-in for a subscription and Key for an API key", ctx do
+    defp choose(lv, provider),
+      do: lv |> form("#new-provider-form", provider: %{provider: provider}) |> render_change()
+
+    test "has the button for a subscription and the Key field for an API key", ctx do
       %{conn: conn, scope: scope} = ctx
+      Stub.put()
       {:ok, lv, _html} = live(conn, new_path(scope))
 
-      lv
-      |> form("#new-provider-form", provider: %{provider: "openai-subscription"})
-      |> render_change()
+      choose(lv, "openai-subscription")
+      assert text(lv, "#new-provider-sign-in-start") == "Sign in with ChatGPT"
+      assert text(lv, "#new-provider-sign-in-hint") == @hint
+      refute has_element?(lv, "#new-provider-form input[type=password]")
 
-      assert text(lv, ~s{#new-provider-form label[for^="new-provider-key-"]}) == "Sign-in"
-      assert text(lv, ~s{#new-provider-form [id^="new-provider-key-"][id$="-hint"]}) == @hint
-
-      lv |> form("#new-provider-form", provider: %{provider: "openai"}) |> render_change()
-
-      assert text(lv, ~s{#new-provider-form label[for^="new-provider-key-"]}) == "Key"
-
-      assert text(lv, ~s{#new-provider-form [id^="new-provider-key-"][id$="-hint"]}) ==
-               @key_hint
+      choose(lv, "openai")
+      refute has_element?(lv, "#new-provider-sign-in")
+      assert has_element?(lv, ~s{#new-provider-form label[for="new-provider-key-0"]}, "Key")
     end
 
-    test "adds a subscription with a valid login and shows no token", ctx do
+    test "adds a subscription with the sign-in, and shows no token", ctx do
       %{conn: conn, scope: scope} = ctx
-      tokens = login_tokens(tag: "new")
+      tokens = Stub.put(tokens: login_tokens(tag: "new"))
       {:ok, lv, _html} = live(conn, new_path(scope))
+      choose(lv, "openai-subscription")
+
+      sign_in!(lv, "new-provider-sign-in")
+      signed_in!(lv, "new-provider-sign-in")
+      refute_tokens(render(lv), tokens)
+      refute_in_assigns(lv, tokens)
 
       log =
         capture_log(fn ->
-          lv
-          |> form("#new-provider-form",
-            provider: %{provider: "openai-subscription", key: login_paste(tokens: tokens)}
-          )
-          |> render_submit()
-
-          assert_redirect(lv)
+          lv |> form("#new-provider-form") |> render_submit()
+          {path, _flash} = assert_redirect(lv)
+          assert path =~ "/settings/model-providers/"
         end)
 
       refute_tokens(log, tokens)
-      assert {:ok, [provider]} = Connections.list_providers(scope)
-      assert provider.provider_kind == "openai-subscription"
-      assert %Login{account_id: "acct-fixture-new"} = login_of(provider, "key-1")
-
-      {:ok, _show, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
-      refute_tokens(html, tokens)
+      provider = Repo.get_by!(Apiary.Connections.Connection, provider_kind: "openai-subscription")
+      assert %Login{account_id: account} = login_of(provider, "key-1")
+      assert account == tokens.account_id
     end
 
-    test "refuses what is no login, adds nothing and shows no token", ctx do
+    test "refuses a save before the sign-in, and adds nothing", ctx do
       %{conn: conn, scope: scope} = ctx
-      tokens = login_tokens(tag: "bad")
+      Stub.put()
       {:ok, lv, _html} = live(conn, new_path(scope))
+      choose(lv, "openai-subscription")
 
-      for key <- ["sk-proj-an-api-key", login_paste(tokens: tokens) <> "}"] do
-        log =
-          capture_log(fn ->
-            html =
-              lv
-              |> form("#new-provider-form",
-                provider: %{provider: "openai-subscription", key: key}
-              )
-              |> render_submit()
+      lv |> form("#new-provider-form") |> render_submit()
 
-            refute_tokens(html, tokens)
-            refute html =~ "sk-proj-an-api-key"
-            refute_tokens(render(lv), tokens)
-          end)
+      assert text(lv, "#new-provider-sign-in-error-1") ==
+               "Click Sign in with ChatGPT, then save. This key has no sign-in yet."
 
-        refute_tokens(log, tokens)
+      assert Repo.all(Apiary.Connections.Connection) == []
+    end
 
-        assert has_element?(
-                 lv,
-                 "#new-provider-form",
-                 "Paste the whole auth.json that codex login wrote."
-               )
+    test "stops the sign-in when another provider is chosen", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(pending: :never)
+      {:ok, lv, _html} = live(conn, new_path(scope))
+      choose(lv, "openai-subscription")
 
-        refute_in_assigns(lv, tokens)
-      end
+      sign_in!(lv, "new-provider-sign-in")
+      pid = device_of(lv).pid
+      choose(lv, "openai")
 
-      assert {:ok, []} = Connections.list_providers(scope)
-      assert Repo.aggregate(Login, :count) == 0
+      assert_ended(pid)
+      choose(lv, "openai-subscription")
+      assert has_element?(lv, "#new-provider-sign-in-start")
+      refute has_element?(lv, "#new-provider-sign-in-code")
     end
   end
 
@@ -334,7 +554,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
       {:ok, lv, html} = live(conn, path)
       refute_tokens(html, tokens)
 
-      assert text(lv, "#provider-key-main-login") == "Signed in."
+      assert text(lv, "#provider-key-main-login") == "Signed in." <> @stored
       assert has_element?(lv, "#provider-key-main-state", "Available")
 
       value = key_value!(provider, "main")
@@ -404,13 +624,13 @@ defmodule ApiaryWeb.ProviderLoginTest do
       {:ok, lv, html} = live(conn, path)
 
       assert text(lv, "#provider-key-main-login") =~
-               ~r/\ANeeds a new sign-inOpenAI rejected it on .*\.Run codex login --device-auth and replace the key\.\z/
+               ~r/\ANeeds a new sign-inOpenAI rejected it on .*\.\z/
 
       refute html =~ "refresh_token_reused"
       refute_tokens(html, fresh)
     end
 
-    test "shows a key that needs a new sign-in with what to do, in place of its state", ctx do
+    test "shows a key that needs a new sign-in, in place of its state", ctx do
       %{conn: conn, scope: scope} = ctx
       provider = subscription!(scope)
       value = key_value!(provider, "main")
@@ -428,7 +648,9 @@ defmodule ApiaryWeb.ProviderLoginTest do
       assert has_element?(lv, "#provider-key-main-login", "Needs a new sign-in")
 
       assert text(lv, "#provider-key-main-login") =~
-               ~r/\ANeeds a new sign-inOpenAI rejected it on .*2026.*\.Run codex login --device-auth and replace the key\.\z/
+               ~r/\ANeeds a new sign-inOpenAI rejected it on .*2026.*\.\z/
+
+      refute html =~ "codex login"
 
       refute has_element?(lv, "#provider-key-main-state")
       refute html =~ "refresh_token_reused"
@@ -439,8 +661,6 @@ defmodule ApiaryWeb.ProviderLoginTest do
       tokens = login_tokens()
       provider = subscription!(scope, tokens)
       value = key_value!(provider, "main")
-      help = Regex.escape("Run codex login --device-auth and replace the key.")
-
       assert length(Login.causes()) == 6
 
       for cause <- Login.causes() do
@@ -457,11 +677,11 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
         if cause == "token_not_stored" do
           assert line =~
-                   ~r/\ANeeds a new sign-inQory Apiary could not save the new sign-in on [^.]*2026[^.]*\.#{help}\z/
+                   ~r/\ANeeds a new sign-inQory Apiary could not save the new sign-in on [^.]*2026[^.]*\.\z/
 
           refute line =~ "rejected it"
         else
-          assert line =~ ~r/\ANeeds a new sign-inOpenAI rejected it on .*2026.*\.#{help}\z/
+          assert line =~ ~r/\ANeeds a new sign-inOpenAI rejected it on .*2026.*\.\z/
           refute line =~ "Qory Apiary could not save"
         end
 
@@ -487,60 +707,256 @@ defmodule ApiaryWeb.ProviderLoginTest do
     end
   end
 
+  describe "the provider's page, a sign-in from a key's row" do
+    defp needs_sign_in!(provider, value_id) do
+      value = key_value!(provider, value_id)
+
+      Repo.update_all(from(l in Login, where: l.secret_value_id == ^value.id),
+        set: [
+          state: "sign_in_needed",
+          sign_in_cause: "refresh_token_reused",
+          last_failure: ~U[2026-11-18 10:04:00.000000Z]
+        ]
+      )
+    end
+
+    test "has the button in the row of a key that needs a new sign-in, and only there", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put()
+      provider = subscription!(scope)
+
+      {:ok, provider} =
+        Connections.add_provider_key(scope, provider, %{
+          value_id: "spare",
+          value: device_login(tag: "s")
+        })
+
+      needs_sign_in!(provider, "main")
+      {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+
+      assert text(lv, "#provider-key-main-sign-in-start") == "Sign in with ChatGPT"
+      refute has_element?(lv, "#provider-key-main-sign-in-hint")
+      refute has_element?(lv, "#provider-key-spare-sign-in")
+      refute html =~ "codex login"
+    end
+
+    test "has no button while the description has no device sign-in", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = subscription!(scope)
+      needs_sign_in!(provider, "main")
+      {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+
+      assert has_element?(lv, "#provider-key-main-login", "Needs a new sign-in")
+      refute has_element?(lv, "#provider-key-main-sign-in")
+    end
+
+    test "signs in from the row and stores the sign-in at once", ctx do
+      %{conn: conn, scope: scope} = ctx
+      tokens = Stub.put(tokens: login_tokens(tag: "row"), hold: true)
+      provider = subscription!(scope)
+      needs_sign_in!(provider, "main")
+      {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+
+      sign_in!(lv, "provider-key-main-sign-in")
+      assert text(lv, "#provider-key-main-sign-in-code") == "7QKD-M4TPX"
+      assert has_element?(lv, "#provider-key-main-sign-in-cancel")
+      Stub.approve()
+
+      eventually(fn -> assert text(lv, "#provider-key-main-login") =~ "Signed in." end)
+
+      assert text(lv, "#provider-key-main-login") == "Signed in." <> @stored
+      assert render(lv) =~ "main is saved."
+      refute has_element?(lv, "#provider-key-main-sign-in")
+
+      assert %Login{state: "signed_in", generation: 2, account_id: account} =
+               login_of(provider, "main")
+
+      assert account == tokens.account_id
+      refute_tokens(render(lv), tokens)
+      refute_in_assigns(lv, tokens)
+    end
+
+    test "shows the fix and the cause when the sign-in cannot be stored", ctx do
+      %{conn: conn, scope: scope} = ctx
+      tokens = Stub.put(tokens: login_tokens(tag: "gone"), hold: true)
+      provider = subscription!(scope)
+      needs_sign_in!(provider, "main")
+      {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+
+      sign_in!(lv, "provider-key-main-sign-in")
+      value = key_value!(provider, "main")
+      Repo.delete_all(from l in Login, where: l.secret_value_id == ^value.id)
+      Repo.delete_all(from v in Apiary.Secrets.Value, where: v.id == ^value.id)
+      Stub.approve()
+
+      eventually(fn -> assert has_element?(lv, "#provider-key-main-sign-in-fix") end)
+
+      assert text(lv, "#provider-key-main-sign-in-fix") ==
+               "Click Sign in with ChatGPT for a new code."
+
+      assert text(lv, "#provider-key-main-sign-in-cause") ==
+               "Qory Apiary could not save the sign-in."
+
+      assert has_element?(lv, "#provider-key-main-sign-in-start")
+      refute_tokens(render(lv), tokens)
+      refute_in_assigns(lv, tokens)
+    end
+
+    test "turns the other rows' buttons off while one row has a sign-in going on", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(pending: :never)
+      provider = subscription!(scope)
+
+      {:ok, provider} =
+        Connections.add_provider_key(scope, provider, %{
+          value_id: "spare",
+          value: device_login(tag: "s")
+        })
+
+      needs_sign_in!(provider, "main")
+      needs_sign_in!(provider, "spare")
+      {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+
+      refute has_element?(lv, "#provider-key-spare-sign-in-start[disabled]")
+      sign_in!(lv, "provider-key-main-sign-in")
+
+      assert has_element?(lv, "#provider-key-spare-sign-in-start[disabled]")
+      refute has_element?(lv, "#provider-key-main-sign-in-start")
+
+      lv |> element("#provider-key-main-sign-in-cancel") |> render_click()
+      refute has_element?(lv, "#provider-key-spare-sign-in-start[disabled]")
+      assert has_element?(lv, "#provider-key-main-sign-in-start")
+    end
+
+    test "Cancel in a row stops the sign-in", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(pending: :never)
+      provider = subscription!(scope)
+      needs_sign_in!(provider, "main")
+      {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+
+      sign_in!(lv, "provider-key-main-sign-in")
+      pid = device_of(lv).pid
+      lv |> element("#provider-key-main-sign-in-cancel") |> render_click()
+
+      assert_ended(pid)
+      assert has_element?(lv, "#provider-key-main-sign-in-start")
+    end
+
+    test "gives a member who may not write no button", ctx do
+      %{scope: scope} = ctx
+      Stub.put()
+      provider = subscription!(scope)
+      needs_sign_in!(provider, "main")
+      member = Apiary.OrganisationsFixtures.member_fixture(scope, :member)
+
+      {:ok, lv, _html} =
+        build_conn()
+        |> log_in_user(member.user)
+        |> live("#{base(scope)}/#{provider.public_id}")
+
+      assert has_element?(lv, "#provider-key-main-login", "Needs a new sign-in")
+      refute has_element?(lv, "#provider-key-main-sign-in")
+    end
+  end
+
   describe "the workspace's Secrets page" do
     defp secrets_path(scope, rest),
       do: "/#{scope.organisation.slug}/#{scope.workspace.slug}/settings/secrets#{rest}"
 
-    test "takes the pasted login of a workspace's key in a field named Sign-in", ctx do
+    test "has the button on Add value of a workspace's key, and Save stores the sign-in", ctx do
       %{conn: conn, scope: scope} = ctx
+      tokens = Stub.put(tokens: login_tokens(tag: "workspace"), hold: true)
       provider = subscription!(scope, login_tokens(), :workspace)
       secret = Repo.get!(Apiary.Secrets.Secret, provider.secret_id)
 
-      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
+      {:ok, lv, html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
 
-      assert has_element?(lv, ~s{#secret-form label[for="secret_value_value"]}, "Sign-in")
+      assert text(lv, "#secret-sign-in-start") == "Sign in with ChatGPT"
+      assert text(lv, "#secret-sign-in-hint") == @hint
+      refute has_element?(lv, "#secret-form textarea")
+      refute html =~ "Sign-in"
 
-      assert text(lv, "#secret_value_value-hint") == @hint
+      sign_in!(lv, "secret-sign-in")
+      assert text(lv, "#secret-sign-in-code") == "7QKD-M4TPX"
+      assert has_element?(lv, "#secret-save a", "Cancel")
+      Stub.approve()
+      signed_in!(lv, "secret-sign-in")
 
-      lv
-      |> form("#secret-form", secret_value: %{value_id: "spare", value: "sk-proj-an-api-key"})
-      |> render_submit()
-
-      assert has_element?(
-               lv,
-               "#secret_value_value-error",
-               "Paste the whole auth.json that codex login wrote."
-             )
-
-      tokens = login_tokens(tag: "workspace")
-
-      html =
-        lv
-        |> form("#secret-form",
-          secret_value: %{value_id: "spare", value: login_paste(tokens: tokens)}
-        )
-        |> render_submit()
+      html = lv |> form("#secret-form", secret_value: %{value_id: "spare"}) |> render_submit()
 
       refute_tokens(html, tokens)
-      assert %Login{account_id: "acct-fixture-workspace"} = login_of(provider, "spare")
+      assert %Login{account_id: account} = login_of(provider, "spare")
+      assert account == tokens.account_id
       refute_in_assigns(lv, tokens)
     end
 
-    test "names the field Sign-in on Change value of a login key too", ctx do
+    test "refuses Add value before the sign-in", ctx do
       %{conn: conn, scope: scope} = ctx
+      Stub.put()
+      provider = subscription!(scope, login_tokens(), :workspace)
+      secret = Repo.get!(Apiary.Secrets.Secret, provider.secret_id)
+      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
+
+      lv |> form("#secret-form", secret_value: %{value_id: "spare"}) |> render_submit()
+
+      assert text(lv, "#secret-sign-in-error-1") ==
+               "Click Sign in with ChatGPT, then save. This key has no sign-in yet."
+
+      assert has_element?(lv, "#secret-sign-in-start")
+    end
+
+    test "has the button on Change value of a login key too, and Save stores the sign-in", ctx do
+      %{conn: conn, scope: scope} = ctx
+      tokens = Stub.put(tokens: login_tokens(tag: "change"))
       provider = subscription!(scope, login_tokens(), :workspace)
       secret = Repo.get!(Apiary.Secrets.Secret, provider.secret_id)
 
       {:ok, lv, _html} =
         live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
 
-      assert has_element?(lv, ~s{#secret-form label[for="secret_value_value"]}, "Sign-in")
-      refute has_element?(lv, ~s{#secret-form label[for="secret_value_value"]}, "New value")
-      assert text(lv, "#secret_value_value-hint") == @hint
+      assert text(lv, "#secret-sign-in-start") == "Sign in with ChatGPT"
+      refute has_element?(lv, "#secret-form textarea")
+
+      sign_in!(lv, "secret-sign-in")
+      signed_in!(lv, "secret-sign-in")
+      lv |> form("#secret-form") |> render_submit()
+
+      assert %Login{generation: 2, account_id: account} = login_of(provider, "main")
+      assert account == tokens.account_id
+    end
+
+    test "keeps the sign-in when Change value is saved without a new one", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put()
+      provider = subscription!(scope, login_tokens(), :workspace)
+      secret = Repo.get!(Apiary.Secrets.Secret, provider.secret_id)
+
+      {:ok, lv, _html} =
+        live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
+
+      lv |> form("#secret-form") |> render_submit()
+
+      assert %Login{generation: 1} = login_of(provider, "main")
+    end
+
+    test "stops the sign-in when the person leaves the form", ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(pending: :never)
+      provider = subscription!(scope, login_tokens(), :workspace)
+      secret = Repo.get!(Apiary.Secrets.Secret, provider.secret_id)
+      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
+
+      sign_in!(lv, "secret-sign-in")
+      pid = device_of(lv).pid
+      lv |> element("#secret-save a", "Cancel") |> render_click()
+
+      assert_ended(pid)
     end
 
     test "keeps Value for the secrets that are no login", ctx do
       %{conn: conn, scope: scope} = ctx
+      Stub.put()
 
       {:ok, provider} =
         Connections.create_provider(
@@ -553,6 +969,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
       {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
 
       assert has_element?(lv, ~s{#secret-form label[for="secret_value_value"]}, "Value")
+      refute has_element?(lv, "#secret-sign-in")
     end
   end
 end

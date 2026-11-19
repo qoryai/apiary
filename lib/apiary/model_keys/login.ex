@@ -1,23 +1,24 @@
 defmodule Apiary.ModelKeys.Login do
   @moduledoc """
   The sign-in of a model key whose provider's API has `oauth_refresh` in its catalogue
-  entry, such as an OpenAI subscription: the contents of the `auth.json` that `codex login`
-  writes, pasted as the key's value. The key is still one value of the provider's secret
-  (`Apiary.ModelKeys`). Its stored value is the document `parse/1` makes from the paste,
+  entry, such as an OpenAI subscription: the tokens that the provider's device sign-in
+  (`Apiary.ModelKeys.DeviceSignIn`) returns. The key is still one value of the provider's
+  secret (`Apiary.ModelKeys`). Its stored value is the document `from_tokens/3` makes,
   `{"version": 1, "access_token", "refresh_token"}`, encrypted like any other key value,
-  and nothing else of the paste is kept; a pasted `id_token` is ignored and not stored.
+  and nothing else of the response is kept; an `id_token` is not stored.
   The row of this module has what the server needs to know about the sign-in without
   decrypting it: the account, when the access token expires, and whether the provider
   still accepts the refresh token.
 
-  `parse/1` reads the paste and makes no network call. It reads the access token's `exp`
-  from the JWT's payload without checking the signature: the server only uses the time to
-  decide when to refresh. A paste that is not an `auth.json` with a string for each of
-  `tokens.access_token`, `tokens.refresh_token` and `tokens.account_id`, and an access
-  token with an `exp`, is refused with a reason (`refusal/1`) that never contains any of
-  the paste.
+  `from_tokens/3` reads the response and makes no network call. It trusts the TLS channel
+  to the token address of the catalogue entry's `oauth_refresh`: the JWT payloads (the
+  account id and the `exp`) are decoded and not signature-checked, because the server uses
+  them only to name the account and to decide when to refresh. A response without a string
+  for each of `access_token` and `refresh_token`, or without an account id at the
+  catalogue's claim, is refused, and so is one whose access token and ID token have
+  different account ids.
 
-  `put/3` writes the row of a key's new login: `generation` 1, plus 1 for each login pasted
+  `put/3` writes the row of a key's new login: `generation` 1, plus 1 for each sign-in
   over it, so a refresh that started before it can be dropped. The caller is
   `Apiary.Connections`, in the transaction that stores the value.
 
@@ -64,7 +65,7 @@ defmodule Apiary.ModelKeys.Login do
        result, and the next caller reads it.
     5. The result is written only if the row's `lease_id` and `generation` are the ones
        the refresh started from and the stored value's `value_set_at` is too (the guarded
-       write of `Apiary.Secrets`). A login pasted over the key meanwhile (a new
+       write of `Apiary.Secrets`). A new sign-in of the key meanwhile (a new
        `generation`), a key that was deleted, or a lease taken over drops the result, and
        the key keeps what it has. A key renamed meanwhile keeps the result: it is written
        under the name the key has when the outcome is written, so the rotated refresh
@@ -77,14 +78,14 @@ defmodule Apiary.ModelKeys.Login do
        failures that follow the first one while the streak is open leave no entry: the
        row has their count (`failures`) and the time of the last (`last_failure`). The
        refresh that works while a streak is open ends it and leaves the entry of a
-       refresh that works. A login pasted over the key ends the streak with no entry. A
+       refresh that works. A new sign-in of the key ends the streak with no entry. A
        result that is dropped, and a new refresh token that could not be stored while the
        old one is still good, leave no entry and open no streak.
 
   A caller that does not get the lease while another process holds it reads the row every
   250 ms for up to 10 seconds and returns the new token when the lease ends. After a
   permanent refusal (`causes/0`) the login is `sign_in_needed` and no call is made until
-  a new login is pasted. After a transient failure (a 5xx or 429, a timeout, a network
+  a new sign-in is stored. After a transient failure (a 5xx or 429, a timeout, a network
   error, an answer that is no refresh) `retry_at` is 30 seconds on, doubling for each
   failure in a row up to 10 minutes; the caller gets the old token while it is valid, else
   `{:error, :unavailable}`.
@@ -129,14 +130,14 @@ defmodule Apiary.ModelKeys.Login do
 
   defmodule Parsed do
     @moduledoc false
-    # What `Apiary.ModelKeys.Login.parse/1` reads from a paste. `document` has the
+    # What `Apiary.ModelKeys.Login.from_tokens/3` reads from an answer. `document` has the
     # tokens, so `inspect/2` shows the account and the expiry alone.
     @derive {Inspect, only: [:account_id, :access_expires_at]}
     @enforce_keys [:document, :account_id, :access_expires_at]
     defstruct [:document, :account_id, :access_expires_at]
   end
 
-  @typedoc "What `parse/1` reads from a paste."
+  @typedoc "What `from_tokens/3` reads from an answer."
   @type parsed :: %Parsed{
           document: binary,
           account_id: String.t(),
@@ -152,7 +153,6 @@ defmodule Apiary.ModelKeys.Login do
   # lists the same six.
   @causes ~w(refresh_token_expired refresh_token_reused refresh_token_invalidated
              invalid_grant refresh_unauthorized token_not_stored)
-  @paste_max 32_768
 
   # When a refresh is due: this long before the access token's `exp`, or this long after
   # the last refresh, as `codex` has it (`manager.rs:232-233`); the sweep's age is shorter.
@@ -231,55 +231,148 @@ defmodule Apiary.ModelKeys.Login do
   def provider?(_kind), do: false
 
   @doc """
-  Reads a pasted login: `{:ok, parsed}` with the document to store as the key's value, the
-  account id and when the access token expires, or `{:error, reason}`:
-  `:no_refresh_token` for an `auth.json` whose `tokens` have no refresh token, `:invalid`
-  for any other paste that is not a login. It makes no network call, never raises, and its
-  answers contain nothing of `text`.
+  Reads the response of the provider's code exchange at the end of a device sign-in
+  (`Apiary.ModelKeys.DeviceSignIn`): `response`, the JSON object with `access_token`,
+  `refresh_token` and, as the provider sends them, `id_token` and `expires_in`.
+  `account_claim` is the JSON pointer of the account id in the access token's payload,
+  `auth.account_claim` of the catalogue entry's API. `{:ok, parsed}` with the document to
+  store as the key's value, the account id and when the access token expires;
+  `{:error, :no_account}` for a response that is a sign-in but has no account id at the
+  claim of the access token; `{:error, :invalid}` for any other response: one without a
+  refresh token or a printable access token, or with different account ids in the access
+  token and the ID token (the ID token's id is compared only when it has one). It makes no
+  network call, never raises, and its return value contains nothing of `response`.
+
+  The expiry is the access token's `exp`, else `expires_in` seconds after `now`, else nil.
+  Either is used only when it is 1 second to 366 days after `now`; a value outside that
+  range is unreadable, as a value that is no number is.
   """
-  @spec parse(term) :: {:ok, parsed} | {:error, :invalid | :no_refresh_token}
-  def parse(text) when is_binary(text) and byte_size(text) <= @paste_max do
-    with {:ok, %{"tokens" => %{} = tokens}} <- decode(text),
-         {:ok, refresh_token} <- string(tokens, "refresh_token", :no_refresh_token),
-         {:ok, access_token} <- string(tokens, "access_token", :invalid),
-         {:ok, account_id} <- string(tokens, "account_id", :invalid),
-         true <- account_id?(account_id) or {:error, :invalid},
-         {:ok, expires_at} <- expiry(access_token),
+  @spec from_tokens(term, String.t() | nil, DateTime.t()) ::
+          {:ok, parsed} | {:error, :invalid | :no_account}
+  def from_tokens(answer, account_claim, now \\ DateTime.utc_now())
+
+  def from_tokens(%{} = response, account_claim, now) do
+    with {:ok, refresh_token} <- string(response, "refresh_token"),
+         {:ok, access_token} <- string(response, "access_token"),
+         true <- String.match?(access_token, ~r/\A[!-~]+\z/),
+         {:ok, account_id} <- account_id(response, account_claim, access_token),
          document = document(access_token, refresh_token),
-         true <- byte_size(document) <= Value.value_max() or {:error, :invalid} do
-      {:ok, %Parsed{document: document, account_id: account_id, access_expires_at: expires_at}}
+         true <- byte_size(document) <= Value.value_max() do
+      {:ok,
+       %Parsed{
+         document: document,
+         account_id: account_id,
+         access_expires_at: expires_at(access_token, response["expires_in"], now)
+       }}
     else
-      {:error, reason} -> {:error, reason}
-      _other -> {:error, :invalid}
+      :no_account -> {:error, :no_account}
+      _refused -> {:error, :invalid}
     end
   end
 
-  def parse(_text), do: {:error, :invalid}
+  def from_tokens(_answer, _claim, _now), do: {:error, :invalid}
+
+  defp string(map, name) do
+    case map do
+      %{^name => value} when is_binary(value) and value != "" -> {:ok, value}
+      _other -> :error
+    end
+  end
 
   # The account id goes into a request header: 1 to 255 printable ASCII characters, no
   # space. `\z`, not `$`, so a line feed at the end is refused too.
   defp account_id?(account_id), do: String.match?(account_id, ~r/\A[!-~]{1,255}\z/)
 
-  defp decode(text) do
-    case Jason.decode(text) do
-      {:ok, %{} = login} -> {:ok, login}
+  # The id in the access token's payload at the JSON pointer `claim`. An access token with
+  # none is `:no_account`, whatever the ID token has. When the ID token has one too, the
+  # two must be the same.
+  defp account_id(response, claim, access_token) when is_binary(claim) do
+    case {claimed(access_token, claim), claimed(response["id_token"], claim)} do
+      {nil, _id_token} -> :no_account
+      {id, nil} -> checked(id)
+      {id, id} -> checked(id)
+      {_id, _other} -> :error
+    end
+  end
+
+  defp account_id(_response, _claim, _access_token), do: :error
+
+  defp checked(id), do: if(account_id?(id), do: {:ok, id}, else: :error)
+
+  # The text at the JSON pointer `claim` of the payload of `token`, nil where there is none.
+  defp claimed(token, claim) when is_binary(token) do
+    with {:ok, payload} <- payload(token),
+         id when is_binary(id) <- pointer(payload, claim) do
+      id
+    else
+      _none -> nil
+    end
+  end
+
+  defp claimed(_token, _claim), do: nil
+
+  # The value at the JSON pointer (RFC 6901) `claim` of `payload`, nil where it has none.
+  defp pointer(payload, "/" <> claim) do
+    claim
+    |> String.split("/")
+    |> Enum.map(&(&1 |> String.replace("~1", "/") |> String.replace("~0", "~")))
+    |> Enum.reduce_while(payload, fn
+      key, %{} = map -> {:cont, Map.get(map, key)}
+      _key, _other -> {:halt, nil}
+    end)
+  end
+
+  defp pointer(_payload, _claim), do: nil
+
+  defp payload(token) do
+    with [_header, payload, _signature] <- String.split(token, "."),
+         {:ok, json} <- Base.url_decode64(payload, padding: false),
+         {:ok, %{} = claims} <- Jason.decode(json) do
+      {:ok, claims}
+    else
       _other -> :error
     end
   end
 
-  defp string(map, name, reason) do
-    case map do
-      %{^name => value} when is_binary(value) and value != "" -> {:ok, value}
-      _other -> {:error, reason}
+  defp expires_at(access_token, expires_in, now) do
+    case bounded_expiry(access_token, now) do
+      {:ok, at} ->
+        at
+
+      {:error, :invalid} ->
+        with {:ok, seconds} <- lifetime(expires_in) do
+          at = DateTime.add(now, seconds, :second)
+          %{at | microsecond: {elem(at.microsecond, 0), 6}}
+        else
+          _unreadable -> nil
+        end
     end
   end
 
-  # The `exp` of a JWT's payload, in whole seconds since 1970, as a time. The signature is
-  # not checked: the time only decides when to refresh.
+  # The most a token may live, from `now`: 366 days, so that no sum of a time and a number
+  # of seconds from a response goes out of the range of `DateTime`.
+  @lifetime_max 366 * 86_400
+
+  defp lifetime(seconds) when is_integer(seconds) and seconds >= 1 and seconds <= @lifetime_max,
+    do: {:ok, seconds}
+
+  defp lifetime(_seconds), do: {:error, :invalid}
+
+  # The `exp` of a JWT's payload as a time, when it is 1 second to 366 days after `now`.
+  # The signature is not checked: the time only decides when to refresh.
+  defp bounded_expiry(token, now) do
+    with {:ok, %{"exp" => exp}} when is_integer(exp) <- payload(token),
+         {:ok, _seconds} <- lifetime(exp - DateTime.to_unix(now)) do
+      expiry(token)
+    else
+      _other -> {:error, :invalid}
+    end
+  end
+
+  # The `exp` of a JWT's payload, in whole seconds since 1970, as a time; the refresh reads
+  # a stored token's with this, so it has no bound.
   defp expiry(token) do
-    with [_header, payload, _signature] <- String.split(token, "."),
-         {:ok, json} <- Base.url_decode64(payload, padding: false),
-         {:ok, %{"exp" => exp}} when is_integer(exp) <- Jason.decode(json),
+    with {:ok, %{"exp" => exp}} when is_integer(exp) <- payload(token),
          {:ok, at} <- DateTime.from_unix(exp) do
       {:ok, %{at | microsecond: {0, 6}}}
     else
@@ -296,45 +389,9 @@ defmodule Apiary.ModelKeys.Login do
   end
 
   @doc """
-  The refusal of a paste that `parse/1` refused, as an `{message, options}` for a form's
-  error: one sentence for any paste that is not a login, which for a paste without a
-  refresh token adds why.
-  """
-  @spec refusal(:invalid | :no_refresh_token) :: {String.t(), keyword}
-  def refusal(:invalid),
-    do: {dgettext_noop("errors", "Paste the whole auth.json that codex login wrote."), []}
-
-  def refusal(:no_refresh_token),
-    do:
-      {dgettext_noop(
-         "errors",
-         "Paste the whole auth.json that codex login wrote. This text has no refresh token."
-       ), []}
-
-  @doc """
-  The refusal of the paste `text` for a form: nil for a blank text, which the checks of
-  the value refuse, and for a login that `parse/1` reads.
-  """
-  @spec problem(term) :: {String.t(), keyword} | nil
-  def problem(text) when is_binary(text) do
-    case String.trim(text) do
-      "" ->
-        nil
-
-      trimmed ->
-        case parse(trimmed) do
-          {:ok, _parsed} -> nil
-          {:error, reason} -> refusal(reason)
-        end
-    end
-  end
-
-  def problem(_text), do: nil
-
-  @doc """
   Writes the row of the key `value`'s new login `parsed`, in the caller's transaction: the
   state `signed_in`, no failure, no lease, `refreshed_at` nil and `signed_in_at` `now`;
-  `generation` is 1 for a new key, and the key's plus 1 for a login pasted over another.
+  `generation` is 1 for a new key, and the key's plus 1 for a sign-in over another.
   `{:ok, row}`.
   """
   @spec put(Value.t(), parsed, DateTime.t()) :: {:ok, t} | {:error, Ecto.Changeset.t()}
@@ -390,7 +447,7 @@ defmodule Apiary.ModelKeys.Login do
   The tokens of the key `secret_value_id` of `provider`, decrypted for the refresh and for
   nothing else: `{:ok, %{access_token:, refresh_token:}}`, or `{:error, reason}`
   as the secrets module's `reveal_login/2` returns, with `:invalid` for a stored value that is
-  not the document `parse/1` makes. The tokens go to the provider's token endpoint and
+  not the document `from_tokens/3` makes. The tokens go to the provider's token endpoint and
   nowhere else: not into a log, an assign, an error or an audit entry.
   """
   @spec tokens(Connection.t(), Ecto.UUID.t()) ::
@@ -402,7 +459,7 @@ defmodule Apiary.ModelKeys.Login do
   end
 
   @doc """
-  Whether `text` is a stored login's document, as `parse/1` makes it: a JSON object with
+  Whether `text` is a stored login's document, as `from_tokens/3` makes it: a JSON object with
   `version` 1 and a non-empty string for each of `access_token` and `refresh_token`.
   the guarded write of `Apiary.Secrets` returns an error for any other text.
   """
@@ -444,7 +501,7 @@ defmodule Apiary.ModelKeys.Login do
 
     * `:sign_in_needed`: the key needs a new sign-in, now or earlier, because the provider
       rejected the refresh for good or Qory Apiary could not store the new sign-in
-      (`token_not_stored`), and no call is made until a new login is pasted;
+      (`token_not_stored`), and no call is made until a new sign-in is stored;
     * `:unavailable`: the access token has expired and could not be refreshed, because a
       call failed for a reason that may pass, another caller's refresh did not end in
       time, `Apiary.Access` does not allow the refresh (`model_key.refresh`), the node is
@@ -749,7 +806,7 @@ defmodule Apiary.ModelKeys.Login do
   # returns an access token already past its `exp`, or within the lead, would otherwise be
   # due again at once, and every run would call the provider; the gap keeps it to one call a
   # minute, and a caller inside it gets the stored token while it is valid, as it does while
-  # a `retry_at` holds. A login not refreshed yet (just pasted) is never held.
+  # a `retry_at` holds. A login not refreshed yet (just signed in) is never held.
   defp decide(%__MODULE__{} = row, now, trigger) do
     case due_reason(row, now, trigger) do
       nil -> :fresh
@@ -875,7 +932,7 @@ defmodule Apiary.ModelKeys.Login do
 
   # One conditional UPDATE takes the lease, and the same transaction reads the key's
   # value, so that the generation the lease returns and the tokens belong together: a
-  # paste of a new login waits for the login's row until this transaction ends, and one
+  # new sign-in of the key waits for the login's row until this transaction ends, and one
   # that committed before the UPDATE is read by it.
   defp take_lease(%{provider: %Connection{secret_id: secret_id} = provider, id: id})
        when is_binary(secret_id) do
@@ -1012,7 +1069,7 @@ defmodule Apiary.ModelKeys.Login do
       {:refreshed, token, expires_at} -> {:ok, token, expires_at}
       :sign_in_needed -> {:error, :sign_in_needed}
       :failed -> while_valid(served(leased.tokens.access_token), db_now())
-      # What the key has now: the new login's token pasted since, or the old one while it
+      # What the key has now: the new sign-in's token stored since, or the old one while it
       # is valid. No second call, whose refresh token the first used.
       :dropped -> while_valid(serve(ctx), db_now())
     end
@@ -1078,8 +1135,8 @@ defmodule Apiary.ModelKeys.Login do
   # The outcome of the call in one transaction, in the lock order of docs/access.md: the
   # organisation `FOR SHARE`, the keys' secret `FOR UPDATE`, then the login's row. It
   # returns `{:refreshed, token, expires_at}`, `:sign_in_needed`, `:failed` (the old token
-  # stays), or `:dropped`: the lease is not the caller's any more (a login pasted over the
-  # key clears it, or it lapsed and was taken over), a value was pasted over the key since
+  # stays), or `:dropped`: the lease is not the caller's any more (a new sign-in over the
+  # key clears it, or it lapsed and was taken over), a value was stored over the key since
   # the refresh started, or the key or its organisation is gone. The entry of the call is
   # written after the transaction, and best effort (`record/2`): a refresh token that the
   # provider rotated is in the key before any entry is tried. A write of a rotated token
@@ -1292,7 +1349,7 @@ defmodule Apiary.ModelKeys.Login do
   end
 
   # A result that is not the key's any more leaves no entry: the key has what a person
-  # pasted, or is gone, and the call changed nothing.
+  # signed in with since, or is gone, and the call changed nothing.
   defp dropped(_write, row) do
     if row, do: update_row(row, lease_id: nil, lease_until: nil)
     {:dropped, nil}

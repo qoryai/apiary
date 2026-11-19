@@ -1,21 +1,34 @@
 defmodule Apiary.ModelKeys.LoginTest do
-  # `Apiary.ModelKeys.Login.parse/1`, which reads a pasted `auth.json`, and what the module
-  # says about a provider: the paste's tokens are kept in a document, the rest is dropped,
-  # a paste that is no login is refused with a reason that has none of it, and no call
-  # fails on any text.
+  # `Apiary.ModelKeys.Login.from_tokens/3`, which reads the response of a device sign-in's code
+  # exchange, and what the module says about a provider: the tokens are kept in a document,
+  # the rest is dropped, a response that is no sign-in is refused, and no call fails on any
+  # term.
   use ExUnit.Case, async: true
 
   import Apiary.ModelKeysFixtures
 
   alias Apiary.ModelKeys.Login
 
-  defp paste!(tokens), do: login_paste(tokens: tokens)
+  # The response of the code exchange for `tokens`, as the provider sends it.
+  defp response(tokens, extra \\ %{}) do
+    Map.merge(
+      %{
+        "access_token" => tokens.access_token,
+        "refresh_token" => tokens.refresh_token,
+        "id_token" => tokens.id_token,
+        "expires_in" => 864_000
+      },
+      extra
+    )
+  end
 
-  describe "parse/1" do
+  defp read(response), do: Login.from_tokens(response, account_claim())
+
+  describe "from_tokens/3" do
     test "keeps the access and refresh tokens in a document, and the account and the expiry apart" do
       tokens = login_tokens(exp: 1_800_000_000)
 
-      assert {:ok, parsed} = Login.parse(paste!(tokens))
+      assert {:ok, parsed} = read(response(tokens))
 
       assert parsed.account_id == tokens.account_id
       assert parsed.access_expires_at == ~U[2027-01-15 08:00:00.000000Z]
@@ -27,94 +40,121 @@ defmodule Apiary.ModelKeys.LoginTest do
              }
     end
 
-    test "ignores a pasted id token: it is not stored, and a paste without one is read" do
+    test "does not store the id token, and reads a response without one" do
       tokens = login_tokens()
-      assert {:ok, parsed} = Login.parse(paste!(tokens))
+      assert {:ok, parsed} = read(response(tokens))
 
       assert Map.keys(Jason.decode!(parsed.document)) |> Enum.sort() ==
                ~w(access_token refresh_token version)
 
       refute parsed.document =~ tokens.id_token
 
-      without_id =
-        paste!(tokens) |> Jason.decode!() |> update_in(["tokens"], &Map.delete(&1, "id_token"))
-
-      assert {:ok, same} = Login.parse(Jason.encode!(without_id))
+      without_id = response(tokens) |> Map.delete("id_token")
+      assert {:ok, same} = read(without_id)
       assert same.document == parsed.document
-
-      blank_id = put_in(without_id, ["tokens", "id_token"], 42)
-      assert {:ok, ^same} = Login.parse(Jason.encode!(blank_id))
     end
 
-    test "drops every member but the tokens" do
-      {:ok, parsed} = Login.parse(login_paste())
+    test "reads the account id from the access token, and the ID token's only to compare" do
+      tokens = login_tokens()
+      claim = fn id -> %{"https://api.openai.com/auth" => %{"chatgpt_account_id" => id}} end
+      bare = jwt(%{"exp" => System.os_time(:second) + 100})
+      with_id = jwt(Map.put(claim.("acct-a"), "exp", System.os_time(:second) + 100))
 
-      refute parsed.document =~ "auth_mode"
-      refute parsed.document =~ "last_refresh"
-      refute parsed.document =~ "OPENAI_API_KEY"
-      refute parsed.document =~ "account_id"
+      # The claim only in the ID token: no account.
+      assert read(
+               response(tokens, %{"access_token" => bare, "id_token" => jwt(claim.("acct-a"))})
+             ) ==
+               {:error, :no_account}
+
+      # The claim only in the access token.
+      assert {:ok, %{account_id: "acct-a"}} =
+               read(response(tokens, %{"access_token" => with_id, "id_token" => jwt(%{})}))
+
+      assert {:ok, %{account_id: "acct-a"}} =
+               read(response(tokens, %{"access_token" => with_id}) |> Map.delete("id_token"))
+
+      # Both, and they agree.
+      assert {:ok, %{account_id: "acct-a"}} =
+               read(
+                 response(tokens, %{
+                   "access_token" => with_id,
+                   "id_token" => jwt(claim.("acct-a"))
+                 })
+               )
+
+      # Both, and they differ.
+      assert read(
+               response(tokens, %{"access_token" => with_id, "id_token" => jwt(claim.("acct-b"))})
+             ) ==
+               {:error, :invalid}
+
+      # Neither.
+      assert read(response(tokens, %{"access_token" => bare, "id_token" => jwt(%{})})) ==
+               {:error, :no_account}
+
+      assert read(response(tokens, %{"access_token" => bare}) |> Map.delete("id_token")) ==
+               {:error, :no_account}
     end
 
-    test "reads a paste printed over several lines, or with space around it" do
-      assert {:ok, _parsed} = Login.parse(login_paste())
-      assert {:ok, _parsed} = Login.parse(login_paste() |> Jason.decode!() |> Jason.encode!())
+    test "refuses a response whose access token and ID token have different account ids" do
+      tokens = login_tokens()
+
+      other =
+        jwt(%{"https://api.openai.com/auth" => %{"chatgpt_account_id" => "acct-other"}})
+
+      assert read(response(tokens, %{"id_token" => other})) == {:error, :invalid}
+
+      same = jwt(%{"https://api.openai.com/auth" => %{"chatgpt_account_id" => tokens.account_id}})
+      assert {:ok, %{account_id: account}} = read(response(tokens, %{"id_token" => same}))
+      assert account == tokens.account_id
     end
 
-    test "refuses a login with no refresh token with its reason" do
-      tokens =
-        login_paste() |> Jason.decode!() |> get_in(["tokens"]) |> Map.delete("refresh_token")
+    test "reads the pointer of the claim as RFC 6901 writes it" do
+      tokens = login_tokens()
+      access = jwt(%{"exp" => System.os_time(:second) + 100, "a/b" => %{"c~d" => "acct-x"}})
 
-      for text <- [
-            Jason.encode!(%{"tokens" => tokens}),
-            Jason.encode!(%{"tokens" => Map.put(tokens, "refresh_token", "")}),
-            Jason.encode!(%{"tokens" => Map.put(tokens, "refresh_token", nil)})
-          ] do
-        assert Login.parse(text) == {:error, :no_refresh_token}
+      assert {:ok, %{account_id: "acct-x"}} =
+               Login.from_tokens(response(tokens, %{"access_token" => access}), "/a~1b/c~0d")
+
+      assert Login.from_tokens(response(tokens), "no-slash") == {:error, :no_account}
+      assert Login.from_tokens(response(tokens), nil) == {:error, :invalid}
+    end
+
+    test "refuses a response with no refresh token or no access token" do
+      tokens = login_tokens()
+
+      for refresh <- [nil, "", 42] do
+        assert read(response(tokens, %{"refresh_token" => refresh})) == {:error, :invalid}
       end
+
+      assert read(response(tokens) |> Map.delete("refresh_token")) == {:error, :invalid}
+      assert read(response(tokens) |> Map.delete("access_token")) == {:error, :invalid}
+      assert read(response(tokens, %{"access_token" => "has a space.b.c"})) == {:error, :invalid}
     end
 
-    test "refuses a paste that is no login" do
-      tokens = login_paste() |> Jason.decode!() |> get_in(["tokens"])
-      without = fn key -> Jason.encode!(%{"tokens" => Map.delete(tokens, key)}) end
-
-      for text <- [
-            "",
-            "   ",
-            "sk-proj-an-api-key",
-            "[]",
-            "null",
-            "{}",
-            ~s({"tokens": null}),
-            ~s({"tokens": []}),
-            ~s({"tokens": "x"}),
-            without.("access_token"),
-            without.("account_id"),
-            Jason.encode!(%{"tokens" => Map.put(tokens, "account_id", 42)}),
-            Jason.encode!(%{"tokens" => Map.put(tokens, "access_token", "not-a-jwt")}),
-            Jason.encode!(%{"tokens" => Map.put(tokens, "access_token", "a.b.c")}),
-            Jason.encode!(%{
-              "tokens" => Map.put(tokens, "account_id", String.duplicate("a", 256))
-            }),
-            <<255, 254, 253>>,
-            nil,
-            42,
-            %{"tokens" => tokens}
-          ] do
-        assert Login.parse(text) == {:error, :invalid}
+    test "refuses anything that is no response" do
+      for term <- ["", "sk-proj-an-api-key", [], nil, 42, %{}, <<255, 254, 253>>] do
+        assert read(term) == {:error, :invalid}
       end
     end
 
     test "accepts an account id of printable ASCII without a space, up to 255 characters" do
-      tokens = login_paste() |> Jason.decode!() |> get_in(["tokens"])
+      tokens = login_tokens()
 
       for account_id <- ["acct-1", "a", "!~", "A.b_c:d/e=", String.duplicate("a", 255)] do
-        text = Jason.encode!(%{"tokens" => Map.put(tokens, "account_id", account_id)})
-        assert {:ok, %{account_id: ^account_id}} = Login.parse(text)
+        access =
+          jwt(%{
+            "exp" => System.os_time(:second) + 100,
+            "https://api.openai.com/auth" => %{"chatgpt_account_id" => account_id}
+          })
+
+        assert {:ok, %{account_id: ^account_id}} =
+                 read(response(tokens, %{"access_token" => access}))
       end
     end
 
     test "refuses an account id with a control character, a space or a character past ASCII" do
-      tokens = login_paste() |> Jason.decode!() |> get_in(["tokens"])
+      tokens = login_tokens()
 
       for account_id <- [
             "acct\r\nX-Injected: 1",
@@ -132,92 +172,135 @@ defmodule Apiary.ModelKeys.LoginTest do
             "",
             String.duplicate("a", 256)
           ] do
-        text = Jason.encode!(%{"tokens" => Map.put(tokens, "account_id", account_id)})
-        assert Login.parse(text) == {:error, :invalid}
+        access =
+          jwt(%{
+            "exp" => System.os_time(:second) + 100,
+            "https://api.openai.com/auth" => %{"chatgpt_account_id" => account_id}
+          })
+
+        assert read(response(tokens, %{"access_token" => access})) == {:error, :invalid}
       end
     end
 
-    test "refuses an access token whose payload has no whole-second exp" do
-      tokens = login_paste() |> Jason.decode!() |> get_in(["tokens"])
+    test "reads the expiry from exp, else from expires_in, else leaves it empty" do
+      tokens = login_tokens()
+      claim = %{"https://api.openai.com/auth" => %{"chatgpt_account_id" => "acct-1"}}
+      now = ~U[2026-11-18 12:00:00Z]
 
       for claims <- [%{}, %{"exp" => "soon"}, %{"exp" => 1.5e9}, %{"exp" => nil}] do
-        text = Jason.encode!(%{"tokens" => Map.put(tokens, "access_token", jwt(claims))})
-        assert Login.parse(text) == {:error, :invalid}
-      end
+        access = jwt(Map.merge(claim, claims))
 
-      # A time past the calendar, and a payload that is not base64 or not JSON.
-      for token <- [
-            jwt(%{"exp" => 99_999_999_999_999_999}),
-            "a.!!!.c",
-            "a.#{Base.url_encode64("x", padding: false)}.c"
+        assert {:ok, %{access_expires_at: at}} =
+                 Login.from_tokens(
+                   response(tokens, %{"access_token" => access, "expires_in" => 3600}),
+                   account_claim(),
+                   now
+                 )
+
+        assert at == ~U[2026-11-18 13:00:00.000000Z]
+
+        assert {:ok, %{access_expires_at: nil}} =
+                 Login.from_tokens(
+                   response(tokens, %{"access_token" => access}) |> Map.delete("expires_in"),
+                   account_claim(),
+                   now
+                 )
+      end
+    end
+
+    test "reads no account id from a claim that is no text" do
+      tokens = login_tokens()
+
+      access =
+        jwt(%{
+          "exp" => System.os_time(:second) + 100,
+          "https://api.openai.com/auth" => %{"chatgpt_account_id" => 42}
+        })
+
+      assert read(response(tokens, %{"access_token" => access, "id_token" => nil})) ==
+               {:error, :no_account}
+    end
+
+    test "uses an expires_in only from 1 second to 366 days" do
+      tokens = login_tokens()
+      claim = %{"https://api.openai.com/auth" => %{"chatgpt_account_id" => "acct-1"}}
+      access = jwt(claim)
+      now = ~U[2026-11-18 12:00:00Z]
+      day = 86_400
+
+      for {seconds, expected} <- [
+            {1, ~U[2026-11-18 12:00:01.000000Z]},
+            {366 * day, ~U[2027-11-19 12:00:00.000000Z]},
+            {0, nil},
+            {-5, nil},
+            {366 * day + 1, nil},
+            {1_000_000_000_000_000_000_000, nil},
+            {3600.5, nil},
+            {"3600", nil}
           ] do
-        text = Jason.encode!(%{"tokens" => Map.put(tokens, "access_token", token)})
-        assert Login.parse(text) == {:error, :invalid}
+        assert {:ok, %{access_expires_at: at}} =
+                 Login.from_tokens(
+                   response(tokens, %{"access_token" => access, "expires_in" => seconds}),
+                   account_claim(),
+                   now
+                 )
+
+        assert at == expected
       end
     end
 
-    test "refuses a paste past 32 KiB and a document past a value's size" do
-      tokens = login_paste() |> Jason.decode!() |> get_in(["tokens"])
+    test "uses an exp only from 1 second to 366 days after now, else falls back" do
+      tokens = login_tokens()
+      claim = %{"https://api.openai.com/auth" => %{"chatgpt_account_id" => "acct-1"}}
+      now = ~U[2026-11-18 12:00:00Z]
+      unix = DateTime.to_unix(now)
+      fallback = ~U[2026-11-18 13:00:00.000000Z]
 
-      assert Login.parse(String.duplicate(" ", 32_769)) == {:error, :invalid}
+      for {exp, expected} <- [
+            {unix + 1, ~U[2026-11-18 12:00:01.000000Z]},
+            {unix, fallback},
+            {unix - 3600, fallback},
+            {unix + 366 * 86_400 + 1, fallback},
+            {1_000_000_000_000_000_000_000, fallback},
+            {-1_000_000_000_000_000_000_000, fallback}
+          ] do
+        access = jwt(Map.put(claim, "exp", exp))
 
-      long = Map.put(tokens, "refresh_token", String.duplicate("x", 17_000))
-      assert Login.parse(Jason.encode!(%{"tokens" => long})) == {:error, :invalid}
+        assert {:ok, %{access_expires_at: at}} =
+                 Login.from_tokens(
+                   response(tokens, %{"access_token" => access, "expires_in" => 3600}),
+                   account_claim(),
+                   now
+                 )
+
+        assert at == expected
+      end
     end
 
-    test "never raises, and what it returns has none of the paste" do
+    test "refuses a document past a value's size" do
+      long = String.duplicate("x", 17_000)
+      assert read(response(login_tokens(), %{"refresh_token" => long})) == {:error, :invalid}
+    end
+
+    test "never raises, and what it returns has none of the response" do
       tokens = login_tokens()
       secret = tokens.refresh_token
 
-      broken = [
-        String.slice(paste!(tokens), 0, 200),
-        paste!(tokens) <> "}",
-        "{\"tokens\": {\"refresh_token\": \"#{secret}\"",
-        "{\"tokens\": {\"refresh_token\": \"#{secret}\", \"access_token\": 1e999}}",
-        String.duplicate("[", 30_000),
-        "{\"tokens\": " <> String.duplicate("{\"a\":", 10_000) <> secret
-      ]
-
-      for text <- broken do
-        assert {:error, reason} = Login.parse(text)
-        assert reason in [:invalid, :no_refresh_token]
+      for term <- [
+            %{"refresh_token" => secret},
+            %{"refresh_token" => secret, "access_token" => 1.0e300},
+            %{"refresh_token" => secret, "access_token" => "a.b.c"},
+            %{"refresh_token" => secret, "access_token" => [secret]}
+          ] do
+        assert {:error, reason} = read(term)
         refute inspect(reason) =~ secret
       end
-
-      for reason <- [:invalid, :no_refresh_token] do
-        refute inspect(Login.refusal(reason)) =~ secret
-      end
     end
 
-    test "a parsed login shows no token when inspected" do
-      {:ok, parsed} = Login.parse(login_paste(tokens: login_tokens(tag: "inspect")))
+    test "a read sign-in shows no token when inspected" do
+      {:ok, parsed} = read(response(login_tokens(tag: "inspect")))
 
       refute inspect(parsed) =~ "rt-fixture-refresh-token-inspect"
-    end
-  end
-
-  describe "refusal/1 and problem/1" do
-    test "have one sentence for a paste that is no login, and add why for a missing refresh token" do
-      assert {"Paste the whole auth.json that codex login wrote.", []} = Login.refusal(:invalid)
-
-      assert {"Paste the whole auth.json that codex login wrote. This text has no refresh token.",
-              []} = Login.refusal(:no_refresh_token)
-    end
-
-    test "problem/1 is nil for a blank text and for a login, else the refusal" do
-      assert Login.problem("") == nil
-      assert Login.problem("  \n ") == nil
-      assert Login.problem(nil) == nil
-      assert Login.problem(login_paste()) == nil
-      assert Login.problem("sk-an-api-key") == Login.refusal(:invalid)
-
-      no_refresh =
-        login_paste()
-        |> Jason.decode!()
-        |> update_in(["tokens"], &Map.delete(&1, "refresh_token"))
-        |> Jason.encode!()
-
-      assert Login.problem(no_refresh) == Login.refusal(:no_refresh_token)
     end
   end
 
