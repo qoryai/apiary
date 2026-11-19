@@ -971,15 +971,22 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       test "#{name}", %{scope: scope} do
         {provider, _tokens} = subscription!(scope, expires_in: 60)
         stub!({unquote(status), unquote(Macro.escape(body))})
-        token(provider)
+
+        # The caller waits for the refresh to end and its outcome to be written: with the
+        # default wait of 10 seconds a loaded machine returns the old token at the
+        # deadline, while the refresh still runs, and the row is read before its outcome.
+        result = token(provider, wait: 60_000)
 
         assert %Login{state: state, sign_in_cause: cause, last_failure: failed_at} = row(provider)
 
         case unquote(Macro.escape(outcome)) do
           {:permanent, code} ->
+            assert result == {:error, :sign_in_needed}
             assert {state, cause} == {"sign_in_needed", code}
 
           {:transient, code} ->
+            # The old token, which is valid for 60 seconds, is served.
+            assert {:ok, _token, _expires_at} = result
             assert state == "signed_in"
             assert failed_at != nil
             assert [%Entry{details: %{"cause" => ^code}}] = trail(provider)
