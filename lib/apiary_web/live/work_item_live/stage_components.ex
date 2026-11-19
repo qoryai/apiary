@@ -68,7 +68,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           </span>
           {stage.name}
           <span :if={stage[:not_run]} id={"#{@id}-#{stage.id}-not-run"} class="q-wi-stage-note">
-            {gettext("Not run")}
+            {gettext("not run")}
           </span>
         </li>
       </ol>
@@ -440,7 +440,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           <span class="text-sm font-semibold">{gettext("Track")}</span>
           <.badge color="success">{@page.track.name}</.badge>
         </p>
-        <p :if={@started_no_run} id={"#{@id}-no-run"}>
+        <p :if={@started_no_run} id={"#{@id}-no-run"} class="text-xs opacity-70">
           {gettext("Read the inputs below, then approve.")}
         </p>
       </div>

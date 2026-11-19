@@ -65,17 +65,22 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
     end
   end
 
-  # record?/2 is whether a stage's tab has the record block (`foot_record/1`), with the
-  # stage's `runs` and `artifacts`: every tab but during a first run with no output. A stage
-  # with no run and no artifact has it too, with the line that it has no artifacts.
-  @spec record?([map], [map]) :: boolean
-  def record?([%{place: place}], []) when place in [:queued, :running], do: false
-  def record?(_runs, _artifacts), do: true
+  # record?/3 is whether a stage's tab has the record block (`foot_record/1`), with the
+  # stage's `runs`, its `artifacts` and the `skips` the block lists (those the table of
+  # entries does not). Every tab has it but during a first run with no output, and but where
+  # the stage has no run, no skip to list and no artifact, which would leave it empty.
+  @spec record?([map], [map], [map]) :: boolean
+  def record?(runs, artifacts, skips \\ [])
+  def record?([], artifacts, skips), do: skips != [] or artifacts != []
+
+  def record?([%{place: place}], [], _skips) when place in [:queued, :running], do: false
+
+  def record?(_runs, _artifacts, _skips), do: true
 
   # folded?/4 is whether a tab's runs fold lists every run of `flow` (`flow.runs`, the
   # stage runs of the take in), with `run`, the take in's latest run, and `earlier_runs`
   # and `artifacts` as `view/3` reads them. Explore's tab lists each of Explore's runs; a
-  # later stage's tab lists that stage's runs where it has the record block (`record?/2`).
+  # later stage's tab lists that stage's runs where it has the record block (`record?/3`).
   # A run whose stage has no tab is in no fold. True with no run.
   @spec folded?(map, map | nil, [map], [map]) :: boolean
   def folded?(flow, run, earlier_runs, artifacts) do
@@ -360,6 +365,41 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   defp entry(_item, _index, _stage, _runs, _skips), do: nil
 
   @doc """
+  runs_on_track?/2 is whether `stage` has a workflow entry that runs on the track the work
+  item is on (`flow.track`, `Apiary.Stages.track/1`): an entry, in a loop or not, whose
+  conditions on a track are all met, as the Workflows table words it ("Runs on Standard
+  only"). For a work item on a track it is false where every workflow entry of the stage
+  has a condition on the track that is not met, and where the stage has no workflow entry.
+  For a work item on no track it is true. Only the conditions on a track count here: the
+  page does not read which inputs count, so a condition on an input stops no entry.
+  """
+  @spec runs_on_track?(map, map) :: boolean
+  def runs_on_track?(%{track: %{id: track}}, stage) do
+    facts = %{track: track}
+
+    stage.sequence
+    |> Enum.flat_map(fn
+      %{"loop" => %{"body" => body}} = loop -> if held?(loop, facts), do: [], else: body
+      entry -> [entry]
+    end)
+    |> Enum.any?(&(is_binary(&1["workflow"]) and not held?(&1, facts)))
+  end
+
+  def runs_on_track?(_flow, _stage), do: true
+
+  # Whether a condition on a track of `item` holds it back with `facts`.
+  defp held?(item, facts) do
+    on_track = fn {_key, condition} -> is_map(condition) and is_binary(condition["track"]) end
+
+    item
+    |> Map.take(["when", "unless"])
+    |> Enum.filter(on_track)
+    |> Map.new()
+    |> Runner.unmet(facts)
+    |> Kernel.!=(nil)
+  end
+
+  @doc """
   track_line/1 is the track the work item is on and where an approval put it there:
   `%{name:, gate:}`, `gate` the name of the stage whose gate the approval passed, nil where
   no approval that the stages passed over whole record made it (a move forward, or a stage
@@ -582,7 +622,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
 
   @doc """
   with_inputs/2 is `outputs`, the output frames (`frames/1` or `verify_frames/2`), then
-  `inputs`, the input frames (`input_frames/2`), folded, but for an input of a type that an
+  `inputs`, the input frames (`input_frames/4`), folded, but for an input of a type that an
   output frame already shows: the Scenarios frame shows both the films and the pictures
   (`ApiaryWeb.WorkItemLive.VerifyTab.media/0`). With no output frame, it is `inputs` as
   they are.
@@ -599,29 +639,79 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   defp shown_types(%{type: type}), do: [type]
 
   @doc """
-  input_frames/2 is, for the current stage's tab where the stage started no run
+  input_frames/4 is, for the current stage's tab where the stage started no run
   (`StageComponents.started_no_run?/1`), the frames of the newest versions of the stage's
   inputs: the person at the gate reads what earlier stages made. `[]` for any other tab.
-  The first is `open`, as `frames/1` opens the first of the outputs. A frame's `kind` is
-  `:output`.
+  Each is `%{type:, name:, version:, open:, source:, kind:}`, the first `open`, as
+  `frames/1` opens the first of the outputs; `kind` is `:output`.
+
+  The version that a run made has `source`, `%{stage:, attempt:, run:}`: the name of the
+  stage whose run made it, the run's attempt and its number in the workspace (nil for a run
+  that is not registered), for the frame's caption. A version with no run, or one whose
+  stage the process version no longer has, has `source` nil. Where another input remains,
+  the version of the submission type, the `submit.type` of the process version's harness
+  template (`submit_type/1`), has no frame in this tab; it stays in the stage's artifacts.
+  Where it is the only input, it has the frame, open, so the tab is never empty.
+  `artifacts` are the work item's artifacts, as `Apiary.Artifacts.list/1` reads them, and
+  `version` is the work item's process version.
   """
-  @spec input_frames(map, map) :: [map]
-  def input_frames(flow, stage) do
+  @spec input_frames(map, map, [map], Apiary.Processes.Version.t() | nil) :: [map]
+  def input_frames(flow, stage, artifacts, version) do
     if stage.id == flow.stage.id and StageComponents.started_no_run?(flow) do
-      flow.inputs
-      |> Enum.filter(&(is_integer(&1.version) and &1.type != "review-comments"))
+      submit = submit_type(version)
+      names = Map.new(flow.stages, &{&1.id, &1.name})
+
+      read = Enum.filter(flow.inputs, &(is_integer(&1.version) and &1.type != "review-comments"))
+
+      shown =
+        case Enum.reject(read, &(&1.type == submit)) do
+          [] -> read
+          others -> others
+        end
+
+      shown
       |> Enum.with_index()
       |> Enum.map(fn {input, place} ->
+        made = made(artifacts, input)
+
         %{
           type: input.type,
           name: "main",
           version: input.version,
           open: place == 0,
+          source: source(made, names),
           kind: :output
         }
       end)
     else
       []
+    end
+  end
+
+  # The type in `submit.type` of the harness template of `version`, nil for none.
+  defp submit_type(version) do
+    case Apiary.Processes.harness_template(version) do
+      %{"submit" => %{"type" => type}} when is_binary(type) -> type
+      _none -> nil
+    end
+  end
+
+  # The version of `input` among `artifacts`, nil where none has its number.
+  defp made(artifacts, input) do
+    artifacts
+    |> Enum.filter(&(&1.type == input.type and &1.name == "main"))
+    |> Enum.flat_map(& &1.versions)
+    |> Enum.find(&(&1.number == input.version))
+  end
+
+  # Where `version` came from: the stage, attempt and run number of the run that made it,
+  # nil for a version with no run or a stage the process version no longer has.
+  defp source(version, names) do
+    with %{writer: :run, run: %{attempt: attempt} = run} <- version,
+         stage when is_binary(stage) <- names[run.stage_id || version.stage_id] do
+      %{stage: stage, attempt: attempt, run: run.run && run.run.number}
+    else
+      _none -> nil
     end
   end
 
