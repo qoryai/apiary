@@ -2342,6 +2342,70 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#work-item-questions-open-h") == "Open questions"
     end
 
+    test "in read mode, an option's proposal is a quote under its explanation" do
+      proposal = "AC-4 Demo: the delivery step reloads and shows the new dates."
+
+      question =
+        q(4, %{
+          about: %{"type" => "acceptance-criteria", "name" => "main", "item" => "ac-4"},
+          options: [
+            %{
+              title: "Change AC-4",
+              explanation: "The criterion takes the wording below.",
+              recommended: true,
+              proposal: proposal
+            },
+            %{title: "Withdraw AC-4", explanation: "AC-4 stays, marked withdrawn."}
+          ]
+        })
+
+      html = questions_tab(questions: [question], form: false)
+      option = "#work-item-questions-question-4 .q-xp-opt"
+
+      assert texts(html, "#{option}:first-child .q-xp-opt-w > *") == [
+               "Change AC-4",
+               "Recommended by the agent",
+               "The criterion takes the wording below.",
+               proposal
+             ]
+
+      assert text(html, "#{option}:first-child blockquote") == proposal
+      assert count(html, "#{option} blockquote") == 1
+
+      # With the form, the proposal is the wording in the field of Change AC-4:, with no
+      # quote.
+      html = questions_tab(questions: [question], form: true)
+      assert count(html, "#work-item-questions-question-4 blockquote") == 0
+      assert text(html, "#work-item-questions-question-4 textarea") == proposal
+    end
+
+    test "the About line: the output linked with its item, then the criterion's text quoted" do
+      line = %{
+        words: "acceptance criteria",
+        path: "/acme/main/work/41/stages/st_shape#ac-4",
+        item: "AC-4",
+        quote: "When the shopper changes the postcode, the dates change."
+      }
+
+      html = questions_tab(questions: [q(4, %{about_line: line})], form: false)
+      about = "#work-item-questions-question-4-about"
+
+      assert text(html, about) == "About acceptance criteria, AC-4"
+      assert attr(html, "#{about} a", "href") == [line.path]
+      assert text(html, "#{about} a") == "acceptance criteria"
+      assert text(html, "#{about}-quote blockquote") == line.quote
+
+      ticket = %{words: "the ticket", path: "/acme/main/work/41", item: nil, quote: nil}
+      html = questions_tab(questions: [q(4, %{about_line: ticket})], form: false)
+
+      assert text(html, about) == "About the ticket"
+      assert count(html, "#{about}-quote") == 0
+
+      # A question with no about line has none.
+      html = questions_tab(questions: [q(4)], form: false)
+      assert count(html, about) == 0
+    end
+
     test "a hostile question: no script, no javascript: link, no image; mermaid is code text" do
       context = """
       Which <script>alert(1)</script> one?
@@ -2922,6 +2986,91 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
         html = tab(work_item(%{number: 97, status: :no_result, run: r}))
         assert texts(html, "#work-item-explore-none p") == ["The run did not start.", body]
+      end
+    end
+
+    test "a run whose shared stage's model choices did not fit one run shows the fix while that fault remains" do
+      missing =
+        {:model_choice_missing, "write-acceptance-checks", "Claude Code", "Storefront keys"}
+
+      too_many = {:too_many_providers, 7, for(n <- 1..7, do: "Northwind #{n}")}
+
+      missing_again =
+        "Run the round again. A workflow of the stage had no model, and that workflow's runtime could not use the provider that the run would start on."
+
+      too_many_again =
+        "Run the round again. The workflows of the stage used more than 6 model providers, and one run takes keys of at most 6."
+
+      for {cause, detail, body} <- [
+            {:model_choice_missing, missing,
+             "Choose a model for workflow write-acceptance-checks. Without one it runs on Claude Code, and this stage's runs can start on Storefront keys, which Claude Code cannot use."},
+            {:model_choice_missing, nil, missing_again},
+            {:model_choice_missing, too_many, missing_again},
+            {:too_many_providers, too_many,
+             "Use at most 6 model providers in one stage. Its workflows use 7: Northwind 1, Northwind 2, Northwind 3, Northwind 4, Northwind 5, Northwind 6, Northwind 7."},
+            {:too_many_providers, nil, too_many_again},
+            {:too_many_providers, missing, too_many_again}
+          ] do
+        r =
+          run(%{
+            id: nil,
+            path: nil,
+            state: :failed,
+            outcome: :error,
+            end_cause: cause,
+            shared_models: detail,
+            proposal: nil,
+            started_at: nil,
+            ended_at: ago(3600),
+            duration: nil
+          })
+
+        html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+
+        assert texts(html, "#work-item-explore-none p") == ["The run did not start.", body],
+               inspect({cause, detail})
+      end
+    end
+
+    test "a run of a shared stage whose session would have no key in the run shows the fix while that fault remains" do
+      machine = {:session_key_missing, :machine, "plan-the-build"}
+      no_key = {:session_key_missing, :no_key, "write-acceptance-checks", "Checkout keys"}
+
+      other_api =
+        {:session_key_missing, :other_api, "write-acceptance-checks", "Anthropic Messages",
+         "Northwind keys", "plan-the-build"}
+
+      again =
+        "Run the round again. A workflow of the stage would run on a provider that has no key in the run, or on a second API of a provider that an earlier workflow uses."
+
+      for {detail, body} <- [
+            {machine,
+             "Choose a model for workflow plan-the-build, or remove the model choices of the later workflows. Without a model, plan-the-build runs on the machine's local model provider credential, so later workflows get no model provider credential."},
+            {no_key,
+             "Add a model key to Checkout keys, or choose a model of another provider for workflow write-acceptance-checks. Checkout keys has no model key."},
+            {other_api,
+             "Choose a model for workflow write-acceptance-checks that uses the Anthropic Messages API of Northwind keys, as workflow plan-the-build does, or a model of another provider. One run uses one API of each provider."},
+            {nil, again},
+            {{:too_many_providers, 7, for(n <- 1..7, do: "Northwind #{n}")}, again}
+          ] do
+        r =
+          run(%{
+            id: nil,
+            path: nil,
+            state: :failed,
+            outcome: :error,
+            end_cause: :session_key_missing,
+            shared_models: detail,
+            proposal: nil,
+            started_at: nil,
+            ended_at: ago(3600),
+            duration: nil
+          })
+
+        html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+
+        assert texts(html, "#work-item-explore-none p") == ["The run did not start.", body],
+               inspect(detail)
       end
     end
 

@@ -221,6 +221,53 @@ defmodule Apiary.DataCase do
   end
 
   @doc """
+  Turns the `model_proxies` feature on for one test, beside the features the suite runs
+  under, and puts back the features afterwards:
+  `setup {Apiary.DataCase, :with_model_proxies}`. For a test of a list that offers a
+  provider whose description lists no models, such as LiteLLM. The feature needs
+  `factory`, so tag the test `needs: :factory` or a list with it. The features are the
+  whole node's, so the test must not be async.
+  """
+  def with_model_proxies(tags) do
+    previous = model_proxies_on!(tags)
+    on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
+    :ok
+  end
+
+  @doc """
+  model_proxies_on!/1 turns the `model_proxies` feature on beside the features the suite
+  runs under, and returns the features as they were, for the caller to put back with
+  `Application.put_env(:apiary, :features, previous)`. `tags` is the test's context.
+  Raises for an async test, as the features are the whole node's, and where `factory`
+  is off, as `model_proxies` needs it. `with_model_proxies/1` and
+  `Apiary.ConnectionsFixtures.provider_added_with_model_proxies!/3` call it.
+  """
+  def model_proxies_on!(tags) do
+    if tags[:async] do
+      raise ArgumentError,
+            "Make the test sync: model_proxies changes the whole node's features"
+    end
+
+    enabled = Apiary.Features.enabled()
+
+    if :factory not in enabled do
+      raise ArgumentError,
+            "Tag the test needs: :factory. model_proxies needs factory, and the suite " <>
+              "runs without it: #{inspect(enabled)}"
+    end
+
+    previous = Application.get_env(:apiary, :features)
+
+    Application.put_env(
+      :apiary,
+      :features,
+      Enum.filter(Apiary.Features.all(), &(&1 in [:model_proxies | enabled]))
+    )
+
+    previous
+  end
+
+  @doc """
   A helper that transforms changeset errors into a map of messages.
 
       assert {:error, changeset} = Accounts.create_user(%{password: "short"})

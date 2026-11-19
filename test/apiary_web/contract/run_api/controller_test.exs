@@ -302,7 +302,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
               read(ctx, "/work-item", run_id: "not-a-run"),
               read(ctx, "/artifacts", key: other.key),
               write(ctx, "/verdict", %{"verdict" => "passed"}, key: other.key),
-              write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}]),
+              write(ctx, "/artifacts", push_body("walkthrough", [{"a.md", "text/markdown", "x"}]),
                 run_id: other.run.node_run_id
               )
             ] do
@@ -459,12 +459,6 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       people = %{"inputs" => [], "sequence" => [], "outputs" => []}
       gate = %{"kind" => "person", "approvers" => "members"}
 
-      {:ok, _type} =
-        Apiary.Artifacts.create_type(ctx.scope, ctx.work_item_workspace, %{
-          "name" => "verification",
-          "base_view" => "document"
-        })
-
       stages = [
         Map.merge(people, %{"id" => @explore, "name" => "Explore", "gate" => gate}),
         Map.merge(people, %{"id" => build, "name" => "Build", "gate" => gate}),
@@ -475,7 +469,16 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       {:ok, version} = Apiary.Processes.save(ctx.scope, ctx.work_item_workspace, document)
 
       verification =
-        store!(ctx, "verification", [file("v.md", "text/markdown", "# Criterion 2 fails")],
+        store!(
+          ctx,
+          "verification",
+          [
+            file(
+              "verification.json",
+              "application/json",
+              Jason.encode!(Apiary.StagesFixtures.verification_document())
+            )
+          ],
           stage_id: verify
         )
 
@@ -859,7 +862,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert write(ctx, "/artifacts", push_body("screenshot", [{"one.png", "image/png", @png}])).status ==
                201
 
-      store!(other_run(), "explainer", [file("theirs.md", "text/markdown", "x")])
+      store!(other_run(), "walkthrough", [file("theirs.md", "text/markdown", "x")])
 
       conn = read(ctx, "/artifacts")
       assert signed_answer?(conn)
@@ -1011,7 +1014,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       refute Run.cancel_requested?(registered)
 
       other_version =
-        store!(%{ctx | dispatch_run: other}, "explainer", [
+        store!(%{ctx | dispatch_run: other}, "walkthrough", [
           file("notes.md", "text/markdown", "x")
         ])
 
@@ -1020,11 +1023,6 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                Apiary.Artifacts.get_version!(other_version.public_id)
 
       assert registered_id == registered.id
-
-      {:ok, _person} =
-        Apiary.Artifacts.push({:person, ctx.scope}, ctx.work_item, "explainer", [
-          file("notes.md", "text/markdown", "y")
-        ])
 
       {:ok, _cancelled} = Apiary.Runs.cancel(ctx.scope, Repo.get!(Run, ctx.run.id))
 
@@ -1036,10 +1034,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                %{"number" => 1, "cancelled" => true}
              ] = by_type["screenshot"]
 
-      assert [
-               %{"number" => 2, "writer" => %{"kind" => "person"}, "cancelled" => false},
-               %{"number" => 1, "writer" => %{"run_id" => run_id}, "cancelled" => false}
-             ] = by_type["explainer"]
+      assert [%{"number" => 1, "writer" => %{"run_id" => run_id}, "cancelled" => false}] =
+               by_type["walkthrough"]
 
       assert run_id == other.run_id
     end
@@ -1059,7 +1055,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       decide!(ctx, :approve, versions: [first.public_id])
 
       # Another run of the work item stores version 2 of the screenshot and the only
-      # version of the explainer; the work item then moves on to another stage.
+      # version of the walkthrough; the work item then moves on to another stage.
       other =
         Repo.insert!(%DispatchRun{
           organisation_id: ctx.dispatch_run.organisation_id,
@@ -1082,7 +1078,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       for {type, filename, content_type, binary} <- [
             {"screenshot", "one.png", "image/png", @png <> "b"},
-            {"explainer", "notes.md", "text/markdown", "x"}
+            {"walkthrough", "notes.md", "text/markdown", "x"}
           ] do
         store!(%{ctx | dispatch_run: other}, type, [file(filename, content_type, binary)],
           stage_id: @explore
@@ -1102,7 +1098,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert %{"newest_version" => 2, "changed_after_approval" => true} =
                by_type.()["screenshot"]
 
-      assert %{"newest_version" => 1} = by_type.()["explainer"]
+      assert %{"newest_version" => 1} = by_type.()["walkthrough"]
 
       {1, _rows} =
         Repo.update_all(from(r in Run, where: r.id == ^registered.id),
@@ -1115,7 +1111,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                artifacts["screenshot"]
 
       assert %{"newest_version" => nil, "changed_after_approval" => false} =
-               artifacts["explainer"]
+               artifacts["walkthrough"]
     end
   end
 
@@ -1145,7 +1141,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     end
 
     test "serves a Markdown file with the type its bytes show, the charset included", ctx do
-      version = store!(ctx, "explainer", [file("notes.md", "text/plain", "# Notes\n")])
+      version = store!(ctx, "walkthrough", [file("notes.md", "text/plain", "# Notes\n")])
 
       conn = read(ctx, "/artifacts/#{version.public_id}/files/notes.md")
       assert response(conn, 200) == "# Notes\n"
@@ -1563,7 +1559,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       {1, _rows} =
         Repo.update_all(
           from(w in Apiary.Organisations.Workspace, where: w.id == ^ctx.work_item_workspace.id),
-          set: [shown_standard_types: ["explainer"]]
+          set: [shown_standard_types: ["walkthrough"]]
         )
 
       conn = write(ctx, "/artifacts", push_body("mockup", [{"a.png", "image/png", "x"}]))
@@ -1667,24 +1663,24 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         {{:too_large, 900}, 422,
          %{
            "error" => "too_large",
-           "type" => "explainer",
+           "type" => "walkthrough",
            "limit" => 900,
            "message" =>
-             "Shrink the files of one version of explainer to at most 900 bytes together."
+             "Shrink the files of one version of walkthrough to at most 900 bytes together."
          }},
         {{:too_many_files, 1}, 422,
          %{
            "error" => "too_many_files",
-           "type" => "explainer",
+           "type" => "walkthrough",
            "limit" => 1,
-           "message" => "Push at most 1 file in one version of explainer."
+           "message" => "Push at most 1 file in one version of walkthrough."
          }},
         {{:invalid, {:format, 0}}, 422,
          %{
            "error" => "invalid_artifact",
            "names" => ["files[0]"],
            "message" =>
-             "Fix a.md to match the format of explainer: " <>
+             "Fix a.md to match the format of walkthrough: " <>
                "a document is a Markdown file of UTF-8 text."
          }},
         {{:invalid, {:extension, 0}}, 422,
@@ -1692,7 +1688,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
            "error" => "invalid_artifact",
            "names" => ["files[0]"],
            "message" =>
-             "Fix a.md to match the format of explainer: " <>
+             "Fix a.md to match the format of walkthrough: " <>
                "the filename of a document ends in .md."
          }},
         {{:invalid, {:schema, 0, %{path: "#/summary", error: "value is not of type string"}}},
@@ -1701,7 +1697,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
            "error" => "invalid_artifact",
            "names" => ["files[0]"],
            "message" =>
-             "Fix a.md to match the format of explainer: " <>
+             "Fix a.md to match the format of walkthrough: " <>
                "at #/summary, value is not of type string."
          }},
         {{:invalid, {:unreadable, 0}}, 422,
@@ -1715,18 +1711,18 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
            "error" => "invalid_artifact",
            "names" => ["files"],
            "message" =>
-             "Add an MP4 or WebM video to the version of explainer: " <>
+             "Add an MP4 or WebM video to the version of walkthrough: " <>
                "a WebVTT file goes with a video."
          }},
         {{:invalid, {:filename, 0}}, 400,
          %{"error" => "invalid_request", "names" => ["files[0].filename"]}},
         {{:invalid, :note}, 400, %{"error" => "invalid_request", "names" => ["note"]}},
-        {{:unknown_type, "explainer"}, 422,
+        {{:unknown_type, "walkthrough"}, 422,
          %{
            "error" => "unknown_type",
-           "type" => "explainer",
+           "type" => "walkthrough",
            "message" =>
-             "Switch on the artifact type explainer in the workspace's Artifact types, " <>
+             "Switch on the artifact type walkthrough in the workspace's Artifact types, " <>
                "then run the round again."
          }},
         {:not_found, 404, %{"error" => "not_found"}},
@@ -1742,7 +1738,10 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       for {push_error, status, answer} <- cases do
         RunApiStubs.put(:push_error, push_error)
-        conn = write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}]))
+
+        conn =
+          write(ctx, "/artifacts", push_body("walkthrough", [{"a.md", "text/markdown", "x"}]))
+
         assert signed_answer?(conn)
         assert json_response(conn, status) == answer, inspect(push_error)
       end
@@ -1891,6 +1890,55 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert [_pages, _images] = RunApiStubs.pushed()
     end
 
+    test "a criterion id that an earlier criterion has: the whole line a run gets", ctx do
+      document = Apiary.StagesFixtures.criteria_document()
+      [first | rest] = document["criteria"]
+      criteria = [first | rest] ++ [%{first | "text" => "Again."}]
+      json = Jason.encode!(%{document | "criteria" => criteria})
+
+      conn =
+        write(
+          ctx,
+          "/artifacts",
+          push_body("acceptance-criteria", [
+            {"acceptance-criteria.json", "application/json", json}
+          ])
+        )
+
+      assert json_response(conn, 422) == %{
+               "error" => "invalid_artifact",
+               "names" => ["files[0]"],
+               "message" =>
+                 "Fix acceptance-criteria.json to match the format of acceptance-criteria: " <>
+                   "at #/criteria/3/id, give criterion 4 an id that no earlier criterion has: " <>
+                   "ac-1 is taken."
+             }
+    end
+
+    test "acceptance criteria under a name other than main: the whole line a run gets", ctx do
+      json = Jason.encode!(Apiary.StagesFixtures.criteria_document())
+      files = [{"acceptance-criteria.json", "application/json", json}]
+
+      conn =
+        write(ctx, "/artifacts", push_body("acceptance-criteria", files, %{"name" => "other"}))
+
+      assert json_response(conn, 422) == %{
+               "error" => "invalid_artifact",
+               "names" => ["name"],
+               "message" =>
+                 "Name the acceptance criteria main: a work item has one set of acceptance " <>
+                   "criteria, and this push has the name other."
+             }
+
+      assert RunApiStubs.pushed() == []
+
+      conn =
+        write(ctx, "/artifacts", push_body("acceptance-criteria", files, %{"name" => "main"}))
+
+      assert %{"artifact" => %{"type" => "acceptance-criteria", "name" => "main"}} =
+               json_response(conn, 201)
+    end
+
     test "a proposal takes 10 files and 5 MiB together, and no more", ctx do
       md = {"proposal.md", "text/markdown", "# Gift cards"}
       images = for n <- 1..10, do: {"#{n}.png", "image/png", @png}
@@ -1939,7 +1987,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
          "Set reopened.run in the history of each question you reopen in questions.json " <>
            "to this run's number."},
         {"questions", :answered_changed,
-         "Leave question, context, options and criterion of each answered question in " <>
+         "Leave question, context, options and about of each answered question in " <>
            "questions.json as the newest version of questions has them, set or absent."},
         {"questions", :follows_changed,
          "Leave follows of each question in questions.json as the newest version of " <>
@@ -1963,7 +2011,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
            "question already in it to decided."},
         {"questions", :decided_changed,
          "Leave question and options of each question with a decision in questions.json " <>
-           "as the newest version of questions has them, and its context and criterion " <>
+           "as the newest version of questions has them, and its context and about " <>
            "while it stays decided or answered: to change them, withdraw the question and " <>
            "add a new one."},
         {"questions", :decision_changed,
@@ -1973,6 +2021,12 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         {"questions", :decision_run,
          "Set decision.run of each question in questions.json to the question's asked.run: " <>
            "only the run that asked a question records a decision on it."},
+        {"questions", {:about, "q4", "screenshot", "scenario-2"},
+         "Set about of question q4 in questions.json to an output of this work item, " <>
+           "or to {\"work_item\": true}: the work item has no screenshot named scenario-2."},
+        {"questions", {:about_item, "q4", "acceptance-criteria", "main", "ac-9"},
+         "Set about.item of question q4 in questions.json to a criterion id of " <>
+           "acceptance-criteria named main: no version of it has ac-9."},
         {"review-comments", :id_dropped,
          "Keep every review comment of the newest version of review-comments in " <>
            "review-comments.json: the id of a review comment is missing."},
@@ -2019,7 +2073,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       end
 
       # Every reason of each check has its message.
-      assert Enum.sort(for {"questions", reason, _} <- cases, do: reason) ==
+      assert Enum.sort(for {"questions", reason, _} <- cases, is_atom(reason), do: reason) ==
                Enum.sort(Apiary.Explore.Questions.reasons())
 
       assert Enum.sort(for {"review-comments", reason, _} <- cases, do: reason) ==
@@ -2030,7 +2084,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       end_run!(ctx)
 
       for conn <- [
-            write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}])),
+            write(ctx, "/artifacts", push_body("walkthrough", [{"a.md", "text/markdown", "x"}])),
             write(ctx, "/verdict", %{"verdict" => "passed"})
           ] do
         assert signed_answer?(conn)
@@ -2051,7 +2105,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
          ctx do
       lost!(ctx, [])
 
-      push = write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}]))
+      push = write(ctx, "/artifacts", push_body("walkthrough", [{"a.md", "text/markdown", "x"}]))
       assert push.status == 201
       assert write(ctx, "/verdict", %{"verdict" => "passed"}).status == 201
       assert length(RunApiStubs.pushed()) == 2
@@ -2061,7 +2115,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       silenced!(ctx)
 
       for conn <- [
-            write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}])),
+            write(ctx, "/artifacts", push_body("walkthrough", [{"a.md", "text/markdown", "x"}])),
             write(ctx, "/verdict", %{"verdict" => "passed"})
           ] do
         assert json_response(conn, 409)["error"] == "run_ended"
@@ -2302,7 +2356,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert [%{number: 2}] = RunApiStubs.pushed()
     end
 
-    test "refuses a name with no version, files, a withdrawal and a person's upload", ctx do
+    test "refuses a name with no version, files and a withdrawal", ctx do
       conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-2"))
       assert signed_answer?(conn)
 
@@ -2344,29 +2398,6 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                    "withdrawal."
              }
 
-      # A run's version, then a person's upload on top of it.
-      store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-1")
-
-      {:ok, _upload} =
-        Apiary.Artifacts.push(
-          {:person, ctx.scope},
-          ctx.work_item,
-          "screenshot",
-          [file("one.png", "image/png", @png <> "b")],
-          name: "scenario-1"
-        )
-
-      conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-1"))
-
-      assert json_response(conn, 409) == %{
-               "error" => "person_version",
-               "type" => "screenshot",
-               "message" =>
-                 "Leave screenshot/scenario-1 to a member. Its newest version, v2, is a " <>
-                   "version by #{Inputs.person_name(ctx.scope.user.id)}, and a run withdraws " <>
-                   "only a name whose newest version a run wrote."
-             }
-
       # Only the one withdrawal was stored.
       assert [%{number: 2, withdrawn: true}] = RunApiStubs.pushed()
 
@@ -2375,7 +2406,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
             into: %{},
             do: {artifact["name"], artifact["newest_version"]}
 
-      assert numbers == %{"scenario-1" => 2, "scenario-2" => 2}
+      assert numbers == %{"scenario-2" => 2}
     end
 
     test "refuses each type Qory Apiary reads itself, before the files", ctx do
@@ -2708,18 +2739,18 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert %{name: "explore-a-ticket"} =
                Apiary.Processes.workflow_declaration(ctx.work_item_workspace, "explore-a-ticket")
 
-      conn = write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}]))
+      conn = write(ctx, "/artifacts", push_body("walkthrough", [{"a.md", "text/markdown", "x"}]))
       version = json_response(conn, 201)["artifact"]["version"]["id"]
-      assert stored?(ctx, "explainer", version)
+      assert stored?(ctx, "walkthrough", version)
     end
 
     test "a run of a workflow the harness does not declare stores the type too", ctx do
       set_workflow!(ctx, "capture-demo")
       assert Apiary.Processes.workflow_declaration(ctx.work_item_workspace, "capture-demo") == nil
 
-      conn = write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}]))
+      conn = write(ctx, "/artifacts", push_body("walkthrough", [{"a.md", "text/markdown", "x"}]))
       version = json_response(conn, 201)["artifact"]["version"]["id"]
-      assert stored?(ctx, "explainer", version)
+      assert stored?(ctx, "walkthrough", version)
     end
   end
 
@@ -2949,6 +2980,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
             "question" => "Which basket gets the sale?",
             "options" => [],
             "state" => "open",
+            "about" => %{"work_item" => true},
             "asked" => %{"run" => ctx.run.number, "at" => "2026-11-08T10:00:00Z"}
           }
         ]
@@ -3160,7 +3192,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     # default), of `ctx`'s work item, take in and stage unless `:same_item` is false, then
     # of another work item of that scope, ended Paused, with the transcript chunks
     # `chunks`, each `{sequence, offset, bytes}`. `ctx`'s run becomes its second attempt,
-    # with the `resume` its claim stores (`Apiary.Runs.Transcript.resume_at_claim/1`).
+    # with the `resume` its claim stores (`Apiary.Runs.Transcript.resume_at_claim/2`).
     defp paused!(ctx, chunks, opts \\ []) do
       scope = Keyword.get(opts, :scope, ctx.scope)
 
@@ -3446,11 +3478,11 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
     test "a signed push over 64 KiB is read for a gateway's key id", ctx do
       content = String.duplicate("x", 100_000)
-      body = Jason.encode!(push_body("explainer", [{"a.md", "text/markdown", content}]))
+      body = Jason.encode!(push_body("walkthrough", [{"a.md", "text/markdown", content}]))
       assert byte_size(body) > RawBody.max_bytes(:unauthenticated)
 
       conn = sent(ctx, "/artifacts", body)
-      assert json_response(conn, 201)["artifact"]["type"] == "explainer"
+      assert json_response(conn, 201)["artifact"]["type"] == "walkthrough"
       assert [%{files: [%{content: ^content}]}] = RunApiStubs.pushed()
     end
   end

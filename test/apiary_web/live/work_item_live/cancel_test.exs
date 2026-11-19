@@ -185,7 +185,7 @@ defmodule ApiaryWeb.WorkItemLive.CancelTest do
     file = %{filename: "a.md", content_type: "text/markdown", binary: "# A\n"}
 
     {:ok, _version} =
-      Artifacts.push({:run, ctx.dispatch_run}, ctx.work_item, "explainer", [file], name: "main")
+      Artifacts.push({:run, ctx.dispatch_run}, ctx.work_item, "walkthrough", [file], name: "main")
 
     {1, _rows} =
       Repo.update_all(
@@ -213,6 +213,6 @@ defmodule ApiaryWeb.WorkItemLive.CancelTest do
 
     # The run's page, in Save the outputs and on its Pushed row.
     assert render(lv) =~ "Version 1 · #{marked}"
-    assert render(lv) =~ "explainer/main version 1 · #{marked}"
+    assert render(lv) =~ "walkthrough/main version 1 · #{marked}"
   end
 end

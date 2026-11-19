@@ -1,0 +1,1 @@
+commit_url 3e2d1c0b9a8f7e6d5c4b3a291807f6e5d4c3b2a1 https://code.example.com/acme/shop/commit/3e2d1c0b9a8f7e6d5c4b3a291807f6e5d4c3b2a1

@@ -69,27 +69,45 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     `collection.assign` does not allow sees who may. The page listens to the
   #     organisation's collections and connections
   #     (`Apiary.Adapters.Collections.subscribe/1`) and reads the step again on each change;
-  #   * Model, with the features `factory` and `secrets`: three choices. Key: each model
-  #     provider of the organisation with a key that reaches the workspace (applies to
-  #     every workspace or lists it), by its name, to reuse, and Add a key, whose
-  #     Provider, Key and, for a provider that needs one, Address add a model provider for
+  #   * Model, with the features `factory` and `secrets`: three choices. Provider: each
+  #     model provider of the organisation with a key that reaches the workspace (applies to
+  #     every workspace or lists it), by its name, to reuse, and Add a key, whose Kind
+  #     of provider, Key and, for a provider that needs one, Address add a model provider for
   #     the workspace (`Apiary.Connections.create_provider/3` with `:workspace`): the key
   #     is a secret of the workspace, and the provider reaches that workspace alone. Where
   #     the edition shows it (`c:Apiary.Edition.scope_setting?/1`), Add a key has the
   #     setting "Available to every workspace in <organisation>", off; on, it adds the
   #     provider for the organisation, reaching every workspace, its key a secret of the
   #     organisation (`Apiary.Connections.reach_at_add/3`). Where the edition shows that
-  #     setting, the providers to reuse that apply to every workspace come first in Key,
-  #     under "Shared in <organisation>", each marked "every workspace"; with none, Key
-  #     has no heading. With
-  #     no provider to reuse, Add a key alone, open. Runtime, the runtimes the
-  #     provider serves (`Apiary.Kinds.Providers.serve/2`), as text where there is one.
-  #     Default model, the models suggested for the provider and runtime
-  #     (`Apiary.ModelChoices.suggestions/2`). Continue saves the workspace's choice
-  #     (level 5, `Apiary.ModelChoices.put_choice/4`) with the provider, its default key,
-  #     the runtime and the model. The line under the form shows where to change the
-  #     model and the key: Workspace settings for a key that is a secret of the workspace,
-  #     Organisation settings for one of the organisation, and the model alone for one of
+  #     setting, the providers to reuse that apply to every workspace come first in
+  #     Provider, under "Shared in <organisation>", each marked "every workspace"; with
+  #     none, Provider has no heading. With no provider to reuse, Add a key alone, open.
+  #     A provider that works with no runtime of the catalogue has "<Provider> works with
+  #     no runtime in this version of Qory Apiary. Pick another provider." under
+  #     Provider, Continue disabled, and a save of it writes nothing. Then the tiers
+  #     (`ApiaryWeb.ModelTiers.tiers/1`, each tier's name and line above its fields,
+  #     under a heading `h2`): a Model and an Effort for each tier, from the models
+  #     suggested for the provider and runtime (`Apiary.ModelChoices.suggestions/2`), or
+  #     a text field Model for a provider whose description lists no models; for a
+  #     provider whose description cannot be read, a line that says so in their place.
+  #     Then Runtime (`ApiaryWeb.ModelTiers.runtime_part/1`), the runtimes the provider
+  #     serves (`Apiary.Kinds.Providers.runtimes/1`), as text where there is one, else a
+  #     select, with a line of why. A change of provider keeps the runtime while the new
+  #     provider serves it, else moves to its first. A change of provider empties the
+  #     tiers; a change of the runtime keeps the models, and an effort the runtime
+  #     does not accept goes back to Not set. When the step opens, the workspace's choice
+  #     fills them. A tier whose model id or
+  #     effort breaks the save's rules (`Apiary.ModelChoices.tier_errors/1`) shows the
+  #     refusal on its field. Continue, enabled once every tier has a model and no tier
+  #     is refused, saves the workspace's choice (level 5,
+  #     `Apiary.ModelChoices.put_choice/4`) with the provider, whose keys runs take, the
+  #     runtime the form shows, and the tiers, the Thinking
+  #     tier's model and effort as the choice's (`ApiaryWeb.ModelTiers.attrs/2`). Add a
+  #     key adds the provider and saves the choice in one transaction, so a refused
+  #     choice adds no provider and no key. With the choice unchanged it saves nothing
+  #     and goes on. The line under the form shows where to change the
+  #     models and the key: Workspace settings for a key that is a secret of the workspace,
+  #     Organisation settings for one of the organisation, and the models alone for one of
   #     the organisation where the edition shows no organisation secrets
   #     (`c:Apiary.Edition.organisation_secrets/2`). The key is never kept in an
   #     assign: its field is left out of the page's patches (`phx-update="ignore"`). A
@@ -218,15 +236,18 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     ModelChoices,
     Organisations,
     Runs,
+    Repo,
     WorkItems,
     WorkspaceSetup
   }
 
   alias Apiary.Adapters.Collections
   alias Apiary.Adapters.Connections, as: AdapterConnections
+  alias Apiary.Connections.Connection
   alias Apiary.Dispatches.RunSettings
   alias Apiary.Kinds.{Provider, Providers, Runtimes}
   alias Apiary.Lingo.Domain
+  alias Apiary.ModelChoices.ModelChoice
   alias Apiary.Nodes.Node
   alias Apiary.Runs.{Preparation, Run}
   alias Apiary.Stacks.Sources
@@ -235,6 +256,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     HarnessComponents,
     HarnessTargets,
     IntegrationComponents,
+    ModelTiers,
     NodeComponents,
     OverviewComponents,
     SetUpComponents,
@@ -483,10 +505,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # (`model_choice.write` on the workspace) with a key to choose.
   defp load_step(%{assigns: %{step: :model}} = socket) do
     %{current_scope: scope, flow: flow} = socket.assigns
-    {shared, others} = split_shared(scope, reusable_providers(scope, flow.workspace))
+    choice = workspace_choice(scope, flow.workspace)
+    {shared, others} = split_shared(scope, reusable_providers(scope, flow.workspace, choice))
     providers = shared ++ others
     may_add = Access.can?(scope, :"provider.write", scope.organisation)
-    choice = workspace_choice(scope, flow.workspace)
 
     socket
     |> assign(
@@ -503,6 +525,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       providers: providers,
       shared_keys: length(shared),
       choice: choice,
+      stored: ModelTiers.stored(choice),
       # Whether the edition shows the organisation's secrets: the core shows none.
       organisation_secrets: Edition.organisation_secrets(scope, :read) != {:error, :not_found},
       done: step_done?(flow, :model)
@@ -884,18 +907,30 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   ## The Model step's form
 
   # The organisation's model providers with a key that reach `workspace`: those that apply
-  # to every workspace, and those that list it.
-  defp reusable_providers(scope, workspace) do
+  # to every workspace, and those that list it; of a kind that is offered
+  # (`Providers.offered?/1`) or the catalogue does not have, or the provider of `choice`,
+  # the workspace's choice, so that Continue keeps it unless the person chooses another.
+  defp reusable_providers(scope, workspace, choice) do
+    saved = choice && choice.connection_id
+
     case Connections.list_providers(scope) do
       {:ok, providers} ->
         Enum.filter(
           providers,
           &(keys(&1) > 0 and
-              (&1.applies_to == "all" or workspace.id in Connections.workspace_ids_of(&1)))
+              (&1.applies_to == "all" or workspace.id in Connections.workspace_ids_of(&1)) and
+              (offered_kind?(&1) or &1.id == saved))
         )
 
       {:error, _reason} ->
         []
+    end
+  end
+
+  defp offered_kind?(provider) do
+    case catalogue(provider.provider_kind) do
+      nil -> true
+      described -> Providers.offered?(described)
     end
   end
 
@@ -922,12 +957,13 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  # The form's first values: the provider of the workspace's choice, with its runtime and
-  # model, where it is one to reuse; else the first provider to reuse; else Add a key.
+  # The form's first values: the provider of the workspace's choice, with its runtime,
+  # where it is one to reuse; else the first provider to reuse; else Add a key. The tiers
+  # are those of the workspace's choice (`assign_model_form/4`).
   defp model_params(providers, choice) do
     case {providers, choice && Enum.find(providers, &(&1.id == choice.connection_id))} do
       {_providers, %{} = provider} ->
-        %{"source" => provider.public_id, "runtime" => choice.runtime, "model" => choice.model_id}
+        %{"source" => provider.public_id, "runtime" => choice.runtime}
 
       {[provider | _rest], nil} ->
         %{"source" => provider.public_id}
@@ -937,7 +973,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  defp first_provider, do: Providers.list() |> hd() |> Map.fetch!(:name)
+  defp first_provider, do: Providers.offered() |> hd() |> Map.fetch!(:name)
 
   # The key `params` chose: a provider to reuse, or `:add`, for a person who may add one.
   # Anything else is the first provider to reuse, and `:add` where there is none.
@@ -953,8 +989,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   # The form of the Model step, from what was sent but the key, with `errors` on its
   # fields; the key's field is always empty. The provider is the catalogue's for Add a
-  # key, the description of the provider to reuse for one.
-  defp assign_model_form(socket, params, errors) do
+  # key, the description of the provider to reuse for one. The tiers are `opts[:tiers]`
+  # where given, as after a refused save; else those sent, fitted to the Key chosen
+  # (`ApiaryWeb.ModelTiers.sent/5`), where the form sent tiers; else those of the
+  # workspace's choice while its key is chosen. `opts[:tier_errors]` are the tiers'
+  # refusals, as `ApiaryWeb.ModelTiers.field_errors/2` places them.
+  defp assign_model_form(socket, params, errors, opts \\ []) do
     source = model_source(params, socket.assigns)
 
     # Add a key chosen after a provider to reuse: the form sent no Provider yet.
@@ -967,10 +1007,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         provider -> described(provider)
       end
 
-    runtimes =
-      if chosen, do: Enum.filter(Runtimes.list(), &Providers.serves?(chosen, &1)), else: []
-
-    runtime = Enum.find(runtimes, &(&1.name == params["runtime"])) || List.first(runtimes)
+    runtimes = if chosen, do: Providers.runtimes(chosen), else: []
+    runtime = ModelTiers.runtime(runtimes, params["runtime"])
 
     models =
       cond do
@@ -979,7 +1017,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         true -> ModelChoices.suggestions(source, runtime)
       end
 
-    model = Enum.find(models, &(&1.id == params["model"])) || List.first(models)
+    key = model_key(source, chosen, models)
+
+    tiers =
+      cond do
+        opts[:tiers] ->
+          opts[:tiers]
+
+        is_map(params["tiers"]) ->
+          %{key: before, tiers: old, stored: stored} = socket.assigns
+          stored = if runtime, do: ModelTiers.accepted(stored, runtime), else: stored
+          ModelTiers.sent(key, before, old || ModelTiers.blank(), params["tiers"], stored)
+
+        true ->
+          first_tiers(socket.assigns.stored, key)
+      end
 
     kept =
       if source == :add,
@@ -994,8 +1046,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       Map.merge(kept, %{
         "source" => source_value(source),
         "key" => "",
-        "runtime" => runtime && runtime.name,
-        "model" => model && model.id
+        "runtime" => runtime && runtime.name
       })
 
     values = Enum.reduce(errors, values, fn {field, _}, v -> Map.put_new(v, "#{field}", "") end)
@@ -1007,9 +1058,53 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       chosen: chosen,
       runtimes: runtimes,
       runtime: runtime,
-      models: models
+      no_runtime: if(chosen && runtimes == [], do: ModelTiers.no_runtime_line(chosen.title)),
+      fallback_refusal: opts[:fallback_refusal],
+      key: key,
+      tiers: tiers,
+      tier_errors:
+        Enum.uniq_by(
+          Keyword.get(opts, :tier_errors, []) ++ tier_refusals(tiers),
+          fn {field, {message, _bindings}} -> {field, message} end
+        )
     )
   end
+
+  # The refusals a save gives the tiers' model ids and efforts
+  # (`Apiary.ModelChoices.tier_errors/1`), each on its tier's field
+  # (`ApiaryWeb.ModelTiers.field_errors/2`); a tier with no model is left out, as
+  # Continue waits for it.
+  defp tier_refusals(tiers) do
+    sent =
+      for {tier, %{"model" => model} = set} <- tiers, model != "", into: %{} do
+        if set["effort"] in ["", nil],
+          do: {tier, %{"model" => model}},
+          else: {tier, %{"model" => model, "effort" => set["effort"]}}
+      end
+
+    sent |> ModelChoices.tier_errors() |> ModelTiers.field_errors(tiers)
+  end
+
+  # Whether Continue is enabled: a key, every tier with a model, and no tier whose model
+  # id or effort a save refuses.
+  defp continues?(key, tiers), do: ModelTiers.complete?(key, tiers) and tier_refusals(tiers) == []
+
+  # The tiers when the step opens: those of the workspace's choice, `stored`
+  # (`ApiaryWeb.ModelTiers.stored/1`), while `key` is of its provider, also where the
+  # provider has no key; else none.
+  defp first_tiers(%{provider_id: id, tiers: tiers}, %{provider: %Connection{id: id}}), do: tiers
+  defp first_tiers(_stored, _key), do: ModelTiers.blank()
+
+  # The provider entry of the tiers (`ApiaryWeb.ModelTiers.entry/3`): for Add a key, the
+  # catalogue's provider, not added yet; for a provider to reuse, that provider. None
+  # while the provider has no description.
+  defp model_key(_source, nil, _models), do: nil
+
+  defp model_key(:add, chosen, models),
+    do: ModelTiers.entry(chosen, models, Connections.provider_models(chosen) == [])
+
+  defp model_key(provider, chosen, models),
+    do: ModelTiers.entry(provider, models, Connections.provider_models(chosen) == [])
 
   # Whether Add a key adds the provider for every workspace: the setting shown and on.
   defp everywhere?(scope, :add, params),
@@ -1027,24 +1122,24 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   defp workspace_key?(_provider, _everywhere), do: false
 
-  # Where to change the default model and the key `source` chose: Workspace settings for a
+  # Where to change the default models and the key `source` chose: Workspace settings for a
   # key that is a secret of the workspace, Organisation settings for one of the
   # organisation, where the edition shows the organisation's secrets
-  # (`organisation_secrets`); the model alone where it does not.
+  # (`organisation_secrets`); the models alone where it does not.
   defp later_line(source, everywhere, organisation_secrets) do
     cond do
       workspace_key?(source, everywhere) ->
         gettext(
-          "You can change the default model later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
+          "You can change the default models later in Workspace settings › Model, and the key in Workspace settings › Secrets and variables."
         )
 
       organisation_secrets ->
         gettext(
-          "You can change the default model later in Workspace settings › Model, and the key in Organisation settings › Secrets and variables."
+          "You can change the default models later in Workspace settings › Model, and the key in Organisation settings › Secrets and variables."
         )
 
       true ->
-        gettext("You can change the default model later in Workspace settings › Model.")
+        gettext("You can change the default models later in Workspace settings › Model.")
     end
   end
 
@@ -1088,7 +1183,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         @errors != [] && Enum.map_join(1..length(@errors), " ", &key_error_id(@id, &1))
       }
     >
-      <legend class="mb-1 text-[13px]/[18px] font-medium">{gettext("Key")}</legend>
+      <legend class="mb-1 text-[13px]/[18px] font-medium">{gettext("Provider")}</legend>
       <div
         :if={@shared_options != []}
         id={"#{@id}-shared"}
@@ -1172,8 +1267,12 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  defp keys(%{secret: %{values: values}}) when is_list(values), do: length(values)
-  defp keys(_provider), do: 0
+  defp keys(provider), do: length(value_ids(provider))
+
+  defp value_ids(%{secret: %{values: values}}) when is_list(values),
+    do: Enum.map(values, & &1.value_id)
+
+  defp value_ids(_provider), do: []
 
   # Adds the provider with its key for Add a key; the provider to reuse, else. The key is
   # a secret of the flow's workspace, which Name made before this step, and the provider
@@ -1240,15 +1339,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     scope = socket.assigns.current_scope
     socket = assign(socket, attempt: socket.assigns.attempt + 1, refusal: nil)
     source = model_source(params, socket.assigns)
-
-    unchanged? =
-      case {source, socket.assigns.choice} do
-        {%{id: id}, %{connection_id: id, runtime: runtime, model_id: model}} ->
-          runtime == params["runtime"] and model == params["model"]
-
-        _other ->
-          false
-      end
+    # The key and the tiers as the form sent them.
+    formed = assign_model_form(socket, params, [])
+    %{key: key, tiers: tiers} = formed.assigns
 
     cond do
       params["source"] == "add" and not socket.assigns.may_add ->
@@ -1260,11 +1353,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         {:noreply,
          socket |> load_step() |> put_flash(:error, gettext("Nothing was changed. Try again."))}
 
-      unchanged? ->
+      # A provider that works with no runtime: its line under Provider says why,
+      # Continue is disabled, and nothing is saved.
+      formed.assigns.no_runtime != nil ->
+        {:noreply, formed}
+
+      # A tier without a model, or one whose model id or effort a save refuses: Continue
+      # is disabled, and nothing is saved, so Add a key adds no provider.
+      not continues?(key, tiers) ->
+        {:noreply, formed}
+
+      unchanged?(formed.assigns) ->
         {:noreply, go_on(socket)}
 
       true ->
-        save_model(socket, scope, source, params)
+        save_model(formed, scope, source, params)
     end
   end
 
@@ -1584,21 +1687,54 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     end
   end
 
-  defp save_model(socket, scope, source, params) do
-    case model_provider(source, scope, socket.assigns.flow, params) do
-      {:ok, provider} ->
-        # After a refusal of the choice, the form shows the provider as one to reuse.
-        params = Map.put(params, "source", provider.public_id)
+  # Whether the form has the workspace's choice as it is: its provider, its runtime, and
+  # its tiers. Add a key never has.
+  # A stored runtime the catalogue no longer has is a change, so Continue saves the
+  # runtime the form shows.
+  defp unchanged?(%{choice: %ModelChoice{} = choice, key: %{provider: %Connection{}} = key} = a) do
+    case ModelChoices.runtime(choice.runtime) do
+      {:ok, runtime} ->
+        choice.connection_id == key.provider.id and a.runtime != nil and
+          runtime.name == a.runtime.name and
+          ModelTiers.stored(choice).tiers == a.tiers
 
-        case ModelChoices.put_choice(scope, :workspace, %{
-               "provider" => provider.public_id,
-               "key" => provider.default_value_id,
-               "runtime" => params["runtime"],
-               "model" => params["model"]
-             }) do
-          {:ok, _choice} -> {:noreply, go_on(socket)}
-          {:error, reason} -> {:noreply, model_refused(load_step(socket), params, reason)}
+      :error ->
+        false
+    end
+  end
+
+  defp unchanged?(_assigns), do: false
+
+  # Saves the workspace's choice of the provider of `source`, which Add a key adds first,
+  # with the runtime and the tiers of the form, `socket`. The provider and the
+  # choice are written in one transaction: a refused choice adds no provider and no key.
+  defp save_model(socket, scope, source, params) do
+    %{key: key, tiers: tiers, runtime: runtime} = socket.assigns
+
+    saved =
+      Repo.transact(fn ->
+        with {:ok, provider} <- model_provider(source, scope, socket.assigns.flow, params) do
+          key = if source == :add, do: ModelTiers.entry(provider, key.models, key.free), else: key
+
+          attrs =
+            key
+            |> ModelTiers.attrs(tiers)
+            |> Map.put(:runtime, runtime && runtime.name)
+
+          case ModelChoices.put_choice(scope, :workspace, attrs) do
+            {:ok, _choice} -> {:ok, provider}
+            {:error, reason} -> {:error, {:choice, reason}}
+          end
         end
+      end)
+
+    case saved do
+      {:ok, _provider} ->
+        {:noreply, go_on(socket)}
+
+      # Rolled back: Add a key stays chosen, with what was sent.
+      {:error, {:choice, reason}} ->
+        {:noreply, model_refused(load_step(socket), params, reason, tiers)}
 
       {:error, {:serves, error}} ->
         {:noreply, assign_model_form(socket, params, provider: error)}
@@ -1610,22 +1746,53 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         {:noreply, assign_model_form(socket, params, ProviderPage.field_errors(changeset))}
 
       {:error, reason} ->
-        {:noreply, model_refused(load_step(socket), params, reason)}
+        {:noreply, model_refused(load_step(socket), params, reason, tiers)}
     end
   end
 
-  # A refused choice, each reason on the step's field it is about, or a refusal of the
-  # save in the flash.
-  defp model_refused(socket, params, %Ecto.Changeset{} = changeset) do
-    errors = for {field, error} <- changeset.errors, do: {model_field(field), error}
-    assign_model_form(socket, params, errors)
+  # A refused choice, each reason on the step's field it is about
+  # (`ApiaryWeb.ModelTiers.field_errors/2`, its `:provider` on Provider), with `tiers` as
+  # sent; a refusal of a stored fallback, which the save sends again
+  # (`Apiary.ModelChoices.put_choice/4`), as one line under the step
+  # (`fallback_refusal/2`); or a refusal of the save in the flash.
+  defp model_refused(socket, params, %Ecto.Changeset{} = changeset, tiers) do
+    {fallbacks, choice} = Enum.split_with(changeset.errors, &match?({:fallbacks, _error}, &1))
+
+    {tier_errors, errors} =
+      choice
+      |> ModelTiers.field_errors(tiers)
+      |> Enum.split_with(fn {field, _error} -> field == :tiers or is_tuple(field) end)
+
+    errors =
+      for {field, error} <- errors,
+          do: {if(field == :provider, do: :source, else: field), error}
+
+    assign_model_form(socket, params, errors,
+      tiers: tiers,
+      tier_errors: tier_errors,
+      fallback_refusal: fallback_refusal(socket.assigns.flow, fallbacks)
+    )
   end
 
-  defp model_refused(socket, _params, :forbidden),
+  defp model_refused(socket, _params, :forbidden, _tiers),
     do: put_flash(socket, :error, socket.assigns.who_may)
 
-  defp model_refused(socket, _params, _reason),
+  defp model_refused(socket, _params, _reason, _tiers),
     do: put_flash(socket, :error, gettext("Nothing was changed. Try again."))
+
+  # The line for the first refusal of a stored fallback, nil for none: "Change a fallback
+  # in Workspace settings › Model. <the refusal>", the place a link to that page.
+  defp fallback_refusal(_flow, []), do: nil
+
+  defp fallback_refusal(flow, [{:fallbacks, error} | _rest]) do
+    rich_gettext(
+      "Change a fallback in %{place}. %{refusal}",
+      refusal: translate_error(error),
+      place:
+        {:link, ~p"/#{flow.organisation}/#{flow.workspace}/settings/model",
+         gettext("Workspace settings › Model")}
+    )
+  end
 
   # The next step; after the last, the workspace's overview.
   defp go_on(%{assigns: %{next_path: nil, flow: flow}} = socket),
@@ -1679,11 +1846,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       words -> assign(socket, :harness_refusal, {reason, words})
     end
   end
-
-  # A refusal of the choice, on the step's field it is about.
-  defp model_field(field) when field in [:runtime, :model], do: field
-  defp model_field(:effort), do: :model
-  defp model_field(_field), do: :source
 
   defp next_id(scope, flow, id) do
     steps = SetUpComponents.steps_for(scope, id, flow: flow)
@@ -2167,11 +2329,27 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           shared={@shared_keys}
           organisation={@current_scope.organisation.name}
         />
+        <p
+          :if={@no_runtime}
+          id="set-up-model-no-runtime"
+          class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+        >
+          <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+          <span>{@no_runtime}</span>
+        </p>
+        <p
+          :if={@fallback_refusal}
+          id="set-up-model-fallback-refused"
+          class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+        >
+          <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+          <span><.rich text={@fallback_refusal} /></span>
+        </p>
         <div :if={@source == :add} id="set-up-model-add" class="grid gap-4 ps-6">
           <.input
             field={@form[:provider]}
             type="choice"
-            label={gettext("Provider")}
+            label={gettext("Kind of provider")}
             options={ProviderPage.provider_options()}
           />
           <.input
@@ -2215,24 +2393,36 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             }
           />
         </div>
-        <div :if={length(@runtimes) == 1} id="set-up-model-runtime" class="grid gap-1">
-          <p class="text-[13.5px]/5 font-medium">{gettext("Runtime")}</p>
-          <p class="text-[13.5px]/5">{hd(@runtimes).title}</p>
-          <input type="hidden" name="model[runtime]" value={hd(@runtimes).name} />
-        </div>
-        <.input
-          :if={length(@runtimes) > 1}
-          field={@form[:runtime]}
-          type="select"
-          label={gettext("Runtime")}
-          options={for runtime <- @runtimes, do: {runtime.title, runtime.name}}
+        <ModelTiers.tiers
+          :if={@key}
+          id="set-up-model-tiers"
+          name="model[tiers]"
+          entry={@key}
+          tiers={@tiers}
+          stored={@runtime && ModelTiers.accepted(@stored, @runtime)}
+          errors={@tier_errors}
+          heading="h2"
+          stacked
         />
-        <.input
-          field={@form[:model]}
-          type="select"
-          label={gettext("Default model")}
-          options={for model <- @models, do: {model.title || model.id, model.id}}
+        <ModelTiers.runtime_part
+          :if={@runtime}
+          id="set-up-model-runtime"
+          select_id="model_runtime"
+          name="model[runtime]"
+          runtimes={@runtimes}
+          runtime={@runtime}
+          provider={@chosen.title}
+          errors={for {:runtime, error} <- @form.errors, do: translate_error(error)}
         />
+        <p
+          :if={!@key and @source != :add}
+          id="set-up-model-unread"
+          class="text-[13.5px]/5 text-muted"
+        >
+          {gettext("The models of %{provider} could not be read. Try again later.",
+            provider: @source.name
+          )}
+        </p>
         <p id="set-up-model-later" class="text-[13px]/5 text-muted">
           {later_line(@source, @everywhere, @organisation_secrets)}
         </p>
@@ -2243,6 +2433,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
             type="submit"
             variant="primary"
             size="md"
+            disabled={@no_runtime != nil or !continues?(@key, @tiers)}
             loading_text={gettext("Saving")}
           >
             {gettext("Continue")}

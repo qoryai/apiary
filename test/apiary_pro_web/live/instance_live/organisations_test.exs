@@ -322,7 +322,7 @@ defmodule ApiaryProWeb.InstanceLive.OrganisationsTest do
     refute has_element?(lv, "#organisation-#{other.organisation.id}-only-owner")
   end
 
-  @tag with_features: Features.all() -- [:factory, :workflow_model]
+  @tag with_features: Features.closed(Features.all() -- [:factory, :workflow_model])
   test "without the factory feature, the new organisation's steps list no indicator", ctx do
     {:ok, lv, _html} = live(ctx.conn, ~p"/instance/organisations/new")
 

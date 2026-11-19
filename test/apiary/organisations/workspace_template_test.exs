@@ -986,7 +986,8 @@ defmodule Apiary.Organisations.WorkspaceTemplateFeaturesTest do
   defp actions_since(scope, before), do: Enum.drop(actions(scope), length(before))
 
   describe "the Qory template's artifact types" do
-    @standard ~w(acceptance-criteria explainer decision-record mockup screenshot demo-video)
+    @standard ~w(acceptance-criteria walkthrough decision-record mockup screenshot demo-video
+                 verification)
 
     test "the copy lists types, and create_workspace_of_kind/3 gives the workspace them" do
       scope = scope_fixture()

@@ -123,9 +123,9 @@ defmodule ApiaryWeb.ActivityModelChoiceTest do
       })
 
     attrs = %{provider: provider.public_id}
-    {:ok, _} = ModelChoices.put_choice(scope, {target, "hello"}, attrs)
-    {:ok, _} = ModelChoices.put_choice(scope, :workspace, attrs)
-    {:ok, _} = ModelChoices.put_choice(scope, :organisation, attrs)
+    {:ok, _} = Apiary.ModelChoicesFixtures.put_choice(scope, {target, "hello"}, attrs)
+    {:ok, _} = Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, attrs)
+    {:ok, _} = Apiary.ModelChoicesFixtures.put_choice(scope, :organisation, attrs)
     {:ok, _} = ModelChoices.lock_choice(scope, :workspace)
 
     entries =

@@ -27,7 +27,9 @@ defmodule Apiary.Dispatches.Queued do
   # gateway and its credential entries stay, its documents go, and it takes a fresh
   # `node_run_id`, its instance id the same, which no claim answer, starter or machine
   # has. A machine that starts for it all the same redeems its run code as a late machine
-  # (`Apiary.Runs.RunCode`), and is given no run key.
+  # (`Apiary.Runs.RunCode`), and is given no run key. Its end may leave its workflow's
+  # overrides unused, and enqueues their deletion
+  # (`Apiary.Processes.delete_leftovers_after_runs/1`).
   #
   # The number is taken last in `insert!/1`, as `Apiary.Runs.Number` requires: the
   # counter of the workspace stays locked until the transaction ends.
@@ -101,6 +103,8 @@ defmodule Apiary.Dispatches.Queued do
   def ended([], %DateTime{}), do: []
 
   def ended(dispatch_run_ids, %DateTime{} = now) when is_list(dispatch_run_ids) do
+    :ok = Apiary.Processes.delete_leftovers_after_runs(dispatch_run_ids)
+
     {_count, ids} =
       Repo.update_all(
         from(r in Run,

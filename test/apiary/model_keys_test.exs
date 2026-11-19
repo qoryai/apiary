@@ -12,7 +12,7 @@ defmodule Apiary.ModelKeysTest do
   alias Apiary.{Connections, ModelKeys}
   alias Apiary.Connections.Connection
   alias Apiary.ModelKeys.{Copy, Order, Report, Setting, State}
-  alias Apiary.Runs.Run
+  alias Apiary.Runs.{ModelKey, Run}
   alias Apiary.Secrets.Value
 
   @moduletag needs: [:factory, :secrets]
@@ -60,33 +60,44 @@ defmodule Apiary.ModelKeysTest do
 
   # The key `value_id` of the provider of `ctx` as a claim at `at` reads it.
   defp claim_key(ctx, value_id, at) do
-    ctx.provider |> ModelKeys.claim_keys(nil, at) |> Enum.find(&(&1.value_id == value_id))
+    ctx.provider |> ModelKeys.claim_keys(at) |> Enum.find(&(&1.value_id == value_id))
   end
 
   defp states(%Value{id: id}),
     do: Repo.all(from s in State, where: s.secret_value_id == ^id, order_by: s.window)
 
-  # A run of the scope's queue, handed over to a gateway, with the key `value` of the
-  # provider of `ctx`.
-  defp keys_run(ctx, %Value{id: id}) do
+  # A run of the scope's queue, handed over to a gateway, with no model key.
+  defp handed_over_run(ctx) do
     pool = Apiary.NodesFixtures.pool_fixture(ctx.scope)
     %{access_key: key} = Apiary.AccessKeysFixtures.enrolled_key_fixture(ctx.scope, pool)
 
     %{run: run} =
-      Apiary.DispatchedRunsFixtures.handed_over_fixture(ctx.scope, key, %{
-        provider_connection_id: ctx.provider.id,
-        provider_secret_id: ctx.provider.secret_id,
-        provider_chain: "organisation",
-        provider_api: %{
-          "format" => "anthropic-messages",
-          "endpoint" => "https://api.model.example/anthropic",
-          "auth" => %{"scheme" => "x-api-key"}
-        },
-        model_keys: [%{"id" => id, "name" => "model-1", "pause_for_s" => 60}],
-        run_settings: %{}
-      })
+      Apiary.DispatchedRunsFixtures.handed_over_fixture(ctx.scope, key, %{run_settings: %{}})
 
+    [] = stored_keys(run)
     run
+  end
+
+  # A run of the scope's queue, handed over to a gateway, with the key `value` of the
+  # provider of `ctx`.
+  defp keys_run(ctx, %Value{id: id}) do
+    run = handed_over_run(ctx)
+
+    run_keys!(run, [%{provider: ctx.provider, secret_value_id: id, name: "model-1"}],
+      api: %{
+        "format" => "anthropic-messages",
+        "endpoint" => "https://api.model.example/anthropic",
+        "auth" => %{"scheme" => "x-api-key"}
+      }
+    )
+
+    Repo.get!(Run, run.id)
+  end
+
+  # Replaces the keys of `run` with `keys` (`run_keys!/3`).
+  defp replace_keys!(run, keys) do
+    Repo.delete_all(from k in ModelKey, where: k.run_id == ^run.id)
+    run_keys!(run, keys)
   end
 
   # Keeps the value the key `value` has now as the run's, as a secrets request that
@@ -252,31 +263,29 @@ defmodule Apiary.ModelKeysTest do
 
   describe "a run's keys" do
     test "are the keys the run keeps, in its order, by their credential names", ctx do
-      stored = [
-        %{"id" => ctx.values["spare"].id, "name" => "model-1", "pause_for_s" => 60},
-        %{"id" => ctx.values["main"].id, "name" => "model-2", "pause_for_s" => 60}
-      ]
+      run = handed_over_run(ctx)
 
-      run = %Run{
-        provider_api: %{"format" => "anthropic-messages"},
-        provider_connection_id: ctx.provider.id,
-        provider_secret_id: ctx.provider.secret_id,
-        model_keys: stored
-      }
+      run_keys!(run, [
+        %{provider: ctx.provider, secret_value_id: ctx.values["spare"].id, name: "model-1"},
+        %{provider: ctx.provider, secret_value_id: ctx.values["main"].id, name: "model-2"}
+      ])
 
+      run = Repo.get!(Run, run.id)
+
+      # No request sealed a key: each value is as old as the run's row.
       assert ModelKeys.run_keys(run) == [
                %{
                  name: "model-1",
                  secret_value_id: ctx.values["spare"].id,
                  organisation_id: ctx.scope.organisation.id,
-                 copy_set_at: nil,
+                 copy_set_at: run.inserted_at,
                  copy_kept: false
                },
                %{
                  name: "model-2",
                  secret_value_id: ctx.values["main"].id,
                  organisation_id: ctx.scope.organisation.id,
-                 copy_set_at: nil,
+                 copy_set_at: run.inserted_at,
                  copy_kept: false
                }
              ]
@@ -290,32 +299,40 @@ defmodule Apiary.ModelKeysTest do
       assert [%{name: "model-1"}, %{name: "model-2"}] = ModelKeys.run_keys(run)
 
       # A key of another secret is not a key of the run, nor are the keys of a run with
-      # none, of a provider of another secret, or with no provider.
+      # none, of a provider of another secret, or whose provider's row is gone.
       {other, other_values} = provider!(ctx.scope, ["spare"])
 
-      assert ModelKeys.run_keys(%{
-               run
-               | model_keys: [%{"id" => other_values["spare"].id, "name" => "model-1"}]
-             }) == []
+      replace_keys!(run, [
+        %{provider: ctx.provider, secret_value_id: other_values["spare"].id, name: "model-1"}
+      ])
 
-      assert ModelKeys.run_keys(%{run | model_keys: []}) == []
+      assert ModelKeys.run_keys(run) == []
 
-      assert ModelKeys.run_keys(%{run | provider_connection_id: other.id}) == []
-      assert ModelKeys.run_keys(%{run | provider_api: nil}) == []
+      replace_keys!(run, [])
+      assert ModelKeys.run_keys(run) == []
+
+      main = ctx.values["main"].id
+
+      replace_keys!(run, [
+        %{provider: ctx.provider, connection_id: other.id, secret_value_id: main, name: "model-1"}
+      ])
+
+      assert ModelKeys.run_keys(run) == []
+
+      replace_keys!(run, [
+        %{provider: ctx.provider, connection_id: nil, secret_value_id: main, name: "model-1"}
+      ])
+
+      assert ModelKeys.run_keys(run) == []
       assert ModelKeys.run_keys(%Run{}) == []
     end
 
     test "are none where model keys do not apply", ctx do
-      # The provider was added with every feature on; the instance runs without
-      # `factory` and `secrets` from here, until the test ends.
+      # The provider was added, and the run claimed, with every feature on; the instance
+      # runs without `factory` and `secrets` from here, until the test ends. A run that
+      # kept no features follows the instance's.
+      run = %{keys_run(ctx, ctx.values["main"]) | features: nil}
       Apiary.DataCase.setup_features(%{with_features: [:observability, :security]})
-
-      run = %Run{
-        provider_api: %{"format" => "anthropic-messages"},
-        provider_connection_id: ctx.provider.id,
-        provider_secret_id: ctx.provider.secret_id,
-        model_keys: [%{"id" => ctx.values["main"].id, "name" => "model-1"}]
-      }
 
       assert ModelKeys.run_keys(run) == []
 
@@ -360,7 +377,8 @@ defmodule Apiary.ModelKeysTest do
       ) == true
     end
 
-    test "have their resets, schedule, cooldown, Pause for and whether they are named", ctx do
+    test "have their resets, schedule, cooldown, Pause for and whether they are the default",
+         ctx do
       now = ~U[2026-11-10 12:00:00.000000Z]
       main = ctx.values["main"]
       spare = ctx.values["spare"]
@@ -382,11 +400,10 @@ defmodule Apiary.ModelKeysTest do
           pause_seconds: 120
         })
 
-      keys = ctx.provider |> ModelKeys.claim_keys("spare", now) |> Map.new(&{&1.value_id, &1})
+      keys = ctx.provider |> ModelKeys.claim_keys(now) |> Map.new(&{&1.value_id, &1})
 
       assert %{
                id: main_id,
-               named: false,
                default: true,
                resets_at: ~U[2026-11-10 14:00:00.000000Z],
                schedule_resets_at: nil,
@@ -396,9 +413,9 @@ defmodule Apiary.ModelKeysTest do
              } = keys["main"]
 
       assert main_id == main.id
+      refute Map.has_key?(keys["main"], :named)
 
       assert %{
-               named: true,
                default: false,
                resets_at: ~U[2026-11-10 13:00:00.000000Z],
                schedule_resets_at: ~U[2026-11-16 09:00:00.000000Z],
@@ -729,7 +746,7 @@ defmodule Apiary.ModelKeysTest do
       assert Order.cooling?(claim_key(ctx, "main", before), before)
       assert ModelKeys.cooldown_counts([provider], before) == %{provider.id => 2}
       assert ModelKeys.cooling_until([provider.id], before) == until
-      refute ModelKeys.claim_keys(provider, nil, before) |> Order.start(before)
+      refute ModelKeys.claim_keys(provider, before) |> Order.start(before)
 
       assert {:cooldown, _words, _source} =
                ApiaryWeb.ModelKeyComponents.state(states.(before), before)
@@ -738,7 +755,7 @@ defmodule Apiary.ModelKeysTest do
       refute Order.cooling?(claim_key(ctx, "main", until), until)
       assert ModelKeys.cooldown_counts([provider], until) == %{provider.id => 0}
       assert ModelKeys.cooling_until([provider.id], until) == nil
-      assert ModelKeys.claim_keys(provider, nil, until) |> Order.start(until)
+      assert ModelKeys.claim_keys(provider, until) |> Order.start(until)
       assert {:available, _segments} = ApiaryWeb.ModelKeyComponents.state(states.(until), until)
     end
 
@@ -770,7 +787,7 @@ defmodule Apiary.ModelKeysTest do
       assert counts == %{provider.id => 1, other.id => 1}
 
       for p <- [provider, other] do
-        cooling = p |> ModelKeys.claim_keys(nil, at) |> Enum.count(&Order.cooling?(&1, at))
+        cooling = p |> ModelKeys.claim_keys(at) |> Enum.count(&Order.cooling?(&1, at))
         assert counts[p.id] == cooling
       end
 

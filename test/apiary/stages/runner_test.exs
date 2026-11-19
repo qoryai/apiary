@@ -97,35 +97,6 @@ defmodule Apiary.Stages.RunnerTest do
       assert %{state: :at_gate, actions: []} = outcome
     end
 
-    test "a person's version runs the checks again: gate none passes once the outputs exist" do
-      seq = stage([], gate: @none)
-      missing = %{failed_checks: ["acceptance-criteria", "mockup"]}
-
-      assert %{state: :at_gate, actions: []} =
-               Runner.step(seq, pos(0, nil, 1), :version_added, missing)
-
-      assert %{state: :at_gate, actions: []} =
-               Runner.step(seq, pos(0, nil, 1), :version_added, %{failed_checks: ["mockup"]})
-
-      assert %{state: :done, position: pos(0, nil, 1), actions: [:approve, :advance]} ==
-               Runner.step(seq, pos(0, nil, 1), :version_added, %{})
-    end
-
-    test "a person's version keeps a person gate waiting, with or without the outputs" do
-      assert %{state: :at_gate, actions: []} =
-               Runner.step(stage([]), pos(0, nil, 1), :version_added, %{failed_checks: ["x"]})
-
-      assert %{state: :at_gate, actions: []} =
-               Runner.step(stage([]), pos(0, nil, 1), :version_added, %{})
-    end
-
-    test "a version at the gate of a stage with workflows escalates nothing" do
-      seq = stage([wf("a")], gate: @none)
-
-      assert %{state: :at_gate, position: pos(1, nil, 1), actions: []} ==
-               Runner.step(seq, pos(1, nil, 1), :version_added, %{failed_checks: ["x"]})
-    end
-
     test "request changes goes back to the gate while an output is missing" do
       assert %{state: :at_gate, actions: []} =
                Runner.step(stage([]), pos(0, nil, 1), :request_changes, %{failed_checks: ["x"]})
@@ -940,7 +911,7 @@ defmodule Apiary.Stages.RunnerTest do
     test "a loop passed over whole is passed over once: a failed check uses no round and escalates check_failed" do
       seq = stage([wf("verify-a-ticket"), loop([wf("capture-demos", @demos)], 2)])
       capture = skip("capture-demos", 1, 0, 1)
-      facts = %{counted: [], failed_checks: ["explainer"]}
+      facts = %{counted: [], failed_checks: ["walkthrough"]}
 
       outcome = Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, facts)
 
@@ -992,7 +963,7 @@ defmodule Apiary.Stages.RunnerTest do
 
     defp round_limit?(_outcome), do: false
 
-    @failing %{counted: [], failed_checks: ["explainer"]}
+    @failing %{counted: [], failed_checks: ["walkthrough"]}
 
     test "a loop passed over after a loop keeps that loop's round: a failing check ends in round_limit after round 3" do
       seq = stage([loop([wf("implement")], 3), loop([wf("capture-demos", @demos)])])
@@ -1045,7 +1016,7 @@ defmodule Apiary.Stages.RunnerTest do
       assert Runner.required?(output, %{counted: ["demo-scenarios"]})
       assert Runner.required?(%{"type" => "verification", "required" => true}, %{counted: []})
 
-      refute Runner.required?(%{"type" => "explainer", "required" => false}, %{
+      refute Runner.required?(%{"type" => "walkthrough", "required" => false}, %{
                counted: ["demo-scenarios"]
              })
     end

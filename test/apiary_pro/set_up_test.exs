@@ -58,7 +58,7 @@ defmodule ApiaryPro.SetUpTest do
       assert ApiaryPro.SetUp.steps(nil, list) == list
     end
 
-    @tag with_features: Features.all() -- [:factory, :workflow_model]
+    @tag with_features: Features.closed(Features.all() -- [:factory, :workflow_model])
     test "lists Your account alone without the factory feature too" do
       assert labels(steps(nil, :account)) == ["Your account"]
     end

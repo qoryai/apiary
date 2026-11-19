@@ -12,12 +12,21 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
   import Apiary.AccessKeysFixtures
   import Apiary.ContractFixtures
   import Apiary.DispatchedRunsFixtures
+  import Apiary.ModelKeysFixtures, only: [stored_keys: 1]
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.SealedRunsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{AccessKeys, Connections, Dispatches, ModelChoices, Repo, WorkCredentialStub}
+  alias Apiary.{
+    AccessKeys,
+    Connections,
+    Dispatches,
+    ModelChoicesFixtures,
+    Repo,
+    WorkCredentialStub
+  }
+
   alias Apiary.Audit.Entry
   alias Apiary.Runs.{Attach, Registration, Run, Sender}
   alias ApiaryWeb.Contract.SignedRequest
@@ -176,12 +185,14 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
 
       for {scope, provider} <- [{ctx.scope, ctx.provider}, {ctx.other, theirs}] do
         {:ok, _choice} =
-          ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+          ModelChoicesFixtures.put_choice(scope, :workspace, %{
+            provider: provider.public_id
+          })
 
         {{:ok, handed}, _queued} = hand_over(scope)
         run = attach!(gateway_key, handed)
         assert run.organisation_id == scope.organisation.id
-        assert run.provider_chain == "organisation"
+        assert [%{chain: "organisation"}] = stored_keys(run)
 
         conn = post_secrets(gateway_key, run, digest(gateway_key, run), provider)
         assert conn.status == 200
@@ -203,7 +214,9 @@ defmodule ApiaryWeb.Contract.SecretsAcrossTest do
       gateway_key = instance_gateway()
 
       {:ok, _choice} =
-        ModelChoices.put_choice(ctx.scope, :workspace, %{provider: ctx.provider.public_id})
+        ModelChoicesFixtures.put_choice(ctx.scope, :workspace, %{
+          provider: ctx.provider.public_id
+        })
 
       %{access_key: pool_key, pair: pair} =
         installed_key_fixture(instance_pool_fixture(), allow_secrets: true)

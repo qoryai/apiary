@@ -62,7 +62,9 @@ defmodule Apiary.ModelChoicesRuntimeTest do
   test "a choice that names no runtime resolves to the list's only runtime", ctx do
     %{scope: scope, provider: provider, release: release} = ctx
 
-    {:ok, choice} = ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+    {:ok, choice} =
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{provider: provider.public_id})
+
     assert choice.runtime == nil
     assert ModelChoices.default_runtime() == release
 
@@ -79,7 +81,7 @@ defmodule Apiary.ModelChoicesRuntimeTest do
 
     for place <- [:organisation, :workspace, {:workspace, "hello"}, target, {target, "hello"}] do
       {:ok, choice} =
-        ModelChoices.put_choice(scope, place, %{
+        Apiary.ModelChoicesFixtures.put_choice(scope, place, %{
           provider: provider.public_id,
           runtime: second.name
         })
@@ -91,7 +93,7 @@ defmodule Apiary.ModelChoicesRuntimeTest do
     # The target's choice with the workflow comes first; set back to the release's runtime,
     # it resolves to that one.
     {:ok, _choice} =
-      ModelChoices.put_choice(scope, {target, "hello"}, %{
+      Apiary.ModelChoicesFixtures.put_choice(scope, {target, "hello"}, %{
         provider: provider.public_id,
         runtime: release.name
       })
@@ -112,7 +114,7 @@ defmodule Apiary.ModelChoicesRuntimeTest do
 
     assert %{runtime: [message]} =
              errors(
-               ModelChoices.put_choice(scope, :workspace, %{
+               Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
                  provider: provider.public_id,
                  runtime: name
                })
@@ -124,7 +126,7 @@ defmodule Apiary.ModelChoicesRuntimeTest do
   test "a runtime needs a provider", %{scope: scope, release: release} do
     assert %{provider: ["can't be blank"]} =
              errors(
-               ModelChoices.put_choice(scope, :workspace, %{
+               Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
                  runtime: release.name,
                  tiers: %{"balanced" => "claude-haiku-5-5"}
                })
@@ -138,7 +140,7 @@ defmodule Apiary.ModelChoicesRuntimeTest do
 
     assert %{provider: [message]} =
              errors(
-               ModelChoices.put_choice(scope, :workspace, %{
+               Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
                  provider: provider.public_id,
                  runtime: unserved.name
                })
@@ -157,7 +159,7 @@ defmodule Apiary.ModelChoicesRuntimeTest do
     place = handover_place_fixture(scope, allow_secrets: true)
 
     {:ok, _choice} =
-      ModelChoices.put_choice(scope, :workspace, %{
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
         provider: provider.public_id,
         runtime: second.name,
         model: "claude-sonnet-5-5"
@@ -166,7 +168,7 @@ defmodule Apiary.ModelChoicesRuntimeTest do
     assert claim!(scope, place)["runtime"] == second.name
 
     {:ok, _choice} =
-      ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{provider: provider.public_id})
 
     assert claim!(scope, place)["runtime"] == release.name
   end

@@ -131,14 +131,12 @@ Returns `200` with the work item snapshot:
 ```
 
 - `inputs` contains each input of the current stage with the version that the gate of
-  the stage that made it approved, or a version a person added; `version` is null when
-  there is none. A person's change to an approved output comes first. A change is a
-  version that has a `decision` (`POST artifacts`) or that a person uploaded, in any
-  stage, that no approval lists, and whose number is higher than that of every version
-  of its artifact that an approval lists. A withdrawal, a version of a withdrawn name and
-  a version by a run that a member cancelled are never a change. A person's version of the
-  type in `submit.type` of the work item's process version is not a change: no approval
-  lists it, `outputs` leaves it out, and runs read the run's version. Each name's change is
+  the stage that made it approved; `version` is null when there is none. A person's
+  change to an approved output comes first. A change is a version that has a `decision`
+  (`POST artifacts`), in any stage, that no approval lists, and whose number is higher
+  than that of every version of its artifact that an approval lists. A withdrawal, a
+  version of a withdrawn name and a version by a run that a member cancelled are never a
+  change. Each name's change is
   its highest-numbered one, and the input is the newest of those by time. Every later run
   reads that version in place of the approved one, until an approval lists it. Where an
   approval lists several versions of one name, the input is the highest-numbered one.
@@ -159,7 +157,7 @@ Returns `200` with the work item snapshot:
   a stage after it, and only for the take in of the move. A stage that the work item left
   twice counts by its newer move. An entry is left out when an input above it already has
   that version. The key `from` is present on these entries, and no approval lists such
-  a version, unless a person made it: that is a change.
+  a version, unless it has a `decision`: then it is a change.
 - After a run of a stage returns the work item to an earlier stage (the `return` key of a
   workflow entry), `inputs` ends with the newest `verdict` and then the newest
   `verification` made in the stage that returned it, each as
@@ -171,8 +169,7 @@ Returns `200` with the work item snapshot:
   and a decision in another stage end nothing. A later return lists the newer versions. No
   approval lists them, and `notes` does not.
 - `outputs` contains each output of the current stage with the version its gate shows
-  and its check: `passed`, `missing` or `not_checked`. For the type in `submit.type`,
-  only a run's version passes the check. The version is the newest one
+  and its check: `passed`, `missing` or `not_checked`. The version is the newest one
   made in the stage, or a higher-numbered version of that artifact that a person's
   approval lists or that is a change, which every later run reads, also after a move
   back to the stage.
@@ -275,9 +272,6 @@ none; `newest_version` is the number of the newest version, leaving out versions
 run a member cancelled, and null when a run a member cancelled wrote every version.
 `changed_after_approval` is true when that newest version is
 newer than the approved one and was made in a stage other than the work item's stage.
-For the type in `submit.type` of the work item's process version, `changed_after_approval`
-compares the newest version a run wrote in place of `newest_version`, as a person's
-version of that type is not a change.
 A version
 written by a run has `"writer": {"kind": "run", "run_id": "..."}`, with the `run_id` of
 the answer to the redemption of the run code; a version written
@@ -348,7 +342,9 @@ version cannot be pushed through the run API, whatever the type's size limit:
 - `name`: optional, the same form, `main` by default. Several artifacts of one type
   have different names, such as screenshots of two screens. `questions` and
   `review-comments` take only `main`: another name is `400` `invalid_request`, with
-  `name` in `names`.
+  `name` in `names`. `acceptance-criteria` takes only `main` too, because a work item has
+  one set of acceptance criteria: another name is `422` `invalid_artifact`, with `name` in
+  `names`, after the base64 check and before the format check.
 - `note`: optional, at most 4000 code points, with no control character but a tab or a
   line break, no format character but U+200C and U+200D, and no line or paragraph
   separator.
@@ -385,24 +381,36 @@ Checks, in order, after the checks of every request:
 4. Files larger together than the type's size limit, which bounds all files of one
    version: `422` `too_large`.
 5. A content that is not strict base64: `400` `invalid_request`.
-6. Files that do not match the type's format: `422` `invalid_artifact`, with the file
-   in `names`, such as `files[0]`, or `files` for a video type's version without a video
-   file and a `proposal` version without exactly one Markdown file. A version of the type
+6. A version of `acceptance-criteria` under a name other than `main` is `422`
+   `invalid_artifact`, with `name` in `names`, before its files are checked. Files that
+   do not match the type's format: `422` `invalid_artifact`, with the file in `names`,
+   such as `files[0]`, or `files` for a video type's version without a video file and a
+   `proposal` version without exactly one Markdown file. A version of the type
    `verdict` is checked against the type's JSON Schema, so its `verdict` is `passed`,
    `changes-requested` or `escalate`. A JSON file of a standard type, such as `questions`,
    `review-comments` or `verdict`, has each key once in each object: a key that comes
    twice is refused at the object's place, such as "at #/questions/0, the object has the
    key state twice", before the schema check. A question in `questions` has 0 to 4
    `options`, and at most one option has `recommended` true: a fifth option is refused
-   as "at #/questions/0/options, value should have at most 4 items, got 5". A question
-   may have a `criterion`, the id of the acceptance criterion it is about: `ac-` and a
-   number from 1 to 9999 with no leading zero, such as `ac-3`. Qory Apiary stores it as
-   the run pushed it. Another value, such as `AC-3`, is refused at
-   `#/questions/0/criterion`. An option of a question with a `criterion` may have a
-   `proposal`, the new wording of that criterion that the run proposes, 1 to 2,000
-   characters with line breaks allowed; the page shows it in a field that a member may
-   edit before answering. For a `proposal` on a question with no `criterion`, the push
-   fails with `422` `invalid_artifact`.
+   as "at #/questions/0/options, value should have at most 4 items, got 5". Each
+   question has an `about`, what it is about: `{"work_item": true}` for the work item
+   itself, or one output of the work item, `{"type": …, "name": …}`, with an `item`, 1 to
+   32 characters on one line, where the question is about one entry of that output. For
+   the type `acceptance-criteria`, the `item` is a criterion id: `ac-` and a number from
+   1 to 9999 with no leading zero, such as `ac-3`; another value, such as `AC-3`, is
+   refused as "at #/questions/0/about/item, value does not conform to pattern
+   /^ac-[1-9][0-9]{0,3}\z/". Qory Apiary stores `about` as the run pushed
+   it. An option of a question whose `about` has an `item` may have a `proposal`, the
+   new wording of that entry that the run proposes, 1 to 2,000 characters with line
+   breaks allowed; the page shows it in a field that a member may edit before answering.
+   For a `proposal` on a question whose `about` has no `item`, the push fails with `422`
+   `invalid_artifact`. A version of `acceptance-criteria` or `verification` is one JSON
+   file, checked against qory's acceptance criteria or verification format
+   (`contracts/harness/v1/acceptance-criteria.schema.json` and
+   `verification.schema.json`, copied to `priv/schemas/artifacts/`); Qory Apiary reads
+   no Markdown of either type. A criterion whose id an earlier criterion has is refused
+   at its id, the fix first: "at #/criteria/2/id, give criterion 3 an id that no earlier
+   criterion has: ac-1 is taken".
 
    A version of `proposal` has at most 10 files and 5 MiB (5242880 bytes) together:
 
@@ -532,12 +540,20 @@ Checks, in order, after the checks of every request:
    `asked` and `follows` of each question, keeps the questions of the newest version
    first, in the same order, and adds new questions after them, adds no `answer` and
    changes none, keeps each `history`, keeps `question`, `context`, `options` and
-   `criterion` of each question that stays `answered`, set or absent, each option's
+   `about` of each question that stays `answered`, set or absent, each option's
    `recommended` included, moves the answer of a question it reopens unchanged to the
    end of its `history` with `reopened.run` set to its `run.number`, and adds each
    question with `asked.run` set to its `run.number` and with `follows`, if any, set to
    ids of questions before it in the version; an absent `follows` and an empty one are
-   the same. The run may add, change or drop the `criterion` of an open question.
+   the same. The run may change the `about` of an open question.
+
+   The `about` of each question that the version adds, or whose `about` it changes, is
+   the work item, or an output of the work item: an artifact of that `type` and `name`
+   whose newest version is not a withdrawal. Its `item`, for the type
+   `acceptance-criteria`, is the id of a criterion in any version of that artifact, a
+   criterion that a later version removes or leaves out included. Qory Apiary checks no
+   `item` of another type. A question that keeps its
+   `about` is not checked again.
 
    The `decision` rules:
 
@@ -553,7 +569,7 @@ Checks, in order, after the checks of every request:
      to none of them.
    - The run keeps `question` and `options` of each question that has a `decision`, in
      every state, each option's `recommended` included, and its `context` and
-     `criterion` while it stays `decided` or `answered`.
+     `about` while it stays `decided` or `answered`.
 
    In `review-comments`, the run keeps every review comment and every earlier reply
    unchanged, adds no review comment, and adds at most one reply to an open review
@@ -613,8 +629,7 @@ Checks, in order, after the checks of every request:
 5. Under the work item's lock, with the check of a run that ended, by the newest version
    of the name, leaving out versions by a run a member cancelled: one that a member
    approved at a gate, `422` `type_not_withdrawable`, checked before the rest; none, `409`
-   `no_version`; a withdrawal, `409` `already_withdrawn`; a version a person uploaded,
-   `409` `person_version`. A run withdraws only a name whose newest version a run wrote.
+   `no_version`; a withdrawal, `409` `already_withdrawn`.
 6. A `decision`, as check 8 of a push: `422` `unknown_decision`.
 
 No version is stored for a refused withdrawal.
@@ -805,6 +820,8 @@ of the run contract. A next session of the same stage:
 
 ```json
 {"next": "session", "session": 2, "workflow": "write-acceptance-checks",
+ "model_choice": {"runtime": "claude", "model": "claude-sonnet-5-5", "effort": "high",
+                  "provider_models": [{"id": "claude-sonnet-5-5", "effort": ["low", "medium", "high"]}]},
  "time_limit_minutes": 180, "full_suite": false, "inputs": {"version": 1, "...": "..."}}
 ```
 
@@ -813,8 +830,44 @@ of the run contract. A next session of the same stage:
 - `workflow`, `time_limit_minutes` and `full_suite`: the entry's, as the claim kept them,
   so a time limit saved after the claim changes nothing for the run.
 - `inputs`: the input of the session, in the shape of the documents' `inputs`.
-- `model_choice` and `model_credential` are left out: every session uses the run's model
-  choice and key.
+- `model_choice`: the runtime and model of the session's workflow, as `runtime`, `model`,
+  `effort`, `provider_models` and `tiers` of the documents' `run_settings`. Every
+  `model_choice` has `runtime`: the session runs on the runtime of its workflow, or on the
+  run's runtime where `model_choice` is the run's `run_settings`. The claim
+  resolves the model choices for each workflow of the stage in the same order as for the
+  run: a locked choice of the workspace, the workflow's choice at the run's target, the
+  target's choice, the workflow's choice at the workspace, the workspace's (Workspace
+  settings › Model), and the organisation's default. The claim keeps the result, so a
+  model choice saved after the claim changes nothing for the run.
+- `model_choice` has the choice's model on the choice's provider where that provider has a
+  key out of cooldown at the claim; else the model of the choice's first fallback that
+  has one; else the choice's model on its provider, whose keys are all in cooldown. A
+  choice on the provider of the run's start key whose runtime uses the same API of that
+  provider as the run joins the group of the run's start key.
+- `model_choice` is the run's `run_settings` where the choice's runtime or model is no
+  longer valid, or its runtime is no longer in the catalogue. A choice whose provider
+  was removed, or no longer fits the catalogue, ends the claim `provider_gone`.
+- `model_choice` has the catalogue's default runtime alone where the workflow resolves to
+  no model choice at any level: the session joins the group of the run's start key, or,
+  in a run with no start key, runs on the machine's local model provider credential, and
+  uses the default model of that runtime.
+- Where a session's runtime uses another API of a provider that an earlier session of the
+  run uses, the claim ends the run before it starts, with the end cause
+  `session_key_missing`: one run uses one API of each provider. The claim ends the run so
+  too where the session's provider has no key, and no provider of its later steps (the
+  default step under a workflow's override, then the fallbacks) has a key. Where those
+  providers' keys are all in cooldown, the claim leaves the run waiting for them, as for
+  a run whose keys are all in cooldown. A run whose first session runs on the machine's
+  local model provider credential, as its workflow resolves to no model choice, gets no
+  key: its claim ends it `session_key_missing` where a later session runs on a model
+  provider.
+- `model_credential`, for a session on a key of a provider other than the start key's, is
+  the credential name of the key the session starts on: that provider's first key out of
+  cooldown, else its first key. The claim picks at most 6 keys in this order: the start
+  key's provider's keys, at most 6 less the number of other providers; then one key of
+  each other provider, in session order; then the other providers' remaining keys;
+  `credentials` lists them provider by provider, the start key's provider first. Where
+  `model_credential` is left out, the session joins the group of the run's start key.
 
 Or the end of the run, where the stage runs no further workflow in this run: an
 escalation, open questions, the gate, or the next stage, whose run is queued as any run:
@@ -885,7 +938,6 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 | `409` | `inputs_invalid` | | A ticket value that breaks Explore's input rules |
 | `409` | `no_version` | `type`, `message` | A withdrawal of a name that has no version outside cancelled runs |
 | `409` | `already_withdrawn` | `type`, `message` | A withdrawal of a name whose newest version is a withdrawal |
-| `409` | `person_version` | `type`, `message` | A withdrawal of a name whose newest version a person uploaded |
 | `410` | `ticket_gone` | | The work item's ticket is no longer kept |
 | `413` | `payload_too_large` | | A body over its size |
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type, or hides the standard type |
@@ -894,7 +946,7 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 | `422` | `type_not_withdrawable` | `type`, `message` | A withdrawal of `questions`, `review-comments`, `verdict` or `proposal`, of a name of a type with `withdrawable: false`, of a name of the type in `submit.type` of the run's process version or the work item's, or of a name whose newest version a member approved at a gate |
 | `422` | `withdrawal_with_files` | `type`, `message` | A withdrawal with one file or more |
 | `422` | `unknown_decision` | `message` | A push's `decision` is not the id of a person's note on the run's work item |
-| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, a verdict's `answer` point is about a question that is not open, or a verdict's `track.id` is a track the gate of the run's stage does not offer (`names` is `["track"]`) |
+| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, a verdict's `answer` point is about a question that is not open, a verdict's `track.id` is a track the gate of the run's stage does not offer (`names` is `["track"]`), or a version of `acceptance-criteria` has a name other than `main` (`names` is `["name"]`) |
 | `503` | `unavailable` | | The request could not be completed, such as a newest version of `questions` or `review-comments` that cannot be read; try again |
 
 The messages:
@@ -926,8 +978,6 @@ The messages:
   version outside cancelled runs."
 - `already_withdrawn`: "Leave demo-script/scenario-2 as it is. Its newest version, v3, is
   already a withdrawal."
-- `person_version`: "Leave demo-script/scenario-2 to a member. Its newest version, v2, is
-  a version by dana, and a run withdraws only a name whose newest version a run wrote."
 - `type_not_withdrawable`: "Push a new version of questions instead. Qory Apiary reads
   questions, review-comments, verdict and proposal itself, so a run cannot withdraw
   them."
@@ -953,7 +1003,7 @@ The messages:
     WebP or SVG file." For a document type, the part after the colon is "a document is a
     Markdown file of UTF-8 text"; for a video type, "a file is an MP4 or WebM video, or a
     WebVTT file (.vtt)"; for a structured type, "the file is one JSON document".
-  - "Fix notes.txt to match the format of explainer: the filename of a document ends in
+  - "Fix notes.txt to match the format of walkthrough: the filename of a document ends in
     .md."
   - "Fix verdict.json to match the format of verdict: at #/verdict, value must be one of
     the enum values: "passed", "changes-requested" or "escalate"." For a file that fails
@@ -1004,6 +1054,10 @@ The messages:
     of Shape offers no track." A stage the process version does not have reads "the run's
     stage" as its name. The check is the same for `POST verdict` and for `POST artifacts` with the type
     `verdict`.
+  - For a version of `acceptance-criteria` under a name other than `main`, `names` is
+    `["name"]`, and the message starts "Name the acceptance criteria main: a work item
+    has one set of acceptance criteria, and this push has the name" and ends with the
+    pushed name, such as "… this push has the name other."
   - For a version of `questions` or `review-comments` that changes what members wrote,
     one message per rule, such as "Leave each answer in questions.json as the newest
     version of questions has it: members write the answers." or "Close each review
@@ -1027,5 +1081,13 @@ The messages:
     - The question or options of a question with a decision changed, or its context
       while it stays decided or answered: "Leave question and options of each question
       with a decision in questions.json as the newest version of questions has them, and
-      its context while it stays decided or answered: to change them, withdraw the
-      question and add a new one."
+      its context and about while it stays decided or answered: to change them,
+      withdraw the question and add a new one."
+  - For a version of `questions` whose `about` points at an output or an item that the
+    work item does not have, the fix first:
+    - No such output: "Set about of question q4 in questions.json to an output of this
+      work item, or to {"work_item": true}: the work item has no screenshot named
+      scenario-2."
+    - No such criterion in any version of the acceptance criteria, a removed one
+      counting: "Set about.item of question q4 in questions.json to a criterion id of
+      acceptance-criteria named main: no version of it has ac-9."

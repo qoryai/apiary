@@ -1,6 +1,6 @@
 defmodule Apiary.Stages.SharedRunTest do
   # The entries of a stage with `shared_run: true` run as sessions of one run: what the
-  # claim keeps (`Apiary.Stages.claim_sessions!/2`), the step on each session's end
+  # claim keeps (`Apiary.Stages.claim_sessions!/3`), the step on each session's end
   # (`Apiary.Stages.next_session/2`), the sessions it records, and the run's end at the
   # first outcome that queues no workflow of the stage.
   # Not async: the artifact store is the application's setting.
@@ -530,7 +530,7 @@ defmodule Apiary.Stages.SharedRunTest do
           run
           |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended)
           |> Repo.update!()
-          |> Apiary.Dispatches.requeue_for_pause(nil)
+          |> Apiary.Dispatches.requeue_for_pause(nil, nil)
         end)
 
       assert %DispatchRun{
@@ -572,8 +572,9 @@ defmodule Apiary.Stages.SharedRunTest do
     # The registered run of `run`, which ran a session for each of `ran`, each with a
     # transcript chunk unless it is one of `silent`, and paused at its model keys' limit in
     # the last of them; then its run of the queue ended and continued, as
-    # `Apiary.Dispatches.RunEnd` does. The registered run and the continuation.
-    defp paused_in!(scope, run, ran, silent \\ []) do
+    # `Apiary.Dispatches.RunEnd` does. Each session started on its runtime in `runtimes`,
+    # by session number, else on `claude`. The registered run and the continuation.
+    defp paused_in!(scope, run, ran, silent \\ [], runtimes \\ %{}) do
       registered =
         Apiary.RunEventsFixtures.run_fixture(scope, %{
           dispatch_run_id: run.id,
@@ -603,8 +604,15 @@ defmodule Apiary.Stages.SharedRunTest do
           {10 + session, "session.exited", data}
         end
 
+      # The runtime of the last session is the paused run's (`runs.runtime`).
+      starts =
+        for session <- ran do
+          data = %{"session" => session, "runtime" => Map.get(runtimes, session, "claude")}
+          {session, "session.started", Apiary.RunEventsFixtures.session_started_data(data)}
+        end
+
       exited = %{"state" => "paused", "reason" => "model_key_limit", "exit_code" => 143}
-      Apiary.RunEventsFixtures.events_fixture(registered, chunks ++ exits)
+      Apiary.RunEventsFixtures.events_fixture(registered, starts ++ chunks ++ exits)
       Apiary.RunEventsFixtures.event_fixture(registered, 20, "run.exited", exited)
       assert {:ok, %Run{state: "paused"}} = Apiary.Runs.Projector.project(registered)
 
@@ -613,7 +621,7 @@ defmodule Apiary.Stages.SharedRunTest do
           run
           |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended)
           |> Repo.update!()
-          |> Apiary.Dispatches.requeue_for_pause(nil)
+          |> Apiary.Dispatches.requeue_for_pause(nil, nil)
         end)
 
       {Repo.get!(Run, registered.id), continuation}
@@ -628,22 +636,50 @@ defmodule Apiary.Stages.SharedRunTest do
       :ok = verdict!(run, "passed")
       assert {:session, %{session: 2, workflow: "write-acceptance-checks"}} = report(run, 1)
 
-      {paused, continuation} = paused_in!(scope, run, [1, 2])
+      # Session 1 ran on Claude Code, and session 2 on Codex.
+      {paused, continuation} =
+        paused_in!(scope, run, [1, 2], [], %{1 => "claude", 2 => "codex"})
+
       assert paused.paused_session == 2
+      assert paused.runtime == "codex"
       assert %{session_id: "a1b2c3d4"} = Apiary.Runs.Transcript.last(paused.id)
 
-      # The continuation starts at session 2's entry, and resumes session 2's transcript.
+      # The continuation starts at session 2's entry, and resumes session 2's transcript on
+      # session 2's runtime alone.
       assert %DispatchRun{workflow: "write-acceptance-checks", stage_entry: 1} = continuation
 
       assert %{"session_id" => "e5f6a7b8", "path" => path} =
-               Apiary.Runs.Transcript.resume_at_claim(continuation)
+               Apiary.Runs.Transcript.resume_at_claim(continuation, "codex")
 
       assert path == transcript_path(2)
+      assert Apiary.Runs.Transcript.resume_at_claim(continuation, "claude") == nil
 
       walk!(continuation, :read)
 
       assert [%Session{sequence: 1, workflow: "write-acceptance-checks"}] =
                continuation |> claim!() |> sessions()
+    end
+
+    test "in its second session on Claude Code after a first on Codex resumes on Claude Code alone",
+         %{scope: scope} do
+      save!(scope, [
+        build(workflows(~w(plan-the-build write-acceptance-checks implement-changes)))
+      ])
+
+      {_work_item, run} = taken_in!(scope)
+      :ok = verdict!(run, "passed")
+      assert {:session, %{session: 2}} = report(run, 1)
+
+      {paused, continuation} =
+        paused_in!(scope, run, [1, 2], [], %{1 => "codex", 2 => "claude"})
+
+      assert paused.runtime == "claude"
+
+      assert %{"session_id" => "e5f6a7b8", "path" => path} =
+               Apiary.Runs.Transcript.resume_at_claim(continuation, "claude")
+
+      assert path == transcript_path(2)
+      assert Apiary.Runs.Transcript.resume_at_claim(continuation, "codex") == nil
     end
 
     test "in a second session that wrote no transcript starts that session afresh", %{
@@ -663,8 +699,39 @@ defmodule Apiary.Stages.SharedRunTest do
       # Session 1's transcript is there, but the continuation resumes no session: it runs
       # session 2's workflow in a new session.
       assert Apiary.Runs.Transcript.last(paused.id) != nil
-      assert Apiary.Runs.Transcript.resume_at_claim(continuation) == nil
+      assert Apiary.Runs.Transcript.resume_at_claim(continuation, "claude") == nil
       assert %DispatchRun{workflow: "write-acceptance-checks", stage_entry: 1} = continuation
+    end
+
+    test "in its second session, claimed through the handover, stores the resume of that session",
+         %{scope: scope} do
+      save!(scope, [
+        build(workflows(~w(plan-the-build write-acceptance-checks implement-changes)))
+      ])
+
+      {_work_item, run} = taken_in!(scope)
+      :ok = verdict!(run, "passed")
+      assert {:session, %{session: 2}} = report(run, 1)
+
+      {paused, continuation} = paused_in!(scope, run, [1, 2])
+      assert paused.runtime == "claude"
+      walk!(continuation, :read)
+
+      # The claim forms the run settings of session 2's workflow, which has no model
+      # choice: the catalogue's runtime, the runtime session 2 ran on.
+      pool = Apiary.NodesFixtures.pool_fixture(scope)
+      %{access_key: key} = Apiary.AccessKeysFixtures.enrolled_key_fixture(scope, pool)
+
+      %{dispatch_run: claimed, run: registered} =
+        Apiary.DispatchedRunsFixtures.handed_over(scope, key, continuation, %{})
+
+      assert %DispatchRun{workflow: "write-acceptance-checks", stage_entry: 1} = claimed
+      assert registered.run_settings["runtime"] == paused.runtime
+
+      assert %{"run_id" => run_id, "session_id" => "e5f6a7b8", "path" => path} =
+               registered.resume
+
+      assert {run_id, path} == {paused.node_run_id, transcript_path(2)}
     end
   end
 
@@ -762,6 +829,169 @@ defmodule Apiary.Stages.SharedRunTest do
     |> Repo.update!()
 
     run.id |> Apiary.Dispatches.Settle.settle() |> Apiary.Dispatches.broadcast()
+  end
+
+  describe "the sessions a page reads (run_sessions/1)" do
+    test "each session in order, with the verdict it stored and its times", %{scope: scope} do
+      save!(scope, [
+        build(
+          workflows(~w(plan-the-build)) ++ [loop(workflows(~w(implement-changes review-changes)))]
+        )
+      ])
+
+      {_work_item, run} = taken_in!(scope)
+      registered = registered!(scope, run)
+
+      :ok = verdict!(run, "passed")
+      assert {:session, %{workflow: "implement-changes"}} = report(run, 1)
+      assert {:session, %{workflow: "review-changes"}} = report(run, 2)
+      :ok = verdict!(run, "changes-requested")
+      assert {:session, %{session: 4, workflow: "implement-changes"}} = report(run, 3)
+
+      # Session 1's record has its times; the others have none, so their rows' times stand.
+      started = ~U[2026-11-02 09:00:00.000000Z]
+      ended = ~U[2026-11-02 09:10:00.000000Z]
+
+      Repo.insert!(%Apiary.Runs.SessionRecord{
+        organisation_id: run.organisation_id,
+        workspace_id: run.workspace_id,
+        run_id: registered.id,
+        dispatch_run_id: run.id,
+        work_item_id: run.work_item_id,
+        session_number: 1,
+        started_at: started,
+        ended_at: ended
+      })
+
+      assert Stages.run_sessions([]) == %{}
+      assert Stages.run_sessions(["rn_none"]) == %{}
+
+      id = registered.public_id
+      assert %{^id => sessions} = Stages.run_sessions([id])
+      [one, two, three, four] = sessions
+
+      assert %{workflow: "plan-the-build", round: 1, loop_entry: nil, state: "succeeded"} = one
+      assert %{verdict: :passed, started_at: ^started, ended_at: ^ended} = one
+
+      # Qory Apiary's clock stamped the rows: the machine's times are for display only.
+      assert %DateTime{} = one.stamped_from
+      assert %DateTime{} = one.stamped_to
+      refute one.stamped_from == started
+      refute one.stamped_to == ended
+      assert DateTime.compare(one.stamped_from, one.stamped_to) != :gt
+      assert DateTime.compare(one.stamped_to, two.stamped_from) != :gt
+
+      assert %{workflow: "implement-changes", round: 1, loop_entry: 0, verdict: nil} = two
+      assert %DateTime{} = two.ended_at
+      assert %{workflow: "review-changes", round: 1, loop_entry: 1, verdict: :failed} = three
+
+      assert %{workflow: "implement-changes", round: 2, state: nil, ended_at: nil} = four
+      assert %{stamped_to: nil, stamped_from: %DateTime{}} = four
+      assert %{verdict: nil, started_at: %DateTime{}} = four
+    end
+  end
+
+  describe "the runs of a shared stage (shared_sequences/1)" do
+    setup %{scope: scope} do
+      save!(scope, [build(workflows(~w(plan-the-build review-changes)))])
+
+      {_work_item, run} = taken_in!(scope)
+      registered = registered!(scope, run)
+      %{run: run, id: registered.public_id}
+    end
+
+    test "are the runs of a shared stage, each with the sequence of its process version",
+         %{scope: scope, id: id} do
+      first = workflows(~w(plan-the-build review-changes))
+
+      assert Stages.shared_sequences([]) == %{}
+      assert Stages.shared_sequences(["rn_none"]) == %{}
+      assert Stages.shared_sequences([id, "rn_none"]) == %{id => first}
+
+      # A later version of the process with another sequence: a run claimed under it has
+      # that sequence, and the first run keeps the sequence of its version.
+      save!(scope, [build(workflows(~w(plan-the-build)))])
+      {_work_item, run} = taken_in!(scope)
+      second = registered!(scope, run).public_id
+
+      assert Stages.shared_sequences([id, second]) == %{
+               id => first,
+               second => workflows(~w(plan-the-build))
+             }
+    end
+
+    test "give a stage with no sequence an empty one", %{run: run, id: id} do
+      version = Repo.get!(Processes.Version, run.process_version_id)
+
+      stages =
+        for stage <- version.document["stages"],
+            do: if(stage["id"] == run.stage_id, do: Map.delete(stage, "sequence"), else: stage)
+
+      {1, nil} =
+        Repo.update_all(from(v in Processes.Version, where: v.id == ^version.id),
+          set: [document: %{version.document | "stages" => stages}]
+        )
+
+      assert Stages.shared_sequences([id]) == %{id => []}
+    end
+
+    test "leave out a run whose stage its process version does not have", %{run: run, id: id} do
+      assert Map.keys(Stages.shared_sequences([id])) == [id]
+
+      {1, nil} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+          set: [stage_id: "st_zzzzzzzzzz"]
+        )
+
+      assert Stages.shared_sequences([id]) == %{}
+    end
+
+    test "leave out a run with no process version, and read no version for it", %{
+      run: run,
+      id: id
+    } do
+      assert Map.keys(Stages.shared_sequences([id])) == [id]
+
+      {1, nil} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+          set: [process_version_id: nil]
+        )
+
+      queries!()
+
+      assert Stages.shared_sequences([id]) == %{}
+      assert_received {:query, "SELECT" <> _rest = rows}
+      assert rows =~ ~s(FROM "dispatch_runs")
+      refute_received {:query, _query}
+    end
+
+    test "and run_sessions/1 read nothing for no run", %{id: id} do
+      queries!()
+
+      assert Stages.shared_sequences([]) == %{}
+      assert Stages.run_sessions([]) == %{}
+      refute_received {:query, _query}
+
+      assert %{} = Stages.run_sessions([id])
+      assert_received {:query, _query}
+    end
+
+    # Sends the test process each query it runs, as `{:query, sql}`.
+    defp queries! do
+      handler = "shared-run-queries-#{System.unique_integer()}"
+      parent = self()
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, %{query: query}, _config ->
+          if self() == parent, do: send(parent, {:query, query})
+        end,
+        nil
+      )
+
+      ExUnit.Callbacks.on_exit(fn -> :telemetry.detach(handler) end)
+    end
   end
 
   describe "a run that ends with no report of its newest session" do

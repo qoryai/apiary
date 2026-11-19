@@ -186,12 +186,12 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
         %{@structured | "json_schema" => %{"type" => 5}}
       ]
 
-      assert TemplateTypes.check(template(listed, [stage("Answer", ["explainer"], [])])) ==
+      assert TemplateTypes.check(template(listed, [stage("Answer", ["walkthrough"], [])])) ==
                {:error,
                 [
                   {:not_standard, "reply-draft"},
                   {:standard_name, "mockup"},
-                  {:not_listed, "Answer", "explainer"},
+                  {:not_listed, "Answer", "walkthrough"},
                   {:invalid, "customer-facts", :json_schema}
                 ]}
     end
@@ -207,10 +207,10 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
       bad = %{@structured | "json_schema" => %{"type" => 5}}
       listed = [@document, @document, bad]
 
-      assert TemplateTypes.check(template(listed, [stage("Answer", ["explainer"], [])])) ==
+      assert TemplateTypes.check(template(listed, [stage("Answer", ["walkthrough"], [])])) ==
                {:error,
                 [
-                  {:not_listed, "Answer", "explainer"},
+                  {:not_listed, "Answer", "walkthrough"},
                   {:invalid, "reply-draft", :repeated},
                   {:invalid, "customer-facts", :json_schema}
                 ]}
@@ -220,8 +220,10 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
       assert TemplateTypes.check(template(names(["mockup", "mockup", "mockup", "screenshot"]))) ==
                {:error, [{:repeated, "mockup"}]}
 
-      assert TemplateTypes.check(template(names(["mockup", "explainer", "mockup", "explainer"]))) ==
-               {:error, [{:repeated, "mockup"}, {:repeated, "explainer"}]}
+      assert TemplateTypes.check(
+               template(names(["mockup", "walkthrough", "mockup", "walkthrough"]))
+             ) ==
+               {:error, [{:repeated, "mockup"}, {:repeated, "walkthrough"}]}
     end
 
     test "a name of no standard type listed twice is only the refusal of that type" do
@@ -237,10 +239,10 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
         @document
       ]
 
-      assert TemplateTypes.check(template(listed, [stage("Answer", ["explainer"], [])])) ==
+      assert TemplateTypes.check(template(listed, [stage("Answer", ["walkthrough"], [])])) ==
                {:error,
                 [
-                  {:not_listed, "Answer", "explainer"},
+                  {:not_listed, "Answer", "walkthrough"},
                   {:repeated, "mockup"},
                   {:invalid, @document["name"], :repeated}
                 ]}
@@ -340,14 +342,16 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
     end
 
     test "comes after the refusals of the list, and calls a standard name a standard type" do
-      listed = [%{"name" => "reply-draft"}, %{"name" => "explainer"}, @structured]
+      listed = [%{"name" => "reply-draft"}, %{"name" => "walkthrough"}, @structured]
 
-      assert {:error, refusals} = TemplateTypes.check(with_submit(template(listed), "explainer"))
-      assert refusals == [{:not_standard, "reply-draft"}, {:submit, "explainer", :standard}]
+      assert {:error, refusals} =
+               TemplateTypes.check(with_submit(template(listed), "walkthrough"))
 
-      assert TemplateTypes.message({:submit, "explainer", :standard}) ==
+      assert refusals == [{:not_standard, "reply-draft"}, {:submit, "walkthrough", :standard}]
+
+      assert TemplateTypes.message({:submit, "walkthrough", :standard}) ==
                "set submit.type to a structured type of artifact_types: " <>
-                 "explainer is a standard type"
+                 "walkthrough is a standard type"
     end
 
     test "check_submit/1 makes no other refusal of the list" do
@@ -577,10 +581,10 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
     end
 
     test "leaves out of the list the always-on types a template lists", ctx do
-      listed = names(["verdict", "proposal", "questions", "explainer"])
+      listed = names(["verdict", "proposal", "questions", "walkthrough"])
 
       assert {:ok, workspace} = applied(ctx.workspace, template(listed), ctx.scope)
-      assert shown_list(workspace) == ["explainer"]
+      assert shown_list(workspace) == ["walkthrough"]
     end
 
     test "writes an empty list for an empty artifact_types", ctx do
@@ -594,7 +598,7 @@ defmodule Apiary.Artifacts.TemplateTypesTest do
 
       assert shown_list(workspace) == nil
       assert audit_entries(workspace) == []
-      assert length(Artifacts.types(workspace)) == 10
+      assert length(Artifacts.types(workspace)) == 11
     end
 
     test "leaves types/1 with what the template listed and the always-on types", ctx do

@@ -77,10 +77,14 @@ defmodule Apiary.Dispatches.RunEnd do
   # `image_registry_unreachable`, ends as any exit ends it: a build or a new run pulls
   # from the same registry, so nothing is cleared or queued again.
   #
-  # **A pause.** A run that is not a prebuild, whose folded exit paused it at its model
-  # keys' limit (`Apiary.Runs.Run.paused?/1`, the reason `model_key_limit`), ends
-  # `run_ended` as any exit ends it, and then, in the same transaction, the run that
-  # continues it is queued (`Apiary.Dispatches.requeue_for_pause/2`), with the earliest
+  # **A pause.** A run that is not a prebuild, whose folded exit paused it
+  # (`Apiary.Runs.Run.paused?/1`: the reason `model_key_limit`, at its model keys' limit,
+  # or `model_key_switch`), ends `run_ended` as any exit ends it, and then, in the same
+  # transaction, the run that continues it is queued
+  # (`Apiary.Dispatches.requeue_for_pause/3`). After `model_key_switch` the continuation
+  # waits until the end of the paused run's report window, `now` plus
+  # `Apiary.ModelKeys.Report.after_exit_seconds/0`, as the exit has no key and the report
+  # can arrive after it. The continuation is queued with the earliest
   # end of a cooldown of the keys of the provider of the session that paused
   # (`Apiary.Runs.Run.session_provider_ids/2`) kept on it when every one of them is in
   # cooldown then (`Apiary.ModelKeys.cooling_until/2`). The stage runner then reads the
@@ -449,8 +453,9 @@ defmodule Apiary.Dispatches.RunEnd do
   defp paused(_held, %DispatchRun{} = dispatch_run, %Run{} = run, :run_ended, now) do
     if Run.paused?(run) and not Run.cancel_requested?(run) do
       providers = Run.session_provider_ids(run, run.paused_session)
+      paused_until = ModelKeys.cooling_until(providers, now)
 
-      case Dispatches.requeue_for_pause(dispatch_run, ModelKeys.cooling_until(providers, now)) do
+      case Dispatches.requeue_for_pause(dispatch_run, paused_until, report_wait_until(run, now)) do
         {:ok, next} -> [next.workspace_id | Settle.told(next.work_item_id)]
         {:error, _not_requeued} -> []
       end
@@ -460,6 +465,13 @@ defmodule Apiary.Dispatches.RunEnd do
   end
 
   defp paused(_held, _dispatch_run, _run, _cause, _now), do: []
+
+  # The end of the report window of a run that paused with `model_key_switch`; nil for a
+  # pause at the limit.
+  defp report_wait_until(%Run{exit_reason: "model_key_switch"}, now),
+    do: DateTime.add(now, Apiary.ModelKeys.Report.after_exit_seconds(), :second)
+
+  defp report_wait_until(_run, _now), do: nil
 
   # For the run of the queue `dispatch_run_id`, read without a lock, when its registered
   # run's folded exit is `failed` with the reason `image_missing` and it started in the
@@ -950,7 +962,8 @@ defmodule Apiary.Dispatches.RunEnd do
   # The run of the queue ended with `cause`, and `detail` kept on it, its live dispatch
   # with the cause, a stale one not yet ended `run_ended`, and the slot freed once where
   # no machine is left (`Apiary.Dispatches.Slots`). Its workspace's queue changed,
-  # whether or not the slot was freed.
+  # whether or not the slot was freed. Its end may leave its workflow's overrides unused
+  # (`Apiary.Processes.delete_leftovers_after_runs/1`).
   # A cause of a handover that cannot form a run (`Apiary.Dispatches.Handover.unformed/0`)
   # comes with the outcome `error` on a run that is not a prebuild, as at the claim.
   defp end_locked(%DispatchRun{id: id, workspace_id: workspace_id} = run, cause, now, detail) do
@@ -960,6 +973,8 @@ defmodule Apiary.Dispatches.RunEnd do
           [state: :ended, end_cause: cause, end_detail: detail, updated_at: now] ++
             unformed_outcome(run, cause)
       )
+
+    :ok = Apiary.Processes.delete_leftovers_after_runs([id])
 
     {_count, _rows} =
       Repo.update_all(

@@ -496,7 +496,7 @@ defmodule Apiary.Runs.SessionsTest do
       events_fixture(run, events ++ [exit_event])
 
       log =
-        ExUnit.CaptureLog.capture_log(fn -> assert {:ok, run} = Projector.project(run) end)
+        ExUnit.CaptureLog.capture_log(fn -> assert {:ok, _run} = Projector.project(run) end)
 
       # The first write failed and was logged; the end committed; the second write took.
       assert log =~ "session records not written"
@@ -519,7 +519,7 @@ defmodule Apiary.Runs.SessionsTest do
       events_fixture(run, events)
 
       # No exit: the pass does not end the run, and its write is refused and logged.
-      log = ExUnit.CaptureLog.capture_log(fn -> assert {:ok, run} = Projector.project(run) end)
+      log = ExUnit.CaptureLog.capture_log(fn -> assert {:ok, _run} = Projector.project(run) end)
       assert log =~ "session records not written"
       assert records(run) == []
 

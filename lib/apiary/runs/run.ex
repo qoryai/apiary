@@ -175,7 +175,7 @@ defmodule Apiary.Runs.Run do
     field :registration_variables, :map
 
     # The `resume` member of the run configuration of a run of the queue that continues a
-    # paused run (`Apiary.Runs.Transcript.resume_at_claim/1`): `"run_id"`, the paused
+    # paused run (`Apiary.Runs.Transcript.resume_at_claim/2`): `"run_id"`, the paused
     # run's id, `"session_id"` and `"path"` of its transcript, and `"runs"`, the paused
     # runs it continues, oldest first (absent for a run claimed before `"runs"` was
     # kept). Written once with the registration and never changed, so every run
@@ -191,35 +191,24 @@ defmodule Apiary.Runs.Run do
     field :result_pushed, :boolean, virtual: true, default: false
 
     # The run settings Qory wrote for a run of a workspace's queue when it registered it
-    # (`Apiary.Dispatches.RunSettings`), as its documents have them, with no key, and
-    # the model provider the run uses: its row, its keys' secret's row, its keys, its
-    # chain, and the API of the provider the run uses (`provider_api`: `format`,
-    # `endpoint`, `auth` and, when the description lists them, `key_prefixes` and the
-    # limit windows as `use_up_to_windows`). The keys (`model_keys`) are in the order of
-    # the run configuration's `credentials`, at most 6, each a map of `"id"`, the key's
-    # row id (`secret_values.id`), `"name"`, its credential's name, `"start"`, true on the
-    # start key, which a run that kept one key before has not, and what the claim wrote
-    # for the run configuration: `"pause_for_s"`, and where the claim had them,
-    # `"resets_at"`, `"schedule_resets_at"`, `"chosen"`, `"cooldown_until"` and
-    # `"use_up_to_percent"`; never a key value, and no limit windows, which `provider_api`
-    # has once for the run.
+    # (`Apiary.Dispatches.RunSettings`), as its documents have them, with no key, and the
+    # model provider of the run's default model provider credential
+    # (`provider_connection_id`). The keys the claim stored for the run, at most 6, of
+    # one or more providers, are its `model_keys`, rows of `run_model_keys`
+    # (`Apiary.Runs.ModelKey`) in the order of the run configuration's `credentials`.
     # Written once with the registration and never changed; nil for every other run, and
-    # for an explore run with `factory` or `secrets` off. The provider fields are nil
-    # where no provider was chosen, and the two rows become nil should they be deleted.
-    # Not folded: a rebuild keeps them. The secret's row id, the keys and the API are left
-    # out of the struct's inspection.
+    # for an explore run with `factory` or `secrets` off. The provider is nil where no
+    # provider was chosen, and becomes nil should its row be deleted. Not folded: a
+    # rebuild keeps them.
     field :run_settings, :map
     belongs_to :provider_connection, Apiary.Connections.Connection
-    field :provider_secret_id, :binary_id, redact: true
-    belongs_to :provider_secret, Apiary.Secrets.Secret, define_field: false
-    field :model_keys, {:array, :map}, redact: true
-    field :provider_chain, :string
-    field :provider_api, :map, redact: true
+    has_many :model_keys, Apiary.Runs.ModelKey, preload_order: [asc: :position]
 
     # For a run of a stage with `shared_run: true`, the settings of each workflow entry of
-    # the stage as the claim read them (`Apiary.Stages.claim_sessions!/2`): by the entry's
+    # the stage as the claim read them (`Apiary.Stages.claim_sessions!/3`): by the entry's
     # place, `"0"`, or `"2.1"` for an entry of a loop's body, a map of `"workflow"`,
-    # `"time_limit_minutes"` and `"full_suite"`. Written by the claim; nil for every
+    # `"time_limit_minutes"`, `"full_suite"`, `"model_choice"` and `"model_credential"`
+    # (`Apiary.Dispatches.RunSettings.build/2`). Written by the claim; nil for every
     # other run. Not folded: a rebuild keeps it.
     field :session_settings, :map
 
@@ -487,8 +476,9 @@ defmodule Apiary.Runs.Run do
 
   @doc """
   The states of a run that paused: its gateway ended it with the reason
-  `model_key_limit`, as every model key it had was at its limit, and its work goes on in
-  the run that continues it, which the end of the paused run queues. Not a failure, and
+  `model_key_limit`, as every model key it had was at its limit, or `model_key_switch`,
+  as a Codex session's key was out while another key of the run is usable, and its work
+  goes on in the run that continues it, which the end of the paused run queues. Not a failure, and
   never a person's cancel.
   """
   def paused_states, do: ~w(paused)
@@ -529,15 +519,49 @@ defmodule Apiary.Runs.Run do
 
   @doc """
   The ids of the model providers whose keys the session number `session` of `run` runs
-  on: the run's provider (`provider_connection_id`), for every session, because a run
-  has one provider; none for a run with no provider. The end of a paused run, with
-  `session` the session that paused (`paused_session`, nil when it is not known), keeps
-  the earliest end of a cooldown among the keys of these providers alone as
-  `dispatch_runs.paused_until` of the run's run of the queue.
+  on. Session 1 runs on the provider of the run's default model provider credential
+  (`provider_connection_id`). A later session runs on the provider of the run's key whose
+  name is that session's `model_credential` in `session_settings`, else on the default
+  model provider credential's provider. For a nil `session`, not known, every provider of
+  the run's keys (`Apiary.Runs.ModelKey`). None for a run with no key. The end of a
+  paused run, with `session` the session that paused (`paused_session`), keeps the
+  earliest end of a cooldown among the keys of these providers alone as
+  `dispatch_runs.paused_until` of the run's run of the queue, and the run that continues
+  it waits for them. A run whose session 1 runs on the machine's local model provider
+  credential has no default model provider credential, so session 1 has no provider and
+  runs on none. Reads the run's key rows, unless `model_keys` is loaded, and its
+  sessions, unless given as `sessions`, as
+  Apiary.Stages.session_rows_by_dispatch_run/1 reads them.
   """
-  @spec session_provider_ids(t() | map(), pos_integer() | nil) :: [Ecto.UUID.t()]
-  def session_provider_ids(%{provider_connection_id: id}, _session) when is_binary(id), do: [id]
-  def session_provider_ids(_run, _session), do: []
+  @spec session_provider_ids(t() | map(), pos_integer() | nil, list | nil) :: [Ecto.UUID.t()]
+  def session_provider_ids(run, session, sessions \\ nil)
+
+  def session_provider_ids(run, nil, _sessions) do
+    run
+    |> Apiary.Runs.ProviderCredential.rows()
+    |> Enum.map(& &1.connection_id)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+    |> case do
+      [] -> start_provider_ids(run)
+      ids -> ids
+    end
+  end
+
+  def session_provider_ids(run, session, sessions) when is_integer(session) and session > 1 do
+    with name when is_binary(name) <- Apiary.Stages.session_credential(run, session, sessions),
+         %{connection_id: id} when is_binary(id) <-
+           Enum.find(Apiary.Runs.ProviderCredential.rows(run), &(&1.name == name)) do
+      [id]
+    else
+      _start -> start_provider_ids(run)
+    end
+  end
+
+  def session_provider_ids(run, _session, _sessions), do: start_provider_ids(run)
+
+  defp start_provider_ids(%{provider_connection_id: id}) when is_binary(id), do: [id]
+  defp start_provider_ids(_run), do: []
 
   @doc "Whether the run paused (`paused_states/0`)."
   @spec paused?(t() | map()) :: boolean()

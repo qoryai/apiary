@@ -11,6 +11,9 @@
     "url": "https://control.example.com/work-items/wi_8Kx2mQ4vT9",
     "title": "Checkout fails on an empty cart"
   },
+  "run_settings": {
+    "runtime": "claude"
+  },
   "environment_destination": "registry.example.com/environments/0123456789abcdef",
   "inputs": {
     "version": 1,

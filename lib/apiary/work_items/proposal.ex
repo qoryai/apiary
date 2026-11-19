@@ -105,7 +105,8 @@ defmodule Apiary.WorkItems.Proposal do
   ## The questions
 
   # question/1 is one question of a questions document as the pages draw it. An option
-  # with a `proposal`, the criterion's new wording that the run proposes, has it as
+  # with a `proposal`, the new wording of the entry that `about.item` points at, which the
+  # run proposes, has it as
   # `:proposal`; an option with none has no such key.
   @doc false
   @spec question(map | String.t()) :: question

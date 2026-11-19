@@ -738,8 +738,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
            to: to
          )
 
-  # A version a person added to an artifact (`Apiary.Artifacts.push/5`); the entry is the
-  # work item's. An artifact's name is left out where it is the default, `main`.
+  # A version of the questions or the review comments that a member's answer or review
+  # comment wrote (`Apiary.Artifacts.push/5`); the entry is the work item's. An
+  # artifact's name is left out where it is the default, `main`.
   defp said(:"artifact.write", %{"type" => type, "name" => "main", "number" => number}, _actor),
     do: gettext("Added version %{number} of %{type}", number: number, type: type)
 

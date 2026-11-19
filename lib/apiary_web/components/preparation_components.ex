@@ -1710,7 +1710,10 @@ defmodule ApiaryWeb.PreparationComponents do
 
   defp succeeded(finished), do: finished
 
-  defp exit_state(%{state: "paused", reason: "model_key_limit"}), do: "paused"
+  defp exit_state(%{state: "paused", reason: reason})
+       when reason in ["model_key_limit", "model_key_switch"],
+       do: "paused"
+
   # A pause for any other reason, or none, is no end the contract has: failed, as the run
   # reads it (`Apiary.Runs.Fold.exit_state/2`).
   defp exit_state(%{state: "paused"}), do: "failed"

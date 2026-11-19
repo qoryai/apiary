@@ -12,15 +12,11 @@
     "url": "https://control.example.com/work-items/wi_8Kx2mQ4vT9",
     "title": "Checkout fails on an empty cart"
   },
+  "run_settings": {
+    "runtime": "claude"
+  },
   "workflow": "build",
   "harness_hidden": false,
-  "submit_module": {
-    "source": {
-      "git": "https://code.example.com/example-org/forge-module",
-      "ref": "9c1e5b7a3d2f4e6081a2b3c4d5e6f7089a1b2c3d4e5f60718293a4b5c6d7e8f9",
-      "path": "modules/forge-submit"
-    }
-  },
   "submit": {
     "type": "code-change"
   },

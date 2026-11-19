@@ -1923,7 +1923,7 @@ defmodule Apiary.Runs.PreparationTest do
                Preparation.read(ctx.scope, run)
     end
 
-    test "outputs are the versions the run pushed, not a person's", ctx do
+    test "outputs are the versions the run pushed, not a member's review comments", ctx do
       %{run: run, dispatch_run: dispatch_run} = handed_over_fixture(ctx.scope, ctx.key)
       dispatch_run = Repo.get!(Apiary.Dispatches.DispatchRun, dispatch_run.id)
       work_item = fn -> Repo.get!(Apiary.WorkItems.WorkItem, dispatch_run.work_item_id) end
@@ -1934,8 +1934,16 @@ defmodule Apiary.Runs.PreparationTest do
 
       assert %{outputs: []} = Preparation.read(ctx.scope, run)
 
-      {:ok, _person} =
-        Apiary.Artifacts.push({:person, ctx.scope}, work_item.(), "proposal", [file.("one\n")])
+      comments = %{
+        filename: "review-comments.json",
+        content_type: "application/json",
+        binary: ~s({"review_comments":[]})
+      }
+
+      {:ok, _member} =
+        Apiary.Artifacts.push({:member_action, ctx.scope}, work_item.(), "review-comments", [
+          comments
+        ])
 
       {:ok, version} =
         Apiary.Artifacts.push({:run, dispatch_run}, work_item.(), "proposal", [file.("two\n")],
@@ -1944,7 +1952,7 @@ defmodule Apiary.Runs.PreparationTest do
 
       assert %{
                outputs: [
-                 %{type: "proposal", name: "main", number: 2, at: at, public_id: public_id}
+                 %{type: "proposal", name: "main", number: 1, at: at, public_id: public_id}
                ]
              } = Preparation.read(ctx.scope, run)
 

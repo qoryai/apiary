@@ -8,11 +8,12 @@ defmodule Apiary.Connections.SettingsFitTest do
   use Apiary.DataCase, async: false
 
   import Apiary.DispatchedRunsFixtures
+  import Apiary.ModelKeysFixtures, only: [stored_keys: 1]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
   import ExUnit.CaptureLog
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, Repo}
+  alias Apiary.{Connections, Dispatches, ModelChoicesFixtures, Repo}
   alias Apiary.Connections.{Connection, SettingsFit}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Kinds.Providers
@@ -123,7 +124,10 @@ defmodule Apiary.Connections.SettingsFitTest do
   describe "a check that ran out of time or crashed" do
     test "leaves the run waiting for the next claim", ctx do
       pid = ctx.provider.public_id
-      {:ok, _choice} = ModelChoices.put_choice(ctx.scope, :workspace, %{provider: pid})
+
+      {:ok, _choice} =
+        ModelChoicesFixtures.put_choice(ctx.scope, :workspace, %{provider: pid})
+
       check_returns(:unchecked)
 
       {{queued, answer}, log} = with_log(fn -> handover!(ctx) end)
@@ -133,12 +137,15 @@ defmodule Apiary.Connections.SettingsFitTest do
 
       check_returns(:fit)
       assert {:ok, %{registered: run}} = walked_claim(ctx.key, Dispatches.now(), @body)
-      assert %Run{model_keys: [_key]} = Repo.get!(Run, run.id)
+      assert [_key] = stored_keys(run)
     end
 
     test "leaves a run without a run configuration for that request, and ends nothing", ctx do
       pid = ctx.provider.public_id
-      {:ok, _choice} = ModelChoices.put_choice(ctx.scope, :workspace, %{provider: pid})
+
+      {:ok, _choice} =
+        ModelChoicesFixtures.put_choice(ctx.scope, :workspace, %{provider: pid})
+
       check_returns(:fit)
       assert {_queued, {:ok, %{registered: run}}} = handover!(ctx)
       run = Repo.get!(Run, run.id)

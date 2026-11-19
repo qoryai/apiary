@@ -197,34 +197,7 @@ defmodule Apiary.Artifacts.WatchTest do
     forge = forge!(ctx)
 
     assert {:ok, %Version{}} =
-             Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
-
-    assert Feed.entries(forge) == []
-  end
-
-  test "a person's push of the submission type is refused and adds no entry", ctx do
-    submits!(ctx, @submit)
-    forge = forge!(ctx)
-
-    assert {:error, {:unknown_type, "submission"}} =
-             Artifacts.push({:person, ctx.scope}, ctx.work_item, "submission", submission())
-
-    assert Feed.entries(forge) == []
-  end
-
-  test "a person's version of a type the process's submit does not set adds no entry", ctx do
-    submits!(ctx, @submit)
-    forge = forge!(ctx)
-
-    {:ok, _type} =
-      Artifacts.create_type(ctx.scope, ctx.scope.workspace, %{
-        "name" => "findings",
-        "base_view" => "structured",
-        "json_schema" => %{"type" => "object"}
-      })
-
-    assert {:ok, %Version{writer: :person}} =
-             Artifacts.push({:person, ctx.scope}, ctx.work_item, "findings", submission())
+             Artifacts.push({:run, ctx.run}, ctx.work_item, "walkthrough", [doc()])
 
     assert Feed.entries(forge) == []
   end
@@ -429,7 +402,7 @@ defmodule Apiary.Artifacts.WatchTest do
       forge = forge!(ctx)
 
       assert {:ok, %Version{}} =
-               Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "walkthrough", [doc()])
 
       # A push that is kept leaves its file in the store, so the empty store above counts.
       assert [_one] = stored_files(ctx)

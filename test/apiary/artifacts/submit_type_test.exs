@@ -276,7 +276,6 @@ defmodule Apiary.Artifacts.SubmitTypeTest do
 
   test "no type is set by the harness where the process has no submit", ctx do
     assert Artifacts.submit_types(ctx.workspace) == []
-    assert "submission" in Enum.map(Artifacts.person_types(ctx.workspace), & &1.name)
   end
 
   describe "the type that the process's submit sets" do
@@ -336,29 +335,13 @@ defmodule Apiary.Artifacts.SubmitTypeTest do
       assert {:ok, _type} = Artifacts.update_type(ctx.scope, other, %{"size_limit" => 1000})
       assert {:ok, _type} = Artifacts.delete_type(ctx.scope, other)
     end
-
-    test "is not offered to a person, and a person's push of it is an unknown type", ctx do
-      names = ctx.workspace |> Artifacts.person_types() |> Enum.map(& &1.name)
-      refute "submission" in names
-      assert "submission" in Enum.map(Artifacts.types(ctx.workspace), & &1.name)
-
-      assert {:error, {:unknown_type, "submission"}} =
-               Artifacts.push(
-                 {:person, ctx.scope},
-                 ctx.work_item,
-                 "submission",
-                 submission(@owned)
-               )
-
-      assert Repo.aggregate(Artifacts.Version, :count) == 0
-    end
   end
 
   describe "the record a version keeps of its harness" do
     @template %{
       submit: %{"type" => "submission", "send" => "after_gate"},
       artifact_types: [
-        %{"name" => "explainer"},
+        %{"name" => "walkthrough"},
         %{
           "name" => "submission",
           "base_view" => "structured",
@@ -377,7 +360,7 @@ defmodule Apiary.Artifacts.SubmitTypeTest do
     end
 
     test "has no schema when the template lists none for the submit type" do
-      template = %{@template | artifact_types: [%{"name" => "explainer"}]}
+      template = %{@template | artifact_types: [%{"name" => "walkthrough"}]}
       record = Processes.with_submit(%{"source" => "repository"}, template)
       refute Map.has_key?(record, "submit_schema")
 

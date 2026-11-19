@@ -6,7 +6,6 @@ defmodule Apiary.ModelKeys.Order do
   A key here is a map with:
 
     * `id`: the key's row id (`secret_values.id`);
-    * `named`: true for the key the model choice names, at most one;
     * `default`: true for the provider's default key, at most one;
     * `inserted_at`: when the key was added;
     * `known_reset`: its known reset, nil for none;
@@ -14,27 +13,26 @@ defmodule Apiary.ModelKeys.Order do
       at the claim: the latest across its windows, a window at the key's Use up to
       percentage included; nil for none.
 
-  A claim reads them with `Apiary.ModelKeys.claim_keys/3`.
+  A claim reads them with `Apiary.ModelKeys.claim_keys/2`.
 
   At `now`, a key is **in cooldown** while its `cooldown_until` is after `now`, and
   **free** otherwise. `order/2` puts the free keys first:
 
-    1. the named key;
-    2. then the keys with no known reset, or one at or before `now`, in tie order;
-    3. then the keys by their known reset, the closest first; two resets in the same
+    1. the keys with no known reset, or one at or before `now`, in tie order;
+    2. then the keys by their known reset, the closest first; two resets in the same
        minute go in tie order.
 
   **Tie order:** the default key first, then the others by `inserted_at`, then by `id`.
 
-  The keys in cooldown follow, the earliest `cooldown_until` first, ties in tie order: a
-  named key in cooldown takes its place among them. Of the result, a run gets the first
-  `max_keys/0`; the others serve later runs. The run's start key is its first free key
-  (`start/2`): never a key in cooldown.
+  The keys in cooldown follow, the earliest `cooldown_until` first, ties in tie order. Of
+  the result, a run gets the first `max_keys/0`; the others serve later runs. The run's
+  default model provider credential is its first free key (`start/2`): never a key in
+  cooldown.
 
   **The order sent** (`sent/2`): the run configuration has the keys a run gets in tie
   order, as the Forager contract has the server send them, and the gateway orders them
-  again at each switch: the named key first while it is free, then the free keys in tie
-  order, then the keys in cooldown in tie order.
+  again at each switch: the free keys in tie order, then the keys in cooldown in tie
+  order.
   """
 
   # A run's model keys, within the 16 credentials of a run configuration, which also has
@@ -46,7 +44,6 @@ defmodule Apiary.ModelKeys.Order do
   @typedoc "A key as the order reads it (the moduledoc)."
   @type key :: %{
           required(:id) => term,
-          required(:named) => boolean,
           required(:default) => boolean,
           required(:inserted_at) => DateTime.t(),
           required(:known_reset) => DateTime.t() | nil,
@@ -65,13 +62,10 @@ defmodule Apiary.ModelKeys.Order do
   @spec order([key], DateTime.t()) :: [key]
   def order(keys, %DateTime{} = now) do
     {cooling, free} = Enum.split_with(keys, &cooling?(&1, now))
-    {named, free} = Enum.split_with(free, & &1.named)
     {unknown, known} = Enum.split_with(free, &unknown_reset?(&1, now))
 
     free =
-      named ++
-        Enum.sort_by(unknown, &tie/1) ++
-        Enum.sort_by(known, &{minute(&1.known_reset), tie(&1)})
+      Enum.sort_by(unknown, &tie/1) ++ Enum.sort_by(known, &{minute(&1.known_reset), tie(&1)})
 
     cooling = Enum.sort_by(cooling, &{usec(&1.cooldown_until), tie(&1)})
 
@@ -80,14 +74,13 @@ defmodule Apiary.ModelKeys.Order do
 
   @doc """
   `keys`, the keys a run gets (`order/2`), in the order its run configuration sends them
-  at `now` (the moduledoc): the named key while free, the free keys in tie order, then the
-  keys in cooldown in tie order.
+  at `now` (the moduledoc): the free keys in tie order, then the keys in cooldown in tie
+  order.
   """
   @spec sent([key], DateTime.t()) :: [key]
   def sent(keys, %DateTime{} = now) do
     {cooling, free} = Enum.split_with(keys, &cooling?(&1, now))
-    {named, free} = Enum.split_with(free, & &1.named)
-    named ++ Enum.sort_by(free, &tie/1) ++ Enum.sort_by(cooling, &tie/1)
+    Enum.sort_by(free, &tie/1) ++ Enum.sort_by(cooling, &tie/1)
   end
 
   @doc "The first free key of `keys` at `now`, nil when every key is in cooldown."

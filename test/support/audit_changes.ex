@@ -16,6 +16,7 @@ defmodule Apiary.AuditChanges do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures, only: [work_item_fixture: 1]
   import Ecto.Query
+  import ExUnit.Assertions, only: [assert: 1]
 
   alias Apiary.{
     Access,
@@ -1093,7 +1094,10 @@ defmodule Apiary.AuditChanges do
     before = entries()
 
     {:ok, choice} =
-      Apiary.ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+      Apiary.ModelChoices.put_choice(scope, :workspace, %{
+        provider: provider.public_id,
+        tiers: Apiary.ModelChoicesFixtures.every_tier(provider)
+      })
 
     %{scope: scope, subject: {"model_choice", choice.id}, before: before, secret: value}
   end
@@ -1145,8 +1149,8 @@ defmodule Apiary.AuditChanges do
     %{scope: scope, subject: {"workspace", scope.workspace.id}, before: before}
   end
 
-  # A person stores a version of an artifact on a work item of the workspace: the work
-  # item's entry.
+  # A member action stores a version of the review comments on a work item of the
+  # workspace: the work item's entry.
   def make(:"artifact.write", %{scope: scope} = ctx) do
     work_item = prepare(:"artifact.write", ctx)
     before = entries()
@@ -1485,6 +1489,17 @@ defmodule Apiary.AuditChanges do
     {before, Apiary.Dispatches.report_machine_end(other, dispatch.public_id, %{state: :gone})}
   end
 
+  # No role takes `artifact.write`: a member action allows it. A person who was a member
+  # when the scope was loaded and is no longer, whose `work_item.review_comment` is
+  # refused.
+  def refuse(:"artifact.write", %{scope: scope} = ctx) do
+    %{scope: member, membership: membership} = member_fixture(scope)
+    work_item = prepare(:"artifact.write", ctx)
+    {:ok, _} = Organisations.remove_member(scope, membership.id)
+    before = entries()
+    {before, attempt(:"artifact.write", member, work_item)}
+  end
+
   # A member where the change is an owner's or an admin's; where every member may make it,
   # a person who was a member when the scope was loaded and is no longer.
   def refuse(action, ctx),
@@ -1771,6 +1786,16 @@ defmodule Apiary.AuditChanges do
     rule
   end
 
+  defp prepare(:"model_choice.write", %{scope: scope}) do
+    {:ok, provider} =
+      Apiary.Connections.create_provider(scope, %{
+        provider: "anthropic",
+        keys: [%{value_id: "main", value: "sk-audit-refused-key"}]
+      })
+
+    provider
+  end
+
   defp prepare(_action, _ctx), do: nil
 
   defp attempt(:"organisation.rename", scope, _),
@@ -1925,8 +1950,18 @@ defmodule Apiary.AuditChanges do
   defp attempt(:"runtime.write", scope, _),
     do: Apiary.Connections.create_runtime(scope, %{runtime: "claude"})
 
-  defp attempt(:"model_choice.write", scope, _),
-    do: Apiary.ModelChoices.put_choice(scope, :workspace, %{tiers: %{"light" => "model-1"}})
+  # A choice the save takes from an owner, so that only the access check returns the error,
+  # never the choice's checks.
+  defp attempt(:"model_choice.write", scope, provider) do
+    result =
+      Apiary.ModelChoices.put_choice(scope, :workspace, %{
+        provider: provider.public_id,
+        tiers: Apiary.ModelChoicesFixtures.every_tier(provider)
+      })
+
+    assert match?({:error, reason} when is_atom(reason), result)
+    result
+  end
 
   defp attempt(:"gate.approve", scope, work_item),
     do: Apiary.Stages.approve(scope, work_item, nil, expect_stage: work_item.stage_id)
@@ -1964,8 +1999,12 @@ defmodule Apiary.AuditChanges do
     Application.put_env(:apiary, :artifacts_dir, dir)
 
     try do
-      Apiary.Artifacts.push({:person, scope}, work_item, "explainer", [
-        %{filename: "notes.md", binary: "# Notes\n\nThe gift card field."}
+      Apiary.Artifacts.push({:member_action, scope}, work_item, "review-comments", [
+        %{
+          filename: "review-comments.json",
+          content_type: "application/json",
+          binary: ~s({"review_comments":[]})
+        }
       ])
     after
       Application.put_env(:apiary, :artifacts_dir, previous)

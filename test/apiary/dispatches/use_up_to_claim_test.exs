@@ -2,8 +2,8 @@ defmodule Apiary.Dispatches.UseUpToClaimTest do
   # A claim of an explore run whose model provider has limit windows
   # (`Apiary.Dispatches.RunSettings`): each key keeps its Use up to percentage, and a key
   # whose window is at that percentage goes after the free keys, with the window's reset
-  # as its `cooldown_until`; the run keeps the provider's limit windows once, in
-  # `provider_api`, from the catalogue entry at the claim.
+  # as its `cooldown_until`; each key's row has the provider's limit windows in its
+  # `api`, from the catalogue entry at the claim.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -12,7 +12,7 @@ defmodule Apiary.Dispatches.UseUpToClaimTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, ModelKeys, Repo}
+  alias Apiary.{Connections, Dispatches, ModelChoicesFixtures, ModelKeys, Repo}
   alias Apiary.Runs.{ProviderCredential, Run}
   alias Apiary.Secrets.Value
 
@@ -86,7 +86,10 @@ defmodule Apiary.Dispatches.UseUpToClaimTest do
   test "keeps each key's percentage, and a key at it in cooldown until the window resets",
        ctx do
     pid = ctx.provider.public_id
-    {:ok, _choice} = ModelChoices.put_choice(ctx.scope, :workspace, %{provider: pid})
+
+    {:ok, _choice} =
+      ModelChoicesFixtures.put_choice(ctx.scope, :workspace, %{provider: pid})
+
     main = value!(ctx.provider, "main")
     spare = value!(ctx.provider, "spare")
     reset = in_seconds(3600)
@@ -97,22 +100,28 @@ defmodule Apiary.Dispatches.UseUpToClaimTest do
     state!(spare, utilization: 79, resets_at: in_seconds(1800))
 
     run = handover!(ctx)
-    time = DateTime.to_iso8601(reset)
 
     assert [
-             %{"id" => spare_id, "start" => true, "use_up_to_percent" => 80} = first,
              %{
-               "id" => main_id,
-               "use_up_to_percent" => 90,
-               "cooldown_until" => ^time,
-               "resets_at" => ^time
+               secret_value_id: spare_id,
+               start: true,
+               use_up_to_percent: 80,
+               cooldown_until: nil
+             },
+             %{
+               secret_value_id: main_id,
+               use_up_to_percent: 90,
+               cooldown_until: ^reset,
+               resets_at: ^reset
              }
-           ] = run.model_keys
+           ] = keys = stored_keys(run)
 
     assert {spare_id, main_id} == {spare.id, main.id}
-    refute Map.has_key?(first, "cooldown_until")
-    refute Enum.any?(run.model_keys, &Map.has_key?(&1, "use_up_to_windows"))
-    assert run.provider_api["use_up_to_windows"] == ~w(five_hour seven_day)
+
+    assert Enum.map(keys, & &1.api["use_up_to_windows"]) == [
+             ~w(five_hour seven_day),
+             ~w(five_hour seven_day)
+           ]
 
     assert {:ok, %{keys: keys}} = ProviderCredential.for_run(run)
     entries = Enum.map(keys, &Jason.decode!(Jason.encode!(&1.entry)))

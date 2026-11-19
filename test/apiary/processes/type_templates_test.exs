@@ -11,6 +11,7 @@ defmodule Apiary.Processes.TypeTemplatesTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{Organisations, Processes, Repo}
+  alias Apiary.Artifacts.Type
   alias Apiary.Audit.Entry
   alias Apiary.Harnesses.Qory
   alias Apiary.QoryHarnessFixture
@@ -389,12 +390,24 @@ defmodule Apiary.Processes.TypeTemplatesTest do
   end
 
   describe "workflows/0 and artifact_types/0" do
-    test "are the Qory harness's workflows and the ten standard types" do
+    test "are the Qory harness's workflows and the eleven standard types" do
       assert TypeTemplates.workflows() == ["explore-a-ticket"]
       assert TypeTemplates.workflows() == Qory.workflows(Qory.current(), "software")
-      assert length(TypeTemplates.artifact_types()) == 10
+      assert length(TypeTemplates.artifact_types()) == 11
       assert %{name: "review-comments", base_view: :structured} in TypeTemplates.artifact_types()
+      assert %{name: "verification", base_view: :structured} in TypeTemplates.artifact_types()
       assert %{name: "proposal", base_view: :document} in TypeTemplates.artifact_types()
+    end
+
+    test "the standard types contain walkthrough, a document, and no explainer" do
+      assert %{name: "walkthrough", base_view: :document} in TypeTemplates.artifact_types()
+      refute Enum.any?(TypeTemplates.artifact_types(), &(&1.name == "explainer"))
+
+      assert %{base_view: :document, size_limit: 1_048_576, max_files: 1} =
+               Enum.find(Type.standard(), &(&1.name == "walkthrough"))
+
+      assert "walkthrough" in Type.standard_names()
+      refute "explainer" in Type.standard_names()
     end
   end
 

@@ -646,7 +646,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
       run_fields = Map.keys(document["run"])
 
       for redacted <- ~w(run_key run_key_payload run_code_sha256 registry_credential_sha256
-                         provider_secret_id model_keys provider_api) do
+                         model_keys) do
         refute redacted in run_fields
       end
     end

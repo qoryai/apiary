@@ -8,7 +8,7 @@ defmodule ApiaryPro.WorkspaceSetupTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Connections, Edition, ModelChoices, Repo, WorkItems}
+  alias Apiary.{Connections, Edition, ModelChoicesFixtures, Repo, WorkItems}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Nodes.Node
   alias Apiary.Runs.Run
@@ -62,7 +62,9 @@ defmodule ApiaryPro.WorkspaceSetupTest do
       refute Edition.model_key_ready?(ctx.workspace)
 
       {:ok, _choice} =
-        ModelChoices.put_choice(ctx.scope, :workspace, %{provider: provider.public_id})
+        ModelChoicesFixtures.put_choice(ctx.scope, :workspace, %{
+          provider: provider.public_id
+        })
 
       assert Edition.model_key_ready?(ctx.workspace)
     end
