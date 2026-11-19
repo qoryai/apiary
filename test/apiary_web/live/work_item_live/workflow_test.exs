@@ -3850,12 +3850,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert decisions(work_item, :approve) == []
 
-      assert has_element?(
-               view,
-               "#work-item-stage-notice",
-               "Move this stage back, or give it a workflow that writes acceptance criteria. " <>
-                 "Approve needs them."
-             )
+      assert line(view, "#work-item-stage-notice") ==
+               "Give this stage a workflow that writes acceptance criteria in Workspace " <>
+                 "settings › Workflows. Approve needs them."
     end
   end
 

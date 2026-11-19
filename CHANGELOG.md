@@ -2065,9 +2065,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   versions out too.
 - The gate button of a stage read "Approve" and the stage's name, for example "Approve
   Shape". It reads **Approve** now. The confirmation dialog is titled "Approve this
-  stage?" and its button reads **Approve**. The line about a missing output reads "Move
-  this stage back, or give it a workflow that writes <outputs>. Approve needs them.",
-  where it ended with the stage's name.
+  stage?" and its button reads **Approve**. The line about a missing output reads "Give
+  this stage a workflow that writes <outputs> in Workspace settings › Workflows. Approve
+  needs them.", where it ended with the stage's name.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - The notes for the next run, on the work item and in `GET work-item`, list only open

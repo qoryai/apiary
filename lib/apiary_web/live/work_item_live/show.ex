@@ -133,7 +133,15 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   alias Apiary.{Submissions, WorkItems, WorkspaceSetup}
   alias Apiary.Runs.Run
   alias Apiary.WorkItems.{ExploreView, Proposal}
-  alias ApiaryWeb.{ArtifactComponents, HarnessComponents, SourceComponents, SpendDialog}
+
+  alias ApiaryWeb.{
+    ArtifactComponents,
+    HarnessComponents,
+    SettingsComponents,
+    SourceComponents,
+    SpendDialog
+  }
+
   alias ApiaryWeb.UserAuth
   alias ApiaryWeb.WorkItemLive.{Comments, StageComponents, StageTab, VerifyTab, View, Workflow}
 
@@ -1629,8 +1637,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   def refused({:outputs_missing, types}, _flow) do
     gettext(
-      "Move this stage back, or give it a workflow that writes %{outputs}. Approve needs them.",
-      outputs: StageComponents.outputs_words(types)
+      "Give this stage a workflow that writes %{outputs} in Workspace settings › %{workflows}. Approve needs them.",
+      outputs: StageComponents.outputs_words(types),
+      workflows: SettingsComponents.workflows_label()
     )
   end
 

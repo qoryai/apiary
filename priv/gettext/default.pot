@@ -11185,6 +11185,11 @@ msgstr ""
 msgid "Give the loop 1 to 10 rounds."
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Give this stage a workflow that writes %{outputs} in Workspace settings › %{workflows}. Approve needs them."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Give your own option"
@@ -13829,11 +13834,6 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Move one of the workflows to a separate stage in Workspace settings › Workflows, then run the round again."
-msgstr ""
-
-#: lib/apiary_web/live/work_item_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Move this stage back, or give it a workflow that writes %{outputs}. Approve needs them."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex
