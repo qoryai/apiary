@@ -786,9 +786,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   numbered sentence each, followed by the sentence of its action: "Answer question N.",
   with "question N" linked to the question on the Questions tab, or "Run another
   round.", or the point's fix line in its place. A point whose text opens with its action
-  (`in_text`) has no sentence after it. While the stage is escalated, a reader who
-  may decide finds the note field and Run another round under the points; they belong to
-  the form of the escalation card in the rail (`stage_card/1`). While the stage waits for
+  (`in_text`) has no sentence after it, nor has a point with no action sentence (also
+  `in_text`): a return limit's count, where the card shows neither a switch nor Move
+  back. While the stage is escalated, a reader who may decide finds the note field and
+  Run another round under the points; they belong to the form of the escalation card in
+  the rail (`stage_card/1`). While the stage waits for
   answers, the answers run the next round, so the block has no form.
   """
   attr :id, :string, default: "work-item-needs"
@@ -924,7 +926,9 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   # adds "Run another round.", or its fix line, escaped, in its place: a run's or a stop
   # cause's. In a fix line, the words "the set-up step Harness" link to that step when
   # `harness_path` is set (`gap_line/1`); only a run stopped at that step sets it. A point
-  # whose text opens with its action (`in_text`, a failed check's) adds nothing.
+  # whose text opens with its action (`in_text`, a failed check's) adds nothing, nor does
+  # a point with no action sentence (`in_text` too): a return limit's count, where the
+  # card shows neither a switch nor Move back.
   defp point(%{point: %{action: :answer, number: n}, href: href} = assigns)
        when is_integer(n) and is_binary(href) do
     # The sentence is split at a marker, so that the link keeps its place in any locale.

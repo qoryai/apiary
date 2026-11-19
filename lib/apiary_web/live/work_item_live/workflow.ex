@@ -604,7 +604,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # An escalation's points as the block "What the run needs from you" shows them: each
   # with its text, its action (`:answer` or `:run_again`) and, for `:answer`, the id of
   # its question; a `:run_again` point with `in_text` true where its text opens with its
-  # action (`Apiary.Stages.Points.check_failed/1`). A return limit's point has the action
+  # action (`Apiary.Stages.Points.check_failed/1`), and where it has no action sentence:
+  # a return limit's count, where the card shows neither a switch nor Move back
+  # (`worded/2`). A return limit's point has the action
   # for the card's controls (`controls`, `return_action/2`); where the card shows no
   # Accept as it is, another point's `without_accept` fields replace those that pick it
   # (`Apiary.Stages.Points`). A point without text is left out.

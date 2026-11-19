@@ -3031,7 +3031,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "[id$='-move']")
     end
 
-    test "a stage whose Request changes returns the work item: a stale Approve's notice names the return",
+    test "a stage whose Request changes returns the work item: the stale Approve's notice points to Request changes and the return stage",
          %{conn: conn, scope: scope} do
       # Verify runs verify-a-ticket, whose return key goes to Build, and requires
       # `outputs`.

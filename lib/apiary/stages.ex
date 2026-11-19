@@ -112,7 +112,7 @@ defmodule Apiary.Stages do
   # `approve/4` returns `{:error, {:outputs_missing, types}}` for a stage with no
   # workflow, and `{:error, {:outputs_not_written, types}}` for a stage that runs one, or
   # `{:error, {:outputs_not_written, types, to}}` where Request changes at its gate
-  # returns the work item to the stage named `to` (`Runner.gate_return/2`).
+  # returns the work item to the stage whose name is `to` (`Runner.gate_return/2`).
   # Accept as it is that would take the stage to its gate is refused with `:invalid` while
   # one is missing (`resolve_escalation/5`).
   #
