@@ -660,11 +660,16 @@ where an earlier submission of the work item, among the newest 50 versions, ends
 commit in the same repository. Where a version that is not listed (older than those, or
 written by a run a member cancelled) may end at it, the line shows the commit alone.
 
-The text of a change comes from the Change column of the first 200 rows of the plan's
-Deliverables table. The plan is the artifact named `main` of the run's plan type, which the
-run's stack entry sets in `workflows.<workflow>.plan`, in the version that was newest when
-the version was stored. A run with no plan type shows no change text. A plan over 256 KiB
-shows no change texts, and a stored submission over 1 MiB lists no repository.
+The text of a change comes from the plan's Deliverables table: the table under the
+`## Deliverables` heading, up to the next `## ` heading. The plan is the work item's
+artifact named `main` of the run's plan type, which the run's stack entry sets in
+`workflows.<workflow>.plan`, in the newest version stored at or before the time the
+submission was stored. A row counts when its first cell is an id (1 to 64 characters:
+letters, digits, `.`, `_` and `-`, starting with a letter or digit) and its second cell is
+not empty. The page reads the first 200 rows that have an id and a change text, taking the
+first two cells by position, whatever the column titles, and cuts each text to its first
+200 characters. A run with no plan type shows no change text. A plan over 256 KiB shows no
+change texts, and a stored submission over 1 MiB lists no repository.
 
 ## POST verdict
 

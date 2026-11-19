@@ -438,6 +438,43 @@ defmodule Apiary.SubmissionsTest do
       assert first_change(ctx) == nil
     end
 
+    test "a version with only fix steps shows its commits and reads no run_harnesses", ctx do
+      commits = [
+        %{"commit" => @fix_one, "step" => "fix:f1"},
+        %{"commit" => @head, "step" => "fix:f2"}
+      ]
+
+      plan!(ctx, ctx.first)
+      store!(ctx, ctx.first, submission(repository(%{"commits" => commits})))
+
+      parent = self()
+      handler = "submissions-queries-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, meta, _config ->
+          if self() == parent, do: send(parent, {:query, meta.query})
+        end,
+        nil
+      )
+
+      rows =
+        try do
+          rows(ctx)
+        after
+          :telemetry.detach(handler)
+        end
+
+      queries = Stream.repeatedly(fn -> receive(do: ({:query, q} -> q), after: (0 -> nil)) end)
+      queries = queries |> Enum.take_while(& &1)
+
+      assert queries != []
+      refute Enum.any?(queries, &String.contains?(&1, "run_harnesses"))
+      assert [row] = rows
+      assert [%{step: {:fix, "f1"}}, %{step: {:fix, "f2"}}] = repository_of(row).commits
+    end
+
     test "build-plan as the plan type shows its texts, not those of another type", ctx do
       release_plan_type!(ctx)
       plan_type!(ctx.first, "build-plan")
@@ -1050,7 +1087,7 @@ defmodule Apiary.SubmissionsTest do
       assert String.length(text) == 200
     end
 
-    test "a plan over 256 KiB gives no change text", ctx do
+    test "a plan over 256 KiB shows no change text", ctx do
       big =
         "## Deliverables\n\n| Id | Change |\n|---|---|\n| d-2 | Show |\n\n" <>
           String.duplicate("x", 262_144)

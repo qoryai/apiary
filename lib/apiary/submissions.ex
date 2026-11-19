@@ -59,9 +59,9 @@ defmodule Apiary.Submissions do
   @id ~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
 
   @typedoc """
-  What a commit's step says: `{:change, id, text}` for a deliverable of the run's plan,
-  `text` the plan's text of the change or nil, `{:fix, finding}` for a fix of a review
-  finding, and nil for any other step.
+  A commit's step is `{:change, id, text}` for a deliverable of the run's plan, `text`
+  the plan's text of the change or nil, `{:fix, finding}` for a fix of a review finding,
+  and nil for any other step.
   """
   @type step :: {:change, String.t(), String.t() | nil} | {:fix, String.t()} | nil
 
@@ -251,7 +251,7 @@ defmodule Apiary.Submissions do
   @doc """
   The name of the integration that draws each of `systems` (`target_system` of the
   workspace's collections), by system, for the mark beside a draft's number. A system that
-  no collection of the workspace names is not in the map.
+  is the `target_system` of no collection of the workspace is not in the map.
   """
   @spec system_names(WorkItem.t(), [String.t()]) :: %{String.t() => String.t()}
   def system_names(_work_item, []), do: %{}
@@ -384,7 +384,7 @@ defmodule Apiary.Submissions do
   defp based?(%{repositories: repositories}), do: Enum.any?(repositories, & &1.base)
 
   # A stored file of a size the type allows is decoded; a larger one, or one that cannot be
-  # read, gives a row with no repository.
+  # read, has a row with no repository.
   defp read_version(%{files: [%{size: size} | _rest]} = version) when size <= @max_json_bytes do
     content = StageArtifacts.read_json(version) || %{}
 

@@ -898,7 +898,7 @@ defmodule Apiary.Harnesses.WalkTest do
       assert plan_type(ctx, "  explore: {plan: build-plan}\n") == "build-plan"
     end
 
-    test "is nil where the stack entry has no plan, or the workflow or the workflows are absent",
+    test "is nil where the stack entry, its workflow or the workflows are absent",
          ctx do
       for declared <- [nil, "  explore: {access: write}\n", "  review: {plan: custom-plan}\n"] do
         assert plan_type(ctx, declared) == nil, inspect(declared)
@@ -914,7 +914,7 @@ defmodule Apiary.Harnesses.WalkTest do
       assert plan_type(ctx, "  explore: {plan: #{too_long}}\n") == nil
     end
 
-    test "is the plan of the base's stack for a target's file with extends, not the file's workflows",
+    test "is the base stack's plan for a target's file with extends, not the file's",
          ctx do
       recording(ctx, "explore", nil)
       section = @file_section <> "  workflows:\n    explore: {plan: file-plan}\n"
@@ -930,7 +930,7 @@ defmodule Apiary.Harnesses.WalkTest do
       assert {:ok, %{origin: :file, plan_type: "base-plan"}} = Walk.run(ctx.input)
     end
 
-    test "is the plan of the workflows of a target's file that lists modules without extends",
+    test "is the plan of a file with modules and no extends",
          ctx do
       section =
         "harness:\n  modules:\n    - source: {git: \"#{@tools}\", ref: v2}\n" <>
@@ -944,21 +944,21 @@ defmodule Apiary.Harnesses.WalkTest do
       assert {:ok, %{origin: :file, plan_type: "file-plan"}} = Walk.run(ctx.input)
     end
 
-    test "a setting without extends sets no plan type: its workflows allow only access and time_limit",
-         ctx do
-      serve([ctx.run], covered: covering(ctx), files: @base_files)
-
-      setting(
-        ctx.scope,
+    test "a setting without extends refuses plan in its workflows", ctx do
+      document =
         "modules:\n  - source: {git: \"#{@harness}\", ref: v1, module: web}\n" <>
-          "workflows:\n  explore: {access: write}\n"
-      )
+          "workflows:\n  explore: {plan: custom-plan}\n"
 
-      assert {:ok, %{origin: :setting, access_level: :write, plan_type: nil}} =
-               Walk.run(ctx.input)
+      assert {:error, %Ecto.Changeset{errors: [harness: {_message, values}]}} =
+               Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document,
+                 choice: :repository
+               )
+
+      assert values[:place] == "#/workflows/explore/plan"
     end
 
-    test "is nil for a base with no link that is not public, whose stack is not read", ctx do
+    test "is nil for a base with no link that is not public, so its stack is not read",
+         ctx do
       setting(
         ctx.scope,
         "extends: {git: \"#{@public}\", ref: \"#{@commit}\", stack: web}\n"
@@ -973,7 +973,7 @@ defmodule Apiary.Harnesses.WalkTest do
                Walk.run(ctx.input)
     end
 
-    test "is the plan of the stack of a public base, read from its host", ctx do
+    test "is the plan of the stack of a public base", ctx do
       setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
 
       lint = "https://public.example.org/qory/lint"
