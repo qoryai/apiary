@@ -446,9 +446,10 @@ defmodule Apiary.Dispatches.RunSettings do
   # every key of the choice's provider and of each usable later step (the default step
   # and the fallbacks) is in cooldown, with the choice's settings without keys and those
   # providers' row ids, the choice's first, and those of the later steps whose settings
-  # check ran out of time or crashed, or where a later session's provider has no key and
-  # the keys of its later steps are all in cooldown, with those steps' providers,
-  # `:unstable` where the choices changed while `hold/1` read them, `{:unchecked,
+  # check ran out of time or crashed; `{:cooling, built, ids}` too where a later
+  # session's provider has no key and the keys of each of its later steps are all in
+  # cooldown, with the run's settings and those steps' providers' row ids, so the run
+  # waits for them (`cooling_steps/4`); `:unstable` where the choices changed while `hold/1` read them, `{:unchecked,
   # provider}` where the check of the settings of `provider`, the chosen one, ran out of
   # time or crashed (`Apiary.Connections.provider/1`), or `:unavailable` where the run
   # settings take more than 64 KiB. Each provider's description is read once, for the
