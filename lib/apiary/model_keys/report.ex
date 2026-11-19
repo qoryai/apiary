@@ -53,8 +53,8 @@ defmodule Apiary.ModelKeys.Report do
        key of the run in it needs a new value from then until a new value; a key whose
        provider's keys are sign-ins, and whose sign-in a refresh may still renew, is not
        marked. A run's gateway can mark any key of the run, and a key belongs to the whole
-       organisation (or to the provider), so a run marks the key for every run that uses it
-       (the plan accepts this). `{:ok, body}`, the answer `{"version":1,"keys":[…]}`
+       organisation (or to the provider), so a run marks the key for every run that uses it.
+       `{:ok, body}`, the answer `{"version":1,"keys":[…]}`
        with the newest state of each key of the run and window, under the run's credential
        names.
 
