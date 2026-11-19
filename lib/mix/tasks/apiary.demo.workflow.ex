@@ -322,10 +322,20 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     versions!(dana_scope)
 
     # A stage waits for a workflow only against a recorded read of the harness: with none,
-    # its run starts.
+    # its run starts. Shape's run makes the outputs of three work items, so the harness
+    # must declare Shape's workflow.
     workspace = dana_scope.workspace
     chosen = Apiary.Stacks.Sources.chosen(workspace)
-    :ok = Processes.record_declared(workspace, Processes.qory_workflow_levels(chosen, workspace))
+    declared = Processes.qory_workflow_levels(chosen, workspace)
+    :ok = Processes.record_declared(workspace, declared)
+
+    unless Map.has_key?(declared, @shape_workflow) do
+      Shell.raise!(
+        "Point the Qory harness at a commit that declares #{@shape_workflow}, then drop " <>
+          "the database, create it again and run the fill again. Web shop's harness " <>
+          "declares no #{@shape_workflow}, the workflow of Shape."
+      )
+    end
 
     Shell.info(
       "Process versions 1 to 3: version 1 from the workspace's creation, 2 and 3 saved by Dana"

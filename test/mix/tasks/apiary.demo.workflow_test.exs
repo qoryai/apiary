@@ -142,6 +142,18 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       assert error.message =~ "The preview's fill did not finish."
     end
 
+    test "stops with the fix when the harness declares no shape-a-ticket" do
+      repository = Apiary.QoryHarnessFixture.serve!(Apiary.QoryHarnessFixture.files())
+      assert {:ok, commit} = Apiary.Harnesses.Qory.read({:branch, "main"})
+      assert commit == repository.commit
+
+      error = assert_raise Mix.Error, fn -> Workflow.run([]) end
+
+      assert error.message =~
+               "Point the Qory harness at a commit that declares shape-a-ticket, then drop " <>
+                 "the database"
+    end
+
     test "fills an empty instance: people, versions with a trial, and work items in each state" do
       serve_shape_workflow!()
       Workflow.run([])
