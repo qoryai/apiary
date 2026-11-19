@@ -6663,8 +6663,9 @@ defmodule ApiaryWeb.WorkItemComponents do
     end
   end
 
-  # A session row reads failed and cancelled in lower case, as passed beside them; any
-  # other state of the run it ran in keeps the word of the run's line (`run_state_word/1`).
+  # A session row reads failed and cancelled in lower case, as the verdict words beside
+  # them; any other state of the run it ran in keeps the word of the run's line
+  # (`run_state_word/1`).
   defp stopped_word(%{state: state}) when state in [:failed, :cancelled],
     do: session_state_word(Atom.to_string(state))
 

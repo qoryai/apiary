@@ -118,8 +118,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   #   * `wrote`: the versions the stage's runs wrote, for the summary of its runs
   #     (`wrote/3`), [] for no stage;
   #   * `recorded`: the demo video and picture versions each of `runs` wrote (`recorded/2`);
-  #   * `sessions`: %{}, for the caller to set to the sessions of `runs`
-  #     (`Apiary.Stages.run_sessions/1`);
+  #   * `sessions`: %{}, for the caller to set to the sessions of the runs that
+  #     `Apiary.Stages.shared_run_ids/1` selects (`Apiary.Stages.run_sessions/1`);
   #   * `foot`: on Explore's tab at a later stage, the record block of Explore's runs.
   #
   # On the Ticket tab, the Questions tab and the Thread, `review_comments` are the current

@@ -2784,8 +2784,9 @@ defmodule Apiary.Stages do
   #     newest, where it is newer than the one the session before read; else nil;
   #   * `started_at` and `ended_at` are those of the session's `Apiary.Runs.SessionRecord`;
   #     with no record, or none of that time, when the row was written and, for a session a
-  #     report ended, when the report was recorded. `ended_at` is nil for no end. They come
-  #     from the machine's clock, for display;
+  #     report ended, when the report was recorded. `ended_at` is nil for no end. With a
+  #     record they are the machine's times, shown as they are; without
+  #     one, they fall back to the row's stamps;
   #   * `stamped_from` and `stamped_to` are Qory Apiary's clock: when the row was written,
   #     and for a session a report ended, when the report was recorded (the row's
   #     `updated_at`); `stamped_to` is nil for a session no report ended. A version or a
@@ -2793,6 +2794,8 @@ defmodule Apiary.Stages do
   #     `started_at` and `ended_at`.
   @doc false
   @spec run_sessions([String.t()]) :: %{String.t() => [map]}
+  def run_sessions([]), do: %{}
+
   def run_sessions(ids) when is_list(ids) do
     rows =
       Repo.all(
@@ -2864,13 +2867,16 @@ defmodule Apiary.Stages do
           select: {r.public_id, d.process_version_id, d.stage_id}
       )
 
+    versions = rows |> Enum.map(&elem(&1, 1)) |> Enum.uniq()
+
     documents =
-      Repo.all(
-        from v in Processes.Version,
-          where: v.id in ^(rows |> Enum.map(&elem(&1, 1)) |> Enum.uniq()),
-          select: {v.id, v.document}
-      )
-      |> Map.new()
+      if versions == [],
+        do: %{},
+        else:
+          Repo.all(
+            from v in Processes.Version, where: v.id in ^versions, select: {v.id, v.document}
+          )
+          |> Map.new()
 
     shared =
       for {id, version_id, stage_id} <- rows,

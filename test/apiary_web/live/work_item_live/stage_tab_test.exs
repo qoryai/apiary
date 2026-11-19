@@ -1220,6 +1220,40 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                @one_workflow
              )
     end
+
+    test "is decided by the run's process version, not the work item's current one", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, run, registered} = shared_build!(scope, looped())
+      :ok = to_round_2!(run)
+
+      # A later version of the process runs Build without shared_run, and the work item is
+      # placed in it: the run it claimed under the first version is still a shared run.
+      second =
+        process!(scope, @scenarios_out, %{"sequence" => looped(), "shared_run" => false})
+
+      assert second.id != run.process_version_id
+
+      {1, nil} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [process_version_id: second.id]
+        )
+
+      assert %WorkItem{process_version_id: version_id} = reload(work_item)
+      assert version_id == second.id
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+      assert has_element?(view, "details#work-item-record-#{registered.number}")
+      assert has_element?(view, "#work-item-record-#{registered.number}-session-1")
+      assert has_element?(view, "#work-item-record-#{registered.number}-session-4")
+
+      assert [_plan, _checks, _implement, _review, implement] =
+               run_rows(view, registered.number)
+
+      assert implement =~ ~r/^implement-changes · round 2 · running · started /
+    end
   end
 
   describe "a skip inside a shared run (A-12)" do
@@ -1483,8 +1517,169 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert [verify, "capture-demos / No demo scenarios: capture-demos did not run."] =
                run_rows(view, registered.number)
 
-      assert verify =~ ~r/^verify-a-ticket · passed · \S/
+      assert untimed(verify) == "verify-a-ticket · passed"
       assert has_element?(view, "#work-item-record-#{registered.number}-s", "2 workflows")
+    end
+
+    @reason "No demo scenarios: capture-demos did not run."
+
+    # The newest run of the stage, a verify run, claimed again after the first one failed.
+    defp second_run!(scope, work_item, first, registered) do
+      assert report!(first, 1, "failed") == :end
+      :ok = exited!(first, registered)
+
+      {:ok, work_item} =
+        Stages.resolve_escalation(scope, reload(work_item), :another_round, nil,
+          expect_stage: @verify
+        )
+
+      {work_item, claimed!(newest_run(work_item))}
+    end
+
+    test "a run that ended while its last session never reported: a skip up to that session's row is in it",
+         %{conn: conn, scope: scope} do
+      {work_item, run, registered} =
+        shared_verify!(scope, [
+          %{"workflow" => "verify-a-ticket"},
+          %{"workflow" => "capture-demos", "when" => @demos},
+          %{"workflow" => "review-changes"}
+        ])
+
+      :ok = verdict!(run, "passed")
+      {:session, %{workflow: "review-changes"}} = report!(run, 1)
+      :ok = exited!(run, registered)
+
+      id = registered.public_id
+
+      assert %{^id => [_verify, %{state: nil, stamped_to: nil} = review]} =
+               Stages.run_sessions([id])
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      refute has_element?(view, "#work-item-record-fold > .q-xp-inner > .q-xp-runrow")
+
+      assert [verify, "capture-demos / " <> @reason, unreported] =
+               run_rows(view, registered.number)
+
+      assert untimed(verify) == "verify-a-ticket · passed"
+      assert untimed(unreported) == "review-changes · ended without a verdict"
+
+      # The run's window ends when its last session's row was written: a skip stamped
+      # after it is no skip of the run.
+      {1, nil} =
+        Repo.update_all(Stages.Skip,
+          set: [
+            inserted_at: DateTime.add(review.stamped_from, 1, :second),
+            after_attempt: attempt(work_item)
+          ]
+        )
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert has_element?(
+               view,
+               "#work-item-record-fold > .q-xp-inner > .q-xp-runrow",
+               @reason
+             )
+
+      assert [verify, unreported] = run_rows(view, registered.number)
+      assert untimed(verify) == "verify-a-ticket · passed"
+      assert untimed(unreported) == "review-changes · ended without a verdict"
+    end
+
+    test "a run that still runs has no end to its window: a skip stamped an hour ahead is in it",
+         %{conn: conn, scope: scope} do
+      {work_item, first, registered} =
+        shared_verify!(scope, [
+          %{"workflow" => "capture-demos", "when" => @demos},
+          %{"workflow" => "verify-a-ticket"}
+        ])
+
+      {work_item, latest} = second_run!(scope, work_item, first, registered)
+      later = DateTime.add(DateTime.utc_now(), 1, :hour)
+
+      {_count, nil} = Repo.update_all(Stages.Skip, set: [inserted_at: later])
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      refute has_element?(view, "#work-item-record-fold > .q-xp-inner > .q-xp-runrow")
+      assert ["capture-demos / " <> @reason, verify] = run_rows(view, latest.number)
+      assert verify =~ ~r/^verify-a-ticket · running · started (just now|\d+ \w+ ago)$/
+      assert [failed] = run_rows(view, registered.number)
+      assert untimed(failed) == "verify-a-ticket · failed"
+    end
+
+    test "two runs back to back: a skip between their windows is in the second run",
+         %{conn: conn, scope: scope} do
+      {work_item, first, registered} =
+        shared_verify!(scope, [
+          %{"workflow" => "capture-demos", "when" => @demos},
+          %{"workflow" => "verify-a-ticket"}
+        ])
+
+      {work_item, latest} = second_run!(scope, work_item, first, registered)
+
+      ids = [registered.public_id, latest.public_id]
+      sessions = Stages.run_sessions(ids)
+      [%{stamped_to: ended}] = sessions[registered.public_id]
+      [%{stamped_from: started}] = sessions[latest.public_id]
+      assert DateTime.compare(ended, started) == :lt
+
+      between =
+        DateTime.add(ended, div(DateTime.diff(started, ended, :microsecond), 2), :microsecond)
+
+      {_count, nil} =
+        Repo.update_all(Stages.Skip, set: [inserted_at: between, after_attempt: first.attempt])
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      refute has_element?(view, "#work-item-record-fold > .q-xp-inner > .q-xp-runrow")
+
+      assert [failed] = run_rows(view, registered.number)
+      assert untimed(failed) == "verify-a-ticket · failed"
+
+      assert ["capture-demos / " <> @reason, verify] = run_rows(view, latest.number)
+      assert verify =~ ~r/^verify-a-ticket · running · started (just now|\d+ \w+ ago)$/
+    end
+
+    test "a skip stamped exactly at an edge of the run's window is in it, one microsecond beyond is not",
+         %{conn: conn, scope: scope} do
+      {work_item, run, registered} =
+        shared_verify!(scope, [
+          %{"workflow" => "verify-a-ticket"},
+          %{"workflow" => "capture-demos", "when" => @demos}
+        ])
+
+      :ok = verdict!(run, "passed")
+      assert report!(run, 1) == :end
+      :ok = exited!(run, registered)
+
+      id = registered.public_id
+      assert %{^id => [%{stamped_from: from, stamped_to: to}]} = Stages.run_sessions([id])
+
+      for {at, inside?} <- [
+            {from, true},
+            {DateTime.add(from, -1, :microsecond), false},
+            {to, true},
+            {DateTime.add(to, 1, :microsecond), false}
+          ] do
+        {1, nil} =
+          Repo.update_all(Stages.Skip, set: [inserted_at: at, after_attempt: attempt(work_item)])
+
+        {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+        fold_level = "#work-item-record-fold > .q-xp-inner > .q-xp-runrow"
+
+        if inside? do
+          refute has_element?(view, fold_level)
+          assert [verify, "capture-demos / " <> @reason] = run_rows(view, registered.number)
+          assert untimed(verify) == "verify-a-ticket · passed"
+        else
+          assert has_element?(view, fold_level, @reason)
+          assert [verify] = run_rows(view, registered.number)
+          assert untimed(verify) == "verify-a-ticket · passed"
+        end
+      end
     end
 
     test "inside a loop, the row has its round", %{conn: conn, scope: scope} do

@@ -825,22 +825,76 @@ defmodule Apiary.Stages.SharedRunTest do
   end
 
   describe "the runs of a shared stage (shared_run_ids/1)" do
-    test "are those whose stage has shared_run in the run's process version", %{scope: scope} do
+    setup %{scope: scope} do
       save!(scope, [build(workflows(~w(plan-the-build review-changes)))])
 
       {_work_item, run} = taken_in!(scope)
       registered = registered!(scope, run)
-      id = registered.public_id
+      %{run: run, id: registered.public_id}
+    end
 
+    test "are those whose stage has shared_run in the run's process version", %{id: id} do
       assert Stages.shared_run_ids([]) == []
       assert Stages.shared_run_ids(["rn_none"]) == []
       assert Stages.shared_run_ids([id, "rn_none"]) == [id]
+    end
 
-      # A process version that has no such stage, or no version, makes a run no shared run.
-      for changes <- [[stage_id: "st_zzzzzzzzzz"], [process_version_id: nil]] do
-        {1, nil} = Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id), set: changes)
-        assert Stages.shared_run_ids([id]) == []
-      end
+    test "leave out a run whose stage its process version does not have", %{run: run, id: id} do
+      assert Stages.shared_run_ids([id]) == [id]
+
+      {1, nil} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+          set: [stage_id: "st_zzzzzzzzzz"]
+        )
+
+      assert Stages.shared_run_ids([id]) == []
+    end
+
+    test "leave out a run with no process version, and read no version for it", %{
+      run: run,
+      id: id
+    } do
+      assert Stages.shared_run_ids([id]) == [id]
+
+      {1, nil} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+          set: [process_version_id: nil]
+        )
+
+      queries!()
+
+      assert Stages.shared_run_ids([id]) == []
+      assert_received {:query, "SELECT" <> _rest = rows}
+      assert rows =~ ~s(FROM "dispatch_runs")
+      refute_received {:query, _query}
+    end
+
+    test "and run_sessions/1 read nothing for no run", %{id: id} do
+      queries!()
+
+      assert Stages.shared_run_ids([]) == []
+      assert Stages.run_sessions([]) == %{}
+      refute_received {:query, _query}
+
+      assert %{} = Stages.run_sessions([id])
+      assert_received {:query, _query}
+    end
+
+    # Sends the test process each query it runs, as `{:query, sql}`.
+    defp queries! do
+      handler = "shared-run-queries-#{System.unique_integer()}"
+      parent = self()
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, %{query: query}, _config ->
+          if self() == parent, do: send(parent, {:query, query})
+        end,
+        nil
+      )
+
+      ExUnit.Callbacks.on_exit(fn -> :telemetry.detach(handler) end)
     end
   end
 
