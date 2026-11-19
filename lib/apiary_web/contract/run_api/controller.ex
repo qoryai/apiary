@@ -271,10 +271,10 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   # older than the newest the run reported `409` `session_mismatch`, a store that cannot
   # read the verdict or the questions `503` `unavailable`. A repeat for the same session
   # returns the same body, also where the stage no longer runs the run or its last step
-  # returned the end. Inputs that cannot be formed come out of the step, so after the
-  # request's checks: they end the run with the cause `ticket_gone` or `inputs_invalid`,
-  # as at a claim (`Apiary.Dispatches.RunEnd.unformed/2`), and are `409` `run_ended`. An
-  # error writes nothing but that end.
+  # returned the end. The step forms the inputs, so their `409` comes after the request's
+  # checks. Inputs that the step cannot form end the run with the cause `ticket_gone` or
+  # `inputs_invalid`, as at a claim (`Apiary.Dispatches.RunEnd.unformed/2`), and are `409`
+  # `run_ended`. An error writes nothing but that end.
   def next_session(conn, %{"run_id" => run_id}) do
     with {:ok, run} <- run(conn, run_id),
          {:ok, report} <- session_report(run, conn.assigns.raw_body),
