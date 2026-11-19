@@ -16620,6 +16620,11 @@ msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
+msgid "Pick Request changes to send the work item back to %{to}. Approve needs %{outputs}."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
 msgid "Pick Request changes to write %{outputs}. Approve needs them."
 msgstr ""
 

@@ -89,7 +89,7 @@ defmodule Apiary.Stages.PointsTest do
     refute Map.has_key?(point, "without_accept")
   end
 
-  test "return_action/2 names the controls the card shows" do
+  test "return_action/2 has the words of the controls the card shows" do
     assert Points.return_action("Build", :accept) ==
              "Pick Move back to return the work item to Build once more, or pick Accept as it is."
 

@@ -631,14 +631,27 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   defp points(_none, _controls), do: []
 
-  defp worded(point, controls) do
-    with to when is_binary(to) <- get(point, :return_stage),
-         text when is_binary(text) <- return_action(to, controls) do
-      Map.put(point, "text", text)
-    else
-      _stored -> without_accept(point, controls.accept)
+  # worded/2 is `point` (string keys, as stored) with the words for the card's controls
+  # `controls` (`%{accept:, switch:, earlier:}`): a return limit's point has the action
+  # for them (`return_action/2`), or, where the card shows neither a switch nor Move back,
+  # only its count of returns, with no action sentence; another point keeps its words,
+  # with its `without_accept` fields where the card shows no Accept as it is.
+  @doc false
+  @spec worded(map, map) :: map
+  def worded(point, controls) do
+    case get(point, :return_stage) do
+      to when is_binary(to) -> return_worded(point, return_action(to, controls))
+      _other -> without_accept(point, controls.accept)
     end
   end
+
+  defp return_worded(point, nil) do
+    point
+    |> Map.merge(%{"text" => get(point, :fix), "action_in_text" => true})
+    |> Map.delete("fix")
+  end
+
+  defp return_worded(point, text), do: Map.put(point, "text", text)
 
   defp without_accept(point, false) do
     case get(point, :without_accept) do

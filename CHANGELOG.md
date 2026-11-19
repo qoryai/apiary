@@ -1876,7 +1876,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   before the last entry starts the next entry, as before. While a required output is
   missing, the gate of every stage shows no **Approve** and takes no approval. For a
   stage with a workflow, a sent approval then reads "Pick Request changes to write
-  acceptance criteria. Approve needs them." Before, a member
+  acceptance criteria. Approve needs them.", or, where Request changes returns the work
+  item to an earlier stage, "Pick Request changes to send the work item back to Build.
+  Approve needs verification." Before, a member
   could accept a stage whose run stored no acceptance criteria, and only the gate of a
   stage with no workflow checked its outputs. The point of a missing output reads "Run
   another round: the run stored no acceptance criteria.", with the output type's words;
@@ -1885,7 +1887,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   finding, then pick Run another round." and the return limit's point reads "Pick Move
   back to return the work item to Build once more."; where the page shows a switch in
   place of **Move back**, it reads "Pick Switch to Standard.", with the label of each
-  switch button. An optional output never stops either action.
+  switch button; where the page shows neither, it has only the count of returns. An
+  optional output never stops either action.
 - On the tab of a stage with `shared_run: true`, each run of the stage is a fold in the
   runs fold: "Attempt 3 (Run 3) · 4 workflows · round 2 of 3 · passed · 2 minutes ago", or
   "round 1" for a run with no loop. Inside it, one row for each session in the order it

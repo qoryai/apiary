@@ -832,9 +832,12 @@ defmodule Apiary.Stages.Runner do
 
   def return_key(_stage, _position, _facts), do: nil
 
-  # The stage that Request changes at the gate returns the work item to: the stage of the
-  # first entry with a return key, nil for none.
-  defp gate_return(stage, facts) do
+  # gate_return/2 is the stage that Request changes at the gate returns the work item to
+  # (`step/4` with `:request_changes`): the stage of the first entry with a return key,
+  # nil for none.
+  @doc false
+  @spec gate_return(map, facts) :: String.t() | nil
+  def gate_return(stage, facts) do
     stage
     |> sequence()
     |> Enum.with_index()

@@ -110,7 +110,9 @@ defmodule Apiary.Stages do
   #
   # A stage waits at its gate while a required output is missing (`missing_outputs/1`);
   # `approve/4` returns `{:error, {:outputs_missing, types}}` for a stage with no
-  # workflow, and `{:error, {:outputs_not_written, types}}` for a stage that runs one.
+  # workflow, and `{:error, {:outputs_not_written, types}}` for a stage that runs one, or
+  # `{:error, {:outputs_not_written, types, to}}` where Request changes at its gate
+  # returns the work item to the stage named `to` (`Runner.gate_return/2`).
   # Accept as it is that would take the stage to its gate is refused with `:invalid` while
   # one is missing (`resolve_escalation/5`).
   #
@@ -172,6 +174,7 @@ defmodule Apiary.Stages do
           | :stage_changed
           | {:outputs_missing, [String.t()]}
           | {:outputs_not_written, [String.t()]}
+          | {:outputs_not_written, [String.t()], String.t()}
           | {:track_not_offered, String.t()}
           | {:track_not_offered, String.t(), String.t()}
           | {:already_on, String.t()}
@@ -1539,7 +1542,8 @@ defmodule Apiary.Stages do
   # stage is refused while a required output is missing (`missing_outputs/1`):
   # `{:error, {:outputs_missing, types}}` for a stage with no workflow, whose people make
   # its outputs, and `{:error, {:outputs_not_written, types}}` for a stage whose runs did
-  # not write them.
+  # not write them, with the name of the stage that Request changes returns the work item
+  # to as a third element where it returns it (`Runner.gate_return/2`).
   #
   # The decision records a track (`chosen_track/3`): the `track` of `opts` where the gate
   # offers it, else `{:error, {:track_not_offered, track}}`; with none, the track the stage's
@@ -4889,9 +4893,28 @@ defmodule Apiary.Stages do
         :ok
 
       types ->
-        if Runner.people?(stage),
-          do: {:error, {:outputs_missing, types}},
-          else: {:error, {:outputs_not_written, types}}
+        cond do
+          Runner.people?(stage) ->
+            {:error, {:outputs_missing, types}}
+
+          to = changes_return(work_item, version, stage) ->
+            {:error, {:outputs_not_written, types, to}}
+
+          true ->
+            {:error, {:outputs_not_written, types}}
+        end
+    end
+  end
+
+  # The name of the stage that Request changes at the gate returns the work item to
+  # (`Runner.gate_return/2`, which `request_changes/5` reaches through `Runner.step/4`);
+  # nil where it runs the stage again.
+  defp changes_return(work_item, version, stage) do
+    facts = facts(work_item, version, stage)
+
+    case Runner.gate_return(stage, facts) do
+      nil -> nil
+      stage_id -> Map.get(facts.earlier, stage_id)
     end
   end
 

@@ -3031,6 +3031,52 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "[id$='-move']")
     end
 
+    test "a stage whose Request changes returns the work item: a stale Approve's notice names the return",
+         %{conn: conn, scope: scope} do
+      # Verify runs verify-a-ticket, whose return key goes to Build, and requires
+      # `outputs`.
+      verify = fn outputs ->
+        document =
+          Map.update!(document("members"), "stages", fn stages ->
+            for stage <- stages do
+              if stage["id"] == @verify,
+                do: %{
+                  stage
+                  | "sequence" => [
+                      %{"workflow" => "verify-a-ticket", "return" => %{"stage" => @build}}
+                    ],
+                    "outputs" => outputs
+                },
+                else: stage
+            end
+          end)
+
+        save!(scope, document)
+      end
+
+      work_item =
+        scope
+        |> work_item_fixture()
+        |> place!(verify.([]), @verify, :at_gate, stage_round: 1, stage_entry: 1)
+
+      # A version whose Verify requires an explainer; the work item keeps its gate.
+      explainer = [%{"type" => "explainer", "required" => true}]
+      {:ok, _work_item} = Processes.assign(scope, work_item, verify.(explainer))
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      refute has_element?(view, "#work-item-stage-gate-approve")
+
+      render_hook(view, "stage_approve", %{
+        "number" => "#{work_item.number}",
+        "seen" => @verify,
+        "note" => ""
+      })
+
+      assert line(view, "#work-item-stage-notice") ==
+               "Pick Request changes to send the work item back to Build. Approve needs explainer."
+
+      assert has_element?(view, "#work-item-stage-gate-ask-changes", "Request changes")
+    end
+
     test "at a gate none: the line, and no Approve", %{
       conn: conn,
       scope: scope
@@ -5194,24 +5240,110 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-stage-escalation-move")
     end
 
-    test "a return limit's point names the switch button, where the card shows a switch",
-         %{conn: conn, scope: scope} do
-      work_item = on_track!(scope, "fast-track")
+    test "worded/2 gives a return limit's point no action where the card shows neither a switch nor Move back" do
+      [point] = Apiary.Stages.Points.return_limit(2, "Verify", "Build")
 
-      {1, _rows} =
-        Repo.update_all(
-          from(e in Escalation, where: e.work_item_id == ^work_item.id and is_nil(e.resolved_at)),
-          set: [
-            cause: :return_limit,
-            points: Apiary.Stages.Points.return_limit(2, "Build", "Shape")
-          ]
-        )
+      count =
+        "Verify's run asked for changes again after 2 returns to Build, the most that Verify allows."
+
+      none = %{accept: false, switch: [], earlier: []}
+
+      assert %{"text" => ^count, "action_in_text" => true} =
+               shown = ApiaryWeb.WorkItemLive.Workflow.worded(point, none)
+
+      refute Map.has_key?(shown, "fix")
+
+      # With Move back on the card, the action is Move back's.
+      assert %{"text" => "Pick Move back to return the work item to Build once more."} =
+               ApiaryWeb.WorkItemLive.Workflow.worded(point, %{none | earlier: [%{id: @build}]})
+    end
+
+    test "a return limit's point uses the switch button's words, where the card shows a switch",
+         %{conn: conn, scope: scope} do
+      # Explore's gate offers Standard and Fast track. Shape and Build each run one
+      # workflow and pass on through a gate none; Verify's verify-a-ticket returns the
+      # work item to Build, at most 2 times.
+      once = fn stage, workflow ->
+        %{
+          stage
+          | "sequence" => [%{"workflow" => workflow}],
+            "inputs" => [],
+            "outputs" => [],
+            "gate" => %{"kind" => "none"}
+        }
+      end
+
+      document =
+        document("members")
+        |> Map.put("tracks", [
+          %{"id" => "standard", "name" => "Standard"},
+          %{"id" => "fast-track", "name" => "Fast track"}
+        ])
+        |> Map.update!("stages", fn stages ->
+          for stage <- stages do
+            case stage["id"] do
+              @explore ->
+                put_in(stage, ["gate", "tracks"], ["standard", "fast-track"])
+
+              @shape ->
+                once.(stage, "shape-a-ticket")
+
+              @build ->
+                once.(stage, "implement")
+
+              @verify ->
+                %{
+                  stage
+                  | "sequence" => [
+                      %{
+                        "workflow" => "verify-a-ticket",
+                        "return" => %{"stage" => @build, "limit" => 2}
+                      }
+                    ],
+                    "outputs" => []
+                }
+
+              _other ->
+                stage
+            end
+          end
+        end)
+
+      save!(scope, document)
+      work_item = explore_gate_fixture(scope)
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+      work_item = WorkItem |> Repo.get!(work_item.id) |> end_run!(passed()) |> end_run!(passed())
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
+
+      changes = fn run, _registered ->
+        {:ok, _version} =
+          Stages.Artifacts.push_json(
+            {:run, run},
+            Repo.get!(WorkItem, run.work_item_id),
+            "verdict",
+            %{"verdict" => "changes-requested"},
+            stage_id: run.stage_id
+          )
+      end
+
+      # Two returns to Build, each passed back to Verify; the third request escalates.
+      work_item =
+        Enum.reduce(1..2, work_item, fn _return, work_item ->
+          work_item = end_run!(work_item, changes)
+          assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+          end_run!(work_item, passed())
+        end)
+
+      work_item = end_run!(work_item, changes)
+      assert %WorkItem{stage_id: @verify, stage_state: :escalated} = work_item
+      assert %Escalation{cause: :return_limit} = escalation(work_item)
+      assert [%{name: "Standard"}] = Stages.switch_tracks(work_item)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert texts(view, "#work-item-needs-points li") == [
-               "Pick Switch to Standard. Build's run asked for changes again after 2 returns " <>
-                 "to Shape, the most that Build allows."
+               "Pick Switch to Standard. Verify's run asked for changes again after 2 returns " <>
+                 "to Build, the most that Verify allows."
              ]
 
       assert has_element?(

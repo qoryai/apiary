@@ -4,8 +4,8 @@ defmodule Apiary.Stages.Escalation do
   # the output checks). Each point is `%{"text", "action", "question"?, "fix"?,
   # "action_in_text"?, "without_accept"?, "return_stage"?}` (`Apiary.Stages.Points`): the
   # run's verdict writes them for `escalate`, and the stage runner writes them for the
-  # causes it sets (`Apiary.Stages.Runner`); `return_limit` has the runner's point, then the points of
-  # the verdict of the run that reached the limit.
+  # causes it sets (`Apiary.Stages.Runner`); `return_limit` has the runner's point, then
+  # the points of the verdict of the run that reached the limit.
   # Open while `resolved_at` is nil, at most one per work item. A person resolves it with
   # `resolution`, with their `note`.
   #

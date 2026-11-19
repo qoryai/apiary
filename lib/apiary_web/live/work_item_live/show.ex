@@ -1643,6 +1643,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     )
   end
 
+  def refused({:outputs_not_written, types, to}, _flow) do
+    gettext("Pick Request changes to send the work item back to %{to}. Approve needs %{outputs}.",
+      to: to,
+      outputs: StageComponents.outputs_words(types)
+    )
+  end
+
   def refused({:outputs_not_written, types}, _flow) do
     gettext("Pick Request changes to write %{outputs}. Approve needs them.",
       outputs: StageComponents.outputs_words(types)

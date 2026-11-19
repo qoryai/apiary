@@ -754,7 +754,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   end
 
   # switch_label/1 is the label of the button that switches to `track`; a return limit's
-  # point names the button by it (`ApiaryWeb.WorkItemLive.Workflow`).
+  # point uses it for the button's words (`ApiaryWeb.WorkItemLive.Workflow`).
   @doc false
   @spec switch_label(map) :: String.t()
   def switch_label(track), do: gettext("Switch to %{track}", track: track.name)
