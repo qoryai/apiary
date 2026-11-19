@@ -277,8 +277,10 @@ defmodule ApiaryWeb.ArtifactComponents do
   writer/2 is who made a version, in words: a person's email address, "Former member"
   for an account that is gone; for a run, "Run" and the number of the run its claim
   registered (`Apiary.Runs.Run`), and the round where the run of the queue has one and
-  `round` is true, such as "Run 14 · round 2" or "Run 14"; "A run" where no run is
-  registered or read. The Explore tab passes `round` false: inside a work item, its
+  `round` is true, such as "Run 14 · round 2" or "Run 14"; for a run of a stage with
+  `shared_run: true`, the round of the loop session that wrote the version: that of the
+  newest of the run's sessions written before the version, none outside a loop. "A run"
+  where no run is registered or read. The Explore tab passes `round` false: inside a work item, its
   runs count by attempt. A version of a run a member cancelled has its round, whatever
   `round`, and "cancelled, not counted" after them: "Run 14 · round 2 · cancelled, not
   counted".
@@ -295,13 +297,27 @@ defmodule ApiaryWeb.ArtifactComponents do
 
   defp run_writer(%Version{writer: :person}, _round), do: People.former_member()
 
-  defp run_writer(%Version{writer: :run, run: %{run: %Run{number: number}, round: round}}, true),
-    do: run_words(number, round)
+  defp run_writer(%Version{writer: :run, run: %{run: %Run{number: number}}} = version, true),
+    do: run_words(number, version_round(version))
 
   defp run_writer(%Version{writer: :run, run: %{run: %Run{number: number}}}, _round),
     do: run_words(number, nil)
 
   defp run_writer(%Version{writer: :run}, _round), do: run_words(nil, nil)
+
+  # The round of a run's version. In a run of a stage with `shared_run: true`, it is the
+  # round of the newest session written before the version, where that session is in a
+  # loop, else none. Any other run has the round of its run of the queue.
+  defp version_round(%Version{run: %{sessions: [_ | _] = sessions}} = version) do
+    session =
+      sessions
+      |> Enum.filter(&(DateTime.compare(&1.inserted_at, version.inserted_at) != :gt))
+      |> List.last()
+
+    if session && is_integer(session.loop_entry), do: session.round
+  end
+
+  defp version_round(%Version{run: %{round: round}}), do: round
 
   # The run that made a version: its number, and its round where it has one.
   defp run_words(number, round) when is_integer(number) and is_integer(round),

@@ -209,6 +209,8 @@ defmodule Apiary.Dispatches.DispatchRun do
 
     has_many :dispatches, Apiary.Dispatches.Dispatch
     has_one :run, Apiary.Runs.Run
+    # The sessions of a run of a stage with `shared_run: true` (`Apiary.Stages.Session`).
+    has_many :sessions, Apiary.Stages.Session
 
     timestamps(type: :utc_datetime_usec)
   end

@@ -1905,7 +1905,9 @@ defmodule Apiary.Artifacts do
         where: a.work_item_id == ^id and a.workspace_id == ^workspace_id,
         order_by: [a.type, a.name],
         preload: [
-          versions: ^{versions_query(), [:user, run: [run: runs_query()], files: files_query()]}
+          versions:
+            ^{versions_query(),
+             [:user, run: [run: runs_query(), sessions: sessions_query()], files: files_query()]}
         ]
     )
   end
@@ -1916,7 +1918,11 @@ defmodule Apiary.Artifacts do
     Repo.all(
       from v in versions_query(),
         where: v.artifact_id == ^id,
-        preload: [:user, run: [run: ^runs_query()], files: ^files_query()]
+        preload: [
+          :user,
+          run: [run: ^runs_query(), sessions: ^sessions_query()],
+          files: ^files_query()
+        ]
     )
   end
 
@@ -1931,7 +1937,12 @@ defmodule Apiary.Artifacts do
             a.name == ^name,
         order_by: [desc: v.number],
         limit: 1,
-        preload: [:user, run: [run: ^runs_query()], artifact: a, files: ^files_query()]
+        preload: [
+          :user,
+          run: [run: ^runs_query(), sessions: ^sessions_query()],
+          artifact: a,
+          files: ^files_query()
+        ]
     )
   end
 
@@ -1944,7 +1955,12 @@ defmodule Apiary.Artifacts do
     Repo.one!(
       from v in Version,
         where: v.public_id == ^id,
-        preload: [:artifact, :user, run: [run: ^runs_query()], files: ^files_query()]
+        preload: [
+          :artifact,
+          :user,
+          run: [run: ^runs_query(), sessions: ^sessions_query()],
+          files: ^files_query()
+        ]
     )
   end
 
@@ -1963,6 +1979,25 @@ defmodule Apiary.Artifacts do
             :dispatch_run_id,
             :cancel_requested_at,
             :cancel_requested_by_id
+          ])
+      )
+
+  # The sessions of a run of a stage with `shared_run: true`, for the round of the session
+  # that wrote a version (`ApiaryWeb.ArtifactComponents.writer/2`): their place and when
+  # each was written, in the order they ran.
+  defp sessions_query,
+    do:
+      from(s in Apiary.Stages.Session,
+        order_by: s.sequence,
+        select:
+          struct(s, [
+            :id,
+            :dispatch_run_id,
+            :sequence,
+            :round,
+            :stage_entry,
+            :loop_entry,
+            :inserted_at
           ])
       )
 
