@@ -4504,6 +4504,11 @@ msgstr ""
 msgid "A member approves the proposal"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "A member who may approve %{stage} decides."
+msgstr ""
+
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "A model provider's key lets runs in %{organisation} call a model."
@@ -5959,6 +5964,11 @@ msgstr ""
 msgid "An allow rule on this target still holds here."
 msgstr "An allow rule on this repository still holds here."
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "An approver of %{stage} decides: %{approvers}."
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "An email address"
@@ -6285,6 +6295,11 @@ msgstr ""
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "Ask an admin of %{workspace} to rebuild %{target}."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an admin to give this stage a workflow in Workspace settings › %{workflows}. Approve needs %{outputs}."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
@@ -11698,6 +11713,11 @@ msgstr ""
 msgid "In %{workspace} (cannot be ticked)"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "In Workspace settings › %{workflows}, give this stage a workflow that writes %{outputs}. Approve needs %{outputs}."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "In background"
@@ -13852,11 +13872,6 @@ msgstr ""
 msgid "Move one of the workflows to a separate stage in Workspace settings › Workflows, then run the round again."
 msgstr ""
 
-#: lib/apiary_web/live/work_item_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Move this stage back, or give it a workflow that writes %{outputs}. Approve needs them."
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Move to %{version}"
@@ -14231,11 +14246,6 @@ msgstr ""
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "No %{items} yet"
-msgstr ""
-
-#: lib/apiary/stages/points.ex
-#, elixir-autogen, elixir-format
-msgid "No %{type} was stored in this stage."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -14975,6 +14985,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Nobody can open these organisations and their access keys do not work. Until the day each is purged, you can cancel its deletion, which brings everything back."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Nobody may approve %{stage}. Ask an admin to list its approvers in Workspace settings › %{workflows}."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/workspace.ex
@@ -16630,7 +16645,27 @@ msgstr ""
 
 #: lib/apiary/stages/points.ex
 #, elixir-autogen, elixir-format
+msgid "Pick %{switches}."
+msgstr ""
+
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
 msgid "Pick Move back to return the work item to %{to} once more, or pick Accept as it is."
+msgstr ""
+
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
+msgid "Pick Move back to return the work item to %{to} once more."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Pick Request changes to send the work item back to %{to}. Approve needs %{outputs}."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Pick Request changes to write %{outputs}. Approve needs %{outputs}."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
@@ -17487,6 +17522,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Read the open finding, then pick Accept as it is or Run another round."
 msgid_plural "Read the %{count} open findings, then pick Accept as it is or Run another round."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
+msgid "Read the open finding, then pick Run another round."
+msgid_plural "Read the %{count} open findings, then pick Run another round."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -18650,6 +18692,11 @@ msgstr ""
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Run another round."
+msgstr ""
+
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
+msgid "Run another round: the run stored no %{type}."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
@@ -22502,6 +22549,11 @@ msgstr ""
 #: lib/apiary/stages/points.ex
 #, elixir-autogen, elixir-format
 msgid "The run stopped: %{cause}"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run stored no %{type}."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -27554,6 +27606,11 @@ msgstr ""
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "the %{item}"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "the %{type}"
 msgstr ""
 
 #: lib/apiary/artifacts/template_types.ex

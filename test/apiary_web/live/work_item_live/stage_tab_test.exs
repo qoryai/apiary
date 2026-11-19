@@ -1231,9 +1231,32 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert has_element?(view, "#work-item-tab-wait", "Shape is running")
 
       assert html =~
-               "reads the ticket and the stage&#39;s inputs, then writes spec, decision record, mockup and test features."
+               "reads the ticket and the stage&#39;s inputs, then writes the spec, the decision record, the mockup and the test features."
 
       refute has_element?(view, "#work-item-record")
+    end
+
+    test "on the stage's tab: a queued first run's line lists each output with \"the\"", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_shape!(scope)
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-tab-wait", "Shape is queued")
+
+      line =
+        view
+        |> element("#work-item-tab-wait p:not([id])")
+        |> render()
+        |> String.replace(~r/<[^>]*>/, "")
+        |> String.replace("&#39;", "'")
+        |> String.trim()
+
+      assert line ==
+               "Attempt 2 starts when the workspace's pool takes it. It reads the ticket and " <>
+                 "the stage's inputs, then writes the spec, the decision record, the mockup and " <>
+                 "the test features."
     end
 
     test "on the stage's tab: none with no run, no skip and no artifact", %{

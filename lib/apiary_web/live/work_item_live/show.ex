@@ -133,7 +133,15 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   alias Apiary.{Submissions, WorkItems, WorkspaceSetup}
   alias Apiary.Runs.Run
   alias Apiary.WorkItems.{ExploreView, Proposal}
-  alias ApiaryWeb.{ArtifactComponents, HarnessComponents, SourceComponents, SpendDialog}
+
+  alias ApiaryWeb.{
+    ArtifactComponents,
+    HarnessComponents,
+    SettingsComponents,
+    SourceComponents,
+    SpendDialog
+  }
+
   alias ApiaryWeb.UserAuth
   alias ApiaryWeb.WorkItemLive.{Comments, StageComponents, StageTab, VerifyTab, View, Workflow}
 
@@ -1628,17 +1636,48 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
         if socket.redirected,
           do: {:noreply, socket},
-          else: {:noreply, assign(socket, :stage_notice, refused(reason, flow))}
+          else: {:noreply, assign(socket, :stage_notice, refused(reason, flow, scope(socket)))}
     end
   end
+
+  # refused/3 is refused/2, with the reader's `scope` for a refusal whose fix depends on
+  # what the reader may do: a stage with no workflow gets one in Workspace settings ›
+  # Workflows, where a reader with `process.edit` edits, as that page checks.
+  @doc false
+  def refused({:outputs_missing, types}, _flow, scope) do
+    outputs = StageComponents.outputs_words(types)
+    workflows = SettingsComponents.workflows_label()
+
+    if Access.can?(scope, :"process.edit", scope.workspace) do
+      gettext(
+        "In Workspace settings › %{workflows}, give this stage a workflow that writes %{outputs}. Approve needs %{outputs}.",
+        outputs: outputs,
+        workflows: workflows
+      )
+    else
+      gettext(
+        "Ask an admin to give this stage a workflow in Workspace settings › %{workflows}. Approve needs %{outputs}.",
+        outputs: outputs,
+        workflows: workflows
+      )
+    end
+  end
+
+  def refused(reason, flow, _scope), do: refused(reason, flow)
 
   # Why the stage runner did not act, each with its fix first.
   @doc false
   def refused(:not_earlier, flow), do: not_earlier(flow)
 
-  def refused({:outputs_missing, types}, _flow) do
-    gettext(
-      "Move this stage back, or give it a workflow that writes %{outputs}. Approve needs them.",
+  def refused({:outputs_not_written, types, to}, _flow) do
+    gettext("Pick Request changes to send the work item back to %{to}. Approve needs %{outputs}.",
+      to: to,
+      outputs: StageComponents.outputs_words(types)
+    )
+  end
+
+  def refused({:outputs_not_written, types}, _flow) do
+    gettext("Pick Request changes to write %{outputs}. Approve needs %{outputs}.",
       outputs: StageComponents.outputs_words(types)
     )
   end

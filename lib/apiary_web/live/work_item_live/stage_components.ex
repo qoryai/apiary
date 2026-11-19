@@ -24,8 +24,9 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   use ApiaryWeb, :html
 
-  alias ApiaryWeb.PauseWords
+  alias ApiaryWeb.{PauseWords, People, SettingsComponents}
   alias ApiaryWeb.WorkItemComponents
+  alias ApiaryWeb.WorkItemLive.Workflow
 
   @note_units 2 * 2_000
 
@@ -646,11 +647,16 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   # The escalation in the rail: one line, "Waits for you: N points", which links to the
   # block "What the run needs from you" (`needs_block/1`), the run it came from, and Accept as
-  # it is (only with a result), Move back and Close; where the page offers a switch
-  # (`page.switch`, one track a button, "Switch to <track>"), only the switches and Close. Their form has the note field and Run
-  # another round in the block, which name it in their `form` attribute, so the note goes
-  # with every action.
+  # it is (only where `Workflow.accept?/2` is true: with a result, with no required output
+  # missing where the accept takes the stage to its gate, and with no switch), Move back
+  # and Close; where the page shows a switch
+  # (`page.switch`, one track a button, "Switch to <track>"), only the switches and Close.
+  # Their form has the note field and Run another round in the block, which name it in
+  # their `form` attribute, so the note goes with every action.
   defp escalation_card(assigns) do
+    switch = Map.get(assigns.page, :switch) || []
+    result = Map.get(assigns.page, :accept_needs, []) == []
+
     assigns =
       assign(
         assigns,
@@ -658,14 +664,14 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         assigns.page.escalation ||
           %{
             cause: :escalate,
-            result: true,
+            accept: Workflow.accept?(result, switch),
             points: [],
             run: nil,
             harness_path: nil,
             return_to: nil
           }
       )
-      |> assign(:switch, Map.get(assigns.page, :switch) || [])
+      |> assign(:switch, switch)
 
     ~H"""
     <div id={@id} class="flex flex-col gap-2">
@@ -697,7 +703,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
               name="switch"
               value={track.id}
             >
-              {gettext("Switch to %{track}", track: track.name)}
+              {switch_label(track)}
             </.button>
           </div>
           <p
@@ -708,7 +714,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             {switch_line(track)}
           </p>
         </div>
-        <div :if={@switch == [] and @escalation.result} class="q-wi-acts flex-wrap">
+        <div :if={@escalation.accept} class="q-wi-acts flex-wrap">
           <.button
             id={"#{@id}-accept"}
             type="submit"
@@ -719,7 +725,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             {gettext("Accept as it is")}
           </.button>
         </div>
-        <div :if={@switch == [] and @page.earlier != []} class="q-wi-acts flex-wrap">
+        <div :if={Workflow.move_back?(@switch, @page.earlier)} class="q-wi-acts flex-wrap">
           <label for={"#{@id}-stage"} class="sr-only">{gettext("Earlier stage")}</label>
           <select id={"#{@id}-stage"} name="stage">
             <option
@@ -747,6 +753,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     """
   end
 
+  # switch_label/1 is the label of the button that switches to `track`; a return limit's
+  # point uses it for the button's words (`ApiaryWeb.WorkItemLive.Workflow`).
+  @doc false
+  @spec switch_label(map) :: String.t()
+  def switch_label(track), do: gettext("Switch to %{track}", track: track.name)
+
   # What a switch runs: the stage it starts, with the run's outputs, then the stages after
   # it that run on the track.
   defp switch_line(%{later: []} = track) do
@@ -773,9 +785,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   The block "What the run needs from you": the points of the stage's open escalation, one
   numbered sentence each, followed by the sentence of its action: "Answer question N.",
   with "question N" linked to the question on the Questions tab, or "Run another
-  round.", or the point's fix line in its place. While the stage is escalated, a reader who
-  may decide finds the note field and Run another round under the points; they belong to
-  the form of the escalation card in the rail (`stage_card/1`). While the stage waits for
+  round.", or the point's fix line in its place. A point whose text opens with its action
+  (`in_text`) has no sentence after it, nor has a point with no action sentence (also
+  `in_text`): a return limit's count, where the card shows neither a switch nor Move
+  back. While the stage is escalated, a reader who may decide finds the note field and
+  Run another round under the points; they belong to the form of the escalation card in
+  the rail (`stage_card/1`). While the stage waits for
   answers, the answers run the next round, so the block has no form.
   """
   attr :id, :string, default: "work-item-needs"
@@ -910,7 +925,10 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   # "Answer question N.", with "question N" linked to its question; a `run_again` point
   # adds "Run another round.", or its fix line, escaped, in its place: a run's or a stop
   # cause's. In a fix line, the words "the set-up step Harness" link to that step when
-  # `harness_path` is set (`gap_line/1`); only a run stopped at that step sets it.
+  # `harness_path` is set (`gap_line/1`); only a run stopped at that step sets it. A point
+  # whose text opens with its action (`in_text`, a failed check's) adds nothing, nor does
+  # a point with no action sentence (`in_text` too): a return limit's count, where the
+  # card shows neither a switch nor Move back.
   defp point(%{point: %{action: :answer, number: n}, href: href} = assigns)
        when is_integer(n) and is_binary(href) do
     # The sentence is split at a marker, so that the link keeps its place in any locale.
@@ -932,6 +950,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   defp point(%{point: %{action: :answer}} = assigns) do
     ~H"""
     {@point.text} {gettext("Answer the question.")}
+    """
+  end
+
+  defp point(%{point: %{in_text: true}} = assigns) do
+    ~H"""
+    {@point.text}
     """
   end
 
@@ -1205,8 +1229,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   @doc false
   # type_words/1 is an artifact type in a sentence: its name with spaces for hyphens,
-  # "acceptance criteria" for `acceptance-criteria`.
-  def type_words(type) when is_binary(type), do: String.replace(type, "-", " ")
+  # "acceptance criteria" for `acceptance-criteria` (`Apiary.Artifacts.Type.words/1`).
+  def type_words(type) when is_binary(type), do: Apiary.Artifacts.Type.words(type)
   def type_words(type), do: to_string(type)
 
   defp version_words(type, nil), do: type_words(type)
@@ -1249,8 +1273,47 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   def frame_key(%{type: type, name: name}) when name != "main", do: "#{type}--#{name}--"
   def frame_key(%{type: type}), do: type
 
-  @doc "Artifact types in a sentence: \"acceptance criteria and mockup\"."
-  def outputs_words(types), do: types |> Enum.map(&type_words/1) |> words_list()
+  @doc "Artifact types in a sentence, each with \"the\": \"the acceptance criteria and the mockup\"."
+  def outputs_words(types),
+    do: types |> Enum.map(&gettext("the %{type}", type: type_words(&1))) |> words_list()
+
+  @doc """
+  stored_no/1 is the fact of a failed Exists check of the output type `type`, without its
+  action, for a reader who may not decide: "The run stored no acceptance criteria."
+  """
+  @spec stored_no(String.t()) :: String.t()
+  def stored_no(type), do: gettext("The run stored no %{type}.", type: type_words(type))
+
+  @doc """
+  approver_line/3 is the sentence of who decides on the stage whose name is `stage`, for a
+  reader who may not: `approvers` as `ApiaryWeb.WorkItemLive.Workflow.approvers/1` returns
+  them, and `members`, the workspace's memberships, each with its `user`, as
+  `Apiary.Organisations.list_workspace_members/1` returns them. The names of the listed
+  members follow the list's order; a listed id that is no member's is left out. With no
+  member left, or none listed, the sentence is that nobody may approve the stage.
+  """
+  @spec approver_line(String.t(), :members | {:listed, [String.t()]}, [map]) :: String.t()
+  def approver_line(stage, :members, _members),
+    do: gettext("A member who may approve %{stage} decides.", stage: stage)
+
+  def approver_line(stage, {:listed, ids}, members) do
+    names = Map.new(members, &{&1.user.id, People.short(People.email(&1.user))})
+
+    case for(id <- Enum.uniq(ids), Map.has_key?(names, id), do: names[id]) do
+      [] ->
+        gettext(
+          "Nobody may approve %{stage}. Ask an admin to list its approvers in Workspace settings › %{workflows}.",
+          stage: stage,
+          workflows: SettingsComponents.workflows_label()
+        )
+
+      listed ->
+        gettext("An approver of %{stage} decides: %{approvers}.",
+          stage: stage,
+          approvers: words_list(listed)
+        )
+    end
+  end
 
   defp words_list([]), do: ""
   defp words_list([one]), do: one

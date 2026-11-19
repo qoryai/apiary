@@ -65,9 +65,12 @@ defmodule Apiary.Stages.Runner do
   #     stage with an entry that has a return key, it returns the work item to that key's
   #     stage instead, at its first entry, with a note too, and counts no return.
   #   * An escalation accepted counts the loop as passed: the sequence goes on with its
-  #     next workflow, or, after its last, to the gate without the Exists checks, where
-  #     a failed check stays shown (§ 6); an escalation at the end of the sequence goes to
-  #     the gate too. At a gate `none` the accept is the approval: `Apiary.Stages`
+  #     next workflow, or, after its last, to the gate; an escalation at the end of the
+  #     sequence goes to the gate too. The runner runs no Exists checks there.
+  #     `Apiary.Stages` returns an error for an accept that would take the stage to its
+  #     gate while a required output is missing (`accept_to_gate?/3`); an accept that
+  #     starts the next entry needs no output, as the checks run at the sequence's end.
+  #     At a gate `none` the accept is the approval: `Apiary.Stages`
   #     records it with the member who accepted. Another round runs
   #     one more round: the same workflow for a stopped run, the loop's first workflow
   #     otherwise, the last loop for an escalation at the end, or the sequence from its
@@ -336,12 +339,9 @@ defmodule Apiary.Stages.Runner do
   end
 
   def step(stage, position, {:accept, _cause}, facts) do
-    next = next(stage, position, facts)
-
-    cond do
-      at_end?(stage, position) -> gate(stage, position)
-      entry_at(stage, next) == nil -> gate(stage, %{next | loop_entry: nil})
-      true -> start(stage, next, facts)
+    case accepted(stage, position, facts) do
+      {:gate, at} -> gate(stage, at)
+      {:start, next} -> start(stage, next, facts)
     end
   end
 
@@ -832,9 +832,12 @@ defmodule Apiary.Stages.Runner do
 
   def return_key(_stage, _position, _facts), do: nil
 
-  # The stage that Request changes at the gate returns the work item to: the stage of the
-  # first entry with a return key, nil for none.
-  defp gate_return(stage, facts) do
+  # gate_return/2 is the stage that Request changes at the gate returns the work item to
+  # (`step/4` with `:request_changes`): the stage of the first entry with a return key,
+  # nil for none.
+  @doc false
+  @spec gate_return(map, facts) :: String.t() | nil
+  def gate_return(stage, facts) do
     stage
     |> sequence()
     |> Enum.with_index()
@@ -865,7 +868,8 @@ defmodule Apiary.Stages.Runner do
       failed == [] ->
         gate(stage, position)
 
-      # No run makes the outputs of a stage with no workflow: people add them at its gate.
+      # No run makes the outputs of a stage with no workflow, so it waits at its gate:
+      # Approve needs them, and only a workflow's run can write them (`Apiary.Stages`).
       people?(stage) ->
         %{state: :at_gate, position: position, actions: []}
 
@@ -1079,6 +1083,25 @@ defmodule Apiary.Stages.Runner do
   @doc false
   @spec people?(map) :: boolean
   def people?(stage), do: workflows(stage) == []
+
+  # Where an accept at `position` goes: the gate, at the sequence's end or where no entry
+  # follows, else the start of the next entry.
+  defp accepted(stage, position, facts) do
+    next = next(stage, position, facts)
+
+    cond do
+      at_end?(stage, position) -> {:gate, position}
+      entry_at(stage, next) == nil -> {:gate, %{next | loop_entry: nil}}
+      true -> {:start, next}
+    end
+  end
+
+  # accept_to_gate?/3 is whether an accept at `position` takes the stage to its gate
+  # (`step/4` with `{:accept, cause}`), rather than starting the next entry.
+  @doc false
+  @spec accept_to_gate?(map, position, facts) :: boolean
+  def accept_to_gate?(stage, position, facts),
+    do: match?({:gate, _at}, accepted(stage, position, facts))
 
   # at_end?/2 is whether `position` is past the sequence's last entry.
   @doc false

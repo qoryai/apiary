@@ -182,6 +182,16 @@ defmodule Apiary.StagesTest do
   # A point that asks a person to run another round, as a run or Core writes it.
   defp again(text), do: %{"text" => text, "action" => "run_again"}
 
+  # The point of a failed Exists check of the output type `type`, with the type's words
+  # (`Apiary.Stages.Points.check_failed/1`).
+  defp stored_no(type),
+    do: %{
+      "text" => "Run another round: the run stored no #{Apiary.Artifacts.Type.words(type)}.",
+      "action" => "run_again",
+      "action_in_text" => true,
+      "missing_type" => type
+    }
+
   # A run of Explore that pushed proposal version 1 and a question, then a second run of
   # the take in, queued by the answer: the work item, waiting for that second run's end.
   defp answered_after_proposal!(scope) do
@@ -738,13 +748,8 @@ defmodule Apiary.StagesTest do
 
       assert work_item.stage_state == :escalated
 
-      assert %Escalation{
-               cause: :check_failed,
-               round: 1,
-               points: [
-                 %{"text" => "No proposal was stored in this stage.", "action" => "run_again"}
-               ]
-             } = escalation(work_item)
+      points = [stored_no("proposal")]
+      assert %Escalation{cause: :check_failed, round: 1, points: ^points} = escalation(work_item)
 
       assert %{verdict: :passed} = hd(Stages.runs(work_item))
     end
@@ -756,13 +761,8 @@ defmodule Apiary.StagesTest do
 
       assert work_item.stage_state == :escalated
 
-      assert %Escalation{
-               cause: :check_failed,
-               round: 1,
-               points: [
-                 %{"text" => "No proposal was stored in this stage.", "action" => "run_again"}
-               ]
-             } = escalation(work_item)
+      points = [stored_no("proposal")]
+      assert %Escalation{cause: :check_failed, round: 1, points: ^points} = escalation(work_item)
 
       assert %{verdict: :failed} = hd(Stages.runs(work_item))
     end
@@ -903,14 +903,14 @@ defmodule Apiary.StagesTest do
     } do
       outputs = [
         %{"type" => "proposal", "required" => true},
-        %{"type" => "mockup", "required" => true}
+        %{"type" => "walkthrough", "required" => true}
       ]
 
       save!(scope, [explore_stage(%{"outputs" => outputs}), stage(@shape, "Shape", [])])
       work_item = take_in!(scope) |> end_run!(understood_result())
       run = newest_run(work_item)
 
-      # The proposal waits, and the stage escalated: the mockup is missing.
+      # The proposal waits, and the stage escalated: the walkthrough is missing.
       assert %Escalation{cause: :check_failed} = escalation(work_item)
       assert %{status: :confirm} = Explore.current(work_item, DateTime.utc_now())
 
@@ -919,8 +919,13 @@ defmodule Apiary.StagesTest do
       assert %WorkItem{stage_state: :escalated, stage_id: @explore} = reload(work_item)
       refute Repo.get_by(Confirmation, work_item_id: work_item.id)
 
+      # Another round writes the walkthrough, and the stage reaches its gate.
       {:ok, work_item} =
-        Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore)
+        Stages.resolve_escalation(scope, work_item, :another_round, nil, expect_stage: @explore)
+
+      work_item = end_run!(work_item, pushes(["walkthrough"], 1, "passed"))
+      assert %WorkItem{stage_state: :at_gate, stage_id: @explore} = work_item
+      run = newest_run(work_item)
 
       assert {:ok, %WorkItem{stage_id: @shape}} =
                WorkItems.confirm(scope, work_item, run.attempt)
@@ -930,7 +935,11 @@ defmodule Apiary.StagesTest do
       scope: scope
     } do
       save!(scope, [explore_stage(%{"gate" => %{"kind" => "none"}})])
-      work_item = take_in!(scope) |> end_run!(nil)
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(understood_result(), %{exit_state: "failed", outcome_state: "failed"})
+
       assert %Escalation{cause: :run_stopped} = escalation(work_item)
 
       {:ok, _work_item} =
@@ -2005,12 +2014,8 @@ defmodule Apiary.StagesTest do
       assert %DispatchRun{loop_entry: nil, of: 3} = newest_run(work_item)
       work_item = end_run!(work_item, understood_result())
 
-      assert %Escalation{
-               cause: :check_failed,
-               points: [
-                 %{"text" => "No mockup was stored in this stage.", "action" => "run_again"}
-               ]
-             } = escalation(work_item)
+      points = [stored_no("mockup")]
+      assert %Escalation{cause: :check_failed, points: ^points} = escalation(work_item)
 
       assert [%{check: :passed}, %{check: :missing}, %{check: :not_checked}] =
                Stages.status(work_item).outputs
@@ -2103,7 +2108,7 @@ defmodule Apiary.StagesTest do
       # failed check, and status shows the points instead of the gaps.
       points = [
         %{"text" => "3 of 3 rounds ran.", "action" => "run_again"},
-        %{"text" => "No mockup was stored in this stage.", "action" => "run_again"}
+        stored_no("mockup")
       ]
 
       assert %Escalation{cause: :round_limit, points: ^points} = escalation(work_item)
@@ -2684,6 +2689,111 @@ defmodule Apiary.StagesTest do
 
       assert [%GateDecision{stage_id: @explore}] = decisions(work_item)
       assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
+    end
+  end
+
+  describe "required outputs at Accept as it is and Approve" do
+    # Explore with `outputs`, then Shape, a stage with no workflow.
+    defp outputs_process!(scope, outputs) do
+      save!(scope, [
+        explore_stage(%{"outputs" => outputs}),
+        stage(@shape, "Shape", [])
+      ])
+    end
+
+    @proposal %{"type" => "proposal", "required" => true}
+
+    test "Approve is refused at the gate of a stage with a workflow while a required output is missing",
+         %{scope: scope} do
+      shape = fn outputs ->
+        save!(scope, [
+          explore_stage(),
+          stage(@shape, "Shape", [%{"workflow" => "shape-a-ticket"}], %{"outputs" => outputs})
+        ])
+      end
+
+      shape.([])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
+      work_item = work_item |> reload() |> end_run!(verdict("passed"))
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+
+      # A version whose Shape also requires a walkthrough, which no run of Shape wrote; the
+      # work item keeps its gate when it moves to it.
+      version = shape.([%{"type" => "walkthrough", "required" => true}])
+      {:ok, work_item} = Processes.assign(scope, work_item, version)
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
+
+      assert %{missing_outputs: ["walkthrough"], gate: %{approvable?: false}} =
+               Stages.status(work_item, scope)
+
+      assert Stages.starts(work_item, :approve) == :none
+
+      assert Stages.approve(scope, work_item, nil, expect_stage: @shape) ==
+               {:error, {:outputs_not_written, ["walkthrough"]}}
+
+      # Explore's confirmation is the one decision.
+      assert [%GateDecision{stage_id: @explore}] = decisions(work_item)
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
+    end
+
+    test "Accept as it is before the last entry starts the next entry with a required output missing; at the last entry it is refused",
+         %{scope: scope} do
+      save!(scope, [
+        explore_stage(%{
+          "sequence" => [%{"workflow" => "explore-a-ticket"}, %{"workflow" => "triage-review"}],
+          "outputs" => [@proposal]
+        }),
+        stage(@shape, "Shape", [])
+      ])
+
+      # The first run stops with no proposal: Accept as it is goes on to triage-review.
+      work_item = take_in!(scope) |> end_run!(nil)
+      assert %WorkItem{stage_entry: 0} = work_item
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+      assert %{missing_outputs: ["proposal"], accept_needs: []} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == {:run, "triage-review"}
+
+      assert {:ok, %WorkItem{stage_state: :running, stage_entry: 1}} =
+               Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore)
+
+      # The second run stops too: an accept would take the stage to its gate.
+      work_item = end_run!(work_item, nil)
+      assert %WorkItem{stage_entry: 1, stage_state: :escalated} = work_item
+
+      assert %{missing_outputs: ["proposal"], accept_needs: ["proposal"]} =
+               Stages.status(work_item, scope)
+
+      assert Stages.starts(work_item, :accept) == :none
+
+      assert Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore) ==
+               {:error, :invalid}
+
+      assert %Escalation{resolution: nil} = escalation(work_item)
+    end
+
+    test "an optional output blocks neither Accept as it is nor Approve", %{scope: scope} do
+      outputs_process!(scope, [@proposal, %{"type" => "walkthrough", "required" => false}])
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(understood_result(), %{exit_state: "failed", outcome_state: "failed"})
+
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+      assert Stages.missing_outputs(work_item) == []
+
+      {:ok, work_item} =
+        Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore)
+
+      assert %WorkItem{stage_id: @explore, stage_state: :at_gate} = work_item
+
+      assert [%{type: "proposal", check: :passed}, %{type: "walkthrough", required: false}] =
+               Stages.status(work_item, scope).outputs
+
+      assert Stages.status(work_item, scope).gate.approvable?
+
+      assert {:ok, %WorkItem{stage_id: @shape}} =
+               Stages.approve(scope, work_item, nil, expect_stage: @explore)
     end
   end
 
@@ -6018,10 +6128,37 @@ defmodule Apiary.StagesTest do
                Repo.get_by(Escalation, work_item_id: work_item.id)
     end
 
-    test "accept counts the loop as passed and opens the gate, the failed check shown", %{
+    test "accept is refused while a required output is missing, and writes nothing", %{
       scope: scope,
       work_item: work_item
     } do
+      # The failed run pushed no proposal, which Explore requires.
+      assert Stages.missing_outputs(work_item) == ["proposal"]
+      assert Stages.starts(work_item, :accept) == :none
+
+      assert Stages.resolve_escalation(scope, work_item, :accept, nil,
+               expect_stage: reload(work_item).stage_id
+             ) == {:error, :invalid}
+
+      assert %Escalation{cause: :run_stopped, resolution: nil} = escalation(work_item)
+      assert %WorkItem{stage_state: :escalated} = reload(work_item)
+      assert runs(work_item) |> length() == 1
+
+      refute Repo.exists?(
+               from e in Entry,
+                 where: e.action == "gate.approve" and e.subject_id == ^work_item.id
+             )
+    end
+
+    test "accept counts the run as passed and opens the gate, with every required output", %{
+      scope: scope
+    } do
+      work_item =
+        take_in!(scope)
+        |> end_run!(understood_result(), %{exit_state: "failed", outcome_state: "failed"})
+
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+
       assert {:ok, %WorkItem{stage_state: :at_gate, stage_round: 1}} =
                Stages.resolve_escalation(scope, work_item, :accept, nil,
                  expect_stage: reload(work_item).stage_id
@@ -6032,10 +6169,10 @@ defmodule Apiary.StagesTest do
 
       assert escalation(work_item) == nil
       assert runs(work_item) |> length() == 1
-      assert [%{type: "proposal", check: :missing}] = Stages.status(work_item).outputs
+      assert [%{type: "proposal", check: :passed}] = Stages.status(work_item).outputs
     end
 
-    test "accept at the end of the sequence opens the gate without the checks", %{scope: scope} do
+    test "accept at the end of the sequence opens the gate", %{scope: scope} do
       save!(scope, [
         explore_stage(%{
           "sequence" => [
@@ -6044,8 +6181,8 @@ defmodule Apiary.StagesTest do
         })
       ])
 
-      # A run with no verdict in the loop's last round.
-      work_item = take_in!(scope) |> end_run!(nil)
+      # A run that pushed the proposal and no verdict in the loop's last round.
+      work_item = take_in!(scope) |> end_run!(proposal_only())
       assert %Escalation{cause: :round_limit} = escalation(work_item)
 
       assert {:ok, %WorkItem{stage_state: :at_gate, stage_entry: 1}} =
@@ -6054,7 +6191,7 @@ defmodule Apiary.StagesTest do
                )
 
       assert escalation(work_item) == nil
-      assert [%{check: :missing}] = Stages.status(work_item).outputs
+      assert [%{check: :passed}] = Stages.status(work_item).outputs
     end
 
     test "close ends the work item", %{scope: scope, work_item: work_item} do
@@ -6496,7 +6633,8 @@ defmodule Apiary.StagesTest do
                    "Pick Move back to return the work item to Build once more, or pick Accept as it is.",
                  "action" => "run_again",
                  "fix" =>
-                   "Verify's run asked for changes again after 2 returns to Build, the most that Verify allows."
+                   "Verify's run asked for changes again after 2 returns to Build, the most that Verify allows.",
+                 "return_stage" => "Build"
                }
                | @findings
              ]
