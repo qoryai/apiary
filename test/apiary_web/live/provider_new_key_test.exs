@@ -118,7 +118,7 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
     {:ok, provider} =
       Connections.create_provider(scope, %{
         provider: "openai-subscription",
-        keys: [%{value_id: "main", value: login_paste(tokens: tokens)}]
+        keys: [%{value_id: "main", value: device_login(tokens: tokens)}]
       })
 
     # A sign-in made just now: no refresh can fix a 401 on it.

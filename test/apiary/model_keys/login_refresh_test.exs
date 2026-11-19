@@ -719,7 +719,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       {:ok, _} =
         Connections.update_provider_key(scope, plain(provider), "main", %{
           "value_id" => "main",
-          "value" => login_paste(tokens: pasted)
+          "value" => device_login(tokens: pasted)
         })
 
       assert %Login{state: "signed_in", sign_in_cause: nil, generation: 2} = row(provider)

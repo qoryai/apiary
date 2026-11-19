@@ -119,15 +119,33 @@ defmodule Apiary.ModelKeysFixtures do
   def device_login(opts \\ []) do
     tokens = Keyword.get_lazy(opts, :tokens, fn -> login_tokens(opts) end)
 
-    {:ok, login} =
-      Apiary.ModelKeys.Login.from_tokens(
-        %{
-          "access_token" => tokens.access_token,
-          "refresh_token" => tokens.refresh_token,
-          "id_token" => tokens.id_token
-        },
-        account_claim()
-      )
+    login =
+      case Apiary.ModelKeys.Login.from_tokens(
+             %{
+               "access_token" => tokens.access_token,
+               "refresh_token" => tokens.refresh_token,
+               "id_token" => tokens.id_token
+             },
+             account_claim()
+           ) do
+        {:ok, login} ->
+          login
+
+        # `from_tokens/3` refuses an access token with no account id, as a sign-in does. A
+        # test of a stored login whose token has none (`login_tokens(account: false)`), as
+        # a refresh can leave it, needs the row that a sign-in with an id would have made.
+        {:error, :no_account} ->
+          %Apiary.ModelKeys.Login.Parsed{
+            document:
+              Jason.encode!(%{
+                "version" => 1,
+                "access_token" => tokens.access_token,
+                "refresh_token" => tokens.refresh_token
+              }),
+            account_id: tokens.account_id,
+            access_expires_at: nil
+          }
+      end
 
     # `from_tokens/3` keeps an `exp` only from 1 second to 366 days ahead, as a device
     # sign-in's tokens have it. A test of a refresh needs a token that has expired, or one

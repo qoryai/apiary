@@ -14,7 +14,7 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
   import Apiary.DispatchedRunsFixtures, only: [walked_claim: 2, workspace_gateway!: 1]
 
   import Apiary.ModelKeysFixtures,
-    only: [cooling!: 2, key_value!: 2, login_paste: 1, login_tokens: 1]
+    only: [cooling!: 2, key_value!: 2, device_login: 1, login_tokens: 1]
 
   import Apiary.NodesFixtures
   import Apiary.RunEventsFixtures
@@ -327,7 +327,7 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
           keys: [
             %{
               value_id: "main",
-              value: login_paste(tokens: login_tokens(tag: "queued", expires_in: 3600))
+              value: device_login(tokens: login_tokens(tag: "queued", expires_in: 3600))
             }
           ]
         })

@@ -32,7 +32,7 @@ defmodule ApiaryWeb.Contract.SecretsLoginTest do
     ctx =
       sealed_run_fixture(scope,
         kind: "openai-subscription",
-        keys: [%{value_id: "main", value: login_paste(tokens: tokens)}],
+        keys: [%{value_id: "main", value: device_login(tokens: tokens)}],
         choice: %{runtime: "codex", model: "gpt-6-sol"}
       )
 
@@ -210,7 +210,7 @@ defmodule ApiaryWeb.Contract.SecretsLoginTest do
       {:ok, _provider} =
         Apiary.Connections.update_provider_key(ctx.scope, ctx.provider, "main", %{
           value_id: "main",
-          value: login_paste(tokens: tokens)
+          value: device_login(tokens: tokens)
         })
 
       conn = post_secrets(ctx, request(ctx))
@@ -227,7 +227,7 @@ defmodule ApiaryWeb.Contract.SecretsLoginTest do
       {:ok, _provider} =
         Apiary.Connections.update_provider_key(ctx.scope, ctx.provider, "main", %{
           value_id: "main",
-          value: login_paste(tokens: login_tokens(expires_in: -60, tag: "old"))
+          value: device_login(tokens: login_tokens(expires_in: -60, tag: "old"))
         })
 
       conn = post_secrets(ctx, request(ctx))
@@ -276,7 +276,7 @@ defmodule ApiaryWeb.Contract.SecretsLoginTest do
       {:ok, _provider} =
         Apiary.Connections.update_provider_key(ctx.scope, ctx.provider, "main", %{
           value_id: "main",
-          value: login_paste(tokens: login_tokens(expires_in: -60, tag: "old"))
+          value: device_login(tokens: login_tokens(expires_in: -60, tag: "old"))
         })
     end
 

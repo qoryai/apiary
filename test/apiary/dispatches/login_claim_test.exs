@@ -69,7 +69,7 @@ defmodule Apiary.Dispatches.LoginClaimTest do
         provider: "openai-subscription",
         keys:
           for({value_id, opts} <- keys) do
-            %{value_id: value_id, value: login_paste(tokens: login_tokens(opts))}
+            %{value_id: value_id, value: device_login(tokens: login_tokens(opts))}
           end
       })
 
@@ -182,7 +182,7 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       {:ok, _provider} =
         Connections.update_provider_key(ctx.scope, provider, "main", %{
           value_id: "main",
-          value: login_paste(tokens: login_tokens(tag: "new"))
+          value: device_login(tokens: login_tokens(tag: "new"))
         })
 
       assert {:ok, %{registered: run}} = claim(ctx)
@@ -232,7 +232,7 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       {:ok, _provider} =
         Connections.update_provider_key(ctx.scope, provider, "main", %{
           value_id: "main",
-          value: login_paste(tokens: login_tokens(tag: "new"))
+          value: device_login(tokens: login_tokens(tag: "new"))
         })
 
       assert {:ok, %{registered: next}} = claim(ctx)
@@ -295,7 +295,7 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       {:ok, _provider} =
         Connections.update_provider_key(ctx.scope, provider, "main", %{
           value_id: "main",
-          value: login_paste(tokens: login_tokens(tag: "new"))
+          value: device_login(tokens: login_tokens(tag: "new"))
         })
 
       assert %Login{state: "signed_in", sign_in_cause: nil} =
