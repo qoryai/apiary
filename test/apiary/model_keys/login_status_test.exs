@@ -48,6 +48,22 @@ defmodule Apiary.ModelKeys.LoginStatusTest do
     )
   end
 
+  # The key's stored document, with the access token `access_token`, written as a refresh
+  # writes it.
+  defp store!(provider, access_token, refresh_token) do
+    id = value(provider).id
+    {:ok, _plaintext, snapshot} = Apiary.Secrets.reveal_login_snapshot(plain(provider), id)
+
+    document =
+      Jason.encode!(%{
+        "version" => 1,
+        "access_token" => access_token,
+        "refresh_token" => refresh_token
+      })
+
+    :ok = Apiary.Secrets.write_refreshed_key(plain(provider), id, document, snapshot)
+  end
+
   defp stub!(answer) do
     test = self()
 
@@ -180,6 +196,41 @@ defmodule Apiary.ModelKeys.LoginStatusTest do
 
       assert Login.statuses(plain(provider), [id]) == %{id => :sign_in_needed}
       assert requests() == []
+    end
+
+    test "a stored token that is readable but is no JWT needs a new sign-in", %{scope: scope} do
+      {provider, tokens} = subscription!(scope)
+      store!(provider, "opaque-access-token", tokens.refresh_token)
+      stub!(%{})
+      id = value(provider).id
+
+      assert %Login{state: "signed_in"} = row(provider)
+      assert Login.statuses(plain(provider), [id]) == %{id => :sign_in_needed}
+      assert Login.statuses(plain(provider), [id], decrypt: false) == %{id => :ready}
+      assert requests() == []
+    end
+
+    test "a value that cannot be read has the status its row gives", %{scope: scope} do
+      {provider, _tokens} = subscription!(scope, expires_in: 7200)
+      set_login!(provider, signed_in_at: -3600)
+      id = value(provider).id
+      before = DateTime.add(DateTime.utc_now(), 3 * 3600)
+
+      Repo.update_all(from(v in Apiary.Secrets.Value, where: v.id == ^id),
+        set: [ciphertext: :binary.copy(<<7>>, 64)]
+      )
+
+      assert {:error, _reason} = Login.tokens(plain(provider), id)
+      assert Login.statuses(plain(provider), [id]) == %{id => :ready}
+      assert Login.statuses(plain(provider), [id], expires_before: before) == %{id => :due}
+
+      set_login!(provider, signed_in_at: -3600)
+
+      Repo.update_all(from(l in Login, where: l.secret_value_id == ^id),
+        set: [state: "sign_in_needed", sign_in_cause: "refresh_token_expired"]
+      )
+
+      assert Login.statuses(plain(provider), [id]) == %{id => :sign_in_needed}
     end
 
     test "has nothing for a provider with no sign-ins, for no ids and for an unknown id",

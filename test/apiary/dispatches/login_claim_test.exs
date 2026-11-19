@@ -38,13 +38,13 @@ defmodule Apiary.Dispatches.LoginClaimTest do
   end
 
   # Every call to the provider's login server is recorded.
-  defp stub! do
+  defp stub!(opts \\ []) do
     test = self()
 
     Req.Test.stub(LoginRefresh, fn conn ->
       {:ok, raw, conn} = Plug.Conn.read_body(conn)
       send(test, {:request, Jason.decode!(raw)})
-      tokens = login_tokens(tag: "refreshed")
+      tokens = login_tokens([tag: "refreshed"] ++ opts)
 
       Req.Test.json(conn, %{
         "access_token" => tokens.access_token,
@@ -248,11 +248,61 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       assert {:ok, :none} = claim(ctx)
       waiting = waiting!(queued, provider)
 
-      # The run's page reads the sign-in's row alone and decrypts no token, so it cannot
-      # tell the missing claim: the row is still signed in, and the page names the pool.
+      # A value pasted with no account id is a row that is still signed in. The claim reads
+      # the token to tell, as it does for a row stored before a refresh marked such a token
+      # (`no_account`); the run's page reads the row alone and names the pool.
       assert {:pool, _name} = Waiting.reason(waiting)
       assert requests() == []
       assert Repo.get_by!(Login, secret_value_id: value(provider, "main").id).state == "signed_in"
+    end
+  end
+
+  describe "a refresh whose token has no account id" do
+    test "marks the key no_account, and the run waits for a new sign-in", ctx do
+      stub!(account: false)
+      provider = provider!(ctx, [{"main", [expires_in: 3600]}])
+      aged!(provider, "main")
+      queued = queued!(ctx)
+
+      assert {:ok, :none} = claim(ctx)
+      assert {:refreshing, _public_id, "main"} = Waiting.reason(waiting!(queued, provider))
+
+      assert %{success: 1} = Oban.drain_queue(queue: :default, with_safety: false)
+      assert [%{"refresh_reason" => "proactive_expiry"}] = requests()
+
+      row = Repo.get_by!(Login, secret_value_id: value(provider, "main").id)
+      assert %Login{state: "sign_in_needed", sign_in_cause: "no_account"} = row
+
+      # The row says it, so the page and the claim agree with no token read: the run waits
+      # with the sign-in line, and the next claim sends nothing.
+      assert {:ok, :none} = claim(ctx)
+      waiting = waiting!(queued, provider)
+      assert {:sign_in, public_id, "main"} = Waiting.reason(waiting)
+      assert public_id == provider.public_id
+      assert requests() == []
+      refute_enqueued(worker: LoginRefreshJob)
+    end
+
+    test "a new sign-in clears the mark, and the run starts on it", ctx do
+      stub!(account: false)
+      provider = provider!(ctx, [{"main", [expires_in: 3600]}])
+      aged!(provider, "main")
+      queued = queued!(ctx)
+      assert {:ok, :none} = claim(ctx)
+      assert %{success: 1} = Oban.drain_queue(queue: :default, with_safety: false)
+      waiting!(queued, provider)
+
+      {:ok, _provider} =
+        Connections.update_provider_key(ctx.scope, provider, "main", %{
+          value_id: "main",
+          value: login_paste(tokens: login_tokens(tag: "new"))
+        })
+
+      assert %Login{state: "signed_in", sign_in_cause: nil} =
+               Repo.get_by!(Login, secret_value_id: value(provider, "main").id)
+
+      assert {:ok, %{registered: run}} = claim(ctx)
+      assert value_ids(Repo.get!(Run, run.id)) == ["main"]
     end
   end
 

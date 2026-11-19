@@ -121,6 +121,15 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
     end)
   end
 
+  # A token with the account claim and no `exp`, and one past a value's size, as the
+  # provider returns them.
+  defp no_exp_token(pad \\ 0) do
+    jwt(%{
+      "https://api.openai.com/auth" => %{"chatgpt_account_id" => "acct-fixture-x"},
+      "pad" => String.duplicate("a", pad)
+    })
+  end
+
   defp new_tokens(tag, opts \\ []) do
     tokens = login_tokens([tag: tag] ++ opts)
     %{"access_token" => tokens.access_token, "refresh_token" => tokens.refresh_token}
@@ -343,14 +352,12 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
 
     test "a refreshed token with no readable exp is stored, with no expiry", %{scope: scope} do
       {provider, _tokens} = subscription!(scope, expires_in: 60)
-      stub!(%{"access_token" => "opaque-access-token", "refresh_token" => "next-refresh"})
+      no_exp = no_exp_token()
+      stub!(%{"access_token" => no_exp, "refresh_token" => "next-refresh"})
 
-      assert {:ok, "opaque-access-token", nil} = token(provider)
+      assert {:ok, ^no_exp, nil} = token(provider)
 
-      assert stored(provider) == %{
-               access_token: "opaque-access-token",
-               refresh_token: "next-refresh"
-             }
+      assert stored(provider) == %{access_token: no_exp, refresh_token: "next-refresh"}
 
       assert %Login{access_expires_at: nil, failures: 0, refreshed_at: %DateTime{}} =
                row(provider)
@@ -660,6 +667,77 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
     end
   end
 
+  describe "an answer whose access token has no account id" do
+    for {name, rotated?} <- [{"with a new refresh token", true}, {"without one", false}] do
+      test "#{name} keeps the stored sign-in and needs a new one (no_account)", %{scope: scope} do
+        {provider, tokens} = subscription!(scope, expires_in: 60)
+        fresh = new_tokens("a", account: false)
+        answer = if unquote(rotated?), do: fresh, else: Map.delete(fresh, "refresh_token")
+        stub!(answer)
+
+        log = capture_log(fn -> send(self(), {:result, token(provider)}) end)
+        assert_received {:result, {:error, :sign_in_needed}}
+        assert log == ""
+
+        assert %Login{
+                 state: "sign_in_needed",
+                 sign_in_cause: "no_account",
+                 failures: 1,
+                 lease_id: nil,
+                 retry_at: nil
+               } = login = row(provider)
+
+        # The old token is kept: the new one is not stored.
+        assert stored(provider) == %{
+                 access_token: tokens.access_token,
+                 refresh_token: tokens.refresh_token
+               }
+
+        assert login.access_expires_at != nil
+        assert [{_conn, _body}] = requests()
+        assert token(provider) == {:error, :sign_in_needed}
+        assert requests() == []
+
+        assert [%Entry{details: details}] = trail(provider)
+        assert %{"outcome" => "sign_in_needed", "cause" => "no_account"} = details
+
+        for secret <- [fresh["access_token"], fresh["refresh_token"] | secrets_of(tokens)] do
+          refute inspect(details) =~ secret
+          refute inspect(login) =~ secret
+        end
+      end
+    end
+
+    test "a new sign-in pasted over the key clears it", %{scope: scope} do
+      {provider, _tokens} = subscription!(scope, expires_in: 60)
+      stub!(new_tokens("a", account: false))
+      assert token(provider) == {:error, :sign_in_needed}
+      assert %Login{sign_in_cause: "no_account"} = row(provider)
+
+      pasted = login_tokens(tag: "again")
+
+      {:ok, _} =
+        Connections.update_provider_key(scope, plain(provider), "main", %{
+          "value_id" => "main",
+          "value" => login_paste(tokens: pasted)
+        })
+
+      assert %Login{state: "signed_in", sign_in_cause: nil, generation: 2} = row(provider)
+      assert {:ok, access, _at} = token(provider)
+      assert access == pasted.access_token
+    end
+
+    test "a token with the account id is stored as before", %{scope: scope} do
+      {provider, _tokens} = subscription!(scope, expires_in: 60)
+      fresh = new_tokens("a")
+      stub!(fresh)
+
+      assert {:ok, access, _at} = token(provider)
+      assert access == fresh["access_token"]
+      assert %Login{state: "signed_in", sign_in_cause: nil} = row(provider)
+    end
+  end
+
   # Waits until `fun` is true, 5 seconds at most: for what a task that is linked to no caller
   # writes.
   defp eventually(fun, left \\ 250) do
@@ -804,7 +882,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
 
   describe "a rotated refresh token that cannot be stored" do
     # A document past a value's size: the key returns `:too_large` for it.
-    defp oversized(tag), do: %{new_tokens(tag) | "access_token" => String.duplicate("a", 17_000)}
+    defp oversized(tag), do: %{new_tokens(tag) | "access_token" => no_exp_token(17_000)}
 
     test "makes the login need a sign-in at once, and no call uses the replaced token",
          %{scope: scope} do
@@ -851,7 +929,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
     test "is only a failure that may pass when the provider kept the refresh token",
          %{scope: scope} do
       {provider, tokens} = subscription!(scope, expires_in: 200)
-      stub!(%{"access_token" => String.duplicate("a", 17_000)})
+      stub!(%{"access_token" => no_exp_token(17_000)})
 
       log = capture_log(fn -> send(self(), {:result, token(provider)}) end)
       assert_received {:result, {:ok, access, _at}}

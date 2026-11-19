@@ -73,7 +73,7 @@ defmodule Apiary.Repo.Migrations.CreateModelKeyLogins do
              OR (state = 'sign_in_needed' AND sign_in_cause IS NOT NULL
                  AND sign_in_cause IN ('refresh_token_expired', 'refresh_token_reused',
                                        'refresh_token_invalidated', 'invalid_grant',
-                                       'refresh_unauthorized', 'token_not_stored'))
+                                       'refresh_unauthorized', 'token_not_stored', 'no_account'))
              """
            )
 

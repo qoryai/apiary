@@ -18,7 +18,8 @@ defmodule Apiary.ModelKeys.LoginRefresh do
   one, the new refresh token, or a failure that is `{:permanent, cause}` for a refusal
   that stays (the provider rejected the refresh token: the cause is one of the first five
   of `Apiary.ModelKeys.Login.causes/0`; that module sets the sixth, `token_not_stored`,
-  when it cannot store a new sign-in) or `{:transient, cause}` for one that may pass:
+  when it cannot store a new sign-in, and the seventh, `no_account`, when the access token of
+  the answer has no account id) or `{:transient, cause}` for one that may pass:
   `http_<status>`, `timeout`, `network`, `bad_response`, `bad_endpoint`, or `:shutdown` when
   the supervisor stopped the call's task (a deploy), which counts as no failure. A cause is one of
   those fixed words, never a part of the provider's answer. Neither the answer's body, the

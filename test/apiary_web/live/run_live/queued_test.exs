@@ -360,6 +360,13 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
 
       assert has_element?(view, "#prepare-machine-why a", "main")
 
+      # A refresh that returned no account id leaves the same line: the row says it.
+      Repo.update_all(login, set: [sign_in_cause: "no_account"])
+      view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
+
+      assert text(view, "#prepare-machine-why") ==
+               "Waiting for a model key: sign in to ChatGPT again on the page of main."
+
       now = DateTime.utc_now()
 
       Repo.update_all(login,

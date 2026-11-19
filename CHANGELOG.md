@@ -103,7 +103,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   is dropped. A new refresh token that the key cannot store, such as one past the size of a
   value, is written once more at once; if that fails too, the key shows **Needs a new
   sign-in** with the cause `token_not_stored` and the line “Qory Apiary could not save the
-  new sign-in on <time>.”, because the stored refresh token is replaced. A node that is
+  new sign-in on <time>.”, because the stored refresh token is replaced. A refresh whose new
+  access token has no account id keeps the stored sign-in, drops the new tokens and shows
+  **Needs a new sign-in** with the cause `no_account` and the line “OpenAI returned no
+  account id on <time>.”; a run that needs the key waits with the sign-in line until a new
+  sign-in is pasted. The check of the `model_key_logins` table lists the seventh cause. A node that is
   stopping starts no refresh and takes no lease, and a caller gets the stored token while it
   is valid, else no token. A refresh that is already running when the node stops has 40
   seconds from the SIGTERM with the grace that a deploy has (the endpoint stops for 20

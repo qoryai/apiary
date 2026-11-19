@@ -16213,6 +16213,16 @@ msgstr ""
 msgid "OpenAI returned HTTP 401 to the refresh"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI returned no account id"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI returned no account id on %{time}."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "OpenAI's coding agent."
