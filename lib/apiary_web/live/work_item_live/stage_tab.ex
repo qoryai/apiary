@@ -547,19 +547,23 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   end
 
   @doc """
-  with_inputs/2 is `outputs`, the output frames (`frames/1`), then `inputs`, the input
-  frames (`input_frames/2`), folded, but for an input of a type that an output frame
-  already shows. Output frames beside input frames are an earlier take in's versions or a
-  change: `verify_frames/2` has none for a stage that started no run, as it reads only the
-  take in's runs. With no output frame, it is `inputs` as they are.
+  with_inputs/2 is `outputs`, the output frames (`frames/1` or `verify_frames/2`), then
+  `inputs`, the input frames (`input_frames/2`), folded, but for an input of a type that an
+  output frame already shows: the Scenarios frame shows both the films and the pictures
+  (`ApiaryWeb.WorkItemLive.VerifyTab.media/0`). A Verify gate where the stage started no
+  run can have output frames too, as `newest/3` reads the take in's versions of any stage.
+  With no output frame, it is `inputs` as they are.
   """
   @spec with_inputs([map], [map]) :: [map]
   def with_inputs([], inputs), do: inputs
 
   def with_inputs(outputs, inputs) do
-    shown = MapSet.new(outputs, & &1.type)
+    shown = for output <- outputs, type <- shown_types(output), into: MapSet.new(), do: type
     outputs ++ for(input <- inputs, input.type not in shown, do: %{input | open: false})
   end
+
+  defp shown_types(%{kind: :scenarios}), do: VerifyTab.media()
+  defp shown_types(%{type: type}), do: [type]
 
   @doc """
   input_frames/2 is, for the current stage's tab where the stage started no run

@@ -812,6 +812,26 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
   end
 
+  describe "the input frames beside a Scenarios frame" do
+    # A Verify gate where the stage started no run: the take in's films and pictures are
+    # one Scenarios frame (`StageTab.verify_frames/2`), and Verify's inputs are a film, a
+    # picture and an explainer.
+    test "fold every film and picture into the Scenarios frame" do
+      stage = %{outputs: ~w(verification demo-video screenshot)}
+      outputs = StageTab.verify_frames(stage, %{"demo-video" => 1, "screenshot" => 2})
+
+      inputs =
+        for {type, place} <- Enum.with_index(~w(demo-video screenshot explainer)) do
+          %{type: type, name: "main", version: 1, open: place == 0, kind: :output}
+        end
+
+      assert [%{type: "demo-video", kind: :scenarios, version: 2}] = outputs
+
+      assert [%{kind: :scenarios}, %{type: "explainer", open: false}] =
+               StageTab.with_inputs(outputs, inputs)
+    end
+  end
+
   describe "a run's questions at Shape" do
     test "the form sends the latest run's attempt, whatever the tab lists", %{scope: scope} do
       work_item = waiting!(scope)
