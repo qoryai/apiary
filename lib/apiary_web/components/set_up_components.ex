@@ -349,7 +349,7 @@ defmodule ApiaryWeb.SetUpComponents do
     do: gettext("Which targets may runs in %{workspace} change?", workspace: name)
 
   def step_heading(:model, %Workspace{name: name}),
-    do: gettext("Which model do runs in %{workspace} use?", workspace: name)
+    do: gettext("Which models do runs in %{workspace} use?", workspace: name)
 
   def step_heading(:harness, %Workspace{name: name}),
     do: gettext("Which harness do runs in %{workspace} use?", workspace: name)

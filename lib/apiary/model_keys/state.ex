@@ -6,7 +6,7 @@ defmodule Apiary.ModelKeys.State do
 
     * `window`: the limit's window, one of `windows/0`, such as `five_hour` or
       `seven_day`. A report may have any code of the form `^[a-z][a-z0-9_]{0,63}$`; a
-      window outside `windows/0` is not stored (`Apiary.ModelKeys.record/3`).
+      window outside `windows/0` is not stored (`Apiary.ModelKeys.record/4`).
     * `status`: `allowed`, `allowed_warning` or `rejected`.
     * `resets_at`: when the window resets, nil when the response gave no time.
     * `utilization`: the window's use in whole percent, 0 to 100, nil when the response

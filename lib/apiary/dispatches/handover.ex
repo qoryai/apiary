@@ -120,18 +120,18 @@ defmodule Apiary.Dispatches.Handover do
   # its work item, its run variables (`registration_variables`: the domain's, and for a
   # run that is not a prebuild the variables of its workspace and target as they are at
   # the claim, `Apiary.Variables.for_run/2`; none where there are none), for a
-  # continuation of a
-  # paused run its `resume`
-  # (`Apiary.Runs.Transcript.resume_at_claim/1`), its registration digest the SHA-256 of
-  # the claim's body, with no heartbeat interval, no answer digest and no contract version
-  # until its attach; with the gateway and a run code in place of a run key
-  # (`Apiary.Runs.RunCode`): the code's SHA-256, its expiry 15 minutes after the claim,
-  # the grant its run key will be made from at the code's redemption, `run_key_issued_at`
-  # the claim and `attach_by` the code's expiry. A run key of the grant is made all the
-  # same, and given to nobody, so a grant no run key can be made for refuses the claim as
-  # step 2 says. The run key's instance id is the run's id. A run with a work credential
-  # entry has it stored with the run (`Apiary.Runs.RunCredentials.insert!/2`). The
-  # dispatch stays claimed, and so does the run of the queue.
+  # continuation of a paused run its `resume` (`Apiary.Runs.Transcript.resume_at_claim/2`,
+  # none where the run's runtime is not that of the session that paused), its registration
+  # digest the SHA-256 of the claim's body, with no heartbeat interval, no answer digest
+  # and no contract version until its attach; with the gateway and a run code in place of
+  # a run key (`Apiary.Runs.RunCode`): the code's SHA-256, its expiry 15 minutes after the
+  # claim, the grant its run key will be made from at the code's redemption,
+  # `run_key_issued_at` the claim and `attach_by` the code's expiry. A run key of the
+  # grant is made all the same, and given to nobody, so a grant no run key can be made for
+  # refuses the claim as step 2 says. The run key's instance id is the run's id. A run
+  # with a work credential entry has it stored with the run
+  # (`Apiary.Runs.RunCredentials.insert!/2`). The dispatch stays claimed, and so does the
+  # run of the queue.
   #
   # A prebuild's documents have its destinations in the registry: `image_destination`,
   # and `environment_destination` or `environment_image`
@@ -143,10 +143,11 @@ defmodule Apiary.Dispatches.Handover do
   # its registered run, with, where it is given its provider's key, the provider's row id,
   # its keys' secret's row id, its model keys in their order, the provider's chain and the
   # API of the provider the run uses; later reads take those,
-  # never the choices. Where every key of the choice's provider and of each fallback that
-  # forms is in cooldown, the claim registers nothing once the checks of step 1 pass:
-  # `register/2` returns `{:wait, provider_ids}`, and the run waits again for those
-  # providers and each fallback whose settings check ran out of time or crashed
+  # never the choices. Where every key of the choice's provider, of the default step
+  # under a workflow's override, and of each fallback that forms is in cooldown, the
+  # claim registers nothing once the checks of step 1 pass: `register/2` returns
+  # `{:wait, provider_ids}`, and the run waits again for those providers and each later
+  # step whose settings check ran out of time or crashed
   # (`Apiary.Dispatches`). Where the check of the settings of the choice's provider ran
   # out of time or crashed, `register/2` returns `{:wait, provider_ids}` with the run's
   # `model_provider_ids` as they were, and the run waits again too. After `run_settings`,
@@ -358,9 +359,10 @@ defmodule Apiary.Dispatches.Handover do
   # register/2 registers the run of the queue `claimed.run`, which the claim took, with a
   # run code, through the gateway `claimed.gateway`, inside the claim's transaction:
   # `{:ok, registered}`, `{:ended, workspace_ids}` when the run could not be formed and
-  # ended, `{:wait, provider_ids}` when every key of its model choice's provider and of
-  # each fallback that forms is in cooldown (`Apiary.Dispatches.RunSettings`), with those
-  # providers and each fallback whose settings check ran out of time or crashed, and no
+  # ended, `{:wait, provider_ids}` when every key of its model choice's provider, of the
+  # default step under a workflow's override, and of each fallback that forms is in
+  # cooldown (`Apiary.Dispatches.RunSettings`), with those providers and each later step
+  # whose settings check ran out of time or crashed, and no
   # run registered, or with the run's `model_provider_ids` when the check of its
   # provider's settings ran out of time or crashed, or `{:error, :unavailable}` (the
   # moduledoc). `claimed` has the key, the dispatch, the run of the queue, the gateway and
@@ -1565,7 +1567,11 @@ defmodule Apiary.Dispatches.Handover do
       registration_about: formed.about,
       registration_digest: :crypto.hash(:sha256, body),
       registration_variables: formed.variables,
-      resume: Apiary.Runs.Transcript.resume_at_claim(dispatch_run),
+      resume:
+        Apiary.Runs.Transcript.resume_at_claim(
+          dispatch_run,
+          formed.settings && formed.settings.stored["runtime"]
+        ),
       run_settings: formed.settings && formed.settings.stored,
       projected_sequence: Run.projected_from(%{registered_at: now}),
       dispatch_run_id: dispatch_run.id,

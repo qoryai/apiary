@@ -127,8 +127,9 @@ defmodule Apiary.Runs.Run do
     field :leaked_secrets_omitted, :integer, default: 0
     field :projected_sequence, :integer, default: 0
 
-    # The cost the run reported: the sum of `cost_usd` over its session result events
-    # (`Apiary.Runs.Fold`). Null until a result carried one; never zero for "unknown".
+    # The cost the run reported: the sum, over its sessions, of the `cost_usd` of each
+    # session's last result event (`Apiary.Runs.Fold`, `Apiary.Runs.Sessions`). Null until a
+    # result carried one; never zero for "unknown".
     field :cost_usd, :decimal
 
     # What the run's sessions used, from their `dev.qory.session.exited`
@@ -174,7 +175,7 @@ defmodule Apiary.Runs.Run do
     field :registration_variables, :map
 
     # The `resume` member of the run configuration of a run of the queue that continues a
-    # paused run (`Apiary.Runs.Transcript.resume_at_claim/1`): `"run_id"`, the paused
+    # paused run (`Apiary.Runs.Transcript.resume_at_claim/2`): `"run_id"`, the paused
     # run's id, `"session_id"` and `"path"` of its transcript, and `"runs"`, the paused
     # runs it continues, oldest first (absent for a run claimed before `"runs"` was
     # kept). Written once with the registration and never changed, so every run

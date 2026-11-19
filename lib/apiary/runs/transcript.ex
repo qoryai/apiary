@@ -30,10 +30,11 @@ defmodule Apiary.Runs.Transcript do
   the paused run queues, reads the transcript of that run alone, and only while it is the
   paused run this run continues (`paused_run/1`): of the same organisation, workspace,
   work item and stage, registered, and ended paused with the reason `model_key_limit` or
-  `model_key_switch` (`Apiary.Runs.Run.paused?/1`). Its claim stores its `resume` (`resume_at_claim/1`) for
-  a path a machine may write at (`resumable_path?/2`), as the contract has it fixed when
-  the run starts; every run configuration of the run then has it (`resume/1`), and its
-  gateway fetches the file through the run API.
+  `model_key_switch` (`Apiary.Runs.Run.paused?/1`). Its claim stores its `resume`
+  (`resume_at_claim/2`) for a path a machine may write at (`resumable_path?/2`), and only
+  on the runtime of the session that paused, as the contract has it fixed when the run
+  starts; every run configuration of the run then has it (`resume/1`), and its gateway
+  fetches the file through the run API.
 
   Nothing here logs or returns a transcript's bytes but `stream/3`, and a log line
   contains the run's id and the cause alone.
@@ -329,15 +330,24 @@ defmodule Apiary.Runs.Transcript do
   stores with the run (`runs.resume`): the paused run's id, the session id and the path
   of the last chunk of the session that paused (`last/2` with the paused run's
   `paused_session`), and `runs` (`continued_runs/1`), while that run is the paused run it
-  continues and its transcript there passes `check/2`; nil for any other run, and when
-  the session that paused has no chunk, so the continuation starts a new session. A
-  paused run with no `paused_session`, whose sessions sent no paused
-  `dev.qory.session.exited`, resumes its last chunk of any session.
+  continues, its transcript there passes `check/2`, and `runtime`, the runtime of
+  `continuation`'s run settings, is the paused run's `runtime` (`Apiary.Runs.Run`); nil
+  for any other run, and when the session that paused has no chunk, so the continuation
+  starts a new session. A paused run with no `runtime`, or one other than `runtime`,
+  resumes nothing, because a runtime cannot resume another runtime's transcript: the
+  continuation, such as one that takes a fallback on another runtime, starts a new
+  session and continues from the commits the paused run pushed (`POST pushed-commits`,
+  docs/contract/run-api.md). A paused run with no `paused_session`, whose sessions sent
+  no paused `dev.qory.session.exited`, resumes its last chunk of any session.
   """
-  @spec resume_at_claim(map) :: map | nil
-  def resume_at_claim(%DispatchRun{continues_id: paused_id} = continuation)
+  @spec resume_at_claim(map, String.t() | nil) :: map | nil
+  def resume_at_claim(%DispatchRun{continues_id: paused_id} = continuation, runtime)
       when is_binary(paused_id) do
     with %Run{} = paused <- paused_run(continuation),
+         # `runs.runtime` is the runtime of the run's last session that is not bare
+         # (`Apiary.Runs.Fold`). That is the session that paused, because Forager pauses
+         # only the last session of a run.
+         true <- is_binary(paused.runtime) and paused.runtime == runtime,
          %{session_id: session_id, path: path} <- last(paused.id, paused.paused_session),
          true <- resumable_path?(path, session_id),
          {:ok, _file} <- check(paused.id, path) do
@@ -352,7 +362,7 @@ defmodule Apiary.Runs.Transcript do
     end
   end
 
-  def resume_at_claim(%DispatchRun{}), do: nil
+  def resume_at_claim(%DispatchRun{}, _runtime), do: nil
 
   # continued_runs/1 is the run ids of the runs of the queue that `continuation`
   # continues, oldest first: the run its `continues_id` links to, the run that run's
@@ -396,7 +406,7 @@ defmodule Apiary.Runs.Transcript do
 
   @doc """
   The `resume` member of the run configuration of `run`: the one its claim stored
-  (`resume_at_claim/1`), nil for a run with none.
+  (`resume_at_claim/2`), nil for a run with none.
   """
   @spec resume(Run.t() | map) :: map | nil
   def resume(%{resume: %{"run_id" => _, "session_id" => _, "path" => _} = resume}), do: resume

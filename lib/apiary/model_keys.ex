@@ -47,7 +47,7 @@ defmodule Apiary.ModelKeys do
   alias Apiary.Kinds.{Provider, Providers}
   alias Apiary.ModelKeys.{Copy, Setting, State}
   alias Apiary.Repo
-  alias Apiary.Runs.{ModelKey, ProviderCredential, Run}
+  alias Apiary.Runs.{ModelKey, ProviderCredential, Run, Sessions}
   alias Apiary.Secrets.Value
 
   @api_key_pause_seconds 60
@@ -371,14 +371,13 @@ defmodule Apiary.ModelKeys do
   ## Keys at a claim
 
   @typedoc """
-  A key of a provider at a claim (`claim_keys/3`), as `Apiary.ModelKeys.Order` reads it,
+  A key of a provider at a claim (`claim_keys/2`), as `Apiary.ModelKeys.Order` reads it,
   with what a run configuration writes of it.
   """
   @type claim_key :: %{
           id: Ecto.UUID.t(),
           value_id: String.t(),
           inserted_at: DateTime.t(),
-          named: boolean,
           default: boolean,
           resets_at: DateTime.t() | nil,
           schedule_resets_at: DateTime.t() | nil,
@@ -390,8 +389,7 @@ defmodule Apiary.ModelKeys do
 
   @doc """
   The keys of `provider`, the values of its secret, at `now`, for a claim: each with its
-  row id and value id; whether it is the key `named_value_id`, which a model choice
-  names (nil for none), and whether it is the provider's default key; `resets_at`, the
+  row id and value id; whether it is the provider's default key; `resets_at`, the
   earliest reset after `now` across its windows, from the providers' responses;
   `schedule_resets_at`, the next reset of its weekly schedule (`next_reset/2`);
   `known_reset`, its known reset, the first of those two that it has; `cooldown_until`,
@@ -404,8 +402,8 @@ defmodule Apiary.ModelKeys do
   provider without limit windows (`limit_windows/1`). In no order: the order is
   `Apiary.ModelKeys.Order.order/2`. Three reads, none locked.
   """
-  @spec claim_keys(Connection.t(), String.t() | nil, DateTime.t()) :: [claim_key]
-  def claim_keys(%Connection{secret_id: secret_id} = provider, named_value_id, %DateTime{} = now)
+  @spec claim_keys(Connection.t(), DateTime.t()) :: [claim_key]
+  def claim_keys(%Connection{secret_id: secret_id} = provider, %DateTime{} = now)
       when is_binary(secret_id) do
     values =
       Repo.all(
@@ -439,7 +437,6 @@ defmodule Apiary.ModelKeys do
       resets_at = earliest_reset(key_states, now)
 
       Map.merge(value, %{
-        named: is_binary(named_value_id) and value.value_id == named_value_id,
         default: is_binary(value.value_id) and value.value_id == provider.default_value_id,
         resets_at: resets_at,
         schedule_resets_at: schedule,
@@ -451,7 +448,7 @@ defmodule Apiary.ModelKeys do
     end
   end
 
-  def claim_keys(%Connection{}, _named_value_id, _now), do: []
+  def claim_keys(%Connection{}, _now), do: []
 
   ## The claim's filter
 
@@ -601,10 +598,17 @@ defmodule Apiary.ModelKeys do
   the copy's `copy_set_at`, which is an exact copy of that column, so the clocks of
   several servers do not matter. A key with no kept copy is the run's value when its
   `value_set_at` is not after the run's insert (`copy_set_at`). A nil `copy_set_at` is
-  left out. A rename leaves `value_set_at` as it is. Returns `:ok`.
+  left out. A rename leaves `value_set_at` as it is.
+
+  With `session`, `{run, number}`, the session a report names (`Apiary.ModelKeys.Report`),
+  the utilization of each row kept is also counted into the session's key windows
+  (`Apiary.Runs.Sessions.record_windows/3`): the first and the last utilization of the key
+  and window in that session, and their difference, the share. That write is outside the
+  states' transaction, and a failure of it is logged and changes nothing of the states. With
+  no `session` nothing is written beside the states. Returns `:ok`.
   """
-  @spec record([run_key], [map], DateTime.t()) :: :ok
-  def record(keys, items, %DateTime{} = now) do
+  @spec record([run_key], [map], DateTime.t(), {Run.t(), pos_integer} | nil) :: :ok
+  def record(keys, items, %DateTime{} = now, session \\ nil) do
     by_name = Map.new(keys, &{&1.name, &1})
     copies = Map.new(keys, &{&1.secret_value_id, {&1.copy_kept, &1.copy_set_at}})
 
@@ -624,11 +628,25 @@ defmodule Apiary.ModelKeys do
       |> Enum.sort_by(&{&1.secret_value_id, &1.window})
 
     if rows != [] do
-      {:ok, :ok} = Repo.transact(fn -> {:ok, write_states(rows, copies)} end)
+      {:ok, kept} = Repo.transact(fn -> {:ok, write_states(rows, copies)} end)
+      session_windows(session, kept)
     end
 
     :ok
   end
+
+  # The utilization of the rows just kept, for the session the report names: outside the
+  # states' transaction, and never a failure of the report, which has been taken
+  # (`Apiary.ModelKeys.Report.answer/5`).
+  defp session_windows({%Run{} = run, number}, [_ | _] = kept) do
+    Sessions.record_windows(run, number, kept)
+  rescue
+    exception ->
+      Logger.error("a session's key windows were not kept: #{inspect(exception.__struct__)}")
+      :ok
+  end
+
+  defp session_windows(_session, _kept), do: :ok
 
   # The rows of the keys that still exist, whose value the run has (`copies`), written
   # after their values' rows are locked in the order of their ids, the order of a deletion
@@ -650,7 +668,7 @@ defmodule Apiary.ModelKeys do
 
     case Enum.filter(rows, &current?(&1, set, copies)) do
       [] ->
-        :ok
+        []
 
       kept_rows ->
         Repo.insert_all(State, kept_rows,
@@ -658,7 +676,7 @@ defmodule Apiary.ModelKeys do
           conflict_target: [:secret_value_id, :window]
         )
 
-        :ok
+        kept_rows
     end
   end
 

@@ -1,12 +1,15 @@
 defmodule ApiaryWeb.WorkItemLive.VerifyTab do
-  # The parts of the tab of a stage with a `verification` output, as a run's `verification.md`
-  # and its demo scenarios have them: the verification frame (the matrix of the acceptance
-  # criteria, the "not verified" list, the model families and, after a member accepted an
-  # escalation, who accepted it) and the Scenarios frame (each scenario's film, or its
-  # pictures, in scenario order, with its title and steps).
+  # The parts of the tab of a stage with a `verification` output, as a run's
+  # `verification.json` and its demo scenarios have them: the verification frame (the matrix
+  # of the acceptance criteria, the "not verified" list, the model families, after a member
+  # accepted an escalation, who accepted it, and the findings a member accepted at an
+  # earlier stage's round limit) and the Scenarios frame (each scenario's film, or its
+  # pictures, in scenario order, with its title and steps); and the table of the acceptance
+  # criteria, on the tab of the stage that wrote them.
   #
-  # Qory Apiary reads these from the files as the run wrote them: it maps no model id to a
-  # family and writes no criterion's words.
+  # Qory Apiary reads these from the JSON documents as the run wrote them, and parses no
+  # Markdown of them: it maps no model id to a family, and takes each criterion's words
+  # from the newest acceptance criteria, by the criterion's id.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -15,7 +18,6 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
 
   alias Apiary.Artifacts
   alias ApiaryWeb.ArtifactComponents
-  alias ApiaryWeb.ArtifactLive.Markdown
   alias ApiaryWeb.WorkItemLive.{StageComponents, StageTab}
 
   # The types whose versions are a scenario's film or pictures, in one Scenarios frame.
@@ -24,138 +26,107 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   @subtitles "text/vtt; charset=utf-8"
   @images ~w(image/png image/jpeg image/gif image/webp)
 
-  @states %{"Met" => :met, "Not met" => :not_met}
+  @states %{"met" => :met, "not_met" => :not_met}
 
   @doc false
   # media/0 is the types of a scenario's film or pictures.
   @spec media() :: [String.t()]
   def media, do: @media
 
-  ## verification.md
+  ## verification.json and acceptance-criteria.json
 
   @doc false
-  # verification/1 is the parts of a `verification.md` that the tab shows: `commit`, the
-  # verified commit from `## Summary` ("Commit: <id>"), nil for none; `rows`, the rows of
-  # the table of `## Matrix`, each `%{criterion:, state:, evidence:}`, `state` `:met`,
-  # `:not_met` or the cell as written; `not_verified`, the items of
-  # `## Not verified`, each `%{item:, reason:}`, the item's criterion and the reason
-  # after it, or the line as written with no reason; and `families`, the lines of
-  # `## Model families`. Nil for a text with no table of the columns Criterion, State and
-  # Evidence under `## Matrix`, and for a text that a Markdown render does not format: over
-  # `ApiaryWeb.ArtifactLive.Markdown.max_bytes/0` bytes, not UTF-8, with tables that could
-  # have more cells than `Markdown.max_cells/0` (`Markdown.formattable?/1`, checked before
-  # the parser builds any cell), or one the page cannot read within the budget of a
-  # Markdown render (`Markdown.budget/0`).
-  @spec verification(String.t() | nil) :: map | nil
-  def verification(text) when is_binary(text) do
-    if byte_size(text) <= Markdown.max_bytes() and Markdown.formattable?(text) do
-      case Apiary.Kinds.Budget.run(fn -> parse(text) end, Markdown.budget()) do
-        {:ok, parsed} -> parsed
-        {:error, _passed} -> nil
+  # verification/1 is the parts of a verification document, a version's `verification.json`
+  # decoded (`verification.schema.json`), that the tab shows: `commit`, the verified
+  # version of the target (`target_version`); `rows`, the matrix, each `%{criterion:,
+  # state:, evidence:}`, `criterion` the criterion's id as the document has it, such as
+  # `ac-4`, and `state` `:met` or `:not_met`; `not_verified`, each `%{criterion:, reason:}`;
+  # and `families`, the model families. The push checked the document against the schema;
+  # a value of another shape, such as the Markdown of a version stored before, is nil.
+  @spec verification(term) :: map | nil
+  def verification(%{"matrix" => matrix, "not_verified" => not_verified} = document)
+      when is_list(matrix) and is_list(not_verified) do
+    rows =
+      for %{"criterion" => id, "state" => state, "evidence" => evidence} <- matrix,
+          is_binary(id) and is_binary(evidence),
+          do: %{criterion: id, state: Map.get(@states, state, state), evidence: evidence}
+
+    unverified =
+      for %{"criterion" => id, "reason" => reason} <- not_verified,
+          is_binary(id) and is_binary(reason),
+          do: %{criterion: id, reason: reason}
+
+    families =
+      for family <- List.wrap(document["model_families"]), is_binary(family), do: family
+
+    %{
+      commit: text(document["target_version"]),
+      rows: rows,
+      not_verified: unverified,
+      families: families
+    }
+  end
+
+  def verification(_document), do: nil
+
+  @doc false
+  # criteria/1 is an acceptance criteria document, a version's `acceptance-criteria.json`
+  # decoded (`acceptance-criteria.schema.json`), as the pages show it: `summary`, and
+  # `criteria` in the document's order, each `%{id:, text:, check:, removed:}`, `removed`
+  # the reason of a removed criterion, nil for a live one. Nil for a value of another
+  # shape.
+  @spec criteria(term) :: map | nil
+  def criteria(%{"criteria" => criteria} = document) when is_list(criteria) do
+    shown =
+      for %{"id" => id, "text" => words} = criterion <- criteria,
+          is_binary(id) and is_binary(words) do
+        %{
+          id: id,
+          text: words,
+          check: text(criterion["check"]),
+          removed: removed(criterion["removed"])
+        }
       end
-    end
+
+    %{summary: text(document["summary"]), criteria: shown}
   end
 
-  def verification(_text), do: nil
+  def criteria(_document), do: nil
 
-  defp parse(text) do
-    sections = text |> MDEx.parse_document!(extension: [table: true]) |> sections()
+  defp removed(%{"reason" => reason}) when is_binary(reason), do: reason
+  defp removed(_removed), do: nil
 
-    with %{} = rows <- matrix(sections["Matrix"] || []) do
-      %{
-        commit: commit(sections["Summary"] || []),
-        rows: rows.rows,
-        not_verified: not_verified(sections["Not verified"] || []),
-        families: families(sections["Model families"] || [])
-      }
-    end
+  @doc false
+  # criterion_text/2 is the text of the criterion `id` in `criteria` (`criteria/1`), the
+  # first with that id; nil for none.
+  @spec criterion_text(map | nil, String.t()) :: String.t() | nil
+  def criterion_text(%{criteria: criteria}, id) do
+    Enum.find_value(criteria, fn criterion -> criterion.id == id && criterion.text end)
   end
 
-  # The nodes under each `##` heading, by its words.
-  defp sections(%MDEx.Document{nodes: nodes}) do
-    {sections, _title} =
-      Enum.reduce(nodes, {%{}, nil}, fn
-        %MDEx.Heading{level: 2, nodes: words}, {sections, _title} ->
-          title = words |> plain() |> String.trim()
-          {Map.put_new(sections, title, []), title}
+  def criterion_text(_criteria, _id), do: nil
 
-        _node, {sections, nil} ->
-          {sections, nil}
+  @doc false
+  # shown_id/1 is a criterion's id as a page shows it, in upper case: `AC-4` for `ac-4`.
+  @spec shown_id(String.t()) :: String.t()
+  def shown_id(id), do: String.upcase(id)
 
-        node, {sections, title} ->
-          {Map.update!(sections, title, &(&1 ++ [node])), title}
-      end)
-
-    sections
-  end
-
-  defp matrix(nodes) do
-    with %MDEx.Table{nodes: [%MDEx.TableRow{nodes: head} | rows]} <-
-           Enum.find(nodes, &match?(%MDEx.Table{}, &1)),
-         ["Criterion", "State", "Evidence"] <- Enum.map(head, &cell/1) do
-      %{
-        rows:
-          for %MDEx.TableRow{nodes: cells} <- rows do
-            [criterion, state, evidence] =
-              cells |> Enum.map(&cell/1) |> Kernel.++(["", "", ""]) |> Enum.take(3)
-
-            %{criterion: criterion, state: Map.get(@states, state, state), evidence: evidence}
-          end
-      }
+  @doc false
+  # newest_criteria/2 is the newest acceptance criteria of `artifacts`
+  # (`Apiary.Artifacts.list/1`): the newest version of `acceptance-criteria` `main` that no
+  # cancelled run wrote, when it is no withdrawal, read as `criteria/1`, with that version
+  # (nil for none) and `reads` with what it read (`stored_json/3`).
+  @spec newest_criteria([map], map) :: {map | nil, map | nil, map}
+  def newest_criteria(artifacts, reads) do
+    with %{} = artifact <-
+           Enum.find(artifacts, &(&1.type == "acceptance-criteria" and &1.name == "main")),
+         %{withdrawn: false} = version <- Artifacts.newest_counted(artifact) do
+      reads = stored_json(reads, version.public_id, version)
+      {criteria(reads[{:json, version.public_id}]), version, reads}
     else
-      _none -> nil
+      _none -> {nil, nil, reads}
     end
   end
-
-  defp cell(%MDEx.TableCell{nodes: nodes}), do: nodes |> plain() |> String.trim()
-
-  defp commit(nodes) do
-    case Regex.run(~r/\bCommit: *([0-9a-f]{40}|[0-9a-f]{64})\b/, plain(nodes)) do
-      [_line, commit] -> commit
-      nil -> nil
-    end
-  end
-
-  # An item `AC-2, "<criterion>": <reason>` is the criterion and the reason; another
-  # item, such as "None.", is the item as written, with no reason.
-  defp not_verified(nodes) do
-    for %MDEx.List{nodes: items} <- nodes,
-        %MDEx.ListItem{nodes: item} <- items,
-        line = item |> plain() |> String.trim(),
-        line not in ["", "None."] do
-      case Regex.run(~r/^([A-Za-z]+-[0-9]+, +".+?"): +(.+)$/s, line) do
-        [_line, criterion, reason] -> %{item: criterion, reason: reason}
-        nil -> %{item: line, reason: nil}
-      end
-    end
-  end
-
-  # The model families as the run wrote them, one sentence or line of the section each:
-  # "Build: claude. Verify: gpt-5.1." is "Build claude" and "Verify gpt-5.1". A sentence
-  # ends at a "." before a space or the end of the text, so a "." inside a model's name
-  # stays in it.
-  defp families(nodes) do
-    text = nodes |> plain() |> String.trim()
-
-    pairs =
-      for part <- String.split(text, ~r/\.(?=\s|$)|\n/, trim: true),
-          [_part, stage, family] <- [Regex.run(~r/^\s*([^:]+?): *(.+?)\s*$/, part)],
-          do: "#{stage} #{family}"
-
-    cond do
-      pairs != [] -> pairs
-      text == "" -> []
-      true -> [text]
-    end
-  end
-
-  defp plain(nodes) when is_list(nodes), do: nodes |> Enum.map(&plain/1) |> Enum.join()
-  defp plain(%MDEx.SoftBreak{}), do: "\n"
-  defp plain(%MDEx.LineBreak{}), do: "\n"
-  defp plain(%MDEx.Paragraph{nodes: nodes}), do: plain(nodes) <> "\n"
-  defp plain(%{literal: literal}) when is_binary(literal), do: literal
-  defp plain(%{nodes: nodes}) when is_list(nodes), do: plain(nodes)
-  defp plain(_node), do: ""
 
   ## The scenarios
 
@@ -234,10 +205,11 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
      reads}
   end
 
-  # The commit that the stage's verification verified: that of the newest version of the
-  # verification `main` made at the stage that a run of the take in wrote and no member
-  # cancelled (`StageTab.of_take_in/2`, `Artifacts.newest_counted/1`); nil for none.
-  defp verified_commit(work_item, artifacts, stage_id, take_in, reads) do
+  # The commit that the stage's verification verified: the `target_version` of the newest
+  # version of the verification `main` made at the stage that a run of the take in wrote
+  # and no member cancelled (`StageTab.of_take_in/2`, `Artifacts.newest_counted/1`); nil for
+  # none.
+  defp verified_commit(_work_item, artifacts, stage_id, take_in, reads) do
     newest =
       for %{type: "verification", name: "main"} = artifact <-
             StageTab.of_take_in(artifacts, take_in),
@@ -246,7 +218,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
           do: number
 
     with [number] <- newest,
-         {%{commit: commit}, reads} <- verification_parts(work_item, number, reads) do
+         {%{commit: commit}, reads} <- verification_parts(artifacts, number, reads) do
       {commit, reads}
     else
       {nil, reads} -> {nil, reads}
@@ -255,25 +227,25 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   end
 
   @doc false
-  # verification_parts/3 is the parts of version `number` of `work_item`'s verification
-  # `main` (`verification/1`), nil for a text with none, read and parsed once per version
-  # in `reads`; it returns the parts and `reads`.
-  @spec verification_parts(map, pos_integer, map) :: {map | nil, map}
-  def verification_parts(work_item, number, reads) do
-    key = {:verification, number}
+  # verification_parts/3 is the parts of version `number` of the verification `main` of
+  # `artifacts` (`Apiary.Artifacts.list/1`), as `verification/1` reads its JSON document,
+  # nil for none, the document read once per version in `reads` (`stored_json/3`); it
+  # returns the parts and `reads`.
+  @spec verification_parts([map], pos_integer, map) :: {map | nil, map}
+  def verification_parts(artifacts, number, reads) do
+    version =
+      for %{type: "verification", name: "main"} = artifact <- artifacts,
+          %{number: ^number} = version <- artifact.versions,
+          reduce: nil,
+          do: (_found -> version)
 
-    case reads do
-      %{^key => parts} ->
-        {parts, reads}
+    case version do
+      nil ->
+        {nil, reads}
 
-      _unread ->
-        parts =
-          case Apiary.WorkItems.ExploreView.output(work_item, "verification", number) do
-            %{message: text} -> verification(text)
-            _none -> nil
-          end
-
-        {parts, Map.put(reads, key, parts)}
+      version ->
+        reads = stored_json(reads, version.public_id, version)
+        {verification(reads[{:json, version.public_id}]), reads}
     end
   end
 
@@ -409,8 +381,80 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   ## The frames' bodies
 
   attr :id, :string, required: true
+  attr :criteria, :map, required: true, doc: "`criteria/1`"
+
+  @doc false
+  # criteria_body/1 is the frame of the acceptance criteria: the summary, then the table of
+  # the criteria, Id, Criterion and Check, in the document's order, each id in upper case;
+  # a removed criterion with its text struck through, the badge Removed and the reason,
+  # and its check muted. Under 640 px the check moves under the criterion. Each row's DOM id
+  # ends in the criterion's id, which an About line links to.
+  def criteria_body(assigns) do
+    ~H"""
+    <div id={@id} class="grid gap-4">
+      <p :if={@criteria.summary} id={"#{@id}-summary"} class="text-[14px]/6">
+        {@criteria.summary}
+      </p>
+      <div
+        class="q-tbl overflow-x-auto rounded-box border border-line bg-base-100 shadow-xs"
+        tabindex="0"
+        role="region"
+        aria-label={gettext("Acceptance criteria")}
+      >
+        <table class="table">
+          <thead>
+            <tr>
+              <th scope="col">{gettext("Id")}</th>
+              <th scope="col">{gettext("Criterion")}</th>
+              <th scope="col" class="q-from-sm">{gettext("Check")}</th>
+            </tr>
+          </thead>
+          <tbody id={"#{@id}-rows"}>
+            <tr :for={criterion <- @criteria.criteria} id={"#{@id}-#{criterion.id}"}>
+              <td class={["whitespace-nowrap font-medium", criterion.removed && "text-muted"]}>
+                {shown_id(criterion.id)}
+              </td>
+              <td class="whitespace-normal">
+                <span :if={!criterion.removed}>{criterion.text}</span>
+                <span :if={criterion.removed} class="text-muted line-through">{criterion.text}</span>
+                <div
+                  :if={criterion.removed}
+                  class="mt-1 flex flex-wrap items-center gap-1.5 text-[12.5px]/5 text-muted"
+                >
+                  <.badge>{gettext("Removed")}</.badge>
+                  <span>{criterion.removed}</span>
+                </div>
+                <div :if={criterion.check} class="q-to-sm mt-1 text-[12.5px]/5 text-muted">
+                  {criterion.check}
+                </div>
+              </td>
+              <td class={[
+                "q-from-sm whitespace-normal text-[13px]/5",
+                criterion.removed && "text-muted"
+              ]}>
+                {criterion.check}
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    """
+  end
+
+  attr :id, :string, required: true
   attr :verification, :map, required: true, doc: "`verification/1`"
+  attr :criteria, :map, default: nil, doc: "the newest acceptance criteria, `criteria/1`"
+
+  attr :answers, :map,
+    default: %{},
+    doc: "by criterion id, the open question about it, `{number, path}`"
+
   attr :accepted, :string, default: nil, doc: "the member who accepted the escalation"
+
+  attr :findings, :list,
+    default: [],
+    doc: "the findings accepted at an earlier stage's round limit, `accepted_findings`"
 
   attr :anchors, :map,
     default: %{},
@@ -420,7 +464,10 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
 
   @doc false
   # verification_body/1 is the verification frame's body: who accepted the escalation, the
-  # matrix, the "not verified" list and the artifact row.
+  # matrix, the "not verified" list, the findings accepted at an earlier stage's round
+  # limit, and the artifact row. A matrix row and an item of Not verified show the
+  # criterion's id in upper case and its text from the newest acceptance criteria; a row
+  # whose criterion has an open question links to it ("Answer question 4.").
   def verification_body(assigns) do
     ~H"""
     <div id={@id} class="grid gap-4">
@@ -444,12 +491,23 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
           <tbody id={"#{@id}-matrix"}>
             <tr :for={{row, i} <- Enum.with_index(@verification.rows)} id={"#{@id}-matrix-#{i}"}>
               <td class="whitespace-normal">
-                {row.criterion}
+                <.criterion id={row.criterion} criteria={@criteria} />
                 <div class="q-to-sm mt-1 text-[12.5px]/5 text-muted">
                   <.evidence text={row.evidence} anchors={@anchors} />
                 </div>
               </td>
-              <td class="whitespace-nowrap"><.state_badge state={row.state} /></td>
+              <td class="whitespace-nowrap">
+                <.state_badge state={row.state} />
+                <div :if={@answers[row.criterion]} class="mt-1 whitespace-nowrap text-[13px]/5">
+                  <.link
+                    id={"#{@id}-matrix-#{i}-answer"}
+                    href={elem(@answers[row.criterion], 1)}
+                    class="q-link"
+                  >
+                    {answer_words(elem(@answers[row.criterion], 0))}
+                  </.link>
+                </div>
+              </td>
               <td class="q-from-sm whitespace-normal text-[13px]/5">
                 <.evidence text={row.evidence} anchors={@anchors} />
               </td>
@@ -470,15 +528,68 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
             id={"#{@id}-not-verified-#{i}"}
             class="grid gap-0.5 border-b border-base-300 pb-2 last:border-b-0"
           >
-            <span>{item.item}</span>
-            <span :if={item.reason} class="text-[12.5px]/5 text-muted">{item.reason}</span>
+            <span><.criterion id={item.criterion} criteria={@criteria} /></span>
+            <span class="text-[12.5px]/5 text-muted">{item.reason}</span>
           </li>
         </ul>
+      </section>
+      <section
+        :if={@findings != []}
+        id={"#{@id}-accepted-findings"}
+        class="q-xp-sec"
+        aria-labelledby={"#{@id}-accepted-findings-h"}
+      >
+        <h3 id={"#{@id}-accepted-findings-h"} class="q-xp-sec-t">
+          {gettext("Accepted findings")}
+        </h3>
+        <%= for {accepted, k} <- Enum.with_index(@findings) do %>
+          <p id={"#{@id}-accepted-findings-#{k}-by"} class="mb-2 text-[12.5px]/5 text-muted">
+            {gettext("Accepted as it is in %{stage} by %{member}, %{when}.",
+              stage: accepted.stage,
+              member: accepted.member,
+              when: ApiaryWeb.Format.datetime(accepted.at)
+            )}
+          </p>
+          <ul
+            :if={accepted.findings != []}
+            id={"#{@id}-accepted-findings-#{k}"}
+            class="grid gap-2 text-[13px]/5"
+          >
+            <li
+              :for={{finding, i} <- Enum.with_index(accepted.findings)}
+              id={"#{@id}-accepted-findings-#{k}-#{i}"}
+              class="grid gap-0.5 border-b border-base-300 pb-2 last:border-b-0"
+            >
+              <span>{finding}</span>
+            </li>
+          </ul>
+        <% end %>
       </section>
       {render_slot(@inner_block)}
     </div>
     """
   end
+
+  attr :id, :string, required: true
+  attr :criteria, :map, default: nil
+
+  # A criterion in the matrix or in Not verified: its id in upper case, then its text from
+  # the newest acceptance criteria, where they have that id.
+  defp criterion(assigns) do
+    assigns = assign(assigns, :text, criterion_text(assigns.criteria, assigns.id))
+
+    ~H"""
+    <span class="font-medium">{shown_id(@id)}</span>{if @text, do: [" ", @text]}
+    """
+  end
+
+  # The words of a matrix row's link to the open question about its criterion, in the words
+  # of a verdict point's: "Answer question 4.".
+  defp answer_words(number),
+    do:
+      gettext("Answer %{question}.",
+        question: gettext("question %{number}", number: ApiaryWeb.Format.number(number))
+      )
 
   attr :text, :string, required: true
   attr :anchors, :map, required: true
@@ -551,7 +662,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   defp state_badge(assigns), do: ~H|<.badge>{@state}</.badge>|
 
   attr :id, :string, required: true
-  attr :scenarios, :list, required: true, doc: "`scenarios/4`"
+  attr :scenarios, :list, required: true, doc: "`scenarios/5`"
   attr :scope, :any, required: true
   attr :number, :integer, required: true
 

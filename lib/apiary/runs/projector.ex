@@ -38,6 +38,17 @@ defmodule Apiary.Runs.Projector do
   which this server never receives. A step exit folded later sets the step's state
   as the exit says.
 
+  A session's record (`Apiary.Runs.SessionRecord`) is written, or replaced, after the pass
+  that folded one of the run's `dev.qory.session.started`, `dev.qory.session.exited`,
+  `dev.qory.runtime.started` or `dev.qory.runtime.result` events has committed, in a
+  separate transaction, from all the run's events of those types (`Apiary.Runs.Sessions`),
+  and once more after the end of the run's place in the queue has committed, whichever end
+  it is. A rebuild does not delete the records: the key windows that hang on them come from
+  the gateway's reports, not from the events, and the records stay when retention deletes
+  the events. A run whose events retention has deleted, or is due to delete
+  (`Apiary.Retention.due_or_pruned?/1`), keeps its records and its cost: a pass over it
+  writes neither, because the results they come from are partly gone.
+
   A write's row (`Apiary.Runs.TargetWrite`) is one `dev.qory.run.target_write`, kept by
   its sequence, with the workspace's target of its system and path when the workspace has
   one: a write links to a target that exists, and creates none.
@@ -60,7 +71,7 @@ defmodule Apiary.Runs.Projector do
   alias Apiary.Repo
   alias Apiary.Runs
   alias Apiary.Runs.{Connection, Event, Fold, LeakedSecrets, LogChunk, Run, SessionChunk}
-  alias Apiary.Runs.{Step, Target, TargetWrite, Transcript, TranscriptPath}
+  alias Apiary.Runs.{Sessions, Step, Target, TargetWrite, Transcript, TranscriptPath}
 
   # What the fold may change on the run's row. The registration's fields
   # (`Apiary.Runs.Registration`) are not among them, so a rebuild keeps them.
@@ -104,11 +115,13 @@ defmodule Apiary.Runs.Projector do
       {:ok, run, nil} ->
         {:ok, run}
 
-      {:ok, run, {first, last}} ->
+      {:ok, run, {first, last, sessions?}} ->
         touch_heartbeat(run)
+        write_sessions(run, sessions?)
         if built == :store_built, do: record_built(run, first, last)
         end_handed_over(run)
         end_refused(run)
+        write_sessions_after_end(run)
         settle_dispatched(run, first, last)
         Runs.broadcast_projected(run, first, last)
         {:ok, run}
@@ -273,15 +286,26 @@ defmodule Apiary.Runs.Projector do
   # of one, is not held in memory or in one transaction.
   defp passes(id, span) do
     case guarded_pass(id) do
-      {:ok, {run, nil}} -> {:ok, run, span}
-      {:ok, {_run, {first, last, @pass_size}}} -> passes(id, widen(span, first, last))
-      {:ok, {run, {first, last, _count}}} -> {:ok, run, widen(span, first, last)}
-      {:error, reason} -> {:error, reason}
+      {:ok, {run, nil}} ->
+        {:ok, run, span}
+
+      {:ok, {_run, {first, last, @pass_size, sessions?}}} ->
+        passes(id, widen(span, first, last, sessions?))
+
+      {:ok, {run, {first, last, _count, sessions?}}} ->
+        {:ok, run, widen(span, first, last, sessions?)}
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 
-  defp widen(nil, first, last), do: {first, last}
-  defp widen({a, b}, first, last), do: {min(a, first), max(b, last)}
+  # The span of the sequences the passes projected, and whether one of them folded a
+  # session event (`session_pass?/1`).
+  defp widen(nil, first, last, sessions?), do: {first, last, sessions?}
+
+  defp widen({a, b, was?}, first, last, sessions?),
+    do: {min(a, first), max(b, last), was? or sessions?}
 
   defp guarded_pass(id) do
     Repo.transact(fn -> pass(id, &unprojected/1) end)
@@ -322,7 +346,9 @@ defmodule Apiary.Runs.Projector do
       {events, run} ->
         sequences = Enum.map(events, &elem(&1, 1))
         run = advance(run)
-        {:ok, {run, {Enum.min(sequences), Enum.max(sequences), length(events)}}}
+        # The events' types are not read here. `Sessions.write/1` reads them and writes no
+        # record for a run with no session events.
+        {:ok, {run, {Enum.min(sequences), Enum.max(sequences), length(events), true}}}
     end
   end
 
@@ -349,7 +375,9 @@ defmodule Apiary.Runs.Projector do
       # The fold reads no database: the workspace it names the target by comes with the
       # run, carrying the domain whose labelling rule names it.
       workspace = %Workspace{id: run.workspace_id, domain: domain}
-      projected = projected(run, events)
+      kept? = session_pass?(events) and Apiary.Retention.due_or_pruned?(run)
+      session_events = if kept?, do: nil, else: session_events(run, events)
+      projected = run |> projected(events) |> put_results(session_events)
 
       fold =
         fold_module().fold(
@@ -361,7 +389,7 @@ defmodule Apiary.Runs.Projector do
 
       run =
         run
-        |> Ecto.Changeset.change(Map.take(fold.run, @folded_fields))
+        |> Ecto.Changeset.change(folded(fold.run, kept?))
         |> Ecto.Changeset.change(denied_count: run.denied_count + denied(fold.connections))
         |> put_target(fold.run)
         |> Repo.update!(log: false)
@@ -401,7 +429,9 @@ defmodule Apiary.Runs.Projector do
       end
 
       sequences = Enum.map(events, & &1.sequence)
-      {:ok, {run, {Enum.min(sequences), Enum.max(sequences), length(events)}}}
+
+      {:ok,
+       {run, {Enum.min(sequences), Enum.max(sequences), length(events), session_pass?(events)}}}
     else
       nil -> {:error, :not_found}
       {:events, run, []} -> {:ok, {run, nil}}
@@ -492,6 +522,57 @@ defmodule Apiary.Runs.Projector do
     else
       %{beat: beat}
     end
+  end
+
+  # The run's session events, projected or not, for a pass that has one of them, else nil:
+  # the fold reads the results already projected (`Apiary.Runs.Fold`), and the records of
+  # the run's sessions are written from all of them (`Apiary.Runs.Sessions`).
+  defp session_events(%Run{id: id}, events) do
+    if session_pass?(events), do: Sessions.events(id)
+  end
+
+  # The records of the run's sessions, after the passes have committed, for events that
+  # folded a session's start, runtime, result or exit: written in a separate transaction
+  # (`Apiary.Runs.Sessions.write/1`), so the pass does not hold the run's row while the
+  # records' foreign keys lock the queue's rows. A failure is logged by the run's id and
+  # the exception's module, and the events stay projected: the next pass that folds a
+  # session event, or a rebuild, writes the records again. The pass itself can still
+  # wait for the queue's rows: its second update of the run re-checks the run's foreign
+  # keys (`pass/2`).
+  defp write_sessions(%Run{id: id}, true) do
+    Sessions.write(id)
+  rescue
+    error -> Sessions.log_failure(id, error)
+  end
+
+  defp write_sessions(%Run{}, false), do: :ok
+
+  # The records once more, for a run a workspace's queue handed over that the passes folded
+  # an exit or a refusal of, after its end committed (`end_handed_over/1`, `end_refused/1`)
+  # (`Apiary.Runs.Sessions.write_after_end/1`). The write in `project/2` before the end is
+  # the first try; when it failed, and was logged, this is the second.
+  defp write_sessions_after_end(%Run{dispatch_run_id: queue_id, id: id} = run)
+       when is_binary(queue_id) and
+              (is_struct(run.exited_at, DateTime) or is_struct(run.refused_at, DateTime)),
+       do: Sessions.write_after_end(id)
+
+  defp write_sessions_after_end(_run), do: :ok
+
+  defp session_pass?(events), do: Enum.any?(events, &(&1.type in Sessions.types()))
+
+  # What the fold sets on the run. A run whose events retention has deleted, or is deleting,
+  # keeps its cost: the results the fold would sum are partly gone (`Apiary.Retention`).
+  defp folded(fold_run, true), do: fold_run |> Map.take(@folded_fields) |> Map.delete(:cost_usd)
+  defp folded(fold_run, false), do: Map.take(fold_run, @folded_fields)
+
+  defp put_results(projected, nil), do: projected
+
+  defp put_results(projected, session_events) do
+    results =
+      for %{type: "dev.qory.runtime.result", projected?: true} = event <- session_events,
+          do: event
+
+    Map.put(projected, :results, results)
   end
 
   defp projected_starts(%Run{id: id}) do

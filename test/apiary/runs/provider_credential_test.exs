@@ -181,7 +181,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
   end
 
   describe "a run with several keys" do
-    test "is given each key of the run, the named key in cooldown last, which the schema takes" do
+    test "is given each key of the run, a key in cooldown last, none chosen, which the schema takes" do
       %{scope: scope} = sign_up_fixture()
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "git.example"})
       until = Apiary.ModelKeysFixtures.in_seconds(3600)
@@ -192,7 +192,6 @@ defmodule Apiary.Runs.ProviderCredentialTest do
             %{value_id: "main", value: model_key()},
             %{value_id: "spare", value: "sk-ant-spare-0123456789"}
           ],
-          choice: %{key: "spare"},
           before_claim: &Apiary.ModelKeysFixtures.key_state!(&1, "spare", until: until)
         )
 
@@ -209,7 +208,6 @@ defmodule Apiary.Runs.ProviderCredentialTest do
                "name" => "#{p}-2",
                "resets_at" => at,
                "cooldown_until" => at,
-               "chosen" => true,
                "pause_for_s" => 60
              }
 

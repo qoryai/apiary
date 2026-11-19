@@ -107,9 +107,11 @@
 # `account_header` and `account_claim` of an auth, for an OAuth login whose token carries
 # the account id; and `paths` of an API credential; and `unauthorized`, optional, in a
 # secrets request and in a model keys report: the keys that got a 401 from the provider;
-# and `group` of an API credential, its provider's id, each group a key group the gateway
-# rotates, cools and stops apart from the others, at most 6 API credentials across every
-# group, and `group` of a `credential_hosts` entry of `link-run-answer`, with `format`.
+# `usage` of `dev.qory.runtime.result`, the launch's tokens so far, with its `session` and
+# `line`; and `group` of an API credential, its provider's id, each group a key group the
+# gateway rotates, cools and stops apart from the others, at most 6 API credentials across
+# every group, and `group` of a `credential_hosts` entry of `link-run-answer`, with
+# `format`.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
@@ -117,6 +119,7 @@
 eec113d70fd9e00d35951d9cf2d3d71c0a13328d
 priv/contract/api-format.schema.json
 priv/contract/events/runtime.text.schema.json
+priv/contract/events/runtime.result.schema.json
 priv/contract/events/runtime.tool_result.schema.json
 priv/contract/events/runtime.tool_denied.schema.json
 priv/contract/auth.schema.json

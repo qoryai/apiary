@@ -2390,7 +2390,7 @@ defmodule ApiaryWeb.OverviewComponents do
   defp model_step_words(:key_gone),
     do:
       gettext(
-        "The model key chosen for this workspace is no longer one of its model provider's keys. Choose another model or provider on the Model step, then press Run the test."
+        "Choose another provider on the Model step, or add a key to that provider in Organisation settings › Model providers, then press Run the test. The model provider chosen for this workspace has no key."
       )
 
   defp model_step_words(:model_gone),

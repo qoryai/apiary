@@ -8,7 +8,7 @@ defmodule Apiary.Connections.WriteActionsTest do
 
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Audit, Connections, ModelChoices}
+  alias Apiary.{Audit, Connections, ModelChoicesFixtures}
   alias Apiary.Audit.Entry
   alias Apiary.Connections.Connection
   alias Apiary.EditionStubs
@@ -82,7 +82,9 @@ defmodule Apiary.Connections.WriteActionsTest do
 
   test "the organisation's default model choice is written under provider.write", %{scope: scope} do
     provider = provider!(scope)
-    {:ok, choice} = ModelChoices.put_choice(scope, :organisation, %{provider: provider.public_id})
+
+    {:ok, choice} =
+      ModelChoicesFixtures.put_choice(scope, :organisation, %{provider: provider.public_id})
 
     assert [%Entry{action: "provider.write", details: %{"change" => "choice_set"}}] =
              Repo.all(from e in Entry, where: e.subject_id == ^choice.id)
@@ -99,7 +101,9 @@ defmodule Apiary.Connections.WriteActionsTest do
       assert {:ok, _provider} = Connections.update_provider(scope, provider, %{name: "Models"})
 
       assert {:ok, _choice} =
-               ModelChoices.put_choice(scope, :organisation, %{provider: provider.public_id})
+               ModelChoicesFixtures.put_choice(scope, :organisation, %{
+                 provider: provider.public_id
+               })
 
       assert {:ok, _provider} = Connections.delete_provider(scope, other)
       assert {:ok, _runtime} = Connections.delete_connection(scope, runtime)
@@ -162,7 +166,9 @@ defmodule Apiary.Connections.WriteActionsTest do
       assert Connections.add_provider_key(scope, provider, %{value_id: "x", value: "k"}) ==
                {:error, :forbidden}
 
-      assert ModelChoices.put_choice(scope, :organisation, %{provider: provider.public_id}) ==
+      assert ModelChoicesFixtures.put_choice(scope, :organisation, %{
+               provider: provider.public_id
+             }) ==
                {:error, :forbidden}
 
       assert {:ok, _runtime} = Connections.update_connection(scope, runtime, %{name: "Agents"})

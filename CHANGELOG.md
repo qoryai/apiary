@@ -12,6 +12,24 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+- Each session of a run has a record, which Qory Apiary keeps when the run's events are
+  deleted. The record has the session's work item, target, stage, workflow, attempt,
+  session number, start and end, duration, turns, tokens in and out with cache reads and
+  writes, cost and model, and whether a result line was an error. The attempt is that of the
+  run of the queue: a run that continues a paused run has the paused run's attempt plus 1,
+  and the paused run keeps its record as attempt 1. A value that the runtime did not report
+  is empty, never 0. No page shows the records yet. A run's events written before this
+  change have no record until the run is projected again. A record is written after the
+  run's events are projected, and once more after the end of the run of the queue it belongs
+  to is committed, whichever end it is (exit, refusal, lost, machine stopped, or an input
+  that could not be formed), so a write that failed before the end is made good. A run whose
+  events are deleted, or are due to be, gets no new record and keeps its cost.
+<!-- feature: factory, secrets -->
+- A key report that names a session also counts into that session's record, for each key and
+  limit window, the first and the last utilization that the gateway reported and their
+  difference, the share. A report with no session changes no record. The key states that
+  decide which key a run uses are as before.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - The harness sets the schema of the type that the process's `submit` is set to,
   `submission` in the Qory harness. Qory Apiary checks a run's version of that type against
@@ -38,9 +56,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   provider choice lists both, and the API key's help reads “Get the key from the provider
   first: create an API key in the OpenAI Platform.” **OpenAI API key** lists 6 models and
   **OpenAI subscription** 10, each with its effort values, which Workspace settings › Model
-  shows once **Codex** is the runtime. With two runtimes in the catalogue, the **Runtime**
-  field of that page is shown, with **Claude Code** first. Signing in with an OpenAI
-  subscription, refreshing that sign-in and limiting its paths are not built yet.
+  offers in the tiers when **Provider** is one of them. **Runtime** then shows **Codex**,
+  with the line “Codex is the only runtime that works with OpenAI API key.” Signing in
+  with an OpenAI subscription, refreshing that sign-in and limiting its paths are not
+  built yet.
 - The link to a vendor's terms in a provider's help names that provider's vendor, such as
   “Anthropic's terms”.
 <!-- /feature -->
@@ -199,7 +218,44 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   documents have the member `largest_prebuilt_image_bytes`, the setting at the claim
   times 1,000,000,000. When the setting is empty, the member is absent. No other run has
   the member. The run contract is vendored at integrations `cd52a06e`.
+<!-- feature: factory -->
+- Providers whose description lists no models, such as LiteLLM, are hidden where a
+  provider is offered, unless the feature `model_proxies` is on (off by default). With
+  it off, a request that adds one is refused with "Turn on the feature Model proxies to
+  add LiteLLM: it lists no models."; a provider added before stays, and its edits are
+  not refused.
+<!-- /feature -->
 <!-- feature: workflow_model -->
+- On **Workspace settings › Workflows**, each workflow's settings fold has a **Provider**
+  after the time limit. "Use workspace default", the default, shows the line "Uses the
+  workspace default: <Provider>.", or the organisation's default, or "No default is set.
+  Set one in Workspace settings › Model." **Provider** lists every model provider, by its
+  name. A provider that works with no runtime shows “<Provider> works with no runtime
+  in this version of Qory Apiary. Pick another provider.” under **Provider**, and **Save
+  model choice** stays disabled. A model provider shows **Model and effort per tier**, as
+  on Workspace settings › Model, then **Runtime**, as there, and **Save model choice**,
+  enabled once every tier has a model and something changed. "Use workspace default"
+  shows no **Runtime**: the default's runtime applies. A new override starts from the
+  default's runtime: a change of **Provider** from the default to a provider keeps it
+  while the provider works with it. The save writes
+  the workflow's model choice at once, with no fallbacks, and makes no version of the
+  process; "Use workspace default" saved removes it. A refusal shows under its field, and
+  the button is enabled again for the next save. A workflow the saved process does not
+  have yet has **Provider** disabled, with "Save the stage first to set this workflow's
+  model choice." Whoever may not change model choices sees the fields disabled and no button.
+  This needs the features `factory` and `secrets`.
+- A workflow's model choice and time limit in a workspace are deleted when neither the
+  workspace's current process version nor the version of an open work item has the
+  workflow, and no run of the workflow is left that has not ended. A save of the process,
+  a trial made current or dropped, and a work item moved to another version delete them
+  at once; a work item closed or undone, and a run that ends, delete them right after.
+  So an open work item on an older version keeps them until it closes, and a queued run
+  keeps its workflow's model choice and time limit until it ends. Each delete is in the
+  audit trail, with the cause `workflow_not_in_use`. A model provider that only such a
+  choice used can be deleted, and the choice goes with it. A save checks what is kept
+  after it writes the new version, so a choice or limit for a workflow the save adds
+  stays. Such choices and limits made before this change stay until the next save of the
+  process without their workflow, a close, or deletion of their provider. With `workflow_model` off, none is deleted.
 - A stage of a process takes `shared_run`, default `false`: with `true`, its workflows run
   one after the other as sessions of one run, on one machine. A save of such a stage fails
   when two of its workflows, those in a loop included, differ in access level or machine
@@ -276,12 +332,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   expected result and the file name. No film starts by itself, and the next scenario does
   not start when a film ends. A film or pictures that no scenario has show no queue, and
   a set of pictures that no scenario has stays a stack of pictures.
-- On that tab, every frame is open, the other outputs' frames, such as Demo evidence and
-  Explainer, show the version and the artifact rows only, and a row names the artifact
-  as the gate card does, such as “demo video scenario-1 v1”. The gate card lists the
+- On that tab, every output frame is open, the other outputs' frames, such as Demo
+  evidence and Explainer, show the version and the artifact rows only, and a row names
+  the artifact as the gate card does, such as “demo video scenario-1 v1”. The gate card lists the
   films and pictures together, in scenario order.
-- An output frame on a stage's tab lists the artifact row of each name of its type,
-  `main` first, and an output with only other names has a frame too.
+- On that tab, an output frame lists the artifact row of each name of its type, `main`
+  first, and an output with only other names has a frame too.
 - A run's page shows a withdrawal as “Withdrew demo script scenario-2 (version 3)” in
   place of “Pushed”, and a version page's History shows it in place of “Version 3”,
   with the artifact in the plain form of the gate card (the type with spaces, then the
@@ -318,10 +374,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the id of the escalation, `gate_decisions.escalation_id`; `notes` lists the escalation and
   leaves that decision out). The entries stay until the left stage's gate
   passes again (an approval of the stage, by a person or automatic) or a later move goes
-  to a stage after it, and are scoped to the take in. No approval lists these versions, and
-  the page's missing inputs, the stage's checks and the other entries of `inputs` stay as
-  they were. A `move` decision keeps the stage it moved to and when the work item last
-  entered the stage it left (`gate_decisions.to_stage_id`, `left_stage_entered_at`).
+  to a stage after it, and are scoped to the take in. No approval lists these versions,
+  unless a person made one: that is a change. The page's missing inputs, the stage's checks
+  and the other entries of `inputs` stay as they were. A `move` decision keeps the stage it
+  moved to and when the work item last entered the stage it left
+  (`gate_decisions.to_stage_id`, `left_stage_entered_at`).
 - A run reports the commits it pushed with `POST /v1/runs/<run_id>/pushed-commits`, a body
   of `{"repositories": [{"system", "path", "commit"}]}` with 1 to 64 repositories and a
   full 40 or 64 character commit id each. Qory Apiary keeps them in the order it recorded
@@ -373,6 +430,36 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   refuses a value that is not such an id. A run can change the criterion of an open
   question. While a question stays answered, its criterion stays as it was, set or absent.
 <!-- feature: workflow_model -->
+- A run of a later stage, or a person by upload, can store a new version of an approved
+  output, and every later run reads that version in place of the approved one. A run's
+  `POST artifacts` takes an optional `decision`: the `id` of the person's note that asked
+  for the version, also on a withdrawal. In `notes` of `GET work-item`, a request for
+  changes and a move have an `id` `gd_…`, and an escalation an `id` `es_…`; an answer and
+  a check have `id` null and cannot be a `decision`. A `decision` that is not one of these
+  ids on the run's work item is `422` `unknown_decision`. The next approval by a person at
+  a gate lists the new version; a gate `none` lists no version that has a `decision`. Once
+  a person's approval lists it, it is the approved version for every later run, also after
+  a move back to a stage at or before that approval; the gate of that stage then shows and
+  approves it, in `outputs` of `GET work-item` and on the stage's tab of the work item
+  page. An approval at a gate records a version of each name of each output type, and
+  the gate card lists one row for each name. The tab of a stage with no
+  `verification` output has a frame for every version that an approval at its gate
+  records: one for each name of a type, one that only a person uploaded, one of an
+  earlier take in, and a change. A frame of an artifact not named `main` has the name
+  after the type in its heading. A person's version has the caption "Version <n> · <the
+  member's short name>". Once the work item has left a stage that a person approved, the
+  stage's tab shows a frame for each version that approval recorded. The tab of a stage
+  with a `verification` output keeps the frames of the Verify tab, which show only the
+  versions that the take in's runs wrote. A person's version of the type in
+  `submit.type` is not a change: no approval lists it, the gate card leaves it out of
+  its outputs, its Exists check and its approval marks, and runs read the run's version.
+  The tab has no frame or Submissions row for it, as only a run's submit step writes a
+  submission. The gate card's draft line reads only a run's submission, whatever the
+  process version's `submit.type` is. In a stage that started no run, the input frames
+  follow the output frames, folded. On the stage card, each output's version at the gate
+  links to that version's page, and the gate also links every further version that an
+  approval would record. In `GET artifacts`, each version has `decision` and
+  `decision_at`, the time of that note.
 - Explore's gate lists the tracks it offers above Approve, each with its description, in the
   gate's order, under "Track to run after you approve". The track that the stage's runs
   proposed is selected and has the badge "Proposed by <stage>" and, where the run gave a
@@ -853,7 +940,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   steps.
 - Where the edition shows the setting “Available to every workspace in Acme”, **Model**,
   and **Harness** for a harness repository, list first what the organisation shares,
-  under “Shared in Acme”, each marked “· every workspace”. On **Model**, **Key** lists
+  under “Shared in Acme”, each marked “· every workspace”. On **Model**, **Provider** lists
   each model provider with a key that applies to every workspace, then the providers of
   the workspace alone and **Add a key**; the first is chosen while the workspace has no
   model choice. On **Harness**, a harness repository the organisation shares comes
@@ -938,22 +1025,38 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   destination assigns it to the workspace, with its Backlog off unless it is chosen as a
   work source. Unticking a destination removes it from the workspace and stops its
   tickets. Owners and admins choose; owners, admins and members read the settings pages.
-- **Model**, “Which model do runs in Main use?”, has three fields. **Key** lists each
+- **Model**, “Which models do runs in Main use?”, has three fields. **Provider** lists each
   model provider with a key that reaches the workspace, by its name, then **Add a key**.
+  A provider that works with no runtime shows “<Provider> works with no runtime in
+  this version of Qory Apiary. Pick another provider.” under **Provider**, and **Continue** is
+  disabled.
   **Add a key** is the one option where there is no provider to reuse. It opens
-  **Provider**, **Key**, and an address for a provider that needs one, as **Organisation
-  settings › Model providers** does. It adds the provider for the workspace: its key is
-  a secret of the workspace, and the provider reaches that workspace alone. Under
-  **Key**: “Qory Apiary stores the key encrypted, and nobody can view it again. You can
-  replace it in Settings › Secrets and variables.” **Runtime** lists the runtimes the
-  provider serves, as text where there is one. **Default model** suggests the provider's
-  models for it. **Continue** saves the workspace's model choice, with the provider's
-  default key; **Workspace settings › Model** shows that choice. Where the edition shows
-  “Available to every workspace in Acme”, two workspaces can reuse one key and choose
-  different models. The step is done once the workspace has a model choice whose
-  provider reaches the workspace and has a key. Owners and admins fill it in. For a
-  Claude subscription, **About models** shows `claude setup-token` on a separate
-  line, with **Copy command**.
+  **Kind of provider**, **Key**, and an address for a provider that needs one, as **Organisation
+  settings › Model providers** does. It adds the provider for the workspace: its key is a
+  secret of the workspace, and the provider reaches that workspace alone. Under **Key**:
+  “Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it
+  in Settings › Secrets and variables.” **Model and effort per tier**, as on **Workspace
+  settings › Model**, has a **Model** and an **Effort** for each of Thinking, Balanced and
+  Light, from the provider's suggested models; with the feature `model_proxies` on, a
+  provider whose description lists no models, such as LiteLLM, shows **Model per tier**,
+  with a text field per tier and no **Effort**; a workspace's choice of such a provider
+  shows the same with the feature off. **Runtime** follows the tiers, as on **Workspace
+  settings › Model**. A change of provider empties the tiers. A tier whose model id or
+  effort a save refuses shows the refusal under its field.
+  **Continue**, enabled once every tier has a model and no tier is refused, saves the
+  workspace's model choice: the provider, whose keys runs take, the runtime the step
+  shows, and the tiers,
+  with the Thinking tier's model and effort as the choice's; with nothing changed it saves
+  nothing. Add a key adds the provider and saves the choice together: when the save of the
+  choice is refused, no provider and no key are added. **Workspace settings › Model**
+  shows that choice. Where the edition shows “Available to every workspace in Acme”, two
+  workspaces can reuse one key and choose different models. The step is done once the
+  workspace has a model choice whose provider reaches the workspace and has a key. Where
+  **Continue** is refused for a fallback kept on **Workspace settings › Model**, the step
+  shows one line under its form: “Change a fallback in Workspace settings › Model. Choose
+  another provider: Northwind Claude is not used in this workspace.”, the place a link
+  to that page. Owners and admins fill it in. For a Claude subscription, **About
+  models** shows `claude setup-token` on a separate line, with **Copy command**.
 - **Harness**, “Which harness do runs in Main use?”, sets the harness of the
   workspace's runs. **About harnesses** explains what a harness is, which harness a run
   uses, and the versions. The choices are two: **Qory harness**, with **Version**,
@@ -1088,7 +1191,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   **Runs**, open whatever the state of its set-up.
 - **Organisation settings › Model providers** lists the organisation's model providers,
   and **New model provider** adds one with its key, and an address for a provider that
-  needs one, such as LiteLLM; no page shows a key once it is saved. Under **Key**: “Qory
+  needs one, such as LiteLLM, which it lists only with the feature `model_proxies` on;
+  no page shows a key once it is saved. Under **Key**: “Qory
   Apiary stores the key encrypted, and nobody can view it again.” The provider is added
   for one workspace, the one in the help beside the form: “After you save, choose the
   model for Main in Workspace settings › Model.” Its key is a secret of that workspace,
@@ -1096,14 +1200,32 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   page shows “Set up a workspace first, then add a model provider in its Model step.” in
   place of the form, and adds nothing. For a Claude subscription, **About model
   providers** shows `claude setup-token` on a separate line, with **Copy command**.
-  **Workspace settings › Model** sets the model of the workspace's runs. Its field
-  suggests each provider's models from the models.dev list in the release, which the
-  Mix task
-  `apiary.models.update` writes before a release; Qory Apiary downloads nothing while it
-  runs. **Another model** takes any model id, and a model provider keeps no list of
-  models. A model choice also has a runtime: the **Runtime** field shows only while the
-  runtime catalogue has more than one, and the catalogue of this release has one,
-  `claude`. When the gateway had no model key for a run, the work item page puts “Add a
+  **Workspace settings › Model** sets the default models of the workspace's runs under
+  **Default models**: **Provider**, each model provider by its name, such as “Northwind
+  Claude”, whose keys runs take, then **Model and effort per tier**, a **Model** and an
+  **Effort** for each of Thinking, Balanced and Light, then **Runtime**. **Model**
+  suggests the provider's models from the
+  models.dev list in the release, which the Mix task `apiary.models.update` writes
+  before a release; Qory Apiary downloads nothing while it runs. With the feature
+  `model_proxies` on, a provider whose description lists no models, such as
+  LiteLLM, shows **Model per tier**, with a text field per tier for any model id and no
+  **Effort**. **Save** is enabled once every tier has a model. **Runtime** lists the
+  runtimes that work with the provider. Its line has the provider's title in the
+  catalogue, not the provider's name. Where one does, it shows its name and
+  “Claude Code is the only runtime that works with Anthropic API key.”; where several do,
+  a select, set to the saved runtime, else the first, and “These runtimes work with
+  OpenRouter.”. **Provider** lists every model provider, whichever runtime is chosen,
+  also one that works with no runtime. A change of **Provider** keeps the runtime while
+  the new provider works with it, else takes the first that does. A change of
+  **Runtime** keeps the models, and an effort the runtime does not accept goes back to
+  “Not set”. A provider that works with no runtime shows “<Provider> works with no
+  runtime in this version of Qory Apiary. Pick another provider.” under **Provider**, and
+  **Save** writes nothing until another provider is chosen. A saved choice whose
+  provider's settings no longer fit keeps its provider in **Provider**, with the line of
+  why under it; no other provider is chosen in its place, and **Save** writes nothing
+  until another provider is chosen. With no model provider, the page shows “Add a model provider in
+  Organisation settings › Model providers.” to whoever may add one, and who adds one to
+  anyone else. The catalogue of this release has two runtimes, `claude` and `codex`. When the gateway had no model key for a run, the work item page puts “Add a
   model key in Organisation settings › Model providers.” first on the step card,
   Explore's tab and the Thread, in place of “The run ended with an error.”
 - **Workspace settings › Secrets and variables** lists the key of each model provider
@@ -1634,24 +1756,38 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   spaces, tabs or newlines is empty: **Key** shows “can't be blank”, and an empty **New
   value** keeps the key's value. The value of any other secret stays as you typed it,
   its last newline included.
-- **Workspace settings › Model** has the part **Fallbacks** under Runtime, Model and
-  Effort: “When every key of Northwind Claude is in cooldown, runs use these, in order,
-  from the next run.” Each fallback has Provider, Model, Another model and Effort, with
-  **Move up**, **Move down** and **Remove**. **Add fallback** adds a provider that
-  applies to the workspace, serves the chosen runtime, and is neither the chosen
-  provider nor a fallback already, with the chosen model where the provider has a model
-  of the same id. **Save** saves the fallbacks with the model choice. With no such
-  provider left, the part shows “Add another model provider that serves Claude Code in
-  Organisation settings › Model providers, then add it here as a fallback.” A save that
-  changes the chosen provider to a fallback's provider drops that fallback.
+- **Workspace settings › Model** has the part **Fallbacks** under Provider, the tiers and
+  Runtime: “When every key of Northwind Claude is in cooldown, runs use these, in order,
+  from the next run.” Each fallback has **Provider**, **Model and effort per tier**, as
+  the default models have, and **Runtime**, with **Move up**, **Move down** and
+  **Remove**. **Runtime** lists the runtimes that work with the fallback's provider: one
+  as text, with “Claude Code is the only runtime that works with Anthropic API key.”, or
+  several in a select, with “These runtimes work with OpenRouter.”. A fallback's
+  **Provider** lists every provider that applies to the workspace, also one that works
+  with no runtime, but the chosen provider and the other fallbacks' providers. A
+  fallback whose provider works with no runtime shows “<Provider> works with no runtime
+  in this version of Qory Apiary. Pick another provider.” under its **Provider**, and
+  **Save** is disabled while it shows. **Add fallback** adds the first provider left that
+  works with a runtime, else the first provider left. A new fallback, and a fallback
+  whose provider changes, starts with no models and on the chosen runtime where its
+  provider works with it, else on the first runtime that does. A change of a fallback's
+  **Runtime** keeps its models, and an effort the runtime does not accept goes back to
+  “Not set”. **Save** is enabled once every tier of the default models and of each
+  fallback has a model and each fallback's provider works with a runtime, and saves the
+  fallbacks with the model choice. With no provider left, the part shows
+  “Add another model provider in Organisation settings › Model providers, then add it here
+  as a fallback.” A save that changes the chosen provider to a fallback's provider drops
+  that fallback.
 - Only a run of Explore uses a model key. Such a run gets up to 6 keys of its model
   provider at its claim, each a separate credential of the run, named after the
-  provider's public id: `con_…-1` to `con_…-6`. The run starts with the key chosen in the
-  model choice while that key is out of cooldown, else a key with no known reset, the
-  default key first, else the key whose known reset is closest. Forager's gateway moves
+  provider's public id: `con_…-1` to `con_…-6`. The run starts with a key with no known
+  reset, the default key first, else the key whose known reset is closest. Forager's gateway moves
   to the next key when a key reaches its limit. Where every key of the provider is in
   cooldown, the run gets the keys of the first fallback with a key out of cooldown, and
-  that fallback's model and effort. Where every key of the provider and of each
+  that fallback's runtime and tiers. A run that continues a paused run on another
+  runtime than the session that paused, as one that takes such a fallback, starts a new
+  session instead of resuming that session's transcript, and continues from the commits
+  the paused run pushed. Where every key of the provider and of each
   fallback is in cooldown, the run waits in the queue, and its page shows “Waiting for a
   model key: every key of Northwind Claude is in cooldown until 14:00.”, for the
   provider whose key leaves its cooldown first. The first claim after that time takes
@@ -1792,7 +1928,48 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   and its run configuration has no `model_credential`. A run whose every session runs on
   the machine's key takes no key.
 <!-- /feature -->
+<!-- feature: workflow_model -->
+- `acceptance-criteria` and `verification` are structured types: a version is one JSON
+  file that matches `acceptance-criteria.schema.json` or `verification.schema.json`, and
+  any other file, Markdown too, is `422` `invalid_artifact`. A criterion's id is once in
+  the criteria. Qory Apiary reads no output's Markdown for data.
+- A question has `about` in place of `criterion`: `{"work_item": true}`, or the type and
+  name of an output of the work item, with an `item` such as `ac-4`. A pushed question
+  whose `about` points at an output the work item lacks, or at a criterion that no version
+  of the acceptance criteria has, is `422` `invalid_artifact` with the fix first. Each
+  question shows an About line under its asked line: "About the ticket", "About
+  screenshot scenario-1", or "About acceptance criteria, AC-4" with the criterion's text
+  as a quote. The field of a proposed wording is labelled from `about.item`, such as
+  **Change AC-4:**.
+- Acceptance criteria show as a table: the summary, then **Id**, **Criterion** and
+  **Check**, the ids in upper case. A removed criterion is struck through, with the badge
+  **Removed** and its reason.
+- The Verify matrix shows each criterion's id and its text from the newest acceptance
+  criteria, as **Met** or **Not met**, and no verified commit. The caption is "Model
+  families: …". A row whose criterion has an open question links to it: "Answer question
+  4.".
+- While a run runs, an option's proposed wording shows as a quote under its explanation.
+  An answered question shows the proposed wording of the option chosen as a quote under
+  the answer.
+- Under **Not verified**, **Accepted findings** lists the findings that a member accepted
+  as they are at an earlier stage's round limit in this take in: "Accepted as it is in
+  Build by dana, 18 Nov 2026, 10:42.", then each finding. Where Verify's tab shows no
+  verification frame, such as while its run has pushed none, the findings show in a
+  separate frame, **Accepted findings**, open, after the stage's outputs, with that line
+  as its caption.
+<!-- /feature -->
+- A run's cost, the **Cost** on the run page that every spend total reads, is the sum, over
+  the run's sessions, of the `cost_usd` of each session's last result line. It was the sum of
+  all the result lines. A Claude Code launch with a subagent in the background writes up to
+  three result lines, and each line has the launch's total so far, so a cost of 0.0129 showed
+  as 0.0387. A run projected before this change keeps its cost until it is projected again.
 <!-- feature: factory, secrets -->
+- The tier `fast` is now `balanced`.
+- A model choice for the workspace or the organisation's default needs a provider and a
+  model for each tier: Thinking, Balanced and Light. A tier's model is one of the
+  provider's models or suggestions.
+- A run takes its tiers from the model choice in effect alone, and its model and effort from
+  the Thinking tier.
 - A run receives the variables of its workspace. When a claim registers a run, Qory
   Apiary resolves the variables of the organisation, the workspace, and the target (a
   repository, in a software workspace) as they are then, and sends them in the run
@@ -1838,9 +2015,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   and this change would raise a repository's variables above 126.” Before, a save allowed
   128 names. The claim still refuses a run whose variables pass either limit, such as
   variables saved before.
-- The tier `fast` is now `balanced`.
 <!-- /feature -->
 <!-- feature: workflow_model -->
+- A workflow's model choice needs a provider and a model for each tier, as the workspace's
+  does, and has no fallbacks. While every key of a workflow's choice is in cooldown, the
+  run uses the workspace's choice, then that choice's fallbacks.
 - A run cannot withdraw a name of the type in `submit.type` of its process version or of
   its work item's process version: the run API returns `422` `type_not_withdrawable`, with
   "Push a new version of <type> instead. Qory Apiary reads its newest version as the run's
@@ -2814,7 +2993,20 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   blocks reads and writes. It changes no row.
 - `runs` (20261118151000): a nullable column `paused_session`, the number of the session
   where a run paused at its keys' limit. It changes no row.
+- `model_choices` and `model_choice_fallbacks` (20261118163000): `model_choices` drops
+  the column `value_id`, the key a choice chose, with its check; runs take the keys of
+  the chosen provider. `model_choice_fallbacks` drops `model_id` and `effort`, with their
+  checks, and gains `runtime` and `tiers`, both `NOT NULL`, with a check of each as
+  `model_choices` has. The migration deletes every fallback first and moves no data. The
+  migration is short. Rolling back adds the dropped columns back empty and drops
+  `runtime` and `tiers`.
 <!-- /feature -->
+- `session_records` and `session_key_windows` (20261118161000): two new tables, with their
+  foreign keys to `organisations`, `workspaces`, `runs`, `dispatch_runs`, `work_items`,
+  `targets` and each other, their indexes and their checks. The migration changes no
+  existing table and no row. Each foreign key takes a short lock on the table it points to
+  that blocks writes while the key is added, and the new tables are empty, so no table is
+  scanned. Rolling back drops both tables with the records in them.
 <!-- feature: workflow_model -->
 - `shared_run_sessions` (20261118130000): a new table, one row for each session of a run of
   a stage with `shared_run: true`, with its foreign keys to `organisations`, `workspaces`
@@ -2976,6 +3168,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   changes no row. Adding the column rewrites no row; a workspace has a value after the
   next read of its harness. Rolling back drops the column and makes each `write-no-push`
   run `read`.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- `gate_decisions`, `escalations` and `artifact_versions` (20261117140000 and
+  20261117140100): a column `public_id` on `gate_decisions` (`gd_…`) and on `escalations`
+  (`es_…`), unique, with a check of its shape, and a nullable column
+  `artifact_versions.decision_id`, the id of the note that asked for a version, with a
+  check of its shape. The default of `public_id` is a function that makes a new id, so
+  adding the column sets an id on every stored decision and escalation and rewrites both
+  tables under a lock that blocks reads and writes. `decision_id` is nullable, so adding it
+  rewrites no row; the first migration adds its check without a scan, and the second
+  validates it with a scan that does not block writes. Rolling back drops the three
+  columns, with the decision of every version.
 <!-- /feature -->
 <!-- feature: managed_organisations -->
 - `workspace_operators` (20261115120000), a table of the operator of a workspace: at

@@ -233,6 +233,7 @@ defmodule Apiary.Artifacts.FormatTest do
           "question" => "Which basket keeps the price?",
           "options" => [],
           "state" => "open",
+          "about" => %{"work_item" => true},
           "asked" => %{"run" => 12, "at" => @at}
         },
         attrs
@@ -318,35 +319,63 @@ defmodule Apiary.Artifacts.FormatTest do
       assert {:ok, _} = questions(context, [question(%{"options" => []})])
     end
 
-    test "a criterion is optional, an acceptance criterion's id such as ac-3", context do
-      assert {:ok, _} = questions(context, [question()])
+    test "an about is the work item or an output, with an item where it has one", context do
+      criterion = %{"type" => "acceptance-criteria", "name" => "main"}
 
-      for id <- ["ac-1", "ac-3", "ac-10", "ac-9999"] do
-        assert {:ok, "application/json"} =
-                 questions(context, [question(%{"criterion" => id})])
+      for about <- [
+            %{"work_item" => true},
+            %{"type" => "proposal", "name" => "main"},
+            %{"type" => "screenshot", "name" => "scenario-1", "item" => "step 2"},
+            Map.put(criterion, "item", "ac-1"),
+            Map.put(criterion, "item", "ac-9999")
+          ] do
+        assert {:ok, "application/json"} = questions(context, [question(%{"about" => about})]),
+               inspect(about)
       end
 
-      assert {:error,
-              {:schema,
-               %{
-                 path: "#/questions/0/criterion",
-                 error: "value does not conform to pattern /^ac-[1-9][0-9]{0,3}\\z/"
-               }}} = questions(context, [question(%{"criterion" => "AC-3"})])
+      assert {:error, {:schema, %{path: "#/questions/0"}}} =
+               questions(context, [Map.delete(question(), "about")])
 
-      for id <- ["ac-0", "ac-03", "ac-10000", "ac-", "3", "q1", "", " ac-3", "ac-3\n"] do
-        assert {:error, {:schema, %{path: "#/questions/0/criterion"}}} =
-                 questions(context, [question(%{"criterion" => id})]),
+      # The item of the acceptance criteria is a criterion's id. The about is one of two
+      # shapes (`oneOf`); the refusal is at the item, the place in the shape of an output.
+      for id <- ["AC-3", "ac-0", "ac-03", "ac-10000", "ac-", "3", "q1"] do
+        assert questions(context, [question(%{"about" => Map.put(criterion, "item", id)})]) ==
+                 {:error,
+                  {:schema,
+                   %{
+                     path: "#/questions/0/about/item",
+                     error: "value does not conform to pattern /^ac-[1-9][0-9]{0,3}\\z/"
+                   }}},
                inspect(id)
       end
 
-      for value <- [3, nil, ["ac-3"]] do
-        assert {:error, {:schema, %{path: "#/questions/0/criterion"}}} =
-                 questions(context, [question(%{"criterion" => value})]),
-               inspect(value)
+      # A value of neither shape keeps the refusal at the about: no shape fits it better.
+      assert {:error,
+              {:schema,
+               %{
+                 path: "#/questions/0/about",
+                 error: "value did not conform to one of the given schemas"
+               }}} = questions(context, [question(%{"about" => %{"type" => "proposal"}})])
+
+      # A value closer to the work item's shape fails at its place in that shape.
+      assert {:error, {:schema, %{path: "#/questions/0/about/work_item"}}} =
+               questions(context, [question(%{"about" => %{"work_item" => false}})])
+
+      for about <- [
+            %{"work_item" => false},
+            %{"type" => "Proposal", "name" => "main"},
+            %{"type" => "proposal"},
+            %{"type" => "proposal", "name" => ""},
+            %{"type" => "screenshot", "name" => "a", "item" => String.duplicate("x", 33)},
+            %{"type" => "proposal", "name" => "main", "work_item" => true}
+          ] do
+        assert {:error, {:schema, %{path: "#/questions/0" <> _rest}}} =
+                 questions(context, [question(%{"about" => about})]),
+               inspect(about)
       end
     end
 
-    test "an option's proposal is optional text, only on a question with a criterion",
+    test "an option's proposal is optional text, only on a question about an item",
          context do
       option = %{
         "title" => "Change AC-3",
@@ -354,19 +383,23 @@ defmodule Apiary.Artifacts.FormatTest do
         "proposal" => "AC-3 Demo: new."
       }
 
-      assert {:ok, "application/json"} =
-               questions(context, [question(%{"criterion" => "ac-3", "options" => [option]})])
+      about = %{"type" => "acceptance-criteria", "name" => "main", "item" => "ac-3"}
 
-      # The run reads what to fix: the question needs its criterion.
+      assert {:ok, "application/json"} =
+               questions(context, [question(%{"about" => about, "options" => [option]})])
+
+      # The run reads what to fix: the question's about needs its item.
       assert {:error,
-              {:schema, %{path: "#/questions/0", error: "property 'criterion' is required"}}} =
-               questions(context, [question(%{"options" => [option]})])
+              {:schema, %{path: "#/questions/0/about", error: "property 'item' is required"}}} =
+               questions(context, [
+                 question(%{"about" => Map.delete(about, "item"), "options" => [option]})
+               ])
 
       for value <- [3, nil, ["AC-3"]] do
         assert {:error, {:schema, %{path: "#/questions/0/options/0/proposal"}}} =
                  questions(context, [
                    question(%{
-                     "criterion" => "ac-3",
+                     "about" => about,
                      "options" => [%{option | "proposal" => value}]
                    })
                  ]),
@@ -388,7 +421,7 @@ defmodule Apiary.Artifacts.FormatTest do
           "decision" => %{"option" => "Yes", "reason" => "Why.", "run" => 12, "at" => @at},
           "follows" => ["q1"],
           "history" => [Map.put(answer, "reopened", %{"run" => 13, "at" => @at})],
-          "criterion" => "ac-3"
+          "about" => %{"type" => "acceptance-criteria", "name" => "main", "item" => "ac-3"}
         })
 
       assert map_size(full) == 11

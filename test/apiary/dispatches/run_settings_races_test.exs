@@ -96,7 +96,7 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
       })
 
     {:ok, _choice} =
-      ModelChoices.put_choice(scope, :workspace, %{
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
         provider: provider.public_id,
         model: "team-large"
       })
@@ -269,7 +269,9 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
 
       assert {:ok, _choice} =
                continue(held, fn ->
-                 ModelChoices.put_choice(ctx.scope, :workspace, %{provider: other.public_id})
+                 Apiary.ModelChoicesFixtures.put_choice(ctx.scope, :workspace, %{
+                   provider: other.public_id
+                 })
                end)
 
       commit(held)

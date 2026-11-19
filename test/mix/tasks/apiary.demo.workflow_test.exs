@@ -268,7 +268,7 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
                  select: r.reason
              ) == "workflow_not_in_harness"
 
-      # Max added acceptance criteria with a Mermaid diagram and a mockup in Shape.
+      # Max added acceptance criteria and a mockup in Shape.
       added = items["Show delivery dates on the product page"]
       assert at.(added.title) == {"Shape", "at_gate"}
       shape_id = stage_id(v3, "Shape")

@@ -915,8 +915,8 @@ rotates, cools and stops apart from every other group (the Forager contract, Sev
 model keys). A save of a stage
 with `shared_run: true` fails, and its claim ends `too_many_providers`, where its
 workflows, fallbacks included, use more than 6 providers. The claim orders the provider's keys at
-its clock: the key chosen in the model choice, while it is out of cooldown; then the keys
-with no known reset, or one already passed; then the keys by their known reset, the
+its clock: the keys with no known reset, or one already passed; then the keys by their
+known reset, the
 closest minute first; then the keys in cooldown, the earliest `cooldown_until` first. Ties
 go in tie order: the default key first, then the other keys by when each was added. A
 key's known reset is the earliest `resets_at` that a gateway reported, else the next reset
@@ -928,12 +928,12 @@ after the claim's clock (`Apiary.ModelKeys.cooldown/4`). The limit windows are
 description, vendored with the catalogue: `five_hour` and `seven_day` for the Claude
 subscription, none for an API key. The first key of that order is the start key,
 `model_credential`, never a key in cooldown. `credentials` lists the keys in the order the
-contract has the server send them: the chosen key while it is out of cooldown, then the
-other keys out of cooldown in tie order, then the keys in cooldown in tie order. Each
+contract has the server send them: the keys out of cooldown in tie order, then the keys in cooldown in tie order. Each
 entry has `pause_for_s`, the key's Pause for, else 60 for an API key and 3600 for a
 subscription, written into the run once: by its claim, or, for a run claimed before runs
 kept several keys, by the upgrade (20261111100000). Where the claim had them, an entry
-also has `resets_at`, `schedule_resets_at`, `cooldown_until` and `chosen`. A key's
+also has `resets_at`, `schedule_resets_at` and `cooldown_until`; no entry has `chosen`,
+since a model choice chooses a provider, not one of its keys. A key's
 `cooldown_until` is the latest end of its cooldown: a window's `cooldown_until`, or the
 `resets_at` of a limit window at the key's Use up to percentage. A key with a Use up to
 percentage, of a provider with limit windows, also has `use_up_to_percent` and
@@ -942,7 +942,9 @@ provider's windows in its row of `run_model_keys`, from the catalogue entry at t
 so a later release does not change a live run's windows. An entry has both or neither. The entries are fixed for the run: a later state reaches the gateway in the
 answer to its model keys report (The model keys report, below). Where every key of the
 provider is in cooldown, the claim takes the first of the choice's fallbacks, in their
-order, with a key out of cooldown, and the fallback's model and effort. Where every key of
+order, with a key out of cooldown, and the fallback's runtime and tiers: the run's
+`runtime` is the fallback's, and its `provider_api` the API of the fallback's provider for
+that runtime. Where every key of
 the provider and of each fallback is in cooldown, the claim registers nothing and the run
 of the queue waits again, its `dispatch_runs.model_provider_ids` set to those providers;
 no claim takes a run of the queue while every key of each of its providers is in cooldown
@@ -974,7 +976,7 @@ in cooldown then. The session that paused is the one whose `dev.qory.session.exi
 `model_key_limit` from a gateway of the earlier contract, which the projection folds into
 the run (`runs.paused_session`);
 Forager pauses only the last session of a run. The claim of the
-continuation stores its `resume` (`Apiary.Runs.Transcript.resume_at_claim/1`): the paused
+continuation stores its `resume` (`Apiary.Runs.Transcript.resume_at_claim/2`): the paused
 run's id, and `session_id` and `path` of the last `dev.qory.session.transcript` by
 sequence of the session that paused, whatever chunks of other sessions arrived after it.
 If the session that paused sent no chunk, the continuation has no `resume` and starts a
@@ -986,8 +988,14 @@ them, and of a chain of more than 256 runs only the newest 256 are listed. The r
 stores it once, so every run configuration of the run has the same `resume`, however
 the chain changes later. A continuation registered before `resume` was stored, or of a
 paused run whose transcript is absent or cannot be restored, has none, and its session
-starts a new session. A continuation registered before `runs` was stored has a `resume`
-without `runs`.
+starts a new session. So does a continuation whose run settings have another `runtime`
+than the session that paused, as one that takes a fallback on another runtime, because a
+runtime cannot resume another runtime's transcript. That session's runtime is the
+paused run's `runs.runtime`, the `runtime` of its last `dev.qory.session.started` that
+is not bare, as Forager pauses only the last session; a paused run with no such event has
+none, and its continuation starts a new session too. A new session continues from the
+commits the paused run pushed (`Apiary.Runs.PushedCommit.for_run/2`). A continuation
+registered before `runs` was stored has a `resume` without `runs`.
 
 **Through a gateway.** A registration whose node's choice resolves to a gateway is
 answered with no run configuration: a signed `200`, `application/json`,
@@ -1138,7 +1146,9 @@ how a run's gateway reports the state of the run's model keys in each limit wind
 `model-keys-report.schema.json` has it: `{"version":1, "run_id", "time", "keys":[…]}`, at
 most 66 items, each `credential`, `window`, `status`, `resets_at`?, `utilization`?,
 `cooldown_until`?, `source` and `observed_at`, with `cooldown_until` when `status` is
-`rejected` and without it otherwise. After the refusals every signed request gets, in
+`rejected` and without it otherwise, and `session`?, the number of the session open when
+the gateway made the report, which is also counted into that session's key windows
+(Assumed, below). After the refusals every signed request gets, in
 order: a body the schema does not match, a member twice, or an `observed_at` more than 300
 seconds after the server's clock is `400 invalid_request`, with the member in `names` and
 never a value; a `time` more than 300 seconds from the server's clock is `401`, unsigned;
@@ -1159,7 +1169,7 @@ has, by the key's row and not its name, for a window of the contract's list:
 `tokens`, `input_tokens`, `output_tokens`, `spend_limit` and `key`. An item of any other
 credential or window is left out, and the report is taken. A `resets_at` or a
 `cooldown_until` more than 31 days after its `observed_at` is stored as that bound. A row
-is replaced only by an item with a later `observed_at` (`Apiary.ModelKeys.record/3`), so
+is replaced only by an item with a later `observed_at` (`Apiary.ModelKeys.record/4`), so
 an earlier state never overwrites a later one, whichever gateway sent it. The answer is
 `200`, `{"version":1,"keys":[…]}` with `X-Qory-Configuration`: the newest state of each
 of the run's keys in each window, from every gateway, under the run's credential names,
@@ -1841,16 +1851,73 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   or any target's newest), that digest; else the baseline's. A gateway told a digest it
   does not hold reloads once and remembers the answer it tried, so the worst case is one
   reload that changes nothing.
-- The `cost_usd` of `dev.qory.runtime.result` is the runtime's total for the session:
-  what Claude Code prints as `total_cost_usd` in its result line, which counts the tokens of
-  the subagents the session ran as well as the session's. `dev.qory.runtime.subagent_finished`
-  carries no cost. So Qory Apiary folds a run's cost as the sum of `cost_usd` over the run's
-  result events, once each (`runs.cost_usd`), and never adds anything for a subagent: a
-  result whose cost already includes its subagents is counted once, and a second result in
-  the same run (a second session) is a second total. A result without a cost adds nothing;
-  a run whose results carried none has no cost (null), which the console reads as
-  unrecorded, not as free. A value that is not a JSON number, negative or absurd (a billion
-  dollars or more) is read as absent.
+- A launch of Claude Code can write several `dev.qory.runtime.result` lines: a subagent that
+  runs in the background adds one when it hands back and one when it notifies. The
+  `cost_usd` and the `usage` of each line count the launch so far, subagents included, so
+  they are totals and not parts: Forager's descriptor sums `usage` from `modelUsage`, and
+  `cost_usd` is `total_cost_usd`. `dev.qory.runtime.subagent_finished` carries no cost. So
+  Qory Apiary takes a session's cost and tokens from the last line that has them, and never
+  adds those of the lines of one session together (decision 652 (a)). The last line is the
+  one with the highest `line`, the number of the line of the session's standard output; the
+  lines with no `line` come after those with one, and lines with the same `line`, or none,
+  are ordered by event sequence. A session is a `session` number, from 1; a result with no
+  `session` is of session 1. `turns` and `duration_ms` are summed over the lines, up to the
+  bound of the column, because each line counts its own turns and its own time (the three
+  lines of one fixture have 9501, 1490 and 3 ms); and the session is an error when any line
+  has `is_error` true. A run's cost (`runs.cost_usd`) is the sum, over its sessions, of each
+  session's cost: a second session is a second total. A line without a cost leaves the cost
+  of the line before it, and a run whose results carried none has no cost (null), which the
+  console reads as unrecorded, not as free. A value that is not a JSON number, negative or
+  absurd (a billion dollars or more) is read as absent, and so is a count that is not an
+  integer of 0 or more. The fold reads all the run's results again at each pass that has
+  one, the ones already projected included, so a rebuild and a run projected in many passes
+  have the same cost (`Apiary.Runs.Sessions`). Runs projected before decision 652 (a) keep
+  the cost they were given, the sum of their lines, until they are rebuilt.
+- A session's record (`session_records`, `Apiary.Runs.SessionRecord`) is written, one for
+  each session number of a run, after the pass that projected one of the session's
+  `dev.qory.session.started`, `dev.qory.runtime.started`, `dev.qory.runtime.result` or
+  `dev.qory.session.exited` has committed, in a separate transaction, and again after every
+  later such pass, to the same row. For a run that a workspace's queue handed over, the
+  records are written once more after the end of its run of the queue has committed,
+  whichever end it is: its exit or refusal folded by the projector, the lost-run check, a
+  machine that stopped, or an input that could not be formed. The write runs outside the
+  end's transaction, so the end's locks are not held, and a write that failed before the end
+  is made good; it writes nothing for a run with no session event. A failure of a write is
+  logged and the records stay as they are. The write holds the run's projection lock and,
+  `FOR KEY SHARE`, the run's work item, run of the queue and run, in the order the end of a
+  run locks them, so the end and the write lock in one order. It has a row for a session
+  with a start that is not `bare` or with a result; a session with no runtime, and a refused
+  join, which has an exit and no start, have none. Its work item, target, stage, workflow
+  and attempt come from Qory Apiary, not from the events: the attempt is
+  `dispatch_runs.attempt`, so the run that continues a paused run has the paused run's
+  attempt plus 1, while the paused run keeps its record as attempt 1; the stage and workflow
+  are those of the run of the queue, and, for a shared run, those of the row of
+  `shared_run_sessions` that Forager's session number is: the row whose reported
+  `forager_session` is the number, else, for a session that no report ended, such as the one
+  open when a run paused, the newest row with none, else the row of that sequence. A run the
+  queue did not start has none of the five. The model is that of the session's
+  `dev.qory.runtime.started` in the main conversation, and none when no such event says it:
+  the run's `run_settings` are not proof of what ran. A step that a rerun keeps is not run
+  again, so it has no session and no record; its record stays on the run where it ran. The
+  records stay when `Apiary.Retention` deletes the run's events, and a run whose events
+  retention has deleted or is due to delete is not written to: its records, and its cost,
+  are what is left.
+- A key report that has a `session` (`model-keys-report.schema.json`) is also counted into
+  that session's key windows (`session_key_windows`, `Apiary.Runs.SessionKeyWindow`): one
+  row for each session, key and window, with the utilization of the report with the earliest
+  `observed_at` of the session, the one with the latest, and their difference, `share`. A
+  report that Qory Apiary does not store as a key's state, for a window or a key it does not
+  keep or a value the run no longer has, is not counted, and neither is an item with no
+  utilization. A report with no `session`, or with one above 2,147,483,647, changes no
+  session's windows. So does a report for a run that retention has deleted the events of, or
+  is due to delete, which the report finds out under the run's projection lock; the write
+  takes the same locks as the records' write. A report that names a session the run never
+  started makes an empty record for it, with its windows, and the session's events fill the
+  record when they come. The gateway sends a report when a session starts and when it ends,
+  so the first and the last are the utilization at the start and at the end, and the reports
+  between them can only move the last. A report that arrives after the run ended is counted
+  as for the states, within 60 seconds of the end. A share is only comparable within one
+  key: one percent of a large subscription is more than one percent of a small one.
 - The optional `peak_memory_bytes` and `cpu_time_ms` of `dev.qory.session.exited` are
   the enclosure's peak memory, in bytes, and its CPU time, in milliseconds, measured
   inside the enclosure, and Forager's contract marks them as not for limits or billing.

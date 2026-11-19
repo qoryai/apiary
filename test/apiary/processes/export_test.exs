@@ -19,7 +19,8 @@ defmodule Apiary.Processes.ExportTest do
   @moduletag with_features: Apiary.Features.all()
 
   # Every standard type no workspace has to show, in Core's order.
-  @hideable ~w(acceptance-criteria explainer decision-record mockup screenshot demo-video)
+  @hideable ~w(acceptance-criteria explainer decision-record mockup screenshot demo-video
+               verification)
 
   @schema ["contract", "harness", "v1", "process.schema.json"]
 

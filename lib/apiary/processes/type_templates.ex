@@ -55,7 +55,7 @@ defmodule Apiary.Processes.TypeTemplates do
   # The standard artifact types of the workflow model (§ 11), with their base views: a
   # copy of `Apiary.Artifacts.Type.standard/0`, and the two lists have the same entries.
   @standard_types [
-    {"acceptance-criteria", :document},
+    {"acceptance-criteria", :structured},
     {"explainer", :document},
     {"decision-record", :document},
     {"mockup", :image},
@@ -64,7 +64,8 @@ defmodule Apiary.Processes.TypeTemplates do
     {"proposal", :document},
     {"questions", :structured},
     {"review-comments", :structured},
-    {"verdict", :structured}
+    {"verdict", :structured},
+    {"verification", :structured}
   ]
 
   @texts [:name, :summary, :description]

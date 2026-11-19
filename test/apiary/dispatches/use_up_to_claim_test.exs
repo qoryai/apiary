@@ -12,7 +12,7 @@ defmodule Apiary.Dispatches.UseUpToClaimTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, ModelKeys, Repo}
+  alias Apiary.{Connections, Dispatches, ModelChoicesFixtures, ModelKeys, Repo}
   alias Apiary.Runs.{ProviderCredential, Run}
   alias Apiary.Secrets.Value
 
@@ -86,7 +86,10 @@ defmodule Apiary.Dispatches.UseUpToClaimTest do
   test "keeps each key's percentage, and a key at it in cooldown until the window resets",
        ctx do
     pid = ctx.provider.public_id
-    {:ok, _choice} = ModelChoices.put_choice(ctx.scope, :workspace, %{provider: pid})
+
+    {:ok, _choice} =
+      ModelChoicesFixtures.put_choice(ctx.scope, :workspace, %{provider: pid})
+
     main = value!(ctx.provider, "main")
     spare = value!(ctx.provider, "spare")
     reset = in_seconds(3600)

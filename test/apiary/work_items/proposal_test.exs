@@ -81,7 +81,7 @@ defmodule Apiary.WorkItems.ProposalTest do
       assert %{options: [change, withdraw]} =
                Proposal.question(%{
                  "question" => "AC-3 can't be met as written",
-                 "criterion" => "ac-3",
+                 "about" => %{"type" => "acceptance-criteria", "name" => "main", "item" => "ac-3"},
                  "options" => [
                    %{
                      "title" => "Change AC-3",

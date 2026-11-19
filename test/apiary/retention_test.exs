@@ -8,7 +8,7 @@ defmodule Apiary.RetentionTest do
   alias Apiary.Organisations.Workspace
   alias Apiary.Retention
   alias Apiary.Runs.{Connection, Delivery, Event, LogChunk, Projector, Rebuild, Run, Step}
-  alias Apiary.Runs.TargetWrite
+  alias Apiary.Runs.{SessionKeyWindow, SessionRecord, Sessions, TargetWrite}
 
   @now ~U[2026-12-01 03:00:00.000000Z]
 
@@ -186,6 +186,59 @@ defmodule Apiary.RetentionTest do
       assert count(LogChunk, young) == 2
       assert count(Event, young) == 15
       assert %Run{log_pruned_at: nil} = Repo.get!(Run, young.id)
+    end
+
+    test "past the events cut-off a run keeps its session records and their key windows", %{
+      scope: scope
+    } do
+      scope = retain(scope, events_retention_days: 90)
+      # The run is young when the gateway reports, and ages after.
+      old = old_run(scope, 10)
+
+      :ok =
+        Sessions.record_windows(old, 1, [
+          %{
+            secret_value_id: Ecto.UUID.generate(),
+            window: "five_hour",
+            utilization: 11,
+            observed_at: days_ago(10)
+          }
+        ])
+
+      # `due_or_pruned?/1` reads the database's clock, not `@now`.
+      aged = DateTime.add(DateTime.utc_now(), -91 * 86_400, :second)
+      Repo.update_all(from(r in Run, where: r.id == ^old.id), set: [last_event_at: aged])
+      old = Repo.get!(Run, old.id)
+
+      records = Repo.all(from r in SessionRecord, where: r.run_id == ^old.id, order_by: r.id)
+      windows = Repo.all(SessionKeyWindow)
+      assert [%SessionRecord{session_number: 1, started_at: %DateTime{}}] = records
+      assert [%SessionKeyWindow{}] = windows
+
+      # A report that arrives now, for a run that is due, writes no record and no window.
+      :ok =
+        Sessions.record_windows(old, 2, [
+          %{
+            secret_value_id: Ecto.UUID.generate(),
+            window: "five_hour",
+            utilization: 12,
+            observed_at: days_ago(1)
+          }
+        ])
+
+      assert Repo.all(from r in SessionRecord, where: r.run_id == ^old.id, order_by: r.id) ==
+               records
+
+      assert Repo.all(SessionKeyWindow) == windows
+
+      assert %{runs_pruned: 1} = Retention.prune_workspace(scope.workspace, now: @now)
+
+      assert count(Event, old) == 0
+
+      assert Repo.all(from r in SessionRecord, where: r.run_id == ^old.id, order_by: r.id) ==
+               records
+
+      assert Repo.all(SessionKeyWindow) == windows
     end
 
     test "past the events cut-off a run keeps its row, its counts and its connections", %{
