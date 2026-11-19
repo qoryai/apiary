@@ -139,7 +139,7 @@ defmodule Apiary.Stages do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.Qory
   alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Runs.{Cancel, Run}
+  alias Apiary.Runs.{Cancel, Run, SessionRecord}
   alias Apiary.Stacks.Sources
   alias Apiary.Stages.{Approvers, Artifacts, Check, Escalation, GateDecision, Notes, Points}
   alias Apiary.Stages.{Runner, Session, Skip}
@@ -2588,7 +2588,9 @@ defmodule Apiary.Stages do
   # the newest attempt of the take in when the runner passed it over (0 for none); for an
   # entry a first attempt passed over, `reason` is
   # `first_attempt_passed` and `cause_entry` is the first attempt's name, else its
-  # workflow (both nil for a condition). `earlier_skips/1` is those of the take ins before
+  # workflow (both nil for a condition); with its `round`, `stage_entry` and `loop_entry`
+  # (the entry's place, `loop_entry` nil outside a loop) and when it was passed over
+  # (`inserted_at`). `earlier_skips/1` is those of the take ins before
   # the current one, each with its `take_in`; `stage_skips/1` the stages passed over whole
   # in the current take in (`skip_records/1`).
   @doc false
@@ -2655,8 +2657,11 @@ defmodule Apiary.Stages do
         reason: skip.reason,
         cause_entry: skip.cause_entry,
         round: skip.round,
+        stage_entry: skip.stage_entry,
+        loop_entry: skip.loop_entry,
         take_in: skip.take_in,
-        after_attempt: skip.after_attempt
+        after_attempt: skip.after_attempt,
+        inserted_at: skip.inserted_at
       }
     end
 
@@ -2750,15 +2755,112 @@ defmodule Apiary.Stages do
         version <- Enum.reverse(artifact.versions),
         is_binary(version.run_id),
         into: %{} do
-      verdict =
-        case (Artifacts.read_json(version) || %{})["verdict"] do
-          "passed" -> :passed
-          value when value in ["changes-requested", "escalate"] -> :failed
-          _none -> nil
-        end
-
-      {version.run_id, verdict}
+      {version.run_id, stored_verdict(version)}
     end
+  end
+
+  # The verdict a version of `verdict` stores: `:passed`; `:failed` for changes-requested
+  # or escalate; nil for none, and for a file the store cannot read.
+  defp stored_verdict(version) do
+    case (Artifacts.read_json(version) || %{})["verdict"] do
+      "passed" -> :passed
+      value when value in ["changes-requested", "escalate"] -> :failed
+      _none -> nil
+    end
+  end
+
+  # run_sessions/1 is the sessions of each of the registered runs `ids` (their public ids,
+  # `rn_…`) that ran as one run of a stage with `shared_run: true` (`Apiary.Stages.Session`),
+  # in the order they ran, by the run's public id; a run with no session has no entry. Each
+  # is `%{sequence:, workflow:, round:, stage_entry:, loop_entry:, state:, verdict:,
+  # started_at:, ended_at:}`:
+  #
+  #   * `state` is the end the run reported for the session ("succeeded", "failed" or
+  #     "cancelled"), nil for a session no report ended: the one the run is in, or was in
+  #     when it stopped;
+  #   * `verdict` is that of the run's `verdict` version that the session stored, read as
+  #     `runs/1` reads a run's (`:passed`, `:failed` or nil): the version the step on the
+  #     session's end read (`verdict_number`), where it is newer than the one the session
+  #     before read; nil for a session that stored none;
+  #   * `started_at` and `ended_at` are those of the session's `Apiary.Runs.SessionRecord`;
+  #     with no record, or none of that time, when the row was written and, for a session a
+  #     report ended, when the report was recorded. `ended_at` is nil for no end.
+  @doc false
+  @spec run_sessions([String.t()]) :: %{String.t() => [map]}
+  def run_sessions(ids) when is_list(ids) do
+    rows =
+      Repo.all(
+        from s in Session,
+          join: r in subquery(Run.registered()),
+          on: r.dispatch_run_id == s.dispatch_run_id,
+          where: r.public_id in ^ids,
+          order_by: [s.dispatch_run_id, s.sequence],
+          select: {r.public_id, s}
+      )
+
+    run_ids = rows |> Enum.map(fn {_id, session} -> session.dispatch_run_id end) |> Enum.uniq()
+    records = session_records(run_ids)
+    verdicts = session_verdicts(run_ids)
+
+    rows
+    |> Enum.group_by(fn {id, _session} -> id end, fn {_id, session} -> session end)
+    |> Map.new(fn {id, sessions} ->
+      {shown, _seen} =
+        Enum.map_reduce(sessions, nil, fn session, seen ->
+          record = records[{session.dispatch_run_id, session.forager_session}]
+          number = session.verdict_number
+
+          verdict =
+            if is_integer(number) and number != seen,
+              do: verdicts[{session.dispatch_run_id, number}]
+
+          {shown_session(session, record, verdict), number || seen}
+        end)
+
+      {id, shown}
+    end)
+  end
+
+  defp shown_session(session, record, verdict) do
+    ended? = not is_nil(session.state)
+
+    %{
+      sequence: session.sequence,
+      workflow: session.workflow,
+      round: session.round,
+      stage_entry: session.stage_entry,
+      loop_entry: session.loop_entry,
+      state: session.state,
+      verdict: verdict,
+      started_at: (record && record.started_at) || session.inserted_at,
+      ended_at: if(ended?, do: (record && record.ended_at) || session.updated_at)
+    }
+  end
+
+  # The session records of the runs of the queue `run_ids`, by run and session number.
+  defp session_records([]), do: %{}
+
+  defp session_records(run_ids) do
+    Repo.all(
+      from r in SessionRecord,
+        where: r.dispatch_run_id in ^run_ids,
+        select: {{r.dispatch_run_id, r.session_number}, r}
+    )
+    |> Map.new()
+  end
+
+  # The verdict of each `verdict` version the runs of the queue `run_ids` stored, by run
+  # and version number (`stored_verdict/1`).
+  defp session_verdicts([]), do: %{}
+
+  defp session_verdicts(run_ids) do
+    Repo.all(
+      from v in Apiary.Artifacts.Version,
+        join: a in assoc(v, :artifact),
+        where: v.run_id in ^run_ids and a.type == "verdict" and a.name == "main",
+        preload: [:files]
+    )
+    |> Map.new(&{{&1.run_id, &1.number}, stored_verdict(&1)})
   end
 
   # notes/1 is what the work item's next run reads as work item data, oldest first: what
