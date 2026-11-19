@@ -17,15 +17,16 @@ defmodule Apiary.Stages.Points do
   # set to true, so the page adds no action sentence after it, and `missing_type`, the
   # output type that the run stored no version of. A round limit's point with
   # the words "pick Accept as it is" has `without_accept`, the fields that replace them
-  # where the card shows no Accept as it is, and `open_findings`, their count, with which
-  # the page writes the fix where the card shows Start and the next entry in place of
-  # Accept as it is (`start_fix/2`). The page reads
-  # `ApiaryWeb.WorkItemLive.Workflow.accept?/2` and the entry when it shows the point,
-  # not when the stage escalates, so a stored point has no workflow name: a member who assigns the work item to another process version
+  # where the card shows no Accept as it is, and `open_findings`, the count of open
+  # findings, with which the page writes the fix where the card shows Start and the
+  # entry's name in place of Accept as it is (`start_fix/2`). The page reads
+  # `ApiaryWeb.WorkItemLive.Workflow.accept?/2` when it shows the point, not when the
+  # stage escalates: a member who assigns the work item to another process version
   # (`Apiary.Processes.assign/3`) while it is escalated changes which outputs are
-  # required. The point of a return limit has `return_stage`, the name of the stage the
-  # return goes to: the page writes its action from the controls the card shows
-  # (`return_action/2`).
+  # required. The page also reads the entry's name when it shows the point, so a stored
+  # point contains no workflow name. The point of a return limit has `return_stage`, the
+  # name of the stage the return goes to: the page writes its action from the controls
+  # the card shows (`return_action/2`).
   @moduledoc false
 
   use Gettext, backend: ApiaryWeb.Gettext

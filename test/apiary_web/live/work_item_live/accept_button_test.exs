@@ -1,13 +1,13 @@
 defmodule ApiaryWeb.WorkItemLive.AcceptButtonTest do
-  # The escalation card's accept button on the work item page (PIC-846, "846 (a)"): where
-  # an accept starts the stage's next entry, the button, its spend dialog and the points
-  # that pick it read "Start %{workflow}", with the entry's name in the process, else its
-  # workflow (`Apiary.Stages.status/2`'s `accept_entry`); where the accept takes the stage
-  # to its gate, they read Accept as it is. Each case is reached through real runs, as
-  # the walk's seed reaches it: Build runs plan-the-build, then capture-demo, then a loop
+  # The escalation card's accept button on the work item page: where an accept does not
+  # take the stage to its gate, the button, its spend dialog and the points whose action
+  # is the button read "Start %{workflow}", with the name in the process of the entry the
+  # accept starts, else its workflow (`Apiary.Stages.status/2`'s `accept_entry`); where
+  # the accept takes the stage to its gate, they read Accept as it is. Each case is
+  # reached through real runs: Build runs plan-the-build, then capture-demo, then a loop
   # of implement-the-change and review-the-change; Verify runs a loop of
   # write-acceptance-checks and review-acceptance-checks, then verify-a-ticket, an entry
-  # named "Acceptance test run".
+  # with the name "Acceptance test run".
   #
   # The fake changes the whole node (`ApiaryWeb.WorkflowFake.install/0`), so the module
   # is not async.
@@ -142,10 +142,14 @@ defmodule ApiaryWeb.WorkItemLive.AcceptButtonTest do
       assert_dialog(view, "Start Acceptance test run", "verify-a-ticket")
     end
 
-    test "4, stored before PIC-846: a round limit's point with no count picks Run another round",
+    test "4, a point stored with no count of open findings: the fix ends with Run another round",
          %{conn: conn, scope: scope} do
       work_item = case_three!(scope)
       %Escalation{points: [point]} = escalated = escalation(work_item)
+
+      # The stage runner now stores `open_findings` on every round limit's point with
+      # open findings, so no run reaches a point without it. A point stored before that
+      # change has none: the test removes it from the stored point.
 
       escalated
       |> Ecto.Changeset.change(points: [Map.delete(point, "open_findings")])
@@ -160,7 +164,7 @@ defmodule ApiaryWeb.WorkItemLive.AcceptButtonTest do
       assert text =~ ~r/ Read the 2 open findings, then pick Run another round\.$/
     end
 
-    test "8. a return limit on capture-demo: the action picks Start implement-the-change",
+    test "8. a return limit on capture-demo: the action is Start implement-the-change",
          %{conn: conn, scope: scope} do
       work_item = case_return_limit!(scope)
       assert %Escalation{cause: :return_limit} = escalation(work_item)
@@ -184,7 +188,7 @@ defmodule ApiaryWeb.WorkItemLive.AcceptButtonTest do
   end
 
   describe "the last workflow" do
-    test "5. every required output stored: Accept as it is, and the fix picks it",
+    test "5. every required output stored: Accept as it is, in the button and the fix",
          %{conn: conn, scope: scope} do
       work_item = case_last_loop!(scope, true)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
@@ -260,7 +264,7 @@ defmodule ApiaryWeb.WorkItemLive.AcceptButtonTest do
     refute render(view) =~ @accept
   end
 
-  ## The cases, as the walk's seed reaches them
+  ## The cases, reached through real runs
 
   # 1. Build escalated on plan-the-build, which stored a build plan; next: capture-demo.
   defp case_one!(scope) do
@@ -355,9 +359,9 @@ defmodule ApiaryWeb.WorkItemLive.AcceptButtonTest do
     |> escalated!()
   end
 
-  # 8. capture-demo asks for changes, which returns the work item to Shape (its return
-  # key, limit 1); after Shape's next run and approval, capture-demo asks for changes
-  # again: Build escalates at its return limit; next: the loop.
+  # 8. capture-demo's run ends `changes-requested`, which returns the work item to Shape
+  # (its return key, limit 1); after Shape's next run and approval, capture-demo's run
+  # ends `changes-requested` again: Build escalates at its return limit; next: the loop.
   defp case_return_limit!(scope) do
     capture = fn work_item ->
       work_item

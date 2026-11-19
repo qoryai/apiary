@@ -4649,8 +4649,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                "Pick Move back to return the work item to Shape once more. Verify's run " <>
                  "asked for changes again after 2 returns to Shape, the most that Verify allows."
 
-      # With a version of the walkthrough, the card shows the accept button, which starts
-      # capture-demos (PIC-846), and the action has it.
+      # With a version of the walkthrough, the card shows the accept button, which reads
+      # Start capture-demos, the entry the accept starts, and the action has it.
       stored!(work_item, "walkthrough", @verify)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       assert has_element?(view, "#work-item-stage-escalation-accept", "Start capture-demos")
@@ -8565,7 +8565,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       |> form("#work-item-stage-escalation-form", %{"note" => "Good enough"})
       |> render_submit(%{"how" => "accept"})
 
-      # The accept starts capture-demo, so the dialog reads Start (PIC-846).
+      # The accept starts capture-demo, so the dialog reads Start and that entry.
       assert line(view, "#spend-dialog-title") == "Start capture-demo?"
       assert line(view, "#spend-dialog-go") == "Start capture-demo"
 

@@ -87,7 +87,7 @@ defmodule Apiary.Stages.PointsTest do
     refute Map.has_key?(point, "open_findings")
   end
 
-  test "start_fix/2 picks Start and the entry in place of Accept as it is" do
+  test "start_fix/2 writes Start and the entry in place of Accept as it is" do
     assert Points.start_fix(1, "Acceptance test run") ==
              "Read the open finding, then pick Start Acceptance test run or Run another round."
 
