@@ -1525,7 +1525,11 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         |> List.flatten()
         |> Enum.map(&squish/1)
 
-      assert framed == [".q-xp-md table, .q-art-cols .q-ticket-formatted table"]
+      # A stage tab's frame spans its table and scrolls the text instead (A-24).
+      assert framed == [
+               ".q-xp-md table, .q-art-cols .q-ticket-formatted table",
+               ".q-xp-stage .q-xp-prop .q-ticket-formatted table"
+             ]
     end
 
     test "Sources after a Mermaid block and an image: the body shows both, the fold neither" do

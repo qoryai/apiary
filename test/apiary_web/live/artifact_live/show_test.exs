@@ -843,7 +843,8 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       refute has_element?(view, "details.q-xp-sources")
     end
 
-    test "a wide table scrolls in a frame on a version's page, and only there", ctx do
+    test "a wide table scrolls in a frame on a version's page and a stage tab's frame only",
+         ctx do
       version =
         pushed!(ctx, "walkthrough", [{"plan.md", "| A | B |\n|---|---|\n| one | two |\n"}])
 
@@ -867,7 +868,12 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert css =~
                ~r/\.q-art-cols \.q-ticket-formatted table::-webkit-scrollbar-track \{\s*background-color: var\(--color-base-200\);\s*\}/
 
-      refute css =~ ~r/(?<!\.q-art-cols )\.q-ticket-formatted \{[^}]*contain:/
+      # The text of a stage tab's frame (`.q-xp-stage .q-xp-prop`) scrolls a table that is
+      # too wide, and keeps its table a table (A-24).
+      assert css =~
+               ~r/\.q-xp-stage \.q-xp-prop \.q-ticket-formatted \{\s*overflow-x: auto;\s*contain: inline-size;/
+
+      refute css =~ ~r/(?<!\.q-art-cols |\.q-xp-prop )\.q-ticket-formatted \{[^}]*contain:/
       refute css =~ ~r/(?<!\.q-art-cols )\.q-ticket-formatted table \{[^}]*display: block/
       refute css =~ ~r/(?<!\.q-art-cols )\.q-ticket-formatted table::-webkit-scrollbar/
     end

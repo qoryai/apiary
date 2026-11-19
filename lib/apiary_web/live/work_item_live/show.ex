@@ -106,7 +106,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # the stage's notes above the tabs (`ApiaryWeb.WorkItemLive.StageComponents`). At a stage
   # after Explore the runs and the artifacts are in one record block at the foot of the
   # Ticket tab and the Thread, closed when the page opens (`foot/3`), and of a stage's tab,
-  # with that stage's only (`ApiaryWeb.WorkItemLive.StageTab.record?/2`). At Explore the
+  # with that stage's only (`ApiaryWeb.WorkItemLive.StageTab.record?/3`). At Explore the
   # runs and the artifacts are in the history fold, and the block above the tabs shows
   # only while a note of a gate decision, an escalation or a check exists. A work item at
   # Explore's stage whose status is none of Explore's, moved back or ended, has the
@@ -471,6 +471,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             stage_names={Map.new(@flow.stages, &{&1.id, &1.name})}
             take_ins={@view.take_ins}
             outputs={@frames}
+            has_outputs={@output_frames}
+            runs_on_track={StageTab.runs_on_track?(@flow, @view.stage)}
             findings={@findings}
             wrote={@view.wrote}
             suite={@suite}
@@ -495,7 +497,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
                 (&reply_path(@current_scope, @number, @tab, @flow, &1))
             }
             move_error={acts?(@tab, @flow, @item) && @move_error}
-            record={StageTab.record?(@view.runs, @view.artifacts)}
+            record={
+              StageTab.record?(
+                @view.runs,
+                @view.artifacts,
+                if(@view.entries == [], do: @view.skips, else: [])
+              )
+            }
             verdicts={@flow.runs}
             item_noun={@source.item_noun}
             now={@now}
@@ -724,6 +732,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            artifacts: [],
            view: nil,
            frames: [],
+           output_frames: false,
            findings: [],
            suite: nil,
            suite_reads: %{},
@@ -2517,12 +2526,15 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp framed(%{assigns: %{tab: tab, view: %{stage: %{} = stage}} = assigns} = socket)
        when is_binary(tab) do
+    outputs = output_frames(assigns, stage)
+
     # A link to a place in a frame, such as an About line's link to a criterion's row,
     # opens the frame of its type (`?open=<type>`), so the row is read and shown.
     frames =
-      assigns
-      |> output_frames(stage)
-      |> StageTab.with_inputs(StageTab.input_frames(assigns.flow, stage))
+      outputs
+      |> StageTab.with_inputs(
+        StageTab.input_frames(assigns.flow, stage, assigns.artifacts, assigns.row.process_version)
+      )
       |> StageTab.approved(stage, assigns.flow.index)
       |> Enum.map(&approver(socket, &1))
       |> Enum.map(&if(&1.type == assigns.linked_frame, do: %{&1 | open: true}, else: &1))
@@ -2563,6 +2575,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
     assign(socket,
       frames: frames,
+      output_frames: outputs != [],
       findings: findings,
       frame_texts: texts,
       stored_reads: reads,
@@ -2577,6 +2590,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     do:
       assign(socket,
         frames: [],
+        output_frames: false,
         findings: [],
         suite: nil,
         submissions: nil

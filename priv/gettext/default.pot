@@ -3205,7 +3205,7 @@ msgstr ""
 
 #: lib/apiary_web/components/model_tiers.ex
 #, elixir-autogen, elixir-format
-msgid "%{provider} works with no runtime in this version of Qory Apiary. Pick another provider."
+msgid "%{provider} works with no runtime in this version of Qory. Pick another provider."
 msgstr ""
 
 #: lib/apiary/stages/points.ex
@@ -15338,7 +15338,6 @@ msgid "Not ready: the pool's runs may not go through the chosen gateway"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
-#: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Not run"
 msgstr ""
@@ -24503,6 +24502,16 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Version %{version} · from %{stage}, Attempt %{attempt}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "Version %{version} · from %{stage}, Attempt %{attempt} (Run %{run})"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Version %{version} · from an earlier round"
 msgstr ""
 
@@ -24920,7 +24929,7 @@ msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
-msgid "When every key of %{provider} is in cooldown, runs use these, in order, from the next run."
+msgid "When every key of this provider is in cooldown, runs use these, in order, from the next run."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -27271,6 +27280,11 @@ msgstr ""
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "not recorded"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "not run"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex

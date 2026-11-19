@@ -587,7 +587,7 @@ defmodule ApiaryWeb.ModelTiers do
   def no_runtime_line(title),
     do:
       gettext(
-        "%{provider} works with no runtime in this version of Qory Apiary. Pick another provider.",
+        "%{provider} works with no runtime in this version of Qory. Pick another provider.",
         provider: title
       )
 
