@@ -63,9 +63,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A key of an **OpenAI subscription** is made with a device sign-in. Each key form
   (**Add key**, **Edit key**, **New model provider**, the set-up's Model step, and a
   secret's **Add value** and **Change value**) has the button **Sign in with ChatGPT**. The
-  form shows the page to open, the code with **Copy**, the time it works until, and
-  **Cancel**. Qory Apiary polls until the person approves, cancels or leaves, or the code
-  expires, and **Save** stores the tokens encrypted. A failed sign-in
+  form shows the page to open, the code with **Copy**, the time it works until, the line
+  “Approve only a code you started yourself.”, and **Cancel**. Qory Apiary polls, at most
+  once every 5 seconds whatever interval OpenAI sends, until the person approves, cancels
+  or leaves, or the code expires, and **Save** stores the tokens encrypted. A code of more
+  than 64 characters is a bad response from OpenAI and fails the sign-in. A failed sign-in
   (an expired code, device code sign-in off, a failed call to OpenAI, a response with no
   account id, a sign-in that cannot be saved) shows a fix line and a cause line. A save
   before the sign-in shows what to click. A key that needs a new sign-in has the button in
@@ -174,9 +176,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   401 for an older token marks nothing. The report's `unauthorized` list is checked
   as the contract has it: 1 to 6 entries with `credential` and `at`, each credential once;
   an entry for a credential that is not one of the run's is ignored, as is one whose `at` is
-  more than 5 minutes before the run was registered. A run's gateway can mark any key of its
-  run, and a key belongs to the whole organisation (or the provider), so one run marks the
-  key for every run that uses it.
+  more than 5 minutes before the run was registered, and one for a key that no secrets
+  request sent to the run. A run marks a key once for each value: a second entry for the key
+  from the same run, in the same report or a later one, is ignored and does not change the
+  time that the key's page shows, and a request that seals a new value of the key for the
+  run lets the run mark that value. The report is answered the same way when an entry is
+  ignored. A run's gateway can mark any key sent to its run, and a key belongs to the whole
+  organisation (or the provider), so one run marks the key for every run that uses it.
 <!-- /feature -->
 <!-- feature: factory -->
 - A work item has a **Questions** tab, before **Thread**, once an agent has asked a
@@ -1868,7 +1874,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   highest `key-<n>` of the provider's secret), which no page shows. A key shows as its
   identity line: for an API key, the provider's name and the last 4 characters of the key,
   “Northwind Claude · …9c2e”, or the provider's name alone when the key has fewer than 12
-  characters or was saved before this change; for an OpenAI sign-in, the provider's name and
+  characters, when its last 4 characters hold a control character, a format character or a
+  line or paragraph separator, or when it was saved before this change; for an OpenAI sign-in, the provider's name and
   the email of the ChatGPT account, “Northwind OpenAI · dana@example.com”, or, when the
   sign-in has no email, the name and “account …” with the last 4 characters of the account
   ID. The line shows on the provider's page, as the title of **Edit key** (“Edit key” stays
@@ -2887,6 +2894,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Migrations
 
 <!-- feature: factory, secrets -->
+- `model_key_copies` (20261119090000, 20261119090100, 20261119090400): the nullable columns
+  `login_at` (the time of the sign-in or of its last refresh when the run's token was
+  sealed), `login_sealed_at` (the database's UTC time at which the run's copy took that
+  token) and `marked_at` (the UTC time at which a report of the run marked the key as
+  rejected, cleared when a request seals another value for the run). They change no row, and
+  a run registered before the change has none, so a report of its keys marks no sign-in.
+  Rolling back drops the columns.
 - `secret_values` (20261119090200): a nullable column `hint`, the last 4 characters of a
   model provider's API key, written when the key has at least 12 characters. It changes no
   row, and a key saved before this change has none until its value is saved again. Rolling
