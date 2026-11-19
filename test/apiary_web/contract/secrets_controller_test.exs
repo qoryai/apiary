@@ -661,6 +661,41 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert seals() == []
     end
 
+    test "409 credential_unavailable for the whole request where a second row of one provider has another secret",
+         ctx do
+      # Checkout keys' second row, `<its public id>-2`, keeps a secret that is not the
+      # provider's; its first row is as the claim wrote it.
+      [value] = Repo.all(from v in Value, where: v.secret_id == ^ctx.checkout.secret_id)
+      second = "#{ctx.checkout.public_id}-2"
+
+      Apiary.ModelKeysFixtures.run_keys!(ctx.run, [
+        %{
+          provider: ctx.checkout,
+          secret_value_id: value.id,
+          position: 3,
+          name: second,
+          start: false
+        }
+      ])
+
+      {1, _rows} =
+        Repo.update_all(from(k in ModelKey, where: k.name == ^second),
+          set: [secret_id: ctx.provider.secret_id]
+        )
+
+      {conn, log} =
+        with_log(fn ->
+          post_secrets(ctx, request(ctx, digest: digest(ctx), credentials: both(ctx) ++ [second]))
+        end)
+
+      assert conn.status == 409
+      assert code(conn) == "credential_unavailable"
+      assert log =~ "#{ctx.checkout.public_id} may not be sealed for its gateway (secret)"
+      refute conn.resp_body =~ @checkout_key
+      refute log =~ @checkout_key
+      assert seals() == []
+    end
+
     test "409 credentials_differ for a name of a provider's key the run has no row of", ctx do
       for credentials <- [
             both(ctx) ++ ["#{ctx.checkout.public_id}-2"],

@@ -393,11 +393,11 @@ defmodule Apiary.Runs.SecretsRequest do
 
   defp sealable(_run, nil, _access_key), do: :ok
 
-  # Each provider of the named keys, checked against its first named key's row: the rows
-  # of one provider have the same secret and chain, as the claim wrote them together.
+  # Each named key, checked against its provider: every row's secret and chain, though
+  # the claim wrote the rows of one provider together with the same ones, so that a row
+  # changed since is refused.
   defp sealable(%Run{} = run, %{keys: keys}, access_key) do
     keys
-    |> Enum.uniq_by(& &1.provider.id)
     |> Enum.reduce_while(:ok, fn key, :ok ->
       case sealable_provider(run, key.provider, key.row, access_key) do
         :ok -> {:cont, :ok}
