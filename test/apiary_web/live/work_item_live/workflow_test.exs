@@ -4345,18 +4345,19 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
 
     # A work item escalated at Verify's return limit (choice 10): Verify's entry returns to
-    # Shape, at most 2 times, and its last run asked for changes with one finding.
-    defp at_return_limit(scope) do
+    # Shape, at most 2 times, and its last run asked for changes with one finding. With
+    # `fields`, Verify also has them, such as a later entry in `sequence` or its `outputs`.
+    defp at_return_limit(scope, fields \\ %{}) do
+      sequence = [%{"workflow" => "verify-a-ticket", "return" => %{"stage" => @shape}}]
+
       document =
         Map.update!(document("members"), "stages", fn stages ->
           for stage <- stages do
             if stage["id"] == @verify,
-              do: %{
+              do:
                 stage
-                | "sequence" => [
-                    %{"workflow" => "verify-a-ticket", "return" => %{"stage" => @shape}}
-                  ]
-              },
+                |> Map.put("sequence", sequence ++ Map.get(fields, "later", []))
+                |> Map.merge(Map.delete(fields, "later")),
               else: stage
           end
         end)
@@ -4390,6 +4391,35 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert has_element?(view, "#work-item-stage-waits", "Waits for you: 2 points")
       assert has_element?(view, "#work-item-stage-escalation-move", "Move back")
+    end
+
+    test "at the return limit before a later entry, with no output version: no Accept as it is, and the action leaves it out",
+         %{conn: conn, scope: scope} do
+      fields = %{
+        "later" => [%{"workflow" => "capture-demos"}],
+        "outputs" => [%{"type" => "explainer", "required" => true}]
+      }
+
+      work_item = at_return_limit(scope, fields)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      # An accept here would start capture-demos, but the stage has no result to accept.
+      refute has_element?(view, "#work-item-stage-escalation-accept")
+
+      assert hd(texts(view, "#work-item-needs-points li")) ==
+               "Pick Move back to return the work item to Shape once more. Verify's run " <>
+                 "asked for changes again after 2 returns to Shape, the most that Verify allows."
+
+      # With a version of the explainer, the card offers Accept as it is and the action
+      # has it.
+      stored!(work_item, "explainer", @verify)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert has_element?(view, "#work-item-stage-escalation-accept")
+
+      assert hd(texts(view, "#work-item-needs-points li")) ==
+               "Pick Move back to return the work item to Shape once more, or pick Accept " <>
+                 "as it is. Verify's run asked for changes again after 2 returns to Shape, " <>
+                 "the most that Verify allows."
     end
 
     test "at the return limit, Move back offers the return's stage first", %{

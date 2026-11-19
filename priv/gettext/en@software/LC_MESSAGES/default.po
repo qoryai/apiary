@@ -16596,12 +16596,12 @@ msgstr ""
 
 #: lib/apiary/stages/points.ex
 #, elixir-autogen, elixir-format
-msgid "Pick Move back to return the work item to %{to} once more, or move this stage back."
+msgid "Pick Move back to return the work item to %{to} once more, or pick Accept as it is."
 msgstr ""
 
 #: lib/apiary/stages/points.ex
 #, elixir-autogen, elixir-format
-msgid "Pick Move back to return the work item to %{to} once more, or pick Accept as it is."
+msgid "Pick Move back to return the work item to %{to} once more."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex

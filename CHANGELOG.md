@@ -1880,7 +1880,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the run stored no acceptance criteria.", with the output type's words; before, it read
   "No acceptance-criteria was stored in this stage. Run another round." Where the stage
   offers no **Accept as it is**, the round limit's fix reads "Read the open finding, then
-  pick Run another round." and the return limit's point ends "or move this stage back."
+  pick Run another round." and the return limit's point reads "Pick Move back to return
+  the work item to Build once more."
   An optional output never stops either action.
 - `acceptance-criteria` and `verification` are structured types: a version is one JSON
   file that matches `acceptance-criteria.schema.json` or `verification.schema.json`, and

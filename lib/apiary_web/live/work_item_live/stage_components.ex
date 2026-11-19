@@ -26,6 +26,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   alias ApiaryWeb.PauseWords
   alias ApiaryWeb.WorkItemComponents
+  alias ApiaryWeb.WorkItemLive.Workflow
 
   @note_units 2 * 2_000
 
@@ -646,12 +647,16 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   # The escalation in the rail: one line, "Waits for you: N points", which links to the
   # block "What the run needs from you" (`needs_block/1`), the run it came from, and Accept as
-  # it is (only with a result, and with no required output missing where the accept takes
-  # the stage to its gate), Move back and Close; where the page offers a switch
+  # it is (only where `Workflow.accept?/2` is true: with a result, with no required output
+  # missing where the accept takes the stage to its gate, and with no switch), Move back
+  # and Close; where the page offers a switch
   # (`page.switch`, one track a button, "Switch to <track>"), only the switches and Close.
   # Their form has the note field and Run another round in the block, which name it in
   # their `form` attribute, so the note goes with every action.
   defp escalation_card(assigns) do
+    switch = Map.get(assigns.page, :switch) || []
+    result = Map.get(assigns.page, :accept_needs, []) == []
+
     assigns =
       assign(
         assigns,
@@ -659,14 +664,15 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         assigns.page.escalation ||
           %{
             cause: :escalate,
-            result: Map.get(assigns.page, :accept_needs, []) == [],
+            result: result,
+            accept: Workflow.accept?(result, switch),
             points: [],
             run: nil,
             harness_path: nil,
             return_to: nil
           }
       )
-      |> assign(:switch, Map.get(assigns.page, :switch) || [])
+      |> assign(:switch, switch)
 
     ~H"""
     <div id={@id} class="flex flex-col gap-2">
@@ -709,7 +715,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             {switch_line(track)}
           </p>
         </div>
-        <div :if={@switch == [] and @escalation.result} class="q-wi-acts flex-wrap">
+        <div :if={@escalation.accept} class="q-wi-acts flex-wrap">
           <.button
             id={"#{@id}-accept"}
             type="submit"

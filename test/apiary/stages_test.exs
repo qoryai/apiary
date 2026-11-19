@@ -6616,7 +6616,10 @@ defmodule Apiary.StagesTest do
                    "Pick Move back to return the work item to Build once more, or pick Accept as it is.",
                  "action" => "run_again",
                  "fix" =>
-                   "Verify's run asked for changes again after 2 returns to Build, the most that Verify allows."
+                   "Verify's run asked for changes again after 2 returns to Build, the most that Verify allows.",
+                 "without_accept" => %{
+                   "text" => "Pick Move back to return the work item to Build once more."
+                 }
                }
                | @findings
              ]

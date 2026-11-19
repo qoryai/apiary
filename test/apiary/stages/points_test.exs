@@ -55,32 +55,38 @@ defmodule Apiary.Stages.PointsTest do
            ]
   end
 
-  test "a round limit's fix offers Accept as it is unless the stage offers none" do
+  test "a round limit's point has its fix without Accept as it is" do
     assert [
              %{
                "fix" =>
-                 "Read the 2 open findings, then pick Accept as it is or Run another round."
+                 "Read the 2 open findings, then pick Accept as it is or Run another round.",
+               "without_accept" => %{
+                 "fix" => "Read the 2 open findings, then pick Run another round."
+               }
+             }
+           ] = Points.round_limit(3, 3, ["A.", "B."])
+
+    assert [
+             %{
+               "without_accept" => %{
+                 "fix" => "Read the open finding, then pick Run another round."
+               }
              }
            ] =
-             Points.round_limit(3, 3, ["A.", "B."])
+             Points.round_limit(3, 3, ["A."])
 
-    assert [%{"fix" => "Read the 2 open findings, then pick Run another round."}] =
-             Points.round_limit(3, 3, ["A.", "B."], accept: false)
-
-    assert [%{"fix" => "Read the open finding, then pick Run another round."}] =
-             Points.round_limit(3, 3, ["A."], accept: false)
+    assert [point] = Points.round_limit(3, 3)
+    refute Map.has_key?(point, "without_accept")
   end
 
-  test "a return limit's action offers Accept as it is unless the stage offers none" do
-    assert [%{"text" => accept}] = Points.return_limit(2, "Verify", "Build")
+  test "a return limit's point has its action without Accept as it is" do
+    assert [%{"text" => accept, "without_accept" => %{"text" => back}}] =
+             Points.return_limit(2, "Verify", "Build")
 
     assert accept ==
              "Pick Move back to return the work item to Build once more, or pick Accept as it is."
 
-    assert [%{"text" => back}] = Points.return_limit(2, "Verify", "Build", accept: false)
-
-    assert back ==
-             "Pick Move back to return the work item to Build once more, or move this stage back."
+    assert back == "Pick Move back to return the work item to Build once more."
   end
 
   test "failed checks are one point for each output type, with the type's words" do

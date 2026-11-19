@@ -1010,7 +1010,10 @@ defmodule Apiary.Stages.SharedRunTest do
                    "The export has no title. The list does not sort by date.",
                "action" => "run_again",
                "fix" =>
-                 "Read the 2 open findings, then pick Accept as it is or Run another round."
+                 "Read the 2 open findings, then pick Accept as it is or Run another round.",
+               "without_accept" => %{
+                 "fix" => "Read the 2 open findings, then pick Run another round."
+               }
              }
     end
 

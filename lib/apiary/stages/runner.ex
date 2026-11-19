@@ -67,7 +67,7 @@ defmodule Apiary.Stages.Runner do
   #   * An escalation accepted counts the loop as passed: the sequence goes on with its
   #     next workflow, or, after its last, to the gate without the Exists checks; an
   #     escalation at the end of the sequence goes to the gate too. An accept that goes to
-  #     the gate needs every required output (`accept_offered?/3`); one that starts the
+  #     the gate needs every required output (`Apiary.Stages`); one that starts the
   #     next entry does not, as the checks run at the sequence's end. At a gate `none` the accept is the approval: `Apiary.Stages`
   #     records it with the member who accepted. Another round runs
   #     one more round: the same workflow for a stopped run, the loop's first workflow
@@ -778,12 +778,7 @@ defmodule Apiary.Stages.Runner do
         start(stage, %{position | loop_entry: position.loop_entry + 1}, facts)
 
       position.round >= rounds ->
-        points =
-          Points.round_limit(position.round, rounds, findings,
-            accept: accept_offered?(stage, position, facts)
-          )
-
-        escalate(:round_limit, points, position)
+        escalate(:round_limit, Points.round_limit(position.round, rounds, findings), position)
 
       true ->
         start(stage, %{position | loop_entry: 0, round: position.round + 1}, facts)
@@ -808,8 +803,7 @@ defmodule Apiary.Stages.Runner do
       leave(position, stage_id)
     else
       to = Map.fetch!(earlier(facts), stage_id)
-      accept = accept_offered?(stage, position, facts)
-      limit_point = Points.return_limit(returns, stage["name"], to, accept: accept)
+      limit_point = Points.return_limit(returns, stage["name"], to)
       escalate(:return_limit, limit_point ++ (points || []), position)
     end
   end
@@ -1102,15 +1096,6 @@ defmodule Apiary.Stages.Runner do
   @spec accept_to_gate?(map, position, facts) :: boolean
   def accept_to_gate?(stage, position, facts),
     do: match?({:gate, _at}, accepted(stage, position, facts))
-
-  # accept_offered?/3 is whether Accept as it is can be taken at `position`: an accept
-  # that takes the stage to its gate only while no Exists check fails
-  # (`facts.failed_checks`); an accept that starts the next entry always, as the checks
-  # run at the sequence's end.
-  @doc false
-  @spec accept_offered?(map, position, facts) :: boolean
-  def accept_offered?(stage, position, facts),
-    do: Map.get(facts, :failed_checks, []) == [] or not accept_to_gate?(stage, position, facts)
 
   # at_end?/2 is whether `position` is past the sequence's last entry.
   @doc false

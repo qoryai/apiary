@@ -14,7 +14,11 @@ defmodule Apiary.Stages.Points do
   # `round_limit` point with open findings is its sentence followed by the text of each
   # finding, up to the verdict's 20 points, so it is longer than one sentence. A point of
   # a failed check opens with its action, "Run another round:", and has `action_in_text`
-  # set to true, so the page adds no action sentence after it.
+  # set to true, so the page adds no action sentence after it. A point whose words pick
+  # Accept as it is has `without_accept`, the fields that replace them where the card
+  # offers no Accept as it is: the page chooses at display time
+  # (`ApiaryWeb.WorkItemLive.Workflow.accept?/2`), as a person's version of an output
+  # can change that between the escalation and the display.
   @moduledoc false
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -22,30 +26,33 @@ defmodule Apiary.Stages.Points do
   alias Apiary.Artifacts.Type
 
   @typedoc "A point of an escalation."
-  @type t :: %{required(String.t()) => String.t() | true}
+  @type t :: %{required(String.t()) => String.t() | true | %{String.t() => String.t()}}
 
   # The words that open a stop cause and are written in lower case after "The run
   # stopped:", as in "The run stopped: a read-only run needs a wall".
   @lowered ~w(The A An)
 
-  # round_limit/4 is the point of a loop that ran `ran` of its `rounds` rounds, with
+  # round_limit/3 is the point of a loop that ran `ran` of its `rounds` rounds, with
   # `findings`, the text of each review finding still open, in the verdict's order. The
   # point's text has their number, then each text. Its `fix` is to read them and pick
-  # Accept as it is or Run another round, or, with `accept: false` in `opts` (the stage
-  # offers no Accept as it is, `Apiary.Stages.Runner.accept_offered?/3`), Run another
-  # round alone. With no open finding, the point has the sentence alone and no `fix`.
+  # Accept as it is or Run another round; its `without_accept` fix is to read them and
+  # pick Run another round. With no open finding, the point has the sentence alone and
+  # no `fix`.
   @doc false
-  @spec round_limit(pos_integer, pos_integer, [String.t()], keyword) :: [t]
-  def round_limit(ran, rounds, findings \\ [], opts \\ [])
+  @spec round_limit(pos_integer, pos_integer, [String.t()]) :: [t]
+  def round_limit(ran, rounds, findings \\ [])
 
-  def round_limit(ran, rounds, [_ | _] = texts, opts) do
+  def round_limit(ran, rounds, [_ | _] = texts) do
     count = length(texts)
     sentence = default(fn -> open_findings(ran, rounds, count) end)
-    fix = default(fn -> findings_fix(count, Keyword.get(opts, :accept, true)) end)
-    [Map.put(run_again(Enum.join([sentence | texts], " ")), "fix", fix)]
+
+    run_again(Enum.join([sentence | texts], " "))
+    |> Map.put("fix", default(fn -> findings_fix(count, true) end))
+    |> Map.put("without_accept", %{"fix" => default(fn -> findings_fix(count, false) end)})
+    |> List.wrap()
   end
 
-  def round_limit(ran, rounds, _findings, _opts) do
+  def round_limit(ran, rounds, _findings) do
     [
       run_again(
         default(fn ->
@@ -117,13 +124,11 @@ defmodule Apiary.Stages.Points do
   # `text`, and the count after it, in `fix`, which the page shows after the text in place
   # of "Run another round." (the user's ruling of 2026-11-16: the action, then the count
   # of returns, then the findings, which are the verdict's points after this one). The
-  # action ends with "or pick Accept as it is", or, with `accept: false` in `opts` (the
-  # stage offers no Accept as it is), "or move this stage back".
+  # action ends with "or pick Accept as it is"; its `without_accept` text ends after
+  # "once more".
   @doc false
-  @spec return_limit(non_neg_integer, String.t(), String.t(), keyword) :: [t]
-  def return_limit(returns, stage, to, opts \\ []) do
-    text = default(fn -> return_action(to, Keyword.get(opts, :accept, true)) end)
-
+  @spec return_limit(non_neg_integer, String.t(), String.t()) :: [t]
+  def return_limit(returns, stage, to) do
     count =
       default(fn ->
         ngettext(
@@ -135,7 +140,11 @@ defmodule Apiary.Stages.Points do
         )
       end)
 
-    [run_again(text) |> Map.put("fix", count)]
+    default(fn -> return_action(to, true) end)
+    |> run_again()
+    |> Map.put("fix", count)
+    |> Map.put("without_accept", %{"text" => default(fn -> return_action(to, false) end)})
+    |> List.wrap()
   end
 
   defp return_action(to, true),
@@ -148,7 +157,7 @@ defmodule Apiary.Stages.Points do
   defp return_action(to, false),
     do:
       gettext(
-        "Pick Move back to return the work item to %{to} once more, or move this stage back.",
+        "Pick Move back to return the work item to %{to} once more.",
         to: to
       )
 

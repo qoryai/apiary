@@ -119,6 +119,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       if offers != [] and at_explore and opts[:proposal] == true,
         do: Stages.proposed_track_with_reason(row, artifacts)
 
+    switch = switch_tracks(row, state)
+
     %{
       version: get(get(status, :version), :number) || get(version, :number),
       stages: all |> track(at, state) |> not_run(records.stage_skips),
@@ -153,7 +155,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       outputs: outputs,
       escalation:
         scope
-        |> escalation(get(status, :escalation), runs, outputs, get(status, :accept_needs))
+        |> escalation(get(status, :escalation), runs, outputs, get(status, :accept_needs), switch)
         |> entry(stage),
       approvers: approvers(stage),
       # The gate's approvers from `Apiary.Stages.status/2`: `:members`, or account ids.
@@ -169,7 +171,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       # The tracks an escalation offers a switch to (`Apiary.Stages.switch_tracks/1`), each
       # with its `id`, `name`, `gate`, `first` and `later`; with any, the card offers no
       # Accept as it is and no Move back.
-      switch: switch_tracks(row, state),
+      switch: switch,
       missing_workflows: List.wrap(get(status, :waiting_workflow)),
       missing_outputs: List.wrap(get(status, :missing_outputs)),
       # The missing required outputs that Accept as it is waits for.
@@ -504,24 +506,31 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp named_output(named),
     do: %{name: get(named, :name), version: get(named, :number), version_id: get(named, :id)}
 
-  defp escalation(_scope, nil, _runs, _outputs, _missing), do: nil
+  defp escalation(_scope, nil, _runs, _outputs, _missing, _switch), do: nil
 
   # `missing` is the required output types that Accept as it is waits for
   # (`accept_needs` of `Apiary.Stages.status/2`: the missing ones where the accept takes
-  # the stage to its gate): with any, the stage has no result to accept.
-  defp escalation(scope, escalation, runs, outputs, missing) do
+  # the stage to its gate): with any, the stage has no result to accept. `accept` is
+  # whether the card offers Accept as it is (`accept?/2`), and the points' words follow
+  # it (`points/2`).
+  defp escalation(scope, escalation, runs, outputs, missing, switch) do
     cause = get(escalation, :cause)
     cause = if is_atom(cause) and not is_nil(cause), do: Atom.to_string(cause), else: cause
     cause = Map.get(@causes, cause, :escalate)
 
     run = escalated_run(escalation, runs)
 
+    result =
+      List.wrap(missing) == [] and
+        result?(cause, outputs, get(escalation, :no_verdict) == true, run)
+
+    accept = accept?(result, switch)
+
     %{
       cause: cause,
-      result:
-        List.wrap(missing) == [] and
-          result?(cause, outputs, get(escalation, :no_verdict) == true, run),
-      points: points(get(escalation, :points)),
+      result: result,
+      accept: accept,
+      points: points(get(escalation, :points), accept),
       round: get(escalation, :round),
       run: run,
       # The id of the run in the queue (`Apiary.Dispatches.DispatchRun`) that the versions
@@ -552,12 +561,25 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     Map.put(escalation, :entry, workflow && ((named && get(named, :name)) || workflow))
   end
 
+  # accept?/2 is whether the escalation card offers Accept as it is: where the stage has
+  # a result to accept (`result`, `escalation/6`) and the card offers no switch
+  # (`switch`). The button, the check of a sent accept (`checked/2`) and the points'
+  # words (`points/2`) read it.
+  @doc false
+  @spec accept?(boolean, list) :: boolean
+  def accept?(result, switch), do: result == true and switch == []
+
   # An escalation's points as the block "What the run needs from you" shows them: each
   # with its text, its action (`:answer` or `:run_again`) and, for `:answer`, the id of
   # its question; a `:run_again` point with `in_text` true where its text opens with its
-  # action (`Apiary.Stages.Points.check_failed/1`). A point without text is left out.
-  defp points(points) when is_list(points) do
-    for %{} = point <- points, text = get(point, :text), is_binary(text) and text != "" do
+  # action (`Apiary.Stages.Points.check_failed/1`). Where the card offers no Accept as it
+  # is (`accept` false), a point's `without_accept` fields replace those that pick it
+  # (`Apiary.Stages.Points`). A point without text is left out.
+  defp points(points, accept) when is_list(points) do
+    for %{} = point <- points,
+        point = worded(point, accept),
+        text = get(point, :text),
+        is_binary(text) and text != "" do
       case get(point, :action) do
         action when action in ["answer", :answer] ->
           %{text: text, action: :answer, question: get(point, :question)}
@@ -574,7 +596,16 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     end
   end
 
-  defp points(_none), do: []
+  defp points(_none, _accept), do: []
+
+  defp worded(point, false) do
+    case get(point, :without_accept) do
+      %{} = words -> Map.merge(point, Map.take(words, ["text", "fix"]))
+      _none -> point
+    end
+  end
+
+  defp worded(point, _accept), do: point
 
   # Whether the stage has a result to accept as it is, where the accept waits for no
   # required output (`escalation/5`): a version of one of its outputs; for a stage with
@@ -821,13 +852,11 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp checked({:request_changes, _note, _id}, %{confirm_gate: true}),
     do: {:error, :confirm_gate}
 
-  # Accept as it is only where the stage has a result and the accept waits for no required
-  # output: the page offers it nowhere else.
-  defp checked({:resolve, :accept, _note}, %{escalation: %{result: false}}),
+  # Accept as it is only where the card offers it (`accept?/2`).
+  defp checked({:resolve, :accept, _note}, %{escalation: %{accept: false}}),
     do: {:error, :invalid}
 
-  # Accept as it is and Move back, where the card offers a switch: it offers neither.
-  defp checked({:resolve, :accept, _note}, %{switch: [_ | _]}), do: {:error, :invalid}
+  # Move back, where the card offers a switch: it offers no Move back.
 
   defp checked({:resolve, {:move_back, _id}, _note}, %{switch: [_ | _]}),
     do: {:error, :invalid}
