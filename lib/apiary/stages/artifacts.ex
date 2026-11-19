@@ -1,9 +1,9 @@
 defmodule Apiary.Stages.Artifacts do
   # Artifacts is the one place the stage runner (`Apiary.Stages`) reaches a work item's
   # artifacts through: `push/5`, `list/1`, `exists?/3`, `cancelled?/1`, `withdrawn?/1`,
-  # `newest_counted/1` and `name_order/1` of `Apiary.Artifacts`, and
-  # `push_json/5`, `newest_of_run/3`, `read_json/1` and `stored_json/1`, which this module
-  # adds.
+  # `member_types/0`, `newest_counted/1`, `name_order/1` and `submit_type/1` of
+  # `Apiary.Artifacts`, and `push_json/5`, `newest_of_run/3`, `read_json/1` and
+  # `stored_json/1`, which this module adds.
   @moduledoc false
 
   import Ecto.Query, only: [from: 2]
@@ -50,6 +50,12 @@ defmodule Apiary.Stages.Artifacts do
   @spec cancelled?(map) :: boolean
   def cancelled?(version), do: Artifacts.cancelled?(version)
 
+  # member_types/0 is the types a person writes only as an answer or a review comment
+  # (`Apiary.Artifacts.member_types/0`).
+  @doc false
+  @spec member_types() :: [String.t()]
+  def member_types, do: Artifacts.member_types()
+
   # withdrawn?/1 is whether the newest version of `artifact` is a withdrawal
   # (`Apiary.Artifacts.withdrawn?/1`).
   @doc false
@@ -66,6 +72,12 @@ defmodule Apiary.Stages.Artifacts do
   @doc false
   @spec name_order(String.t()) :: {boolean, [String.t() | integer]}
   def name_order(name), do: Artifacts.name_order(name)
+
+  # submit_type/1 is the type in `submit.type` of the work item's process version, which
+  # the Submissions list reads (`Apiary.Artifacts.submit_type/1`); nil for none.
+  @doc false
+  @spec submit_type(struct) :: String.t() | nil
+  def submit_type(work_item), do: Artifacts.submit_type(work_item)
 
   # newest_of_run/3 is the newest version of the artifact of `type` and `name` that the
   # run of the queue `run` pushed, with its files in the order of their names; nil for

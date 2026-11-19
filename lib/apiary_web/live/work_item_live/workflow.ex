@@ -478,19 +478,26 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   end
 
   # The work item's newest submission, the type the process version's submit step names
-  # (`submit.type`, else `submission`), as the artifact index has it (`id`, its public
-  # id; `files`); nil for none. A withdrawn name and a version a cancelled run wrote count
-  # for none.
+  # (`submit.type` of its harness record, `Processes.harness_template/1`, which a version a
+  # person saved takes from the version it is based on; else `submission`), as the
+  # artifact index has it (`id`, its public id; `files`); nil for none. Only a run's
+  # version counts, as only a run's submit step writes a submission; a withdrawn name and a
+  # version a cancelled run wrote count for none.
   defp submission(version, index) do
     type =
-      case get(version, :template) do
+      case Processes.harness_template(version) do
         %{"submit" => %{"type" => type}} when is_binary(type) -> type
         _other -> "submission"
       end
 
     index
     |> Enum.filter(&(&1.type == type and not Artifacts.withdrawn?(&1)))
-    |> Enum.map(&Artifacts.newest_counted/1)
+    |> Enum.map(
+      &Artifacts.newest_counted(%{
+        &1
+        | versions: Enum.filter(&1.versions, fn v -> v.writer == :run end)
+      })
+    )
     |> Enum.reject(&is_nil/1)
     |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.number}, fn -> nil end)
   end
@@ -577,8 +584,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp indexed(artifact) do
     versions = get(artifact, :versions) || []
     approved = Enum.find(versions, &(get(&1, :id) == get(artifact, :approved_version)))
-    # A version of a run a member cancelled is never the newer one.
-    newest = Enum.find(versions, &(get(&1, :cancelled) != true))
+    # The index's `newest`: never a version of a run a member cancelled, nor a person's
+    # version of the type in `submit.type` (`Apiary.Stages.artifact_index/2`).
+    newest = Enum.find(versions, &(get(&1, :id) == get(artifact, :newest)))
     approval = approved && List.last(get(approved, :approvals) || [])
     approved = approved && get(approved, :number)
     newest = newest && get(newest, :number)

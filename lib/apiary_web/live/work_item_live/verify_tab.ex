@@ -662,7 +662,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTab do
   defp state_badge(assigns), do: ~H|<.badge>{@state}</.badge>|
 
   attr :id, :string, required: true
-  attr :scenarios, :list, required: true, doc: "`scenarios/4`"
+  attr :scenarios, :list, required: true, doc: "`scenarios/5`"
   attr :scope, :any, required: true
   attr :number, :integer, required: true
 

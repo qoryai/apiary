@@ -120,7 +120,7 @@ Returns `200` with the work item snapshot:
   "comments": [],
   "comments_omitted": 0,
   "notes": [
-    {"kind": "request_changes", "stage_id": "st_...", "by": {"name": "dana"},
+    {"id": "gd_...", "kind": "request_changes", "stage_id": "st_...", "by": {"name": "dana"},
      "note": "Add the empty cart.", "artifact_version_id": "av_...", "at": "..."}
   ],
   "pushed_commits": [
@@ -132,7 +132,22 @@ Returns `200` with the work item snapshot:
 
 - `inputs` contains each input of the current stage with the version that the gate of
   the stage that made it approved, or a version a person added; `version` is null when
-  there is none. After a person moves the work item to an earlier stage (a move back, an
+  there is none. A person's change to an approved output comes first. A change is a
+  version that has a `decision` (`POST artifacts`) or that a person uploaded, in any
+  stage, that no approval lists, and whose number is higher than that of every version
+  of its artifact that an approval lists. A withdrawal, a version of a withdrawn name and
+  a version by a run that a member cancelled are never a change. A person's version of the
+  type in `submit.type` of the work item's process version is not a change: no approval
+  lists it, `outputs` leaves it out, and runs read the run's version. Each name's change is
+  its highest-numbered one, and the input is the newest of those by time. Every later run
+  reads that version in place of the approved one, until an approval lists it. Where an
+  approval lists several versions of one name, the input is the highest-numbered one.
+  Where it lists several names of one type, the input is the name whose listed version
+  is newest. A version that a person's approval listed is the approved version for every
+  run after that approval, in any stage, also after a move back to a stage at or before
+  that approval.
+  `questions` and `review-comments` are never a change.
+  After a person moves the work item to an earlier stage (a move back, an
   escalation's move back or a switch of track), `inputs` ends with one more entry for each output of each stage
   that the work item left that way and that comes after its current stage:
   `{"type": "demo-video", "required": false, "version": {"id": "av_...", "number": 3},
@@ -144,7 +159,7 @@ Returns `200` with the work item snapshot:
   a stage after it, and only for the take in of the move. A stage that the work item left
   twice counts by its newer move. An entry is left out when an input above it already has
   that version. The key `from` is present on these entries, and no approval lists such
-  a version.
+  a version, unless a person made it: that is a change.
 - After a run of a stage returns the work item to an earlier stage (the `return` key of a
   workflow entry), `inputs` ends with the newest `verdict` and then the newest
   `verification` made in the stage that returned it, each as
@@ -155,8 +170,12 @@ Returns `200` with the work item snapshot:
   work item leaves that stage by a move, after the return; a Request changes at its gate
   and a decision in another stage end nothing. A later return lists the newer versions. No
   approval lists them, and `notes` does not.
-- `outputs` contains each output of the current stage with its newest version and its
-  check: `passed`, `missing` or `not_checked`.
+- `outputs` contains each output of the current stage with the version its gate shows
+  and its check: `passed`, `missing` or `not_checked`. For the type in `submit.type`,
+  only a run's version passes the check. The version is the newest one
+  made in the stage, or a higher-numbered version of that artifact that a person's
+  approval lists or that is a change, which every later run reads, also after a move
+  back to the stage.
 - `verdict` is the work item's newest verdict, or null for none. It can be from an earlier
   stage or an earlier run. At a run's end, the stage reads only a verdict that run pushed.
   `points` is its list of points, as the verdict's file has them, or null for a verdict
@@ -179,6 +198,10 @@ Returns `200` with the work item snapshot:
   checks of the stage `stage_id` that failed and started another round, with one line
   per missing output type in `note`. `by` is the person, null for `check`; `note` is the
   text; `at` is the time it was written, or for an escalation the time it was resolved.
+  `id` is the note's id: `gd_` and 16 characters for a request for changes or a move, a
+  decision at a gate; `es_` and 16 characters for an escalation; null for `answer` and
+  `check`. A run sends it as `decision` in `POST artifacts`, for a version that the note
+  asked for.
   `notes` contains only open notes. A note closes once the stage `stage_id` has an
   approval after `at`, and a `move` once the stage it moved to has one: a member's, or
   the automatic approval of a gate `none`. An `answer` whose `stage_id` is null stays
@@ -235,6 +258,8 @@ Returns `200` with the index:
           "withdrawn": false,
           "stage_id": "st_...",
           "note": null,
+          "decision": null,
+          "decision_at": null,
           "at": "2026-10-31T09:00:00Z",
           "files": [{"filename": "demo.mp4", "content_type": "video/mp4", "size": 1048576, "sha256": "..."}],
           "approvals": []
@@ -250,6 +275,9 @@ none; `newest_version` is the number of the newest version, leaving out versions
 run a member cancelled, and null when a run a member cancelled wrote every version.
 `changed_after_approval` is true when that newest version is
 newer than the approved one and was made in a stage other than the work item's stage.
+For the type in `submit.type` of the work item's process version, `changed_after_approval`
+compares the newest version a run wrote in place of `newest_version`, as a person's
+version of that type is not a change.
 A version
 written by a run has `"writer": {"kind": "run", "run_id": "..."}`, with the `run_id` of
 the answer to the redemption of the run code; a version written
@@ -265,7 +293,14 @@ so the newest verdict in `GET work-item` is never a withdrawal. An approval is
 gate `none` records an approval of the stage's newest versions, leaving out withdrawals
 and versions by a run a member cancelled, when the stage passes it:
 `{"by": null, "automatic": true, ...}`. When a member accepted the escalation that ended
-such a stage, the approval has the member in `by` and `automatic` false. The index
+such a stage, the approval has the member in `by` and `automatic` false. `decision` is
+the id of the person's note that asked for the version (`POST artifacts`), and
+`decision_at` the time of that note, as `at` of the note in `GET work-item`; both are
+null for a version with none. A gate `none` lists no version that has a `decision`.
+The next approval by a person at a gate lists the newest version of each name of each
+output type made in the stage, or a higher-numbered version of that name that a person's
+approval lists or that is a change, and beside them the change of each type that
+`inputs` in `GET work-item` reads. The index
 contains no file contents; `GET artifacts/<version_id>/files/<filename>` returns them.
 
 ## GET artifacts/<version_id>/files/<filename>
@@ -317,6 +352,11 @@ version cannot be pushed through the run API, whatever the type's size limit:
 - `note`: optional, at most 4000 code points, with no control character but a tab or a
   line break, no format character but U+200C and U+200D, and no line or paragraph
   separator.
+- `decision`: optional, text or null. The `id` of the person's note on the work item that
+  asked for this version, from `notes` in `GET work-item`, such as `gd_01jc4t9…`: a
+  request for changes, a move or an escalation. Later runs read a version that has a
+  `decision` in place of the approved one, and the next approval by a person lists it
+  (`inputs` in `GET work-item`). A push with none is stored as before.
 - `withdraw`: optional, `true`, `false` or null, `false` by default. With `true`, the push
   is a withdrawal (see [A withdrawal](#a-withdrawal)), and `files` is absent, null or
   `[]`.
@@ -546,6 +586,10 @@ Checks, in order, after the checks of every request:
    newest version of `questions` or `review-comments` whose file cannot be read, or
    whose newest `questions` a `review-comments` version is checked against cannot be
    read, is `503` `unavailable`, and no version is stored.
+8. A `decision` that is not the `id` of a person's note on the run's work item, such as
+   an approval's id, another work item's note or an unknown id: `422`
+   `unknown_decision`. This check runs under the work item's lock after the rules of
+   check 7 and before the size of `questions` or `review-comments` as stored.
 
 ### A withdrawal
 
@@ -557,8 +601,10 @@ removed, with a push of `"withdraw": true` and no files:
 ```
 
 Qory Apiary stores a version of `demo-script` `scenario-2` with no files and
-`withdrawn` true, by the run, in the run's stage, with the note, and returns `201` with
-the version, as a push does. Gates, stage inputs and the work item's pages leave out a
+`withdrawn` true, by the run, in the run's stage, with the note and the `decision`, if
+the push has one, and returns `201` with the version, as a push does. The index lists
+the withdrawal with its `decision` and `decision_at`; a withdrawal is never a change
+that `inputs` reads. Gates, stage inputs and the work item's pages leave out a
 withdrawn name. A stage done whose last approval covered a version of that name is at its
 gate again. A later push of files is a new version, and lists the name again.
 
@@ -587,6 +633,7 @@ Checks, in order, after the checks of every request:
    approved at a gate, `422` `type_not_withdrawable`, checked before the rest; none, `409`
    `no_version`; a withdrawal, `409` `already_withdrawn`; a version a person uploaded,
    `409` `person_version`. A run withdraws only a name whose newest version a run wrote.
+6. A `decision`, as check 8 of a push: `422` `unknown_decision`.
 
 No version is stored for a refused withdrawal.
 
@@ -864,6 +911,7 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 | `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes; for `questions` and `review-comments`, as stored, with each number that is an integer in value written as an integer |
 | `422` | `type_not_withdrawable` | `type`, `message` | A withdrawal of `questions`, `review-comments`, `verdict` or `proposal`, of a name of a type with `withdrawable: false`, of a name of the type in `submit.type` of the run's process version or the work item's, or of a name whose newest version a member approved at a gate |
 | `422` | `withdrawal_with_files` | `type`, `message` | A withdrawal with one file or more |
+| `422` | `unknown_decision` | `message` | A push's `decision` is not the id of a person's note on the run's work item |
 | `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, a verdict's `answer` point is about a question that is not open, or a verdict's `track.id` is a track the gate of the run's stage does not offer (`names` is `["track"]`) |
 | `503` | `unavailable` | | The request could not be completed, such as a newest version of `questions` or `review-comments` that cannot be read; try again |
 
@@ -912,6 +960,8 @@ The messages:
   a run cannot withdraw the name."
 - `withdrawal_with_files`: "Push either files or a withdrawal. A withdrawal of
   demo-script/scenario-2 stores no files, and the push has 1 file."
+- `unknown_decision`: "Set decision to the id of a person's note on this work item, from
+  notes in GET work-item, or leave decision out."
 - `too_many_files`: "Push at most 10 files in one version of screenshot." ("1 file" for a
   limit of 1)
 - `too_large`: "Shrink the files of one version of demo-video to at most 209715200 bytes

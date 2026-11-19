@@ -34,18 +34,21 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      `Apiary.Artifacts.push/5` returns, the files that do not match the type's format
   #      among it, `422` `invalid_artifact`; a run's version of `questions` or
   #      `review-comments` that changes what members wrote, `422` `invalid_artifact` with
-  #      the rule it breaks; and a version of `questions` or `review-comments` whose file
-  #      is over the size limit as stored, with each number that is an integer in value
-  #      written as an integer (`1e3` as `1000`), `422` `too_large`;
+  #      the rule it breaks; a `decision` that is not the id of a person's note on the
+  #      work item (`Apiary.Stages.Notes`), `422` `unknown_decision`; and a version of
+  #      `questions` or `review-comments` whose file is over the size limit as stored,
+  #      with each number that is an integer in value written as an integer (`1e3` as
+  #      `1000`), `422` `too_large`;
   #   5. for a withdrawal, a push with `withdraw` true: an unknown type as for a push, then
   #      `questions`, `review-comments`, `verdict` or `proposal`, the types Qory Apiary
   #      reads itself, a type with `withdrawable` false, and the type in `submit.type` of
   #      the run's process version or of the work item's, `422` `type_not_withdrawable`,
   #      then files with it `422` `withdrawal_with_files`, then what
-  #      `Apiary.Artifacts.withdraw/4` returns under the work item's lock: a name whose newest version a person approved at a
-  #      gate `422` `type_not_withdrawable`, a name with no version `409` `no_version`, a
-  #      name whose newest version is a withdrawal `409` `already_withdrawn`, and one whose
-  #      newest version a person wrote `409` `person_version`.
+  #      `Apiary.Artifacts.withdraw/4` returns under the work item's lock: a name whose
+  #      newest version a person approved at a gate `422` `type_not_withdrawable`, a name
+  #      with no version `409` `no_version`, a name whose newest version is a withdrawal
+  #      `409` `already_withdrawn`, and one whose newest version a person wrote `409`
+  #      `person_version`, then a `decision` as for a push, `422` `unknown_decision`.
   #
   # A file is sent from the store, with `send_file` or in chunks, and signed over the
   # SHA-256 Qory Apiary computed from its bytes when it stored them. It is served as a
@@ -153,7 +156,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       Boundary.withdraw({:run, run.dispatch_run}, run.work_item, push.type,
         name: push.name,
         stage_id: Boundary.push_stage_id(run.dispatch_run, run.work_item),
-        note: push.note
+        note: push.note,
+        decision: push.decision
       )
       |> withdrawn(push)
     end
@@ -166,7 +170,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       Boundary.push({:run, run.dispatch_run}, run.work_item, push.type, files,
         name: push.name,
         stage_id: Boundary.push_stage_id(run.dispatch_run, run.work_item),
-        note: push.note
+        note: push.note,
+        decision: push.decision
       )
       |> pushed(%{
         name: push.type,
@@ -589,8 +594,10 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp refused({:too_large, size_limit}, push),
     do: {:error, {:too_large, push.name, limit(size_limit, push.type, :size_limit)}}
 
-  defp refused({:invalid, member}, _push) when member in [:type, :name, :note],
+  defp refused({:invalid, member}, _push) when member in [:type, :name, :note, :decision],
     do: {:error, :invalid_request, Atom.to_string(member)}
+
+  defp refused({:unknown_decision, _decision}, _push), do: {:error, :unknown_decision}
 
   defp refused({:invalid, :no_files}, _push), do: {:error, :invalid_request, "files"}
 
@@ -1006,6 +1013,14 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
         "Leave #{type}/#{name} to a member. Its newest version, v#{number}, is a version " <>
           "by #{Inputs.person_name(user_id)}, and a run withdraws only a name whose newest " <>
           "version a run wrote."
+    )
+  end
+
+  defp write_error(conn, {:error, :unknown_decision}) do
+    error(conn, 422, "unknown_decision",
+      message:
+        "Set decision to the id of a person's note on this work item, from notes in " <>
+          "GET work-item, or leave decision out."
     )
   end
 

@@ -691,6 +691,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       assert body["notes"] == [
                %{
+                 "id" => first.public_id,
                  "kind" => "request_changes",
                  "stage_id" => @explore,
                  "by" => %{"name" => name},
@@ -699,6 +700,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                  "at" => at(first.inserted_at)
                },
                %{
+                 "id" => second.public_id,
                  "kind" => "move",
                  "stage_id" => @explore,
                  "by" => %{"name" => name},
@@ -707,6 +709,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                  "at" => at(second.inserted_at)
                },
                %{
+                 "id" => nil,
                  "kind" => "check",
                  "stage_id" => @explore,
                  "by" => nil,
@@ -764,6 +767,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       assert body["notes"] == [
                %{
+                 "id" => move.public_id,
                  "kind" => "move",
                  "stage_id" => shape,
                  "by" => %{"name" => name},
@@ -772,6 +776,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                  "at" => at(move.inserted_at)
                },
                %{
+                 "id" => open.public_id,
                  "kind" => "request_changes",
                  "stage_id" => @explore,
                  "by" => %{"name" => name},
@@ -884,6 +889,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                        "withdrawn" => false,
                        "stage_id" => @explore,
                        "note" => nil,
+                       "decision" => nil,
+                       "decision_at" => nil,
                        "at" =>
                          version.inserted_at
                          |> DateTime.truncate(:second)
@@ -2142,6 +2149,76 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     end
   end
 
+  describe "POST artifacts with a decision (A-20)" do
+    test "stores the id of a person's note; the index has it with the note's time", ctx do
+      place!(ctx)
+      note = decide!(ctx, :request_changes, note: "Cover the empty cart.")
+      assert "gd_" <> _random = note.public_id
+
+      body =
+        push_body("screenshot", [{"one.png", "image/png", @png}], %{
+          "decision" => note.public_id
+        })
+
+      assert json_response(write(ctx, "/artifacts", body), 201)
+      [version] = RunApiStubs.pushed()
+      assert version.decision_id == note.public_id
+      assert version.opts[:decision] == note.public_id
+
+      [artifact] = json_response(read(ctx, "/artifacts"), 200)["artifacts"]
+
+      assert [%{"decision" => decision, "decision_at" => decision_at}] = artifact["versions"]
+      assert decision == note.public_id
+      assert decision_at == at(note.inserted_at)
+    end
+
+    test "an id that is not a person's note on this work item is 422 unknown_decision", ctx do
+      place!(ctx)
+      approval = decide!(ctx, :approve, versions: [])
+      theirs = other_run()
+
+      elsewhere =
+        decide!(Map.merge(ctx, %{work_item: theirs.work_item}), :request_changes, note: "Theirs.")
+
+      for id <- [
+            approval.public_id,
+            elsewhere.public_id,
+            "gd_0000000000000000",
+            "es_0000000000000000",
+            "AC-2"
+          ] do
+        body = push_body("screenshot", [{"one.png", "image/png", @png}], %{"decision" => id})
+        conn = write(ctx, "/artifacts", body)
+        assert signed_answer?(conn)
+
+        assert json_response(conn, 422) == %{
+                 "error" => "unknown_decision",
+                 "message" =>
+                   "Set decision to the id of a person's note on this work item, from notes " <>
+                     "in GET work-item, or leave decision out."
+               }
+      end
+
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "a decision that is not text is 400 invalid_request", ctx do
+      for value <- [1, true, %{"id" => "gd_0000000000000000"}] do
+        body = push_body("screenshot", [{"one.png", "image/png", @png}], %{"decision" => value})
+
+        assert json_response(write(ctx, "/artifacts", body), 400) == %{
+                 "error" => "invalid_request",
+                 "names" => ["decision"]
+               }
+      end
+
+      # A null decision is none.
+      body = push_body("screenshot", [{"one.png", "image/png", @png}], %{"decision" => nil})
+      assert json_response(write(ctx, "/artifacts", body), 201)
+      assert [%{decision_id: nil}] = RunApiStubs.pushed()
+    end
+  end
+
   describe "POST artifacts with withdraw" do
     defp withdrawal(type, name, extra \\ %{}),
       do: Map.merge(%{"type" => type, "name" => name, "withdraw" => true}, extra)
@@ -2197,6 +2274,42 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                },
                %{"number" => 1, "withdrawn" => false, "files" => [_png]}
              ] = artifact["versions"]
+    end
+
+    test "stores the decision of a withdrawal, which the index lists with its time", ctx do
+      place!(ctx)
+      note = decide!(ctx, :request_changes, note: "Drop scenario-2.")
+      store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-2")
+
+      body = withdrawal("screenshot", "scenario-2", %{"decision" => note.public_id})
+      assert json_response(write(ctx, "/artifacts", body), 201)
+
+      [withdrawn] = RunApiStubs.pushed()
+      assert withdrawn.withdrawn
+      assert withdrawn.decision_id == note.public_id
+
+      [artifact] = json_response(read(ctx, "/artifacts"), 200)["artifacts"]
+
+      assert [%{"withdrawn" => true, "decision" => decision, "decision_at" => decision_at}, _] =
+               artifact["versions"]
+
+      assert decision == note.public_id
+      assert decision_at == at(note.inserted_at)
+    end
+
+    test "refuses a decision that is not a person's note with 422 unknown_decision", ctx do
+      place!(ctx)
+      approval = decide!(ctx, :approve, versions: [])
+      store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-2")
+
+      body = withdrawal("screenshot", "scenario-2", %{"decision" => approval.public_id})
+      conn = write(ctx, "/artifacts", body)
+
+      assert json_response(conn, 422)["error"] == "unknown_decision"
+      assert RunApiStubs.pushed() == []
+
+      [artifact] = json_response(read(ctx, "/artifacts"), 200)["artifacts"]
+      assert [%{"number" => 1, "withdrawn" => false}] = artifact["versions"]
     end
 
     test "takes files as an empty list, and withdraw only as true, false or null", ctx do

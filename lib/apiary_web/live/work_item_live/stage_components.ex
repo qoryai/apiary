@@ -100,6 +100,17 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :page, :map, required: true, doc: "`ApiaryWeb.WorkItemLive.Workflow.page/2`"
   attr :number, :integer, required: true, doc: "the work item's number"
   attr :add_path, :any, required: true, doc: "a function of an artifact type: Add's path"
+
+  attr :version_path, :any,
+    default: nil,
+    doc: "a function of a version's public id (`av_…`): its page; nil for no links"
+
+  attr :recorded, :list,
+    default: [],
+    doc:
+      "the versions an approval at the gate records (`Apiary.Stages.gate_frames/3`), " <>
+        "`%{type, name, version}`; the gate lists those no output line shows"
+
   attr :answers_path, :string, default: nil, doc: "the current stage's tab, with the questions"
   attr :asking, :atom, default: nil, values: [nil, :changes], doc: "the form showing"
 
@@ -149,6 +160,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         page={@page}
         number={@number}
         add_path={@add_path}
+        version_path={@version_path}
+        recorded={@recorded}
         answers_path={@answers_path}
         asking={@asking}
         error={@error}
@@ -239,6 +252,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :page, :map, required: true
   attr :number, :integer, required: true
   attr :add_path, :any, required: true
+  attr :version_path, :any, default: nil
+  attr :recorded, :list, default: []
   attr :answers_path, :string, default: nil
   attr :asking, :atom, default: nil
   attr :error, :atom, default: nil
@@ -343,6 +358,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
       page={@page}
       number={@number}
       add_path={@add_path}
+      version_path={@version_path}
+      recorded={@recorded}
       asking={@asking}
       error={@error}
     />
@@ -391,11 +408,14 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   attr :page, :map, required: true
   attr :number, :integer, required: true
   attr :add_path, :any, required: true
+  attr :version_path, :any, default: nil
+  attr :recorded, :list, default: []
   attr :asking, :atom, default: nil
   attr :error, :atom, default: nil
 
   defp gate_card(assigns) do
     shown = assigns.page |> shown_outputs() |> Enum.flat_map(&named_rows/1) |> by_scenario()
+    on_lines = MapSet.new(shown, & &1[:version_id])
 
     assigns =
       assign(assigns,
@@ -405,6 +425,13 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         # version is not shown as missing.
         shown: shown,
         drafts: Map.get(assigns.page, :drafts, []),
+        # The other versions the approval records, one line for each. The questions are
+        # on the Questions tab.
+        others:
+          Enum.reject(
+            assigns.recorded,
+            &(&1.type == "questions" or MapSet.member?(on_lines, &1.version.public_id))
+          ),
         # A gate `none` takes no decision: the stage passes on once its outputs exist.
         decides: assigns.page.gate_kind != "none",
         started_no_run: started_no_run?(assigns.page),
@@ -440,13 +467,34 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         {gettext("This stage has no outputs.")}
       </p>
       <ul :if={@shown != [] and not @no_outputs_yet} id={"#{@id}-outputs"} class="flex flex-col gap-1">
-        <li :for={output <- @shown} id={"#{@id}-output-#{output.key}"}>
-          <span>{version_words(output.type, output.name, output.version)}</span>
-          · <span id={"#{@id}-check-#{output.key}"}>{check_words(output)}</span>
+        <li :for={output <- @shown} id={"#{@id}-output-#{frame_key(output)}"}>
+          <.link
+            :if={@version_path && output[:version_id]}
+            id={"#{@id}-version-#{frame_key(output)}"}
+            navigate={@version_path.(output.version_id)}
+            class="text-accent"
+          >
+            {version_words(output.type, output.name, output.version)}
+          </.link>
+          <span :if={!(@version_path && output[:version_id])}>
+            {version_words(output.type, output.name, output.version)}
+          </span>
+          · <span id={"#{@id}-check-#{frame_key(output)}"}>{check_words(output)}</span>
           <.approval_mark
-            id={"#{@id}-mark-#{output.key}"}
+            id={"#{@id}-mark-#{frame_key(output)}"}
             mark={@marks[{output.type, output.name}]}
           />
+        </li>
+      </ul>
+      <ul :if={@others != []} id={"#{@id}-recorded"} class="flex flex-col gap-1">
+        <li :for={other <- @others} id={"#{@id}-recorded-#{frame_key(other)}"}>
+          <.link
+            :if={@version_path}
+            navigate={@version_path.(other.version.public_id)}
+            class="text-accent"
+            phx-no-format
+          >{version_words(other.type, other.version.number)}<%= if other.name != "main" do %> · {other.name}<% end %></.link>
+          <span :if={!@version_path} phx-no-format>{version_words(other.type, other.version.number)}<%= if other.name != "main" do %> · {other.name}<% end %></span>
         </li>
       </ul>
       <.needs
@@ -544,20 +592,14 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   defp shown_outputs(%{outputs: outputs}), do: Enum.reject(outputs, &(&1.type == "questions"))
 
-  # An output's rows on the gate card: one for the newest version of each of its names
-  # (`names`), or one for the output where it has none, its version nil or `main`'s. A
-  # row's `key` is its type, with the name after it where the name is not `main`.
+  # An output's rows on the gate card: one for the version of each of its names that the
+  # gate shows (`names`), or one for the output where it has none, its version nil or
+  # `main`'s. A row's DOM ids take `frame_key/1` of its type and name.
   defp named_rows(%{names: [_ | _] = names} = output) do
-    for named <- names do
-      key = if named.name == "main", do: output.type, else: "#{output.type}-#{named.name}"
-
-      output
-      |> Map.merge(Map.take(named, [:name, :version, :version_id]))
-      |> Map.put(:key, key)
-    end
+    for named <- names, do: Map.merge(output, Map.take(named, [:name, :version, :version_id]))
   end
 
-  defp named_rows(output), do: [output |> Map.put(:name, "main") |> Map.put(:key, output.type)]
+  defp named_rows(output), do: [Map.put(output, :name, "main")]
 
   # The gate card's rows at a stage with a `verification` output: the films and pictures
   # (`ApiaryWeb.WorkItemLive.VerifyTab.media/0`) together, in the place of the first, in
@@ -1211,6 +1253,16 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     for %{type: type, version: number} when is_integer(number) and type != "questions" <- outputs,
         do: version_words(type, number)
   end
+
+  @doc """
+  frame_key/1 is an output frame's part of its DOM ids: the artifact's type, then, where
+  the name is not `main`, `--`, the name and `--`, such as `spec` or
+  `test-features--other--`. A type or a name has no `--` (`Apiary.Artifacts.Type.name?/1`),
+  so no frame's key, with or without an id's suffix, equals another named frame's key.
+  """
+  @spec frame_key(map) :: String.t()
+  def frame_key(%{type: type, name: name}) when name != "main", do: "#{type}--#{name}--"
+  def frame_key(%{type: type}), do: type
 
   @doc "Artifact types in a sentence: \"acceptance criteria and mockup\"."
   def outputs_words(types), do: types |> Enum.map(&type_words/1) |> words_list()

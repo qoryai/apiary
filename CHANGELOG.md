@@ -281,12 +281,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   expected result and the file name. No film starts by itself, and the next scenario does
   not start when a film ends. A film or pictures that no scenario has show no queue, and
   a set of pictures that no scenario has stays a stack of pictures.
-- On that tab, every frame is open, the other outputs' frames, such as Demo evidence and
-  Explainer, show the version and the artifact rows only, and a row names the artifact
-  as the gate card does, such as “demo video scenario-1 v1”. The gate card lists the
+- On that tab, every output frame is open, the other outputs' frames, such as Demo
+  evidence and Explainer, show the version and the artifact rows only, and a row names
+  the artifact as the gate card does, such as “demo video scenario-1 v1”. The gate card lists the
   films and pictures together, in scenario order.
-- An output frame on a stage's tab lists the artifact row of each name of its type,
-  `main` first, and an output with only other names has a frame too.
+- On that tab, an output frame lists the artifact row of each name of its type, `main`
+  first, and an output with only other names has a frame too.
 - A run's page shows a withdrawal as “Withdrew demo script scenario-2 (version 3)” in
   place of “Pushed”, and a version page's History shows it in place of “Version 3”,
   with the artifact in the plain form of the gate card (the type with spaces, then the
@@ -323,10 +323,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the id of the escalation, `gate_decisions.escalation_id`; `notes` lists the escalation and
   leaves that decision out). The entries stay until the left stage's gate
   passes again (an approval of the stage, by a person or automatic) or a later move goes
-  to a stage after it, and are scoped to the take in. No approval lists these versions, and
-  the page's missing inputs, the stage's checks and the other entries of `inputs` stay as
-  they were. A `move` decision keeps the stage it moved to and when the work item last
-  entered the stage it left (`gate_decisions.to_stage_id`, `left_stage_entered_at`).
+  to a stage after it, and are scoped to the take in. No approval lists these versions,
+  unless a person made one: that is a change. The page's missing inputs, the stage's checks
+  and the other entries of `inputs` stay as they were. A `move` decision keeps the stage it
+  moved to and when the work item last entered the stage it left
+  (`gate_decisions.to_stage_id`, `left_stage_entered_at`).
 - A run reports the commits it pushed with `POST /v1/runs/<run_id>/pushed-commits`, a body
   of `{"repositories": [{"system", "path", "commit"}]}` with 1 to 64 repositories and a
   full 40 or 64 character commit id each. Qory Apiary keeps them in the order it recorded
@@ -378,6 +379,36 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   refuses a value that is not such an id. A run can change the criterion of an open
   question. While a question stays answered, its criterion stays as it was, set or absent.
 <!-- feature: workflow_model -->
+- A run of a later stage, or a person by upload, can store a new version of an approved
+  output, and every later run reads that version in place of the approved one. A run's
+  `POST artifacts` takes an optional `decision`: the `id` of the person's note that asked
+  for the version, also on a withdrawal. In `notes` of `GET work-item`, a request for
+  changes and a move have an `id` `gd_…`, and an escalation an `id` `es_…`; an answer and
+  a check have `id` null and cannot be a `decision`. A `decision` that is not one of these
+  ids on the run's work item is `422` `unknown_decision`. The next approval by a person at
+  a gate lists the new version; a gate `none` lists no version that has a `decision`. Once
+  a person's approval lists it, it is the approved version for every later run, also after
+  a move back to a stage at or before that approval; the gate of that stage then shows and
+  approves it, in `outputs` of `GET work-item` and on the stage's tab of the work item
+  page. An approval at a gate records a version of each name of each output type, and
+  the gate card lists one row for each name. The tab of a stage with no
+  `verification` output has a frame for every version that an approval at its gate
+  records: one for each name of a type, one that only a person uploaded, one of an
+  earlier take in, and a change. A frame of an artifact not named `main` has the name
+  after the type in its heading. A person's version has the caption "Version <n> · <the
+  member's short name>". Once the work item has left a stage that a person approved, the
+  stage's tab shows a frame for each version that approval recorded. The tab of a stage
+  with a `verification` output keeps the frames of the Verify tab, which show only the
+  versions that the take in's runs wrote. A person's version of the type in
+  `submit.type` is not a change: no approval lists it, the gate card leaves it out of
+  its outputs, its Exists check and its approval marks, and runs read the run's version.
+  The tab has no frame or Submissions row for it, as only a run's submit step writes a
+  submission. The gate card's draft line reads only a run's submission, whatever the
+  process version's `submit.type` is. In a stage that started no run, the input frames
+  follow the output frames, folded. On the stage card, each output's version at the gate
+  links to that version's page, and the gate also links every further version that an
+  approval would record. In `GET artifacts`, each version has `decision` and
+  `decision_at`, the time of that note.
 - Explore's gate lists the tracks it offers above Approve, each with its description, in the
   gate's order, under "Track to run after you approve". The track that the stage's runs
   proposed is selected and has the badge "Proposed by <stage>" and, where the run gave a
@@ -2960,6 +2991,18 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   changes no row. Adding the column rewrites no row; a workspace has a value after the
   next read of its harness. Rolling back drops the column and makes each `write-no-push`
   run `read`.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- `gate_decisions`, `escalations` and `artifact_versions` (20261117140000 and
+  20261117140100): a column `public_id` on `gate_decisions` (`gd_…`) and on `escalations`
+  (`es_…`), unique, with a check of its shape, and a nullable column
+  `artifact_versions.decision_id`, the id of the note that asked for a version, with a
+  check of its shape. The default of `public_id` is a function that makes a new id, so
+  adding the column sets an id on every stored decision and escalation and rewrites both
+  tables under a lock that blocks reads and writes. `decision_id` is nullable, so adding it
+  rewrites no row; the first migration adds its check without a scan, and the second
+  validates it with a scan that does not block writes. Rolling back drops the three
+  columns, with the decision of every version.
 <!-- /feature -->
 <!-- feature: managed_organisations -->
 - `workspace_operators` (20261115120000), a table of the operator of a workspace: at

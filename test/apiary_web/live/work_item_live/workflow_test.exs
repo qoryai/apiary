@@ -2623,11 +2623,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert has_element?(
                view,
-               "#work-item-stage-gate-output-demo-video-scenario-2",
+               "#work-item-stage-gate-output-demo-video--scenario-2--",
                "demo video scenario-2 v1"
              )
 
-      assert has_element?(view, "#work-item-stage-gate-check-demo-video-scenario-10", "Passed")
+      assert has_element?(view, "#work-item-stage-gate-check-demo-video--scenario-10--", "Passed")
 
       ids =
         view
@@ -2639,8 +2639,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert ids == [
                "work-item-stage-gate-output-demo-video",
-               "work-item-stage-gate-output-demo-video-scenario-2",
-               "work-item-stage-gate-output-demo-video-scenario-10"
+               "work-item-stage-gate-output-demo-video--scenario-2--",
+               "work-item-stage-gate-output-demo-video--scenario-10--"
              ]
 
       view |> element("#work-item-stage-gate-ask-changes") |> render_click()
@@ -2660,7 +2660,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "the submission's draft, linked, above the outputs", %{conn: conn, scope: scope} do
       work_item = at_build(scope, :at_gate)
-      push!({:person, scope}, work_item, "submission", @build)
+      push!({:run, build_run!(work_item)}, work_item, "submission", @build)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-stage-gate-draft-0", "Submission:")
@@ -2735,7 +2735,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "the submission is read once, not again on each refresh", %{conn: conn, scope: scope} do
       work_item = at_build(scope, :at_gate)
-      submission = push!({:person, scope}, work_item, "submission", @build)
+      submission = push!({:run, build_run!(work_item)}, work_item, "submission", @build)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert %{"repositories" => [_repository]} =

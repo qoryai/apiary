@@ -98,7 +98,7 @@ defmodule ApiaryWeb.WorkItemLive.View do
   end
 
   @doc false
-  # shown_output/3 is `read`, a stage's output as `Apiary.WorkItems.ExploreView.output/3`
+  # shown_output/3 is `read`, a stage's output as `Apiary.WorkItems.ExploreView.output/4`
   # reads it, with its Markdown rendered as a proposal's is (`shown/2`), for work item
   # `number`; nil for nil.
   @spec shown_output(Scope.t(), pos_integer, map | nil) :: map | nil
