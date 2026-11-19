@@ -133,13 +133,17 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   defp proposal_only, do: &push_output!(&1, &2, understood_result())
 
   # A work item at Explore whose run pushed its proposal and passed, with the stage
-  # escalated `check_failed`: Explore also requires a mockup, which no run pushed.
-  defp mockup_missing!(scope) do
+  # escalated `check_failed`: Explore also requires an explainer, which no run pushed.
+  defp explainer_missing!(scope) do
     document =
       Map.update!(Processes.current(scope.workspace).document, "stages", fn stages ->
         Enum.map(stages, fn
           %{"id" => @explore} = stage ->
-            Map.update!(stage, "outputs", &(&1 ++ [%{"type" => "mockup", "required" => true}]))
+            Map.update!(
+              stage,
+              "outputs",
+              &(&1 ++ [%{"type" => "explainer", "required" => true}])
+            )
 
           stage ->
             stage
@@ -149,6 +153,52 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     save!(scope, document)
     work_item = scope |> taken_in_fixture() |> end_run!(understood_result())
     assert %Escalation{cause: :check_failed} = escalation(work_item)
+    work_item
+  end
+
+  # Runs another round of the escalated Explore of `work_item`, whose run pushes the
+  # explainer: Explore reaches its gate.
+  defp explainer_written!(scope, work_item) do
+    {:ok, work_item} =
+      Stages.resolve_escalation(scope, work_item, :another_round, nil, expect_stage: @explore)
+
+    work_item =
+      end_run!(work_item, fn run, _registered ->
+        {:ok, _version} =
+          Artifacts.push(
+            {:run, run},
+            Repo.get!(WorkItem, run.work_item_id),
+            "explainer",
+            [
+              sample("explainer")
+            ],
+            stage_id: @explore
+          )
+      end)
+
+    assert %WorkItem{stage_id: @explore, stage_state: :at_gate} = work_item
+    work_item
+  end
+
+  # A work item whose Explore was confirmed, with Shape's run of shape-a-ticket queued:
+  # Shape has `outputs`.
+  defp shaping!(scope, outputs) do
+    document =
+      Map.update!(Processes.current(scope.workspace).document, "stages", fn stages ->
+        Enum.map(stages, fn
+          %{"id" => @shape} = stage ->
+            %{stage | "sequence" => [%{"workflow" => "shape-a-ticket"}], "outputs" => outputs}
+
+          stage ->
+            stage
+        end)
+      end)
+
+    save!(scope, document)
+    work_item = explore_gate_fixture(scope)
+    {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
+    work_item = Repo.get!(WorkItem, work_item.id)
+    assert %WorkItem{stage_id: @shape, stage_state: :running} = work_item
     work_item
   end
 
@@ -2901,12 +2951,60 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-stage-gate-approve")
     end
 
-    test "a stage with a workflow keeps Approve beside the line", %{conn: conn, scope: scope} do
-      work_item = at_build(scope, :at_gate)
+    test "a stage with a workflow: the line, no Approve, and a stale Approve's notice", %{
+      conn: conn,
+      scope: scope
+    } do
+      # Shape runs shape-a-ticket with no output, and its run passes: Shape is at its gate.
+      document =
+        Map.update!(Processes.current(scope.workspace).document, "stages", fn stages ->
+          Enum.map(stages, fn
+            %{"id" => @shape} = stage ->
+              %{stage | "sequence" => [%{"workflow" => "shape-a-ticket"}], "outputs" => []}
+
+            stage ->
+              stage
+          end)
+        end)
+
+      save!(scope, document)
+      work_item = explore_gate_fixture(scope)
+      {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
+      work_item = end_run!(Repo.get!(WorkItem, work_item.id), passed())
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+
+      # A version whose Shape requires acceptance criteria; the work item keeps its gate.
+      required =
+        Map.update!(document, "stages", fn stages ->
+          Enum.map(stages, fn
+            %{"id" => @shape} = stage ->
+              %{stage | "outputs" => [%{"type" => "acceptance-criteria", "required" => true}]}
+
+            stage ->
+              stage
+          end)
+        end)
+
+      {:ok, _work_item} = Processes.assign(scope, work_item, save!(scope, required))
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-stage-gate-line", "Build needs")
-      assert has_element?(view, "#work-item-stage-gate-approve")
+      assert has_element?(view, "#work-item-stage-gate-line", "Shape needs acceptance criteria")
+      refute has_element?(view, "#work-item-stage-gate-approve")
+
+      render_hook(view, "stage_approve", %{
+        "number" => "#{work_item.number}",
+        "seen" => @shape,
+        "note" => ""
+      })
+
+      assert decisions(work_item, :approve) |> Enum.filter(&(&1.stage_id == @shape)) == []
+
+      assert has_element?(
+               view,
+               "#work-item-stage-notice",
+               "Run another round to write acceptance criteria, or move this stage back. " <>
+                 "Approve needs them."
+             )
     end
 
     test "at a gate none: the line, and no Approve", %{
@@ -4358,7 +4456,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
             close: "#work-item-stage-escalation-close"
           ] do
         work_item = at_build(scope, :escalated, round: 3)
+        # Build's required outputs, so the card offers Accept as it is.
         stored!(work_item, "explainer", @build)
+        stored!(work_item, "demo-video", @build)
         escalate!(work_item, :escalate, "Blocked")
         {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
@@ -4513,11 +4613,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute row =~ "passed"
     end
 
-    test "an escalation beside a proposal: no Confirm for any reader, until Accept as it is", %{
-      conn: conn,
-      scope: scope
-    } do
-      work_item = mockup_missing!(scope)
+    test "an escalation beside a proposal: no Confirm for any reader, until a round writes the output",
+         %{conn: conn, scope: scope} do
+      work_item = explainer_missing!(scope)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       for {:ok, view, _html} <- [
@@ -4529,32 +4627,27 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         refute render(view) =~ "You approve next"
       end
 
-      assert has_element?(view, "#work-item-stage-escalation-accept")
+      # The run stored no explainer, which Explore requires: no Accept as it is.
+      refute has_element?(view, "#work-item-stage-escalation-accept")
 
-      view
-      |> form("#work-item-stage-escalation-form", %{"note" => ""})
-      |> render_submit(%{"how" => "accept"})
-
-      assert %WorkItem{stage_state: :at_gate} = Repo.get!(WorkItem, work_item.id)
+      explainer_written!(scope, work_item)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
       assert render(view) =~ "You approve next"
 
       view |> element("[phx-click=confirm]") |> render_click()
       assert %WorkItem{stage_id: @shape} = Repo.get!(WorkItem, work_item.id)
     end
 
-    test "the Thread beside an escalation has no next confirmer, until Accept as it is", %{
-      conn: conn,
-      scope: scope
-    } do
-      work_item = mockup_missing!(scope)
+    test "the Thread beside an escalation has no next confirmer, until a round writes the output",
+         %{conn: conn, scope: scope} do
+      work_item = explainer_missing!(scope)
       thread = page(scope, work_item.number) <> "/thread"
 
       {:ok, _view, html} = live(conn, thread)
       assert html =~ "Explore wrote a proposal"
       refute html =~ "You approve next"
 
-      {:ok, _work_item} =
-        Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore)
+      explainer_written!(scope, work_item)
 
       {:ok, _view, html} = live(conn, thread)
       assert html =~ "You approve next"
@@ -4762,6 +4855,78 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       end
     end
 
+    test "a run that stored no acceptance criteria: the point, no Accept as it is, and a sent accept is refused",
+         %{conn: conn, scope: scope} do
+      work_item = shaping!(scope, [%{"type" => "acceptance-criteria", "required" => true}])
+      work_item = end_run!(work_item, passed())
+      assert %Escalation{cause: :check_failed} = escalation(work_item)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert line(view, "#work-item-needs-point-1") ==
+               "Run another round: the run stored no acceptance criteria."
+
+      refute has_element?(view, "#work-item-stage-escalation-accept")
+      assert has_element?(view, "#work-item-stage-escalation-another")
+      assert has_element?(view, "#work-item-stage-escalation-move")
+      assert has_element?(view, "#work-item-stage-escalation-close")
+
+      render_hook(view, "stage_resolve", %{
+        "number" => "#{work_item.number}",
+        "seen" => @shape,
+        "how" => "accept",
+        "note" => ""
+      })
+
+      assert %Escalation{resolution: nil} = escalation(work_item)
+
+      assert %WorkItem{stage_id: @shape, stage_state: :escalated} =
+               Repo.get!(WorkItem, work_item.id)
+    end
+
+    test "an optional output missing: Accept as it is, and Approve at the gate", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item =
+        shaping!(scope, [
+          %{"type" => "acceptance-criteria", "required" => true},
+          %{"type" => "explainer", "required" => false}
+        ])
+
+      # The run pushes the criteria, then exits failed: the stage escalates run_stopped.
+      work_item =
+        end_run!(
+          work_item,
+          fn run, _registered ->
+            {:ok, _version} =
+              Artifacts.push(
+                {:run, run},
+                Repo.get!(WorkItem, run.work_item_id),
+                "acceptance-criteria",
+                [sample("acceptance-criteria")],
+                stage_id: @shape
+              )
+          end,
+          %{exit_state: "failed", outcome_state: "failed"}
+        )
+
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert has_element?(view, "#work-item-stage-escalation-accept")
+
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => ""})
+      |> render_submit(%{"how" => "accept"})
+
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} =
+               Repo.get!(WorkItem, work_item.id)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      view |> form("#work-item-stage-gate-approve") |> render_submit()
+      confirm_spend(view)
+      assert %WorkItem{stage_id: @build} = Repo.get!(WorkItem, work_item.id)
+    end
+
     test "the round limit at Explore's last run: Run another round queues one more run", %{
       conn: conn,
       scope: scope
@@ -4870,6 +5035,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       {:ok, _version} =
         Artifacts.push({:run, escalated}, work_item, "explainer", [sample("explainer")],
+          stage_id: @build
+        )
+
+      # Build's other required output, so the Standard card offers Accept as it is.
+      {:ok, _version} =
+        Artifacts.push({:run, escalated}, work_item, "demo-video", [sample("demo-video")],
           stage_id: @build
         )
 
@@ -7773,8 +7944,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "Accept as it is: the dialog where the next workflow starts; none where the gate follows",
          %{conn: conn, scope: scope} do
+      # Build's required outputs are stored, so the card offers Accept as it is.
       at_gate = at_build(scope, :escalated, round: 3)
       stored!(at_gate, "explainer", @build)
+      stored!(at_gate, "demo-video", @build)
       escalate!(at_gate, :escalate, "Blocked")
       {:ok, view, _html} = live(conn, page(scope, at_gate.number))
 
@@ -7792,6 +7965,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id), set: [stage_entry: 0])
 
       stored!(work_item, "explainer", @build)
+      stored!(work_item, "demo-video", @build)
       escalate!(work_item, :escalate, "Blocked")
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       before = spend_runs(work_item)
@@ -8079,6 +8253,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         Repo.update_all(from(w in WorkItem, where: w.id == ^accept.id), set: [stage_entry: 0])
 
       stored!(accept, "explainer", @build)
+      stored!(accept, "demo-video", @build)
       escalate!(accept, :escalate, "Blocked")
       {:ok, view, _html} = live(conn, page(scope, accept.number))
       before = spend_runs(accept)

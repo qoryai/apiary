@@ -11,13 +11,17 @@ defmodule Apiary.Stages.Points do
   # run's point has `fix`, the stop cause's fix line, where the cause has one, and the
   # point of a return limit has `fix` with the count of returns. The text of a
   # `round_limit` point with open findings is its sentence followed by the text of each
-  # finding, up to the verdict's 20 points, so it is longer than one sentence.
+  # finding, up to the verdict's 20 points, so it is longer than one sentence. A point of
+  # a failed check opens with its action, "Run another round:", and has `action_in_text`
+  # set to true, so the page adds no action sentence after it.
   @moduledoc false
 
   use Gettext, backend: ApiaryWeb.Gettext
 
+  alias Apiary.Artifacts.Type
+
   @typedoc "A point of an escalation."
-  @type t :: %{required(String.t()) => String.t()}
+  @type t :: %{required(String.t()) => String.t() | true}
 
   # The words that open a stop cause and are written in lower case after "The run
   # stopped:", as in "The run stopped: a read-only run needs a wall".
@@ -82,16 +86,19 @@ defmodule Apiary.Stages.Points do
         limit: rounds
       )
 
-  # check_failed/1 is one point for each output type whose Exists check failed.
+  # check_failed/1 is one point for each output type whose Exists check failed, with the
+  # type's words (`Apiary.Artifacts.Type.words/1`): "Run another round: the run stored no
+  # acceptance criteria." for `acceptance-criteria`.
   @doc false
   @spec check_failed([String.t()]) :: [t]
   def check_failed(types) do
     for type <- types do
-      run_again(
+      text =
         default(fn ->
-          gettext("No %{type} was stored in this stage.", type: type)
+          gettext("Run another round: the run stored no %{type}.", type: Type.words(type))
         end)
-      )
+
+      text |> run_again() |> Map.put("action_in_text", true)
     end
   end
 

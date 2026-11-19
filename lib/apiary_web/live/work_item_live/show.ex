@@ -1631,6 +1631,12 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     )
   end
 
+  def refused({:outputs_not_written, types}, _flow) do
+    gettext("Run another round to write %{outputs}, or move this stage back. Approve needs them.",
+      outputs: StageComponents.outputs_words(types)
+    )
+  end
+
   # A switch names the gate that recorded the work item's track, not the stage it is in.
   def refused({:track_not_offered, track, gate}, _flow) do
     gettext("Choose a track that the gate of %{stage} offers. It does not offer %{track}.",

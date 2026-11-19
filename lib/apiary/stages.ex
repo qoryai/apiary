@@ -108,8 +108,11 @@ defmodule Apiary.Stages do
   # the person as `resolved_by`, and the trail the entry `escalation_another_round`; a run
   # again from the gate, the entry `another_round`.
   #
-  # A stage with no workflow waits at its gate while a required output is missing
-  # (`missing_outputs/1`); `approve/4` returns `{:error, {:outputs_missing, types}}`.
+  # A stage waits at its gate while a required output is missing (`missing_outputs/1`);
+  # `approve/4` returns `{:error, {:outputs_missing, types}}` for a stage with no
+  # workflow, and `{:error, {:outputs_not_written, types}}` for a stage that runs one.
+  # Accept as it is is refused with `:invalid` while one is missing
+  # (`resolve_escalation/5`).
   #
   # ## What is told
   #
@@ -168,6 +171,7 @@ defmodule Apiary.Stages do
           | :not_live
           | :stage_changed
           | {:outputs_missing, [String.t()]}
+          | {:outputs_not_written, [String.t()]}
           | {:track_not_offered, String.t()}
           | {:track_not_offered, String.t(), String.t()}
           | {:already_on, String.t()}
@@ -1531,9 +1535,11 @@ defmodule Apiary.Stages do
   # approve/3 approves the gate of the work item's stage, with the scope's person's
   # `note`: the decision covers the newest version of each output made in the stage, and
   # the work item enters the next stage, or its stage is done after the last. At Explore's
-  # gate it confirms today's proposal first (`Apiary.WorkItems.Moves`). The gate of a stage
-  # with no workflow is refused while a required output is missing,
-  # `{:error, {:outputs_missing, types}}` (`missing_outputs/1`).
+  # gate it confirms today's proposal first (`Apiary.WorkItems.Moves`). The gate of any
+  # stage is refused while a required output is missing (`missing_outputs/1`):
+  # `{:error, {:outputs_missing, types}}` for a stage with no workflow, whose people make
+  # its outputs, and `{:error, {:outputs_not_written, types}}` for a stage whose runs did
+  # not write them.
   #
   # The decision records a track (`chosen_track/3`): the `track` of `opts` where the gate
   # offers it, else `{:error, {:track_not_offered, track}}`; with none, the track the stage's
@@ -1648,6 +1654,8 @@ defmodule Apiary.Stages do
   # switch it to another track of the gate that recorded its track (`{:switch, track}`,
   # `switch_tracks/1`), or close it. A work item that is offered a switch (`switch_tracks/1`
   # is not empty) is offered no accept and no move back: both are refused with `:invalid`.
+  # An accept is refused with `:invalid` too while a required output of the stage is
+  # missing (`missing_outputs/1`).
   @doc false
   @spec resolve_escalation(Scope.t(), WorkItem.t(), resolution, String.t() | nil, expect) ::
           {:ok, WorkItem.t()} | {:error, refusal}
@@ -1657,6 +1665,7 @@ defmodule Apiary.Stages do
            {:ok, work_item, version, stage} <- hold(scope, work_item, opts),
            %Escalation{} = escalation <- escalation!(work_item, version, stage),
            :ok <- switch_only(work_item, version, stage, resolution),
+           :ok <- accept_outputs(work_item, version, stage, resolution),
            {:ok, work_item} <-
              resolve(scope, work_item, version, stage, escalation, resolution, note),
            {:ok, _entry} <-
@@ -1743,6 +1752,17 @@ defmodule Apiary.Stages do
   end
 
   defp switch_only(_work_item, _version, _stage, _resolution), do: :ok
+
+  # An accept passes the stage as it is, so it needs every required output, as an
+  # approval does (`outputs_exist/3`).
+  defp accept_outputs(work_item, version, stage, :accept) do
+    case outputs_exist(work_item, version, stage) do
+      :ok -> :ok
+      {:error, _missing} -> {:error, :invalid}
+    end
+  end
+
+  defp accept_outputs(_work_item, _version, _stage, _resolution), do: :ok
 
   # A move of a person (`move/5`) resolves the open escalation as a move back, so it is
   # refused where the escalation is offered a switch, as that resolution is.
@@ -1945,6 +1965,14 @@ defmodule Apiary.Stages do
   defp would_start(work_item, version, stage, {:noted, act}),
     do: would_start(work_item, version, stage, act)
 
+  # Accept as it is is refused while a required output is missing, so it starts nothing.
+  defp would_start(work_item, version, stage, :accept) do
+    case outputs_exist(work_item, version, stage) do
+      :ok -> resolved_starts(work_item, version, stage, :accept, & &1)
+      {:error, _missing} -> :none
+    end
+  end
+
   defp would_start(work_item, version, stage, act)
        when act in [:accept, :another_round] or
               (is_tuple(act) and elem(act, 0) in [:move, :switch]),
@@ -2115,7 +2143,7 @@ defmodule Apiary.Stages do
   # the version of each name of its type that the gate shows, which a person's approval
   # records (`gate_names/4`). `missing_outputs` is the
   # required output types whose Exists check fails (`missing_outputs/1`); while it has
-  # one, the gate of a stage with no workflow is not approvable. `loop` is whether the
+  # one, the gate of the stage is not approvable. `loop` is whether the
   # work item is in a loop of its stage: `rounds` is that loop's limit, or, past the last
   # loop, the limit of the loop it left, which a later entry's runs do not count by.
   # `escalation` is the open escalation with its `points` (`shown_points/5`), also while
@@ -2153,9 +2181,7 @@ defmodule Apiary.Stages do
         gate: %{
           kind: get_in(stage, ["gate", "kind"]) || "person",
           approvers: Approvers.listed(stage),
-          approvable?:
-            state == :at_gate and Approvers.listed?(scope, stage) and
-              not (Runner.people?(stage) and missing != []),
+          approvable?: state == :at_gate and Approvers.listed?(scope, stage) and missing == [],
           approvals: approvals(work_item, stage, artifacts)
         }
       }
@@ -4661,14 +4687,18 @@ defmodule Apiary.Stages do
 
   defp missing(outputs), do: for(%{required: true, check: :missing, type: t} <- outputs, do: t)
 
-  # A stage with no workflow is approved only once every required output exists (§ 4).
+  # A stage is approved, or accepted as it is, only once every required output exists.
+  # The refusal says whether people make the outputs (a stage with no workflow, § 4) or
+  # the stage's runs do.
   defp outputs_exist(work_item, version, stage) do
-    with true <- Runner.people?(stage),
-         [_one | _more] = types <-
-           missing(outputs(work_item, version, stage, Artifacts.list(work_item))) do
-      {:error, {:outputs_missing, types}}
-    else
-      _none -> :ok
+    case missing(outputs(work_item, version, stage, Artifacts.list(work_item))) do
+      [] ->
+        :ok
+
+      types ->
+        if Runner.people?(stage),
+          do: {:error, {:outputs_missing, types}},
+          else: {:error, {:outputs_not_written, types}}
     end
   end
 

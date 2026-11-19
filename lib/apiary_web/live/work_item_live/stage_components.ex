@@ -646,8 +646,9 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   # The escalation in the rail: one line, "Waits for you: N points", which links to the
   # block "What the run needs from you" (`needs_block/1`), the run it came from, and Accept as
-  # it is (only with a result), Move back and Close; where the page offers a switch
-  # (`page.switch`, one track a button, "Switch to <track>"), only the switches and Close. Their form has the note field and Run
+  # it is (only with a result and no required output missing), Move back and Close; where
+  # the page offers a switch (`page.switch`, one track a button, "Switch to <track>"), only
+  # the switches and Close. Their form has the note field and Run
   # another round in the block, which name it in their `form` attribute, so the note goes
   # with every action.
   defp escalation_card(assigns) do
@@ -658,7 +659,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         assigns.page.escalation ||
           %{
             cause: :escalate,
-            result: true,
+            result: Map.get(assigns.page, :missing_outputs, []) == [],
             points: [],
             run: nil,
             harness_path: nil,
@@ -773,7 +774,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   The block "What the run needs from you": the points of the stage's open escalation, one
   numbered sentence each, followed by the sentence of its action: "Answer question N.",
   with "question N" linked to the question on the Questions tab, or "Run another
-  round.", or the point's fix line in its place. While the stage is escalated, a reader who
+  round.", or the point's fix line in its place. A point whose text opens with its action
+  (`in_text`) has no sentence after it. While the stage is escalated, a reader who
   may decide finds the note field and Run another round under the points; they belong to
   the form of the escalation card in the rail (`stage_card/1`). While the stage waits for
   answers, the answers run the next round, so the block has no form.
@@ -910,7 +912,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   # "Answer question N.", with "question N" linked to its question; a `run_again` point
   # adds "Run another round.", or its fix line, escaped, in its place: a run's or a stop
   # cause's. In a fix line, the words "the set-up step Harness" link to that step when
-  # `harness_path` is set (`gap_line/1`); only a run stopped at that step sets it.
+  # `harness_path` is set (`gap_line/1`); only a run stopped at that step sets it. A point
+  # whose text opens with its action (`in_text`, a failed check's) adds nothing.
   defp point(%{point: %{action: :answer, number: n}, href: href} = assigns)
        when is_integer(n) and is_binary(href) do
     # The sentence is split at a marker, so that the link keeps its place in any locale.
@@ -932,6 +935,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   defp point(%{point: %{action: :answer}} = assigns) do
     ~H"""
     {@point.text} {gettext("Answer the question.")}
+    """
+  end
+
+  defp point(%{point: %{in_text: true}} = assigns) do
+    ~H"""
+    {@point.text}
     """
   end
 
@@ -1205,8 +1214,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   @doc false
   # type_words/1 is an artifact type in a sentence: its name with spaces for hyphens,
-  # "acceptance criteria" for `acceptance-criteria`.
-  def type_words(type) when is_binary(type), do: String.replace(type, "-", " ")
+  # "acceptance criteria" for `acceptance-criteria` (`Apiary.Artifacts.Type.words/1`).
+  def type_words(type) when is_binary(type), do: Apiary.Artifacts.Type.words(type)
   def type_words(type), do: to_string(type)
 
   defp version_words(type, nil), do: type_words(type)

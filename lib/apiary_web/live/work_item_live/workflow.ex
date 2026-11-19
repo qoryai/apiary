@@ -151,7 +151,10 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       notes: Enum.map(Stages.notes(row), &note(&1, all)),
       inputs: Enum.map(get(status, :inputs) || [], &input/1),
       outputs: outputs,
-      escalation: scope |> escalation(get(status, :escalation), runs, outputs) |> entry(stage),
+      escalation:
+        scope
+        |> escalation(get(status, :escalation), runs, outputs, get(status, :missing_outputs))
+        |> entry(stage),
       approvers: approvers(stage),
       # The gate's approvers from `Apiary.Stages.status/2`: `:members`, or account ids.
       gate_approvers: get(get(status, :gate) || %{}, :approvers) || :members,
@@ -499,9 +502,11 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp named_output(named),
     do: %{name: get(named, :name), version: get(named, :number), version_id: get(named, :id)}
 
-  defp escalation(_scope, nil, _runs, _outputs), do: nil
+  defp escalation(_scope, nil, _runs, _outputs, _missing), do: nil
 
-  defp escalation(scope, escalation, runs, outputs) do
+  # `missing` is the required output types whose Exists check fails
+  # (`Apiary.Stages.missing_outputs/1`): with any, the stage has no result to accept.
+  defp escalation(scope, escalation, runs, outputs, missing) do
     cause = get(escalation, :cause)
     cause = if is_atom(cause) and not is_nil(cause), do: Atom.to_string(cause), else: cause
     cause = Map.get(@causes, cause, :escalate)
@@ -510,7 +515,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
     %{
       cause: cause,
-      result: result?(cause, outputs, get(escalation, :no_verdict) == true, run),
+      result:
+        List.wrap(missing) == [] and
+          result?(cause, outputs, get(escalation, :no_verdict) == true, run),
       points: points(get(escalation, :points)),
       round: get(escalation, :round),
       run: run,
@@ -544,7 +551,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   # An escalation's points as the block "What the run needs from you" shows them: each
   # with its text, its action (`:answer` or `:run_again`) and, for `:answer`, the id of
-  # its question. A point without text is left out.
+  # its question; a `:run_again` point with `in_text` true where its text opens with its
+  # action (`Apiary.Stages.Points.check_failed/1`). A point without text is left out.
   defp points(points) when is_list(points) do
     for %{} = point <- points, text = get(point, :text), is_binary(text) and text != "" do
       case get(point, :action) do
@@ -552,17 +560,23 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
           %{text: text, action: :answer, question: get(point, :question)}
 
         _run_again ->
-          %{text: text, action: :run_again, question: nil, fix: get(point, :fix)}
+          %{
+            text: text,
+            action: :run_again,
+            question: nil,
+            fix: get(point, :fix),
+            in_text: get(point, :action_in_text) == true
+          }
       end
     end
   end
 
   defp points(_none), do: []
 
-  # Whether the stage has a result to accept as it is: a version of one of its outputs; for
-  # a stage with no outputs, a run that did not stop before its verdict; or a run of the
-  # stage that ended with no verdict (`no_verdict`, `Apiary.Stages.status/2`) where no
-  # output is required. The run of an escalation the migration placed has no stage, so the
+  # Whether the stage has a result to accept as it is, where no required output is missing
+  # (`escalation/5`): a version of one of its outputs; for a stage with no outputs, a run
+  # that did not stop before its verdict; or a run of the stage that ended with no verdict
+  # (`no_verdict`, `Apiary.Stages.status/2`) where no output is required. The run of an escalation the migration placed has no stage, so the
   # page lists it nowhere (`Apiary.Stages.runs/1`) and that clause does not apply to it.
   defp result?(:run_stopped, outputs, true, %{}),
     do: Enum.any?(outputs, & &1.version_id) or not Enum.any?(outputs, & &1.required)
@@ -804,7 +818,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp checked({:request_changes, _note, _id}, %{confirm_gate: true}),
     do: {:error, :confirm_gate}
 
-  # Accept as it is only where the stage has a result: the page offers it nowhere else.
+  # Accept as it is only where the stage has a result and no required output is missing:
+  # the page offers it nowhere else.
   defp checked({:resolve, :accept, _note}, %{escalation: %{result: false}}),
     do: {:error, :invalid}
 

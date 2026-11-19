@@ -36,6 +36,15 @@ defmodule Apiary.Stages.RunnerTest do
 
   defp again(text), do: %{"text" => text, "action" => "run_again"}
 
+  # The point of a failed Exists check, with the output type's words
+  # (`Apiary.Stages.Points.check_failed/1`).
+  defp stored_no(words),
+    do: %{
+      "text" => "Run another round: the run stored no #{words}.",
+      "action" => "run_again",
+      "action_in_text" => true
+    }
+
   defp answer(text, question), do: %{"text" => text, "action" => "answer", "question" => question}
 
   describe "entering" do
@@ -119,7 +128,7 @@ defmodule Apiary.Stages.RunnerTest do
                state: :escalated,
                position: pos(1, nil, 1),
                actions: [
-                 {:escalate, :check_failed, [again("No proposal was stored in this stage.")]}
+                 {:escalate, :check_failed, [stored_no("proposal")]}
                ]
              }
 
@@ -132,8 +141,8 @@ defmodule Apiary.Stages.RunnerTest do
                })
 
       assert points == [
-               again("No proposal was stored in this stage."),
-               again("No submission was stored in this stage.")
+               stored_no("proposal"),
+               stored_no("submission")
              ]
     end
   end
@@ -550,8 +559,8 @@ defmodule Apiary.Stages.RunnerTest do
                {:escalate, :round_limit,
                 [
                   again("3 of 3 rounds ran."),
-                  again("No demo-video was stored in this stage."),
-                  again("No submission was stored in this stage.")
+                  stored_no("demo video"),
+                  stored_no("submission")
                 ]}
              ]
     end

@@ -14203,11 +14203,6 @@ msgstr ""
 msgid "No %{items} yet"
 msgstr ""
 
-#: lib/apiary/stages/points.ex
-#, elixir-autogen, elixir-format
-msgid "No %{type} was stored in this stage."
-msgstr ""
-
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "No %{type}: %{workflow} did not run."
@@ -18618,9 +18613,19 @@ msgctxt "plain"
 msgid "Run another round to apply your change."
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Run another round to write %{outputs}, or move this stage back. Approve needs them."
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Run another round."
+msgstr ""
+
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
+msgid "Run another round: the run stored no %{type}."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex

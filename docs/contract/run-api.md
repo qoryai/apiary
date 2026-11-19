@@ -734,8 +734,8 @@ next round. Returns `201` with the version, as `POST artifacts` does.
 A run of a workflow entry outside a loop must push a verdict. Make `qory run verdict
 passed` the last step of the workflow, on a first run and on a rerun. A run that ends with
 no verdict and no open question stops the stage: a member sees "The run stopped before its
-verdict." with **Run another round** and, where an output has a version or no output is
-required, **Accept as it is**. `changes-requested` outside a loop goes on to the next entry,
+verdict." with **Run another round** and, where every required output has a version,
+**Accept as it is**. `changes-requested` outside a loop goes on to the next entry,
 as `passed` does. In a loop, a run with no verdict runs the next workflow of the ring. A test
 work item's run needs no verdict. Nor does a run of Explore whose take in has a proposal, or
 that left open questions: Explore's result is its proposal or its questions. A run of

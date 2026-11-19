@@ -1869,6 +1869,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- A stage passes only with every required output. **Accept as it is** shows, and works,
+  only where every required output of the stage has a version, and the gate of every stage
+  shows no **Approve**, and takes no approval, while a required output is missing. Before,
+  a member could accept a stage whose run stored no acceptance criteria, and only the gate
+  of a stage with no workflow checked its outputs. The point of a missing output reads
+  "Run another round: the run stored no acceptance criteria.", with the output type's
+  words; before, it read "No acceptance-criteria was stored in this stage. Run another
+  round." An optional output never stops either action.
 <!-- feature: workflow_model -->
 - `acceptance-criteria` and `verification` are structured types: a version is one JSON
   file that matches `acceptance-criteria.schema.json` or `verification.schema.json`, and

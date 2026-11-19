@@ -55,10 +55,18 @@ defmodule Apiary.Stages.PointsTest do
            ]
   end
 
-  test "failed checks are one point for each output type" do
-    assert Points.check_failed(["spec", "mockup"]) == [
-             %{"text" => "No spec was stored in this stage.", "action" => "run_again"},
-             %{"text" => "No mockup was stored in this stage.", "action" => "run_again"}
+  test "failed checks are one point for each output type, with the type's words" do
+    assert Points.check_failed(["spec", "acceptance-criteria"]) == [
+             %{
+               "text" => "Run another round: the run stored no spec.",
+               "action" => "run_again",
+               "action_in_text" => true
+             },
+             %{
+               "text" => "Run another round: the run stored no acceptance criteria.",
+               "action" => "run_again",
+               "action_in_text" => true
+             }
            ]
   end
 
