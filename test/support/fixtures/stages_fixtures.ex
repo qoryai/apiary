@@ -135,6 +135,40 @@ defmodule Apiary.StagesFixtures do
   end
 
   @doc """
+  A version of `type` with `files`, pushed by the newest run of the queue of the work item
+  at the stage `opts[:stage_id]` (else the work item's stage), for a test that needs a
+  version where no run of that stage is live. A run that ended is set back to handed over
+  for the push and to ended after it, so the work item has no other run. No step of the
+  stage runner follows. The `{:ok, version}` or the refusal of `Apiary.Artifacts.push/5`.
+  """
+  def run_version(%WorkItem{} = work_item, type, files, opts \\ []) do
+    work_item = Repo.get!(WorkItem, work_item.id)
+    run = newest_run(work_item) || raise "#{work_item.public_id} has no run of the queue"
+    opts = Keyword.put_new(opts, :stage_id, work_item.stage_id)
+
+    # A run of the queue has an end cause and a result outcome only once it ended.
+    set = fn changes ->
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id), set: changes)
+    end
+
+    if run.state == :ended,
+      do: set.(state: :handed_over, end_cause: nil, result_outcome: nil)
+
+    try do
+      Apiary.Artifacts.push({:run, run}, work_item, type, files, opts)
+    after
+      if run.state == :ended,
+        do: set.(state: :ended, end_cause: run.end_cause, result_outcome: run.result_outcome)
+    end
+  end
+
+  @doc "`run_version/4`, returning the version, raising on a refusal."
+  def run_version!(%WorkItem{} = work_item, type, files, opts \\ []) do
+    {:ok, version} = run_version(work_item, type, files, opts)
+    version
+  end
+
+  @doc """
   Ends the newest run of the work item by its exit, with `result` what the run pushed
   during the run, before it ended (`Apiary.WorkItemsFixtures.push_result!/3`, nil for
   nothing, or a function of the run of the queue and the registered run that pushes it), and the

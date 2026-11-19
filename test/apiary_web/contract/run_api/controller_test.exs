@@ -1021,11 +1021,6 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       assert registered_id == registered.id
 
-      {:ok, _person} =
-        Apiary.Artifacts.push({:person, ctx.scope}, ctx.work_item, "explainer", [
-          file("notes.md", "text/markdown", "y")
-        ])
-
       {:ok, _cancelled} = Apiary.Runs.cancel(ctx.scope, Repo.get!(Run, ctx.run.id))
 
       body = json_response(read(ctx, "/artifacts"), 200)
@@ -1036,10 +1031,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                %{"number" => 1, "cancelled" => true}
              ] = by_type["screenshot"]
 
-      assert [
-               %{"number" => 2, "writer" => %{"kind" => "person"}, "cancelled" => false},
-               %{"number" => 1, "writer" => %{"run_id" => run_id}, "cancelled" => false}
-             ] = by_type["explainer"]
+      assert [%{"number" => 1, "writer" => %{"run_id" => run_id}, "cancelled" => false}] =
+               by_type["explainer"]
 
       assert run_id == other.run_id
     end

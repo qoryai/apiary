@@ -484,6 +484,25 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       )
   end
 
+  # A version of `type` that the work item's newest run stores at `stage_id`, as a fixture
+  # where that stage has no live run (`Apiary.StagesFixtures.run_version!/4`).
+  defp stored!(work_item, type, stage_id) do
+    work_item |> with_run!() |> run_version!(type, [sample(type)], stage_id: stage_id)
+  end
+
+  # The work item, with a run of Build that ended where the work item has no run, as a
+  # work item that `place!/4` put at Build has none.
+  defp with_run!(work_item) do
+    if is_nil(newest_run(work_item)) do
+      work_item
+      |> build_run!()
+      |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended)
+      |> Repo.update!()
+    end
+
+    work_item
+  end
+
   defp push!(actor, work_item, type, stage_id) do
     {:ok, version} = Artifacts.push(actor, work_item, type, [sample(type)], stage_id: stage_id)
     version
@@ -2556,7 +2575,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "an earlier stage's artifact changed after approval", %{conn: conn, scope: scope} do
       work_item = shape_gate_fixture(scope)
-      push!({:person, scope}, work_item, "proposal", @explore)
+      stored!(work_item, "proposal", @explore)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-marks-proposal-main-m", "Approved v1; v2 is newer")
@@ -2601,13 +2620,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       [main, ten, two] =
         for name <- ["main", "scenario-10", "scenario-2"] do
-          {:ok, version} =
-            Artifacts.push({:person, scope}, work_item, "demo-video", [sample("demo-video")],
-              stage_id: @build,
-              name: name
-            )
-
-          version
+          run_version!(with_run!(work_item), "demo-video", [sample("demo-video")],
+            stage_id: @build,
+            name: name
+          )
         end
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
@@ -2682,8 +2698,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
           ]
         })
 
-      {:ok, _version} =
-        Artifacts.push({:person, scope}, work_item, "submission", [submission], stage_id: @build)
+      run_version!(with_run!(work_item), "submission", [submission], stage_id: @build)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
@@ -2765,8 +2780,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "each output with its version and its check", %{conn: conn, scope: scope} do
       work_item = at_build(scope, :at_gate)
-      push!({:person, scope}, work_item, "demo-video", @build)
-      video = push!({:person, scope}, work_item, "demo-video", @build)
+      stored!(work_item, "demo-video", @build)
+      video = stored!(work_item, "demo-video", @build)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-stage-gate-output-demo-video", "demo video v2")
@@ -3735,9 +3750,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     } do
       listed = member_fixture(scope, :member)
       work_item = at_build(scope, :at_gate, approvers: %{"members" => [listed.user.id]})
-      push!({:person, scope}, work_item, "demo-video", @build)
-      push!({:person, scope}, work_item, "explainer", @build)
-      push!({:person, scope}, work_item, "submission", @build)
+      stored!(work_item, "demo-video", @build)
+      stored!(work_item, "explainer", @build)
+      stored!(work_item, "submission", @build)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       refute has_element?(view, "#work-item-stage-gate-approve")
@@ -4349,7 +4364,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
             close: "#work-item-stage-escalation-close"
           ] do
         work_item = at_build(scope, :escalated, round: 3)
-        push!({:person, scope}, work_item, "explainer", @build)
+        stored!(work_item, "explainer", @build)
         escalate!(work_item, :escalate, "Blocked")
         {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
@@ -5677,7 +5692,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item = at_build(scope, :escalated, round: 3)
 
       for type <- ["demo-video", "explainer"],
-          do: push!({:person, scope}, work_item, type, @build)
+          do: stored!(work_item, type, @build)
 
       escalate!(work_item, :check_failed, nil)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
@@ -6207,7 +6222,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       refute has_element?(view, "#work-item-marks-proposal-main-m")
 
-      push!({:person, scope}, work_item, "proposal", @explore)
+      stored!(work_item, "proposal", @explore)
       assert has_element?(view, "#work-item-marks-proposal-main-m", "Approved v1; v2 is newer")
 
       {1, _} =
@@ -6382,7 +6397,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       scope: scope
     } do
       {work_item, run} = shape_with_run!(scope)
-      push!({:person, scope}, work_item, "acceptance-criteria", @shape)
+      stored!(work_item, "acceptance-criteria", @shape)
       href = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
 
       for tab <- @foot_tabs do
@@ -6464,12 +6479,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         assert summary(view) == ["2 runs"]
       end
 
-      push!({:person, scope}, work_item, "explainer", @shape)
+      stored!(work_item, "explainer", @shape)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       assert summary(view) == ["2 runs", "explainer v1"]
 
-      push!({:person, scope}, work_item, "acceptance-criteria", @shape)
-      push!({:person, scope}, work_item, "explainer", @shape)
+      stored!(work_item, "acceptance-criteria", @shape)
+      stored!(work_item, "explainer", @shape)
 
       for tab <- @foot_tabs do
         {:ok, view, _html} = live(conn, page(scope, work_item.number) <> tab)
@@ -6770,7 +6785,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-artifact-list", "explainer v1")
 
       # `{:artifact_pushed, …}`
-      push!({:person, scope}, work_item, "explainer", @shape)
+      stored!(work_item, "explainer", @shape)
       assert summary(view) == ["2 runs", "explainer v1"]
       assert has_element?(view, "#work-item-artifact-list", "explainer v1")
 
@@ -7573,7 +7588,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     test "Request changes: the dialog where the stage runs again; none at a stage with no workflow",
          %{conn: conn, scope: scope} do
       work_item = at_build(scope, :at_gate)
-      push!({:person, scope}, work_item, "explainer", @build)
+      stored!(work_item, "explainer", @build)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       before = spend_runs(work_item)
 
@@ -7642,7 +7657,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       # With the criteria, Build starts implement.
       runs = shape_gate_fixture(scope)
-      push!({:person, scope}, runs, "acceptance-criteria", @shape)
+      stored!(runs, "acceptance-criteria", @shape)
       {:ok, view, _html} = live(conn, page(scope, runs.number))
       before = spend_runs(runs)
       view |> form("#work-item-stage-gate-approve") |> render_submit()
@@ -7759,7 +7774,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     test "Accept as it is: the dialog where the next workflow starts; none where the gate follows",
          %{conn: conn, scope: scope} do
       at_gate = at_build(scope, :escalated, round: 3)
-      push!({:person, scope}, at_gate, "explainer", @build)
+      stored!(at_gate, "explainer", @build)
       escalate!(at_gate, :escalate, "Blocked")
       {:ok, view, _html} = live(conn, page(scope, at_gate.number))
 
@@ -7776,7 +7791,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id), set: [stage_entry: 0])
 
-      push!({:person, scope}, work_item, "explainer", @build)
+      stored!(work_item, "explainer", @build)
       escalate!(work_item, :escalate, "Blocked")
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       before = spend_runs(work_item)
@@ -7869,7 +7884,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       )
 
       approve = shape_gate_fixture(scope)
-      push!({:person, scope}, approve, "acceptance-criteria", @shape)
+      stored!(approve, "acceptance-criteria", @shape)
       {:ok, view, _html} = live(conn, page(scope, approve.number))
       before = spend_runs(approve)
       view |> form("#work-item-stage-gate-approve") |> render_submit()
@@ -8024,7 +8039,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       )
 
       approve = shape_gate_fixture(scope)
-      push!({:person, scope}, approve, "acceptance-criteria", @shape)
+      stored!(approve, "acceptance-criteria", @shape)
       {:ok, view, _html} = live(conn, page(scope, approve.number))
       before = spend_runs(approve)
 
@@ -8039,7 +8054,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       # Request changes at Build's gate.
       changes = at_build(scope, :at_gate)
-      push!({:person, scope}, changes, "explainer", @build)
+      stored!(changes, "explainer", @build)
       {:ok, view, _html} = live(conn, page(scope, changes.number))
       view |> element("#work-item-stage-gate-ask-changes") |> render_click()
       before = spend_runs(changes)
@@ -8063,7 +8078,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^accept.id), set: [stage_entry: 0])
 
-      push!({:person, scope}, accept, "explainer", @build)
+      stored!(accept, "explainer", @build)
       escalate!(accept, :escalate, "Blocked")
       {:ok, view, _html} = live(conn, page(scope, accept.number))
       before = spend_runs(accept)
@@ -8099,7 +8114,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     test "Request changes with the note cleared in the dialog: no change, and the note's error under the page's form",
          %{conn: conn, scope: scope} do
       work_item = at_build(scope, :at_gate)
-      push!({:person, scope}, work_item, "explainer", @build)
+      stored!(work_item, "explainer", @build)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       before = spend_runs(work_item)
 

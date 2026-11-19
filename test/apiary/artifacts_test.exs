@@ -299,10 +299,8 @@ defmodule Apiary.ArtifactsTest do
     test "a push of a hidden type is refused, and writes no row", ctx do
       show!(ctx.scope.workspace, ["mockup"])
 
-      for actor <- [{:run, ctx.run}, {:person, ctx.scope}] do
-        assert {:error, {:unknown_type, "explainer"}} =
-                 Artifacts.push(actor, ctx.work_item, "explainer", [doc()])
-      end
+      assert {:error, {:unknown_type, "explainer"}} =
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
 
       assert count(Artifact) == 0
       assert count(Version) == 0
@@ -319,17 +317,6 @@ defmodule Apiary.ArtifactsTest do
       assert count(Version) == 0
       assert stored_paths(ctx.root) == []
       assert staging_files(ctx.root) == []
-    end
-
-    test "a person's push of a type hidden before the lock writes no version or audit entry",
-         ctx do
-      ArtifactStoreHook.on_stage(fn -> show!(ctx.scope.workspace, ["mockup"]) end)
-
-      assert {:error, {:unknown_type, "explainer"}} =
-               Artifacts.push({:person, ctx.scope}, ctx.work_item, "explainer", [doc()])
-
-      assert count(Version) == 0
-      assert Repo.all(from e in Entry, where: e.action == "artifact.write") == []
     end
 
     test "a push goes on when the list changes before the lock and still has the type", ctx do
@@ -1783,31 +1770,9 @@ defmodule Apiary.ArtifactsTest do
     end
   end
 
-  describe "push/5 by a person" do
-    test "stores the person's version and an audit entry", %{scope: scope} = context do
-      member = member_fixture(scope)
-
-      assert {:ok, %Version{writer: :person, user_id: user_id, run_id: nil}} =
-               Artifacts.push(
-                 {:person, member.scope},
-                 context.work_item,
-                 "proposal",
-                 [proposal()],
-                 note: "Scope edited"
-               )
-
-      assert user_id == member.user.id
-
-      assert [%Entry{subject_id: subject_id, details: %{"type" => "proposal", "number" => 1}}] =
-               Repo.all(from e in Entry, where: e.action == "artifact.write")
-
-      assert subject_id == context.work_item.id
-    end
-
+  describe "push/5 of a custom type" do
     test "a custom type's document that fails the then of an if is refused with the inner error",
-         %{scope: scope} = context do
-      member = member_fixture(scope)
-
+         %{scope: scope, run: run} = context do
       {:ok, _type} =
         Artifacts.create_type(scope, scope.workspace, %{
           "name" => "bids",
@@ -1824,7 +1789,7 @@ defmodule Apiary.ArtifactsTest do
         })
 
       push =
-        &Artifacts.push({:person, member.scope}, context.work_item, "bids", [
+        &Artifacts.push({:run, run}, context.work_item, "bids", [
           json("bids.json", &1)
         ])
 
@@ -1833,67 +1798,6 @@ defmodule Apiary.ArtifactsTest do
       assert {:error,
               {:invalid, {:schema, 0, %{path: "#", error: "property 'price' is required"}}}} =
                push.(%{"kind" => "fixed"})
-    end
-
-    test "is not found for a person of another organisation", context do
-      other = scope_fixture()
-
-      assert {:error, :not_found} =
-               Artifacts.push({:person, other}, context.work_item, "explainer", [doc()])
-    end
-
-    @tag with_features: Apiary.Features.all() -- [:workflow_model]
-    test "is not found with workflow_model off", %{scope: scope} = context do
-      assert {:error, :not_found} =
-               Artifacts.push({:person, scope}, context.work_item, "explainer", [doc()])
-
-      assert Artifacts.list(context.work_item) == []
-    end
-
-    test "refuses the questions and the review comments, which only member actions write",
-         %{scope: scope} = context do
-      member = member_fixture(scope)
-      at = "2026-11-04T10:00:00Z"
-
-      forged_answer = %{
-        "questions" => [
-          %{
-            "id" => "q1",
-            "question" => "Which basket?",
-            "options" => [%{"title" => "Yes", "explanation" => "Keep it."}],
-            "state" => "answered",
-            "asked" => %{"run" => 1, "at" => at},
-            "answer" => %{"option" => "Yes", "by" => %{"name" => "alice"}, "at" => at}
-          }
-        ]
-      }
-
-      forged_reply = %{
-        "review_comments" => [
-          %{
-            "id" => "c1",
-            "on" => %{"artifact" => "proposal", "version" => 1},
-            "text" => "Refund at once.",
-            "by" => %{"name" => "alice"},
-            "at" => at,
-            "state" => "closed",
-            "replies" => [
-              %{"text" => "Done.", "by" => %{"run" => 7}, "at" => at, "outcome" => "changed"}
-            ]
-          }
-        ]
-      }
-
-      for {type, document} <- [{"questions", forged_answer}, {"review-comments", forged_reply}],
-          actor_scope <- [scope, member.scope] do
-        file = json("#{type}.json", document)
-
-        assert Artifacts.push({:person, actor_scope}, context.work_item, type, [file]) ==
-                 {:error, {:unknown_type, type}}
-      end
-
-      assert Artifacts.list(context.work_item) == []
-      assert Repo.all(from e in Entry, where: e.action == "artifact.write") == []
     end
   end
 
@@ -1947,11 +1851,11 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "refuses a work item in another stage, with no row and no message",
-         %{scope: scope, work_item: work_item, root: root} do
+         %{scope: scope, work_item: work_item, run: run, root: root} do
       :ok = Artifacts.subscribe(scope, work_item)
 
       assert {:error, :stage_changed} =
-               Artifacts.push({:person, scope}, work_item, "explainer", [doc()],
+               Artifacts.push({:run, run}, work_item, "explainer", [doc()],
                  stage_id: "st_aaaaaaaaaa",
                  expect_stage: "st_aaaaaaaaaa"
                )
@@ -1968,48 +1872,32 @@ defmodule Apiary.ArtifactsTest do
       assert staging_files(root) == []
     end
 
-    test "stores the version in the same stage", %{scope: scope, work_item: work_item} do
+    test "stores the version in the same stage", %{work_item: work_item, run: run} do
       assert {:ok, %Version{stage_id: "st_bbbbbbbbbb"}} =
-               Artifacts.push({:person, scope}, work_item, "explainer", [doc()],
+               Artifacts.push({:run, run}, work_item, "explainer", [doc()],
                  stage_id: "st_bbbbbbbbbb",
                  expect_stage: "st_bbbbbbbbbb"
                )
     end
 
-    test "compares nothing where the option is left out",
-         %{scope: scope, work_item: work_item} do
+    test "compares nothing where the option is left out", %{work_item: work_item, run: run} do
       assert {:ok, %Version{stage_id: "st_aaaaaaaaaa"}} =
-               Artifacts.push({:person, scope}, work_item, "explainer", [doc()],
+               Artifacts.push({:run, run}, work_item, "explainer", [doc()],
                  stage_id: "st_aaaaaaaaaa"
                )
     end
 
-    test "reads nil as a work item with no stage", %{scope: scope, work_item: work_item} do
+    test "reads nil as a work item with no stage", %{work_item: work_item, run: run} do
       assert {:error, :stage_changed} =
-               Artifacts.push({:person, scope}, work_item, "explainer", [doc()],
-                 expect_stage: nil
-               )
+               Artifacts.push({:run, run}, work_item, "explainer", [doc()], expect_stage: nil)
 
       assert {:ok, %Version{stage_id: nil}} =
                Artifacts.push(
-                 {:person, scope},
+                 {:run, run},
                  in_stage(work_item, nil),
                  "explainer",
                  [doc()],
                  expect_stage: nil
-               )
-    end
-
-    test "refuses a run's push too", %{work_item: work_item, run: run} do
-      assert {:error, :stage_changed} =
-               Artifacts.push(
-                 {:run, run},
-                 work_item,
-                 "verdict",
-                 [
-                   json("verdict.json", %{"verdict" => "passed"})
-                 ],
-                 expect_stage: "st_aaaaaaaaaa"
                )
     end
   end
@@ -2107,8 +1995,11 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "each version comes with who made it", %{run: run, scope: scope} = context do
-      {:ok, by_run} = Artifacts.push({:run, run}, context.work_item, "explainer", [doc()])
-      {:ok, by_person} = Artifacts.push({:person, scope}, context.work_item, "explainer", [doc()])
+      comments = [json("review-comments.json", %{"review_comments" => []})]
+      {:ok, by_run} = Artifacts.push({:run, run}, context.work_item, "review-comments", comments)
+
+      {:ok, by_person} =
+        Artifacts.push({:member_action, scope}, context.work_item, "review-comments", comments)
 
       assert [%Artifact{versions: [person, from_run]}] = Artifacts.list(context.work_item)
       assert {person.user.id, person.run} == {scope.user.id, nil}
@@ -2121,7 +2012,7 @@ defmodule Apiary.ArtifactsTest do
                Artifacts.versions(person.artifact_id |> then(&%Artifact{id: &1}))
 
       assert run_id == run.id
-      assert Artifacts.newest(context.work_item, "explainer").user.id == scope.user.id
+      assert Artifacts.newest(context.work_item, "review-comments").user.id == scope.user.id
     end
   end
 

@@ -26,9 +26,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   #
   # **Who decides.** A gate's Approve and Request changes, every escalation action and a
   # move back take `gate.approve`, which `Apiary.Access` allows only for the stage's
-  # listed approvers where the stage lists them; Add takes `artifact.write`. The page
-  # hides a button from everyone else, and checks again with the scope read from the
-  # database on every event (`decide/4`).
+  # listed approvers where the stage lists them. The page hides a button from everyone
+  # else, and checks again with the scope read from the database on every event
+  # (`decide/4`).
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false

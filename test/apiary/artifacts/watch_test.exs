@@ -202,23 +202,6 @@ defmodule Apiary.Artifacts.WatchTest do
     assert Feed.entries(forge) == []
   end
 
-  test "a person's version of a type the process's submit does not set adds no entry", ctx do
-    submits!(ctx, @submit)
-    forge = forge!(ctx)
-
-    {:ok, _type} =
-      Artifacts.create_type(ctx.scope, ctx.scope.workspace, %{
-        "name" => "findings",
-        "base_view" => "structured",
-        "json_schema" => %{"type" => "object"}
-      })
-
-    assert {:ok, %Version{writer: :person}} =
-             Artifacts.push({:person, ctx.scope}, ctx.work_item, "findings", submission())
-
-    assert Feed.entries(forge) == []
-  end
-
   test "a run whose process version has no submit adds no entry", ctx do
     submits!(ctx, nil)
     forge = forge!(ctx)
