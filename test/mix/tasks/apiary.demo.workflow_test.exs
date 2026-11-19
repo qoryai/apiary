@@ -147,7 +147,6 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       end
 
       dana = scope("dana@example.com")
-      max = scope("max@example.com")
 
       # Versions 1 to 3, the third current, and a trial: the first made with the workspace,
       # the others saved by Dana; each differs from the one before.
@@ -268,23 +267,23 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
                  select: r.reason
              ) == "workflow_not_in_harness"
 
-      # Max added acceptance criteria with a Mermaid diagram and a mockup in Shape.
+      # Shape's run made acceptance criteria with a Mermaid diagram and a mockup.
       added = items["Show delivery dates on the product page"]
       assert at.(added.title) == {"Shape", "at_gate"}
       shape_id = stage_id(v3, "Shape")
 
       for type <- ["acceptance-criteria", "mockup"] do
         version = Artifacts.newest(added, type)
-        assert to_string(version.writer) == "person"
-        assert version.user_id == max.user.id
+        assert to_string(version.writer) == "run"
         assert version.stage_id == shape_id
+        assert %DispatchRun{stage_id: ^shape_id} = Repo.get!(DispatchRun, version.run_id)
         assert Artifacts.exists?(added, shape_id, type)
       end
 
       assert Enum.map(Artifacts.list(added), & &1.type) |> Enum.sort() ==
                ["acceptance-criteria", "mockup", "proposal", "verdict"]
 
-      # Shape approved by Dana with Max's criteria: Build has its input and waits at its
+      # Shape approved by Dana with its run's criteria: Build has its input and waits at its
       # gate.
       approved = items["Remove the old promotion banner"]
       assert at.(approved.title) == {"Build", "at_gate"}
