@@ -15,7 +15,7 @@ defmodule Apiary.ModelKeys.Rejection do
   `unauthorized` entry of a later report puts the key back in the state
   (`Apiary.ModelKeys.reject/4`). A rename keeps the row. A key of a provider whose keys are
   sign-ins (`Apiary.ModelKeys.Login`) has the row only when no refresh can fix it
-  (`Apiary.ModelKeys.Login.rejectable?/2`), and a refresh that works deletes it.
+  (`Apiary.ModelKeys.Login.rejectable?/2`). A refresh never writes or deletes the row.
 
   The row is of the key's organisation: the database holds `organisation_id` to the
   value's.

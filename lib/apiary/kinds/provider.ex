@@ -33,11 +33,13 @@ defmodule Apiary.Kinds.Provider do
 
   # The most a run's `provider_api` takes of the paths of an API, so it stays within the
   # 8192 octets of `runs_provider_api_check` with the largest endpoint, auth, key prefixes
-  # and limit windows the contract allows: each path 1 to 256 characters, and all the paths
-  # of one API together at most 1536 characters (a character is at most 2 octets in the
-  # stored JSON text, and each path takes 4 more for its quotes, comma and space).
+  # and limit windows the contract allows. The stored text is UTF-8, so the bounds count
+  # octets, not characters (a character is up to 4): each path at most 256 octets, and the
+  # paths of one API together at most 3072 octets as the stored JSON text has them, each
+  # with its quotes and escapes (`Jason.encode!/1`, as the database writes them) and 2 more
+  # for its comma and space.
   @path_max 256
-  @paths_max 1_536
+  @paths_max 3_072
 
   @enforce_keys [:name, :title, :description]
   defstruct name: nil,
@@ -75,7 +77,9 @@ defmodule Apiary.Kinds.Provider do
   other than `model_provider`, when its `name` differs from the file's name without
   `.json`, when two of its APIs have the same `format`, when the URL endpoint of an API
   or the `default` of an address setting breaks the rule of `Apiary.Kinds.Endpoint`, or
-  when it has more than 200 models or a model title of more than 128 characters.
+  when it has more than 200 models or a model title of more than 128 characters, or when
+  the `paths` of an API take more than 256 octets each or 3,072 octets together (as the
+  stored JSON text has them, with quotes, escapes, comma and space).
   `Apiary.Kinds.Providers` calls it when the application is compiled, so a description
   that fails stops the compile.
   """
@@ -95,8 +99,8 @@ defmodule Apiary.Kinds.Provider do
 
           {[], [], [], refused} ->
             raise ArgumentError,
-                  "#{path} has paths past #{@path_max} characters each, or #{@paths_max} " <>
-                    "together for one API: " <> inspect(refused)
+                  "#{path} has paths past #{@path_max} octets each, or #{@paths_max} " <>
+                    "octets together for one API: " <> inspect(refused)
 
           {[], [], refused, _paths} ->
             raise ArgumentError,
@@ -177,12 +181,12 @@ defmodule Apiary.Kinds.Provider do
     count ++ for(%{"title" => t} <- models, String.length(t) > @title_max, do: {:title, t})
   end
 
-  # The APIs whose `paths` are too long, by `format`: a path past `@path_max` characters, or
+  # The APIs whose `paths` are too long, by `format`: a path past `@path_max` octets, or
   # all of one API's together past `@paths_max`.
   defp paths_refused(%__MODULE__{apis: apis}) do
     for %{"format" => format, "paths" => paths} <- apis,
-        Enum.any?(paths, &(String.length(&1) > @path_max)) or
-          paths |> Enum.map(&String.length/1) |> Enum.sum() > @paths_max,
+        Enum.any?(paths, &(byte_size(&1) > @path_max)) or
+          paths |> Enum.map(&(byte_size(Jason.encode!(&1)) + 2)) |> Enum.sum() > @paths_max,
         do: format
   end
 
