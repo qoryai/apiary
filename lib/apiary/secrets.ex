@@ -17,7 +17,10 @@ defmodule Apiary.Secrets do
   to seal a value to the gateway (a model key through `Apiary.ModelKeys.reveal_for_sealing/4`),
   and only that. A listing loads the
   values without their ciphertext. Nothing logs a value, and an audit entry names a
-  secret and a value id, never a value.
+  secret and a value id, never a value. A model provider's API key also has a **hint**,
+  the last 4 characters of a value of at least 12 characters, kept beside the ciphertext
+  so that a page and an audit entry can tell one key from another
+  (`Apiary.Secrets.Value.hint/1`, `Apiary.ModelKeys.Identity`).
 
   ## At rest
 

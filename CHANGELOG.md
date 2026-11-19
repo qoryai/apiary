@@ -1855,6 +1855,36 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Changed
 
 <!-- feature: factory, secrets -->
+- A model provider's key has no name that a person gives. **Add key** and **Edit key** have
+  no **Name** field, and Qory Apiary sets the key's value ID to `key-<n>` (one more than the
+  highest `key-<n>` of the provider's secret), which no page shows. A key shows as its
+  identity line: for an API key, the provider's name and the last 4 characters of the key,
+  “Northwind Claude · …9c2e”, or the provider's name alone when the key has fewer than 12
+  characters or was saved before this change; for an OpenAI sign-in, the provider's name and
+  the email of the ChatGPT account, “Northwind OpenAI · dana@example.com”, or, when the
+  sign-in has no email, the name and “account …” with the last 4 characters of the account
+  ID. The line shows on the provider's page, as the title of **Edit key** (“Edit key” stays
+  in the breadcrumb), in “%{identity} is added.” and “%{identity} is saved.”, on Workspace
+  settings and Organisation settings › Secrets and variables, in the Activity and audit
+  lines of a key, and in the four waiting lines of a run, where it links to the key's **Edit
+  key** page. The page of **Edit key** is at `…/keys/<row id>/edit`, with the key's row id,
+  and a value ID in that address is not found.
+- On a model provider's secret under **Secrets and variables**, a key's line shows the
+  identity line in place of the value ID and the mask. The secret's menu has no **Add
+  value**, and a key's menu has no **Rename value**. **Change value** and **Delete value**
+  of a key are at the key's row id. The search over the secrets matches a key's identity
+  line as the page shows it: the provider's name, the last 4 characters or the email find
+  it, and `key-1` does not. A secret of any other kind keeps its value IDs, **Add value**
+  and **Rename value**.
+- The waiting lines of a run for a model key read “Waiting for a model key: sign in to
+  ChatGPT again for %{identity}.”, “…refreshing the ChatGPT sign-in of %{identity}.”, “…the
+  server is restarting; the ChatGPT sign-in of %{identity} refreshes after it starts.” and
+  “…enter a new value for %{identity}.” The Activity line for a refresh that OpenAI
+  answered with no account ID reads “Sign in to ChatGPT again for %{identity}: Qory Apiary
+  could not refresh the sign-in, because OpenAI returned no account id (%{code}).” Entries
+  written before this change keep their text.
+<!-- /feature -->
+<!-- feature: factory, secrets -->
 - A run receives the variables of its workspace. When a claim registers a run, Qory
   Apiary resolves the variables of the organisation, the workspace, and the target (a
   repository, in a software workspace) as they are then, and sends them in the run
@@ -2848,6 +2878,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+<!-- feature: factory, secrets -->
+- `secret_values` (20261119090000): a nullable column `hint`, the last 4 characters of a
+  model provider's API key, written when the key has at least 12 characters. It changes no
+  row, and a key saved before this change has none until its value is saved again. Rolling
+  back drops the column.
+- `model_key_logins` (20261119090100): a nullable column `email`, the email of the ChatGPT
+  account, read from the sign-in's ID token when a person signs in. It changes no row, and a
+  sign-in made before this change has none until the person signs in again. Rolling back
+  drops the column.
+<!-- /feature -->
 <!-- feature: factory, secrets -->
 - `model_key_logins` (20261118140000): a new table with a row for each model key whose
   provider's API has `oauth_refresh`, by the value's row id, with the account, the time the

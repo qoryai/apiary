@@ -454,12 +454,19 @@ replaces the navigation it is in.
   Output tokens per minute, Spend limit and Limit; a window of another code shows its
   code. The page shows no key and no part of one. Every member reads it
   (`connection.read`); owners and admins (`provider.write`) have **Add key** in the
-  section's actions and **Edit** at the right of each row, its label "Edit key main", and
-  anyone else neither.
+  section's actions and **Edit** at the right of each row, its label "Edit key" and the
+  key's identity line, and anyone else neither. A key has no name that a person gives: a
+  row shows its identity line (`Apiary.ModelKeys.Identity`), the provider's name and, after
+  a middle dot, for an API key of at least 12 characters the last 4 characters of the key,
+  "Northwind Claude · …9c2e", for a sign-in the email of the account, or, where the
+  sign-in has none, "account …" and the last 4 characters of the account ID, and the
+  provider's name alone for any other key.
 - **Add key** (`…/model-providers/:provider_id/keys/new`) and **Edit key**
-  (`…/keys/:value_id/edit`), `ApiaryWeb.ProviderLive.Key`, are pages (A form is a page,
-  below), the breadcrumb ending with the provider's name and the act. The form has Name
-  ("Lowercase letters, digits, ., _ and -."); on Add key, Key, a password field that is
+  (`…/keys/:key_id/edit`, the row id of the key's value; a value ID is not found),
+  `ApiaryWeb.ProviderLive.Key`, are pages (A form is a page, below), the breadcrumb ending
+  with the provider's name and the act, and Edit key titled with the key's identity line.
+  The form has no Name: Qory Apiary sets the value ID `key-<n>` and no page shows it. On
+  Add key the form has Key, a password field that is
   empty after every save, with "Qory Apiary stores the key encrypted, and nobody can
   view it again."; on Edit key, New value, an optional password field that is empty
   after every save, with "Leave it empty to keep the value."; then Resets, Pause for and,
@@ -479,9 +486,8 @@ replaces the navigation it is in.
   time and the time zone, or leave all three empty.", "Enter a time from 1 minute to 7
   days." and "Enter a percentage from 1 to 99."
   The foot has Add key or Save beside Cancel. A save goes back to the provider's page
-  with "main is added." or "main is saved."; a name another key of the provider has
-  shows "Another key of Northwind Claude has this name." under Name, and a key past the
-  32nd "Northwind Claude has 32 keys, the most it can have. Delete a key to add
+  with "Northwind Claude · …9c2e is added." or "… is saved." with the key's identity
+  line, and a key past the 32nd "Northwind Claude has 32 keys, the most it can have. Delete a key to add
   another." under Key. Both pages remove the spaces, tabs and newlines around Key or New
   value before the save and keep the spaces inside; a Key of only spaces, tabs or
   newlines shows "can't be blank", as an empty Key does. New model provider and the
