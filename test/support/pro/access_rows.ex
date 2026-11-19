@@ -197,7 +197,7 @@ defmodule ApiaryPro.AccessRows do
       {:"work_item.comment_delete", yes: @owners},
       {:"process.edit", yes: @owners},
       {:"gate.approve", yes: @owners},
-      {:"artifact.write", yes: @owners},
+      {:"artifact.write", yes: []},
       {:"artifact_type.edit", yes: @owners},
       {:"target.set_further_repositories", yes: @owners},
       {:"target.rebuild_environment", yes: @owners},

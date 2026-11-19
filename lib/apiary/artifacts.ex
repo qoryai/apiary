@@ -64,10 +64,11 @@ defmodule Apiary.Artifacts do
   # `{:member_action, scope}`, a member's answer, review comment or reply, which only
   # `Apiary.WorkItems.Moves` passes, for a person who may `work_item.review_comment` the
   # work item for the review comments, and `work_item.answer` for any other type. A
-  # member action's push writes its entry in the audit trail (`artifact.write`). The
-  # questions and the review comments (`member_types/0`) take a person's version only as
-  # a member action: Moves writes them from the newest version, with the checks of each
-  # member action. A member action's push of any other type is `:forbidden`.
+  # member action's push writes its entry in the audit trail under the audit action
+  # `artifact.write`, which no role takes (`Apiary.Access`). The questions and the review
+  # comments (`member_types/0`) take a person's version only as a member action: Moves
+  # writes them from the newest version, with the checks of each member action. A member
+  # action's push of any other type is `:forbidden`.
   #
   # `files` is a list of `%{filename: name, content_type: text, path: path}` or
   # `%{filename: name, content_type: text, binary: bytes}`; `content_type` is read by
@@ -258,9 +259,10 @@ defmodule Apiary.Artifacts do
 
   require Logger
 
-  # The access actions of artifacts, of the feature `workflow_model` (`Apiary.Access`):
-  # where the feature is off or hidden from the person, `authorize/3` refuses them as
-  # `{:error, :not_found}`.
+  # The actions of artifacts, of the feature `workflow_model` (`Apiary.Access`):
+  # `artifact.write` is the audit action of a member action's version, which no role
+  # takes; where the feature is off or hidden from the person, `authorize/3` returns
+  # `{:error, :not_found}` for `artifact_type.edit`.
   @write :"artifact.write"
   @edit_types :"artifact_type.edit"
 
@@ -926,9 +928,9 @@ defmodule Apiary.Artifacts do
   end
 
   # A member action: Moves checked the member's action, under the work item's lock, before
-  # it pushes; `artifact.write` is not needed. The action asked is the one of the type: the
-  # review comments' for them, the answer's for the questions and any other type, which
-  # `actor_type/2` refuses.
+  # it pushes; `artifact.write` is only the audit action of its entry. The action asked is
+  # the one of the type: the review comments' for them, the answer's for the questions and
+  # any other type, which `actor_type/2` refuses.
   defp writer({:member_action, %Scope{user: %{id: user_id}} = scope}, work_item, type_name)
        when is_binary(user_id) do
     with :ok <- authorize(scope, member_action(type_name), work_item),

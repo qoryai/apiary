@@ -4,7 +4,8 @@ defmodule Apiary.Audit do
   Apiary holds. Every change leaves one entry (`Apiary.Audit.Entry`): who, which action, on what,
   when, from where, and the fields it changed as they were and as they are. A member's
   answer, comment or reply leaves two entries: the move's, `work_item.answer`, and
-  `artifact.write` for the artifact version it writes. A comment, a reply and a
+  `artifact.write`, an audit action that no role takes, for the artifact version it
+  writes. A comment, a reply and a
   send of the comments ask `work_item.review_comment` (`Apiary.Access`) and write
   the entry `work_item.answer`. The trail is not the record: the
   record is what runs did (their events, their log), the trail is what was done to Qory

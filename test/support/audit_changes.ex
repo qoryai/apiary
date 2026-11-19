@@ -1485,6 +1485,17 @@ defmodule Apiary.AuditChanges do
     {before, Apiary.Dispatches.report_machine_end(other, dispatch.public_id, %{state: :gone})}
   end
 
+  # No role takes `artifact.write`: a member action allows it. A person who was a member
+  # when the scope was loaded and is no longer, whose `work_item.review_comment` is
+  # refused.
+  def refuse(:"artifact.write", %{scope: scope} = ctx) do
+    %{scope: member, membership: membership} = member_fixture(scope)
+    work_item = prepare(:"artifact.write", ctx)
+    {:ok, _} = Organisations.remove_member(scope, membership.id)
+    before = entries()
+    {before, attempt(:"artifact.write", member, work_item)}
+  end
+
   # A member where the change is an owner's or an admin's; where every member may make it,
   # a person who was a member when the scope was loaded and is no longer.
   def refuse(action, ctx),
