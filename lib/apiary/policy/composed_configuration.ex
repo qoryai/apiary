@@ -52,11 +52,11 @@ defmodule Apiary.Policy.ComposedConfiguration do
   #   `Apiary.Runs.RunVariables.document/1`);
   # - with the `secrets` feature too, for a run its claim set a model provider for:
   #   `credentials`, an API credential for each of the run's model keys, in their order,
-  #   and `model_credential`, the start key's name, left out for a run whose first
-  #   session starts on the machine's key (`Apiary.Runs.ProviderCredential`); and, where the document has a
-  #   `security_policy`, the provider's hosts in its `egress.allow`, each added once after
-  #   the entries there, and each exact one (`Apiary.Policy.Grammar.exact_host?/1`) in its
-  #   `egress.allow_first`, with the workspace's entries, sorted, each once. The gateway
+  #   and `model_credential`, the start key's name (`Apiary.Runs.ProviderCredential`);
+  #   and, where the document has a `security_policy`, the provider's hosts in its
+  #   `egress.allow`, each added once after the entries there, and each exact one
+  #   (`Apiary.Policy.Grammar.exact_host?/1`) in its `egress.allow_first`, with the
+  #   workspace's entries, sorted, each once. The gateway
   #   allows a host of `allow_first` before it reads `deny`, so no entry of `egress.deny`,
   #   exact or `*.`, blocks such a host. More than 64 entries, the most `allow_first`
   #   takes, compose no document: the run is given no run configuration (`serve/7`), as
@@ -613,10 +613,7 @@ defmodule Apiary.Policy.ComposedConfiguration do
         else: []
       ) ++
         if(entries != [], do: [{"credentials", entries}], else: []) ++
-        if(credential && credential.name,
-          do: [{"model_credential", credential.name}],
-          else: []
-        ) ++
+        if(credential, do: [{"model_credential", credential.name}], else: []) ++
         if(stack_hosts != [], do: [{"stack_hosts", stack_hosts}], else: []) ++
         resume_member(Map.get(run_members, :resume)) ++
         if Map.get(run_members, :harness_hidden) == true,

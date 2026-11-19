@@ -526,8 +526,8 @@ defmodule Apiary.Runs.Run do
   run, with `session` the session that paused (`paused_session`), keeps the earliest end
   of a cooldown among the keys of these providers alone as `dispatch_runs.paused_until`
   of the run's run of the queue, and the run that continues it waits for them. A run
-  whose session 1 runs on the machine's key has no start key's provider, so session 1
-  runs on none. Reads the run's key rows, unless `model_keys` is loaded, and its
+  whose session 1 runs on the machine's local model provider credential has no start
+  key's provider, so session 1 runs on none. Reads the run's key rows, unless `model_keys` is loaded, and its
   sessions, unless given as `sessions`, as Apiary.Stages.run_sessions/1 reads them.
   """
   @spec session_provider_ids(t() | map(), pos_integer() | nil, list | nil) :: [Ecto.UUID.t()]

@@ -51,14 +51,13 @@ defmodule Apiary.Runs.ProviderCredential do
 
   @typedoc """
   A run's model keys: `name`, the start key's credential name, the run configuration's
-  `model_credential`, nil for a run whose first session starts on the machine's key;
-  `keys`, each key's credential `name`, row id (`secret_value_id`),
+  `model_credential`; `keys`, each key's credential `name`, row id (`secret_value_id`),
   `entry` as the run configuration writes it, the provider's row it was read from
   (`provider`) and the run's row of it (`row`), in order; the `hosts` the run reaches
   them on; and the rows of the keys' providers, each once, in the order of their keys.
   """
   @type t :: %{
-          name: String.t() | nil,
+          name: String.t(),
           keys: [
             %{
               name: String.t(),
@@ -254,8 +253,9 @@ defmodule Apiary.Runs.ProviderCredential do
 
     with {:ok, read} <- read do
       providers = Map.new(read, fn {provider, _hosts} -> {provider.id, provider} end)
-      # A run whose first session starts on the machine's key has no start key here.
-      start = Enum.find_value(rows, &(&1.start && &1.name))
+      # Every run with key rows has a start row: a claim stores keys only for a run whose
+      # first session has a start key.
+      %ModelKey{name: start} = Enum.find(rows, & &1.start)
 
       keys =
         for row <- rows do
