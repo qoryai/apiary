@@ -385,7 +385,9 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert {:cooldown, "Storefront keys", at} = Apiary.Runs.Waiting.reason(waiting)
       assert DateTime.compare(at, DateTime.truncate(until, :second)) == :eq
 
-      # A second claim passes the run by, still waiting for Storefront keys alone.
+      # The claim's filter leaves the run out while Storefront keys' key cools, so a
+      # second claim passes it by, still waiting for Storefront keys alone.
+      assert nil == Repo.one(Dispatches.waiting_query(ctx.key, true, Dispatches.now(), []))
       assert {:ok, :none} = walked_claim(ctx.key, Dispatches.now(), @body)
       assert Repo.get!(DispatchRun, queued.id).model_provider_ids == [storefront.id]
 

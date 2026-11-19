@@ -105,16 +105,16 @@ defmodule Apiary.Processes do
   the lower of its `access` and the level its workflow declares in the workspace's
   harness (`shared_access/2`).
 
-  The run of such a stage takes model provider credentials of at most 6 model providers,
+  The run of such a stage takes the model provider credentials of at most 6 providers,
   one provider per session, and starts on the provider of its first workflow's model
   choice. Given the workspace's model choices (`validate/3`, `workspace_models/2`), a
   save also fails when the stage's workflows, with their fallbacks, use more than 6
   providers (`:too_many_providers`), when a workflow has no model choice and the runtime
   it then runs on cannot use a provider that the stage's runs can start on
-  (`:model_choice_missing`), or when a workflow's session would have no key in the run:
-  its provider has no model provider credential, or its runtime uses another API of a
-  provider that an earlier workflow uses (`:session_key_missing`), as `shared_models/3`
-  checks.
+  (`:model_choice_missing`), or when a workflow's session would have no model provider
+  credential in the run: its provider has no model provider credential, or its runtime
+  uses another API of a provider that an earlier workflow uses (`:session_key_missing`),
+  as `shared_models/3` checks.
 
   ## Export
 
@@ -531,8 +531,8 @@ defmodule Apiary.Processes do
   name: such a session joins the start key's group and cannot use the machine's local
   model provider credential. Else, where a run is given its providers' keys
   (Apiary.Runs.ProviderCredential.applies?/0), `{:error, {:session_key_missing, kind,
-  ...}}` for the first workflow whose session would have no key in the run
-  (`session_key_missing/3`):
+  ...}}` for the first workflow whose session would have no model provider credential in
+  the run (`session_key_missing/3`):
 
     * `{:session_key_missing, :machine, first}` where `first`, the first workflow, has
       no model choice (`:none`) and a later workflow's choice is on a provider: the run's
@@ -637,13 +637,13 @@ defmodule Apiary.Processes do
     end)
   end
 
-  # The first workflow whose session would have no key in the run: the first workflow
-  # where it has no model choice and a later workflow's choice is on a provider
-  # (`:machine`); else one after the first whose providers have no model key (`:no_key`),
-  # else one on the provider of an earlier workflow's choice with another API of it
-  # (`:other_api`), in workflow order. A provider
-  # that is gone, or whose description cannot be read, is no fault here: the claim ends
-  # such a run `provider_gone`. A runtime that is no longer in the catalogue, or that its
+  # The first workflow whose session would have no model provider credential in the run:
+  # the first workflow where it has no model choice and a later workflow's choice is on a
+  # provider (`:machine`); else one after the first whose providers have no model
+  # provider credential (`:no_key`), else one on the provider of an earlier workflow's
+  # choice with another API of it (`:other_api`), in workflow order. A provider that is
+  # gone, or whose description cannot be read, is no fault here: the claim ends such a
+  # run `provider_gone`. A runtime that is no longer in the catalogue, or that its
   # provider no longer serves, is none either: the claim gives such a session the run's
   # `run_settings`.
   defp session_key_missing([first | later] = workflows, choices, models) do

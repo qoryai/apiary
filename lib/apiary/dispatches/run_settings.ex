@@ -449,11 +449,12 @@ defmodule Apiary.Dispatches.RunSettings do
   # check ran out of time or crashed; `{:cooling, built, ids}` too where a later
   # session's provider has no key and the keys of each of its later steps are all in
   # cooldown, with the run's settings and those steps' providers' row ids, so the run
-  # waits for them (`cooling_steps/4`); `:unstable` where the choices changed while `hold/1` read them, `{:unchecked,
-  # provider}` where the check of the settings of `provider`, the chosen one, ran out of
-  # time or crashed (`Apiary.Connections.provider/1`), or `:unavailable` where the run
-  # settings take more than 64 KiB. Each provider's description is read once, for the
-  # resolution and the settings alike.
+  # waits for them (`cooling_steps/4`); `:unstable` where the choices changed while
+  # `hold/1` read them, `{:unchecked, provider}` where the check of the settings of
+  # `provider`, the chosen one, ran out of time or crashed
+  # (`Apiary.Connections.provider/1`), or `:unavailable` where the run settings take more
+  # than 64 KiB. Each provider's description is read once, for the resolution and the
+  # settings alike.
   @doc false
   @spec build(map | :unstable | nil, DateTime.t()) ::
           {:ok, built | nil}
