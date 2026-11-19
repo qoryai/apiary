@@ -673,7 +673,10 @@ defmodule ApiaryWeb.CoreComponents do
 
   attr :invalid, :boolean,
     default: false,
-    doc: "a select or choice with the red border of an error, where a line under it says why"
+    doc: """
+    with true, a select or a choice gets the red border of an error and `aria-invalid`;
+    other types ignore it. Pass the id of the line of why in `aria-describedby`.
+    """
 
   attr :checked, :boolean, doc: "the checked flag for checkbox inputs"
   attr :prompt, :string, default: nil, doc: "the prompt for select and choice inputs"

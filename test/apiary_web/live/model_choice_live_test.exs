@@ -1705,6 +1705,12 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
                "Anthropic API key works with no runtime in this version of Qory. Pick another provider."
              )
 
+      # At mount, Provider has the red border, and the line describes it.
+      assert has_element?(
+               lv,
+               ~s{button#model_choice_provider.q-pick-error[aria-invalid="true"][aria-describedby="model-provider-unfit"]}
+             )
+
       refute has_element?(lv, "#model-runtime")
 
       lv |> form("#model-form") |> render_submit()
@@ -1749,6 +1755,9 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
                "Add #{anthropic.name} again in Organisation settings › Model providers: its settings no longer fit this version of Qory Apiary."
              )
 
+      # The red border is only for a provider that works with no runtime.
+      refute has_element?(lv, "button#model_choice_provider.q-pick-error")
+      refute has_element?(lv, "button#model_choice_provider[aria-invalid]")
       refute has_element?(lv, "#model-changed-#{anthropic.public_id}")
 
       lv |> form("#model-form") |> render_submit()
@@ -1779,6 +1788,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
                "Add #{provider.name} again in Organisation settings › Model providers: its settings no longer fit this version of Qory Apiary."
              )
 
+      refute has_element?(lv, "button#model_choice_provider.q-pick-error")
       refute has_element?(lv, "#model-other_runtime")
       refute has_element?(lv, "#model-none")
       refute has_element?(lv, "#model-submit")
@@ -1922,6 +1932,38 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       choose_row_provider(lv, 0, team.public_id)
       refute has_element?(lv, "#model-fallback-0-line")
       refute has_element?(lv, "#model_choice_fallbacks_0_provider.select-error")
+      refute has_element?(lv, "#model_choice_fallbacks_0_provider[aria-invalid]")
+      refute has_element?(lv, "#model_choice_fallbacks_0_provider[aria-describedby]")
+    end
+
+    test "a stored row whose provider works with no runtime has the red border at mount",
+         ctx do
+      %{conn: conn, scope: scope, provider: anthropic} = ctx
+      openrouter = openrouter(scope)
+
+      {:ok, _choice} =
+        ModelChoicesFixtures.put_choice(scope, :workspace, %{
+          provider: openrouter.public_id,
+          tiers: openrouter_tiers(openrouter),
+          fallbacks: [fallback(anthropic)]
+        })
+
+      # The catalogue now has only a bearer runtime, which Anthropic does not serve.
+      _bearer = bearer_only()
+      {:ok, lv, _html} = live(conn, path(scope))
+
+      assert has_element?(
+               lv,
+               "#model-fallback-0-line",
+               "Anthropic API key works with no runtime in this version of Qory. Pick another provider."
+             )
+
+      assert has_element?(
+               lv,
+               ~s{select#model_choice_fallbacks_0_provider.select-error[aria-invalid="true"][aria-describedby="model-fallback-0-line"]}
+             )
+
+      refute has_element?(lv, "button#model_choice_provider.q-pick-error")
     end
 
     test "a stored row whose provider no longer applies to the workspace says so under its Provider",
@@ -1968,6 +2010,9 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
                "Add #{openrouter.name} again in Organisation settings › Model providers: its settings no longer fit this version of Qory Apiary."
              )
 
+      # The red border is only for a provider that works with no runtime.
+      refute has_element?(lv, "#model_choice_fallbacks_0_provider.select-error")
+      refute has_element?(lv, "#model_choice_fallbacks_0_provider[aria-invalid]")
       refute has_element?(lv, "#model-fallback-0-tiers")
     end
 

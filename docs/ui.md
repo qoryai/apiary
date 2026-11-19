@@ -500,27 +500,27 @@ replaces the navigation it is in.
   Provider, each model provider by its name, whose keys runs take. A provider that works
   with no runtime shows under Provider "<Provider> works with no runtime in this version
   of Qory. Pick another provider.", Provider has a red border, and Save writes nothing
-  while the line shows. The part
-  Fallbacks (`#model-fallbacks`) is under Provider, the tiers and Runtime: the line "When
-  every key of this provider is in cooldown, runs use these, in order, from the next
-  run.", then one row for each fallback, in order, from the second on with a rule above
-  it. A row is a group named by its place, "Fallback 2", with Provider, Model and effort
-  per tier (`ApiaryWeb.ModelTiers.tiers/1`, as the default models have it) and Runtime
-  (`ApiaryWeb.ModelTiers.runtime_part/1`, the runtimes the row's provider works with),
-  then Move up, Move down and Remove, each labelled with the place ("Move fallback 2
-  up"). A row's Provider lists every provider that applies to the workspace, also one that
-  works with no runtime, but the chosen provider and those of the other rows. A row whose
-  provider works with no runtime shows "<Provider> works with no runtime in this version
-  of Qory. Pick another provider." under its Provider, which has a red border, and Save
-  is disabled while the line shows. Add fallback adds a row of the first provider left that works with a runtime,
-  else of the first provider left. A new row, and a row whose provider changes, has no
-  models and starts on the chosen runtime where its provider works with it, else on the
-  first runtime that does; a change of a row's Runtime keeps its models, and an effort
-  that runtime does not accept goes back to "Not set". With no provider left, the part
-  shows "Add another model provider in Organisation settings › Model providers, then add
-  it here as a fallback.", the place a link. Save is enabled once every tier of the
-  default models and of each row has a model and each row's provider works with a runtime.
-  Save writes the rows with the choice, and an error shows under its row's field, such as
+  while the line shows. The part Fallbacks (`#model-fallbacks`) is under Provider, the
+  tiers and Runtime: the line "When every key of this provider is in cooldown, runs use
+  these, in order, from the next run.", then one row for each fallback, in order, from
+  the second on with a rule above it. A row is a group named by its place, "Fallback 2",
+  with Provider, Model and effort per tier (`ApiaryWeb.ModelTiers.tiers/1`, as the
+  default models have it) and Runtime (`ApiaryWeb.ModelTiers.runtime_part/1`, the
+  runtimes the row's provider works with), then Move up, Move down and Remove, each
+  labelled with the place ("Move fallback 2 up"). A row's Provider lists every provider
+  that applies to the workspace, also one that works with no runtime, but the chosen
+  provider and those of the other rows. A row whose provider works with no runtime shows
+  "<Provider> works with no runtime in this version of Qory. Pick another provider."
+  under its Provider, which has a red border, and Save is disabled while the line shows.
+  Add fallback adds a row of the first provider left that works with a runtime, else of
+  the first provider left. A new row, and a row whose provider changes, has no models
+  and starts on the chosen runtime where its provider works with it, else on the first
+  runtime that does; a change of a row's Runtime keeps its models, and an effort that
+  runtime does not accept goes back to "Not set". With no provider left, the part shows
+  "Add another model provider in Organisation settings › Model providers, then add it
+  here as a fallback.", the place a link. Save is enabled once every tier of the default
+  models and of each row has a model and each row's provider works with a runtime. Save
+  writes the rows with the choice, and an error shows under its row's field, such as
   "Choose another provider: Northwind Claude is chosen already." A save that sends no
   rows, as the set-up's Model step saves, keeps the rows but one of the chosen provider,
   which it drops. Where the set-up's save is refused for a kept row, the step shows one

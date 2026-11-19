@@ -1790,11 +1790,6 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - On **Workspace settings › Model**, **Provider** has a red border while the chosen
   provider works with no runtime, and a fallback's **Provider** while the fallback's
   provider does, as a workflow's **Provider** on **Workspace settings › Workflows** has.
-  The line under **Provider** reads “<Provider> works with no runtime in this version of
-  Qory. Pick another provider.” on both pages and on the set-up's **Model** step, as the
-  runtimes come from Forager's catalogue, not from Qory Apiary. The line of
-  **Fallbacks** reads “When every key of this provider is in cooldown, runs use these,
-  in order, from the next run.”
 - Only a run of Explore uses a model key. Such a run gets up to 6 keys of its model
   provider at its claim, each a separate credential of the run, named after the
   provider's public id: `con_…-1` to `con_…-6`. The run starts with a key with no known
