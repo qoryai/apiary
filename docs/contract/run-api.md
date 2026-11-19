@@ -925,9 +925,9 @@ the run's checks before the request's.
 8. A store that cannot read the run's newest verdict or questions is `503`
    `unavailable`.
 
-The step forms the inputs, so their `409` comes after the request's checks. The run then
-ends with the outcome `error`, as a claim ends a run it cannot form, and one of these
-causes:
+The step forms the inputs, so their `409` comes after the request's checks. When the
+step cannot form the inputs, the run ends as at a claim, with the outcome `error` and one
+of these causes:
 
 - `ticket_gone`: the ticket is no longer kept;
 - `inputs_invalid`: the inputs break the rules of Explore's input, or do not fit the
