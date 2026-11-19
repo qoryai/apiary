@@ -42,7 +42,7 @@ defmodule Apiary.Repo.Migrations.EndARunWhoseSharedStageModelsDoNotFit do
                  WHERE end_cause IN ('model_choice_missing', 'too_many_providers'))
          OR EXISTS (SELECT 1 FROM dispatches
                     WHERE end_cause IN ('model_choice_missing', 'too_many_providers')) THEN
-        RAISE EXCEPTION 'Delete the runs of the queue and dispatches ended model_choice_missing or too_many_providers, then roll back again: the causes before this migration do not include them'
+        RAISE EXCEPTION 'Delete the runs of the queue and dispatches ended model_choice_missing or too_many_providers, then roll back again: the causes before this migration do not include them.'
           USING ERRCODE = 'check_violation';
       END IF;
     END
