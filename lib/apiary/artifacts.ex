@@ -2016,6 +2016,12 @@ defmodule Apiary.Artifacts do
           uniq: true,
           do: {run.process_version_id, run.stage_id}
 
+    stage_loops(keys)
+  end
+
+  defp stage_loops([]), do: %{}
+
+  defp stage_loops(keys) do
     documents =
       Repo.all(
         from v in ProcessVersion,

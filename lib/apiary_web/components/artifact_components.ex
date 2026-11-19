@@ -152,7 +152,8 @@ defmodule ApiaryWeb.ArtifactComponents do
     * `artifacts`, required: `Apiary.Artifacts.list/1`, each artifact with its versions,
       newest first, their files, and their `user` and `run` where the version has one,
       as `Apiary.Artifacts.list/1` reads them. For the round of a version of a shared run,
-      `Apiary.Artifacts.with_sessions/1` reads the sessions of its run in addition.
+      `Apiary.Artifacts.with_sessions/1` reads the sessions of its run and sets the run's
+      `loop`, whether its stage's sequence has a loop, in addition.
     * `scope` and `number`: the reader's scope and the work item's number, for the links
       to each version's page and to Add a version. Without both, the rows have no links.
     * `checks`: a map from a type's name to `:passed`, `:missing` or `:not_checked`, the

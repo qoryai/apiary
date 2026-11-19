@@ -1667,6 +1667,32 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       refute has_element?(view, "#artifact-history-#{first.public_id}", "round")
     end
+
+    test "a version before the loop has no round while no session is in the loop yet", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, run, registered} =
+        shared_build!(scope, looped(), %{
+          "outputs" => [%{"type" => "spec", "required" => false}]
+        })
+
+      # plan-the-build still runs: no session is in the loop yet.
+      first = push!(run, work_item, "spec", "## The plan")
+
+      {:ok, view, _html} =
+        live(conn, ArtifactComponents.version_path(scope, work_item.number, first.public_id))
+
+      assert view
+             |> element("#artifact-writer")
+             |> render()
+             |> LazyHTML.from_fragment()
+             |> LazyHTML.text()
+             |> String.split()
+             |> Enum.join(" ") == "Run #{registered.number}"
+
+      refute has_element?(view, "#artifact-history-#{first.public_id}", "round")
+    end
   end
 
   describe "the capture-demos row of a shared run (A-12)" do

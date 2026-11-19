@@ -1806,7 +1806,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   cancelled reads that state. The Ticket tab and the Thread show the run as before.
 - In the list of a work item's outputs and on an artifact's page, a version that a run of a
   stage with `shared_run: true` wrote shows the round of the session that wrote it, "Run 3 ·
-  round 2", and "Run 3 · round 1" for a run with no loop.
+  round 2", and "Run 3 · round 1" for a run of a stage with no loop. In a stage with a
+  loop, a version written outside the loop shows "Run 3", also before the loop starts.
 - `acceptance-criteria` and `verification` are structured types: a version is one JSON
   file that matches `acceptance-criteria.schema.json` or `verification.schema.json`, and
   any other file, Markdown too, is `422` `invalid_artifact`. A criterion's id is once in
