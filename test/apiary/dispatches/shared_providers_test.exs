@@ -64,7 +64,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
         else: %{model: "claude-opus-5-5"}
 
     {:ok, choice} =
-      ModelChoices.put_choice(
+      Apiary.ModelChoicesFixtures.put_choice(
         scope,
         place,
         Map.merge(Map.put(model, :provider, provider.public_id), attrs)
@@ -220,7 +220,8 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
 
       assert %{"credentials" => sent} = composed = Jason.decode!(document)
       refute Map.has_key?(composed, "model_credential")
-      assert Enum.map(sent, & &1["name"]) == names(keys)
+      # The registry credential, with the feature `registry`, follows the model keys.
+      assert Enum.map(sent, & &1["name"]) -- [Apiary.Registry.Credential.name()] == names(keys)
       assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
 
       # A pause in session 1, on the machine's key, waits for no provider's keys; a pause
@@ -329,24 +330,27 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       providers = providers!(ctx.scope, 7)
       [seventh | _] = Enum.reverse(providers)
 
-      for {provider, workflow} <- Enum.zip(Enum.take(providers, 6), steps(6)),
+      for {provider, workflow} <- Enum.zip(Enum.take(providers, 5), steps(5)),
           do: choose!(ctx.scope, {:workspace, workflow}, provider)
 
-      # The 6th workflow's choice falls back to Northwind 7.
+      # The 6th workflow has no choice for it: it takes the workspace's, on Northwind 6,
+      # which falls back to Northwind 7. A workflow's choice stores no fallbacks; each
+      # workflow's choice walks the workspace's, then its fallbacks, after its provider.
+      [first | rest] = Enum.take(providers, 5)
       sixth = Enum.at(providers, 5)
-      fallback = %{provider: seventh.public_id, model: "claude-sonnet-5-5"}
-      choose!(ctx.scope, {:workspace, "step-6"}, sixth, %{fallbacks: [fallback]})
+      fallback = Apiary.ModelChoicesFixtures.fallback_attrs(seventh)
+      choose!(ctx.scope, :workspace, sixth, %{fallbacks: [fallback]})
 
       assert {:error, errors} = save(ctx.scope, steps(6))
       refused = error(errors, :too_many_providers)
 
       assert Words.refusal(refused, document(steps(6))) ==
-               too_many(Enum.map(providers, & &1.name))
+               too_many(Enum.map([first, sixth, seventh | rest], & &1.name))
 
       # Saved without the fallback, then the fallback added: the claim ends the run.
-      choose!(ctx.scope, {:workspace, "step-6"}, sixth, %{fallbacks: []})
+      choose!(ctx.scope, :workspace, sixth, %{fallbacks: []})
       assert {:ok, _version} = save(ctx.scope, steps(6))
-      choose!(ctx.scope, {:workspace, "step-6"}, sixth, %{fallbacks: [fallback]})
+      choose!(ctx.scope, :workspace, sixth, %{fallbacks: [fallback]})
 
       assert {{:ended, :too_many_providers}, _queued} = claim!(ctx)
     end
@@ -372,14 +376,11 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert {{:ended, :model_choice_missing}, _queued} = claim!(ctx)
     end
 
-    test "ends the run too_many_providers after the choice of its 7th workflow is cleared",
-         ctx do
+    test "ends the run too_many_providers after the 7th workflow's choice is set", ctx do
       providers = six_providers!(ctx)
-      choose!(ctx.scope, {:workspace, "step-7"}, hd(providers))
-      choose!(ctx.scope, :workspace, List.last(providers))
       assert {{:ok, _run}, _queued} = claim!(ctx)
 
-      {:ok, _deleted} = ModelChoices.delete_choice(ctx.scope, {:workspace, "step-7"})
+      choose!(ctx.scope, {:workspace, "step-7"}, List.last(providers))
       assert {{:ended, :too_many_providers}, _queued} = claim!(ctx)
     end
 
@@ -448,13 +449,15 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert line(queued) == @missing_cause <> "\nRun the round again."
       assert view_models(queued) == nil
 
-      # The other fault, 7 providers through the fallbacks: the same.
+      # The other fault, 7 providers through the fallbacks: the same. A workflow's choice
+      # stores no fallbacks, so write-acceptance-checks takes the workspace's choice, on
+      # Northwind keys, with 5 fallbacks.
       others = providers!(ctx.scope, 5)
-      fallbacks = for p <- others, do: %{provider: p.public_id, model: "claude-sonnet-5-5"}
+      fallbacks = Enum.map(others, &Apiary.ModelChoicesFixtures.fallback_attrs/1)
+      choose!(ctx.scope, :workspace, northwind, %{fallbacks: fallbacks})
 
-      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, northwind, %{
-        fallbacks: fallbacks
-      })
+      {:ok, _deleted} =
+        ModelChoices.delete_choice(ctx.scope, {:workspace, "write-acceptance-checks"})
 
       assert line(queued) == @missing_cause <> "\nRun the round again."
 
@@ -464,11 +467,14 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
 
     test "of too_many_providers show the fix with its values while that fault remains, else the round again",
          ctx do
-      providers = six_providers!(ctx)
+      [first | rest] = providers = six_providers!(ctx)
       choose!(ctx.scope, :workspace, List.last(providers))
       {{:ended, :too_many_providers}, queued} = claim!(ctx)
 
-      names = Enum.map(providers, & &1.name)
+      # In the order the claim walks them: step-1's choice, then the workspace's, which
+      # each workflow's choice walks after its provider.
+      {others, [seventh]} = Enum.split(rest, -1)
+      names = Enum.map([first, seventh | others], & &1.name)
       assert line(queued) == @too_many_cause <> "\n" <> too_many(names)
       assert view_models(queued) == {:too_many_providers, 7, names}
 
@@ -511,8 +517,9 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
     # A fresh work item's run of the stage, claimed and handed over; then, before its exit,
     # `before_exit` called with the registered run. With `session: 2` the run moves to its
     # second session, which writes a transcript chunk and pauses with `reason`; with
-    # `session: nil` the run pauses with no session's exit. The paused run, its run of the
-    # queue read again, and the continuation.
+    # `session: nil` the run pauses with no session's exit. With `runtimes`, a runtime by
+    # session number, sessions 1 and 2 start on those runtimes, else on `claude`. The
+    # paused run, its run of the queue read again, and the continuation.
     defp paused!(ctx, opts) do
       reason = Keyword.get(opts, :reason, "model_key_limit")
       queued = queued!(ctx)
@@ -535,6 +542,15 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
           "offset" => 0,
           "bytes" => Base.encode64(~s({"s":2}\n))
         }
+
+        if runtimes = opts[:runtimes] do
+          for session <- [1, 2] do
+            runtime = Map.get(runtimes, session, "claude")
+            data = %{"session" => session, "runtime" => runtime, "command" => runtime}
+            data = Apiary.RunEventsFixtures.session_started_data(data)
+            event_fixture(run, session, "session.started", data)
+          end
+        end
 
         event_fixture(run, 3, "session.transcript", chunk)
         exited = %{"session" => 1, "state" => "succeeded", "exit_code" => 0}
@@ -660,8 +676,12 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, storefront)
       assert {:ok, _version} = save(ctx.scope, ~w(plan-the-build write-acceptance-checks))
 
-      {paused, _dispatch_run, continuation} = paused!(ctx, session: 2)
+      # Session 1 runs on Claude Code, and session 2 on Codex.
+      {paused, _dispatch_run, continuation} =
+        paused!(ctx, session: 2, runtimes: %{1 => "claude", 2 => "codex"})
+
       assert paused.paused_session == 2
+      assert paused.runtime == "codex"
       assert Run.session_provider_ids(paused, 2) == [storefront.id]
 
       assert {{:ok, run}, _queued} = claimed!(ctx, continuation)

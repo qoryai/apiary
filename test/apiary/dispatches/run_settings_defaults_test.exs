@@ -11,7 +11,7 @@ defmodule Apiary.Dispatches.RunSettingsDefaultsTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, Stacks}
+  alias Apiary.{Connections, Dispatches, ModelChoicesFixtures, Stacks}
   alias Apiary.Dispatches.{DispatchRun, RunSettings}
   alias Apiary.Runs.Run
 
@@ -38,7 +38,10 @@ defmodule Apiary.Dispatches.RunSettingsDefaultsTest do
 
   defp choose!(ctx, place, model) do
     {:ok, _choice} =
-      ModelChoices.put_choice(ctx.scope, place, %{provider: ctx.provider.public_id, model: model})
+      ModelChoicesFixtures.put_choice(ctx.scope, place, %{
+        provider: ctx.provider.public_id,
+        model: model
+      })
   end
 
   # Stores the workspace's stack row for the workflow: the run's one row with a workflow.
@@ -176,20 +179,6 @@ defmodule Apiary.Dispatches.RunSettingsDefaultsTest do
 
       assert %{"runtime" => @runtime, "model" => "claude-opus-5-5"} = wire(built)
       assert built.columns == %{}
-    end
-
-    test "a key the choice names that the provider no longer has ends no run", ctx do
-      choose!(ctx, :workspace, "claude-opus-5-5")
-      queued = queued!(ctx)
-
-      Repo.update_all(
-        from(c in ModelChoices.ModelChoice, where: c.workspace_id == ^ctx.scope.workspace.id),
-        set: [value_id: "gone"]
-      )
-
-      features!([:observability, :security])
-
-      assert %{"runtime" => @runtime, "model" => "claude-opus-5-5"} = wire(built!(queued))
     end
   end
 

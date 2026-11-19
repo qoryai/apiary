@@ -643,9 +643,12 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       run = Repo.get!(Run, handed.run.id)
       assert run.provider_connection_id == router.id
       assert run.run_settings["runtime"] == bearer.name
-      assert run.provider_api["format"] in Runtimes.formats(bearer)
-      assert run.provider_api["auth"] == %{"scheme" => "bearer"}
-      assert run.provider_api["endpoint"] == "https://openrouter.ai/api"
+
+      # The API of the run's keys is the fallback provider's, on the fallback's runtime.
+      assert [%ModelKey{start: true, api: api} | _rest] = stored_keys(run)
+      assert api["format"] in Runtimes.formats(bearer)
+      assert api["auth"] == %{"scheme" => "bearer"}
+      assert api["endpoint"] == "https://openrouter.ai/api"
     end
 
     test "leave the run waiting while every key of the provider and its fallbacks is in cooldown",
