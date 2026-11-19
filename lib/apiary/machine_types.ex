@@ -426,12 +426,15 @@ defmodule Apiary.MachineTypes do
       workspaces:
         if(rewrites?,
           do:
-            key |> Processes.machine_key_versions() |> Enum.uniq_by(& &1.workspace_id) |> length(),
+            key
+            |> Processes.machine_type_versions()
+            |> Enum.uniq_by(& &1.workspace_id)
+            |> length(),
           else: 0
         ),
       templates:
         if(rewrites?,
-          do: key |> TypeTemplates.machine_key_types() |> Enum.count(&is_nil(&1.release)),
+          do: key |> TypeTemplates.machine_type_templates() |> Enum.count(&is_nil(&1.release)),
           else: 0
         ),
       waiting: Repo.aggregate(waiting(key), :count),
@@ -447,7 +450,7 @@ defmodule Apiary.MachineTypes do
   # harness file.
   defp sources(key) do
     versions =
-      for %Version{} = version <- Processes.machine_key_versions(key),
+      for %Version{} = version <- Processes.machine_type_versions(key),
           %{template: %{"git" => git, "module" => module} = template, document: document} <-
             [Processes.harness_origin(version)],
           is_binary(git) and is_binary(module),
@@ -491,7 +494,7 @@ defmodule Apiary.MachineTypes do
   # newest process of a workspace type is a copy of it (`release` set) that uses `key`: a
   # key change leaves such a copy as it is.
   defp harness_copy(key) do
-    if Enum.any?(TypeTemplates.machine_key_types(key), &(&1.release != nil)) do
+    if Enum.any?(TypeTemplates.machine_type_templates(key), &(&1.release != nil)) do
       git = Apiary.Harnesses.Qory.git()
       module = Apiary.Harnesses.Qory.template_module()
       [{{git, module, Apiary.Harnesses.Qory.current()}, "qory", nil}]

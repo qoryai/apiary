@@ -50,7 +50,7 @@ artifact_types:
   - name: mockup
   - name: screenshot
   - name: demo-video
-  - name: explainer
+  - name: walkthrough
   - name: decision-record
   - name: submission
     base_view: structured

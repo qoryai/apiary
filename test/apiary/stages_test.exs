@@ -136,13 +136,13 @@ defmodule Apiary.StagesTest do
     :ok
   end
 
-  # A version of the explainer `name` that the run of the queue `run` pushes at Explore.
-  defp push_explainer(run, name) do
+  # A version of the walkthrough `name` that the run of the queue `run` pushes at Explore.
+  defp push_walkthrough(run, name) do
     Stages.Artifacts.push(
       {:run, run},
       Repo.get!(WorkItem, run.work_item_id),
-      "explainer",
-      [%{filename: "explainer.md", content_type: "text/markdown", binary: "# A"}],
+      "walkthrough",
+      [%{filename: "walkthrough.md", content_type: "text/markdown", binary: "# A"}],
       name: name,
       stage_id: @explore
     )
@@ -181,6 +181,16 @@ defmodule Apiary.StagesTest do
 
   # A point that asks a person to run another round, as a run or Core writes it.
   defp again(text), do: %{"text" => text, "action" => "run_again"}
+
+  # The point of a failed Exists check of the output type `type`, with the type's words
+  # (`Apiary.Stages.Points.check_failed/1`).
+  defp stored_no(type),
+    do: %{
+      "text" => "Run another round: the run stored no #{Apiary.Artifacts.Type.words(type)}.",
+      "action" => "run_again",
+      "action_in_text" => true,
+      "missing_type" => type
+    }
 
   # A run of Explore that pushed proposal version 1 and a question, then a second run of
   # the take in, queued by the answer: the work item, waiting for that second run's end.
@@ -738,13 +748,8 @@ defmodule Apiary.StagesTest do
 
       assert work_item.stage_state == :escalated
 
-      assert %Escalation{
-               cause: :check_failed,
-               round: 1,
-               points: [
-                 %{"text" => "No proposal was stored in this stage.", "action" => "run_again"}
-               ]
-             } = escalation(work_item)
+      points = [stored_no("proposal")]
+      assert %Escalation{cause: :check_failed, round: 1, points: ^points} = escalation(work_item)
 
       assert %{verdict: :passed} = hd(Stages.runs(work_item))
     end
@@ -756,13 +761,8 @@ defmodule Apiary.StagesTest do
 
       assert work_item.stage_state == :escalated
 
-      assert %Escalation{
-               cause: :check_failed,
-               round: 1,
-               points: [
-                 %{"text" => "No proposal was stored in this stage.", "action" => "run_again"}
-               ]
-             } = escalation(work_item)
+      points = [stored_no("proposal")]
+      assert %Escalation{cause: :check_failed, round: 1, points: ^points} = escalation(work_item)
 
       assert %{verdict: :failed} = hd(Stages.runs(work_item))
     end
@@ -903,14 +903,14 @@ defmodule Apiary.StagesTest do
     } do
       outputs = [
         %{"type" => "proposal", "required" => true},
-        %{"type" => "mockup", "required" => true}
+        %{"type" => "walkthrough", "required" => true}
       ]
 
       save!(scope, [explore_stage(%{"outputs" => outputs}), stage(@shape, "Shape", [])])
       work_item = take_in!(scope) |> end_run!(understood_result())
       run = newest_run(work_item)
 
-      # The proposal waits, and the stage escalated: the mockup is missing.
+      # The proposal waits, and the stage escalated: the walkthrough is missing.
       assert %Escalation{cause: :check_failed} = escalation(work_item)
       assert %{status: :confirm} = Explore.current(work_item, DateTime.utc_now())
 
@@ -919,8 +919,13 @@ defmodule Apiary.StagesTest do
       assert %WorkItem{stage_state: :escalated, stage_id: @explore} = reload(work_item)
       refute Repo.get_by(Confirmation, work_item_id: work_item.id)
 
+      # Another round writes the walkthrough, and the stage reaches its gate.
       {:ok, work_item} =
-        Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore)
+        Stages.resolve_escalation(scope, work_item, :another_round, nil, expect_stage: @explore)
+
+      work_item = end_run!(work_item, pushes(["walkthrough"], 1, "passed"))
+      assert %WorkItem{stage_state: :at_gate, stage_id: @explore} = work_item
+      run = newest_run(work_item)
 
       assert {:ok, %WorkItem{stage_id: @shape}} =
                WorkItems.confirm(scope, work_item, run.attempt)
@@ -930,7 +935,11 @@ defmodule Apiary.StagesTest do
       scope: scope
     } do
       save!(scope, [explore_stage(%{"gate" => %{"kind" => "none"}})])
-      work_item = take_in!(scope) |> end_run!(nil)
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(understood_result(), %{exit_state: "failed", outcome_state: "failed"})
+
       assert %Escalation{cause: :run_stopped} = escalation(work_item)
 
       {:ok, _work_item} =
@@ -2005,12 +2014,8 @@ defmodule Apiary.StagesTest do
       assert %DispatchRun{loop_entry: nil, of: 3} = newest_run(work_item)
       work_item = end_run!(work_item, understood_result())
 
-      assert %Escalation{
-               cause: :check_failed,
-               points: [
-                 %{"text" => "No mockup was stored in this stage.", "action" => "run_again"}
-               ]
-             } = escalation(work_item)
+      points = [stored_no("mockup")]
+      assert %Escalation{cause: :check_failed, points: ^points} = escalation(work_item)
 
       assert [%{check: :passed}, %{check: :missing}, %{check: :not_checked}] =
                Stages.status(work_item).outputs
@@ -2103,7 +2108,7 @@ defmodule Apiary.StagesTest do
       # failed check, and status shows the points instead of the gaps.
       points = [
         %{"text" => "3 of 3 rounds ran.", "action" => "run_again"},
-        %{"text" => "No mockup was stored in this stage.", "action" => "run_again"}
+        stored_no("mockup")
       ]
 
       assert %Escalation{cause: :round_limit, points: ^points} = escalation(work_item)
@@ -2428,16 +2433,16 @@ defmodule Apiary.StagesTest do
                Stages.status(work_item)
     end
 
-    # The last stage, Explore, with the output explainer beside the proposal; its run
-    # pushes the proposal and an explainer of each of `names`, and the stage is approved.
+    # The last stage, Explore, with the output walkthrough beside the proposal; its run
+    # pushes the proposal and a walkthrough of each of `names`, and the stage is approved.
     # `by` is who approved the gate: `:automatic`, as a gate `none` records it, with no
     # member, or `:person`, the member who approved.
-    defp done_with_explainers!(scope, names, by \\ :automatic) do
+    defp done_with_walkthroughs!(scope, names, by \\ :automatic) do
       save!(scope, [
         explore_stage(%{
           "outputs" => [
             %{"type" => "proposal", "required" => true},
-            %{"type" => "explainer", "required" => false}
+            %{"type" => "walkthrough", "required" => false}
           ]
         })
       ])
@@ -2447,7 +2452,7 @@ defmodule Apiary.StagesTest do
         |> end_run!(fn run, registered ->
           Apiary.WorkItemsFixtures.push_result!(run, registered, understood_result())
 
-          for name <- names, do: {:ok, _version} = push_explainer(run, name)
+          for name <- names, do: {:ok, _version} = push_walkthrough(run, name)
         end)
 
       {:ok, work_item} =
@@ -2463,10 +2468,10 @@ defmodule Apiary.StagesTest do
          %{scope: scope} do
       # The gate reopened here before `withdrawn_since?/2` existed: name a's version is not
       # among the covered ones.
-      work_item = done_with_explainers!(scope, ["a", "b"])
+      work_item = done_with_walkthroughs!(scope, ["a", "b"])
 
       {:ok, _withdrawal} =
-        Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+        Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "walkthrough",
           name: "b",
           stage_id: @explore
         )
@@ -2475,10 +2480,10 @@ defmodule Apiary.StagesTest do
     end
 
     test "a withdrawal of the only name of a covered output reopens the gate", %{scope: scope} do
-      work_item = done_with_explainers!(scope, ["main"])
+      work_item = done_with_walkthroughs!(scope, ["main"])
 
       {:ok, _withdrawal} =
-        Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+        Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "walkthrough",
           stage_id: @explore
         )
 
@@ -2487,57 +2492,57 @@ defmodule Apiary.StagesTest do
 
     test "a withdrawal by a run a member cancelled leaves the name and the gate as they were",
          %{scope: scope} do
-      work_item = done_with_explainers!(scope, ["main"])
+      work_item = done_with_walkthroughs!(scope, ["main"])
       run = live_run!(work_item)
 
       {:ok, _withdrawal} =
-        Artifacts.withdraw({:run, run}, work_item, "explainer", stage_id: @explore)
+        Artifacts.withdraw({:run, run}, work_item, "walkthrough", stage_id: @explore)
 
       assert Stages.status(work_item).state == :at_gate
       cancel_run!(scope, run)
 
       assert Stages.status(work_item).state == :done
-      assert [explainer] = Enum.filter(Artifacts.list(work_item), &(&1.type == "explainer"))
-      refute Artifacts.withdrawn?(explainer)
-      assert Artifacts.exists?(work_item, @explore, "explainer")
-      assert MapSet.member?(Explore.versions(work_item.id, work_item.take_in), {"explainer", 1})
+      assert [walkthrough] = Enum.filter(Artifacts.list(work_item), &(&1.type == "walkthrough"))
+      refute Artifacts.withdrawn?(walkthrough)
+      assert Artifacts.exists?(work_item, @explore, "walkthrough")
+      assert MapSet.member?(Explore.versions(work_item.id, work_item.take_in), {"walkthrough", 1})
     end
 
     test "a run withdraws a name again after a withdrawal by a run a member cancelled",
          %{scope: scope} do
-      work_item = done_with_explainers!(scope, ["main"])
+      work_item = done_with_walkthroughs!(scope, ["main"])
       cancelled = live_run!(work_item)
 
       {:ok, _withdrawal} =
-        Artifacts.withdraw({:run, cancelled}, work_item, "explainer", stage_id: @explore)
+        Artifacts.withdraw({:run, cancelled}, work_item, "walkthrough", stage_id: @explore)
 
       cancel_run!(scope, cancelled)
 
       assert {:ok, %{number: 3, withdrawn: true}} =
-               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "walkthrough",
                  stage_id: @explore
                )
     end
 
     test "a name with versions only by a run a member cancelled has no version to withdraw",
          %{scope: scope} do
-      work_item = done_with_explainers!(scope, [])
+      work_item = done_with_walkthroughs!(scope, [])
       cancelled = live_run!(work_item)
-      {:ok, %{number: 1}} = push_explainer(cancelled, "main")
+      {:ok, %{number: 1}} = push_walkthrough(cancelled, "main")
       cancel_run!(scope, cancelled)
 
       assert {:error, {:withdraw, :no_version}} =
-               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "walkthrough",
                  stage_id: @explore
                )
     end
 
     test "an approval covers the newest version of each name of an output type",
          %{scope: scope} do
-      work_item = done_with_explainers!(scope, ["main", "scenario-2", "scenario-10"])
+      work_item = done_with_walkthroughs!(scope, ["main", "scenario-2", "scenario-10"])
 
       approved =
-        for %{type: "explainer", name: name, versions: [%{number: 1, approvals: [_one]}]} <-
+        for %{type: "walkthrough", name: name, versions: [%{number: 1, approvals: [_one]}]} <-
               Stages.artifact_index(work_item),
             do: name
 
@@ -2549,7 +2554,7 @@ defmodule Apiary.StagesTest do
         explore_stage(%{
           "outputs" => [
             %{"type" => "proposal", "required" => true},
-            %{"type" => "explainer", "required" => false}
+            %{"type" => "walkthrough", "required" => false}
           ]
         })
       ])
@@ -2561,10 +2566,10 @@ defmodule Apiary.StagesTest do
           work_item = Repo.get!(WorkItem, run.work_item_id)
 
           for name <- ["scenario-10", "scenario-2", "scenario-3"],
-              do: {:ok, _version} = push_explainer(run, name)
+              do: {:ok, _version} = push_walkthrough(run, name)
 
           {:ok, _withdrawal} =
-            Artifacts.withdraw({:run, run}, work_item, "explainer",
+            Artifacts.withdraw({:run, run}, work_item, "walkthrough",
               name: "scenario-3",
               stage_id: @explore
             )
@@ -2573,13 +2578,13 @@ defmodule Apiary.StagesTest do
       assert %{outputs: outputs} = Stages.status(work_item)
 
       assert [%{name: "scenario-2", number: 1}, %{name: "scenario-10", number: 1}] =
-               Enum.find(outputs, &(&1.type == "explainer")).names
+               Enum.find(outputs, &(&1.type == "walkthrough")).names
 
       {:ok, work_item} =
         Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id)
 
       approvals =
-        for %{type: "explainer", name: name, versions: versions} <-
+        for %{type: "walkthrough", name: name, versions: versions} <-
               Stages.artifact_index(work_item),
             into: %{},
             do: {name, Enum.flat_map(versions, & &1.approvals)}
@@ -2591,20 +2596,20 @@ defmodule Apiary.StagesTest do
 
     test "a run does not withdraw a name whose newest version a person approved",
          %{scope: scope} do
-      work_item = done_with_explainers!(scope, ["main"], :person)
+      work_item = done_with_walkthroughs!(scope, ["main"], :person)
 
       assert {:error, {:withdraw, {:approved, 1}}} =
-               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "walkthrough",
                  stage_id: @explore
                )
 
       assert Stages.status(work_item).state == :done
-      assert [%{number: 1}] = versions(work_item, "explainer")
+      assert [%{number: 1}] = versions(work_item, "walkthrough")
     end
 
     test "a run does not withdraw a name a member approved whose account is gone",
          %{scope: scope} do
-      work_item = done_with_explainers!(scope, ["main"], :person)
+      work_item = done_with_walkthroughs!(scope, ["main"], :person)
 
       {1, _rows} =
         Repo.update_all(from(d in GateDecision, where: d.work_item_id == ^work_item.id),
@@ -2614,26 +2619,26 @@ defmodule Apiary.StagesTest do
       assert [%GateDecision{user_id: nil, automatic: false}] = decisions(work_item)
 
       assert {:error, {:withdraw, {:approved, 1}}} =
-               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "walkthrough",
                  stage_id: @explore
                )
     end
 
     test "a run withdraws a name whose approval is automatic", %{scope: scope} do
-      work_item = done_with_explainers!(scope, ["main"], :automatic)
+      work_item = done_with_walkthroughs!(scope, ["main"], :automatic)
 
       assert {:ok, %{number: 2, withdrawn: true}} =
-               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "walkthrough",
                  stage_id: @explore
                )
     end
 
     test "a run withdraws a name whose newer version no person approved", %{scope: scope} do
-      work_item = done_with_explainers!(scope, ["main"], :person)
-      {:ok, %{number: 2}} = push_explainer(live_run!(work_item), "main")
+      work_item = done_with_walkthroughs!(scope, ["main"], :person)
+      {:ok, %{number: 2}} = push_walkthrough(live_run!(work_item), "main")
 
       assert {:ok, %{number: 3, withdrawn: true}} =
-               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "explainer",
+               Artifacts.withdraw({:run, live_run!(work_item)}, work_item, "walkthrough",
                  stage_id: @explore
                )
     end
@@ -2687,6 +2692,111 @@ defmodule Apiary.StagesTest do
     end
   end
 
+  describe "required outputs at Accept as it is and Approve" do
+    # Explore with `outputs`, then Shape, a stage with no workflow.
+    defp outputs_process!(scope, outputs) do
+      save!(scope, [
+        explore_stage(%{"outputs" => outputs}),
+        stage(@shape, "Shape", [])
+      ])
+    end
+
+    @proposal %{"type" => "proposal", "required" => true}
+
+    test "Approve is refused at the gate of a stage with a workflow while a required output is missing",
+         %{scope: scope} do
+      shape = fn outputs ->
+        save!(scope, [
+          explore_stage(),
+          stage(@shape, "Shape", [%{"workflow" => "shape-a-ticket"}], %{"outputs" => outputs})
+        ])
+      end
+
+      shape.([])
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
+      work_item = work_item |> reload() |> end_run!(verdict("passed"))
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+
+      # A version whose Shape also requires a walkthrough, which no run of Shape wrote; the
+      # work item keeps its gate when it moves to it.
+      version = shape.([%{"type" => "walkthrough", "required" => true}])
+      {:ok, work_item} = Processes.assign(scope, work_item, version)
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
+
+      assert %{missing_outputs: ["walkthrough"], gate: %{approvable?: false}} =
+               Stages.status(work_item, scope)
+
+      assert Stages.starts(work_item, :approve) == :none
+
+      assert Stages.approve(scope, work_item, nil, expect_stage: @shape) ==
+               {:error, {:outputs_not_written, ["walkthrough"]}}
+
+      # Explore's confirmation is the one decision.
+      assert [%GateDecision{stage_id: @explore}] = decisions(work_item)
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = reload(work_item)
+    end
+
+    test "Accept as it is before the last entry starts the next entry with a required output missing; at the last entry it is refused",
+         %{scope: scope} do
+      save!(scope, [
+        explore_stage(%{
+          "sequence" => [%{"workflow" => "explore-a-ticket"}, %{"workflow" => "triage-review"}],
+          "outputs" => [@proposal]
+        }),
+        stage(@shape, "Shape", [])
+      ])
+
+      # The first run stops with no proposal: Accept as it is goes on to triage-review.
+      work_item = take_in!(scope) |> end_run!(nil)
+      assert %WorkItem{stage_entry: 0} = work_item
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+      assert %{missing_outputs: ["proposal"], accept_needs: []} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == {:run, "triage-review"}
+
+      assert {:ok, %WorkItem{stage_state: :running, stage_entry: 1}} =
+               Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore)
+
+      # The second run stops too: an accept would take the stage to its gate.
+      work_item = end_run!(work_item, nil)
+      assert %WorkItem{stage_entry: 1, stage_state: :escalated} = work_item
+
+      assert %{missing_outputs: ["proposal"], accept_needs: ["proposal"]} =
+               Stages.status(work_item, scope)
+
+      assert Stages.starts(work_item, :accept) == :none
+
+      assert Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore) ==
+               {:error, :invalid}
+
+      assert %Escalation{resolution: nil} = escalation(work_item)
+    end
+
+    test "an optional output blocks neither Accept as it is nor Approve", %{scope: scope} do
+      outputs_process!(scope, [@proposal, %{"type" => "walkthrough", "required" => false}])
+
+      work_item =
+        take_in!(scope)
+        |> end_run!(understood_result(), %{exit_state: "failed", outcome_state: "failed"})
+
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+      assert Stages.missing_outputs(work_item) == []
+
+      {:ok, work_item} =
+        Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore)
+
+      assert %WorkItem{stage_id: @explore, stage_state: :at_gate} = work_item
+
+      assert [%{type: "proposal", check: :passed}, %{type: "walkthrough", required: false}] =
+               Stages.status(work_item, scope).outputs
+
+      assert Stages.status(work_item, scope).gate.approvable?
+
+      assert {:ok, %WorkItem{stage_id: @shape}} =
+               Stages.approve(scope, work_item, nil, expect_stage: @explore)
+    end
+  end
+
   describe "the when key (A-16)" do
     @verify "st_m1mqbeywdg"
     @demos %{"input" => "demo-scenarios"}
@@ -2714,7 +2824,7 @@ defmodule Apiary.StagesTest do
           ],
           %{
             "outputs" => [
-              %{"type" => "explainer", "required" => true},
+              %{"type" => "walkthrough", "required" => true},
               %{"type" => "demo-video", "required" => true, "when" => @demos}
             ]
           }
@@ -2744,14 +2854,16 @@ defmodule Apiary.StagesTest do
     defp scenarios(binary),
       do: [%{filename: "demo-scenarios.md", content_type: "text/markdown", binary: binary}]
 
-    # The end of a run of verify-a-ticket: an explainer and the verdict passed.
+    # The end of a run of verify-a-ticket: a walkthrough and the verdict passed.
     defp verified(run, registered) do
       {:ok, _version} =
         Artifacts.push(
           {:run, run},
           Repo.get!(WorkItem, run.work_item_id),
-          "explainer",
-          [%{filename: "explainer.md", content_type: "text/markdown", binary: "# What changed"}],
+          "walkthrough",
+          [
+            %{filename: "walkthrough.md", content_type: "text/markdown", binary: "# What changed"}
+          ],
           name: "main",
           stage_id: run.stage_id
         )
@@ -2791,7 +2903,7 @@ defmodule Apiary.StagesTest do
                Stages.status(work_item, scope)
 
       assert [
-               %{type: "explainer", required: true, check: :passed},
+               %{type: "walkthrough", required: true, check: :passed},
                %{type: "demo-video", required: false, version: nil, check: :missing}
              ] = outputs
 
@@ -2810,7 +2922,7 @@ defmodule Apiary.StagesTest do
       assert %DispatchRun{workflow: "capture-demos"} = newest_run(work_item)
       assert Stages.skips(work_item) == []
 
-      assert %{outputs: [_explainer, %{type: "demo-video", required: true}]} =
+      assert %{outputs: [_walkthrough, %{type: "demo-video", required: true}]} =
                Stages.status(work_item, scope)
     end
 
@@ -4927,7 +5039,7 @@ defmodule Apiary.StagesTest do
 
   describe "a gate none (vault 0252)" do
     # A stage with a loop of two workflows and a gate none, as Build, then a stage that
-    # reads its outputs, as Verify. `explainer` stands for Build's submission.
+    # reads its outputs, as Verify. `walkthrough` stands for Build's submission.
     defp build_then_verify!(scope, rounds \\ 3) do
       save!(scope, [
         stage(
@@ -4946,7 +5058,7 @@ defmodule Apiary.StagesTest do
           ],
           %{
             "outputs" => [
-              %{"type" => "explainer", "required" => true},
+              %{"type" => "walkthrough", "required" => true},
               %{"type" => "decision-record", "required" => false}
             ],
             "gate" => %{"kind" => "none"}
@@ -4954,7 +5066,7 @@ defmodule Apiary.StagesTest do
         ),
         stage(@shape, "Verify", [%{"workflow" => "verify-a-ticket"}], %{
           "inputs" => [
-            %{"type" => "explainer", "required" => true},
+            %{"type" => "walkthrough", "required" => true},
             %{"type" => "decision-record", "required" => false}
           ]
         })
@@ -4990,14 +5102,14 @@ defmodule Apiary.StagesTest do
 
       work_item =
         take_in!(scope)
-        |> end_run!(pushes(["explainer", "decision-record"], 1))
+        |> end_run!(pushes(["walkthrough", "decision-record"], 1))
         |> end_run!(verdict("changes-requested"))
-        |> end_run!(pushes(["explainer"], 2))
+        |> end_run!(pushes(["walkthrough"], 2))
 
       assert decisions(work_item) == []
       work_item = end_run!(work_item, verdict("passed"))
 
-      explainer = version_id(work_item, "explainer", 2)
+      walkthrough = version_id(work_item, "walkthrough", 2)
       record = version_id(work_item, "decision-record", 1)
 
       assert [
@@ -5006,7 +5118,7 @@ defmodule Apiary.StagesTest do
                  stage_id: @explore,
                  user_id: nil,
                  automatic: true,
-                 versions: [^explainer, ^record]
+                 versions: [^walkthrough, ^record]
                }
              ] = decisions(work_item)
 
@@ -5014,7 +5126,7 @@ defmodule Apiary.StagesTest do
       assert %DispatchRun{stage_id: @shape, workflow: "verify-a-ticket"} = newest_run(work_item)
 
       assert [
-               %{type: "explainer", version: %{id: ^explainer, approvals: [approval]}},
+               %{type: "walkthrough", version: %{id: ^walkthrough, approvals: [approval]}},
                %{type: "decision-record", version: %{id: ^record}}
              ] = Stages.inputs(work_item)
 
@@ -5033,7 +5145,7 @@ defmodule Apiary.StagesTest do
 
       work_item =
         take_in!(scope)
-        |> end_run!(pushes(["explainer"], 1))
+        |> end_run!(pushes(["walkthrough"], 1))
         |> end_run!(verdict("changes-requested"))
 
       assert %Escalation{cause: :round_limit} = escalation(work_item)
@@ -5042,7 +5154,7 @@ defmodule Apiary.StagesTest do
       assert {:ok, %WorkItem{stage_id: @shape, stage_state: :running}} =
                Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore)
 
-      explainer = version_id(work_item, "explainer", 1)
+      walkthrough = version_id(work_item, "walkthrough", 1)
       user_id = scope.user.id
 
       assert [
@@ -5051,25 +5163,25 @@ defmodule Apiary.StagesTest do
                  stage_id: @explore,
                  user_id: ^user_id,
                  automatic: false,
-                 versions: [^explainer]
+                 versions: [^walkthrough]
                }
              ] = decisions(work_item)
 
-      assert [%{type: "explainer", version: %{id: ^explainer}}, %{version: nil}] =
+      assert [%{type: "walkthrough", version: %{id: ^walkthrough}}, %{version: nil}] =
                Stages.inputs(work_item)
     end
 
     test "an accept at a person gate records no approval", %{scope: scope} do
       save!(scope, [
         stage(@explore, "Build", [%{"workflow" => "implement-changes"}], %{
-          "outputs" => [%{"type" => "explainer", "required" => true}]
+          "outputs" => [%{"type" => "walkthrough", "required" => true}]
         })
       ])
 
       work_item =
         take_in!(scope)
         |> end_run!(fn run, registered ->
-          pushes(["explainer"], 1).(run, registered)
+          pushes(["walkthrough"], 1).(run, registered)
           verdict("escalate", [again("Choose the wording.")]).(run, registered)
         end)
 
@@ -5085,7 +5197,7 @@ defmodule Apiary.StagesTest do
       build_then_verify!(scope)
 
       cancelled = fn run, registered ->
-        pushes(["explainer"], 2).(run, registered)
+        pushes(["walkthrough"], 2).(run, registered)
 
         {1, _rows} =
           Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^registered.id),
@@ -5095,7 +5207,7 @@ defmodule Apiary.StagesTest do
 
       work_item =
         take_in!(scope)
-        |> end_run!(pushes(["explainer"], 1))
+        |> end_run!(pushes(["walkthrough"], 1))
         |> end_run!(verdict("changes-requested"))
         |> end_run!(cancelled)
 
@@ -5104,14 +5216,17 @@ defmodule Apiary.StagesTest do
       {:ok, work_item} =
         Stages.resolve_escalation(scope, work_item, :another_round, nil, expect_stage: @explore)
 
-      # The next round pushes no explainer: the newest one that counts is version 1.
+      # The next round pushes no walkthrough: the newest one that counts is version 1.
       assert %DispatchRun{workflow: "implement-changes"} = newest_run(work_item)
       work_item = work_item |> end_run!(nil) |> end_run!(verdict("passed"))
       assert %WorkItem{stage_id: @shape} = work_item
 
-      assert Artifacts.cancelled?(Enum.find(versions(work_item, "explainer"), &(&1.number == 2)))
-      explainer = version_id(work_item, "explainer", 1)
-      assert [%GateDecision{automatic: true, versions: [^explainer]}] = decisions(work_item)
+      assert Artifacts.cancelled?(
+               Enum.find(versions(work_item, "walkthrough"), &(&1.number == 2))
+             )
+
+      walkthrough = version_id(work_item, "walkthrough", 1)
+      assert [%GateDecision{automatic: true, versions: [^walkthrough]}] = decisions(work_item)
     end
   end
 
@@ -5234,41 +5349,41 @@ defmodule Apiary.StagesTest do
         explore_stage(%{
           "outputs" => [
             %{"type" => "proposal", "required" => true},
-            %{"type" => "explainer", "required" => false}
+            %{"type" => "walkthrough", "required" => false}
           ]
         }),
-        stage(@shape, "Shape", [], %{"inputs" => [%{"type" => "explainer", "required" => true}]})
+        stage(@shape, "Shape", [], %{"inputs" => [%{"type" => "walkthrough", "required" => true}]})
       ])
 
       work_item =
         take_in!(scope)
         |> end_run!(fn run, registered ->
           Apiary.WorkItemsFixtures.push_result!(run, registered, understood_result())
-          {:ok, _version} = push_explainer(run, "main")
+          {:ok, _version} = push_walkthrough(run, "main")
         end)
 
       {:ok, work_item} =
         Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id)
 
       automatic_approval!(work_item)
-      [explainer] = versions(work_item, "explainer")
+      [walkthrough] = versions(work_item, "walkthrough")
       assert [%{version: %{id: id}}] = Stages.inputs(work_item)
-      assert id == explainer.public_id
+      assert id == walkthrough.public_id
 
-      # A run of the work item that has not ended withdraws the explainer.
+      # A run of the work item that has not ended withdraws the walkthrough.
       run = live_run!(work_item)
 
       {:ok, withdrawal} =
-        Artifacts.withdraw({:run, run}, work_item, "explainer", stage_id: @explore)
+        Artifacts.withdraw({:run, run}, work_item, "walkthrough", stage_id: @explore)
 
       assert %{number: 2, withdrawn: true, files: []} = withdrawal
-      assert [%{type: "explainer", version: nil}] = Stages.inputs(work_item)
+      assert [%{type: "walkthrough", version: nil}] = Stages.inputs(work_item)
 
       # The index has the name, its newest version marked.
       assert [%{versions: [%{number: 2, withdrawn: true}, %{number: 1, withdrawn: false}]}] =
-               Enum.filter(Stages.artifact_index(work_item), &(&1.type == "explainer"))
+               Enum.filter(Stages.artifact_index(work_item), &(&1.type == "walkthrough"))
 
-      {:ok, _version} = push_explainer(run, "main")
+      {:ok, _version} = push_walkthrough(run, "main")
 
       assert [%{version: %{id: ^id}}] = Stages.inputs(work_item)
     end
@@ -5278,41 +5393,41 @@ defmodule Apiary.StagesTest do
         explore_stage(%{
           "outputs" => [
             %{"type" => "proposal", "required" => true},
-            %{"type" => "explainer", "required" => false}
+            %{"type" => "walkthrough", "required" => false}
           ]
         }),
-        stage(@shape, "Shape", [], %{"inputs" => [%{"type" => "explainer", "required" => true}]})
+        stage(@shape, "Shape", [], %{"inputs" => [%{"type" => "walkthrough", "required" => true}]})
       ])
 
       work_item =
         take_in!(scope)
         |> end_run!(fn run, registered ->
           Apiary.WorkItemsFixtures.push_result!(run, registered, understood_result())
-          {:ok, _version} = push_explainer(run, "main")
+          {:ok, _version} = push_walkthrough(run, "main")
         end)
 
       {:ok, work_item} =
         Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id)
 
       automatic_approval!(work_item)
-      [explainer] = versions(work_item, "explainer")
+      [walkthrough] = versions(work_item, "walkthrough")
       run = live_run!(work_item)
 
       {:ok, _withdrawal} =
-        Artifacts.withdraw({:run, run}, work_item, "explainer", stage_id: @explore)
+        Artifacts.withdraw({:run, run}, work_item, "walkthrough", stage_id: @explore)
 
-      assert [%{type: "explainer", version: nil}] = Stages.inputs(work_item)
+      assert [%{type: "walkthrough", version: nil}] = Stages.inputs(work_item)
       cancel_run!(scope, run)
 
       assert [%{version: %{id: id}}] = Stages.inputs(work_item)
-      assert id == explainer.public_id
+      assert id == walkthrough.public_id
     end
   end
 
   describe "inputs after a move to an earlier stage" do
     @verify "st_m1mqbeywdg"
 
-    # Explore, Shape (reads Explore's proposal), Build (makes an explainer and a spec) and
+    # Explore, Shape (reads Explore's proposal), Build (makes a walkthrough and a spec) and
     # Verify.
     defp moved_process!(scope) do
       save!(scope, [
@@ -5320,7 +5435,7 @@ defmodule Apiary.StagesTest do
         stage(@shape, "Shape", [], %{"inputs" => [%{"type" => "proposal", "required" => true}]}),
         stage(@build, "Build", [], %{
           "outputs" => [
-            %{"type" => "explainer", "required" => false},
+            %{"type" => "walkthrough", "required" => false},
             %{"type" => "acceptance-criteria", "required" => false}
           ]
         }),
@@ -5373,8 +5488,8 @@ defmodule Apiary.StagesTest do
       scope: scope
     } do
       work_item = at_build!(scope)
-      add!(work_item, "explainer", "one.md")
-      add!(work_item, "explainer", "two.md")
+      add!(work_item, "walkthrough", "one.md")
+      add!(work_item, "walkthrough", "two.md")
       add!(work_item, "acceptance-criteria", "spec.md")
       assert Stages.inputs(work_item) == []
 
@@ -5383,7 +5498,7 @@ defmodule Apiary.StagesTest do
 
       assert [
                %{type: "proposal", required: true, version: %{id: ^proposal}} = read,
-               %{type: "explainer", required: false, from: :move, version: %{number: 2} = one},
+               %{type: "walkthrough", required: false, from: :move, version: %{number: 2} = one},
                %{
                  type: "acceptance-criteria",
                  required: false,
@@ -5393,7 +5508,7 @@ defmodule Apiary.StagesTest do
              ] = Stages.inputs(shape)
 
       refute Map.has_key?(read, :from)
-      assert one.id == public_id(work_item, "explainer", 2)
+      assert one.id == public_id(work_item, "walkthrough", 2)
       assert two.id == public_id(work_item, "acceptance-criteria", 1)
     end
 
@@ -5401,10 +5516,10 @@ defmodule Apiary.StagesTest do
       scope: scope
     } do
       work_item = at_build!(scope)
-      add!(work_item, "explainer", "old.md")
+      add!(work_item, "walkthrough", "old.md")
       add!(work_item, "acceptance-criteria", "old.md")
       shape = move_to!(scope, work_item, @shape)
-      assert marked(shape) == [{"explainer", 1}, {"acceptance-criteria", 1}]
+      assert marked(shape) == [{"walkthrough", 1}, {"acceptance-criteria", 1}]
 
       # Shape's gate passes, so Build is entered again; only its spec is made this time.
       {:ok, again} = Stages.approve(scope, shape, nil, expect_stage: @shape)
@@ -5417,13 +5532,13 @@ defmodule Apiary.StagesTest do
 
     test "a version made after the work item left the stage is not listed", %{scope: scope} do
       work_item = at_build!(scope)
-      add!(work_item, "explainer", "one.md")
+      add!(work_item, "walkthrough", "one.md")
       run = live_stage_run!(work_item)
       shape = move_to!(scope, work_item, @shape)
 
       # A late push into Build by a run that was still running at the move.
       {:ok, late} =
-        Stages.Artifacts.push({:run, run}, reload(work_item), "explainer", file("late.md"),
+        Stages.Artifacts.push({:run, run}, reload(work_item), "walkthrough", file("late.md"),
           stage_id: @build
         )
 
@@ -5434,14 +5549,14 @@ defmodule Apiary.StagesTest do
           set: [inserted_at: later]
         )
 
-      assert marked(shape) == [{"explainer", 1}]
+      assert marked(shape) == [{"walkthrough", 1}]
     end
 
     test "the rule stops when the stage's gate passes again", %{scope: scope} do
       work_item = at_build!(scope)
-      add!(work_item, "explainer", "one.md")
+      add!(work_item, "walkthrough", "one.md")
       shape = move_to!(scope, work_item, @shape)
-      assert marked(shape) == [{"explainer", 1}]
+      assert marked(shape) == [{"walkthrough", 1}]
 
       {:ok, again} = Stages.approve(scope, shape, nil, expect_stage: @shape)
       {:ok, verifying} = Stages.approve(scope, again, nil, expect_stage: @build)
@@ -5454,8 +5569,8 @@ defmodule Apiary.StagesTest do
 
     test "each stage a work item left, and not passed since, is listed once", %{scope: scope} do
       work_item = at_build!(scope)
-      add!(work_item, "explainer", "one.md")
-      add!(work_item, "explainer", "two.md")
+      add!(work_item, "walkthrough", "one.md")
+      add!(work_item, "walkthrough", "two.md")
       shape = move_to!(scope, work_item, @shape)
       {:ok, build} = Stages.approve(scope, shape, nil, expect_stage: @shape)
       add!(build, "acceptance-criteria", "spec.md")
@@ -5470,12 +5585,12 @@ defmodule Apiary.StagesTest do
     test "no approval lists a marked version that a run made with no decision", %{
       scope: scope
     } do
-      # As `moved_process!/1`, but Build runs a workflow, whose run makes the explainer.
+      # As `moved_process!/1`, but Build runs a workflow, whose run makes the walkthrough.
       save!(scope, [
         explore_stage(),
         stage(@shape, "Shape", [], %{"inputs" => [%{"type" => "proposal", "required" => true}]}),
         stage(@build, "Build", [%{"workflow" => "make-a-small-change"}], %{
-          "outputs" => [%{"type" => "explainer", "required" => false}]
+          "outputs" => [%{"type" => "walkthrough", "required" => false}]
         }),
         stage(@verify, "Verify", [])
       ])
@@ -5485,11 +5600,11 @@ defmodule Apiary.StagesTest do
       {:ok, at_build} = Stages.approve(scope, reload(work_item), nil, expect_stage: @shape)
       assert %WorkItem{stage_id: @build} = at_build
 
-      at_build = end_run!(at_build, pushes_one("explainer", "# One", []))
-      assert [%{writer: :run, decision_id: nil}] = versions(at_build, "explainer")
+      at_build = end_run!(at_build, pushes_one("walkthrough", "# One", []))
+      assert [%{writer: :run, decision_id: nil}] = versions(at_build, "walkthrough")
 
       shape = move_to!(scope, at_build, @shape)
-      assert marked(shape) == [{"explainer", 1}]
+      assert marked(shape) == [{"walkthrough", 1}]
 
       assert {:ok, %WorkItem{stage_id: @build}} =
                Stages.approve(scope, shape, nil, expect_stage: @shape)
@@ -5497,13 +5612,13 @@ defmodule Apiary.StagesTest do
       # Shape's two approvals, one for each time Build was entered, list no version.
       assert [[], []] = for(d <- decisions(work_item), d.stage_id == @shape, do: d.versions)
 
-      assert [%{type: "explainer", approved_version: nil, versions: [%{approvals: []}]}] =
-               Enum.filter(Stages.artifact_index(work_item), &(&1.type == "explainer"))
+      assert [%{type: "walkthrough", approved_version: nil, versions: [%{approvals: []}]}] =
+               Enum.filter(Stages.artifact_index(work_item), &(&1.type == "walkthrough"))
     end
 
     test "an escalation's move back lists them too", %{scope: scope} do
       work_item = at_build!(scope)
-      add!(work_item, "explainer", "one.md")
+      add!(work_item, "walkthrough", "one.md")
 
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
@@ -5515,7 +5630,7 @@ defmodule Apiary.StagesTest do
                  expect_stage: @build
                )
 
-      assert marked(shape) == [{"explainer", 1}]
+      assert marked(shape) == [{"walkthrough", 1}]
 
       # The resolution is a move like a person's: a `move` decision that names the escalation
       # and has none of its text, which the escalation keeps.
@@ -5549,9 +5664,9 @@ defmodule Apiary.StagesTest do
 
     test "a move forward past the stage ends the rule", %{scope: scope} do
       work_item = at_build!(scope)
-      add!(work_item, "explainer", "one.md")
+      add!(work_item, "walkthrough", "one.md")
       shape = move_to!(scope, work_item, @shape)
-      assert marked(shape) == [{"explainer", 1}]
+      assert marked(shape) == [{"walkthrough", 1}]
 
       # Past Build without passing its gate, then back again: the first departure is over.
       verifying = move_to!(scope, shape, @verify)
@@ -5561,19 +5676,19 @@ defmodule Apiary.StagesTest do
 
     test "a move forward that stops at the stage does not end the rule", %{scope: scope} do
       work_item = at_build!(scope)
-      add!(work_item, "explainer", "one.md")
+      add!(work_item, "walkthrough", "one.md")
       shape = move_to!(scope, work_item, @shape)
       explore = move_to!(scope, shape, @explore)
 
       # Explore to Shape is forward but stays before Build.
-      assert marked(explore) == [{"explainer", 1}]
-      assert marked(move_to!(scope, explore, @shape)) == [{"explainer", 1}]
+      assert marked(explore) == [{"walkthrough", 1}]
+      assert marked(move_to!(scope, explore, @shape)) == [{"walkthrough", 1}]
     end
 
     test "a move forward, or a stage entered by a gate, leaves nothing to list", %{scope: scope} do
       work_item = at_shape_with_proposal!(scope)
       build = move_to!(scope, work_item, @build)
-      add!(build, "explainer", "one.md")
+      add!(build, "walkthrough", "one.md")
       {:ok, verifying} = Stages.approve(scope, build, nil, expect_stage: @build)
 
       assert marked(verifying) == []
@@ -5582,9 +5697,9 @@ defmodule Apiary.StagesTest do
 
     test "a departure of another take in is not read", %{scope: scope} do
       work_item = at_build!(scope)
-      add!(work_item, "explainer", "one.md")
+      add!(work_item, "walkthrough", "one.md")
       shape = move_to!(scope, work_item, @shape)
-      assert marked(shape) == [{"explainer", 1}]
+      assert marked(shape) == [{"walkthrough", 1}]
 
       {1, _rows} =
         Repo.update_all(
@@ -5601,17 +5716,17 @@ defmodule Apiary.StagesTest do
       files = &if(&1 == "acceptance-criteria", do: criteria_files(), else: file("a.md"))
       push = &Stages.Artifacts.push({:run, &1}, work_item, &2, files.(&2), stage_id: @build)
 
-      {:ok, _version} = push.(run, "explainer")
+      {:ok, _version} = push.(run, "walkthrough")
       {:ok, _version} = push.(run, "acceptance-criteria")
 
       {:ok, _withdrawal} =
         Artifacts.withdraw({:run, run}, work_item, "acceptance-criteria", stage_id: @build)
 
       cancelled = live_run!(work_item)
-      {:ok, _version} = push.(cancelled, "explainer")
+      {:ok, _version} = push.(cancelled, "walkthrough")
       cancel_run!(scope, cancelled)
 
-      assert marked(move_to!(scope, work_item, @shape)) == [{"explainer", 1}]
+      assert marked(move_to!(scope, work_item, @shape)) == [{"walkthrough", 1}]
     end
   end
 
@@ -6013,10 +6128,37 @@ defmodule Apiary.StagesTest do
                Repo.get_by(Escalation, work_item_id: work_item.id)
     end
 
-    test "accept counts the loop as passed and opens the gate, the failed check shown", %{
+    test "accept is refused while a required output is missing, and writes nothing", %{
       scope: scope,
       work_item: work_item
     } do
+      # The failed run pushed no proposal, which Explore requires.
+      assert Stages.missing_outputs(work_item) == ["proposal"]
+      assert Stages.starts(work_item, :accept) == :none
+
+      assert Stages.resolve_escalation(scope, work_item, :accept, nil,
+               expect_stage: reload(work_item).stage_id
+             ) == {:error, :invalid}
+
+      assert %Escalation{cause: :run_stopped, resolution: nil} = escalation(work_item)
+      assert %WorkItem{stage_state: :escalated} = reload(work_item)
+      assert runs(work_item) |> length() == 1
+
+      refute Repo.exists?(
+               from e in Entry,
+                 where: e.action == "gate.approve" and e.subject_id == ^work_item.id
+             )
+    end
+
+    test "accept counts the run as passed and opens the gate, with every required output", %{
+      scope: scope
+    } do
+      work_item =
+        take_in!(scope)
+        |> end_run!(understood_result(), %{exit_state: "failed", outcome_state: "failed"})
+
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+
       assert {:ok, %WorkItem{stage_state: :at_gate, stage_round: 1}} =
                Stages.resolve_escalation(scope, work_item, :accept, nil,
                  expect_stage: reload(work_item).stage_id
@@ -6027,10 +6169,10 @@ defmodule Apiary.StagesTest do
 
       assert escalation(work_item) == nil
       assert runs(work_item) |> length() == 1
-      assert [%{type: "proposal", check: :missing}] = Stages.status(work_item).outputs
+      assert [%{type: "proposal", check: :passed}] = Stages.status(work_item).outputs
     end
 
-    test "accept at the end of the sequence opens the gate without the checks", %{scope: scope} do
+    test "accept at the end of the sequence opens the gate", %{scope: scope} do
       save!(scope, [
         explore_stage(%{
           "sequence" => [
@@ -6039,8 +6181,8 @@ defmodule Apiary.StagesTest do
         })
       ])
 
-      # A run with no verdict in the loop's last round.
-      work_item = take_in!(scope) |> end_run!(nil)
+      # A run that pushed the proposal and no verdict in the loop's last round.
+      work_item = take_in!(scope) |> end_run!(proposal_only())
       assert %Escalation{cause: :round_limit} = escalation(work_item)
 
       assert {:ok, %WorkItem{stage_state: :at_gate, stage_entry: 1}} =
@@ -6049,7 +6191,7 @@ defmodule Apiary.StagesTest do
                )
 
       assert escalation(work_item) == nil
-      assert [%{check: :missing}] = Stages.status(work_item).outputs
+      assert [%{check: :passed}] = Stages.status(work_item).outputs
     end
 
     test "close ends the work item", %{scope: scope, work_item: work_item} do
@@ -6491,7 +6633,8 @@ defmodule Apiary.StagesTest do
                    "Pick Move back to return the work item to Build once more, or pick Accept as it is.",
                  "action" => "run_again",
                  "fix" =>
-                   "Verify's run asked for changes again after 2 returns to Build, the most that Verify allows."
+                   "Verify's run asked for changes again after 2 returns to Build, the most that Verify allows.",
+                 "return_stage" => "Build"
                }
                | @findings
              ]
@@ -7941,7 +8084,7 @@ defmodule Apiary.StagesTest do
 
     # Shape, whose run of shape-a-ticket makes the acceptance criteria; Build, a loop with
     # a gate none, as the software process has it, which reads the criteria and makes the
-    # explainer; and Verify, which reads both, with a person's gate. `last` is the last
+    # walkthrough; and Verify, which reads both, with a person's gate. `last` is the last
     # stage: `:build`, `:verify`, or `:release`, a stage after Verify that reads the
     # criteria. `type` is the type in place of the acceptance criteria, for a test of
     # several names of one type: the acceptance criteria take the name `main` alone.
@@ -7967,7 +8110,7 @@ defmodule Apiary.StagesTest do
           ],
           %{
             "inputs" => [%{"type" => type, "required" => true}],
-            "outputs" => [%{"type" => "explainer", "required" => true}],
+            "outputs" => [%{"type" => "walkthrough", "required" => true}],
             "gate" => %{"kind" => "none"}
           }
         )
@@ -7977,7 +8120,7 @@ defmodule Apiary.StagesTest do
         stage(@verify, "Verify", [%{"workflow" => "verify-a-ticket"}], %{
           "inputs" => [
             %{"type" => type, "required" => true},
-            %{"type" => "explainer", "required" => true}
+            %{"type" => "walkthrough", "required" => true}
           ]
         })
 
@@ -8053,7 +8196,7 @@ defmodule Apiary.StagesTest do
 
       work_item =
         work_item
-        |> end_run!(pushes_one("explainer", "# Explainer 1", []))
+        |> end_run!(pushes_one("walkthrough", "# Walkthrough 1", []))
         |> end_run!(verdict("escalate", [again("AC-2 does not cover the empty cart.")]))
 
       assert %Escalation{} = escalation = escalation(work_item)
@@ -8080,7 +8223,8 @@ defmodule Apiary.StagesTest do
       changed =
         pushes_one("acceptance-criteria", "# AC-2 with the empty cart", decision: decision)
 
-      work_item = end_run!(work_item, both(changed, pushes_one("explainer", "# Explainer 2", [])))
+      work_item =
+        end_run!(work_item, both(changed, pushes_one("walkthrough", "# Walkthrough 2", [])))
 
       new = criteria(work_item, 2)
       assert %{writer: :run, stage_id: @build, decision_id: ^decision} = new
@@ -8100,12 +8244,12 @@ defmodule Apiary.StagesTest do
       work_item = end_run!(work_item, verdict("passed"))
       assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
 
-      # Build's gate none lists its explainer and leaves out the new criteria.
-      explainer = Enum.find(versions(work_item, "explainer"), &(&1.number == 2)).public_id
+      # Build's gate none lists its walkthrough and leaves out the new criteria.
+      walkthrough = Enum.find(versions(work_item, "walkthrough"), &(&1.number == 2)).public_id
 
       assert [
                %GateDecision{stage_id: @shape, automatic: false, versions: [shaped]},
-               %GateDecision{stage_id: @build, automatic: true, versions: [^explainer]}
+               %GateDecision{stage_id: @build, automatic: true, versions: [^walkthrough]}
              ] =
                Enum.filter(
                  decisions(work_item),
@@ -8117,7 +8261,7 @@ defmodule Apiary.StagesTest do
       # Verify reads the new version in place of the one Shape's gate approved.
       assert [
                %{type: "acceptance-criteria", version: %{id: ^new_id, decision: ^decision}},
-               %{type: "explainer", version: %{id: ^explainer}}
+               %{type: "walkthrough", version: %{id: ^walkthrough}}
              ] = Stages.inputs(work_item)
 
       work_item = end_run!(work_item, verdict("passed"))
@@ -8150,23 +8294,23 @@ defmodule Apiary.StagesTest do
       criteria_process!(scope)
 
       {work_item, %Escalation{public_id: decision}} =
-        asked_in_build!(scope, "Name the empty cart in the explainer.")
+        asked_in_build!(scope, "Name the empty cart in the walkthrough.")
 
       work_item =
         work_item
-        |> end_run!(pushes_one("explainer", "# Explainer 2", decision: decision))
+        |> end_run!(pushes_one("walkthrough", "# Walkthrough 2", decision: decision))
         |> end_run!(verdict("passed"))
 
       assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
-      explainer = Enum.find(versions(work_item, "explainer"), &(&1.number == 2))
-      assert explainer.decision_id == decision
+      walkthrough = Enum.find(versions(work_item, "walkthrough"), &(&1.number == 2))
+      assert walkthrough.decision_id == decision
 
       assert %GateDecision{automatic: true, versions: []} =
                Enum.find(decisions(work_item), &(&1.stage_id == @build))
 
-      explainer_id = explainer.public_id
+      walkthrough_id = walkthrough.public_id
 
-      assert [_criteria, %{type: "explainer", version: %{id: ^explainer_id}}] =
+      assert [_criteria, %{type: "walkthrough", version: %{id: ^walkthrough_id}}] =
                Stages.inputs(work_item)
     end
 
@@ -8307,12 +8451,12 @@ defmodule Apiary.StagesTest do
 
       work_item =
         work_item
-        |> end_run!(pushes_one("explainer", "# Explainer", []))
+        |> end_run!(pushes_one("walkthrough", "# Walkthrough", []))
         |> end_run!(verdict("passed"))
 
       assert %WorkItem{stage_id: @verify} = work_item
 
-      assert [%{type: "acceptance-criteria", version: %{id: ^new_id}}, _explainer] =
+      assert [%{type: "acceptance-criteria", version: %{id: ^new_id}}, _walkthrough] =
                Stages.inputs(work_item)
     end
 
@@ -8337,7 +8481,7 @@ defmodule Apiary.StagesTest do
 
       work_item =
         work_item
-        |> end_run!(both(scenarios, pushes_one("explainer", "# Explainer", [])))
+        |> end_run!(both(scenarios, pushes_one("walkthrough", "# Walkthrough", [])))
         |> end_run!(verdict("passed"))
         |> end_run!(verdict("passed"))
 
@@ -8355,7 +8499,7 @@ defmodule Apiary.StagesTest do
       second_id = second.public_id
       assert first.public_id != second_id
 
-      assert [%{type: "decision-record", version: %{id: ^second_id}}, _explainer] =
+      assert [%{type: "decision-record", version: %{id: ^second_id}}, _walkthrough] =
                Stages.inputs(work_item)
 
       {:ok, work_item} = Stages.approve(scope, work_item, nil, expect_stage: @verify)
@@ -8380,7 +8524,7 @@ defmodule Apiary.StagesTest do
 
       work_item =
         work_item
-        |> end_run!(both(changed, pushes_one("explainer", "# Explainer 2", [])))
+        |> end_run!(both(changed, pushes_one("walkthrough", "# Walkthrough 2", [])))
         |> end_run!(verdict("passed"))
         |> end_run!(verdict("passed"))
 
@@ -8412,7 +8556,7 @@ defmodule Apiary.StagesTest do
 
       work_item =
         work_item
-        |> end_run!(both(changed, pushes_one("explainer", "# Explainer 2", [])))
+        |> end_run!(both(changed, pushes_one("walkthrough", "# Walkthrough 2", [])))
         |> end_run!(verdict("passed"))
         |> end_run!(verdict("passed"))
 
@@ -8455,11 +8599,11 @@ defmodule Apiary.StagesTest do
       criteria_process!(scope, :build)
 
       {work_item, %Escalation{public_id: decision}} =
-        asked_in_build!(scope, "Name the empty cart in the explainer.")
+        asked_in_build!(scope, "Name the empty cart in the walkthrough.")
 
       work_item =
         work_item
-        |> end_run!(pushes_one("explainer", "# Explainer 2", decision: decision))
+        |> end_run!(pushes_one("walkthrough", "# Walkthrough 2", decision: decision))
         |> end_run!(verdict("passed"))
 
       assert %WorkItem{stage_id: @build, stage_state: :done} = work_item
@@ -8499,5 +8643,221 @@ defmodule Apiary.StagesTest do
 
     defp runs_of(%DispatchRun{id: id}),
       do: Repo.all(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^id)
+  end
+
+  describe "the entry an accept starts" do
+    @scenarios %{"input" => "demo-scenarios"}
+
+    # Explore, whose demo scenarios are optional and which stores none, then Shape with
+    # `sequence`; the work item in Shape after the run of its first entry ended with no
+    # verdict, which escalates.
+    defp escalated_in_shape!(scope, sequence) do
+      work_item = scope |> in_shape!(sequence) |> end_run!(nil)
+
+      assert %WorkItem{stage_id: @shape, stage_state: :escalated, stage_entry: 0} = work_item
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+      work_item
+    end
+
+    # The process of `escalated_in_shape!/2`, with `extra` on Shape; the work item with
+    # the first run of Shape queued.
+    defp in_shape!(scope, sequence, extra \\ %{}) do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "demo-scenarios",
+          "base_view" => "document"
+        })
+
+      save!(scope, [
+        explore_stage(%{
+          "outputs" => [
+            %{"type" => "proposal", "required" => true},
+            %{"type" => "demo-scenarios", "required" => false}
+          ]
+        }),
+        stage(@shape, "Shape", sequence, extra)
+      ])
+
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
+      work_item = reload(work_item)
+      assert %WorkItem{stage_id: @shape, stage_state: :running} = work_item
+      work_item
+    end
+
+    defp loop_of(workflows),
+      do: %{"loop" => %{"rounds" => 3, "body" => Enum.map(workflows, &%{"workflow" => &1})}}
+
+    test "the next entry: its workflow, the run that starts/2 finds", %{scope: scope} do
+      work_item =
+        escalated_in_shape!(scope, [
+          %{"workflow" => "shape-a-ticket"},
+          %{"workflow" => "capture-demo"}
+        ])
+
+      assert %{accept_entry: "capture-demo"} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == {:run, "capture-demo"}
+      # At the click, the entry and the run come from one step.
+      assert Stages.accept_starts(work_item) == %{
+               entry: "capture-demo",
+               run: {:run, "capture-demo"}
+             }
+    end
+
+    test "two entries with the same workflow: the name of the entry the accept starts", %{
+      scope: scope
+    } do
+      work_item =
+        escalated_in_shape!(scope, [
+          %{"workflow" => "shape-a-ticket"},
+          %{"workflow" => "review-spec", "name" => "First review"},
+          %{"workflow" => "review-spec", "name" => "Second review"}
+        ])
+
+      assert %{accept_entry: "First review"} = Stages.status(work_item, scope)
+
+      {:ok, work_item} =
+        Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @shape)
+
+      work_item = work_item |> reload() |> end_run!(nil)
+      assert %WorkItem{stage_entry: 1, stage_state: :escalated} = work_item
+      assert %{accept_entry: "Second review"} = Stages.status(work_item, scope)
+
+      assert Stages.accept_starts(work_item) == %{
+               entry: "Second review",
+               run: {:run, "review-spec"}
+             }
+    end
+
+    test "an escalation at a loop's first workflow: the entry after the loop", %{scope: scope} do
+      work_item =
+        scope
+        |> in_shape!([
+          loop_of(["write-spec", "review-spec"]),
+          %{"workflow" => "plan-the-build", "name" => "Plan the build"}
+        ])
+        |> end_run!(
+          verdict("escalate", [%{"text" => "The ticket has no goal.", "action" => "run_again"}])
+        )
+
+      assert %WorkItem{stage_entry: 0, loop_entry: 0, stage_state: :escalated} = work_item
+      assert %{accept_entry: "Plan the build"} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == {:run, "plan-the-build"}
+    end
+
+    test "every later entry held back, a required output missing: the loop the accept starts again",
+         %{scope: scope} do
+      work_item =
+        scope
+        |> in_shape!(
+          [
+            loop_of(["write-spec", "review-spec"]),
+            %{"workflow" => "plan-the-build"},
+            %{"workflow" => "capture-demos", "when" => @scenarios}
+          ],
+          %{"outputs" => [%{"type" => "walkthrough", "required" => true}]}
+        )
+        # In a loop, a run with no verdict runs the next workflow; `passed` leaves the loop.
+        |> end_run!(nil)
+        |> end_run!(verdict("passed"))
+        |> end_run!(nil)
+
+      assert %WorkItem{stage_entry: 1, stage_round: 1, stage_state: :escalated} = work_item
+
+      # capture-demos is passed over, the walkthrough check fails, and the loop runs its
+      # next round: the button reads Start write-spec, the run that starts.
+      assert %{accept_entry: "write-spec", accept_needs: []} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == {:run, "write-spec"}
+      assert Stages.accept_starts(work_item) == %{entry: "write-spec", run: {:run, "write-spec"}}
+    end
+
+    test "the next workflow not listed by the harness: that entry, which the stage waits for",
+         %{scope: scope} do
+      work_item =
+        escalated_in_shape!(scope, [
+          %{"workflow" => "shape-a-ticket"},
+          %{"workflow" => "film-the-demo", "name" => "Film the demo"}
+        ])
+
+      :ok = Processes.record_declared(scope.workspace, ["shape-a-ticket"])
+
+      assert %{accept_entry: "Film the demo"} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == :none
+      assert Stages.accept_starts(work_item) == %{entry: "Film the demo", run: :none}
+
+      assert {:ok, %WorkItem{stage_state: :waiting_workflow, stage_entry: 1}} =
+               Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @shape)
+    end
+
+    test "a loop as the next entry: the loop's first workflow", %{scope: scope} do
+      work_item =
+        escalated_in_shape!(scope, [
+          %{"workflow" => "shape-a-ticket"},
+          %{
+            "loop" => %{
+              "rounds" => 2,
+              "body" => [
+                %{"workflow" => "implement-the-change"},
+                %{"workflow" => "review-the-change"}
+              ]
+            }
+          }
+        ])
+
+      assert %{accept_entry: "implement-the-change"} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == {:run, "implement-the-change"}
+    end
+
+    test "a named entry: its name from the process; the run is of its workflow", %{
+      scope: scope
+    } do
+      work_item =
+        escalated_in_shape!(scope, [
+          %{"workflow" => "shape-a-ticket"},
+          %{"workflow" => "verify-a-ticket", "name" => "Acceptance test run"}
+        ])
+
+      assert %{accept_entry: "Acceptance test run"} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == {:run, "verify-a-ticket"}
+    end
+
+    test "a later entry whose condition is not met is passed over", %{scope: scope} do
+      work_item =
+        escalated_in_shape!(scope, [
+          %{"workflow" => "shape-a-ticket"},
+          %{"workflow" => "capture-demos", "when" => @scenarios},
+          %{"workflow" => "verify-a-ticket"}
+        ])
+
+      assert %{accept_entry: "verify-a-ticket"} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == {:run, "verify-a-ticket"}
+    end
+
+    test "the last entry: none, as the accept takes the stage to its gate", %{scope: scope} do
+      work_item = escalated_in_shape!(scope, [%{"workflow" => "shape-a-ticket"}])
+
+      assert %{accept_entry: nil, accept_needs: []} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == :none
+    end
+
+    # Shape requires no output: the accept passes over every later entry, the checks
+    # pass and the gate follows, and no run of the stage starts.
+    test "every later entry held back by its condition: none", %{scope: scope} do
+      work_item =
+        escalated_in_shape!(scope, [
+          %{"workflow" => "shape-a-ticket"},
+          %{"workflow" => "capture-demos", "when" => @scenarios}
+        ])
+
+      assert %{accept_entry: nil} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == :none
+    end
+
+    test "a work item that is not escalated: none", %{scope: scope} do
+      save!(scope, [explore_stage(), stage(@shape, "Shape", [%{"workflow" => "shape-a-ticket"}])])
+      work_item = take_in!(scope)
+
+      assert %{accept_entry: nil} = Stages.status(work_item, scope)
+    end
   end
 end

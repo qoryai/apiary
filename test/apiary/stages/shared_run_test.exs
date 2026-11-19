@@ -159,7 +159,7 @@ defmodule Apiary.Stages.SharedRunTest do
                  session: session,
                  workflow: workflow,
                  model_choice: nil,
-                 model_credential: nil,
+                 model_provider_credential_name: nil,
                  time_limit_minutes: 180,
                  full_suite: false,
                  inputs: next.inputs
@@ -1173,7 +1173,11 @@ defmodule Apiary.Stages.SharedRunTest do
                    "The export has no title. The list does not sort by date.",
                "action" => "run_again",
                "fix" =>
-                 "Read the 2 open findings, then pick Accept as it is or Run another round."
+                 "Read the 2 open findings, then pick Accept as it is or Run another round.",
+               "without_accept" => %{
+                 "fix" => "Read the 2 open findings, then pick Run another round."
+               },
+               "open_findings" => 2
              }
     end
 

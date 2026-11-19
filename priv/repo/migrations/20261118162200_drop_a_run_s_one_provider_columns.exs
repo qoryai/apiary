@@ -6,11 +6,12 @@ defmodule Apiary.Repo.Migrations.DropARunSOneProviderColumns do
   # keys go: `provider_secret_id`, `provider_chain`, `provider_api` and `model_keys`, with
   # their checks `runs_provider_check`, `runs_provider_api_check` and
   # `runs_model_keys_check`. `provider_connection_id` stays, as the provider of the run's
-  # start key. No run's keys are copied: a run claimed before this migration has no key
-  # rows, and its secrets requests fail.
+  # default model provider credential. No run's keys are copied: a run claimed before this
+  # migration has no key rows, and its secrets requests fail.
   #
   # Rolled back, the columns and their checks come back, filled from the key rows of each
-  # run's start key's provider; a run with no such rows loses `provider_connection_id`.
+  # run's default model provider credential's provider; a run with no such rows loses
+  # `provider_connection_id`.
   # The check of `provider_api` comes back with the members and the paths that the migration
   # `20261118160000` gave it, so the API of a key row with `paths` is kept.
   @uuid "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"

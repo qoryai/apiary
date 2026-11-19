@@ -83,13 +83,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     Provider, under "Shared in <organisation>", each marked "every workspace"; with
   #     none, Provider has no heading. With no provider to reuse, Add a key alone, open.
   #     A provider that works with no runtime of the catalogue has "<Provider> works with
-  #     no runtime in this version of Qory Apiary. Pick another provider." under
-  #     Provider, Continue disabled, and a save of it writes nothing. Then the tiers
-  #     (`ApiaryWeb.ModelTiers.tiers/1`, each tier's name and line above its fields,
-  #     under a heading `h2`): a Model and an Effort for each tier, from the models
-  #     suggested for the provider and runtime (`Apiary.ModelChoices.suggestions/2`), or
-  #     a text field Model for a provider whose description lists no models; for a
-  #     provider whose description cannot be read, a line that says so in their place.
+  #     no runtime in this version of Qory. Pick another provider." under Provider,
+  #     a red ring around Provider (`app.css`), Continue disabled, and a save of it
+  #     writes nothing. Then the tiers (`ApiaryWeb.ModelTiers.tiers/1`, each tier's
+  #     name and line above its fields, under a heading `h2`): a Model and an Effort
+  #     for each tier, from the models suggested for the provider and runtime
+  #     (`Apiary.ModelChoices.suggestions/2`), or a text field Model for a provider
+  #     whose description lists no models; for a provider whose description cannot be
+  #     read, a line that says so in their place.
   #     Then Runtime (`ApiaryWeb.ModelTiers.runtime_part/1`), the runtimes the provider
   #     serves (`Apiary.Kinds.Providers.runtimes/1`), as text where there is one, else a
   #     select, with a line of why. A change of provider keeps the runtime while the new
@@ -1172,29 +1173,36 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   attr :shared, :integer, required: true, doc: "how many of `options`, the first, are shared"
   attr :organisation, :string, required: true
 
+  attr :described_by, :string,
+    default: nil,
+    doc: "the id of the line of why the chosen provider cannot be used, such as no runtime"
+
   # Key, one radio group as `input/1` draws one: the first `shared` options under "Shared
   # in <organisation>", each marked "every workspace", then the others. With no shared
-  # option, no heading.
+  # option, no heading. With an error, or with `described_by`, the group has
+  # `aria-invalid` and is described by each error and the line. Only with `described_by`
+  # does it have the red ring (`.q-ring-invalid` in `app.css`).
   defp key_choice(assigns) do
     {shared, others} = assigns.options |> Enum.with_index() |> Enum.split(assigns.shared)
     errors = Enum.map(assigns.field.errors, &translate_error/1)
+    error_ids = for i <- 1..length(errors)//1, do: key_error_id("set-up-model-source", i)
+    described = error_ids ++ List.wrap(assigns.described_by)
 
     assigns =
       assign(assigns,
         id: "set-up-model-source",
         shared_options: shared,
         other_options: others,
-        errors: errors
+        errors: errors,
+        described: described
       )
 
     ~H"""
     <fieldset
       id={@id}
-      class="fieldset"
-      aria-invalid={@errors != [] && "true"}
-      aria-describedby={
-        @errors != [] && Enum.map_join(1..length(@errors), " ", &key_error_id(@id, &1))
-      }
+      class={["fieldset", @described_by && "q-ring-invalid"]}
+      aria-invalid={@described != [] && "true"}
+      aria-describedby={@described != [] && Enum.join(@described, " ")}
     >
       <legend class="mb-1 text-[13px]/[18px] font-medium">{gettext("Provider")}</legend>
       <div
@@ -2352,6 +2360,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           options={source_options(@providers, @may_add)}
           shared={@shared_keys}
           organisation={@current_scope.organisation.name}
+          described_by={@no_runtime && "set-up-model-no-runtime"}
         />
         <p
           :if={@no_runtime}

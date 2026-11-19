@@ -7,13 +7,14 @@ defmodule Apiary.Runs.ModelKey do
 
   `position` is the key's place in the run configuration's `credentials`, from 1; `name`
   its credential name, `<provider's public id>-<place>`, the place counted per provider;
-  `start` is true on the run's default model provider credential, the run configuration's
-  `model_credential`. `secret_value_id` is the key's row id (`secret_values.id`), which a
-  rename of the value id leaves as it is. `connection_id` and `secret_id` are the key's
-  provider and that provider's keys' secret, each nil should its row be deleted, and
-  `chain` the provider's chain. `api` is the provider's API that the key's sessions use:
-  `format`, `endpoint` with a setting resolved to its address, `auth`, and, when the
-  description lists them, `key_prefixes` and the limit windows as `use_up_to_windows`.
+  `default_credential` is true on the run's default model provider credential, the run
+  configuration's `default_model_provider_credential_name`. `secret_value_id` is the key's
+  row id (`secret_values.id`), which a rename of the value id leaves as it is.
+  `connection_id` and `secret_id` are the key's provider and that provider's keys' secret,
+  each nil should its row be deleted, and `chain` the provider's chain. `api` is the
+  provider's API that the key's sessions use: `format`, `endpoint` with a setting resolved
+  to its address, `auth`, and, when the description lists them, `key_prefixes` and the
+  limit windows as `use_up_to_windows`.
   The rest is what the claim wrote for the run configuration: the key's Pause for
   (`pause_for_s`), and, where the claim had them, `resets_at`, `schedule_resets_at`,
   `cooldown_until` and `use_up_to_percent`. No row has a key value. The key's row id, the
@@ -30,7 +31,7 @@ defmodule Apiary.Runs.ModelKey do
     belongs_to :run, Apiary.Runs.Run
     field :position, :integer
     field :name, :string
-    field :start, :boolean, default: false
+    field :default_credential, :boolean, default: false
     field :secret_value_id, :binary_id, redact: true
     belongs_to :connection, Apiary.Connections.Connection
     field :secret_id, :binary_id, redact: true
@@ -44,7 +45,7 @@ defmodule Apiary.Runs.ModelKey do
   end
 
   # The fields a claim writes for a key, all but the run's id.
-  @fields ~w(position name start secret_value_id connection_id secret_id chain api
+  @fields ~w(position name default_credential secret_value_id connection_id secret_id chain api
              pause_for_s resets_at schedule_resets_at cooldown_until use_up_to_percent)a
 
   @doc false

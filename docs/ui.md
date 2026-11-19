@@ -245,7 +245,12 @@ place:
   close it, change nothing and keep what was typed on the page, and focus goes back to
   the button that opened it. An act that starts a run only in some states (Confirm,
   Approve, Request changes, Accept as it is, Move back, Check again) opens
-  the dialog only where it starts one, and acts at once otherwise.
+  the dialog only where it starts one, and acts at once otherwise. Where an accept of an
+  escalation starts a run of the stage, or an entry whose workflow the stage then waits
+  for, the card's button and its dialog read **Start** and the name of that entry, from
+  the process, else its workflow: "Start capture-demo?" and **Start capture-demo** in
+  place of "Accept as it is?" and **Accept as it is**. Where the accept takes the stage
+  to its gate, or the stage escalates again, the button stays **Accept as it is**.
 
 - **A form is a page** of its section at a separate path, never a dialog over a list:
   Invite people, New machine, a policy's New rule and Edit rule,
@@ -507,35 +512,39 @@ replaces the navigation it is in.
 - **Workspace settings › Model** (`/settings/model`, `ApiaryWeb.ModelChoiceLive`) has
   Provider, each model provider by its name, whose keys runs take. A provider that works
   with no runtime shows under Provider "<Provider> works with no runtime in this version
-  of Qory Apiary. Pick another provider.", and Save writes nothing while it shows. The part
-  Fallbacks (`#model-fallbacks`) is under Provider, the tiers and Runtime: the line "When
-  every key of Northwind Claude is in cooldown, runs use these, in order, from the next
-  run.", then one row for each fallback, in order, from the second on with a rule above
-  it. A row is a group named by its place, "Fallback 2", with Provider, Model and effort
-  per tier (`ApiaryWeb.ModelTiers.tiers/1`, as the default models have it) and Runtime
-  (`ApiaryWeb.ModelTiers.runtime_part/1`, the runtimes the row's provider works with),
-  then Move up, Move down and Remove, each labelled with the place ("Move fallback 2
-  up"). A row's Provider lists every provider that applies to the workspace, also one that
-  works with no runtime, but the chosen provider and those of the other rows. A row whose
-  provider works with no runtime shows "<Provider> works with no runtime in this version
-  of Qory Apiary. Pick another provider." under its Provider, and Save is disabled while
-  it shows. Add fallback adds a row of the first provider left that works with a runtime,
-  else of the first provider left. A new row, and a row whose provider changes, has no
-  models and starts on the chosen runtime where its provider works with it, else on the
-  first runtime that does; a change of a row's Runtime keeps its models, and an effort
-  that runtime does not accept goes back to "Not set". With no provider left, the part
-  shows "Add another model provider in Organisation settings › Model providers, then add
-  it here as a fallback.", the place a link. Save is enabled once every tier of the
-  default models and of each row has a model and each row's provider works with a runtime.
-  Save writes the rows with the choice, and an error shows under its row's field, such as
+  of Qory. Pick another provider.", Provider has a red border, and Save writes nothing
+  while the line shows. The part Fallbacks (`#model-fallbacks`) is under Provider, the
+  tiers and Runtime: the line "When every key of this provider is in cooldown, runs use
+  these, in order, from the next run.", then one row for each fallback, in order, from
+  the second on with a rule above it. A row is a group named by its place, "Fallback 2",
+  with Provider, Model and effort per tier (`ApiaryWeb.ModelTiers.tiers/1`, as the
+  default models have it) and Runtime (`ApiaryWeb.ModelTiers.runtime_part/1`, the
+  runtimes the row's provider works with), then Move up, Move down and Remove, each
+  labelled with the place ("Move fallback 2 up"). A row's Provider lists every provider
+  that applies to the workspace, also one that works with no runtime, but the chosen
+  provider and those of the other rows. A row whose provider works with no runtime shows
+  "<Provider> works with no runtime in this version of Qory. Pick another provider."
+  under its Provider, which has a red border, and Save is disabled while the line shows.
+  Add fallback adds a row of the first provider left that works with a runtime, else of
+  the first provider left. A new row, and a row whose provider changes, has no models
+  and starts on the chosen runtime where its provider works with it, else on the first
+  runtime that does; a change of a row's Runtime keeps its models, and an effort that
+  runtime does not accept goes back to "Not set". With no provider left, the part shows
+  "Add another model provider in Organisation settings › Model providers, then add it
+  here as a fallback.", the place a link. Save is enabled once every tier of the default
+  models and of each row has a model and each row's provider works with a runtime. Save
+  writes the rows with the choice, and an error shows under its row's field, such as
   "Choose another provider: Northwind Claude is chosen already." A save that sends no
   rows, as the set-up's Model step saves, keeps the rows but one of the chosen provider,
   which it drops. Where the set-up's save is refused for a kept row, the step shows one
   line under its form (`#set-up-model-fallback-refused`), "Change a fallback in Workspace
   settings › Model. Choose another provider: Northwind Claude is not used in this
-  workspace.", the place a link to this page. A save that changes the chosen provider to
-  the provider of a row drops that row. A provider whose saved settings no longer fit the
-  catalogue entry of its kind in the running release serves nothing, and the page shows
+  workspace.", the place a link to this page. On the set-up's Model step, a provider that
+  works with no runtime has the same line under Provider (`#set-up-model-no-runtime`),
+  and the Provider group (`#set-up-model-source`) has a red ring, `aria-invalid` and the
+  line as its description. A save that changes the chosen provider to the provider of a
+  row drops that row. A provider whose saved settings no longer fit the catalogue entry
+  of its kind in the running release serves nothing, and the page shows
   "Add Northwind Claude again in Organisation settings › Model providers: its settings no
   longer fit this version of Qory Apiary." A provider whose settings check ran out of time
   or crashed serves nothing on that read, with no line, and the next read checks it again.
@@ -1328,9 +1337,10 @@ address under `/machines`, with what followed `/nodes` and the query.
   carries `--via` and the gateway's URL before the server's address (`qory access-key
   enrol --via https://edge.example.com https://apiary.example.com` and the code), the
   description reads "The command connects build-01 by itself, through the gateway
-  edge-01: it makes the machine's key there, saves it, and writes Qory Apiary's address
-  and public key and the gateway's address into the Forager file. The secret never leaves
-  the machine.", and a line under the command reads "If edge-01's certificate is signed
+  edge-01: it makes the machine's access key there, saves it, and writes Qory Apiary's
+  address and public key and the gateway's address into the Forager file. The secret
+  never leaves the machine.", and a line under the command reads "If edge-01's
+  certificate is signed
   by a private certificate authority, add --via-ca-file and that authority's PEM file."
   (`NodeComponents.via_ca_line/1`). An address in the command with a character a shell
   acts on is single-quoted (`NodeComponents.shell_word/1`). For a machine or pool that has or had a key, the command carries
@@ -2166,8 +2176,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   was queued, then Request a machine, Start the machine, Prepare the machine, Agent
   session 1 and Remove the machine as grey rings with no time. A muted line under Queue
   the run shows why the run waits, the first reason that applies (`Apiary.Runs.Waiting`),
-  and is read again when the queue changes, a slot frees, a build ends or a machine's key
-  changes:
+  and is read again when the queue changes, a slot frees, a build ends or a machine's
+  access key changes:
   1. "Waiting until Qory Apiary reads the harness." while its harness walk is not done.
   2. "Waiting: no pool can take the run" while no pool that serves the workspace is ready.
   3. "Waiting for a machine: no pool offers a machine that fits UI tests, large

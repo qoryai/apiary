@@ -18,6 +18,7 @@ defmodule Apiary.ModelKeys.CopiesMigrationTest do
   alias Apiary.Runs.Run
   alias Apiary.Secrets.Value
 
+  @moduletag :capture_log
   @moduletag needs: [:factory, :secrets]
 
   @migration {20_261_111_190_000, Apiary.Repo.Migrations.KeepTheKeyValueARunWasSealed,
@@ -177,7 +178,7 @@ defmodule Apiary.ModelKeys.CopiesMigrationTest do
 
     assert report(running, main) == []
 
-    down!(@columns)
+    :ok = Apiary.OneProviderColumns.back!()
     down!(@live_copies)
     up!(@live_copies)
     assert report(running, main) == ["allowed"]

@@ -36,6 +36,16 @@ defmodule Apiary.Stages.RunnerTest do
 
   defp again(text), do: %{"text" => text, "action" => "run_again"}
 
+  # The point of a failed Exists check of the output type `type`, with the type's words
+  # (`Apiary.Stages.Points.check_failed/1`).
+  defp stored_no(type),
+    do: %{
+      "text" => "Run another round: the run stored no #{Apiary.Artifacts.Type.words(type)}.",
+      "action" => "run_again",
+      "action_in_text" => true,
+      "missing_type" => type
+    }
+
   defp answer(text, question), do: %{"text" => text, "action" => "answer", "question" => question}
 
   describe "entering" do
@@ -119,7 +129,7 @@ defmodule Apiary.Stages.RunnerTest do
                state: :escalated,
                position: pos(1, nil, 1),
                actions: [
-                 {:escalate, :check_failed, [again("No proposal was stored in this stage.")]}
+                 {:escalate, :check_failed, [stored_no("proposal")]}
                ]
              }
 
@@ -132,8 +142,8 @@ defmodule Apiary.Stages.RunnerTest do
                })
 
       assert points == [
-               again("No proposal was stored in this stage."),
-               again("No submission was stored in this stage.")
+               stored_no("proposal"),
+               stored_no("submission")
              ]
     end
   end
@@ -550,8 +560,8 @@ defmodule Apiary.Stages.RunnerTest do
                {:escalate, :round_limit,
                 [
                   again("3 of 3 rounds ran."),
-                  again("No demo-video was stored in this stage."),
-                  again("No submission was stored in this stage.")
+                  stored_no("demo-video"),
+                  stored_no("submission")
                 ]}
              ]
     end
@@ -634,7 +644,8 @@ defmodule Apiary.Stages.RunnerTest do
                    "Pick Move back to return the work item to Build once more, or pick Accept as it is.",
                  "action" => "run_again",
                  "fix" =>
-                   "Verify's run asked for changes again after 2 returns to Build, the most that Verify allows."
+                   "Verify's run asked for changes again after 2 returns to Build, the most that Verify allows.",
+                 "return_stage" => "Build"
                }
                | findings
              ]
@@ -911,7 +922,7 @@ defmodule Apiary.Stages.RunnerTest do
     test "a loop passed over whole is passed over once: a failed check uses no round and escalates check_failed" do
       seq = stage([wf("verify-a-ticket"), loop([wf("capture-demos", @demos)], 2)])
       capture = skip("capture-demos", 1, 0, 1)
-      facts = %{counted: [], failed_checks: ["explainer"]}
+      facts = %{counted: [], failed_checks: ["walkthrough"]}
 
       outcome = Runner.step(seq, pos(0, nil, 1), {:run, {:verdict, :passed, nil}}, facts)
 
@@ -963,7 +974,7 @@ defmodule Apiary.Stages.RunnerTest do
 
     defp round_limit?(_outcome), do: false
 
-    @failing %{counted: [], failed_checks: ["explainer"]}
+    @failing %{counted: [], failed_checks: ["walkthrough"]}
 
     test "a loop passed over after a loop keeps that loop's round: a failing check ends in round_limit after round 3" do
       seq = stage([loop([wf("implement")], 3), loop([wf("capture-demos", @demos)])])
@@ -1016,7 +1027,7 @@ defmodule Apiary.Stages.RunnerTest do
       assert Runner.required?(output, %{counted: ["demo-scenarios"]})
       assert Runner.required?(%{"type" => "verification", "required" => true}, %{counted: []})
 
-      refute Runner.required?(%{"type" => "explainer", "required" => false}, %{
+      refute Runner.required?(%{"type" => "walkthrough", "required" => false}, %{
                counted: ["demo-scenarios"]
              })
     end
@@ -1675,7 +1686,11 @@ defmodule Apiary.Stages.RunnerTest do
                         "The export has no title. The list does not sort by date.",
                     "action" => "run_again",
                     "fix" =>
-                      "Read the 2 open findings, then pick Accept as it is or Run another round."
+                      "Read the 2 open findings, then pick Accept as it is or Run another round.",
+                    "without_accept" => %{
+                      "fix" => "Read the 2 open findings, then pick Run another round."
+                    },
+                    "open_findings" => 2
                   }
                 ]}
              ]
@@ -1708,8 +1723,33 @@ defmodule Apiary.Stages.RunnerTest do
                "text" =>
                  "1 of 1 round ran, and 1 review finding is still open. The export has no title.",
                "action" => "run_again",
-               "fix" => "Read the open finding, then pick Accept as it is or Run another round."
+               "fix" => "Read the open finding, then pick Accept as it is or Run another round.",
+               "without_accept" => %{
+                 "fix" => "Read the open finding, then pick Run another round."
+               },
+               "open_findings" => 1
              }
+    end
+
+    test "accept_to_gate?/3 follows where an accept goes" do
+      seq = stage([wf("implement"), loop([wf("capture-demo")])])
+
+      refute Runner.accept_to_gate?(seq, pos(0, nil, 1), %{})
+      assert Runner.accept_to_gate?(seq, pos(1, 0, 3), %{})
+      assert Runner.accept_to_gate?(seq, pos(2, nil, 3), %{})
+    end
+
+    test "entry_name/2 is the entry's name, else its workflow" do
+      seq =
+        stage([
+          wf("plan", %{"name" => "Plan the build"}),
+          loop([wf("implement"), wf("review", %{"name" => "Review the change"})])
+        ])
+
+      assert Runner.entry_name(seq, pos(0, nil, 1)) == "Plan the build"
+      assert Runner.entry_name(seq, pos(1, 0, 1)) == "implement"
+      assert Runner.entry_name(seq, pos(1, 1, 1)) == "Review the change"
+      assert Runner.entry_name(seq, pos(2, nil, 1)) == nil
     end
 
     test "with no open finding the point keeps its words" do

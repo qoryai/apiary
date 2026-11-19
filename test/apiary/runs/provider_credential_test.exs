@@ -73,7 +73,9 @@ defmodule Apiary.Runs.ProviderCredentialTest do
 
       decoded = Jason.decode!(document, objects: :ordered_objects)
       names = Enum.map(decoded.values, &elem(&1, 0))
-      assert names == ~w(version security_policy variables credentials model_credential)
+
+      assert names ==
+               ~w(version security_policy variables credentials default_model_provider_credential_name)
 
       name = "#{ctx.provider.public_id}-1"
       assert name =~ ~r/\A[a-z0-9][a-z0-9_.-]{0,63}\z/
@@ -89,7 +91,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
                }
              ]
 
-      assert Jason.decode!(document)["model_credential"] == name
+      assert Jason.decode!(document)["default_model_provider_credential_name"] == name
 
       assert Jason.decode!(document)["security_policy"]["egress"]["allow"] ==
                ["git.example", "api.anthropic.com"]
@@ -140,7 +142,8 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
     end
 
-    test "every run of the provider names its start key by the provider and its place", ctx do
+    test "the default model provider credential of every run of the provider is <provider id>-<place>",
+         ctx do
       run = Repo.preload(ctx.run, :model_keys)
       {:ok, credential} = ProviderCredential.for_run(run)
       {:ok, again} = ProviderCredential.for_run(%{run | id: Ecto.UUID.generate()})
@@ -211,7 +214,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
                "pause_for_s" => 60
              }
 
-      assert Jason.decode!(document)["model_credential"] == "#{p}-1"
+      assert Jason.decode!(document)["default_model_provider_credential_name"] == "#{p}-1"
       assert Apiary.Policy.Schema.validate(document) == :ok
       assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
       refute document =~ model_key()
@@ -318,7 +321,8 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       assert document
              |> Jason.decode!(objects: :ordered_objects)
              |> Map.get(:values)
-             |> Enum.map(&elem(&1, 0)) == ~w(version variables credentials model_credential)
+             |> Enum.map(&elem(&1, 0)) ==
+               ~w(version variables credentials default_model_provider_credential_name)
 
       assert Apiary.Policy.Schema.validate(document) == :ok
       assert {:ok, %{settings: ^document, digest: digest}} = reload(Map.put(ctx, :scope, scope))
@@ -340,7 +344,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       key = %ModelKey{
         position: 1,
         name: "model-1",
-        start: true,
+        default_credential: true,
         secret_value_id: Ecto.UUID.generate(),
         connection_id: litellm.id,
         secret_id: litellm.secret_id,

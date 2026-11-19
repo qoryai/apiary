@@ -686,10 +686,16 @@ The body, at most 64 KiB:
   points ends the last round of a loop, the stage escalates at its round limit with one
   point. Its text is "3 of 3 rounds ran, and 2 review findings are still open." followed
   by the `text` of each point, and its fix is "Read the 2 open findings, then pick Accept
-  as it is or Run another round." With no points, the text is "3 of 3 rounds ran." The
-  stage runner writes this point, and the limit of one sentence and 500 characters below
-  does not apply to it: with points, its text is more than one sentence and can be
-  longer than 500 characters. With `passed`, a verdict has none.
+  as it is or Run another round." Where the accept starts a run of the stage, or an
+  entry whose workflow the stage then waits for, the page shows **Start** and the name of
+  that entry in place of **Accept as it is** (the accept button, in the paragraph on a
+  run that ends with no verdict in [POST verdict](#post-verdict)), and the fix is "Read
+  the 2 open findings, then pick Start verify-a-ticket or Run another round." Where the
+  page shows neither, the fix is "Read the 2 open findings, then pick Run another round."
+  With no points, the text is "3 of 3 rounds ran." The stage runner writes this point,
+  and the limit of one sentence and 500 characters below does not apply to it: with
+  points, its text is more than one sentence and can be longer than 500 characters. With
+  `passed`, a verdict has none.
   Each point has `text`, one plain sentence on one line of 1 to 500 characters that
   states what is wrong, with no action, and `action`: `answer`, with `question`, the id of
   an open question, or `run_again`, without `question`. A `run_again` point may also have
@@ -734,11 +740,17 @@ next round. Returns `201` with the version, as `POST artifacts` does.
 A run of a workflow entry outside a loop must push a verdict. Make `qory run verdict
 passed` the last step of the workflow, on a first run and on a rerun. A run that ends with
 no verdict and no open question stops the stage: a member sees "The run stopped before its
-verdict." with **Run another round** and, where an output has a version or no output is
-required, **Accept as it is**. `changes-requested` outside a loop goes on to the next entry,
-as `passed` does. In a loop, a run with no verdict runs the next workflow of the ring. A test
-work item's run needs no verdict. Nor does a run of Explore whose take in has a proposal, or
-that left open questions: Explore's result is its proposal or its questions. A run of
+verdict." with **Run another round**, and with the accept button where an output has a
+version or no output is required. Where the accept starts a run of the stage, or an entry
+whose workflow the stage then waits for, the button is **Start** and the name of that
+entry: its `name` in the process, else its workflow, such as **Start verify-a-ticket**.
+Where the accept takes the stage to its gate, or the stage escalates again, the button is
+**Accept as it is**. An accept that takes the stage to its gate, after the sequence's last
+entry, also needs every required output: while one has no version, the page shows no
+**Accept as it is**. `changes-requested` outside a loop goes on to the next entry, as
+`passed` does. In a loop, a run with no verdict runs the next workflow of the ring. A test
+work item's run needs no verdict. Nor does a run of Explore whose take in has a proposal,
+or that left open questions: Explore's result is its proposal or its questions. A run of
 Explore that pushes `passed` or `changes-requested` goes on to the stage's checks.
 
 Checks: a body over 64 KiB is `413` `payload_too_large`; a body with a member other than
@@ -842,15 +854,17 @@ of the run contract. A next session of the same stage:
 - `model_choice` has the choice's model on the choice's provider where that provider has a
   key out of cooldown at the claim; else the model of the choice's first fallback that
   has one; else the choice's model on its provider, whose keys are all in cooldown. A
-  choice on the provider of the run's start key whose runtime uses the same API of that
-  provider as the run joins the group of the run's start key.
+  choice on the provider of the run's default model provider credential whose runtime
+  uses the same API of that provider as the run joins the group of the run's default
+  model provider credential.
 - `model_choice` is the run's `run_settings` where the choice's runtime or model is no
   longer valid, or its runtime is no longer in the catalogue. A choice whose provider
   was removed, or no longer fits the catalogue, ends the claim `provider_gone`.
 - `model_choice` has the catalogue's default runtime alone where the workflow resolves to
-  no model choice at any level: the session joins the group of the run's start key, or,
-  in a run with no start key, runs on the machine's local model provider credential, and
-  uses the default model of that runtime.
+  no model choice at any level: the session joins the group of the run's default model
+  provider credential, or, in a run with no default model provider credential, runs on
+  the machine's local model provider credential, and uses the default model of that
+  runtime.
 - Where a session's runtime uses another API of a provider that an earlier session of the
   run uses, the claim ends the run before it starts, with the end cause
   `session_key_missing`: one run uses one API of each provider. The claim ends the run so
@@ -861,13 +875,15 @@ of the run contract. A next session of the same stage:
   local model provider credential, as its workflow resolves to no model choice, gets no
   key: its claim ends it `session_key_missing` where a later session runs on a model
   provider.
-- `model_credential`, for a session on a key of a provider other than the start key's, is
-  the credential name of the key the session starts on: that provider's first key out of
-  cooldown, else its first key. The claim picks at most 6 keys in this order: the start
-  key's provider's keys, at most 6 less the number of other providers; then one key of
-  each other provider, in session order; then the other providers' remaining keys;
-  `credentials` lists them provider by provider, the start key's provider first. Where
-  `model_credential` is left out, the session joins the group of the run's start key.
+- `model_provider_credential_name`, for a session on a key of a provider other than the
+  default model provider credential's, is the credential name of the key the session
+  starts on: that provider's first key out of cooldown, else its first key. The claim
+  picks at most 6 keys in this order: the default model provider credential's provider's
+  keys, at most 6 less the number of other providers; then one key of each other
+  provider, in session order; then the other providers' remaining keys; `credentials`
+  lists them provider by provider, the default model provider credential's provider
+  first. Where `model_provider_credential_name` is left out, the session joins the group
+  of the run's default model provider credential.
 
 Or the end of the run, where the stage runs no further workflow in this run: an
 escalation, open questions, the gate, or the next stage, whose run is queued as any run:
@@ -1003,7 +1019,7 @@ The messages:
     WebP or SVG file." For a document type, the part after the colon is "a document is a
     Markdown file of UTF-8 text"; for a video type, "a file is an MP4 or WebM video, or a
     WebVTT file (.vtt)"; for a structured type, "the file is one JSON document".
-  - "Fix notes.txt to match the format of explainer: the filename of a document ends in
+  - "Fix notes.txt to match the format of walkthrough: the filename of a document ends in
     .md."
   - "Fix verdict.json to match the format of verdict: at #/verdict, value must be one of
     the enum values: "passed", "changes-requested" or "escalate"." For a file that fails

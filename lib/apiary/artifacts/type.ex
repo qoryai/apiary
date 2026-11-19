@@ -73,7 +73,7 @@ defmodule Apiary.Artifacts.Type do
   # The standard types: name, base view, size limit, most files, and the dedicated view.
   @standard [
     {"acceptance-criteria", :structured, @mib, 1, nil},
-    {"explainer", :document, @mib, 1, nil},
+    {"walkthrough", :document, @mib, 1, nil},
     {"decision-record", :document, @mib, 1, nil},
     {"mockup", :image, 10 * @mib, 10, nil},
     {"screenshot", :image, 10 * @mib, 10, nil},
@@ -159,6 +159,12 @@ defmodule Apiary.Artifacts.Type do
     do: byte_size(name) <= @max_name and Regex.match?(@name, name)
 
   def name?(_name), do: false
+
+  # words/1 is a type's name in a sentence, with spaces for its hyphens: "acceptance
+  # criteria" for `acceptance-criteria`.
+  @doc false
+  @spec words(String.t()) :: String.t()
+  def words(name) when is_binary(name), do: String.replace(name, "-", " ")
 
   # default_size_limit/1 and max_size_limit/1 are the size limit a custom type of
   # `base_view` gets when the form sets none, and the most it may have.

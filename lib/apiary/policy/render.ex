@@ -12,9 +12,10 @@ defmodule Apiary.Policy.Render do
   """
 
   # With the features `factory` and `secrets`:
-  # `credentials` and `model_credential` are written in the document composed for a run
-  # that its claim set a model provider for (`Apiary.Policy.ComposedConfiguration`,
-  # `Apiary.Runs.ProviderCredential`), never in a policy's.
+  # `credentials` and `default_model_provider_credential_name` are written in the document
+  # composed for a run that its claim set a model provider for
+  # (`Apiary.Policy.ComposedConfiguration`, `Apiary.Runs.ProviderCredential`), never in a
+  # policy's.
 
   alias Apiary.Policy.Effective
 

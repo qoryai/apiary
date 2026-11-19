@@ -5181,7 +5181,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     lv |> form("#set-up-model-form", model: %{source: anthropic.public_id}) |> render_change()
 
     assert words(lv, "#set-up-model-no-runtime") ==
-             "Anthropic API key works with no runtime in this version of Qory Apiary. Pick another provider."
+             "Anthropic API key works with no runtime in this version of Qory. Pick another provider."
 
     refute has_element?(lv, "#set-up-model-runtime")
     refute continue?(lv)
@@ -5197,6 +5197,91 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     lv |> form("#set-up-model-form", model: %{source: openrouter.public_id}) |> render_change()
     refute has_element?(lv, "#set-up-model-no-runtime")
     assert words(lv, "#set-up-model-runtime-name") == bearer.title
+  end
+
+  test "while a provider that works with no runtime is chosen, Provider has the red ring and is described by the line",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    deepseek = provider!(scope, "deepseek", "ds")
+    openrouter = provider!(scope, "openrouter", "router")
+    release = Apiary.Kinds.Runtimes.list() |> Enum.find(&(&1.name == "claude"))
+
+    # The catalogue has only a bearer runtime, which DeepSeek does not serve and
+    # OpenRouter does.
+    bearer = %{
+      release
+      | name: release.name <> "-bearer",
+        title: release.title <> " bearer",
+        model_keys: Enum.filter(release.model_keys, &(&1["auth"] == %{"scheme" => "bearer"}))
+    }
+
+    :ok = Apiary.Kinds.Runtimes.put_test_list([bearer])
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    lv |> form("#set-up-model-form", model: %{source: deepseek.public_id}) |> render_change()
+
+    assert words(lv, "#set-up-model-no-runtime") ==
+             "DeepSeek works with no runtime in this version of Qory. Pick another provider."
+
+    # With the line, the group has `.q-ring-invalid`, and `app.css` draws the ring while
+    # the group has `aria-invalid`.
+    assert has_element?(
+             lv,
+             ~s{fieldset#set-up-model-source.q-ring-invalid[aria-invalid="true"][aria-describedby="set-up-model-no-runtime"]}
+           )
+
+    # OpenRouter serves the bearer runtime: the line and the attributes go.
+    lv |> form("#set-up-model-form", model: %{source: openrouter.public_id}) |> render_change()
+    refute has_element?(lv, "#set-up-model-no-runtime")
+    refute has_element?(lv, "fieldset#set-up-model-source.q-ring-invalid")
+    refute has_element?(lv, "fieldset#set-up-model-source[aria-invalid]")
+    refute has_element?(lv, "fieldset#set-up-model-source[aria-describedby]")
+  end
+
+  test "at mount, with a provider that works with a runtime, Provider has no red ring",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    _anthropic = provider!(scope, "anthropic", "main")
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    assert has_element?(lv, "fieldset#set-up-model-source")
+    refute has_element?(lv, "fieldset#set-up-model-source.q-ring-invalid")
+    refute has_element?(lv, "#set-up-model-no-runtime")
+    refute has_element?(lv, "fieldset#set-up-model-source[aria-invalid]")
+    refute has_element?(lv, "fieldset#set-up-model-source[aria-describedby]")
+  end
+
+  test "a refusal of the chosen provider shows under Provider with no red ring",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    _anthropic = provider!(scope, "anthropic", "main")
+    openrouter = provider!(scope, "openrouter", "router")
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+    lv |> form("#set-up-model-form", model: %{source: openrouter.public_id}) |> render_change()
+
+    # After the page read it, OpenRouter no longer applies to the workspace. Coded again,
+    # as a save codes it, so the row passes its integrity code.
+    Apiary.Connections.Connection
+    |> Repo.get!(openrouter.id)
+    |> Ecto.Changeset.change(applies_to: "selected")
+    |> Apiary.Kinds.Coded.seal()
+    |> Repo.update!()
+
+    [model | _rest] = models(openrouter)
+
+    lv
+    |> form("#set-up-model-form", model: %{source: openrouter.public_id, tiers: tiers(model)})
+    |> render_submit()
+
+    assert has_element?(lv, "#set-up-model-source-error")
+
+    assert has_element?(
+             lv,
+             ~s{fieldset#set-up-model-source[aria-invalid="true"][aria-describedby="set-up-model-source-error"]}
+           )
+
+    refute has_element?(lv, "#set-up-model-no-runtime")
+    refute has_element?(lv, "fieldset#set-up-model-source.q-ring-invalid")
   end
 
   test "a change of Runtime keeps the models and takes back an effort the runtime refuses",

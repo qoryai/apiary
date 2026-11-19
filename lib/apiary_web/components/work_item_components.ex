@@ -2246,11 +2246,11 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   A run's proposal and a question's context are untrusted Markdown, shown as
   `ApiaryWeb.ArtifactLive.Markdown.render/2` returns them: raw HTML dropped, http, https
-  and mailto links only, headings two levels down. Each map may have that render as
-  `:rendered` (`markdown/1`), so the page renders once for what it read; without it, the
-  component renders. A question, an option's title and explanation, an answer, a review
-  comment and a reply are plain text: escaped, their line breaks kept, isolated from the
-  text around them.
+  and mailto links and links to a page of this instance only, headings two levels down.
+  Each map may have that render as `:rendered` (`markdown/1`), so the page renders once
+  for what it read; without it, the component renders. A question, an option's title and
+  explanation, an answer, a review comment and a reply are plain text: escaped, their
+  line breaks kept, isolated from the text around them.
 
   The draft of the changed decisions at the gate is `answers` (by question id, each
   `%{"option" => choice, "note" => text}`, the choice an option's place from 1, or `"own"`
@@ -2609,6 +2609,16 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :outputs, :list, default: []
 
+  attr :has_outputs, :boolean,
+    default: true,
+    doc:
+      "whether the tab has an output frame, not an input frame: one for a version the stage's approval recorded, or, on a stage with a `verification` output, one for what the take in's runs wrote (`ApiaryWeb.WorkItemLive.StageTab.verify_frames/2`); the gate's comment on the stage's outputs needs one, and needs Run another round to be shown"
+
+  attr :runs_on_track, :boolean,
+    default: true,
+    doc:
+      "whether the stage has a workflow entry that runs on the work item's track (`ApiaryWeb.WorkItemLive.StageTab.runs_on_track?/2`); the gate's Run another round needs one"
+
   attr :findings, :list,
     default: [],
     doc:
@@ -2709,9 +2719,20 @@ defmodule ApiaryWeb.WorkItemComponents do
     {decisions, others} = Enum.split_with(assigns.questions, &decision?/1)
     round_gate = assigns.current and assigns.round_gate and not running and not open_questions?
 
+    # The gate's Run another round needs an entry that runs on the work item's track. Its
+    # comment on the stage's outputs, which only Run another round sends, needs that and an
+    # output frame. Without the comment field the button is drawn only where an open review
+    # comment or a changed decision (the Decisions frame) can enable it.
+    rerun? = assigns.runs_on_track
+    comment? = assigns.can_send and assigns.has_outputs and rerun?
+    reviewing? = assigns.can_send and open != []
+
     # Sent decisions are text: only a decision still `:decided` takes a change, at the gate.
     change =
-      assigns.can_change and Enum.any?(decisions, &(&1.state == :decided)) and round_gate
+      assigns.can_change and Enum.any?(decisions, &(&1.state == :decided)) and round_gate and
+        rerun?
+
+    rerun_button? = rerun? and (comment? or reviewing? or change)
 
     assigns =
       assign(assigns,
@@ -2728,7 +2749,9 @@ defmodule ApiaryWeb.WorkItemComponents do
             do: 0,
             else: length(others)
           ),
-        round: round_gate and (change or assigns.can_send or not is_nil(assigns.move_error)),
+        round: round_gate and (rerun_button? or not is_nil(assigns.move_error)),
+        commenting: comment?,
+        rerun: rerun_button?,
         sendable: if(assigns.can_send, do: length(open), else: 0),
         item: SourceComponents.item(assigns.item_noun),
         run: run,
@@ -2743,7 +2766,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       )
 
     ~H"""
-    <div id={@id} class="q-xp">
+    <div id={@id} class="q-xp q-xp-stage">
       <section
         :if={@passed_over}
         id={"#{@id}-passed-over"}
@@ -2844,6 +2867,8 @@ defmodule ApiaryWeb.WorkItemComponents do
         comment={@comment}
         can_confirm={@confirm and @can_act}
         can_send={@round and @can_send}
+        commenting={@commenting}
+        rerun={@rerun}
         can_change={@change}
         changed={@changed}
         decisions={@change}
@@ -3341,8 +3366,9 @@ defmodule ApiaryWeb.WorkItemComponents do
         "the page read as its parts and `:criteria` for acceptance criteria read as their " <>
         "table, whose body is the slot's; `:row` for a frame with its artifact rows and no " <>
         "text; `:caption`, the words after the icon in place of the version's, nil for those; " <>
-        "and `:accepted`, the member who accepted the stage's escalation as it is, shown " <>
-        "above a text"
+        "`:accepted`, the member who accepted the stage's escalation as it is, shown " <>
+        "above a text; and for an input frame `:source`, the stage, attempt and run that " <>
+        "made the version (`ApiaryWeb.WorkItemLive.StageTab.input_frames/4`)"
 
   slot :inner_block, doc: "the output's artifact row, for a version with no Markdown"
 
@@ -3353,7 +3379,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   # state the reader gave them when the page draws again. A frame whose version a gate
   # `none` approved has the Approved badge and, after a check mark, the version, how it was
   # approved and when, as Explore's approved Proposal frame has them. The heading has the
-  # artifact's name after the type where it is not `main`.
+  # artifact's name after the type where it is not `main`. An input frame's version that a
+  # run made has its source after its number: "Version 1 · from Build, Attempt 2 (Run 4)",
+  # under the approval line where the frame has one.
   def output_frame(assigns) do
     read = assigns.output.read
     text? = is_map(read)
@@ -3396,10 +3424,11 @@ defmodule ApiaryWeb.WorkItemComponents do
             <.icon name="hero-check-micro" class="q-xp-cap-i size-3.5" />
             <span><.rich text={approval_caption(@output.version, @approval)} /></span>
           </p>
-          <p :if={!@approval} class="q-xp-cap">
+          <p :if={!@approval or @output[:source]} class="q-xp-cap">
             <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
             <span :if={@output[:caption]}>{@output.caption}</span>
-            <span :if={!@output[:caption]} phx-no-format>{gettext("Version %{version}", version: Format.number(@output.version))}</span>
+            <span :if={!@output[:caption] and !@output[:source]} phx-no-format>{gettext("Version %{version}", version: Format.number(@output.version))}</span>
+            <span :if={@output[:source]} id={"#{@id}-source"}>{source_words(@output)}</span>
           </p>
         </summary>
         <p
@@ -3432,6 +3461,25 @@ defmodule ApiaryWeb.WorkItemComponents do
       </details>
     </section>
     """
+  end
+
+  # The caption of an input frame whose version a run made: "Version 1 · from Build,
+  # Attempt 2 (Run 4)", with no run number for a run that is not registered.
+  defp source_words(%{version: version, source: %{run: nil} = source}) do
+    gettext("Version %{version} · from %{stage}, Attempt %{attempt}",
+      version: Format.number(version),
+      stage: source.stage,
+      attempt: Format.number(source.attempt)
+    )
+  end
+
+  defp source_words(%{version: version, source: source}) do
+    gettext("Version %{version} · from %{stage}, Attempt %{attempt} (Run %{run})",
+      version: Format.number(version),
+      stage: source.stage,
+      attempt: Format.number(source.attempt),
+      run: source.run
+    )
   end
 
   # A frame's heading: Scenarios for the scenarios' frame, else the type's words, with a
@@ -4232,6 +4280,12 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :decisions, :boolean, default: false, doc: "whether the tab shows decisions"
   attr :error, :any, default: nil, doc: "why the last move on the tab was not made"
 
+  attr :commenting, :boolean,
+    default: true,
+    doc: "whether a reader who may send (`can_send`) sees the comment field"
+
+  attr :rerun, :boolean, default: true, doc: "whether the gate has Run another round"
+
   attr :updates, :atom,
     default: :proposal,
     values: [:proposal, :outputs],
@@ -4259,47 +4313,48 @@ defmodule ApiaryWeb.WorkItemComponents do
     assigns =
       assign(assigns,
         ready: comment?(assigns.comment) or assigns.open > 0 or assigns.changed,
-        sends: assigns.can_send or assigns.can_change
+        comment?: assigns.can_send and assigns.commenting,
+        sends: (assigns.can_send or assigns.can_change) and assigns.rerun
       )
 
     ~H"""
     <form id={@id} class="q-xp-reply" phx-change="answer_draft" phx-submit="answer" novalidate>
       <input type="hidden" name="number" value={@number} />
-      <p :if={@sends} class="q-xp-cap q-xp-gate-cap">
+      <p :if={@sends and (@comment? or @can_change)} class="q-xp-cap q-xp-gate-cap">
         <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
-        <span :if={!@can_send and @updates == :proposal}>
+        <span :if={!@comment? and @updates == :proposal}>
           {gettext(
             "Run another round starts the next run. That run reads your changed decisions and updates the proposal."
           )}
         </span>
-        <span :if={!@can_send and @updates == :outputs}>
+        <span :if={!@comment? and @updates == :outputs}>
           {gettext(
             "Run another round starts the next run. That run reads your changed decisions and updates the outputs."
           )}
         </span>
-        <span :if={@can_send and !@changed and @updates == :proposal}>
+        <span :if={@comment? and !@changed and @updates == :proposal}>
           {gettext(
             "Run another round starts the next run. That run reads your comment and updates the proposal."
           )}
         </span>
-        <span :if={@can_send and !@changed and @updates == :outputs}>
+        <span :if={@comment? and !@changed and @updates == :outputs}>
           {gettext(
             "Run another round starts the next run. That run reads your comment and updates the outputs."
           )}
         </span>
-        <span :if={@can_send and @changed and @updates == :proposal}>
+        <span :if={@comment? and @changed and @updates == :proposal}>
           {gettext(
             "Run another round starts the next run. That run reads your changed decisions and your comment, and updates the proposal."
           )}
         </span>
-        <span :if={@can_send and @changed and @updates == :outputs}>
+        <span :if={@comment? and @changed and @updates == :outputs}>
           {gettext(
             "Run another round starts the next run. That run reads your changed decisions and your comment, and updates the outputs."
           )}
         </span>
       </p>
       <.comment_field
-        :if={@can_send}
+        :if={@comment?}
         id={"#{@id}-comment"}
         value={@comment}
         decisions={@decisions}

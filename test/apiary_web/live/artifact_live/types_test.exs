@@ -59,7 +59,7 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
 
     assert has_element?(
              view,
-             "#artifact-types-standard-table #artifact-type-explainer",
+             "#artifact-types-standard-table #artifact-type-walkthrough",
              "Document"
            )
 
@@ -113,12 +113,12 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
         do: refute(has_element?(view, "#artifact-type-#{name}-switch"), name)
 
     assert has_element?(view, ~s(#artifact-type-mockup-switch[aria-checked="true"]))
-    assert has_element?(view, ~s(#artifact-type-explainer-switch[aria-checked="false"]))
+    assert has_element?(view, ~s(#artifact-type-walkthrough-switch[aria-checked="false"]))
 
     assert has_element?(
              view,
-             ~s(label[for="artifact-type-explainer-switch"]),
-             "Use explainer in this workspace"
+             ~s(label[for="artifact-type-walkthrough-switch"]),
+             "Use walkthrough in this workspace"
            )
   end
 
@@ -157,7 +157,7 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
 
     try do
       {:ok, _version} =
-        Artifacts.push({:run, run}, work_item, "explainer", [
+        Artifacts.push({:run, run}, work_item, "walkthrough", [
           %{filename: "notes.md", content_type: "text/markdown", binary: "# Notes"}
         ])
     after
@@ -168,8 +168,8 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope))
 
     for {name, line} <- [
-          {"explainer",
-           "explainer cannot be switched off: work items of this workspace have artifacts of this type."},
+          {"walkthrough",
+           "walkthrough cannot be switched off: work items of this workspace have artifacts of this type."},
           {"mockup", "mockup cannot be switched off: the current process uses it."},
           {"screenshot",
            "screenshot cannot be switched off: a process version in use includes it."}
@@ -243,11 +243,16 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     html =
       view
       |> form("#artifact-type-form",
-        artifact_type: %{name: "explainer", base_view: "document", size_mib: "2", max_files: "3"}
+        artifact_type: %{
+          name: "walkthrough",
+          base_view: "document",
+          size_mib: "2",
+          max_files: "3"
+        }
       )
       |> render_submit()
 
-    assert html =~ "Choose another name: explainer is a standard type."
+    assert html =~ "Choose another name: walkthrough is a standard type."
 
     view
     |> form("#artifact-type-form",
@@ -525,7 +530,7 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     test "opens the form empty for a malformed name or one a type has", ctx do
       custom!(ctx.scope, %{"name" => "bid-set", "base_view" => "document"})
 
-      for name <- ["Bid Set", "bid-set", "explainer", "%3Cb%3E"] do
+      for name <- ["Bid Set", "bid-set", "walkthrough", "%3Cb%3E"] do
         {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope, "?name=#{name}"))
         assert has_element?(view, "#artifact-type-form"), name
 
@@ -540,7 +545,7 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
     test "opens the form empty for a standard type the workspace hides", ctx do
       show!(ctx.scope, ["mockup"])
 
-      {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope, "?name=explainer"))
+      {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope, "?name=walkthrough"))
 
       assert has_element?(
                view,

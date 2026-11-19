@@ -69,7 +69,11 @@ defmodule Apiary.Runs.CancelConcurrencyTest do
 
   defp push(ctx, name),
     do:
-      Artifacts.push({:run, ctx.dispatch_run}, ctx.work_item, "explainer", [file(name <> ".md")],
+      Artifacts.push(
+        {:run, ctx.dispatch_run},
+        ctx.work_item,
+        "walkthrough",
+        [file(name <> ".md")],
         name: name
       )
 

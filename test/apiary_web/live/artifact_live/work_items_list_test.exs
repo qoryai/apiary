@@ -25,7 +25,7 @@ defmodule ApiaryWeb.ArtifactLive.WorkItemsListTest do
     ref = Process.monitor(view.pid)
 
     {:ok, _v} =
-      Apiary.Artifacts.push({:run, run}, work_item, "explainer", [
+      Apiary.Artifacts.push({:run, run}, work_item, "walkthrough", [
         %{filename: "a.md", binary: "# A"}
       ])
 

@@ -106,7 +106,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # the stage's notes above the tabs (`ApiaryWeb.WorkItemLive.StageComponents`). At a stage
   # after Explore the runs and the artifacts are in one record block at the foot of the
   # Ticket tab and the Thread, closed when the page opens (`foot/3`), and of a stage's tab,
-  # with that stage's only (`ApiaryWeb.WorkItemLive.StageTab.record?/2`). At Explore the
+  # with that stage's only (`ApiaryWeb.WorkItemLive.StageTab.record?/3`). At Explore the
   # runs and the artifacts are in the history fold, and the block above the tabs shows
   # only while a note of a gate decision, an escalation or a check exists. A work item at
   # Explore's stage whose status is none of Explore's, moved back or ended, has the
@@ -133,7 +133,15 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   alias Apiary.{Submissions, WorkItems, WorkspaceSetup}
   alias Apiary.Runs.Run
   alias Apiary.WorkItems.{ExploreView, Proposal}
-  alias ApiaryWeb.{ArtifactComponents, HarnessComponents, SourceComponents, SpendDialog}
+
+  alias ApiaryWeb.{
+    ArtifactComponents,
+    HarnessComponents,
+    SettingsComponents,
+    SourceComponents,
+    SpendDialog
+  }
+
   alias ApiaryWeb.UserAuth
   alias ApiaryWeb.WorkItemLive.{Comments, StageComponents, StageTab, VerifyTab, View, Workflow}
 
@@ -462,6 +470,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             stage_names={Map.new(@flow.stages, &{&1.id, &1.name})}
             take_ins={@view.take_ins}
             outputs={@frames}
+            has_outputs={@output_frames}
+            runs_on_track={StageTab.runs_on_track?(@flow, @view.stage)}
             findings={@findings}
             wrote={@view.wrote}
             suite={@suite}
@@ -486,7 +496,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
                 (&reply_path(@current_scope, @number, @tab, @flow, &1))
             }
             move_error={acts?(@tab, @flow, @item) && @move_error}
-            record={StageTab.record?(@view.runs, @view.artifacts)}
+            record={
+              StageTab.record?(
+                @view.runs,
+                @view.artifacts,
+                if(@view.entries == [], do: @view.skips, else: [])
+              )
+            }
             verdicts={@flow.runs}
             item_noun={@source.item_noun}
             now={@now}
@@ -715,6 +731,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
            artifacts: [],
            view: nil,
            frames: [],
+           output_frames: false,
            findings: [],
            suite: nil,
            suite_reads: %{},
@@ -1181,13 +1198,27 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end
   end
 
+  # The title, the button and the line come from one step of the stage runner at the
+  # click (`Apiary.Stages.accept_starts/1`): Start and the entry, else Accept as it is
+  # (`StageComponents.accept_label/1`), and the run's workflow. A note does not change
+  # what an accept starts, so both lines are the same.
   defp stage_spend("stage_resolve", %{"how" => "accept"} = params, socket) do
-    ask_if_run("stage_resolve", params, socket, :accept,
-      title: gettext("Accept as it is?"),
-      action: gettext("Accept as it is"),
-      return_to: "work-item-stage-escalation-accept",
-      note: escalation_note()
-    )
+    case Stages.accept_starts(socket.assigns.row) do
+      %{entry: entry, run: {:run, _workflow} = run} ->
+        line = workflow_line(socket, run)
+
+        SpendDialog.ask("stage_resolve", params,
+          title: StageComponents.accept_title(entry),
+          action: StageComponents.accept_label(entry),
+          line: line,
+          noted_line: line,
+          return_to: "work-item-stage-escalation-accept",
+          note: escalation_note()
+        )
+
+      %{run: :none} ->
+        nil
+    end
   end
 
   defp stage_spend("stage_resolve", %{"how" => "another_round"} = params, socket) do
@@ -1619,17 +1650,48 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
         if socket.redirected,
           do: {:noreply, socket},
-          else: {:noreply, assign(socket, :stage_notice, refused(reason, flow))}
+          else: {:noreply, assign(socket, :stage_notice, refused(reason, flow, scope(socket)))}
     end
   end
+
+  # refused/3 is refused/2, with the reader's `scope` for a refusal whose fix depends on
+  # what the reader may do: a stage with no workflow gets one in Workspace settings ›
+  # Workflows, where a reader with `process.edit` edits, as that page checks.
+  @doc false
+  def refused({:outputs_missing, types}, _flow, scope) do
+    outputs = StageComponents.outputs_words(types)
+    workflows = SettingsComponents.workflows_label()
+
+    if Access.can?(scope, :"process.edit", scope.workspace) do
+      gettext(
+        "In Workspace settings › %{workflows}, give this stage a workflow that writes %{outputs}. Approve needs %{outputs}.",
+        outputs: outputs,
+        workflows: workflows
+      )
+    else
+      gettext(
+        "Ask an admin to give this stage a workflow in Workspace settings › %{workflows}. Approve needs %{outputs}.",
+        outputs: outputs,
+        workflows: workflows
+      )
+    end
+  end
+
+  def refused(reason, flow, _scope), do: refused(reason, flow)
 
   # Why the stage runner did not act, each with its fix first.
   @doc false
   def refused(:not_earlier, flow), do: not_earlier(flow)
 
-  def refused({:outputs_missing, types}, _flow) do
-    gettext(
-      "Move this stage back, or give it a workflow that writes %{outputs}. Approve needs them.",
+  def refused({:outputs_not_written, types, to}, _flow) do
+    gettext("Pick Request changes to send the work item back to %{to}. Approve needs %{outputs}.",
+      to: to,
+      outputs: StageComponents.outputs_words(types)
+    )
+  end
+
+  def refused({:outputs_not_written, types}, _flow) do
+    gettext("Pick Request changes to write %{outputs}. Approve needs %{outputs}.",
       outputs: StageComponents.outputs_words(types)
     )
   end
@@ -2453,12 +2515,15 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp framed(%{assigns: %{tab: tab, view: %{stage: %{} = stage}} = assigns} = socket)
        when is_binary(tab) do
+    outputs = output_frames(assigns, stage)
+
     # A link to a place in a frame, such as an About line's link to a criterion's row,
     # opens the frame of its type (`?open=<type>`), so the row is read and shown.
     frames =
-      assigns
-      |> output_frames(stage)
-      |> StageTab.with_inputs(StageTab.input_frames(assigns.flow, stage))
+      outputs
+      |> StageTab.with_inputs(
+        StageTab.input_frames(assigns.flow, stage, assigns.artifacts, assigns.row.process_version)
+      )
       |> StageTab.approved(stage, assigns.flow.index)
       |> Enum.map(&approver(socket, &1))
       |> Enum.map(&if(&1.type == assigns.linked_frame, do: %{&1 | open: true}, else: &1))
@@ -2499,6 +2564,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
     assign(socket,
       frames: frames,
+      output_frames: outputs != [],
       findings: findings,
       frame_texts: texts,
       stored_reads: reads,
@@ -2513,6 +2579,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     do:
       assign(socket,
         frames: [],
+        output_frames: false,
         findings: [],
         suite: nil,
         submissions: nil

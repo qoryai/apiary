@@ -1,4 +1,4 @@
-# A machine's choices and no document: the harness section has the machine's keys alone.
+# A machine's choices and no document: the harness section has machine harness settings alone.
 harness:
   runtime: claude
   model: opus

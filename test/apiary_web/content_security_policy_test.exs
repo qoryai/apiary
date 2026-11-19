@@ -660,7 +660,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       end)
 
       {:ok, version} =
-        Apiary.Artifacts.push({:run, run}, work_item, "explainer", [
+        Apiary.Artifacts.push({:run, run}, work_item, "walkthrough", [
           %{filename: "notes.md", binary: "# Notes\n\n```mermaid\nflowchart LR\n  A --> B\n```\n"}
         ])
 

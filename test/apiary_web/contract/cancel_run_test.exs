@@ -152,9 +152,9 @@ defmodule ApiaryWeb.Contract.CancelRunTest do
       signed_get(build_conn(), key.key_id, seed, "/v1/runs/#{ctx.run.node_run_id}" <> path)
     end
 
-    defp explainer,
+    defp walkthrough,
       do: %{
-        "type" => "explainer",
+        "type" => "walkthrough",
         "files" => [
           %{
             "filename" => "a.md",
@@ -165,12 +165,12 @@ defmodule ApiaryWeb.Contract.CancelRunTest do
       }
 
     test "a push and a verdict are 409 run_ended, saying the run was cancelled", ctx do
-      assert write(ctx, "/artifacts", explainer()).status == 201
+      assert write(ctx, "/artifacts", walkthrough()).status == 201
 
       {:ok, _cancelled} = Runs.cancel(ctx.scope, Repo.get!(Run, ctx.run.id))
 
       for conn <- [
-            write(ctx, "/artifacts", explainer()),
+            write(ctx, "/artifacts", walkthrough()),
             write(ctx, "/verdict", %{"verdict" => "passed"}),
             # Refused before the body is read: a body outside the contract is 409 too.
             write(ctx, "/verdict", %{"verdict" => "maybe"}),
@@ -202,7 +202,7 @@ defmodule ApiaryWeb.Contract.CancelRunTest do
       # Refused at the controller, before the body is read: a body outside the contract
       # is 409 too, not 400.
       for conn <- [
-            write(ctx, "/artifacts", explainer()),
+            write(ctx, "/artifacts", walkthrough()),
             write(ctx, "/verdict", %{"verdict" => "passed"}),
             write(ctx, "/verdict", %{"verdict" => "maybe"}),
             write(ctx, "/artifacts", "{")
@@ -219,7 +219,11 @@ defmodule ApiaryWeb.Contract.CancelRunTest do
       file = %{filename: "a.md", content_type: "text/markdown", binary: "# A\n"}
 
       assert {:error, :run_cancelled} =
-               Apiary.Artifacts.push({:run, ctx.dispatch_run}, ctx.work_item, "explainer", [file],
+               Apiary.Artifacts.push(
+                 {:run, ctx.dispatch_run},
+                 ctx.work_item,
+                 "walkthrough",
+                 [file],
                  name: "main"
                )
 

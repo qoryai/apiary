@@ -95,7 +95,7 @@ defmodule ApiaryWeb.Contract.PrebuildPolicyTest do
 
       assert [%{"name" => name}] = document["credentials"]
       assert name == Credential.name()
-      refute Map.has_key?(document, "model_credential")
+      refute Map.has_key?(document, "default_model_provider_credential_name")
       refute Map.has_key?(document, "image")
 
       # Kept as composed from no run configuration, under the digest of its bytes, and

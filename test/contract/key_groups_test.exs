@@ -28,8 +28,8 @@ defmodule Apiary.Contract.KeyGroupsTest do
     "auth" => %{"scheme" => "bearer"}
   }
 
-  # The keys of the two providers in the order a claim stores them: the start key's
-  # provider's first, then one key of the other provider.
+  # The keys of the two providers in the order a claim stores them: the default model
+  # provider credential's provider's first, then one key of the other provider.
   defp entries do
     [
       ProviderCredential.entry("con_n0rthw1nd0000001-1", "con_n0rthw1nd0000001", @northwind, %{
@@ -47,7 +47,7 @@ defmodule Apiary.Contract.KeyGroupsTest do
   defp configuration(credentials) do
     %{
       "version" => 1,
-      "model_credential" => "con_n0rthw1nd0000001-1",
+      "default_model_provider_credential_name" => "con_n0rthw1nd0000001-1",
       "credentials" => credentials
     }
     |> Jason.encode!()
@@ -115,7 +115,7 @@ defmodule Apiary.Contract.KeyGroupsTest do
             model.("con_n0rthw1nd0000001-1", "con_n0rthw1nd0000001", @northwind),
             model.("con_ch3ck0ut00000001-1", "con_ch3ck0ut00000001", @checkout)
           ],
-          "model_credential" => "con_n0rthw1nd0000001-1"
+          "default_model_provider_credential_name" => "con_n0rthw1nd0000001-1"
       }
     end
 
