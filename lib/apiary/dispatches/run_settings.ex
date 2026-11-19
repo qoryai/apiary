@@ -522,7 +522,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # The model and the key of each later session of a shared run, by its workflow, as
   # `sessions` beside `built`, which the claim keeps on the run
   # (`Apiary.Stages.claim_sessions!/3`), and the run's keys, as `keys`, with the start
-  # key's provider as `columns` (`merged/3`). `start` is the group of the run's start key
+  # key's provider as `columns` (`merged/4`). `start` is the group of the run's start key
   # (`keys/5`): its provider, the API its sessions use, and its keys in their order; nil
   # for a run with no key. The workflows are walked in session order
   # (`Apiary.Stages.shared_workflows/1`). Each entry has `model_choice`, which always has

@@ -104,5 +104,5 @@ defmodule Apiary.Repo.Migrations.DropARunSOneProviderColumns do
 
   # A stored time as the run configuration writes it: RFC 3339 in UTC, whole seconds.
   defp time(column),
-    do: "to_char(#{column} AT TIME ZONE 'UTC', 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')"
+    do: "to_char(#{column}, 'YYYY-MM-DD\"T\"HH24:MI:SS\"Z\"')"
 end

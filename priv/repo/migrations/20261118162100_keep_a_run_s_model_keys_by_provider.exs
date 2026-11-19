@@ -13,7 +13,8 @@ defmodule Apiary.Repo.Migrations.KeepARunSModelKeysByProvider do
   # - `secret_value_id`, the key's row id (`secret_values.id`), with no foreign key: a
   #   key removed after the claim fails at the secrets request.
   # - `connection_id` and `secret_id`, the key's provider and that provider's keys'
-  #   secret; each becomes NULL should its row be deleted. `chain`, the provider's chain.
+  #   secret; each becomes NULL should its row be deleted, and each has an index for that
+  #   delete. `chain`, the provider's chain.
   # - `api`, the provider's API that the key's sessions use: a JSON object of `format`,
   #   `endpoint`, `auth` and, when the description lists them, `key_prefixes` and
   #   `use_up_to_windows`, at most 8 KiB.
@@ -58,6 +59,7 @@ defmodule Apiary.Repo.Migrations.KeepARunSModelKeysByProvider do
            )
 
     create index(:run_model_keys, [:connection_id], where: "connection_id IS NOT NULL")
+    create index(:run_model_keys, [:secret_id], where: "secret_id IS NOT NULL")
 
     create constraint(:run_model_keys, :run_model_keys_position_check,
              check: "position BETWEEN 1 AND 6"

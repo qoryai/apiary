@@ -282,7 +282,7 @@ defmodule Apiary.Runs.ProviderCredential do
   end
 
   # What a key row keeps for its run configuration entry, by the contract's member names,
-  # each where the row has it (`entry/3`).
+  # each where the row has it (`entry/4`).
   defp kept(%ModelKey{} = row) do
     [
       {"resets_at", time(row.resets_at)},

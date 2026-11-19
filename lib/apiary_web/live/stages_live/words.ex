@@ -651,10 +651,6 @@ defmodule ApiaryWeb.StagesLive.Words do
     )
   end
 
-  # A workflow entry of a stage with `shared_run: true` whose access level or machine type
-  # differs from the stage's first entry (`Apiary.Processes.validate/2`); where the
-  # harness's level for a workflow lowers its entry's, that workflow, its level, and the
-  # level the other workflows run with.
   # A stage with `shared_run: true` whose workflow has no model choice, while its runs can
   # start on a provider that the workflow's runtime cannot use
   # (`Apiary.Processes.shared_models/3`).
@@ -679,6 +675,10 @@ defmodule ApiaryWeb.StagesLive.Words do
         providers: Enum.join(providers, ", ")
       )
 
+  # A workflow entry of a stage with `shared_run: true` whose access level or machine type
+  # differs from the stage's first entry (`Apiary.Processes.validate/2`); where the
+  # harness's level for a workflow lowers its entry's, that workflow, its level, and the
+  # level the other workflows run with.
   def refusal(%{error: :shared_run_differs, path: path, detail: kind}, doc) do
     {stage, _field} = place(path, doc)
 

@@ -82,6 +82,7 @@ defmodule Apiary.ModelKeys.Report do
   # waits this long after the exit (`Apiary.Dispatches.requeue_for_pause/3`).
   @spec after_exit_seconds() :: pos_integer
   def after_exit_seconds, do: @after_exit_seconds
+
   # The contract's bound on `resets_at`: at most 31 days after the provider's response
   # arrived.
   @max_reset_days 31
