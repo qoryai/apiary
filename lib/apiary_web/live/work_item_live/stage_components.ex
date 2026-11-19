@@ -1262,25 +1262,25 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   defp approval_mark(assigns) do
     ~H"""
-    <span :if={@mark && @mark.approved && @mark.newer} id={@id} class="text-warning">
+    <span :if={newer_shown?(@mark)} id={@id} class="text-warning">
       {gettext("Approved v%{approved}; v%{newer} is newer",
         approved: Format.number(@mark.approved),
         newer: Format.number(@mark.newer)
       )}
     </span>
-    <span :if={@mark && @mark.approved && @mark.newer && @mark.changed_after_approval}> · </span>
-    <span :if={@mark && @mark.changed_after_approval} id={"#{@id}-changed"} class="text-warning">
+    <span :if={newer_shown?(@mark) and changed_shown?(@mark)}> · </span>
+    <span :if={changed_shown?(@mark)} id={"#{@id}-changed"} class="text-warning">
       {gettext("Changed after approval")}
     </span>
     """
   end
 
-  # Whether `approval_mark/1` shows anything for `mark`. An output's line then has " · "
-  # after the change's mark, so " · " separates every part of the line.
-  defp approval_shown?(%{} = mark),
-    do: !!(mark.approved && mark.newer) or !!mark.changed_after_approval
-
-  defp approval_shown?(_mark), do: false
+  # The parts that `approval_mark/1` shows for `mark`: "Approved v1; v2 is newer" and
+  # "Changed after approval". Where it shows either, an output's line has " · " after the
+  # change's mark (`approval_shown?/1`), so " · " separates every part of the line.
+  defp newer_shown?(mark), do: !!(mark && mark.approved && mark.newer)
+  defp changed_shown?(mark), do: !!(mark && mark.changed_after_approval)
+  defp approval_shown?(mark), do: newer_shown?(mark) or changed_shown?(mark)
 
   ## The board
 

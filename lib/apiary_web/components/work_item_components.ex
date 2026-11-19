@@ -3360,8 +3360,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :output, :map,
     required: true,
     doc:
-      "`:type`, `:name`, `:version`, `:open`, `:read`; `:changed`, the mark after the " <>
-        "version of a version that a person's change made " <>
+      "`:type`, `:name`, `:version`, `:open`, `:read`; `:changed`, the mark that the " <>
+        "caption shows last when a person's change made the version " <>
         "(`ApiaryWeb.WorkItemLive.GateChanges.mark/1`), nil for none; `:approval`, the " <>
         "approval it shows, nil for none (`ApiaryWeb.WorkItemLive.StageTab.approved/3`); " <>
         "`:kind`, `:scenarios` for the Scenarios frame, `:verification` for a verification " <>

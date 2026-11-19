@@ -4571,7 +4571,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert has_element?(view, "#work-item-tab-output-walkthrough", "Version 1")
 
       # No person's approval lists the change yet, so its caption has the mark after the
-      # version (PIC-8), and no other words.
+      # version, and no other words.
       assert has_element?(
                view,
                "#work-item-tab-output-walkthrough-changed.text-warning",

@@ -1,5 +1,5 @@
 defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
-  # The gate after a person's Request changes (PIC-8): Build's second run stores a new
+  # The gate after a person's Request changes: Build's second run stores a new
   # version of the acceptance criteria with that request as its `decision`, and the work
   # item page marks the version, on the gate card and on its frame on Build's tab, and
   # lists each changed, added or removed criterion with its earlier and new text, until a
