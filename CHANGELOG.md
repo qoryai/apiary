@@ -1946,9 +1946,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   default model provider credential's provider first. Each key's entry in the run
   configuration has `group`, its provider's public id, so the gateway rotates each
   provider's keys apart from the others. For a session on a key of a provider other than
-  the default model provider credential's, the answer has `model_credential`, the key
-  that session starts on; without it, the session joins the group of the run's default
-  model provider credential.
+  the default model provider credential's, the answer has
+  `model_provider_credential_name`, the key that session starts on; without it, the
+  session joins the group of the run's default model provider credential.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - On the tab of a stage with `shared_run: true`, each run of the stage is a fold in the

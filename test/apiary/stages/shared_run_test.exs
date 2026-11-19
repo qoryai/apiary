@@ -159,7 +159,7 @@ defmodule Apiary.Stages.SharedRunTest do
                  session: session,
                  workflow: workflow,
                  model_choice: nil,
-                 model_credential: nil,
+                 model_provider_credential_name: nil,
                  time_limit_minutes: 180,
                  full_suite: false,
                  inputs: next.inputs

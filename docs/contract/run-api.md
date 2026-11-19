@@ -863,15 +863,15 @@ of the run contract. A next session of the same stage:
   local model provider credential, as its workflow resolves to no model choice, gets no
   key: its claim ends it `session_key_missing` where a later session runs on a model
   provider.
-- `model_credential`, for a session on a key of a provider other than the default model
-  provider credential's, is the credential name of the key the session starts on: that
-  provider's first key out of cooldown, else its first key. The claim picks at most 6
-  keys in this order: the default model provider credential's provider's keys, at most 6
-  less the number of other providers; then one key of each other provider, in session
-  order; then the other providers' remaining keys; `credentials` lists them provider by
-  provider, the default model provider credential's provider first. Where
-  `model_credential` is left out, the session joins the group of the run's default model
-  provider credential.
+- `model_provider_credential_name`, for a session on a key of a provider other than the
+  default model provider credential's, is the credential name of the key the session
+  starts on: that provider's first key out of cooldown, else its first key. The claim
+  picks at most 6 keys in this order: the default model provider credential's provider's
+  keys, at most 6 less the number of other providers; then one key of each other
+  provider, in session order; then the other providers' remaining keys; `credentials`
+  lists them provider by provider, the default model provider credential's provider
+  first. Where `model_provider_credential_name` is left out, the session joins the group
+  of the run's default model provider credential.
 
 Or the end of the run, where the stage runs no further workflow in this run: an
 escalation, open questions, the gate, or the next stage, whose run is queued as any run:

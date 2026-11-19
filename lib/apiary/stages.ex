@@ -416,7 +416,7 @@ defmodule Apiary.Stages do
   #     every entry of the stage shares), and `model_choice`, the workflow's runtime and
   #     model in `models` as the claim formed them
   #     (`Apiary.Dispatches.RunSettings.build/2`, `sessions`), present for every entry of
-  #     a claimed run, and `model_credential`, the key the session starts on, for a
+  #     a claimed run, and `model_provider_credential_name`, the key the session starts on, for a
   #     session on a provider other than the default model provider credential's; without
   #     it, the session joins the group of the run's default model provider credential.
   #     `next_session/2` reads these, so a change to the time limits or the model choices
@@ -457,7 +457,10 @@ defmodule Apiary.Stages do
                  "time_limit_minutes" => minutes,
                  "full_suite" => full_suite?(run, entry, loop_entry, level)
                },
-               Map.take(Map.get(models, workflow, %{}), ["model_choice", "model_credential"])
+               Map.take(Map.get(models, workflow, %{}), [
+                 "model_choice",
+                 "model_provider_credential_name"
+               ])
              )}
           end)
 
@@ -636,11 +639,11 @@ defmodule Apiary.Stages do
   # today's dispatch). `next` has `session`, Qory Apiary's number for it in the run,
   # `workflow`, `time_limit_minutes` and `full_suite` (the settings of its entry as the
   # claim kept them, `claim_sessions!/3`), `inputs` (the run's inputs,
-  # `Apiary.Dispatches.Inputs.explore/4`), and `model_choice` and `model_credential`, the
-  # runtime and model of the entry's workflow and the credential the session joins with,
-  # as the claim kept them (`claim_sessions!/3`); each nil where the claim kept none. With
-  # no `model_credential`, the session joins with the group of the run's default model
-  # provider credential.
+  # `Apiary.Dispatches.Inputs.explore/4`), and `model_choice` and
+  # `model_provider_credential_name`, the runtime and model of the entry's workflow and
+  # the credential the session joins with, as the claim kept them (`claim_sessions!/3`);
+  # each nil where the claim kept none. With no `model_provider_credential_name`, the
+  # session joins with the group of the run's default model provider credential.
   #
   # The step is recorded with its result, and a repeat for the same `session` returns
   # that result and steps nothing. Errors, with nothing written:
@@ -783,13 +786,14 @@ defmodule Apiary.Stages do
 
   def newest_session(%DispatchRun{}), do: nil
 
-  # session_credential/2 is the `model_credential` that the claim of `run`, a registered
-  # run of a stage with `shared_run: true`, kept for its session number `session`
-  # (`claim_sessions!/3`): the key whose group that session starts on. The session is the
-  # one a report numbered `session` ended, else the open session (`open_session/1`), the
-  # one a run that paused was in. Nil for a session of the default model provider
-  # credential's group, and for a run with no session settings. `sessions`, the run's
-  # sessions as `session_rows_by_dispatch_run/1` reads them, is read here where it is nil.
+  # session_credential/2 is the `model_provider_credential_name` that the claim of `run`,
+  # a registered run of a stage with `shared_run: true`, kept for its session number
+  # `session` (`claim_sessions!/3`): the key whose group that session starts on. The
+  # session is the one a report numbered `session` ended, else the open session
+  # (`open_session/1`), the one a run that paused was in. Nil for a session of the default
+  # model provider credential's group, and for a run with no session settings. `sessions`,
+  # the run's sessions as `session_rows_by_dispatch_run/1` reads them, is read here where
+  # it is nil.
   @doc false
   @spec session_credential(map, pos_integer, [Session.t()] | nil) :: String.t() | nil
   def session_credential(run, session, sessions \\ nil)
@@ -806,7 +810,7 @@ defmodule Apiary.Stages do
     case Enum.find(sessions, &(&1.forager_session == session)) ||
            Enum.find(sessions, &is_nil(&1.forager_session)) do
       %Session{stage_entry: entry, loop_entry: loop_entry} when is_integer(entry) ->
-        get_in(settings, [session_place(entry, loop_entry), "model_credential"])
+        get_in(settings, [session_place(entry, loop_entry), "model_provider_credential_name"])
 
       _none ->
         nil
@@ -1045,7 +1049,7 @@ defmodule Apiary.Stages do
       "session" => pending.sequence + 1,
       "workflow" => spec.workflow,
       "model_choice" => entry["model_choice"],
-      "model_credential" => entry["model_credential"],
+      "model_provider_credential_name" => entry["model_provider_credential_name"],
       "time_limit_minutes" => entry["time_limit_minutes"],
       "full_suite" => entry["full_suite"],
       "inputs" => %{}
@@ -1087,7 +1091,7 @@ defmodule Apiary.Stages do
        session: stored["session"],
        workflow: stored["workflow"],
        model_choice: stored["model_choice"],
-       model_credential: stored["model_credential"],
+       model_provider_credential_name: stored["model_provider_credential_name"],
        time_limit_minutes: stored["time_limit_minutes"],
        full_suite: stored["full_suite"],
        inputs: stored["inputs"]

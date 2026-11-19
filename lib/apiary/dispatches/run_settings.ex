@@ -536,9 +536,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # are walked in session order (`Apiary.Stages.shared_workflows/1`). Each entry has
   # `model_choice`, which always has `runtime`, the runtime the session runs on, and, for
   # a session on a provider other than the default model provider credential's,
-  # `model_credential`, the name of that provider's first free key
+  # `model_provider_credential_name`, the name of that provider's first free key
   # (`Apiary.ModelKeys.Order.first_free/2`), else its first key: the session starts on that
-  # key's group. A session with no `model_credential` joins the group of the run's
+  # key's group. A session with no `model_provider_credential_name` joins the group of the run's
   # default model provider credential.
   #
   # `model_choice` is, for the choices of the workflow (`session_choice/4`):
@@ -657,9 +657,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # The run's keys, at most `Apiary.ModelKeys.Order.max_keys/0`, as `keys` (`merge/3`),
   # `columns` with the default model provider credential's provider, and each session's
   # entry with the name of its group's default model provider credential as
-  # `model_credential`. A run whose first session starts on the machine's local model
-  # provider credential (so the run has no default model provider credential) keeps no
-  # key.
+  # `model_provider_credential_name`. A run whose first session starts on the machine's
+  # local model provider credential (so the run has no default model provider credential)
+  # keeps no key.
   defp merged(built, nil, {chosen, _groups}, _now) do
     sessions = Map.new(chosen, fn {workflow, choice, _group} -> {workflow, entry(choice)} end)
     built |> Map.put(:keys, []) |> Map.put(:sessions, sessions)
@@ -681,7 +681,9 @@ defmodule Apiary.Dispatches.RunSettings do
 
   defp entry(choice, credential \\ nil)
   defp entry(choice, nil), do: %{"model_choice" => choice}
-  defp entry(choice, name), do: %{"model_choice" => choice, "model_credential" => name}
+
+  defp entry(choice, name),
+    do: %{"model_choice" => choice, "model_provider_credential_name" => name}
 
   # merge/3 is the keys a run gets from the group of its default model provider
   # credential, `default_group`, and the groups of its later sessions' other providers,

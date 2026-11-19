@@ -185,9 +185,14 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       # joins the default model provider credential's group.
       assert run.provider_connection_id == northwind.id
       assert %{"1" => second, "2" => third} = run.session_settings
-      assert %{"workflow" => "write-acceptance-checks", "model_credential" => ^other} = second
+
+      assert %{
+               "workflow" => "write-acceptance-checks",
+               "model_provider_credential_name" => ^other
+             } = second
+
       assert %{"workflow" => "review-the-build"} = third
-      refute Map.has_key?(third, "model_credential")
+      refute Map.has_key?(third, "model_provider_credential_name")
 
       assert [
                %ModelKey{position: 1, start: true, connection_id: start_id, secret_id: secret},
@@ -229,7 +234,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
                for(n <- 1..5, do: "#{northwind.public_id}-#{n}") ++
                  ["#{checkout.public_id}-1"]
 
-      assert %{"1" => %{"model_credential" => credential}} = run.session_settings
+      assert %{"1" => %{"model_provider_credential_name" => credential}} = run.session_settings
       assert credential == "#{checkout.public_id}-1"
     end
 
@@ -299,7 +304,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert run.provider_connection_id == nil
       assert stored_keys(run) == []
       assert %{"1" => second} = run.session_settings
-      refute Map.has_key?(second, "model_credential")
+      refute Map.has_key?(second, "model_provider_credential_name")
       assert ProviderCredential.for_run(run) == {:ok, nil}
     end
 
@@ -349,7 +354,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
 
       assert %{
                "workflow" => "write-acceptance-checks",
-               "model_credential" => ^fallback,
+               "model_provider_credential_name" => ^fallback,
                "model_choice" => %{"model" => "claude-sonnet-5-5"}
              } = second
 
@@ -370,7 +375,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
 
       assert %{
                "workflow" => "write-acceptance-checks",
-               "model_credential" => ^fallback,
+               "model_provider_credential_name" => ^fallback,
                "model_choice" => %{"model" => "claude-sonnet-5-5"}
              } = second
 
@@ -409,7 +414,12 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       {{:ok, run}, _queued} = claimed!(ctx, queued)
       fallback = "#{storefront.public_id}-1"
 
-      assert %{"1" => %{"workflow" => "write-acceptance-checks", "model_credential" => ^fallback}} =
+      assert %{
+               "1" => %{
+                 "workflow" => "write-acceptance-checks",
+                 "model_provider_credential_name" => ^fallback
+               }
+             } =
                run.session_settings
 
       assert names(stored_keys(run)) == ["#{northwind.public_id}-1", fallback]
@@ -430,7 +440,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
 
       assert %{
                "workflow" => "write-acceptance-checks",
-               "model_credential" => ^cooling,
+               "model_provider_credential_name" => ^cooling,
                "model_choice" => %{"model" => "claude-opus-5-5"}
              } = second
 
@@ -529,7 +539,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
                "model_choice" => %{"model" => "claude-sonnet-5-5"}
              } = second
 
-      refute Map.has_key?(second, "model_credential")
+      refute Map.has_key?(second, "model_provider_credential_name")
       assert names(stored_keys(run)) == ["#{northwind.public_id}-1"]
     end
 

@@ -49,7 +49,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
   # The vendored schemas by their URL under the contracts' base, and Forager's from its
   # contract directory (`Apiary.ContractFixtures.contract_dir/0`), which the answer's
-  # `model_credential` refers to. Nothing is fetched.
+  # `model_provider_credential_name` refers to. Nothing is fetched.
   defmodule Resolver do
     @moduledoc false
     @behaviour JSV.Resolver
@@ -246,7 +246,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
                body["model_choice"]
 
       assert model == ctx.gateway_run.run_settings["model"]
-      refute Map.has_key?(body, "model_credential")
+      refute Map.has_key?(body, "model_provider_credential_name")
 
       assert String.starts_with?(conn.resp_body, ~s({"next":"session","session":2,))
 
@@ -266,7 +266,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       body = json_response(request(ctx, ended(1)), 200)
 
       assert body["model_choice"]["model"] == ctx.gateway_run.run_settings["model"]
-      refute Map.has_key?(body, "model_credential")
+      refute Map.has_key?(body, "model_provider_credential_name")
     end
 
     @tag :contract
@@ -526,7 +526,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
              } = body["model_choice"]
 
       assert body["model_choice"]["runtime"] == "claude"
-      refute Map.has_key?(body, "model_credential")
+      refute Map.has_key?(body, "model_provider_credential_name")
       assert answer_valid?(body)
     end
 
@@ -548,7 +548,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
       assert %{"runtime" => "claude", "model" => model} = body["model_choice"]
       assert model == ctx.gateway_run.run_settings["model"]
-      refute Map.has_key?(body, "model_credential")
+      refute Map.has_key?(body, "model_provider_credential_name")
     end
 
     test "is the default runtime alone where the session's workflow resolves to no choice",
@@ -561,7 +561,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
       assert %{"workflow" => "write-acceptance-checks"} = body
       assert body["model_choice"] == %{"runtime" => "claude"}
-      refute Map.has_key?(body, "model_credential")
+      refute Map.has_key?(body, "model_provider_credential_name")
     end
 
     test "is the fallback's where every key of the choice's provider is in cooldown at the claim",
@@ -588,7 +588,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
       # The run's keys are the fallback's: the session joins with the default model
       # provider credential's group.
-      refute Map.has_key?(body, "model_credential")
+      refute Map.has_key?(body, "model_provider_credential_name")
     end
 
     test "is the workflow's choice on another provider with a free key, not the fall back onto the run's provider",
@@ -620,7 +620,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
       # Session 2 starts on the first key of Checkout keys, with the choice's model.
       assert %{"runtime" => "claude", "model" => "claude-opus-5-5"} = body["model_choice"]
-      assert body["model_credential"] == "#{other.public_id}-1"
+      assert body["model_provider_credential_name"] == "#{other.public_id}-1"
 
       # The run keeps the keys of both providers, the default model provider credential's
       # provider's first.
@@ -628,6 +628,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       assert Enum.uniq(providers) == [ctx.provider.id, other.id]
     end
 
+    @tag :contract
     test "is the workflow's choice on its provider, with that provider's first key, where its choice has another provider",
          ctx do
       {:ok, other} =
@@ -649,9 +650,13 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       :ok = verdict!(ctx, "passed")
       body = json_response(request(ctx, ended(1)), 200)
 
-      # Session 2 runs on Checkout keys: the choice's model, on its first key.
+      # Session 2 runs on Checkout keys: the choice's model, on its first key, in the
+      # member of the run contract's answer, which refuses the member's former name.
       assert %{"runtime" => "claude", "model" => "claude-sonnet-5-5"} = body["model_choice"]
-      assert body["model_credential"] == "#{other.public_id}-1"
+      assert body["model_provider_credential_name"] == "#{other.public_id}-1"
+      refute Map.has_key?(body, "model_credential")
+      assert answer_valid?(body)
+      refute answer_valid?(Map.put(body, "model_credential", "#{other.public_id}-1"))
 
       # The run keeps the keys of both providers, the default model provider credential's
       # provider's first.
@@ -678,7 +683,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
       assert %{"runtime" => runtime, "model" => "claude-sonnet-5-5"} = body["model_choice"]
       assert runtime == second.name
-      refute Map.has_key?(body, "model_credential")
+      refute Map.has_key?(body, "model_provider_credential_name")
       assert answer_valid?(body)
     end
 
@@ -754,7 +759,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       assert %{"runtime" => runtime, "model" => model} = body["model_choice"]
       assert runtime == release.name
       assert model == ctx.gateway_run.run_settings["model"]
-      refute Map.has_key?(body, "model_credential")
+      refute Map.has_key?(body, "model_provider_credential_name")
     end
 
     test "is no session: the claim ends session_key_missing where session 1 has no provider's key",

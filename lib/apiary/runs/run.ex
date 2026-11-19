@@ -207,9 +207,9 @@ defmodule Apiary.Runs.Run do
     # For a run of a stage with `shared_run: true`, the settings of each workflow entry of
     # the stage as the claim read them (`Apiary.Stages.claim_sessions!/3`): by the entry's
     # place, `"0"`, or `"2.1"` for an entry of a loop's body, a map of `"workflow"`,
-    # `"time_limit_minutes"`, `"full_suite"`, `"model_choice"` and `"model_credential"`
-    # (`Apiary.Dispatches.RunSettings.build/2`). Written by the claim; nil for every
-    # other run. Not folded: a rebuild keeps it.
+    # `"time_limit_minutes"`, `"full_suite"`, `"model_choice"` and
+    # `"model_provider_credential_name"` (`Apiary.Dispatches.RunSettings.build/2`).
+    # Written by the claim; nil for every other run. Not folded: a rebuild keeps it.
     field :session_settings, :map
 
     # The run's outcome, as its starter gave it (`Apiary.Runs.Outcome`): its state,
@@ -521,10 +521,10 @@ defmodule Apiary.Runs.Run do
   The ids of the model providers whose keys the session number `session` of `run` runs
   on. Session 1 runs on the provider of the run's default model provider credential
   (`provider_connection_id`). A later session runs on the provider of the run's key whose
-  name is that session's `model_credential` in `session_settings`, else on the default
-  model provider credential's provider. For a nil `session`, not known, every provider of
-  the run's keys (`Apiary.Runs.ModelKey`). None for a run with no key. The end of a
-  paused run, with `session` the session that paused (`paused_session`), keeps the
+  name is that session's `model_provider_credential_name` in `session_settings`, else on
+  the default model provider credential's provider. For a nil `session`, not known, every
+  provider of the run's keys (`Apiary.Runs.ModelKey`). None for a run with no key. The end
+  of a paused run, with `session` the session that paused (`paused_session`), keeps the
   earliest end of a cooldown among the keys of these providers alone as
   `dispatch_runs.paused_until` of the run's run of the queue, and the run that continues
   it waits for them. A run whose session 1 runs on the machine's local model provider
