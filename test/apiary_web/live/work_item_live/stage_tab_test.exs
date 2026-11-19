@@ -129,6 +129,27 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     version
   end
 
+  # A film or pictures of the scenario `name` that `run` pushes, as one file `filename`:
+  # the first bytes of an MP4 film or a PNG picture.
+  defp media!(run, work_item, type, name, filename) do
+    binary =
+      if type == "demo-video",
+        do: <<0, 0, 0, 24, "ftypisom", 0, 0, 2, 0, "isomiso2">>,
+        else: <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, "IHDR">>
+
+    {:ok, version} =
+      Artifacts.push(
+        {:run, run},
+        reload(work_item),
+        type,
+        [%{filename: filename, content_type: "application/octet-stream", binary: binary}],
+        name: name,
+        stage_id: run.stage_id
+      )
+
+    version
+  end
+
   defp passed!(run) do
     {:ok, _version} =
       Stages.Artifacts.push_json(
@@ -809,6 +830,26 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert [%{type: "spec", version: 2, open: true}, %{type: "mockup", open: false}] =
                ApiaryWeb.WorkItemLive.StageTab.frames(recorded)
+    end
+  end
+
+  describe "the input frames beside a Scenarios frame" do
+    # The frames of a Verify gate as `StageTab.verify_frames/2` and `input_frames/2` return
+    # them: a film and pictures are one Scenarios frame, and Verify's inputs are a film,
+    # pictures and an explainer.
+    test "fold every film and picture into the Scenarios frame" do
+      stage = %{outputs: ~w(verification demo-video screenshot)}
+      outputs = StageTab.verify_frames(stage, %{"demo-video" => 1, "screenshot" => 2})
+
+      inputs =
+        for {type, place} <- Enum.with_index(~w(demo-video screenshot explainer)) do
+          %{type: type, name: "main", version: 1, open: place == 0, kind: :output}
+        end
+
+      assert [%{type: "demo-video", kind: :scenarios, version: 2}] = outputs
+
+      assert [%{kind: :scenarios}, %{type: "explainer", open: false}] =
+               StageTab.with_inputs(outputs, inputs)
     end
   end
 
@@ -3930,6 +3971,55 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert gate =~ ~s(id="work-item-stage-gate-approve-go")
       assert report =~ "The report text"
+    end
+
+    test "Verify's gate with no Verify run shows Build's film and pictures as two inputs", %{
+      conn: conn,
+      scope: scope
+    } do
+      media = ~w(demo-video screenshot)
+      screens!(scope)
+
+      # Build writes a film and pictures; Verify verifies them and reads them as inputs.
+      document = Processes.current(scope.workspace).document
+
+      stages =
+        Enum.map(document["stages"], fn
+          %{"id" => @build} = stage ->
+            %{stage | "outputs" => Enum.map(media, &%{"type" => &1, "required" => false})}
+
+          %{"id" => @verify} = stage ->
+            Map.merge(stage, %{
+              "inputs" => Enum.map(media, &%{"type" => &1, "required" => false}),
+              "outputs" =>
+                Enum.map(["verification" | media], &%{"type" => &1, "required" => false})
+            })
+
+          stage ->
+            stage
+        end)
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, %{document | "stages" => stages})
+
+      work_item = scope |> taken_in_fixture() |> end_run!(proposing("fast-track"))
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+
+      work_item =
+        work_item
+        |> reload()
+        |> end_run!(fn run, _registered ->
+          media!(run, work_item, "demo-video", "scenario-1", "scenario-1.mp4")
+          media!(run, work_item, "screenshot", "scenario-2", "scenario-2-step-1.png")
+          passed!(run)
+        end)
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      # Verify has no output frame, so no Scenarios frame folds the two inputs together.
+      assert has_element?(view, "#work-item-stage-gate-no-run")
+      refute has_element?(view, "#work-item-tab-scenarios")
+      assert has_element?(view, "#work-item-tab-output-demo-video")
+      assert has_element?(view, "#work-item-tab-output-screenshot")
     end
 
     test "a workspace of another domain reads the engine's wording on Verify's gate and Shape's tab",

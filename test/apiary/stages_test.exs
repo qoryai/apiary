@@ -2425,7 +2425,7 @@ defmodule Apiary.StagesTest do
       assert %{stage_state: :done} = reload(work_item)
       assert Stages.status(work_item).state == :done
 
-      # A waiting run inserted at Explore (`live_stage_run!/2`) pushes a newer proposal.
+      # A handed-over run at Explore (`live_stage_run!/2`) pushes a newer proposal.
       stage_version!(work_item, "proposal", a_proposal(), @explore)
 
       assert %{state: :at_gate, gate: %{approvals: [%{versions: [%{number: 1, newer?: true}]}]}} =
@@ -4231,9 +4231,10 @@ defmodule Apiary.StagesTest do
       assert Stages.full_suite_versions(artifacts, 1) == []
     end
 
-    test "a report a person wrote, or with no verdict, has no verdict" do
-      person = %{number: 1, run_id: nil, writer: :person, run: nil}
-      artifacts = [artifact("build-report", [person]), artifact("verdict", [stored_verdict(%{})])]
+    test "a report with no run, or with no verdict, has no verdict" do
+      # A verdict with no run either does not belong to the report.
+      verdict = verdict_with(@suite_passed, run_id: nil, number: 1)
+      artifacts = [artifact("build-report", [report(1, nil)]), artifact("verdict", [verdict])]
       assert Stages.full_suite_versions(artifacts, 1) == []
 
       assert Stages.full_suite_versions([artifact("build-report", [report(1, "run-a")])], 1) == []
@@ -5262,8 +5263,8 @@ defmodule Apiary.StagesTest do
 
       assert id == proposal.public_id
 
-      # A waiting run inserted at Explore (`live_stage_run!/2`) pushes a newer version with
-      # no decision. It is no change (vault 0261, 624 (a)): the next stage still reads the
+      # A handed-over run at Explore (`live_stage_run!/2`) pushes a newer version with no
+      # decision. It is no change (vault 0261, 624 (a)): the next stage still reads the
       # approved one.
       stage_version!(work_item, "proposal", a_proposal(), @explore)
 
@@ -8598,5 +8599,34 @@ defmodule Apiary.StagesTest do
 
       assert %{state: :done, gate: %{approvable?: false}} = Stages.status(work_item, scope)
     end
+  end
+
+  describe "the fixture live_stage_run!/2" do
+    test "hands a claimed run over with the registered run of its claim, which end_run! ends",
+         %{scope: scope} do
+      work_item = take_in!(scope)
+      claimed = newest_run(work_item) |> Ecto.Changeset.change(state: :claimed) |> Repo.update!()
+
+      %Apiary.Runs.Run{
+        number:
+          Apiary.RunEventsFixtures.next_run_number(claimed.organisation_id, claimed.workspace_id),
+        organisation_id: claimed.organisation_id,
+        workspace_id: claimed.workspace_id,
+        node_run_id: claimed.run_id,
+        dispatch_run_id: claimed.id
+      }
+      |> Ecto.Changeset.change(state: "pending")
+      |> Apiary.RunEventsFixtures.insert_run!()
+
+      assert %DispatchRun{id: id, state: :handed_over} = live_stage_run!(work_item)
+      assert id == claimed.id
+      assert [%{state: "running"}] = runs_of(claimed)
+
+      end_run!(work_item, nil)
+      assert [%{state: "completed"}] = runs_of(claimed)
+    end
+
+    defp runs_of(%DispatchRun{id: id}),
+      do: Repo.all(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^id)
   end
 end
