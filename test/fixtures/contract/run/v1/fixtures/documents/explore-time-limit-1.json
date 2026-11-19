@@ -14,7 +14,7 @@
   "run_settings": {
     "runtime": "claude"
   },
-  "time_limit_minutes": 14,
+  "time_limit_minutes": 1,
   "inputs": {
     "version": 1,
     "work_item": {

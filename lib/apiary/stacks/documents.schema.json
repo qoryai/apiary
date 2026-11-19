@@ -467,9 +467,9 @@
       }
     },
     "time_limit_minutes": {
-      "description": "The time limit of one session, in minutes, from 15 to 1440. In the run documents, it is the limit of session 1, present only when the control plane sets one, and the machine sets it as that session's time limit. The limit of each later session is the time_limit_minutes of the answer to the next-session call.",
+      "description": "The time limit of one session, in minutes, from 1 to 1440. In the run documents, it is the limit of session 1, present only when the control plane sets one, and the machine sets it as that session's time limit. The limit of each later session is the time_limit_minutes of the answer to the next-session call.",
       "type": "integer",
-      "minimum": 15,
+      "minimum": 1,
       "maximum": 1440
     },
     "shared_run": {
