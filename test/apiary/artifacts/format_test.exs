@@ -168,13 +168,18 @@ defmodule Apiary.Artifacts.FormatTest do
   describe "a document" do
     test "is UTF-8 Markdown text in a file whose name ends in .md", context do
       assert {:ok, "text/markdown; charset=utf-8"} =
-               check(context, "explainer", "a.md", "# Gift cards\n\n```mermaid\ngraph TD\n```\n")
+               check(
+                 context,
+                 "walkthrough",
+                 "a.md",
+                 "# Gift cards\n\n```mermaid\ngraph TD\n```\n"
+               )
 
-      assert {:ok, _type} = check(context, "explainer", "A.Md", "")
-      assert {:error, :extension} = check(context, "explainer", "a.markdown", "# A")
-      assert {:error, :extension} = check(context, "explainer", "md", "# A")
-      assert {:error, :format} = check(context, "explainer", "a.md", <<0xC3, 0x28>>)
-      assert {:error, :format} = check(context, "explainer", "a.md", "a\u0000b")
+      assert {:ok, _type} = check(context, "walkthrough", "A.Md", "")
+      assert {:error, :extension} = check(context, "walkthrough", "a.markdown", "# A")
+      assert {:error, :extension} = check(context, "walkthrough", "md", "# A")
+      assert {:error, :format} = check(context, "walkthrough", "a.md", <<0xC3, 0x28>>)
+      assert {:error, :format} = check(context, "walkthrough", "a.md", "a\u0000b")
     end
   end
 
@@ -188,7 +193,7 @@ defmodule Apiary.Artifacts.FormatTest do
   test "a file that cannot be read is unreadable", context do
     missing = Path.join(context.tmp_dir, "missing")
 
-    for type <- ~w(explainer mockup demo-video verdict) do
+    for type <- ~w(walkthrough mockup demo-video verdict) do
       assert {:error, :unreadable} = Format.check(standard(type), "a.md", missing)
     end
   end
@@ -864,7 +869,7 @@ defmodule Apiary.Artifacts.FormatTest do
 
       # Another document type keeps its rule: its size limit bounds the version.
       assert {:ok, _type} =
-               check(context, "explainer", "notes.md", String.duplicate("a", 262_145))
+               check(context, "walkthrough", "notes.md", String.duplicate("a", 262_145))
     end
 
     test "checks sources.json against the proposal sources format, up to 1 MiB", context do

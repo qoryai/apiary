@@ -197,7 +197,7 @@ defmodule Apiary.Artifacts.WatchTest do
     forge = forge!(ctx)
 
     assert {:ok, %Version{}} =
-             Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
+             Artifacts.push({:run, ctx.run}, ctx.work_item, "walkthrough", [doc()])
 
     assert Feed.entries(forge) == []
   end
@@ -402,7 +402,7 @@ defmodule Apiary.Artifacts.WatchTest do
       forge = forge!(ctx)
 
       assert {:ok, %Version{}} =
-               Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "walkthrough", [doc()])
 
       # A push that is kept leaves its file in the store, so the empty store above counts.
       assert [_one] = stored_files(ctx)

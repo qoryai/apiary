@@ -1003,7 +1003,7 @@ The messages:
     WebP or SVG file." For a document type, the part after the colon is "a document is a
     Markdown file of UTF-8 text"; for a video type, "a file is an MP4 or WebM video, or a
     WebVTT file (.vtt)"; for a structured type, "the file is one JSON document".
-  - "Fix notes.txt to match the format of explainer: the filename of a document ends in
+  - "Fix notes.txt to match the format of walkthrough: the filename of a document ends in
     .md."
   - "Fix verdict.json to match the format of verdict: at #/verdict, value must be one of
     the enum values: "passed", "changes-requested" or "escalate"." For a file that fails

@@ -56,7 +56,7 @@ defmodule Apiary.Processes.TypeTemplates do
   # copy of `Apiary.Artifacts.Type.standard/0`, and the two lists have the same entries.
   @standard_types [
     {"acceptance-criteria", :structured},
-    {"explainer", :document},
+    {"walkthrough", :document},
     {"decision-record", :document},
     {"mockup", :image},
     {"screenshot", :image},
