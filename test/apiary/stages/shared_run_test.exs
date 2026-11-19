@@ -530,7 +530,7 @@ defmodule Apiary.Stages.SharedRunTest do
           run
           |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended)
           |> Repo.update!()
-          |> Apiary.Dispatches.requeue_for_pause(nil)
+          |> Apiary.Dispatches.requeue_for_pause(nil, nil)
         end)
 
       assert %DispatchRun{
@@ -621,7 +621,7 @@ defmodule Apiary.Stages.SharedRunTest do
           run
           |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended)
           |> Repo.update!()
-          |> Apiary.Dispatches.requeue_for_pause(nil)
+          |> Apiary.Dispatches.requeue_for_pause(nil, nil)
         end)
 
       {Repo.get!(Run, registered.id), continuation}

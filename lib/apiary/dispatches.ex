@@ -842,8 +842,6 @@ defmodule Apiary.Dispatches do
   @doc false
   @spec requeue_for_pause(DispatchRun.t(), DateTime.t() | nil, DateTime.t() | nil) ::
           {:ok, DispatchRun.t()} | {:error, :not_requeued | Ecto.Changeset.t()}
-  def requeue_for_pause(dispatch_run, paused_until, report_wait_until \\ nil)
-
   def requeue_for_pause(
         %DispatchRun{
           id: paused_id,
