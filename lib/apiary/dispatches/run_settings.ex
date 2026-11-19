@@ -80,7 +80,7 @@ defmodule Apiary.Dispatches.RunSettings do
   #   2. the fallbacks, in their order: the default step's under an override, else the
   #      choice's; each with the fallback's runtime and tiers
   #      (`Apiary.ModelChoices.Resolution.fallback/3`). A fallback's runtime is the run's
-  #      `runtime`, and its provider's API for that runtime the run's `provider_api`.
+  #      `runtime`, and its provider's API for that runtime the API of its key rows.
   #
   # A step whose provider's keys were already found in cooldown is passed over: its keys
   # are the same, so the skip only saves work and changes no result. A step that does not
@@ -542,8 +542,8 @@ defmodule Apiary.Dispatches.RunSettings do
   #     on its provider, whose keys are all in cooldown. A choice on the start key's
   #     provider whose runtime uses the start key's API (`format`, `endpoint` and `auth`)
   #     joins the start key's group;
-  #   * the run's `run_settings`, where that choice's runtime, key or model is no longer
-  #     valid (`form/6`), or its runtime is no longer in the catalogue;
+  #   * the run's `run_settings`, where that choice's runtime or model is no longer valid
+  #     (`form/6`), or its runtime is no longer in the catalogue;
   #   * `runtime` alone, the runtime of the choice, where the run gets no key (`keyed`
   #     false); or the catalogue's default runtime
   #     (`Apiary.ModelChoices.default_runtime/0`), where the choices resolve to no choice
@@ -555,11 +555,11 @@ defmodule Apiary.Dispatches.RunSettings do
   # does: the choice is set to a provider that was removed, or its provider is not there,
   # fails its integrity code, or `form/6` ends `provider_gone` for it. A session that
   # would have no key in the run ends the claim `session_key_missing`: its runtime uses
-  # another API of a provider that an earlier session uses (`same_api/3`, `on_start/2`),
-  # or the claim reads no key of its provider and no later step has a free key
-  # (`session_on/6`). A settings check of the session's provider that ran out of time or
-  # crashed is `{:unchecked, provider}`, which leaves the run waiting as for the run's
-  # provider.
+  # another API of a provider that an earlier session uses (`same_api/3`, `on_start/2`);
+  # its provider has no key (`key_gone`) and no later step has a free key; or the run's
+  # first session runs on the machine's key (`session_on/6`). A settings check of the
+  # session's provider that ran out of time or crashed is `{:unchecked, provider}`, which
+  # leaves the run waiting as for the run's provider.
   defp with_sessions({:ok, built}, start, context) do
     sessions = context.held.sessions
     context = Map.put(context, :claim_keys, session_keys(sessions, context))
@@ -738,16 +738,18 @@ defmodule Apiary.Dispatches.RunSettings do
   # A run with no start key keeps no key, once the session's provider is checked for
   # `provider_gone`. Without the features under which a run is given keys (`keyed`
   # false), the session gets `runtime` alone. Else the run's first session runs on the
-  # machine's key, so a later session on a model provider would have no key in the run:
-  # the claim ends the run `session_key_missing`.
+  # machine's key, so a later session on a model provider would have no key in the run,
+  # whether its provider has keys or not: the claim ends the run `session_key_missing`.
   defp session_on(_input, resolution, runtime, built, nil, context) do
     provider = Map.fetch!(context.providers, resolution.connection_id)
 
-    with :ok <- intact(provider),
-         {:ok, _formed} <- session_form(resolution, provider, runtime, built, context) do
-      if context.held.keyed,
-        do: {:end, :session_key_missing},
-        else: {:ok, %{"runtime" => runtime.name}, nil}
+    with :ok <- intact(provider) do
+      case session_form(resolution, provider, runtime, built, context) do
+        {:ok, _formed} when context.held.keyed -> {:end, :session_key_missing}
+        {:ok, _formed} -> {:ok, %{"runtime" => runtime.name}, nil}
+        {:end, :key_gone} when context.held.keyed -> {:end, :session_key_missing}
+        other -> other
+      end
     end
     |> session_result(built)
   end
@@ -755,23 +757,30 @@ defmodule Apiary.Dispatches.RunSettings do
   defp session_on(input, resolution, runtime, built, start, context) do
     provider = Map.fetch!(context.providers, resolution.connection_id)
 
-    with :ok <- intact(provider),
-         {:ok, formed} <- session_form(resolution, provider, runtime, built, context) do
-      cond do
-        provider.id == start.provider.id ->
-          on_start(formed, start)
+    with :ok <- intact(provider) do
+      case session_form(resolution, provider, runtime, built, context) do
+        {:ok, formed} ->
+          cond do
+            provider.id == start.provider.id ->
+              on_start(formed, start)
 
-        group = free_group(provider, formed, context) ->
-          {:ok, formed.stored, group}
+            group = free_group(provider, formed, context) ->
+              {:ok, formed.stored, group}
 
-        fallen = on_fallback(input, resolution, start, context) ->
-          fallen
+            fallen = on_fallback(input, resolution, start, context) ->
+              fallen
 
-        true ->
-          case session_group(provider, formed, context) do
-            %{keys: [_ | _]} = group -> {:ok, formed.stored, group}
-            _no_key -> {:end, :session_key_missing}
+            true ->
+              {:ok, formed.stored, session_group(provider, formed, context)}
           end
+
+        # A provider with no key (`key_gone`): the session takes its first later step
+        # with a free key, else it would have no key in the run.
+        {:end, :key_gone} when context.held.keyed ->
+          on_fallback(input, resolution, start, context) || {:end, :session_key_missing}
+
+        other ->
+          other
       end
     end
     |> session_result(built)
@@ -944,12 +953,13 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # The first later step, in order, that forms and has a key not in cooldown at `now`:
   # the default step under a workflow's override, then the fallbacks, each with its
-  # runtime and tiers (`Apiary.ModelChoices.Resolution.fallback/3`). `{:ok, built}`, or `{:cooling, ids}`
-  # for none. A step whose provider's keys were already found in cooldown, `provider`'s
-  # first, is passed over. `ids` are the providers of the steps that formed, each with
-  # every key in cooldown, and of those whose settings check ran out of time or crashed,
-  # which a later claim checks again. A step that does not form for a cause that ends a
-  # run on the choice's provider is passed over and left out of `ids`.
+  # runtime and tiers (`Apiary.ModelChoices.Resolution.fallback/3`).
+  # `{:ok, built, group}`, or `{:cooling, ids}` for none. A step whose provider's keys
+  # were already found in cooldown, `provider`'s first, is passed over. `ids` are the
+  # providers of the steps that formed, each with every key in cooldown, and of those
+  # whose settings check ran out of time or crashed, which a later claim checks again. A
+  # step that does not form for a cause that ends a run on the choice's provider is
+  # passed over and left out of `ids`.
   defp fall_back(input, %Resolution{} = resolution, {providers, described}, provider, ws, now) do
     steps = later_steps(input, resolution)
 
@@ -976,8 +986,8 @@ defmodule Apiary.Dispatches.RunSettings do
       | for(fallback <- default.fallbacks, do: Resolution.fallback(input, default, fallback))
     ]
 
-  # One step of `fall_back/6`: `{:halt, {:ok, built}}` for a step with a free key, else
-  # the providers waited for and those whose keys are all in cooldown (`cooled`).
+  # One step of `fall_back/6`: `{:halt, {:ok, built, group}}` for a step with a free key,
+  # else the providers waited for and those whose keys are all in cooldown (`cooled`).
   defp step(%Resolution{connection_id: id} = step, {providers, described}, ws, now, acc) do
     {:cooling, ids, cooled} = acc
     provider = Map.fetch!(providers, id)

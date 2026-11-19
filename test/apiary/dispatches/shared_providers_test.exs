@@ -265,6 +265,10 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
 
       # `claim!/1` checks that the ended claim stored no key row.
       assert {{:ended, :session_key_missing}, _queued} = claim!(ctx)
+
+      # The build ends it so too where the later session's provider has no key.
+      no_keys!(northwind)
+      assert built(queued!(ctx)) == {:end, :session_key_missing}
     end
 
     test "where every session runs on the machine's key keeps no key", ctx do
@@ -330,6 +334,37 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
              } = second
 
       assert names(stored_keys(run)) == ["#{northwind.public_id}-1", fallback]
+    end
+
+    test "starts the later session on the first fallback with a free key where its provider has no key",
+         ctx do
+      %{northwind: northwind, checkout: checkout, storefront: storefront} =
+        cooling_later!(ctx)
+
+      no_keys!(checkout)
+      {{:ok, run}, _queued} = claim!(ctx)
+      fallback = "#{storefront.public_id}-1"
+
+      assert run.provider_connection_id == northwind.id
+      assert %{"1" => second} = run.session_settings
+
+      assert %{
+               "workflow" => "write-acceptance-checks",
+               "model_credential" => ^fallback,
+               "model_choice" => %{"model" => "claude-sonnet-5-5"}
+             } = second
+
+      assert names(stored_keys(run)) == ["#{northwind.public_id}-1", fallback]
+    end
+
+    test "ends the build session_key_missing where the later session's provider and every later step have no free key",
+         ctx do
+      %{checkout: checkout, storefront: storefront} = cooling_later!(ctx)
+      no_keys!(checkout)
+      key_state!(storefront, "key-1", until: in_seconds(3_600))
+
+      # The guard passes, as a later step has a key; the build finds none free.
+      assert built(queued!(ctx)) == {:end, :session_key_missing}
     end
 
     test "starts the later session on its provider's choice and keys where every fallback's key is in cooldown too",
@@ -431,6 +466,15 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       # choice walks after its provider: a later step with a key.
       choose!(ctx.scope, :workspace, northwind)
       assert {:ok, _version} = save(ctx.scope, workflows)
+
+      # The claim gives the later session that step: on the start key's provider, it
+      # joins the start key's group, and the run keeps Northwind keys' key alone.
+      {{:ok, run}, _queued} = claim!(ctx)
+      assert run.provider_connection_id == northwind.id
+      assert %{"1" => second} = run.session_settings
+      assert %{"workflow" => "write-acceptance-checks"} = second
+      refute Map.has_key?(second, "model_credential")
+      assert names(stored_keys(run)) == ["#{northwind.public_id}-1"]
     end
 
     test "fails where a workflow's runtime uses another API of the provider an earlier workflow uses",

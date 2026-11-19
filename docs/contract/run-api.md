@@ -847,8 +847,8 @@ of the run contract. A next session of the same stage:
   has one; else the choice's model on its provider, whose keys are all in cooldown. A
   choice on the provider of the run's start key whose runtime uses the same API of that
   provider as the run joins the group of the run's start key.
-- `model_choice` is the run's `run_settings` where the choice's runtime, key or model is
-  no longer valid, or its runtime is no longer in the catalogue. A choice whose provider
+- `model_choice` is the run's `run_settings` where the choice's runtime or model is no
+  longer valid, or its runtime is no longer in the catalogue. A choice whose provider
   was removed, or no longer fits the catalogue, ends the claim `provider_gone`.
 - `model_choice` has the catalogue's default runtime alone where the workflow resolves to
   no model choice at any level: the session joins the group of the run's start key, or,
