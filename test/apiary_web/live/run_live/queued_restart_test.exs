@@ -46,7 +46,7 @@ defmodule ApiaryWeb.RunLive.QueuedRestartTest do
       })
 
     {:ok, _choice} =
-      Apiary.ModelChoices.put_choice(scope, :workspace, %{
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
         provider: provider.public_id,
         runtime: "codex",
         model: "gpt-6-sol"
