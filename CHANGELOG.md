@@ -280,36 +280,35 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   an escalation with the save's fix and "then run the round again" after it.
 - A save of a stage with `shared_run: true` fails when its workflows, their later steps
   included (the default step under a workflow's override, then the fallbacks), use more
-  than 6 model providers, as one run takes model provider credentials of at most 6. The
-  error is "Use at most 6 model providers in one stage. Its workflows use 7: Northwind,
-  …". The save also fails when a workflow has no model choice and the stage's runs can
-  start on a provider that the default runtime cannot use. That error is "Choose a model
-  for workflow review. Without one it runs on Claude Code, and this stage's runs can
-  start on Northwind, which Claude Code cannot use." Update from harness shows the same
-  lines. Making a workspace from a template shows the line alone, checked against the
+  than 6 model providers, as one run takes keys of at most 6. The error is "Use at most
+  6 model providers in one stage. Its workflows use 7: Northwind, …". The save also
+  fails when a workflow has no model choice and the stage's runs can start on a provider
+  that the default runtime cannot use. That error is "Choose a model for workflow
+  review. Without one it runs on Claude Code, and this stage's runs can start on
+  Northwind, which Claude Code cannot use." Update from harness shows the same lines.
+  Making a workspace from a template shows the line alone, checked against the
   organisation's default. The claim checks both again, as a changed default provider, a
   cleared model choice or a harness change can break them after the save. It ends such a
   run before it starts, with the end cause `too_many_providers` or
   `model_choice_missing` and the outcome error. The work item and the stop line show the
   same fix while the fault remains, and "Run the round again." once it is gone.
 - A save of a stage with `shared_run: true` also fails, in three cases, where a later
-  session would get no model provider credential in the run. First, a later workflow's
-  provider has no model provider credential, and neither has a provider of its later
-  steps (the default step under a workflow's override, then the fallbacks). The error is
-  "Add a model provider credential to Checkout, or choose a model of another provider
-  for workflow review. Checkout has no model provider credential." Second, a workflow's
-  runtime uses another API of a provider that an earlier workflow uses, as one run uses
-  one API of each provider. The error is "Choose a model for workflow review that uses
-  the Anthropic Messages API of Northwind, as workflow plan does, or a model of another
-  provider. One run uses one API of each provider." Third, the first workflow has no
-  model choice, and a later workflow's choice is on a model provider. The error is
-  "Choose a model for workflow plan, or remove the model choices of the later workflows.
-  Without a model, plan runs on the machine's local model provider credential, so later
-  workflows get no model provider credential." A later workflow with no model choice,
-  which runs on the default runtime, never fails the save. The claim checks all three
-  again and ends such a run before it starts, with the end cause `session_key_missing`
-  and the outcome error. The work item and the stop line show the same fix while the
-  fault remains, and "Run the round again." once it is gone.
+  session would get no model key in the run. First, a later workflow's provider has no
+  model key, and neither has a provider of its later steps (the default step under a
+  workflow's override, then the fallbacks). The error is "Add a model key to Checkout,
+  or choose a model of another provider for workflow review. Checkout has no model key."
+  Second, a workflow's runtime uses another API of a provider that an earlier workflow
+  uses, as one run uses one API of each provider. The error is "Choose a model for
+  workflow review that uses the Anthropic Messages API of Northwind, as workflow plan
+  does, or a model of another provider. One run uses one API of each provider." Third,
+  the first workflow has no model choice, and a later workflow's choice is on a model
+  provider. The error is "Choose a model for workflow plan, or remove the model choices
+  of the later workflows. Without a model, plan runs on the machine's local model
+  provider credential, so later workflows get no model provider credential." A later
+  workflow with no model choice, which runs on the default runtime, never fails the
+  save. The claim checks all three again and ends such a run before it starts, with the
+  end cause `session_key_missing` and the outcome error. The work item and the stop line
+  show the same fix while the fault remains, and "Run the round again." once it is gone.
 - `full_suite` is `true` only for a session of an entry with access `write` that is in a
   loop or has `first_attempt`, whether the stage has `shared_run` or not. A run with
   access `read` or `write-no-push`, and a run of Explore, gets `false` for every session.
