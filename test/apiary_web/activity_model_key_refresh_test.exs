@@ -1,7 +1,9 @@
 defmodule ApiaryWeb.ActivityModelKeyRefreshTest do
   # The Activity lines of the refresh of a model key's sign-in (`model_key.refresh`,
   # `Apiary.ModelKeys.Login`): the sentences, made from the entry's details alone, and the
-  # filter, which does not offer the action.
+  # filter, which does not offer the action. An entry names the key by the identity line it
+  # stored (`Apiary.ModelKeys.Identity`); an entry written before that has the key's value
+  # id and the provider's name, and keeps its words.
   use Apiary.DataCase, async: true
 
   import Apiary.OrganisationsFixtures
@@ -30,6 +32,99 @@ defmodule ApiaryWeb.ActivityModelKeyRefreshTest do
   end
 
   @key_of "the key main of OpenAI subscription"
+  @identity "OpenAI subscription · dana@example.com"
+  @with_identity Map.put(@details, "identity", @identity)
+
+  describe "an entry with the identity line of the key" do
+    test "a refresh that worked, with no value id or provider's name in the words" do
+      assert sentence(Map.put(@with_identity, "outcome", "refreshed")) ==
+               "Qory Apiary refreshed the sign-in of #{@identity}"
+
+      # No value id and no provider's name: the line is all an entry needs.
+      assert sentence(%{"outcome" => "refreshed", "identity" => @identity}) ==
+               "Qory Apiary refreshed the sign-in of #{@identity}"
+    end
+
+    test "a refusal that stays asks the person to sign in again" do
+      for {cause, words} <- [
+            {"refresh_token_expired", "the saved sign-in has expired"},
+            {"invalid_grant", "OpenAI no longer accepts this sign-in"},
+            {"token_not_stored", "Qory Apiary could not save the new sign-in"}
+          ] do
+        details = Map.merge(@with_identity, %{"outcome" => "sign_in_needed", "cause" => cause})
+
+        assert sentence(details) ==
+                 "Sign in again on #{@identity}: Qory Apiary could not refresh its sign-in, " <>
+                   "because #{words} (#{cause})"
+      end
+    end
+
+    test "an answer with no account id asks to sign in to ChatGPT again for the key" do
+      details =
+        Map.merge(@with_identity, %{"outcome" => "sign_in_needed", "cause" => "no_account"})
+
+      assert sentence(details) ==
+               "Sign in to ChatGPT again for #{@identity}: Qory Apiary could not refresh the " <>
+                 "sign-in, because OpenAI returned no account id (no_account)"
+
+      # An entry with the account line as its identity names it the same way.
+      assert sentence(%{
+               "outcome" => "sign_in_needed",
+               "cause" => "no_account",
+               "identity" => "OpenAI subscription · account …4f2a"
+             }) =~ "again for OpenAI subscription · account …4f2a: Qory Apiary"
+    end
+
+    test "a failure that may pass says why and when the next call is" do
+      details =
+        Map.merge(@with_identity, %{
+          "outcome" => "failed",
+          "cause" => "timeout",
+          "retry_at" => "2026-11-18T14:05:30Z"
+        })
+
+      assert sentence(details) ==
+               "Qory Apiary could not refresh the sign-in of #{@identity}: the refresh request " <>
+                 "to OpenAI timed out (timeout). It tries again at 2026-11-18 14:05 UTC"
+
+      assert sentence(Map.delete(details, "retry_at")) == nil
+      assert sentence(Map.put(details, "cause", "superseded")) == nil
+    end
+
+    test "a refresh address off the allowed list names the identity and the description's provider" do
+      details =
+        Map.merge(@with_identity, %{
+          "outcome" => "failed",
+          "cause" => "bad_endpoint",
+          "retry_at" => "2026-11-18T14:05:30Z"
+        })
+
+      assert sentence(details) ==
+               "Qory Apiary could not refresh the sign-in of #{@identity}: the refresh address " <>
+                 "in the description of OpenAI subscription is not on the allowed list " <>
+                 "(bad_endpoint). Ask the author of that description to correct it"
+    end
+
+    test "a refusal with a cause that is no word of the refresh has no sentence" do
+      for cause <- ["refreshed", "x", "http_503"] do
+        details = Map.merge(@with_identity, %{"outcome" => "sign_in_needed", "cause" => cause})
+        assert sentence(details) == nil
+      end
+    end
+  end
+
+  describe "an entry written before the identity line" do
+    test "keeps its words, with the key's value id and the provider's name" do
+      assert sentence(Map.put(@details, "outcome", "refreshed")) ==
+               "Qory Apiary refreshed the sign-in of the key main of OpenAI subscription"
+
+      details = Map.merge(@details, %{"outcome" => "sign_in_needed", "cause" => "no_account"})
+
+      assert sentence(details) ==
+               "Sign in again on #{@key_of}: Qory Apiary could not refresh its sign-in, " <>
+                 "because OpenAI returned no account id (no_account)"
+    end
+  end
 
   test "a refusal that stays asks the person to sign in again, in words, with the code" do
     for {cause, words} <- [

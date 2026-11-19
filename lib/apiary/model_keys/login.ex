@@ -125,7 +125,7 @@ defmodule Apiary.ModelKeys.Login do
   alias Apiary.Connections.Connection
   alias Apiary.Features
   alias Apiary.Kinds.{Provider, Providers}
-  alias Apiary.ModelKeys.LoginRefresh
+  alias Apiary.ModelKeys.{Identity, LoginRefresh}
   alias Apiary.Organisations.Organisation
   alias Apiary.Repo
   alias Apiary.Secrets
@@ -1742,8 +1742,9 @@ defmodule Apiary.ModelKeys.Login do
     Repo.update_all(from(l in __MODULE__, where: l.secret_value_id == ^id), set: set)
   end
 
-  # What the entry of one call says, `{organisation, details}`: about the provider, with no
-  # token and no part of the answer. The cause is one of the fixed words of
+  # What the entry of one call says, `{organisation, details}`: about the provider and the
+  # key's identity line as it is when the entry is written, with no token and no part of the
+  # answer. The cause is one of the fixed words of
   # `Apiary.ModelKeys.LoginRefresh`, `causes/0`, `superseded` or `not_stored`; `retry_at` is
   # the time of the next call after a failure that may pass.
   defp entry(write, outcome, cause, extra \\ []) do
@@ -1760,6 +1761,7 @@ defmodule Apiary.ModelKeys.Login do
         provider_id: ctx.provider.public_id,
         provider: ctx.provider.name,
         value_id: value_id,
+        identity: Identity.for_key(ctx.provider, ctx.id),
         trigger: trigger,
         run_id: run_id,
         refresh_reason: reason,
