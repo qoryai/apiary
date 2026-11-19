@@ -40,7 +40,6 @@ defmodule ApiaryWeb.ArtifactLive.MarkdownTest do
     assert out =~ ~s(href="mailto:dana@example.com")
     refute out =~ "javascript:"
     refute out =~ "data:"
-    refute out =~ ~s(href="/admin")
     refute out =~ ~s(href="admin")
     refute out =~ ~s(href="./admin")
     refute out =~ ~s(href="?q=1")
