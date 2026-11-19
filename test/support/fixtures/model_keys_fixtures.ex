@@ -263,7 +263,7 @@ defmodule Apiary.ModelKeysFixtures do
 
   @doc """
   The key `value` of a new run of `scope`, as a report of the run's keys reads it
-  (`Apiary.ModelKeys.run_keys/1`, for `Apiary.ModelKeys.reject/4`): the run is handed over
+  (`Apiary.ModelKeys.run_keys/1`, for `Apiary.ModelKeys.reject/3`): the run is handed over
   to a gateway, and a secrets request has kept the copy of the value, `copy_set_at` its
   `value_set_at`, with `copy_login_at` for a sign-in. `name` is the key's credential name.
   """

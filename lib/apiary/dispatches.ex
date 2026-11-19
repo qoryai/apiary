@@ -1691,7 +1691,7 @@ defmodule Apiary.Dispatches do
   #
   # The report's arrival ends the wait early too: the run it continues (`continues_id`) has
   # a copy of a key that its report marked (`model_key_copies.marked_at`, set by
-  # `Apiary.ModelKeys.reject/4` for a key in `unauthorized`), and the key still needs a new
+  # `Apiary.ModelKeys.reject/3` for a key in `unauthorized`), and the key still needs a new
   # value (`Apiary.ModelKeys.Rejection`, whose `value_set_at` is the value's). The run
   # then starts on the next key at once, as the claim skips a key in that state.
   #

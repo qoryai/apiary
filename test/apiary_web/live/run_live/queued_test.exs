@@ -427,7 +427,7 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
         )
 
       now = DateTime.utc_now()
-      :ok = Apiary.ModelKeys.reject([key], [%{credential: "model-1", at: now}], provider, now)
+      :ok = Apiary.ModelKeys.reject([key], [%{credential: "model-1", at: now}], now)
 
       view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
 

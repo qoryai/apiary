@@ -13,7 +13,7 @@ defmodule Apiary.ModelKeys.Rejection do
   new value of the key, from any page, replaces the time, so the state ends, also when the
   new value equals the old one. A claim skips a key while its row counts, and an
   `unauthorized` entry of a later report puts the key back in the state
-  (`Apiary.ModelKeys.reject/4`). A rename keeps the row. A key of a provider whose keys are
+  (`Apiary.ModelKeys.reject/3`). A rename keeps the row. A key of a provider whose keys are
   sign-ins (`Apiary.ModelKeys.Login`) has the row only when no refresh can fix it
   (`Apiary.ModelKeys.Login.rejectable?/3`). A refresh never writes or deletes the row.
 

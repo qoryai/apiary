@@ -67,7 +67,6 @@ defmodule Apiary.ModelKeys.RejectionsMigrationTest do
       ModelKeys.reject(
         [key],
         [%{credential: "model-1", at: DateTime.utc_now()}],
-        provider,
         DateTime.utc_now()
       )
 
@@ -84,7 +83,7 @@ defmodule Apiary.ModelKeys.RejectionsMigrationTest do
   test "the table has one row per key, goes with the value and refuses another organisation" do
     {provider, value, key} = key!()
     now = DateTime.utc_now()
-    :ok = ModelKeys.reject([key], [%{credential: "model-1", at: now}], provider, now)
+    :ok = ModelKeys.reject([key], [%{credential: "model-1", at: now}], now)
     assert [%Rejection{secret_value_id: id}] = Repo.all(Rejection)
     assert id == value.id
 
@@ -116,7 +115,7 @@ defmodule Apiary.ModelKeys.RejectionsMigrationTest do
     end
 
     # The row goes with the value.
-    :ok = ModelKeys.reject([key], [%{credential: "model-1", at: now}], provider, now)
+    :ok = ModelKeys.reject([key], [%{credential: "model-1", at: now}], now)
     Repo.delete_all(from v in Value, where: v.id == ^value.id)
     assert Repo.all(Rejection) == []
   end

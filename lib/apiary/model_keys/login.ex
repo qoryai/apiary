@@ -745,11 +745,17 @@ defmodule Apiary.ModelKeys.Login do
   end
 
   @doc """
-  The sign-in rows of the keys `ids` of `provider`, by id; none for a provider whose keys
-  are not sign-ins.
+  The sign-in rows of the keys `ids`, of any providers, by id; a key that is no sign-in has
+  none.
   """
-  @spec rows(Connection.t(), [Ecto.UUID.t()]) :: %{Ecto.UUID.t() => t}
-  def rows(%Connection{} = provider, ids) when is_list(ids), do: by_id(provider, ids)
+  @spec rows([Ecto.UUID.t()]) :: %{Ecto.UUID.t() => t}
+  def rows([]), do: %{}
+
+  def rows(ids) when is_list(ids) do
+    from(l in __MODULE__, where: l.secret_value_id in ^ids)
+    |> Repo.all()
+    |> Map.new(&{&1.secret_value_id, &1})
+  end
 
   ## The refresh
 

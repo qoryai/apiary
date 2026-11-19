@@ -16,10 +16,10 @@ defmodule Apiary.ModelKeys.Copy do
   `login_sealed_at` is the database's time (`clock_timestamp()`) at the request that
   sealed the token of that `login_at` for the run, kept while later requests seal the same
   token, and nil where `login_at` is. A 401 that the gateway reports at an `at` before it
-  was a 401 for an older token (`Apiary.ModelKeys.reject/4`).
+  was a 401 for an older token (`Apiary.ModelKeys.reject/3`).
 
   `marked_at` is the database's time (UTC) at which a report of the run marked the key as
-  rejected by its provider (`Apiary.ModelKeys.reject/4`), nil until then. A run copy marks a
+  rejected by its provider (`Apiary.ModelKeys.reject/3`), nil until then. A run copy marks a
   key once for a value: a later report of the key by the run marks nothing and moves
   nothing, and a request that seals a new value for the run (another `value_set_at`)
   clears the mark, so that the run can mark the new value. A request that seals the same

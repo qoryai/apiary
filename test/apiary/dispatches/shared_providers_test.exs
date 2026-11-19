@@ -1140,7 +1140,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       keys = ModelKeys.run_keys(paused)
       key = Enum.find(keys, &(&1.secret_value_id == value.id))
       now = DateTime.utc_now()
-      assert :ok = ModelKeys.reject(keys, [%{credential: key.name, at: now}], provider, now)
+      assert :ok = ModelKeys.reject(keys, [%{credential: key.name, at: now}], now)
       assert [%{secret_value_id: id}] = Repo.all(Apiary.ModelKeys.Rejection)
       assert id == value.id
     end

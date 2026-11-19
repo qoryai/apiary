@@ -51,7 +51,7 @@ defmodule Apiary.ModelKeys.Report do
        alone (`Apiary.ModelKeys.run_keys/1`): an item of a credential the run does not
        have, and an item of a window outside the contract's list
        (`Apiary.ModelKeys.State.windows/0`), is left out, and the report is taken all the
-       same, and so are the keys of `unauthorized` (`Apiary.ModelKeys.reject/4`): each
+       same, and so are the keys of `unauthorized` (`Apiary.ModelKeys.reject/3`): each
        key of the run in it needs a new value from then until a new value; a key whose
        provider's keys are sign-ins, and whose sign-in a refresh may still renew, is not
        marked. An entry for a key that no secrets request sent to the run marks nothing, and a
@@ -77,7 +77,6 @@ defmodule Apiary.ModelKeys.Report do
   alias Apiary.{Access, ModelKeys, Repo}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
-  alias Apiary.Connections.Connection
   alias Apiary.ModelKeys.State
   alias Apiary.Runs.{Batch, Event, ProviderCredential, Registration, Run, RunKey, Sender}
 
@@ -348,8 +347,7 @@ defmodule Apiary.ModelKeys.Report do
         :ok
 
       entries ->
-        provider = run.provider_connection_id && Repo.get(Connection, run.provider_connection_id)
-        :ok = ModelKeys.reject(keys, entries, provider, now)
+        :ok = ModelKeys.reject(keys, entries, now)
     end
   end
 

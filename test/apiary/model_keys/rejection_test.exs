@@ -1,9 +1,9 @@
 defmodule Apiary.ModelKeys.RejectionTest do
   # A key whose model provider returned 401 to a request that carried it, as a run's gateway
-  # reports it (`Apiary.ModelKeys.reject/4`, `Apiary.ModelKeys.Rejection`): the key is
+  # reports it (`Apiary.ModelKeys.reject/3`, `Apiary.ModelKeys.Rejection`): the key is
   # skipped at a claim until it gets a new value, a value equal to the old one included, and
   # a provider's rejection of the value again puts it back. A sign-in that a refresh may
-  # still renew is not marked. The tests read the claim's reads (`claim_keys/4`,
+  # still renew is not marked. The tests read the claim's reads (`claim_keys/3`,
   # `claimable/2`, `first_to_leave/2`, `waiting_reason/3`) with no call to any provider.
   use Apiary.DataCase, async: true
 
@@ -74,7 +74,6 @@ defmodule Apiary.ModelKeys.RejectionTest do
         ModelKeys.reject(
           [key(ctx, main)],
           [unauthorized("model-1", at)],
-          ctx.provider,
           DateTime.utc_now()
         )
 
@@ -94,7 +93,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
       assert {:ok, "sk-ant-fixture-main-0123456789", nil, %DateTime{}, nil} =
                ModelKeys.reveal_for_sealing(provider, main.id, run, wait: 100)
 
-      :ok = ModelKeys.reject([key(ctx, main)], [unauthorized()], ctx.provider, DateTime.utc_now())
+      :ok = ModelKeys.reject([key(ctx, main)], [unauthorized()], DateTime.utc_now())
 
       assert ModelKeys.reveal_for_sealing(provider, main.id, run, wait: 100) ==
                {:error, :new_key_needed}
@@ -115,14 +114,13 @@ defmodule Apiary.ModelKeys.RejectionTest do
         ModelKeys.reject(
           [key(ctx, main)],
           [unauthorized("model-9")],
-          ctx.provider,
           DateTime.utc_now()
         )
 
       assert rows(main) == []
 
       gone = %{key(ctx, main) | secret_value_id: Ecto.UUID.generate()}
-      :ok = ModelKeys.reject([gone], [unauthorized()], ctx.provider, DateTime.utc_now())
+      :ok = ModelKeys.reject([gone], [unauthorized()], DateTime.utc_now())
       assert Repo.aggregate(Rejection, :count) == 0
     end
 
@@ -131,7 +129,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
       main = ctx.values["main"]
       old = %{key(ctx, main) | copy_set_at: DateTime.add(main.value_set_at, -60)}
 
-      :ok = ModelKeys.reject([old], [unauthorized()], ctx.provider, DateTime.utc_now())
+      :ok = ModelKeys.reject([old], [unauthorized()], DateTime.utc_now())
 
       assert rows(main) == []
       assert %{blocked: nil} = claim_key(ctx.provider, "main")
@@ -148,7 +146,6 @@ defmodule Apiary.ModelKeys.RejectionTest do
         ModelKeys.reject(
           [run_key],
           [unauthorized("model-1", first)],
-          ctx.provider,
           DateTime.utc_now()
         )
 
@@ -157,7 +154,6 @@ defmodule Apiary.ModelKeys.RejectionTest do
           ModelKeys.reject(
             [run_key],
             [unauthorized("model-1", at)],
-            ctx.provider,
             DateTime.utc_now()
           )
 
@@ -174,7 +170,6 @@ defmodule Apiary.ModelKeys.RejectionTest do
         ModelKeys.reject(
           [key(ctx, main)],
           [unauthorized("model-1", first), unauthorized("model-1", later)],
-          ctx.provider,
           DateTime.utc_now()
         )
 
@@ -190,7 +185,6 @@ defmodule Apiary.ModelKeys.RejectionTest do
         ModelKeys.reject(
           [run_key],
           [unauthorized("model-1", first)],
-          ctx.provider,
           DateTime.utc_now()
         )
 
@@ -201,7 +195,6 @@ defmodule Apiary.ModelKeys.RejectionTest do
         ModelKeys.reject(
           [run_key],
           [unauthorized("model-1", DateTime.add(first, 600))],
-          ctx.provider,
           DateTime.utc_now()
         )
 
@@ -218,7 +211,6 @@ defmodule Apiary.ModelKeys.RejectionTest do
         ModelKeys.reject(
           [run_key],
           [unauthorized("model-1", first)],
-          ctx.provider,
           DateTime.utc_now()
         )
 
@@ -232,7 +224,6 @@ defmodule Apiary.ModelKeys.RejectionTest do
         ModelKeys.reject(
           [run_key],
           [unauthorized("model-1", later)],
-          ctx.provider,
           DateTime.utc_now()
         )
 
@@ -247,7 +238,6 @@ defmodule Apiary.ModelKeys.RejectionTest do
         ModelKeys.reject(
           [resealed],
           [unauthorized("model-1", later)],
-          ctx.provider,
           DateTime.utc_now()
         )
 
@@ -258,7 +248,6 @@ defmodule Apiary.ModelKeys.RejectionTest do
         ModelKeys.reject(
           [resealed],
           [unauthorized("model-1", DateTime.add(later, 600))],
-          ctx.provider,
           DateTime.utc_now()
         )
 
@@ -269,7 +258,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
       main = ctx.values["main"]
       never_sent = %{key(ctx, main) | copy_kept: false}
 
-      :ok = ModelKeys.reject([never_sent], [unauthorized()], ctx.provider, DateTime.utc_now())
+      :ok = ModelKeys.reject([never_sent], [unauthorized()], DateTime.utc_now())
 
       assert rows(main) == []
       assert %{blocked: nil} = claim_key(ctx.provider, "main")
@@ -284,7 +273,6 @@ defmodule Apiary.ModelKeys.RejectionTest do
         ModelKeys.reject(
           [key(ctx, main)],
           [unauthorized("model-1", first)],
-          ctx.provider,
           DateTime.utc_now()
         )
 
@@ -292,7 +280,6 @@ defmodule Apiary.ModelKeys.RejectionTest do
         ModelKeys.reject(
           [key(ctx, main)],
           [unauthorized("model-1", later)],
-          ctx.provider,
           DateTime.utc_now()
         )
 
@@ -308,7 +295,6 @@ defmodule Apiary.ModelKeys.RejectionTest do
         ModelKeys.reject(
           keys,
           [unauthorized("model-2"), unauthorized("model-1")],
-          ctx.provider,
           DateTime.utc_now()
         )
 
@@ -319,7 +305,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
   describe "a new value" do
     test "clears the mark and the claim takes the key again", ctx do
       main = ctx.values["main"]
-      :ok = ModelKeys.reject([key(ctx, main)], [unauthorized()], ctx.provider, DateTime.utc_now())
+      :ok = ModelKeys.reject([key(ctx, main)], [unauthorized()], DateTime.utc_now())
       assert %{blocked: :new_key} = claim_key(ctx.provider, "main")
 
       new_value!(ctx.scope, ctx.provider, "main", "sk-ant-fixture-main-9876543210")
@@ -331,7 +317,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
 
     test "clears the mark when it equals the stored value", ctx do
       main = ctx.values["main"]
-      :ok = ModelKeys.reject([key(ctx, main)], [unauthorized()], ctx.provider, DateTime.utc_now())
+      :ok = ModelKeys.reject([key(ctx, main)], [unauthorized()], DateTime.utc_now())
 
       new_value!(ctx.scope, ctx.provider, "main", "sk-ant-fixture-main-0123456789")
 
@@ -341,7 +327,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
 
     test "a row left by another write path stops counting when the value's time moves", ctx do
       main = ctx.values["main"]
-      :ok = ModelKeys.reject([key(ctx, main)], [unauthorized()], ctx.provider, DateTime.utc_now())
+      :ok = ModelKeys.reject([key(ctx, main)], [unauthorized()], DateTime.utc_now())
 
       Repo.update_all(from(v in Value, where: v.id == ^main.id),
         set: [value_set_at: DateTime.add(main.value_set_at, 5)]
@@ -354,20 +340,20 @@ defmodule Apiary.ModelKeys.RejectionTest do
 
     test "the provider's rejection of the new value marks the key again", ctx do
       main = ctx.values["main"]
-      :ok = ModelKeys.reject([key(ctx, main)], [unauthorized()], ctx.provider, DateTime.utc_now())
+      :ok = ModelKeys.reject([key(ctx, main)], [unauthorized()], DateTime.utc_now())
       new_value!(ctx.scope, ctx.provider, "main", "sk-ant-fixture-main-9876543210")
 
       renewed = Repo.get!(Value, main.id)
 
       :ok =
-        ModelKeys.reject([key(ctx, renewed)], [unauthorized()], ctx.provider, DateTime.utc_now())
+        ModelKeys.reject([key(ctx, renewed)], [unauthorized()], DateTime.utc_now())
 
       assert %{blocked: :new_key} = claim_key(ctx.provider, "main")
     end
 
     test "a rename keeps the mark", ctx do
       main = ctx.values["main"]
-      :ok = ModelKeys.reject([key(ctx, main)], [unauthorized()], ctx.provider, DateTime.utc_now())
+      :ok = ModelKeys.reject([key(ctx, main)], [unauthorized()], DateTime.utc_now())
 
       Repo.update_all(from(v in Value, where: v.id == ^main.id), set: [value_id: "renamed"])
 
@@ -380,14 +366,13 @@ defmodule Apiary.ModelKeys.RejectionTest do
       now = DateTime.utc_now()
       assert claimable?([ctx.provider.id], now)
 
-      :ok = ModelKeys.reject([key(ctx, ctx.values["main"])], [unauthorized()], ctx.provider, now)
+      :ok = ModelKeys.reject([key(ctx, ctx.values["main"])], [unauthorized()], now)
       assert claimable?([ctx.provider.id], now)
 
       :ok =
         ModelKeys.reject(
           [key(ctx, ctx.values["spare"], "model-2")],
           [unauthorized("model-2")],
-          ctx.provider,
           now
         )
 
@@ -401,7 +386,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
       now = DateTime.utc_now()
       later = DateTime.add(now, 3600)
 
-      :ok = ModelKeys.reject([key(ctx, ctx.values["main"])], [unauthorized()], ctx.provider, now)
+      :ok = ModelKeys.reject([key(ctx, ctx.values["main"])], [unauthorized()], now)
 
       ModelKeys.record(
         [key(ctx, ctx.values["spare"])],
@@ -428,7 +413,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
 
     test "has no reason to wait while one key is free, and for a provider with no key", ctx do
       now = DateTime.utc_now()
-      :ok = ModelKeys.reject([key(ctx, ctx.values["main"])], [unauthorized()], ctx.provider, now)
+      :ok = ModelKeys.reject([key(ctx, ctx.values["main"])], [unauthorized()], now)
 
       assert ModelKeys.waiting_reason([ctx.provider.id], now) == nil
       assert ModelKeys.waiting_reason([], now) == nil
@@ -438,13 +423,12 @@ defmodule Apiary.ModelKeys.RejectionTest do
   describe "when keys of two providers need a person" do
     test "the reason is the first key in the run's order of providers", ctx do
       now = DateTime.utc_now()
-      :ok = ModelKeys.reject([key(ctx, ctx.values["main"])], [unauthorized()], ctx.provider, now)
+      :ok = ModelKeys.reject([key(ctx, ctx.values["main"])], [unauthorized()], now)
 
       :ok =
         ModelKeys.reject(
           [key(ctx, ctx.values["spare"], "model-2")],
           [unauthorized("model-2")],
-          ctx.provider,
           now
         )
 
@@ -496,8 +480,8 @@ defmodule Apiary.ModelKeys.RejectionTest do
         )
     end
 
-    defp reject!(ctx, key),
-      do: :ok = ModelKeys.reject([key], [unauthorized()], ctx.subscription, DateTime.utc_now())
+    defp reject!(_ctx, key),
+      do: :ok = ModelKeys.reject([key], [unauthorized()], DateTime.utc_now())
 
     test "a 401 on the token the run has, under 5 minutes old, marks the key", ctx do
       reject!(ctx, login_key(ctx, token_time(ctx)))
@@ -546,11 +530,11 @@ defmodule Apiary.ModelKeys.RejectionTest do
 
       # Before the sealing time the 401 is for an earlier token; at it, for the token the run has.
       for at <- [DateTime.add(sealed, -1, :second), DateTime.add(sealed, -3600, :second)] do
-        :ok = ModelKeys.reject([key], [unauthorized("model-1", at)], ctx.subscription, sealed)
+        :ok = ModelKeys.reject([key], [unauthorized("model-1", at)], sealed)
         assert rows(ctx.login) == []
       end
 
-      :ok = ModelKeys.reject([key], [unauthorized("model-1", sealed)], ctx.subscription, sealed)
+      :ok = ModelKeys.reject([key], [unauthorized("model-1", sealed)], sealed)
       assert [_row] = rows(ctx.login)
     end
 
@@ -558,7 +542,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
       key = login_key(ctx, token_time(ctx)) |> Map.put(:copy_login_sealed_at, nil)
       at = DateTime.add(DateTime.utc_now(), -3600, :second)
 
-      :ok = ModelKeys.reject([key], [unauthorized("model-1", at)], ctx.subscription, at)
+      :ok = ModelKeys.reject([key], [unauthorized("model-1", at)], at)
 
       assert [_row] = rows(ctx.login)
     end
@@ -569,6 +553,85 @@ defmodule Apiary.ModelKeys.RejectionTest do
 
       reject!(ctx, key(ctx, ctx.login))
       assert rows(ctx.login) == []
+    end
+  end
+
+  describe "a run with the keys of two providers, the second a sign-in" do
+    setup ctx do
+      {:ok, subscription} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "openai-subscription",
+          keys: [%{value_id: "login", value: device_login()}]
+        })
+
+      login = key_value!(subscription, "login")
+      main = ctx.values["main"]
+      pool = Apiary.NodesFixtures.pool_fixture(ctx.scope)
+      %{access_key: access_key} = Apiary.AccessKeysFixtures.enrolled_key_fixture(ctx.scope, pool)
+
+      %{run: run} =
+        Apiary.DispatchedRunsFixtures.handed_over_fixture(ctx.scope, access_key, %{
+          provider_connection_id: ctx.provider.id,
+          run_settings: %{}
+        })
+
+      run_keys!(run, [
+        %{provider: ctx.provider, secret_value_id: main.id, name: "model-1"},
+        %{provider: subscription, secret_value_id: login.id, name: "model-2"}
+      ])
+
+      %{subscription: subscription, login: login, run: run}
+    end
+
+    # The run holds the first provider's key and the sign-in as of `login_at`, as a secrets
+    # request kept them, and reports both as 401, as a gateway lists them.
+    defp report!(ctx, login_at) do
+      :ok =
+        ModelKeys.keep_copies(ctx.run.id, [
+          {ctx.values["main"].id, ctx.values["main"].value_set_at, nil},
+          {ctx.login.id, ctx.login.value_set_at, login_at}
+        ])
+
+      keys = ModelKeys.run_keys(ctx.run)
+      assert length(keys) == 2
+
+      :ok =
+        ModelKeys.reject(
+          keys,
+          [unauthorized("model-1"), unauthorized("model-2")],
+          DateTime.utc_now()
+        )
+    end
+
+    test "a 401 on a token a refresh may renew marks the first provider's key and not the sign-in",
+         ctx do
+      set_login!(ctx, signed_in_at: DateTime.add(DateTime.utc_now(), -3600))
+
+      report!(ctx, token_time(ctx))
+
+      assert [_row] = rows(ctx.values["main"])
+      assert rows(ctx.login) == []
+      assert %{blocked: nil} = claim_key(ctx.subscription, "login")
+    end
+
+    test "a 401 on the token the run has, a new one, marks the sign-in too", ctx do
+      report!(ctx, token_time(ctx))
+
+      assert [_row] = rows(ctx.values["main"])
+      assert [_row] = rows(ctx.login)
+      assert %{blocked: :new_key} = claim_key(ctx.subscription, "login")
+    end
+
+    test "after a refresh, a 401 on the older token marks nothing and on the newer one marks it",
+         ctx do
+      older = token_time(ctx)
+      set_login!(ctx, refreshed_at: DateTime.add(DateTime.utc_now(), 1))
+
+      report!(ctx, older)
+      assert rows(ctx.login) == []
+
+      report!(ctx, token_time(ctx))
+      assert [_row] = rows(ctx.login)
     end
   end
 end

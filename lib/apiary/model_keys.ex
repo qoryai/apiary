@@ -1088,7 +1088,7 @@ defmodule Apiary.ModelKeys do
       from s in State, where: s.secret_value_id in subquery(select(values, [v], v.id))
     )
 
-    # The rejection of the old value (`reject/4`): the new value is not the one the provider
+    # The rejection of the old value (`reject/3`): the new value is not the one the provider
     # rejected. A row left by another write path stops counting by itself, as its
     # `value_set_at` is no longer the key's (`Apiary.ModelKeys.Rejection.live/1`).
     Repo.delete_all(
@@ -1101,8 +1101,8 @@ defmodule Apiary.ModelKeys do
   @doc """
   Marks the keys of a run whose provider returned 401, as the run's gateway reports them
   (`Apiary.ModelKeys.Report`, `unauthorized`): `entries`, `[%{credential:, at:}]`, the key's
-  credential name and when the 401 arrived, for the run's keys `keys` (`run_keys/1`) of
-  `provider`. Each key leaves the claim (`Apiary.ModelKeys.Rejection`) until it gets a new
+  credential name and when the 401 arrived, for the run's keys `keys` (`run_keys/1`), of
+  any of the run's providers. Each key leaves the claim (`Apiary.ModelKeys.Rejection`) until it gets a new
   value, and the key's page says that the provider rejected it at `at`.
 
   An entry of a credential that is not among `keys` is left out. So is one of a key that no
@@ -1128,11 +1128,10 @@ defmodule Apiary.ModelKeys do
   @spec reject(
           [run_key],
           [%{credential: String.t(), at: DateTime.t()}],
-          Connection.t() | nil,
           DateTime.t()
         ) ::
           :ok
-  def reject(keys, entries, provider, %DateTime{} = now) do
+  def reject(keys, entries, %DateTime{} = now) do
     by_name = Map.new(keys, &{&1.name, &1})
     copies = Map.new(keys, &{&1.secret_value_id, {&1.copy_kept, &1.copy_set_at}})
     sealed = Map.new(keys, &{&1.secret_value_id, Map.get(&1, :copy_login_at)})
@@ -1160,7 +1159,7 @@ defmodule Apiary.ModelKeys do
         |> Enum.sort_by(& &1.secret_value_id)
 
       {:ok, :ok} =
-        Repo.transact(fn -> {:ok, write_rejections(rows, copies, sealed, runs, provider)} end)
+        Repo.transact(fn -> {:ok, write_rejections(rows, copies, sealed, runs)} end)
     end
 
     :ok
@@ -1218,7 +1217,7 @@ defmodule Apiary.ModelKeys do
   # writes the value's row too, is either whole before the read or waits for this
   # transaction: a sign-in that a refresh can still fix (`Login.rejectable?/3`) is not
   # marked.
-  defp write_rejections(rows, copies, sealed, runs, provider) do
+  defp write_rejections(rows, copies, sealed, runs) do
     ids = Enum.map(rows, & &1.secret_value_id)
 
     set =
@@ -1231,7 +1230,7 @@ defmodule Apiary.ModelKeys do
       )
       |> Map.new()
 
-    logins = if provider, do: Login.rows(provider, ids), else: %{}
+    logins = Login.rows(ids)
     now = Login.db_now()
 
     kept =

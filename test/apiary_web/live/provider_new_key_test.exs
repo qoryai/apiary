@@ -65,7 +65,6 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
       ModelKeys.reject(
         [key],
         [%{credential: "model-1", at: at}],
-        provider,
         DateTime.utc_now()
       )
   end

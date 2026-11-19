@@ -184,7 +184,7 @@ defmodule Apiary.ModelKeysRacesTest do
 
     defp report(run_key, at),
       do: fn ->
-        ModelKeys.reject([run_key], [%{credential: "model-1", at: at}], nil, DateTime.utc_now())
+        ModelKeys.reject([run_key], [%{credential: "model-1", at: at}], DateTime.utc_now())
       end
 
     defp copy(run_key),
