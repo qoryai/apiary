@@ -4551,7 +4551,20 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
       assert has_element?(view, "#work-item-tab-output-walkthrough", "Version 1")
-      refute has_element?(view, "#work-item-tab-output-walkthrough", "Version 1 ·")
+
+      # No person's approval lists the change yet, so its caption has the mark after the
+      # version (PIC-8), and no other words.
+      assert has_element?(
+               view,
+               "#work-item-tab-output-walkthrough-changed.text-warning",
+               "Changed on your request"
+             )
+
+      assert has_element?(
+               view,
+               "#work-item-tab-output-walkthrough-s .q-xp-cap",
+               ~r/\A\s*Version 1\s+·\s+Changed on your request\s*\z/
+             )
 
       {:ok, _approved} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
       assert walkthrough.public_id in recorded(work_item, @shape)
