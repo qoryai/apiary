@@ -931,14 +931,16 @@ the key's Use up to percentage and a `resets_at` after the claim's clock
 (`Apiary.ModelKeys.cooldown/4`). The limit windows are `limit_windows` of the provider's
 model provider role in the integrations contract's description, vendored with the
 catalogue: `five_hour` and `seven_day` for the Claude subscription, none for an API key.
-The first key of that order is the start key, `model_credential`, never a key in
-cooldown. `credentials` lists the keys in the order the contract has the server send
+The first key of that order is the default model provider credential,
+`default_model_provider_credential_name`, never a key in cooldown.
+`credentials` lists the keys in the order the contract has the server send
 them: the keys out of cooldown in tie order, then the keys in cooldown in tie order.
 Each entry has `pause_for_s`, the key's Pause for, else 60 for an API key and 3600 for a
 subscription, written into the run once: by its claim, or, for a run claimed before runs
 kept several keys, by the upgrade (20261111100000). Where the claim had them, an entry
-also has `resets_at`, `schedule_resets_at` and `cooldown_until`; no entry has `chosen`,
-since a model choice chooses a provider, not one of its keys. A key's `cooldown_until`
+also has `resets_at`, `schedule_resets_at` and `cooldown_until`. The contract has no
+member for the key of a model choice, since a model choice chooses a provider, not one
+of its keys. A key's `cooldown_until`
 is the latest end of its cooldown: a window's `cooldown_until`, or the `resets_at` of a
 limit window at the key's Use up to percentage. A key with a Use up to percentage, of a
 provider with limit windows, also has `use_up_to_percent` and `use_up_to_windows`, the

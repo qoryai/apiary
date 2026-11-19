@@ -16,8 +16,9 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, Processes}
+  alias Apiary.{Connections, Dispatches, ForagerSchemas, ModelChoices, Processes}
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Pause, RunSettings}
+  alias Apiary.Policy.ComposedConfiguration
   alias Apiary.Runs.{ModelKey, Projector, ProviderCredential, Run, Transcript}
   alias Apiary.Stages.StopCause
   alias Apiary.WorkItems.{ExploreView, WorkItem}
@@ -179,8 +180,9 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       start = "#{northwind.public_id}-1"
       other = "#{checkout.public_id}-1"
 
-      # Session 1 starts on the start key; session 2 on the other provider's key; session
-      # 3, on the start key's provider, joins the start key's group.
+      # Session 1 starts on the default model provider credential; session 2 on the other
+      # provider's key; session 3, on the default model provider credential's provider,
+      # joins the default model provider credential's group.
       assert run.provider_connection_id == northwind.id
       assert %{"1" => second, "2" => third} = run.session_settings
       assert %{"workflow" => "write-acceptance-checks", "model_credential" => ^other} = second
@@ -196,14 +198,24 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert {start_id, secret} == {northwind.id, northwind.secret_id}
       assert {other_id, theirs} == {checkout.id, checkout.secret_id}
 
-      # The run configuration sends both keys, and starts on the start key.
+      # The run configuration sends both keys, and starts on the default model provider
+      # credential.
       assert {:ok, credential} = ProviderCredential.for_run(run)
       assert credential.name == start
       assert Enum.map(credential.keys, & &1.entry["name"]) == [start, other]
       assert Enum.map(credential.providers, & &1.id) == [northwind.id, checkout.id]
+
+      # The document composed for the run names the default model provider credential
+      # by the contract's member, and passes the contract's schema.
+      {:ok, members} = ComposedConfiguration.members(run)
+      {:composed, document, nil} = ComposedConfiguration.shape(nil, nil, false, false, members)
+      decoded = Jason.decode!(document)
+      assert decoded["default_model_provider_credential_name"] == start
+      refute Map.has_key?(decoded, "model_credential")
+      assert ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
     end
 
-    test "with 5 keys on each provider keeps 5 of the start key's provider, then 1 of the other",
+    test "with 5 keys on each provider keeps 5 of the default model provider credential's provider, then 1 of the other",
          ctx do
       northwind = provider!(ctx.scope, "Northwind keys", count: 5)
       checkout = provider!(ctx.scope, "Checkout keys", count: 5)
@@ -221,7 +233,8 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert credential == "#{checkout.public_id}-1"
     end
 
-    test "with 1 key on the start key's provider and 5 on the other keeps 1, then 5", ctx do
+    test "with 1 key on the default model provider credential's provider and 5 on the other keeps 1, then 5",
+         ctx do
       northwind = provider!(ctx.scope, "Northwind keys", count: 1)
       checkout = provider!(ctx.scope, "Checkout keys", count: 5)
       choose!(ctx.scope, {:workspace, "plan-the-build"}, northwind)
@@ -230,8 +243,8 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
 
       {{:ok, run}, _queued} = claim!(ctx)
 
-      # The start key's provider keeps fewer than its share: the other provider's
-      # remaining keys fill the run to 6.
+      # The default model provider credential's provider keeps fewer than its share: the
+      # other provider's remaining keys fill the run to 6.
       assert names(stored_keys(run)) ==
                ["#{northwind.public_id}-1"] ++ for(n <- 1..5, do: "#{checkout.public_id}-#{n}")
     end
@@ -255,14 +268,14 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
                {:error, {:provider_in_use, %{places: [], runs: [run.public_id]}}}
     end
 
-    test "whose first session runs on the machine's key ends session_key_missing where a later session runs on a provider with keys",
+    test "whose first session runs on the local model provider credential ends session_key_missing where a later session runs on a provider with keys",
          ctx do
       northwind = provider!(ctx.scope, "Northwind keys", count: 2)
       workflows = ~w(plan-the-build write-acceptance-checks)
       assert {:ok, _version} = save(ctx.scope, workflows)
       # plan-the-build has no model choice at any level: session 1 runs on the default
-      # runtime with the machine's key, so the run gets no key. The choice is made after
-      # the save, which refuses it.
+      # runtime with the local model provider credential, so the run gets no key. The
+      # choice is made after the save, which refuses it.
       choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, northwind)
 
       # `claim!/1` checks that the ended claim stored no key row.
@@ -278,7 +291,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert built(queued!(ctx)) == {:end, :session_key_missing}
     end
 
-    test "where every session runs on the machine's key keeps no key", ctx do
+    test "where every session runs on the local model provider credential keeps no key", ctx do
       _northwind = provider!(ctx.scope, "Northwind keys", count: 2)
       assert {:ok, _version} = save(ctx.scope, ~w(plan-the-build write-acceptance-checks))
 
@@ -297,8 +310,8 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, checkout)
       assert {:ok, _version} = save(ctx.scope, ~w(plan-the-build write-acceptance-checks))
 
-      # The catalogue no longer has the kind of the later session's provider; the start
-      # key's provider is of another kind, which it still has.
+      # The catalogue no longer has the kind of the later session's provider; the default
+      # model provider credential's provider is of another kind, which it still has.
       :ok =
         Apiary.Kinds.Providers.list()
         |> Enum.reject(&(&1.name == "claude-subscription"))
@@ -503,9 +516,9 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       choose!(ctx.scope, :workspace, northwind, %{model: "claude-sonnet-5-5"})
       assert {:ok, _version} = save(ctx.scope, workflows)
 
-      # The claim gives the later session that step, with its model: on the start key's
-      # provider, it joins the start key's group, and the run keeps Northwind keys' key
-      # alone.
+      # The claim gives the later session that step, with its model: on the default model
+      # provider credential's provider, it joins the default model provider credential's
+      # group, and the run keeps Northwind keys' key alone.
       {{:ok, run}, _queued} = claim!(ctx)
       assert run.provider_connection_id == northwind.id
       assert run.run_settings["model"] == "claude-opus-5-5"
@@ -632,7 +645,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert {{:ended, :session_key_missing}, _queued} = claim!(ctx)
     end
 
-    test "ends the run session_key_missing after a workflow's runtime moves to another API of the start key's provider",
+    test "ends the run session_key_missing after a workflow's runtime moves to another API of the default model provider credential's provider",
          ctx do
       second = second_api!()
       northwind = provider!(ctx.scope, "Northwind keys")
@@ -650,14 +663,15 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert built(queued!(ctx)) == {:end, :session_key_missing}
     end
 
-    test "after a first session on the machine's key, ends the run session_key_missing where two later sessions use two APIs of one provider",
+    test "after a first session on the local model provider credential, ends the run session_key_missing where two later sessions use two APIs of one provider",
          ctx do
       second = second_api!()
       northwind = provider!(ctx.scope, "Northwind keys")
       workflows = ~w(plan-the-build write-acceptance-checks review-the-build)
       assert {:ok, _version} = save(ctx.scope, workflows)
-      # plan-the-build has no model choice at any level: session 1 runs on the machine's
-      # key, and the run has no start key.
+
+      # plan-the-build has no model choice at any level: session 1 runs on the local model
+      # provider credential, and the run has no default model provider credential.
       choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, northwind)
       choose!(ctx.scope, {:workspace, "review-the-build"}, northwind, %{runtime: second.name})
       assert {{:ended, :session_key_missing}, _queued} = claim!(ctx)
@@ -817,7 +831,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert view_models(queued) == nil
     end
 
-    test "of session_key_missing for a first session on the machine's key show the fix with its values while that fault remains, else the round again",
+    test "of session_key_missing for a first session on the local model provider credential show the fix with its values while that fault remains, else the round again",
          ctx do
       northwind = provider!(ctx.scope, "Northwind keys")
       assert {:ok, _version} = save(ctx.scope, ~w(plan-the-build write-acceptance-checks))
@@ -1016,7 +1030,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert paused_line(paused) =~ "Paused: every key of Checkout keys is in cooldown until "
     end
 
-    test "with no session that paused keeps the earliest end among every provider; the Paused line shows the start key's",
+    test "with no session that paused keeps the earliest end among every provider; the Paused line shows the default model provider credential's",
          ctx do
       %{northwind: northwind, checkout: checkout} = two_providers!(ctx)
       soon = in_seconds(3_600)

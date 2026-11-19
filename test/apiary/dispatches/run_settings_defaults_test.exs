@@ -216,7 +216,8 @@ defmodule Apiary.Dispatches.RunSettingsDefaultsTest do
                "model_choice" => %{"runtime" => "claude", "model" => "claude-sonnet-5-5"}
              } = session
 
-      # Every key of the run is the provider's: the session joins with the start key's group.
+      # Every key of the run is the provider's: the session joins with the default model
+      # provider credential's group.
       refute Map.has_key?(session, "model_credential")
     end
   end

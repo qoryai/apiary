@@ -279,11 +279,11 @@ defmodule Apiary.Processes.TypeTemplates do
   end
 
   @doc """
-  machine_key_types/1 is the newest version of each workspace type whose document uses
+  machine_type_templates/1 is the newest version of each workspace type whose document uses
   the machine type key `key` (`Apiary.MachineTypes.uses_key?/2`), by type.
   """
-  @spec machine_key_types(String.t()) :: [TypeTemplate.t()]
-  def machine_key_types(key) when is_binary(key) do
+  @spec machine_type_templates(String.t()) :: [TypeTemplate.t()]
+  def machine_type_templates(key) when is_binary(key) do
     Repo.all(
       from t in TypeTemplate,
         distinct: t.type,
@@ -293,11 +293,11 @@ defmodule Apiary.Processes.TypeTemplates do
   end
 
   @doc """
-  rekey_machine/3 saves, for each version of `machine_key_types/1` for `from` that an
+  rekey_machine/3 saves, for each version of `machine_type_templates/1` for `from` that an
   instance admin saved, a newer version of its type whose document has the key `to` in
   each place that had `from`, with the same texts, authored by the scope's person, the
   instance admin who changed the key, with an entry `workspace_type.edit` each that has
-  `machine_key`, the key before and after. A copy of the Qory harness's process
+  `machine_type`, the key before and after. A copy of the Qory harness's process
   (`release` set) stays as it is: its runs start on the default type until the harness
   changes the key. Called by `Apiary.MachineTypes.update/3`, in its transaction, which
   checks `machine_type.rekey` and holds the table of machine types. Each type is locked
@@ -309,8 +309,8 @@ defmodule Apiary.Processes.TypeTemplates do
   @spec rekey_machine(Scope.t(), String.t(), String.t()) ::
           {:ok, non_neg_integer} | {:error, :forbidden | :stale}
   def rekey_machine(%Scope{} = scope, from, to) when is_binary(from) and is_binary(to) do
-    Enum.reduce_while(machine_key_types(from), {:ok, 0}, fn %TypeTemplate{type: type},
-                                                            {:ok, saved} ->
+    Enum.reduce_while(machine_type_templates(from), {:ok, 0}, fn %TypeTemplate{type: type},
+                                                                 {:ok, saved} ->
       :ok = lock(type)
       newest = newest_row(type)
       document = Apiary.MachineTypes.rekey(newest.document, from, to)
@@ -321,7 +321,7 @@ defmodule Apiary.Processes.TypeTemplates do
            {:ok, instance_scope, organisation} <- instance_scope(scope),
            {:ok, version} <- insert(scope, type, newest, document, texts),
            {:ok, _entry} <-
-             record(instance_scope, organisation, version, %{machine_key: %{from: from, to: to}}) do
+             record(instance_scope, organisation, version, %{machine_type: %{from: from, to: to}}) do
         {:cont, {:ok, saved + 1}}
       else
         :unchanged -> {:cont, {:ok, saved}}

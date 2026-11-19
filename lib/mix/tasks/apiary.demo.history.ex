@@ -400,7 +400,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   ## Nodes and keys
 
-  # Every machine's key, by label, on a node of the same name: the workspace's own node
+  # Every machine's access key, by label, on a node of the same name: the workspace's own node
   # and key when it has them, the key not revoked, new ones otherwise. A machine of
   # several hosts is a node pool. The idle node's key is made and never posted with. A key
   # is added by its public key, as Generate a key adds one made in a browser
@@ -1989,7 +1989,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   # What the record implies beyond the runs: the lost ones found, the repositories dated by
   # their first run, the keys by their last delivery, the hosts recorded as instances of
   # their nodes; a second key added to ci-fleet, as when a key is replaced, and the legacy
-  # machine's key revoked.
+  # machine's access key revoked.
   defp settle(ctx) do
     %Scope{workspace: workspace} = scope = ctx.scope
     Liveness.check(DateTime.utc_now())

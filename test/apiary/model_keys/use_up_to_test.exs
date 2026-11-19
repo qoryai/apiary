@@ -315,7 +315,7 @@ defmodule Apiary.ModelKeys.UseUpToTest do
     defp configuration(credential) do
       Jason.encode!(%{
         "version" => 1,
-        "model_credential" => credential.name,
+        "default_model_provider_credential_name" => credential.name,
         "credentials" => Enum.map(credential.keys, & &1.entry)
       })
     end

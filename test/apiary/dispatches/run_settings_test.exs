@@ -447,8 +447,9 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       pid = ctx.provider.public_id
       choose!(ctx.scope, :workspace, %{provider: pid})
 
-      # The default key has a known reset; the other has none, so it is the start key. The
-      # run configuration sends them in tie order, the default key first.
+      # The default key has a known reset; the other has none, so it is the default model
+      # provider credential. The run configuration sends them in tie order, the default
+      # key first.
       reset = in_seconds(7200)
       state!(ctx.provider, "main", resets_at: reset)
 
@@ -501,7 +502,8 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert entry["pause_for_s"] == 300
     end
 
-    test "send a key in cooldown after the free keys, never as the start key", ctx do
+    test "send a key in cooldown after the free keys, never as the default model provider credential",
+         ctx do
       pid = ctx.provider.public_id
       choose!(ctx.scope, :workspace, %{provider: pid})
       until = in_seconds(3600)
@@ -753,7 +755,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       ended!(queued, dispatch, :secrets_not_allowed)
     end
 
-    test "are never built with a start key in cooldown", ctx do
+    test "are never built with a default model provider credential in cooldown", ctx do
       choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id})
 
       for {cooled, n} <- Enum.with_index([[], ["main"], ["spare"]]) do

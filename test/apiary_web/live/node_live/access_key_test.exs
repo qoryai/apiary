@@ -392,7 +392,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
     assert_patch(lv, tab_path(scope, node))
 
     assert lv |> element("#flash-group") |> render() =~
-             "That key or code is gone: this machine&#39;s keys changed meanwhile."
+             "Reload the page: this machine&#39;s access keys changed, and that access key or code is gone."
   end
 
   describe "the pages a way opens" do
@@ -653,7 +653,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(lv, "#breadcrumb [aria-current=page]", "Command")
 
       assert words(lv, "#code-issued-header-description") ==
-               "The command connects build-01 by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the Forager file. The secret never leaves the machine."
+               "The command connects build-01 by itself: it makes the machine's access key there, saves it, and writes Qory Apiary's address and public key into the Forager file. The secret never leaves the machine."
 
       assert words(lv, "#code-issued-run") == "On build-01, run:"
       assert has_element?(lv, "#code-issued-command-copy", "Copy command")
@@ -1977,14 +1977,14 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         live(conn, tab_path(scope, node, "/generate"))
         |> follow_redirect(conn, tab_path(scope, node))
 
-      assert html =~ "Only owners and admins add a machine&#39;s keys."
+      assert html =~ "Only owners and admins add a machine&#39;s access keys."
 
       # The event, pushed from the tab they may read: refused, no key, nothing written.
       {:ok, lv, _html} = live(conn, tab_path(scope, node))
       push_key(lv, browser_key())
       assert_reply(lv, reply)
       refute Map.has_key?(reply, :key_id)
-      assert render(lv) =~ "Only owners and admins manage a machine&#39;s keys."
+      assert render(lv) =~ "Only owners and admins manage a machine&#39;s access keys."
 
       assert AccessKeys.list_for_node(scope, node) == []
       assert add_entries(node) == []
@@ -2040,7 +2040,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       assert has_element?(
                lv,
                "#node-keys-members",
-               "Only owners and admins manage a machine's keys."
+               "Only owners and admins manage a machine's access keys."
              )
 
       assert has_element?(lv, "#key-#{key.key_id}-state", "Active")
@@ -2059,10 +2059,11 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       conn = member_conn(scope)
 
       for {rest, words} <- [
-            {"/generate", "Only owners and admins add a machine's keys."},
+            {"/generate", "Only owners and admins add a machine's access keys."},
             {"/new-code", "Only owners and admins connect a machine."},
-            {"/keys/#{key.key_id}/revoke", "Only owners and admins manage a machine's keys."},
-            {"/codes/#{row.id}/revoke", "Only owners and admins manage a machine's keys."}
+            {"/keys/#{key.key_id}/revoke",
+             "Only owners and admins manage a machine's access keys."},
+            {"/codes/#{row.id}/revoke", "Only owners and admins manage a machine's access keys."}
           ] do
         {:ok, _lv, html} =
           live(conn, tab_path(scope, node, rest)) |> follow_redirect(conn, tab_path(scope, node))
@@ -2083,7 +2084,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         render_hook(lv, event, params)
 
         assert lv |> element("#flash-group") |> render() =~
-                 "Only owners and admins manage a machine&#39;s keys."
+                 "Only owners and admins manage a machine&#39;s access keys."
       end
 
       assert is_nil(Repo.get!(AccessKey, key.id).revoked_at)
@@ -2103,7 +2104,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
     Repo.update!(Ecto.Changeset.change(membership, level: :member))
 
     lv |> element("#key-#{key.key_id}-confirm-button") |> render_click()
-    assert render(lv) =~ "Only owners and admins manage a machine&#39;s keys."
+    assert render(lv) =~ "Only owners and admins manage a machine&#39;s access keys."
     assert is_nil(Repo.get!(AccessKey, key.id).revoked_at)
   end
 
@@ -2118,7 +2119,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
     Repo.update!(Ecto.Changeset.change(membership, level: :member))
 
     render_hook(lv, "generate_key", %{"key" => browser_key()})
-    assert render(lv) =~ "Only owners and admins add a machine&#39;s keys."
+    assert render(lv) =~ "Only owners and admins add a machine&#39;s access keys."
     assert AccessKeys.list_for_node(scope, node) == []
 
     assert Repo.all(

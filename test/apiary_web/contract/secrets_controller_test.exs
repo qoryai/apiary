@@ -81,8 +81,8 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
 
   defp code(conn), do: Jason.decode!(conn.resp_body)["error"]
 
-  # The credential name of the run's start key, its first: the provider's public id and
-  # its place.
+  # The credential name of the run's default model provider credential, its first: the
+  # provider's public id and its place.
   defp start(ctx), do: "#{ctx.provider.public_id}-1"
 
   defp seals, do: Repo.all(from e in Entry, where: e.action == "secret.seal")

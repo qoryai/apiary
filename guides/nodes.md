@@ -89,7 +89,8 @@ Apiary holds can sign for the machine. Every answer of Qory Apiary is signed too
 Qory Apiary's key, which the machine pins as `apiary_public_key` and checks every
 answer under. Qory Apiary's key and its address are set once for the instance, the same
 for every organisation, workspace and machine: the address is its `PUBLIC_URL`, and the key is made
-from its `APIARY_SIGNING_SECRET`. Only a key's ID and its secret belong to the key of the machine or pool.
+from its `APIARY_SIGNING_SECRET`. Only a key's ID and its secret belong to the access
+key of the machine or pool.
 
 A key is active from the moment it arrives until it is revoked. A machine or pool has two keys at a
 time, so that a machine can move to a new key before the old one is revoked.

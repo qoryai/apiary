@@ -537,7 +537,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # `model_choice`, which always has `runtime`, the runtime the session runs on, and, for
   # a session on a provider other than the default model provider credential's,
   # `model_credential`, the name of that provider's first free key
-  # (`Apiary.ModelKeys.Order.start/2`), else its first key: the session starts on that
+  # (`Apiary.ModelKeys.Order.first_free/2`), else its first key: the session starts on that
   # key's group. A session with no `model_credential` joins the group of the run's
   # default model provider credential.
   #
@@ -692,7 +692,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # credential's provider's first, then each other provider's, each provider's keys in
   # the order the run configuration sends them (`Apiary.ModelKeys.Order.sent/2`) and
   # named `<provider's public id>-<place>`, the place counted per provider from 1; and
-  # the name of each other provider's first free key (`Apiary.ModelKeys.Order.start/2`),
+  # the name of each other provider's first free key (`Apiary.ModelKeys.Order.first_free/2`),
   # else its first, by provider id. The claim's guard keeps the providers of a run's
   # stage at 6 or fewer (`Apiary.Stages.shared_models/1`), so every provider gets a key.
   @doc false
@@ -711,7 +711,7 @@ defmodule Apiary.Dispatches.RunSettings do
       end)
 
     taken = [{start, first} | Enum.zip([others, heads, tails]) |> Enum.map(&taken/1)]
-    start_key = Order.start(first, now)
+    default_credential = Order.first_free(first, now)
 
     named =
       Enum.map(taken, fn {group, keys} ->
@@ -727,14 +727,16 @@ defmodule Apiary.Dispatches.RunSettings do
       |> Enum.flat_map(fn {group, keys} -> Enum.map(keys, &{group, &1}) end)
       |> Enum.with_index(1)
       |> Enum.map(fn {{group, {key, name}}, position} ->
-        start? = group == start and start_key != nil and key.id == start_key.id
-        stored_key(group, key, {position, name}, start?, now)
+        default? =
+          group == start and default_credential != nil and key.id == default_credential.id
+
+        stored_key(group, key, {position, name}, default?, now)
       end)
 
     credentials =
       for {group, keys} <- tl(named), into: %{} do
         {first_key, first_name} = hd(keys)
-        free = Order.start(Enum.map(keys, &elem(&1, 0)), now) || first_key
+        free = Order.first_free(Enum.map(keys, &elem(&1, 0)), now) || first_key
         {_key, name} = Enum.find(keys, {first_key, first_name}, &(elem(&1, 0).id == free.id))
         {group.provider.id, name}
       end
@@ -918,7 +920,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # one of them is free; else nil.
   defp free_group(provider, formed, context) do
     group = session_group(provider, formed, context)
-    if Order.start(group.keys, context.now), do: group
+    if Order.first_free(group.keys, context.now), do: group
   end
 
   # The group of a later session on `provider` (`group/3`), from the keys
@@ -983,7 +985,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # where every key is in cooldown. `merge/3` takes the run's keys from the group.
   defp keyed(built, %Connection{} = provider, now) do
     group = group(provider, built, now)
-    if Order.start(group.keys, now), do: {:ok, built, group}
+    if Order.first_free(group.keys, now), do: {:ok, built, group}
   end
 
   # A key as the run keeps it (`Apiary.Runs.ModelKey`) and its run configuration writes
@@ -993,11 +995,11 @@ defmodule Apiary.Dispatches.RunSettings do
   # of its schedule, the end of its cooldown while it is in cooldown at `now`, a window
   # at its Use up to percentage included, and that percentage. Times are in whole
   # seconds, rounded up.
-  defp stored_key(group, key, {position, name}, start?, now) do
+  defp stored_key(group, key, {position, name}, default?, now) do
     %{
       position: position,
       name: name,
-      start: start?,
+      start: default?,
       secret_value_id: key.id,
       connection_id: group.provider.id,
       secret_id: group.provider.secret_id,

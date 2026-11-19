@@ -371,7 +371,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         refused(
           socket,
           :"access_key.add",
-          gettext("Only owners and admins add a machine's keys.")
+          gettext("Only owners and admins add a machine's access keys.")
         )
 
       at_limit?(keys) ->
@@ -436,7 +436,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         refused(
           socket,
           :"access_key.revoke",
-          gettext("Only owners and admins manage a machine's keys.")
+          gettext("Only owners and admins manage a machine's access keys.")
         )
 
       is_nil(key) ->
@@ -471,7 +471,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
         refused(
           socket,
           :"access_key.cancel_code",
-          gettext("Only owners and admins manage a machine's keys.")
+          gettext("Only owners and admins manage a machine's access keys.")
         )
 
       is_nil(code) ->
@@ -526,7 +526,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          refused(
            socket,
            :"access_key.add",
-           gettext("Only owners and admins manage a machine's keys.")
+           gettext("Only owners and admins manage a machine's access keys.")
          )}
   end
 
@@ -591,7 +591,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          refused(
            socket,
            :"access_key.revoke",
-           gettext("Only owners and admins manage a machine's keys.")
+           gettext("Only owners and admins manage a machine's access keys.")
          )}
 
       {:error, _not_saved} ->
@@ -630,7 +630,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          refused(
            socket,
            :"access_key.cancel_code",
-           gettext("Only owners and admins manage a machine's keys.")
+           gettext("Only owners and admins manage a machine's access keys.")
          )}
 
       {:error, _not_saved} ->
@@ -652,7 +652,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          refused(
            socket,
            Keyword.fetch!(@acts, act),
-           gettext("Only owners and admins manage a machine's keys.")
+           gettext("Only owners and admins manage a machine's access keys.")
          )}
   end
 
@@ -770,7 +770,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          refused(
            socket,
            :"access_key.add",
-           gettext("Only owners and admins add a machine's keys.")
+           gettext("Only owners and admins add a machine's access keys.")
          )}
     end
   end
@@ -814,7 +814,9 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          to_tab(
            socket,
            :error,
-           gettext("That key or code is gone: this machine's keys changed meanwhile.")
+           gettext(
+             "Reload the page: this machine's access keys changed, and that access key or code is gone."
+           )
          ),
        else: gone(socket)
   end
@@ -1372,20 +1374,20 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             {cond do
               NodeComponents.instance_node?(@through) ->
                 gettext(
-                  "The command connects %{name} by itself, through the Qory Gateway: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine.",
+                  "The command connects %{name} by itself, through the Qory Gateway: it makes the machine's access key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine.",
                   name: @node.name
                 )
 
               @through ->
                 gettext(
-                  "The command connects %{name} by itself, through the gateway %{gateway}: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine.",
+                  "The command connects %{name} by itself, through the gateway %{gateway}: it makes the machine's access key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine.",
                   name: @node.name,
                   gateway: @through.name
                 )
 
               true ->
                 gettext(
-                  "The command connects %{name} by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the Forager file. The secret never leaves the machine.",
+                  "The command connects %{name} by itself: it makes the machine's access key there, saves it, and writes Qory Apiary's address and public key into the Forager file. The secret never leaves the machine.",
                   name: @node.name
                 )
             end}
@@ -1998,7 +2000,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
             {NodeComponents.managed_by(
               @current_scope,
               :"access_key.revoke",
-              gettext("Only owners and admins manage a machine's keys.")
+              gettext("Only owners and admins manage a machine's access keys.")
             )}
           </p>
           <ul id="node-keys-list" class="grid gap-3">

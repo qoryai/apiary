@@ -52,8 +52,8 @@ defmodule Apiary.Policy.ComposedConfiguration do
   #   `Apiary.Runs.RunVariables.document/1`);
   # - with the `secrets` feature too, for a run its claim set a model provider for:
   #   `credentials`, an API credential for each of the run's model keys, in their order,
-  #   and `model_credential`, the default model provider credential's name
-  #   (`Apiary.Runs.ProviderCredential`); and, where the document has a
+  #   and `default_model_provider_credential_name`, the default model provider
+  #   credential's name (`Apiary.Runs.ProviderCredential`); and, where the document has a
   #   `security_policy`, the provider's hosts in its `egress.allow`, each added once
   #   after the entries there, and each exact one (`Apiary.Policy.Grammar.exact_host?/1`)
   #   in its `egress.allow_first`, with the workspace's entries, sorted, each once. The
@@ -108,11 +108,10 @@ defmodule Apiary.Policy.ComposedConfiguration do
   # is dropped, so only Qory Apiary sets it.
   #
   # The members come after the document's last member, in the schema's order:
-  # `variables`, `credentials`, `model_credential`, `stack_hosts`, `resume`,
-  # `harness_hidden`. A
-  # document composed with them is composed for the run and kept as any other
-  # (`serve/7`), so its digest is the SHA-256 of the bytes the run is sent, and a
-  # document composed from no policy gains them too.
+  # `variables`, `credentials`, `default_model_provider_credential_name`, `stack_hosts`,
+  # `resume`, `harness_hidden`. A document composed with them is composed for the run
+  # and kept as any other (`serve/7`), so its digest is the SHA-256 of the bytes the run
+  # is sent, and a document composed from no policy gains them too.
   use Ecto.Schema
 
   import Ecto.Query, only: [from: 2]
@@ -613,7 +612,10 @@ defmodule Apiary.Policy.ComposedConfiguration do
         else: []
       ) ++
         if(entries != [], do: [{"credentials", entries}], else: []) ++
-        if(credential, do: [{"model_credential", credential.name}], else: []) ++
+        if(credential,
+          do: [{"default_model_provider_credential_name", credential.name}],
+          else: []
+        ) ++
         if(stack_hosts != [], do: [{"stack_hosts", stack_hosts}], else: []) ++
         resume_member(Map.get(run_members, :resume)) ++
         if Map.get(run_members, :harness_hidden) == true,

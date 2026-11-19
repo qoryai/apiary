@@ -73,12 +73,13 @@ defmodule Apiary.ModelKeysFixtures do
 
   @doc """
   Stores `keys` as the model keys of the run `run` (`Apiary.Runs.ModelKey`), as a claim
-  stores them, and sets the run's `provider_connection_id` to the start key's provider:
-  each a map or keyword list with `provider` (its row), `secret_value_id`, and any field
-  of the row; `position` defaults to the key's place in `keys`, `name` to
-  `<provider's public id>-<place>`, `start` to true on the first key, `chain` to
-  `"organisation"`, `secret_id` to the provider's, `pause_for_s` to 60, and `api` to
-  `api` of `opts`, else an Anthropic Messages API. Returns the rows in their order.
+  stores them, and sets the run's `provider_connection_id` to the default model provider
+  credential's provider: each a map or keyword list with `provider` (its row),
+  `secret_value_id`, and any field of the row; `position` defaults to the key's place in
+  `keys`, `name` to `<provider's public id>-<place>`, `start` to true on the first key,
+  `chain` to `"organisation"`, `secret_id` to the provider's, `pause_for_s` to 60, and
+  `api` to `api` of `opts`, else an Anthropic Messages API. Returns the rows in their
+  order.
   """
   def run_keys!(%{id: run_id}, keys, opts \\ []) when is_binary(run_id) do
     api =

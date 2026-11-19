@@ -70,8 +70,8 @@ defmodule Apiary.Harnesses.ReaderTest do
                Reader.harness(source("harness-name/harness.yaml"))
     end
 
-    test "a section with the machine's keys alone, no section and an empty file are :none" do
-      assert Reader.harness(source("machine-keys-only/qory.yaml")) == :none
+    test "a section with machine harness settings alone, no section and an empty file are :none" do
+      assert Reader.harness(source("machine-harness-settings-only/qory.yaml")) == :none
       assert Reader.harness(source("no-harness/qory.yaml")) == :none
       assert Reader.harness("") == :none
       assert Reader.harness("# a comment only\n") == :none
@@ -79,7 +79,7 @@ defmodule Apiary.Harnesses.ReaderTest do
       assert Reader.harness("harness: {}\n") == :none
     end
 
-    test "a section with any key beside the machine's keys is returned as written" do
+    test "a section with any key beside the machine harness settings is returned as written" do
       assert {:ok, %{"runtime" => "claude", "target" => %{"runtime" => "claude"}}} =
                Reader.harness("harness:\n  runtime: claude\n  target: {runtime: claude}\n")
     end

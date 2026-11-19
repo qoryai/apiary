@@ -18,10 +18,10 @@ defmodule Apiary.Runs.ProviderCredential do
   # has `use_up_to_windows`, its provider's limit windows, which the claim wrote into the
   # row's API from the catalogue's entry; a row whose API has no windows has neither
   # member, as the contract requires both or none. The default model provider credential,
-  # `model_credential`, is the key the run keeps with `start`, else its first. An entry
-  # has no key value, no secret id and no value id: the gateway fetches the values with
-  # the secrets request (`Apiary.Runs.SecretsRequest`), which reveals a key by its row
-  # id.
+  # `default_model_provider_credential_name`, is the key the run keeps with `start`, else
+  # its first. An entry has no key value, no secret id and no value id: the gateway
+  # fetches the values with the secrets request (`Apiary.Runs.SecretsRequest`), which
+  # reveals a key by its row id.
   #
   # The hosts are, for each provider of the run's keys, the description's
   # `egress_hosts`, in its order; each host once across the providers. An entry
@@ -52,11 +52,11 @@ defmodule Apiary.Runs.ProviderCredential do
 
   @typedoc """
   A run's model keys: `name`, the credential name of the default model provider
-  credential, the run configuration's `model_credential`; `keys`, each key's credential
-  `name`, row id (`secret_value_id`), `entry` as the run configuration writes it, the
-  provider's row it was read from (`provider`) and the run's row of it (`row`), in order;
-  the `hosts` the run reaches them on; and the rows of the keys' providers, each once, in
-  the order of their keys.
+  credential, the run configuration's `default_model_provider_credential_name`; `keys`,
+  each key's credential `name`, row id (`secret_value_id`), `entry` as the run
+  configuration writes it, the provider's row it was read from (`provider`) and the run's
+  row of it (`row`), in order; the `hosts` the run reaches them on; and the rows of the
+  keys' providers, each once, in the order of their keys.
   """
   @type t :: %{
           name: String.t(),

@@ -574,7 +574,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
       assert String.starts_with?(code, Apiary.AccessKeys.EnrolmentCode.prefix(:node))
 
       assert text(lv, "#code-issued-header-description") ==
-               "The command connects build-01 by itself, through the gateway edge-01: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine."
+               "The command connects build-01 by itself, through the gateway edge-01: it makes the machine's access key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine."
 
       assert text(lv, "#code-issued-via-ca") ==
                "If edge-01's certificate is signed by a private certificate authority, add --via-ca-file and that authority's PEM file."
@@ -753,7 +753,7 @@ defmodule ApiaryWeb.NodeLive.GatewayTest do
         refute has_element?(lv, "#code-issued-via-ca")
 
         assert text(lv, "#code-issued-header-description") =~
-                 "The command connects #{node.name} by itself: it makes the machine's key there,"
+                 "The command connects #{node.name} by itself: it makes the machine's access key there,"
 
         # The step names what is pointed: a gateway, through nothing, or the node.
         title =

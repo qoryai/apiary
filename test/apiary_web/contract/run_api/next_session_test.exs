@@ -585,7 +585,9 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
 
       assert %{"model" => "claude-sonnet-5-5", "effort" => "high"} = body["model_choice"]
-      # The run's keys are the fallback's: the session joins with the start key's group.
+
+      # The run's keys are the fallback's: the session joins with the default model
+      # provider credential's group.
       refute Map.has_key?(body, "model_credential")
     end
 
@@ -620,7 +622,8 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       assert %{"runtime" => "claude", "model" => "claude-opus-5-5"} = body["model_choice"]
       assert body["model_credential"] == "#{other.public_id}-1"
 
-      # The run keeps the keys of both providers, the start key's provider's first.
+      # The run keeps the keys of both providers, the default model provider credential's
+      # provider's first.
       providers = ctx.gateway_run |> stored_keys() |> Enum.map(& &1.connection_id)
       assert Enum.uniq(providers) == [ctx.provider.id, other.id]
     end
@@ -650,7 +653,8 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       assert %{"runtime" => "claude", "model" => "claude-sonnet-5-5"} = body["model_choice"]
       assert body["model_credential"] == "#{other.public_id}-1"
 
-      # The run keeps the keys of both providers, the start key's provider's first.
+      # The run keeps the keys of both providers, the default model provider credential's
+      # provider's first.
       assert [%ModelKey{start: true} = start | rest] = stored_keys(ctx.gateway_run)
       assert start.connection_id == ctx.provider.id
       assert Enum.map(rest, &{&1.connection_id, &1.name}) == [{other.id, "#{other.public_id}-1"}]

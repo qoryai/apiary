@@ -1912,7 +1912,7 @@ defmodule Apiary.Dispatches.HandoverTest do
     end
 
     # A run's keys may be of several providers, each of its chain: every chain is checked,
-    # not only the start key's.
+    # not only the default model provider credential's.
     test "is checked for the chain of each of the run's keys" do
       organisation_id = Ecto.UUID.generate()
       workspace_id = Ecto.UUID.generate()
