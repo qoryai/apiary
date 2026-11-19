@@ -58,6 +58,16 @@ defmodule Apiary.ModelKeys.Identity do
     do: line(name, value.hint, Map.get(logins, value.id))
 
   @doc """
+  The identity lines of `values`, keys of `provider` that have their `hint` loaded, by the
+  key's row id: one read of the provider's sign-ins for all of them.
+  """
+  @spec lines(Connection.t(), [Value.t()]) :: %{Ecto.UUID.t() => String.t()}
+  def lines(%Connection{} = provider, values) do
+    logins = Login.by_key(provider)
+    Map.new(values, &{&1.id, of(provider, &1, logins)})
+  end
+
+  @doc """
   The identity line of the key of `provider` with the row id `row_id` (`secret_values.id`),
   read from the database, `provider.name` alone for a key that is not there.
   """
@@ -73,7 +83,25 @@ defmodule Apiary.ModelKeys.Identity do
   def for_value_id(%Connection{} = provider, value_id),
     do: read(provider, dynamic([v], v.value_id == ^value_id))
 
-  defp read(%Connection{secret_id: secret_id, organisation_id: organisation_id} = provider, match)
+  @doc """
+  The row id and the identity line of the key of `provider` with the value id `value_id`,
+  `{row_id, line}`, nil for a key that is not there: a page links a key's page by its row id.
+  """
+  @spec ref(Connection.t(), String.t()) :: {Ecto.UUID.t(), String.t()} | nil
+  def ref(%Connection{} = provider, value_id),
+    do: fetch(provider, dynamic([v], v.value_id == ^value_id))
+
+  defp read(provider, match) do
+    case fetch(provider, match) do
+      {_row_id, line} -> line
+      nil -> provider.name
+    end
+  end
+
+  defp fetch(
+         %Connection{secret_id: secret_id, organisation_id: organisation_id} = provider,
+         match
+       )
        when is_binary(secret_id) do
     key =
       Repo.one(
@@ -82,16 +110,16 @@ defmodule Apiary.ModelKeys.Identity do
           on: l.secret_value_id == v.id,
           where: v.secret_id == ^secret_id and v.organisation_id == ^organisation_id,
           where: ^match,
-          select: {v.hint, l}
+          select: {v.id, v.hint, l}
       )
 
     case key do
-      {hint, login} -> line(provider.name, hint, login)
-      nil -> provider.name
+      {row_id, hint, login} -> {row_id, line(provider.name, hint, login)}
+      nil -> nil
     end
   end
 
-  defp read(%Connection{name: name}, _match), do: name
+  defp fetch(%Connection{}, _match), do: nil
 
   # The last 4 characters of an account id, all of a shorter one.
   defp tail(account_id), do: String.slice(account_id, -@tail, @tail)
