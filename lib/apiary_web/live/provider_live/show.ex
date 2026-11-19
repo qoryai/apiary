@@ -104,20 +104,22 @@ defmodule ApiaryWeb.ProviderLive.Show do
 
   # Stores the sign-in that the person made from a key's row as the key's new value, and
   # shows the key as it is then. A sign-in that cannot be stored shows as one that failed.
-  # The key is named by its row id, which the button sends: no page shows the value id.
+  # The key is named by its row id, which the button sends, and found by it in the
+  # transaction that writes (`Connections.set_provider_key_of_row/4`): a key that was
+  # deleted and added again while the sign-in was open has the same value id and another
+  # row id, and is not written. No page shows the value id.
   defp store(%{assigns: %{device: %{key: key_id}}} = socket) when is_binary(key_id) do
     %{current_scope: scope, provider: provider} = socket.assigns
 
-    with {:ok, value_id} <- value_id_of(provider, key_id),
-         {:ok, login} <- ModelKeyDevice.login(socket),
-         {:ok, provider} <- Connections.set_provider_key(scope, provider, value_id, login) do
+    with {:ok, login} <- ModelKeyDevice.login(socket),
+         {:ok, provider} <- Connections.set_provider_key_of_row(scope, provider, key_id, login) do
       socket
       |> ModelKeyDevice.reset()
       |> assign(provider: provider)
       |> assign_keys()
       |> put_flash(
         :info,
-        gettext("%{identity} is saved.", identity: saved_identity(provider, value_id))
+        gettext("%{identity} is saved.", identity: Identity.for_key(provider, key_id))
       )
     else
       _refused -> ModelKeyDevice.fail(socket)
@@ -125,17 +127,6 @@ defmodule ApiaryWeb.ProviderLive.Show do
   end
 
   defp store(socket), do: socket
-
-  defp saved_identity(provider, value_id), do: Identity.for_value_id(provider, value_id)
-
-  defp value_id_of(%{secret: %{values: values}}, key_id) when is_list(values) do
-    case Enum.find(values, &(&1.id == key_id)) do
-      %{value_id: value_id} when is_binary(value_id) -> {:ok, value_id}
-      _none -> :error
-    end
-  end
-
-  defp value_id_of(_provider, _key_id), do: :error
 
   # The sign-in of a key's row: the one that is going on for the key, else the idle button.
   defp row_device(%{key: key} = device, %{id: key}), do: device

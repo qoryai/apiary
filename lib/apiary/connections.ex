@@ -1946,6 +1946,38 @@ defmodule Apiary.Connections do
         )
 
   @doc """
+  set_provider_key_of_row/4 replaces the value of the model provider's key whose value has
+  the row id `row_id` (`secret_values.id`) by `value`, as `set_provider_key/5` does for a
+  value id. The key is looked up by its row id in the transaction that writes, and not by
+  the value id of a `provider` that a page read earlier: a key that was deleted and added
+  again has the same value id and another row id, and is not written. `{:error,
+  :not_found}` for a row id that is not a key of the provider; any other result as
+  `set_provider_key/5`.
+  """
+  @spec set_provider_key_of_row(
+          Scope.t(),
+          Connection.t(),
+          Ecto.UUID.t(),
+          String.t() | Login.parsed()
+        ) :: {:ok, Connection.t()} | {:error, refusal}
+  def set_provider_key_of_row(%Scope{} = scope, %Connection{} = provider, row_id, value),
+    do:
+      write_keys(scope, provider, fn scope, secret, current ->
+        with %Value{value_id: value_id} <-
+               Enum.find(current.secret.values, &(&1.id == row_id)) || {:error, :not_found},
+             :ok <- set_key(scope, secret, current, value_id, trim_key(value)),
+             do:
+               {:ok,
+                %{
+                  details: %{
+                    value_id: value_id,
+                    identity: Identity.for_value_id(current, value_id),
+                    value_set: true
+                  }
+                }}
+      end)
+
+  @doc """
   update_provider_key/4 changes a model provider's key with the value id `value_id`
   (`provider.write`): `attrs` has its new `value_id`, which renames it as
   `rename_provider_key/4` does, its `settings` (`Apiary.ModelKeys.Setting.changeset/3`,
