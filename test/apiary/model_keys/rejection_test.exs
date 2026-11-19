@@ -411,6 +411,29 @@ defmodule Apiary.ModelKeys.RejectionTest do
       assert %{blocked: nil} = claim_key(ctx.subscription, "login")
     end
 
+    test "an entry before the time the run's copy took the token marks nothing", ctx do
+      sealed = DateTime.utc_now()
+      key = login_key(ctx, token_time(ctx)) |> Map.put(:copy_login_sealed_at, sealed)
+
+      # Before the sealing time the 401 is for an earlier token; at it, for the token the run has.
+      for at <- [DateTime.add(sealed, -1, :second), DateTime.add(sealed, -3600, :second)] do
+        :ok = ModelKeys.reject([key], [unauthorized("model-1", at)], ctx.subscription, sealed)
+        assert rows(ctx.login) == []
+      end
+
+      :ok = ModelKeys.reject([key], [unauthorized("model-1", sealed)], ctx.subscription, sealed)
+      assert [_row] = rows(ctx.login)
+    end
+
+    test "a key with no time for its copy drops no entry for its time", ctx do
+      key = login_key(ctx, token_time(ctx)) |> Map.put(:copy_login_sealed_at, nil)
+      at = DateTime.add(DateTime.utc_now(), -3600, :second)
+
+      :ok = ModelKeys.reject([key], [unauthorized("model-1", at)], ctx.subscription, at)
+
+      assert [_row] = rows(ctx.login)
+    end
+
     test "a 401 for a run that holds no sign-in time marks nothing", ctx do
       reject!(ctx, login_key(ctx, nil))
       assert rows(ctx.login) == []

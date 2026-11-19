@@ -73,7 +73,8 @@ defmodule Apiary.ModelKeys do
   migration 20261111220000 wrote for a run that was pending or running at the upgrade;
   false when it is the time the run's row was written; and `copy_login_at`, for a sign-in,
   the time of its sign-in or last refresh when the request read the token it sealed for
-  the run (`Apiary.ModelKeys.Copy`), nil when the key is no sign-in or the copy has none.
+  the run (`Apiary.ModelKeys.Copy`), nil when the key is no sign-in or the copy has none;
+  and `copy_login_sealed_at`, the database's time at which the run's copy took that token.
   """
   @type run_key :: %{
           name: String.t(),
@@ -81,7 +82,8 @@ defmodule Apiary.ModelKeys do
           organisation_id: Ecto.UUID.t(),
           copy_set_at: DateTime.t() | nil,
           copy_kept: boolean,
-          copy_login_at: DateTime.t() | nil
+          copy_login_at: DateTime.t() | nil,
+          copy_login_sealed_at: DateTime.t() | nil
         }
 
   ## Settings
@@ -332,9 +334,10 @@ defmodule Apiary.ModelKeys do
             name: name,
             secret_value_id: id,
             organisation_id: organisation_id,
-            copy_set_at: copies |> Map.get(id, {run.inserted_at, nil}) |> elem(0),
+            copy_set_at: copies |> Map.get(id, {run.inserted_at, nil, nil}) |> elem(0),
             copy_kept: Map.has_key?(copies, id),
-            copy_login_at: copies |> Map.get(id, {nil, nil}) |> elem(1)
+            copy_login_at: copies |> Map.get(id, {nil, nil, nil}) |> elem(1),
+            copy_login_sealed_at: copies |> Map.get(id, {nil, nil, nil}) |> elem(2)
           }
     else
       []
@@ -345,13 +348,14 @@ defmodule Apiary.ModelKeys do
 
   # The `value_set_at` of the value of each key of `ids` that a secrets request sealed for
   # `run` last, or that migration 20261111220000 copied for a run pending or running at
-  # the upgrade, with the sign-in time of the token sealed (`login_at`), by the key's row
-  # id: `{value_set_at, login_at}`.
+  # the upgrade, with the sign-in time of the token sealed (`login_at`) and the time the
+  # copy took it (`login_sealed_at`), by the key's row id:
+  # `{value_set_at, login_at, login_sealed_at}`.
   defp copies(%Run{id: run_id}, ids) when is_binary(run_id) do
     Repo.all(
       from c in Copy,
         where: c.run_id == ^run_id and c.secret_value_id in ^ids,
-        select: {c.secret_value_id, {c.value_set_at, c.login_at}}
+        select: {c.secret_value_id, {c.value_set_at, c.login_at, c.login_sealed_at}}
     )
     |> Map.new()
   end
@@ -385,10 +389,29 @@ defmodule Apiary.ModelKeys do
             run_id: r.id,
             secret_value_id: v.id,
             value_set_at: type(^usec(value_set_at), :utc_datetime_usec),
-            login_at: type(^usec(login_at), :utc_datetime_usec)
+            login_at: type(^usec(login_at), :utc_datetime_usec),
+            login_sealed_at:
+              fragment(
+                "CASE WHEN ?::timestamp IS NULL THEN NULL ELSE clock_timestamp() END",
+                type(^usec(login_at), :utc_datetime_usec)
+              )
           }
         ),
-        on_conflict: {:replace, [:value_set_at, :login_at]},
+        on_conflict:
+          from(c in Copy,
+            update: [
+              set: [
+                value_set_at: fragment("EXCLUDED.value_set_at"),
+                login_at: fragment("EXCLUDED.login_at"),
+                login_sealed_at:
+                  fragment(
+                    "CASE WHEN EXCLUDED.login_at IS NULL THEN NULL WHEN EXCLUDED.login_at IS NOT DISTINCT FROM ? THEN ? ELSE EXCLUDED.login_sealed_at END",
+                    c.login_at,
+                    c.login_sealed_at
+                  )
+              ]
+            ]
+          ),
         conflict_target: [:run_id, :secret_value_id]
       )
     end
@@ -1066,8 +1089,9 @@ defmodule Apiary.ModelKeys do
   `record/3` reads that as it does for states), and one of a key of a provider whose keys are
   sign-ins, unless no refresh can fix it for the token the run has
   (`Apiary.ModelKeys.Login.rejectable?/3`, by the run's copy of the sign-in time and the
-  database's clock): the gateway lists such a key while its renewal is pending. A refresh
-  never changes the row;
+  database's clock): the gateway lists such a key while its renewal is pending. An entry
+  whose `at` is before the time the run's copy took the token it has now is for an earlier
+  token and marks nothing (`for_an_older_token?/2`). A refresh never changes the row;
   a new sign-in ends the state, as a new value of any key does. An entry that is older
   than the key's row keeps the row. The rows are written in the order of the keys' row
   ids, after the values' rows are locked `FOR SHARE`, as `record/3` does, so a new value
@@ -1088,6 +1112,7 @@ defmodule Apiary.ModelKeys do
     marked =
       for entry <- entries,
           {:ok, key} <- [Map.fetch(by_name, entry.credential)],
+          not for_an_older_token?(key, entry.at),
           do: {key, entry.at}
 
     if marked != [] do
@@ -1108,6 +1133,22 @@ defmodule Apiary.ModelKeys do
 
     :ok
   end
+
+  # An entry whose `at`, the gateway's clock when the 401 arrived, is before the database's
+  # time at which the run's copy took the token it has now (`copy_login_sealed_at`) is for
+  # an earlier token: a report sent again after a renewal, a 401 of a request that was in
+  # flight before it, or one repeated because the renewal's answer was lost. The two times
+  # are only compared with each other, as stored: the gateway's clock is not compared with
+  # any clock here. A copy with no such time (a key that is no sign-in, or a copy written
+  # before the column) drops nothing.
+  #
+  # This is the narrow rule. A report that names the token the gateway sent (a member of
+  # `unauthorized` in the contract) would decide this exactly, and no clock would be
+  # compared; that is a change of the Forager contract, which this piece does not make.
+  defp for_an_older_token?(%{copy_login_sealed_at: %DateTime{} = sealed_at}, %DateTime{} = at),
+    do: DateTime.compare(at, sealed_at) == :lt
+
+  defp for_an_older_token?(_key, _at), do: false
 
   # A key that is no sign-in is marked. A sign-in is marked only when no refresh can fix it
   # for the token the run has (`Login.rejectable?/3`), by the sign-in time of that token

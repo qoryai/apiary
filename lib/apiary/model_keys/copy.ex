@@ -12,6 +12,11 @@ defmodule Apiary.ModelKeys.Copy do
   sign-in or of its last refresh when the request read the token it sealed: which token the
   run has, since a refresh changes the token and not `value_set_at`. Nil for any other key
   and for a row written before the column.
+
+  `login_sealed_at` is the database's time (`clock_timestamp()`) at the request that
+  sealed the token of that `login_at` for the run, kept while later requests seal the same
+  token, and nil where `login_at` is. A 401 that the gateway reports at an `at` before it
+  was a 401 for an older token (`Apiary.ModelKeys.reject/4`).
   """
 
   use Ecto.Schema
@@ -26,5 +31,6 @@ defmodule Apiary.ModelKeys.Copy do
     field :secret_value_id, :binary_id, primary_key: true
     field :value_set_at, :utc_datetime_usec
     field :login_at, :utc_datetime_usec
+    field :login_sealed_at, :utc_datetime_usec
   end
 end

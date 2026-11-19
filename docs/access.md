@@ -906,7 +906,14 @@ for each other and never on each other at once:
    fix the 401 (`Apiary.ModelKeys.Login.rejectable?/3`) or waits for this transaction. That
    check reads database facts only: the sign-in time of the token the run's copy has
    (`model_key_copies.login_at`), the sign-in's current time and the database's clock, not
-   the gateway's `at`. An entry whose `at` is more than 5 minutes before the run was
+   the gateway's `at`. The `at` of an entry is compared with one stored time alone: an
+   entry of a sign-in whose `at` is before `model_key_copies.login_sealed_at`, the
+   database's `clock_timestamp()` at the request that sealed the run's current token, is
+   for an earlier token (a report sent again after a renewal, a 401 of a request in flight
+   before it, or a report repeated because the renewal's answer was lost) and marks
+   nothing. That is the narrow rule: a report that names the token the gateway sent would
+   decide it exactly, and it is a change of the contract with Forager, which A-51 does not
+   make. An entry whose `at` is more than 5 minutes before the run was
    registered is left out. A run's gateway can mark any key of the run, and a key belongs
    to the whole organisation or the provider, so one run marks the key for every run that
    uses it.
