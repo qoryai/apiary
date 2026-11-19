@@ -492,9 +492,11 @@ defmodule Apiary.Submissions do
   defp read(stream), do: {:ok, stream |> Enum.to_list() |> IO.iodata_to_binary()}
 
   @doc """
-  The text of each change of a plan, by the id of its deliverable: the cells Id and
-  Change of the first 200 rows of the table under `## Deliverables`, each text of at most
-  200 characters. A row with another id form, or with no change text, is left out.
+  The text of each change of a plan, by the id of its deliverable: the first two cells of
+  the first 200 rows of the table under `## Deliverables` that have an id and a change
+  text, each text of at most 200 characters. The first table row is the header and the
+  row after it, if it is a separator (`|---|---|`), is skipped, whatever their text. A row
+  with another id form, or with no change text, is left out.
   """
   @spec deliverables(String.t()) :: %{String.t() => String.t()}
   def deliverables(markdown) when is_binary(markdown) do
@@ -503,15 +505,32 @@ defmodule Apiary.Submissions do
     |> Enum.drop_while(&(String.trim(&1) != "## Deliverables"))
     |> Enum.drop(1)
     |> Enum.take_while(&(not String.starts_with?(&1, "## ")))
+    |> Enum.map(&String.trim/1)
+    |> Enum.filter(&String.starts_with?(&1, "|"))
+    |> without_header()
     |> Enum.flat_map(&row/1)
     |> Enum.take(@max_plan_rows)
     |> Map.new()
   end
 
+  # The table rows without the header, the first row, whatever its text, and without the
+  # separator row (`|---|---|`) right after it. A table with no separator row keeps its
+  # second row.
+  defp without_header([_header, separator | rows] = all) do
+    if separator?(separator), do: rows, else: tl(all)
+  end
+
+  defp without_header(_rows), do: []
+
+  defp separator?(line) do
+    cells = cells(line)
+    cells != [] and Enum.all?(cells, &Regex.match?(~r/\A:?-+:?\z/, &1))
+  end
+
   defp row(line) do
     case line |> String.trim() |> cells() do
       [id, change | _rest] ->
-        if id != "Id" and Regex.match?(@id, id) and change != "",
+        if Regex.match?(@id, id) and change != "",
           do: [{id, cut(change)}],
           else: []
 

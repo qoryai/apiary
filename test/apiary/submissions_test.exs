@@ -475,6 +475,93 @@ defmodule Apiary.SubmissionsTest do
       assert [%{step: {:fix, "f1"}}, %{step: {:fix, "f2"}}] = repository_of(row).commits
     end
 
+    test "a later session of a shared run reads the plan type of the run's first session",
+         ctx do
+      release_plan_type!(ctx)
+
+      {:ok, version} =
+        Apiary.Processes.save(ctx.scope, ctx.scope.workspace, %{
+          "schema" => "qory.process/v1",
+          "machine" => "default",
+          "stages" => [
+            %{
+              "id" => @build,
+              "name" => "Shared build",
+              "shared_run" => true,
+              "inputs" => [],
+              "sequence" => [
+                %{"workflow" => "plan-the-build"},
+                %{"workflow" => "implement-changes"}
+              ],
+              "outputs" => [],
+              "gate" => %{"kind" => "person", "approvers" => "members"}
+            }
+          ]
+        })
+
+      {1, _rows} =
+        Repo.update_all(from(v in ProcessVersion, where: v.id == ^version.id),
+          set: [template: %{"commit" => String.duplicate("a", 40), "submit" => @submit}]
+        )
+
+      %DispatchRun{id: id} = ctx.second
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^id),
+          set: [
+            process_version_id: version.id,
+            stage_id: @build,
+            workflow: "plan-the-build",
+            stage_entry: 0,
+            round: 1
+          ]
+        )
+
+      {1, _rows} =
+        Repo.update_all(from(w in Apiary.WorkItems.WorkItem, where: w.id == ^ctx.work_item.id),
+          set: [
+            process_version_id: version.id,
+            stage_id: @build,
+            stage_state: :running,
+            stage_entry: 0,
+            stage_round: 1
+          ]
+        )
+
+      {1, _rows} =
+        Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^id),
+          set: [workflow: "plan-the-build", plan_type: "release-plan"]
+        )
+
+      ctx = %{ctx | work_item: Repo.reload!(ctx.work_item)}
+      run = Repo.get!(DispatchRun, id)
+      {:ok, :ok} = Repo.transact(fn -> {:ok, Apiary.Stages.claim_sessions!(run, %{})} end)
+
+      {:ok, _verdict} =
+        Apiary.Stages.Artifacts.push_json(
+          {:run, run},
+          ctx.work_item,
+          "verdict",
+          %{"verdict" => "passed"},
+          stage_id: @build
+        )
+
+      assert {:session, %{session: 2, workflow: "implement-changes"}} =
+               Apiary.Stages.next_session(run, %{session: 1, state: "succeeded", reason: nil})
+
+      plan!(ctx, run, @plan, "release-plan")
+
+      plan!(
+        ctx,
+        run,
+        "## Deliverables\n\n| Id | Change |\n|---|---|\n| d-2 | Build plan text |\n"
+      )
+
+      store!(ctx, run, submission())
+
+      assert first_change(ctx) == "Show the dates at checkout"
+    end
+
     test "build-plan as the plan type shows its texts, not those of another type", ctx do
       release_plan_type!(ctx)
       plan_type!(ctx.first, "build-plan")
@@ -1288,6 +1375,28 @@ defmodule Apiary.SubmissionsTest do
       """
 
       assert Submissions.deliverables(markdown) == %{"d-2" => "Two | pieces"}
+    end
+
+    test "skips the header row by its position, whatever its text" do
+      markdown = "## Deliverables\n\n| ID | What |\n|---|---|\n| d-1 | One |\n"
+      assert Submissions.deliverables(markdown) == %{"d-1" => "One"}
+    end
+
+    test "reads the rows of a table whose header has other titles" do
+      markdown =
+        "## Deliverables\n\n| Number | Summary |\n| :--- | ---: |\n| d-1 | One |\n| d-2 | Two |\n"
+
+      assert Submissions.deliverables(markdown) == %{"d-1" => "One", "d-2" => "Two"}
+    end
+
+    test "a table with no separator row has its first row skipped and the rest read" do
+      markdown = "## Deliverables\n\n| Id | Change |\n| d-1 | One |\n| d-2 | Two |\n"
+      assert Submissions.deliverables(markdown) == %{"d-1" => "One", "d-2" => "Two"}
+
+      assert Submissions.deliverables("## Deliverables\n\n| d-1 | One |\n| d-2 | Two |\n") ==
+               %{"d-2" => "Two"}
+
+      assert Submissions.deliverables("## Deliverables\n\n| Id | Change |\n") == %{}
     end
 
     test "is empty for a plan with no table" do
