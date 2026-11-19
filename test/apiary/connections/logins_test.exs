@@ -725,6 +725,26 @@ defmodule Apiary.Connections.LoginsTest do
   end
 
   describe "Login.put/3" do
+    test "writes signed_in_at at the database's clock when no time is given", %{scope: scope} do
+      provider = subscription!(scope)
+      value = key_value!(provider, "main")
+
+      before = Login.db_now()
+      assert {:ok, %Login{signed_in_at: signed_in_at}} = Login.put(value, device_login(tag: "x"))
+      after_put = Login.db_now()
+
+      assert DateTime.compare(signed_in_at, before) != :lt
+      assert DateTime.compare(signed_in_at, after_put) != :gt
+    end
+
+    test "writes signed_in_at at the time it is given", %{scope: scope} do
+      provider = subscription!(scope)
+      value = key_value!(provider, "main")
+      at = ~U[2026-11-18 10:00:00.000000Z]
+
+      assert {:ok, %Login{signed_in_at: ^at}} = Login.put(value, device_login(tag: "x"), at)
+    end
+
     test "adds 1 to the generation for each sign-in over the key", %{scope: scope} do
       provider = subscription!(scope)
       value = key_value!(provider, "main")

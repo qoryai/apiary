@@ -410,12 +410,13 @@ defmodule Apiary.ModelKeys.Login do
 
   @doc """
   Writes the row of the key `value`'s new login `parsed`, in the caller's transaction: the
-  state `signed_in`, no failure, no lease, `refreshed_at` nil and `signed_in_at` `now`;
-  `generation` is 1 for a new key, and the key's plus 1 for a sign-in over another.
+  state `signed_in`, no failure, no lease, `refreshed_at` nil and `signed_in_at` `now`,
+  by default the database's clock (`db_now/0`), as every other writer of this module reads
+  it; `generation` is 1 for a new key, and the key's plus 1 for a sign-in over another.
   `{:ok, row}`.
   """
   @spec put(Value.t(), parsed, DateTime.t()) :: {:ok, t} | {:error, Ecto.Changeset.t()}
-  def put(%Value{id: id, organisation_id: organisation_id}, parsed, now \\ DateTime.utc_now()) do
+  def put(%Value{id: id, organisation_id: organisation_id}, parsed, now \\ db_now()) do
     now = DateTime.truncate(now, :microsecond)
 
     fresh = [
