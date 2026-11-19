@@ -50,6 +50,12 @@ defmodule Apiary.Runs.Fold do
   absent; a sum that would pass the largest `bigint` stays at it. Each is null while no
   session reported it, and neither depends on the order in which the events arrive.
 
+  A run's cost, `cost_usd`, is the sum, over the run's sessions, of each session's cost,
+  and a session's cost is the `cost_usd` of its last `dev.qory.runtime.result` that has
+  one, since each line's cost is the launch's total so far (`Apiary.Runs.Sessions`,
+  decision 652 (a)). It is read from all the run's results, the pass's and the ones
+  already projected (`projected`, below), and a pass with no result leaves it as it is.
+
   The steps of the run's host work and joins (`Apiary.Runs.Step`) are folded by `step`,
   their number, an integer from 1: `steps` has one delta per number, the start's `name`,
   `kind` and sequence from its `run.step_started`, and the exit's `state`, `exit_code`,
@@ -151,7 +157,7 @@ defmodule Apiary.Runs.Fold do
 
   require Logger
 
-  alias Apiary.Runs.{About, Liveness, Run, Target, TargetWrite, Transcript}
+  alias Apiary.Runs.{About, Liveness, Run, Sessions, Target, TargetWrite, Transcript}
 
   @ping "dev.qory.ping"
   @started "dev.qory.run.started"
@@ -175,10 +181,6 @@ defmodule Apiary.Runs.Fold do
   @cut_mark "…"
 
   @forager_version "forager_version"
-
-  # The most a result may say a session cost, in dollars, before the value is read as
-  # absent: a runtime's accounting error, not a bill.
-  @max_cost Decimal.new(1_000_000_000)
 
   @doc """
   The ranks an event of `type` competes in, which the projector seeds `latest` with; none
@@ -236,8 +238,12 @@ defmodule Apiary.Runs.Fold do
   # silent, or the end was never recorded.
   @lost_reasons ~w(session_lost gateway_lost)
   # The reason of an exit at the run's model keys' limit: with the state `paused`, the run
-  # paused (`exit_state/2`).
+  # paused (`exit_state/2`). So did a run that Forager ended `paused` with
+  # `model_key_switch`: a Codex session's key was out and another key of the run is
+  # usable.
   @paused_reason "model_key_limit"
+  @switch_reason "model_key_switch"
+  @paused_reasons [@paused_reason, @switch_reason]
   @streams ~w(terminal stdout stderr)
   # The states a run's starter may give as its outcome (`Apiary.Runs.Outcome`).
   @outcome_states ~w(succeeded failed cancelled)
@@ -283,9 +289,10 @@ defmodule Apiary.Runs.Fold do
   included). `latest` maps a type of `ranked_types/0` to the highest sequence of it
   already projected. `projected` says what the fold needs of the events already projected:
   `beat`, the `time` and `received_at` of the heartbeat with the highest sequence, `starts`,
-  the run's session starts as maps with `sequence` and `data`, and `resize`, the `sequence`
-  and `size` of the last resize that counts, given the starts of `events` too; each absent
-  or nil when there is none.
+  the run's session starts as maps with `sequence` and `data`, `resize`, the `sequence`
+  and `size` of the last resize that counts, given the starts of `events` too, and
+  `results`, the run's `dev.qory.runtime.result` events already projected as maps with
+  `type`, `sequence` and `data`; each absent or nil when there is none.
 
   Returns the accumulator: `run` with the new field values, `connections` as one delta per
   (host, port, path, channel), `steps` as one delta per step number, `target_writes` in
@@ -311,6 +318,7 @@ defmodule Apiary.Runs.Fold do
       |> Enum.reduce(acc, &event(&2, &1))
       |> count_beat()
       |> sessions(events, projected)
+      |> costs(events, projected)
 
     %{
       acc
@@ -522,16 +530,16 @@ defmodule Apiary.Runs.Fold do
       state = exit_state(given, reason)
 
       cond do
-        reason == @paused_reason and state != "paused" ->
+        reason in @paused_reasons and state != "paused" ->
           Logger.warning(
-            "a run's exit has the reason model_key_limit with a state other than paused; " <>
+            "a run's exit has the reason #{reason} with a state other than paused; " <>
               "the run ends #{state}, without a pause"
           )
 
         given == "paused" and state != "paused" ->
           Logger.warning(
-            "a run's exit has the state paused without the reason model_key_limit; " <>
-              "the run ends #{state}, without a pause"
+            "a run's exit has the state paused without the reason model_key_limit or " <>
+              "model_key_switch; the run ends #{state}, without a pause"
           )
 
         true ->
@@ -629,17 +637,10 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  # The cost a non-interactive session reported is the runtime's own total for the
-  # session, its subagents included (`docs/contract-assumptions.md`): every result of the
-  # run adds its `cost_usd` to the run's, once, so the run's cost is a sum of totals and
-  # never counts a subagent twice. A result without a cost adds nothing and leaves null
-  # null: a run that reported no cost is unrecorded, not free.
-  defp event(acc, %{type: @result, data: data}) do
-    case cost(data) do
-      nil -> acc
-      cost -> %{acc | run: %{acc.run | cost_usd: add_cost(acc.run.cost_usd, cost)}}
-    end
-  end
+  # A session's results are read whole after the pass's events (`costs/3`): a run's cost is
+  # the sum, over its sessions, of each session's last result line, which a pass that has
+  # one of a session's lines cannot know without the lines of the passes before.
+  defp event(acc, %{type: @result}), do: acc
 
   # Session events and types this revision does not know: kept in `events`, marked
   # projected by the projector, nothing folded. A session's start and a resize are read
@@ -739,23 +740,6 @@ defmodule Apiary.Runs.Fold do
     end
   end
 
-  defp add_cost(nil, cost), do: cost
-  defp add_cost(%Decimal{} = sum, cost), do: Decimal.add(sum, cost)
-
-  # A cost is a JSON number, zero or more and below the bound; anything else is absent.
-  defp cost(data) do
-    case data do
-      %{"cost_usd" => value} when is_integer(value) -> bounded_cost(Decimal.new(value))
-      %{"cost_usd" => value} when is_float(value) -> bounded_cost(Decimal.from_float(value))
-      _ -> nil
-    end
-  end
-
-  defp bounded_cost(%Decimal{} = cost) do
-    if Decimal.compare(cost, 0) != :lt and Decimal.compare(cost, @max_cost) == :lt,
-      do: Decimal.normalize(cost)
-  end
-
   @doc """
   The run state a `dev.qory.run.exited` with this `state` and `reason` means, the first rule
   that applies:
@@ -766,17 +750,19 @@ defmodule Apiary.Runs.Fold do
        contract allows `model_key_limit` with `paused` alone, and `paused` with
        `model_key_limit` alone: with another state the reason changes nothing, as an
        unknown reason does, and `paused` with another reason, or none, is read as an
-       unknown state; the fold logs one line for each.
+       unknown state; the fold logs one line for each. `paused` with `model_key_switch`
+       is paused too: Forager ended a Codex session on a key that is out while another
+       key of the run is usable, and a continuation goes on with that key.
     2. `failed` with `session_lost` or `gateway_lost` is lost: nobody knows how it ended.
     3. The state decides: `succeeded` is completed, `failed` failed, `cancelled` cancelled.
     4. Without a state, which the contract requires, `session_lost` and `gateway_lost` are
        lost, and any other reason, or none, failed.
 
-  A state other than the three, and `paused` without `model_key_limit`, is read as
-  absent.
+  A state other than the three, and `paused` without `model_key_limit` or
+  `model_key_switch`, is read as absent.
   """
   @spec exit_state(String.t() | nil, String.t() | nil) :: String.t()
-  def exit_state("paused", @paused_reason), do: "paused"
+  def exit_state("paused", reason) when reason in @paused_reasons, do: "paused"
   # The shape of a pause from a gateway built with qoryai/forager#53 and before #54,
   # which ends a paused run `cancelled`: read as Paused while such gateways run.
   def exit_state("cancelled", @paused_reason), do: "paused"
@@ -872,6 +858,24 @@ defmodule Apiary.Runs.Fold do
 
       run = if shown, do: session_members(acc.run, shown.data), else: acc.run
       %{acc | run: put_size(run, sizes)}
+    end
+  end
+
+  # The run's cost, from every result of the run, projected or in this pass
+  # (`Apiary.Runs.Sessions.cost/1`): the sum, over its sessions, of each session's last
+  # result line, because each line's `cost_usd` is the launch's total so far, subagents
+  # included (`docs/contract-assumptions.md`). Read again whole, so the passes a run's
+  # results come in, and a rebuild, give one cost. A pass with no result leaves the cost
+  # as it is; a result without a cost adds nothing, and a run whose results carried none
+  # keeps a null cost: unrecorded, not free.
+  defp costs(acc, events, projected) do
+    case Enum.filter(events, &(&1.type == @result)) do
+      [] ->
+        acc
+
+      results ->
+        cost = Sessions.cost(List.wrap(projected[:results]) ++ results)
+        %{acc | run: %{acc.run | cost_usd: cost}}
     end
   end
 

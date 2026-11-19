@@ -15,8 +15,8 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   #   earlier runs pushed (`pushed_commits`).
   # - `index/1`: every artifact of the work item with its versions, each version's files,
   #   writer, approvals (by a person, or `automatic` at a gate `none`), whether a run a
-  #   member cancelled wrote it and whether it is a withdrawal
-  #   (`Apiary.Stages.artifact_index/1`).
+  #   member cancelled wrote it, whether it is a withdrawal, and the person's note that
+  #   asked for it with the note's time (`Apiary.Stages.artifact_index/1`).
   # - `version/3`: a version as a push returns it.
   # - `next_session/1`: the result of a next-session request
   #   (`Apiary.Stages.next_session/2`): `next`, then, for a next session, `session`,
@@ -212,6 +212,8 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
       {"withdrawn", get(version, :withdrawn) == true},
       {"stage_id", get(version, :stage_id)},
       {"note", get(version, :note)},
+      {"decision", get(version, :decision)},
+      {"decision_at", time(get(version, :decision_at))},
       {"at", time(get(version, :inserted_at))},
       {"files", Enum.map(get(version, :files) || [], &file/1)},
       {"approvals", Enum.map(get(version, :approvals) || [], &approval(&1, context))}
@@ -260,13 +262,15 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   # notes/1 is the open notes of the work item (`Apiary.Stages.notes/1`), oldest first: a
   # request for changes, an escalation resolved with a note, a move, what a member gave
   # Explore (an answer, a review comment or a reply) and the gaps of failed checks that
-  # started a round.
+  # started a round. `id` is the public id of the first three (`gd_…`, `es_…`), which a
+  # run sends as `decision` in a push; null for the others.
   @spec notes([map]) :: [Jason.OrderedObject.t()]
   def notes(notes) do
     context = %{names: names(Enum.map(notes, &get(&1, :user_id)))}
 
     for note <- notes do
       object([
+        {"id", get(note, :id)},
         {"kind", text(get(note, :kind))},
         {"stage_id", get(note, :stage_id)},
         {"by", by(note, context)},

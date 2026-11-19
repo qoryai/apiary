@@ -5026,7 +5026,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
 
       # The run that continues it, queued as the end of the paused run queues it.
       ended = Repo.get!(DispatchRun, queued.id)
-      {:ok, next} = Repo.transact(fn -> Dispatches.requeue_for_pause(ended, nil) end)
+      {:ok, next} = Repo.transact(fn -> Dispatches.requeue_for_pause(ended, nil, nil) end)
       number = Repo.one!(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^next.id).number
 
       run =
@@ -5040,14 +5040,6 @@ defmodule ApiaryWeb.RunLive.ShowTest do
           %{
             dispatch_run_id: queued.id,
             provider_connection_id: provider.id,
-            provider_secret_id: provider.secret_id,
-            provider_chain: "organisation",
-            provider_api: %{
-              "format" => "anthropic-messages",
-              "endpoint" => "https://api.model.example/anthropic",
-              "auth" => %{"scheme" => "x-api-key"}
-            },
-            model_keys: [],
             run_settings: %{}
           }
         )

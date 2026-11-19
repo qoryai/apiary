@@ -34,18 +34,23 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      `Apiary.Artifacts.push/5` returns, the files that do not match the type's format
   #      among it, `422` `invalid_artifact`; a run's version of `questions` or
   #      `review-comments` that changes what members wrote, `422` `invalid_artifact` with
-  #      the rule it breaks; and a version of `questions` or `review-comments` whose file
-  #      is over the size limit as stored, with each number that is an integer in value
-  #      written as an integer (`1e3` as `1000`), `422` `too_large`;
+  #      the rule it breaks; a version of `acceptance-criteria` under a name other than
+  #      `main`, `422` `invalid_artifact` with `name` in `names`, before its file is
+  #      checked; a `decision` that is not the id of a person's note on the work item
+  #      (`Apiary.Stages.Notes`), `422` `unknown_decision`; and a version of
+  #      `questions` or `review-comments` whose file is over the size limit as stored,
+  #      with each number that is an integer in value written as an integer (`1e3` as
+  #      `1000`), `422` `too_large`;
   #   5. for a withdrawal, a push with `withdraw` true: an unknown type as for a push, then
   #      `questions`, `review-comments`, `verdict` or `proposal`, the types Qory Apiary
   #      reads itself, a type with `withdrawable` false, and the type in `submit.type` of
   #      the run's process version or of the work item's, `422` `type_not_withdrawable`,
   #      then files with it `422` `withdrawal_with_files`, then what
-  #      `Apiary.Artifacts.withdraw/4` returns under the work item's lock: a name whose newest version a person approved at a
-  #      gate `422` `type_not_withdrawable`, a name with no version `409` `no_version`, a
-  #      name whose newest version is a withdrawal `409` `already_withdrawn`, and one whose
-  #      newest version a person wrote `409` `person_version`.
+  #      `Apiary.Artifacts.withdraw/4` returns under the work item's lock: a name whose
+  #      newest version a person approved at a gate `422` `type_not_withdrawable`, a name
+  #      with no version `409` `no_version`, and a name whose newest version is a
+  #      withdrawal `409` `already_withdrawn`, then a `decision` as for a push, `422`
+  #      `unknown_decision`.
   #
   # A file is sent from the store, with `send_file` or in chunks, and signed over the
   # SHA-256 Qory Apiary computed from its bytes when it stored them. It is served as a
@@ -65,7 +70,6 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   alias Apiary.Artifacts.Format
   alias Apiary.Dispatches.RunEnd
-  alias Apiary.Dispatches.Inputs
   alias Apiary.PublicId
   alias Apiary.Runs.PushedCommit
   alias ApiaryWeb.Contract.Configuration
@@ -153,7 +157,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       Boundary.withdraw({:run, run.dispatch_run}, run.work_item, push.type,
         name: push.name,
         stage_id: Boundary.push_stage_id(run.dispatch_run, run.work_item),
-        note: push.note
+        note: push.note,
+        decision: push.decision
       )
       |> withdrawn(push)
     end
@@ -166,7 +171,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       Boundary.push({:run, run.dispatch_run}, run.work_item, push.type, files,
         name: push.name,
         stage_id: Boundary.push_stage_id(run.dispatch_run, run.work_item),
-        note: push.note
+        note: push.note,
+        decision: push.decision
       )
       |> pushed(%{
         name: push.type,
@@ -589,8 +595,19 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp refused({:too_large, size_limit}, push),
     do: {:error, {:too_large, push.name, limit(size_limit, push.type, :size_limit)}}
 
-  defp refused({:invalid, member}, _push) when member in [:type, :name, :note],
+  defp refused({:invalid, member}, _push) when member in [:type, :name, :note, :decision],
     do: {:error, :invalid_request, Atom.to_string(member)}
+
+  defp refused({:unknown_decision, _decision}, _push), do: {:error, :unknown_decision}
+
+  # A version of the acceptance criteria under a name other than `main`: `422`
+  # `invalid_artifact` for `name`, whose form `Apiary.Artifacts.push/5` checked first.
+  defp refused({:invalid, {:criteria_name, name}}, _push) when is_binary(name),
+    do:
+      {:error,
+       {:invalid_artifact, "name",
+        "Name the acceptance criteria main: a work item has one set of acceptance " <>
+          "criteria, and this push has the name #{name}."}}
 
   defp refused({:invalid, :no_files}, _push), do: {:error, :invalid_request, "files"}
 
@@ -674,7 +691,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
         "Add an MP4 or WebM video to the version of #{push.name}: " <>
           "a WebVTT file goes with a video."}}
 
-  # A run of another work item; the person's refusals never come to a run.
+  # A run of another work item; `:forbidden` is a member action's refusal, which a run's
+  # push does not return.
   defp refused(code, _push) when code in [:not_found, :forbidden], do: {:error, :not_found}
 
   # A run that ended after `live/1` read it, found ended under the work item's lock.
@@ -727,7 +745,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
           "to this run's number."
 
       :answered_changed ->
-        "Leave question, context, options and criterion of each answered question in " <>
+        "Leave question, context, options and about of each answered question in " <>
           "#{filename} as the newest version of questions has them, set or absent."
 
       :new_not_open ->
@@ -751,7 +769,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
       :decided_changed ->
         "Leave question and options of each question with a decision in #{filename} " <>
-          "as the newest version of questions has them, and its context and criterion " <>
+          "as the newest version of questions has them, and its context and about " <>
           "while it stays decided or answered: to change them, withdraw the question and " <>
           "add a new one."
 
@@ -763,6 +781,14 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       :decision_run ->
         "Set decision.run of each question in #{filename} to the question's asked.run: " <>
           "only the run that asked a question records a decision on it."
+
+      {:about, id, type, name} ->
+        "Set about of question #{id} in #{filename} to an output of this work item, " <>
+          "or to {\"work_item\": true}: the work item has no #{type} named #{name}."
+
+      {:about_item, id, type, name, item} ->
+        "Set about.item of question #{id} in #{filename} to a criterion id of " <>
+          "#{type} named #{name}: no version of it has #{item}."
     end
   end
 
@@ -991,13 +1017,11 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     )
   end
 
-  defp write_error(conn, {:error, {:withdraw, {:person, number, user_id}, type, name}}) do
-    error(conn, 409, "person_version",
-      type: type,
+  defp write_error(conn, {:error, :unknown_decision}) do
+    error(conn, 422, "unknown_decision",
       message:
-        "Leave #{type}/#{name} to a member. Its newest version, v#{number}, is a version " <>
-          "by #{Inputs.person_name(user_id)}, and a run withdraws only a name whose newest " <>
-          "version a run wrote."
+        "Set decision to the id of a person's note on this work item, from notes in " <>
+          "GET work-item, or leave decision out."
     )
   end
 

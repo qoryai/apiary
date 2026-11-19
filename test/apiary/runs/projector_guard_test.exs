@@ -8,7 +8,7 @@ defmodule Apiary.Runs.ProjectorGuardTest do
   import Apiary.RunEventsFixtures
   import ExUnit.CaptureLog
 
-  alias Apiary.Runs.{Event, Fold, LogChunk, Projector, Run}
+  alias Apiary.Runs.{Event, Fold, LogChunk, Projector, Run, SessionRecord}
 
   defmodule RaisingFold do
     @moduledoc "The fold, except that an event carrying the poison raises, as a bug would."
@@ -59,6 +59,22 @@ defmodule Apiary.Runs.ProjectorGuardTest do
 
       # Nothing is left to raise again.
       assert capture_log(fn -> assert {:ok, _} = Projector.project(run) end) == ""
+    end
+
+    test "still writes the records of the sessions its events fold", %{run: run} do
+      events_fixture(run, [
+        {1, "session.started", %{"session" => 1, "runtime" => "claude"}},
+        {2, "runtime.result", %{"session" => 1, "cost_usd" => 0.25}},
+        {3, "run.egress", %{"poison" => true, "host" => "poison-marker.example.com"}},
+        {4, "session.exited", %{"session" => 1, "state" => "succeeded"}}
+      ])
+
+      capture_log(fn -> assert {:ok, %Run{projected_sequence: 4}} = Projector.project(run) end)
+
+      assert [%{session_number: 1, cost_usd: cost}] =
+               Repo.all(from r in SessionRecord, where: r.run_id == ^run.id)
+
+      assert Decimal.equal?(cost, Decimal.new("0.25"))
     end
 
     test "later batches of the run are projected as ever", %{run: run} do

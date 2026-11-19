@@ -28,13 +28,19 @@ defmodule Apiary.Sources.MigrationTest do
   @declined {20_261_103_090_000, Apiary.Repo.Migrations.CloseEveryDeclinedWorkItem,
              "close_every_declined_work_item"}
 
+  # The later migration that keeps a record of each session of a run. Its foreign key to a
+  # work item rests on the index of `work_items` on `id`, `organisation_id`, which `@again`
+  # drops: down first, up last.
+  @records {20_261_118_161_000, Apiary.Repo.Migrations.KeepARecordOfEachSessionOfARun,
+            "keep_a_record_of_each_session_of_a_run"}
+
   @tables ~w(source_items source_item_comments source_item_listings)
   @functions ~w(source_item_public_id source_parts_valid source_texts_valid)
   @columns ~w(adapter_id item_id target_system target_path take_in declined_at declined_by_id)
 
   setup_all do
     for {version, migration, name} <-
-          [@items, @again, @listed, @left_out, @prebuilds, @hold, @declined],
+          [@items, @again, @listed, @left_out, @prebuilds, @hold, @declined, @records],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
       |> Path.join("#{version}_#{name}.exs")
@@ -85,6 +91,7 @@ defmodule Apiary.Sources.MigrationTest do
   defp check(name), do: key(name)
 
   test "down removes the tickets and the work item's new columns and keys; up brings them back" do
+    down!(@records)
     down!(@declined)
 
     assert tables() == Enum.sort(@tables)
@@ -135,6 +142,7 @@ defmodule Apiary.Sources.MigrationTest do
 
     # The tables work as before.
     up!(@declined)
+    up!(@records)
     %{scope: scope} = sign_up_fixture()
     assert %{take_in: 1, item_id: item_id} = work_item_fixture(scope)
     assert item_id
@@ -144,6 +152,7 @@ defmodule Apiary.Sources.MigrationTest do
     %{scope: scope} = sign_up_fixture()
     work_item_fixture(scope)
 
+    down!(@records)
     down!(@declined)
     down!(@hold)
     down!(@prebuilds)
@@ -161,5 +170,6 @@ defmodule Apiary.Sources.MigrationTest do
     up!(@hold)
     assert columns() == Enum.sort(@columns)
     up!(@declined)
+    up!(@records)
   end
 end

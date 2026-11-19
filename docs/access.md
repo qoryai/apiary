@@ -831,7 +831,16 @@ for each other and never on each other at once:
    row after the secret's, as the write does.
    A write of a model choice (`Apiary.ModelChoices`) at levels 2 to 5 takes the security
    policy's order, then the provider's row `FOR SHARE`, then the rows of the fallbacks'
-   providers `FOR SHARE`, then the choice's row `FOR UPDATE`. A write of the
+   providers `FOR SHARE`, then the choice's row `FOR UPDATE`. The deletion of the
+   choices and time limits of a workflow the workspace no longer keeps
+   (`Apiary.Processes.kept_workflows/1`) holds the workspace's row, then their rows
+   `FOR UPDATE`: in the transaction of a save of the process, which holds that row; or,
+   after a close of a work item or the end of a run, which hold the work item's row or
+   the run's, in a job whose transaction takes the organisation's rows and the
+   workspace's row first (`Apiary.Processes.LeftoversJob`). A deletion of a provider
+   deletes such choices of it under the provider's row `FOR UPDATE`, and a deletion or a
+   renaming of a key under the provider's row and its secret's row `FOR UPDATE`, with no
+   workspace row. A write of the
    organisation's default takes the organisation's rows and the membership, then the
    integrations lock, then the provider's row `FOR SHARE` and the choice's row. A change
    to a provider takes the provider's row `FOR UPDATE`, so it waits for a save of a choice

@@ -2,7 +2,7 @@ defmodule Apiary.ModelKeys.LoginRefreshJob do
   @moduledoc false
 
   # Refreshes one sign-in in the background, for a claim that found its access token
-  # expiring before the end of a run's time limit (`Apiary.ModelKeys.claim_keys/4`,
+  # expiring before the end of a run's time limit (`Apiary.ModelKeys.claim_keys/3`,
   # `blocked: :due`). The claim calls no provider: it enqueues this job, and the run waits
   # for it (`Apiary.Runs.Waiting`). The job calls `Apiary.ModelKeys.Login.access_token/3`
   # with `expires_before:` the time the claim gave, with the refresh reason of a sweep

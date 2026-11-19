@@ -77,10 +77,14 @@ defmodule Apiary.Dispatches.RunEnd do
   # `image_registry_unreachable`, ends as any exit ends it: a build or a new run pulls
   # from the same registry, so nothing is cleared or queued again.
   #
-  # **A pause.** A run that is not a prebuild, whose folded exit paused it at its model
-  # keys' limit (`Apiary.Runs.Run.paused?/1`, the reason `model_key_limit`), ends
-  # `run_ended` as any exit ends it, and then, in the same transaction, the run that
-  # continues it is queued (`Apiary.Dispatches.requeue_for_pause/2`), with the earliest
+  # **A pause.** A run that is not a prebuild, whose folded exit paused it
+  # (`Apiary.Runs.Run.paused?/1`: the reason `model_key_limit`, at its model keys' limit,
+  # or `model_key_switch`), ends `run_ended` as any exit ends it, and then, in the same
+  # transaction, the run that continues it is queued
+  # (`Apiary.Dispatches.requeue_for_pause/3`). After `model_key_switch` the continuation
+  # waits until the end of the paused run's report window, `now` plus
+  # `Apiary.ModelKeys.Report.after_exit_seconds/0`, as the exit has no key and the report
+  # can arrive after it. The continuation is queued with the earliest
   # end of a cooldown of the keys of the provider of the session that paused
   # (`Apiary.Runs.Run.session_provider_ids/2`) kept on it when every one of them is in
   # cooldown then (`Apiary.ModelKeys.cooling_until/2`). The stage runner then reads the
@@ -449,8 +453,9 @@ defmodule Apiary.Dispatches.RunEnd do
   defp paused(_held, %DispatchRun{} = dispatch_run, %Run{} = run, :run_ended, now) do
     if Run.paused?(run) and not Run.cancel_requested?(run) do
       providers = Run.session_provider_ids(run, run.paused_session)
+      paused_until = ModelKeys.cooling_until(providers, now)
 
-      case Dispatches.requeue_for_pause(dispatch_run, ModelKeys.cooling_until(providers, now)) do
+      case Dispatches.requeue_for_pause(dispatch_run, paused_until, report_wait_until(run, now)) do
         {:ok, next} -> [next.workspace_id | Settle.told(next.work_item_id)]
         {:error, _not_requeued} -> []
       end
@@ -460,6 +465,13 @@ defmodule Apiary.Dispatches.RunEnd do
   end
 
   defp paused(_held, _dispatch_run, _run, _cause, _now), do: []
+
+  # The end of the report window of a run that paused with `model_key_switch`; nil for a
+  # pause at the limit.
+  defp report_wait_until(%Run{exit_reason: "model_key_switch"}, now),
+    do: DateTime.add(now, Apiary.ModelKeys.Report.after_exit_seconds(), :second)
+
+  defp report_wait_until(_run, _now), do: nil
 
   # For the run of the queue `dispatch_run_id`, read without a lock, when its registered
   # run's folded exit is `failed` with the reason `image_missing` and it started in the
@@ -537,23 +549,26 @@ defmodule Apiary.Dispatches.RunEnd do
   # a claim that cannot form a run's input. The registered run is left as it is: its
   # gateway closes it. The ids of the workspaces whose slots changed, and the work item to
   # tell, for the caller to tell (`Apiary.Dispatches.broadcast/1`); none for a run of the
-  # queue no longer handed over.
+  # queue no longer handed over. Once the end has committed the run's session records are
+  # written again, outside it (`Apiary.Runs.Sessions.write_after_end/1`).
   @doc false
   @spec unformed(Run.t(), :ticket_gone | :inputs_invalid) :: [Ecto.UUID.t() | Settle.told()]
   def unformed(%Run{id: run_id, dispatch_run_id: dispatch_run_id}, cause)
       when is_binary(dispatch_run_id) and cause in [:ticket_gone, :inputs_invalid] do
-    {:ok, changed} =
+    {:ok, {changed, ended}} =
       Repo.transact(fn ->
         held = hold(dispatch_run_id)
 
         with %DispatchRun{state: :handed_over} = dispatch_run <- lock(dispatch_run_id),
              %Run{} = run <- locked_run(run_id) do
-          {:ok, finish(dispatch_run, run, cause, now(), held)}
+          {:ok, {finish(dispatch_run, run, cause, now(), held), true}}
         else
-          _not_handed_over -> {:ok, []}
+          _not_handed_over -> {:ok, {[], false}}
         end
       end)
 
+    # The records are written once the end has committed (`Apiary.Runs.Sessions`).
+    if ended, do: Apiary.Runs.Sessions.write_after_end(run_id)
     changed
   end
 
@@ -600,7 +615,9 @@ defmodule Apiary.Dispatches.RunEnd do
   # separate transaction, the run of the queue locked first, then the registered run.
   # Nothing changes for a dispatch not handed over, of a run of the queue not handed over
   # any more, or of a run that redeemed its code. The ids of the workspaces whose slots
-  # changed, for the caller to tell (`Apiary.Dispatches.broadcast/1`).
+  # changed, for the caller to tell (`Apiary.Dispatches.broadcast/1`). Once the end has
+  # committed the run's session records are written again, outside it
+  # (`Apiary.Runs.Sessions.write_after_end/1`).
   @doc false
   @spec machine_stopped(Dispatch.t()) :: [Ecto.UUID.t() | Settle.told()]
   def machine_stopped(%Dispatch{
@@ -636,7 +653,11 @@ defmodule Apiary.Dispatches.RunEnd do
         end
       end)
 
-    if failed, do: Apiary.Runs.broadcast_changed(failed)
+    if failed do
+      Apiary.Runs.broadcast_changed(failed)
+      Apiary.Runs.Sessions.write_after_end(failed.id)
+    end
+
     changed
   end
 
@@ -657,7 +678,9 @@ defmodule Apiary.Dispatches.RunEnd do
   # (`run_refused`): at most `@batch`, each in a separate transaction. One that
   # raises is logged by its id and the exception's module, in one line, and the rest are
   # still ended. The ids of the workspaces whose slots changed, and the work items whose
-  # run settled, for the caller to tell (`Apiary.Dispatches.broadcast/1`).
+  # run settled, for the caller to tell (`Apiary.Dispatches.broadcast/1`). After each end
+  # has committed, its run's session records are written again, outside it
+  # (`Apiary.Runs.Sessions.write_after_end/1`).
   @doc false
   @spec lose(DateTime.t()) :: [Ecto.UUID.t() | Settle.told()]
   def lose(%DateTime{} = now), do: now |> lose(nil) |> elem(0)
@@ -709,8 +732,9 @@ defmodule Apiary.Dispatches.RunEnd do
 
   # A silent run lost for good is broadcast as changed once its end commits.
   defp lose_guarded(id, now) do
-    {:ok, {changed, silenced}} = Repo.transact(fn -> {:ok, lose_one(id, now)} end)
+    {:ok, {changed, silenced, run_id}} = Repo.transact(fn -> {:ok, lose_one(id, now)} end)
     if silenced, do: Apiary.Runs.broadcast_changed(silenced)
+    if run_id, do: Apiary.Runs.Sessions.write_after_end(run_id)
     Apiary.Runs.StuckLog.clear({:lose, id})
     changed
   rescue
@@ -736,9 +760,9 @@ defmodule Apiary.Dispatches.RunEnd do
            Repo.one(from r in Run, where: r.dispatch_run_id == ^id, lock: "FOR UPDATE"),
          cause when not is_nil(cause) <- cause(dispatch_run, run, now) do
       silenced = if cause == :lost and silent?(run, now), do: silenced(run, now)
-      {finish(dispatch_run, run, cause, now, held), silenced}
+      {finish(dispatch_run, run, cause, now, held), silenced, run.id}
     else
-      _nothing -> {[], nil}
+      _nothing -> {[], nil, nil}
     end
   end
 
@@ -938,7 +962,8 @@ defmodule Apiary.Dispatches.RunEnd do
   # The run of the queue ended with `cause`, and `detail` kept on it, its live dispatch
   # with the cause, a stale one not yet ended `run_ended`, and the slot freed once where
   # no machine is left (`Apiary.Dispatches.Slots`). Its workspace's queue changed,
-  # whether or not the slot was freed.
+  # whether or not the slot was freed. Its end may leave its workflow's overrides unused
+  # (`Apiary.Processes.delete_leftovers_after_runs/1`).
   # A cause of a handover that cannot form a run (`Apiary.Dispatches.Handover.unformed/0`)
   # comes with the outcome `error` on a run that is not a prebuild, as at the claim.
   defp end_locked(%DispatchRun{id: id, workspace_id: workspace_id} = run, cause, now, detail) do
@@ -948,6 +973,8 @@ defmodule Apiary.Dispatches.RunEnd do
           [state: :ended, end_cause: cause, end_detail: detail, updated_at: now] ++
             unformed_outcome(run, cause)
       )
+
+    :ok = Apiary.Processes.delete_leftovers_after_runs([id])
 
     {_count, _rows} =
       Repo.update_all(

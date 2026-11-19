@@ -2364,6 +2364,26 @@ defmodule ApiaryWeb.OverviewComponents do
               (cause == :model_gone and is_binary(model)),
        do: model_step_words(cause)
 
+  # A run of a stage whose workflows share one run, whose model choices did not fit the
+  # one run at its claim: its line without the values, whatever the choice in effect.
+  defp no_run_words(:model_choice_missing, _choice, _item),
+    do:
+      gettext(
+        "Run the round again. A workflow of the stage had no model, and that workflow's runtime could not use the provider that the run would start on."
+      )
+
+  defp no_run_words(:session_key_missing, _choice, _item),
+    do:
+      gettext(
+        "Run the round again. A workflow of the stage would run on a provider that has no key in the run, or on a second API of a provider that an earlier workflow uses."
+      )
+
+  defp no_run_words(:too_many_providers, _choice, _item),
+    do:
+      gettext(
+        "Run the round again. The workflows of the stage used more than 6 model providers, and one run takes keys of at most 6."
+      )
+
   defp no_run_words(_cause, _choice, _item),
     do: gettext("No run was recorded, so this step cannot show why.")
 
@@ -2376,7 +2396,7 @@ defmodule ApiaryWeb.OverviewComponents do
   defp model_step_words(:key_gone),
     do:
       gettext(
-        "The model key chosen for this workspace is no longer one of its model provider's keys. Choose another model or provider on the Model step, then press Run the test."
+        "Choose another provider on the Model step, or add a key to that provider in Organisation settings › Model providers, then press Run the test. The model provider chosen for this workspace has no key."
       )
 
   defp model_step_words(:model_gone),

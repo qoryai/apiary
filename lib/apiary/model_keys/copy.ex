@@ -5,7 +5,7 @@ defmodule Apiary.ModelKeys.Copy do
   sealed last was set (`secret_values.value_set_at`). Migration 20261111220000 also wrote
   a row for each key of each run that was pending or running at the upgrade, with the
   key's `value_set_at` at that time. A report of the run's keys leaves out a key whose
-  `value_set_at` differs from the row's (`Apiary.ModelKeys.record/3`). The row goes with
+  `value_set_at` differs from the row's (`Apiary.ModelKeys.record/4`). The row goes with
   the run and with the key.
 
   `login_at` is, for a key that is a sign-in (`Apiary.ModelKeys.Login`), the time of the

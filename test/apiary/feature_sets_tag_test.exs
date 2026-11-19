@@ -31,6 +31,7 @@ defmodule Apiary.FeatureSetsTagTest do
     :path_rules,
     :factory,
     :registry,
+    :model_proxies,
     :workflow_model,
     :organisation_policy,
     :organisation_variables

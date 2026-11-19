@@ -32,8 +32,8 @@ defmodule Apiary.Kinds.Provider do
   @models_max 200
   @title_max 128
 
-  # The most a run's `provider_api` takes of the paths of an API, so it stays within the
-  # 8192 octets of `runs_provider_api_check` with the largest endpoint, auth, key prefixes
+  # The most a run's key row takes of the paths of an API in its `api`, so it stays within the
+  # 8192 octets of `run_model_keys_api_check` with the largest endpoint, auth, key prefixes
   # and limit windows the contract allows. The stored text is UTF-8, so the bounds count
   # octets, not characters (a character is up to 4): each path at most 256 octets, and the
   # paths of one API together at most 3072 octets as the stored JSON text has them, each

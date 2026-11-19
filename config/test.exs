@@ -44,6 +44,10 @@ config :apiary, Apiary.Lingo.Domain, test_domains: %{"example" => Apiary.Lingo.D
 # (`Apiary.Kinds.Runtimes.put_test_list/1`). No other build compiles it.
 config :apiary, Apiary.Kinds.Runtimes, test_seam: true
 
+# The tests' seam for a provider catalogue with a description the release's does not have
+# (`Apiary.Kinds.Providers.put_test_list/1`). No other build compiles it.
+config :apiary, Apiary.Kinds.Providers, test_seam: true
+
 # The tests' seams for a settings check that stops (`Apiary.Connections.SettingsFit`,
 # `Apiary.Integrations.Description`). No other build compiles them.
 config :apiary, Apiary.Connections.SettingsFit, test_seam: true

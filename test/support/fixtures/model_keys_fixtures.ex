@@ -82,6 +82,67 @@ defmodule Apiary.ModelKeysFixtures do
     provider
   end
 
+  @doc """
+  Stores `keys` as the model keys of the run `run` (`Apiary.Runs.ModelKey`), as a claim
+  stores them, and sets the run's `provider_connection_id` to the start key's provider:
+  each a map or keyword list with `provider` (its row), `secret_value_id`, and any field
+  of the row; `position` defaults to the key's place in `keys`, `name` to
+  `<provider's public id>-<place>`, `start` to true on the first key, `chain` to
+  `"organisation"`, `secret_id` to the provider's, `pause_for_s` to 60, and `api` to
+  `api` of `opts`, else an Anthropic Messages API. Returns the rows in their order.
+  """
+  def run_keys!(%{id: run_id}, keys, opts \\ []) when is_binary(run_id) do
+    api =
+      opts[:api] ||
+        %{
+          "format" => "anthropic-messages",
+          "endpoint" => "https://api.anthropic.com",
+          "auth" => %{"scheme" => "header", "header" => "x-api-key"}
+        }
+
+    rows =
+      keys
+      |> Enum.with_index(1)
+      |> Enum.map(fn {key, position} ->
+        key = Map.new(key)
+        provider = Map.fetch!(key, :provider)
+
+        Map.merge(
+          %{
+            position: position,
+            name: "#{provider.public_id}-#{position}",
+            start: position == 1,
+            connection_id: provider.id,
+            secret_id: provider.secret_id,
+            chain: "organisation",
+            api: api,
+            pause_for_s: 60
+          },
+          Map.delete(key, :provider)
+        )
+        |> Map.put(:run_id, run_id)
+      end)
+
+    {_count, _rows} = Repo.insert_all(Apiary.Runs.ModelKey, rows)
+
+    if start = Enum.find(rows, & &1.start) do
+      Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^run_id),
+        set: [provider_connection_id: start.connection_id]
+      )
+    end
+
+    stored_keys(run_id)
+  end
+
+  @doc "The model keys stored for the run `run`, or of the run id, in their order."
+  def stored_keys(%{id: run_id}), do: stored_keys(run_id)
+
+  def stored_keys(run_id) when is_binary(run_id),
+    do:
+      Repo.all(
+        from k in Apiary.Runs.ModelKey, where: k.run_id == ^run_id, order_by: [asc: k.position]
+      )
+
   @doc "`seconds` from now, in whole seconds."
   def in_seconds(seconds),
     do: DateTime.utc_now() |> DateTime.add(seconds) |> DateTime.truncate(:second)

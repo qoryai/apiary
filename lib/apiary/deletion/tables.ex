@@ -83,6 +83,9 @@ defmodule Apiary.Deletion.Tables do
     {"connections", :workspace},
     {"run_steps", :workspace},
     {"run_target_writes", :workspace},
+    # A session record's key windows go before it, and both before the run they name.
+    {"session_key_windows", :workspace},
+    {"session_records", :workspace},
     {"run_pushed_commits", :workspace},
     {"deliveries", :workspace},
     {"composed_run_configurations", :workspace},

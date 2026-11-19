@@ -39,9 +39,10 @@ defmodule Apiary.WorkItems.ExploreView do
   #   * `questions`: the questions of the work item's newest questions that a run of the
   #     current take in wrote (`asked.run`) or reopened last (the `reopened.run` of the
   #     last entry of its `history` that has one), in their order, each `%{id:, number:,
-  #     text:, context:, criterion:, options:, state:, asked_run:, run:, run_workspace_id:,
-  #     stage_id:, answer:, history:, follows:, decision:}`: `criterion` the id of the
-  #     acceptance criterion the question is about, such as `ac-3`, nil for none; `run`
+  #     text:, context:, about:, options:, state:, asked_run:, run:, run_workspace_id:,
+  #     stage_id:, answer:, history:, follows:, decision:}`: `about` what the question is
+  #     about as the document has it (`{"work_item" => true}`, or an output's `type` and
+  #     `name` with an `item` where it has one), nil for none; `run`
   #     the number of the run that wrote
   #     or reopened it last, `run_workspace_id` the workspace of that run, `stage_id` the
   #     stage of that run, `number` its place from 1 in the order closed questions, decisions, open
@@ -236,12 +237,13 @@ defmodule Apiary.WorkItems.ExploreView do
     end
   end
 
-  # output/3 is version `number` of `work_item`'s artifact of `type` named `main` as the
+  # output/4 is version `number` of `work_item`'s artifact of `type` named `name` as the
   # page shows it (`message`, its Markdown; `version_id`; `images`), nil for none.
   @doc false
-  @spec output(WorkItem.t(), String.t(), pos_integer) :: map | nil
-  def output(%WorkItem{id: id}, type, number) when is_binary(type) and is_integer(number),
-    do: id |> Explore.document(type, number) |> shown_document()
+  @spec output(WorkItem.t(), String.t(), pos_integer, String.t()) :: map | nil
+  def output(%WorkItem{id: id}, type, number, name \\ "main")
+      when is_binary(type) and is_integer(number) and is_binary(name),
+      do: id |> Explore.document(type, number, name) |> shown_document()
 
   # The text of the newest proposal of the current take in, the one version of the
   # proposal that `explore/2` reads from the store: by its number, as the page shows it
@@ -375,7 +377,7 @@ defmodule Apiary.WorkItems.ExploreView do
         number: numbers[id],
         text: question["question"],
         context: question["context"],
-        criterion: question["criterion"],
+        about: about(question["about"]),
         options: options,
         state: question_state(question["state"]),
         asked_run: get_in(question, ["asked", "run"]),
@@ -393,6 +395,10 @@ defmodule Apiary.WorkItems.ExploreView do
       }
     end
   end
+
+  # A question's `about`, the map the document has, nil for any other value.
+  defp about(%{} = about), do: about
+  defp about(_about), do: nil
 
   # A run's decision on a question, as the page shows it; nil for none.
   defp decision(%{"option" => option, "reason" => reason} = decision) do
@@ -482,11 +488,13 @@ defmodule Apiary.WorkItems.ExploreView do
   # it (`Apiary.Explore.Given`, which pairs a question's moves with its `history` and
   # then its answer by order): `by_id` nil where no move is at its place, with `by`, the
   # name in the document; `recommended` whether the option chosen is the one the run
-  # recommends.
+  # recommends; `proposal` the new wording that the option chosen proposes, as the run
+  # wrote it, nil for none.
   defp given_answer(%{} = answer, move, options) do
     %{
       option: answer["option"],
       recommended: recommended?(options, answer["option"]),
+      proposal: chosen_proposal(options, answer["option"]),
       note: answer["note"],
       by_id: move && move.by_id,
       by: get_in(answer, ["by", "name"]),
@@ -498,6 +506,13 @@ defmodule Apiary.WorkItems.ExploreView do
 
   defp recommended?(options, title),
     do: Enum.any?(options, &(&1.title == title and &1[:recommended] == true))
+
+  defp chosen_proposal(options, title) do
+    Enum.find_value(options, fn
+      %{title: ^title, proposal: proposal} when is_binary(proposal) -> proposal
+      _other -> nil
+    end)
+  end
 
   defp second(%DateTime{} = at), do: at |> DateTime.truncate(:second) |> DateTime.to_iso8601()
 
@@ -768,6 +783,14 @@ defmodule Apiary.WorkItems.ExploreView do
       # different access, the difference as the harness declares the levels now
       # (`Apiary.Stages.shared_access/1`); nil for none.
       shared_access: shared_access(step.dispatch_run),
+      # For a run that ended before it started as its stage's model choices did not fit
+      # the one run, the fault as the choices are now (`Apiary.Stages.shared_models/1`):
+      # `{:model_choice_missing, workflow, runtime, provider}`, `{:too_many_providers,
+      # count, providers}`, `{:session_key_missing, :machine, first}`,
+      # `{:session_key_missing, :no_key, workflow, provider}` or
+      # `{:session_key_missing, :other_api, workflow, api, provider, earlier}`; nil for
+      # none.
+      shared_models: shared_models(step.dispatch_run),
       adapter_failure: adapter_failure(step.dispatch_run),
       harness_failure: harness_failure(step.dispatch_run),
       workflow_gap: workflow_gap(step, work_item),
@@ -825,6 +848,16 @@ defmodule Apiary.WorkItems.ExploreView do
   end
 
   defp shared_access(_dispatch_run), do: nil
+
+  defp shared_models(%{end_cause: cause} = dispatch_run)
+       when cause in [:model_choice_missing, :too_many_providers, :session_key_missing] do
+    case Apiary.Stages.shared_models(dispatch_run) do
+      {:error, %{detail: detail}} -> detail
+      :ok -> nil
+    end
+  end
+
+  defp shared_models(_dispatch_run), do: nil
 
   defp confirmed_result(
          %{take_in: take_in, attempt: attempt},

@@ -112,6 +112,13 @@ defmodule Apiary.ArtifactsTest do
 
   defp json(filename, value), do: file(filename, Jason.encode!(value), "application/json")
 
+  defp criteria,
+    do:
+      Apiary.StagesFixtures.json_file(
+        "acceptance-criteria",
+        Apiary.StagesFixtures.criteria_document()
+      )
+
   defp proposal, do: doc("proposal.md", "## What this is\n\nGift cards at the checkout.")
 
   defp stored_paths(root) do
@@ -132,7 +139,7 @@ defmodule Apiary.ArtifactsTest do
   end
 
   describe "types/1 and type/2" do
-    test "list the ten standard types first, then the workspace's custom types by name", %{
+    test "list the eleven standard types first, then the workspace's custom types by name", %{
       scope: scope
     } do
       {:ok, _type} =
@@ -145,14 +152,21 @@ defmodule Apiary.ArtifactsTest do
 
       assert names ==
                ~w(acceptance-criteria explainer decision-record mockup screenshot demo-video
-                  proposal questions review-comments verdict demo-findings)
+                  proposal questions review-comments verdict verification demo-findings)
     end
 
     test "have the base views and dedicated views of the workflow model", %{scope: scope} do
       types = Map.new(Artifacts.types(scope.workspace), &{&1.name, &1})
 
-      for name <- ~w(acceptance-criteria explainer decision-record proposal),
+      for name <- ~w(explainer decision-record proposal),
           do: assert(types[name].base_view == :document)
+
+      for name <- ~w(acceptance-criteria verification) do
+        assert types[name].base_view == :structured
+        assert types[name].view == nil
+        assert types[name].max_files == 1
+        assert types[name].size_limit == 1_048_576
+      end
 
       assert types["proposal"].max_files == 10
       assert types["proposal"].size_limit == 5 * 1_048_576
@@ -299,10 +313,8 @@ defmodule Apiary.ArtifactsTest do
     test "a push of a hidden type is refused, and writes no row", ctx do
       show!(ctx.scope.workspace, ["mockup"])
 
-      for actor <- [{:run, ctx.run}, {:person, ctx.scope}] do
-        assert {:error, {:unknown_type, "explainer"}} =
-                 Artifacts.push(actor, ctx.work_item, "explainer", [doc()])
-      end
+      assert {:error, {:unknown_type, "explainer"}} =
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
 
       assert count(Artifact) == 0
       assert count(Version) == 0
@@ -319,17 +331,6 @@ defmodule Apiary.ArtifactsTest do
       assert count(Version) == 0
       assert stored_paths(ctx.root) == []
       assert staging_files(ctx.root) == []
-    end
-
-    test "a person's push of a type hidden before the lock writes no version or audit entry",
-         ctx do
-      ArtifactStoreHook.on_stage(fn -> show!(ctx.scope.workspace, ["mockup"]) end)
-
-      assert {:error, {:unknown_type, "explainer"}} =
-               Artifacts.push({:person, ctx.scope}, ctx.work_item, "explainer", [doc()])
-
-      assert count(Version) == 0
-      assert Repo.all(from e in Entry, where: e.action == "artifact.write") == []
     end
 
     test "a push goes on when the list changes before the lock and still has the type", ctx do
@@ -610,7 +611,7 @@ defmodule Apiary.ArtifactsTest do
                Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "mockup", false)
 
       assert stored(ctx.scope) ==
-               ~w(acceptance-criteria explainer decision-record screenshot demo-video)
+               ~w(acceptance-criteria explainer decision-record screenshot demo-video verification)
 
       assert Artifacts.type(ctx.scope.workspace, "mockup") == nil
       refute "mockup" in names(Artifacts.types(ctx.scope.workspace))
@@ -898,6 +899,7 @@ defmodule Apiary.ArtifactsTest do
       "question" => text,
       "options" => [],
       "state" => "open",
+      "about" => %{"work_item" => true},
       "asked" => %{"run" => number, "at" => "2026-11-04T10:00:00Z"}
     }
   end
@@ -1106,7 +1108,7 @@ defmodule Apiary.ArtifactsTest do
       assert count(Version) == 1
     end
 
-    test "stores a question's criterion as the run pushed it, and refuses one not an id",
+    test "stores a question's about as the run pushed it, and refuses an item not an id",
          %{run: run} = context do
       push =
         &Artifacts.push({:run, run}, context.work_item, "questions", [
@@ -1118,21 +1120,167 @@ defmodule Apiary.ArtifactsTest do
         path |> File.read!() |> Jason.decode!()
       end
 
-      with_criterion = Map.put(asked(run, "q1", "Which basket?"), "criterion", "ac-3")
-      without = asked(run, "q2", "Which sale?")
+      {:ok, _criteria} =
+        Artifacts.push({:run, run}, context.work_item, "acceptance-criteria", [criteria()])
+
+      about = %{"type" => "acceptance-criteria", "name" => "main", "item" => "ac-3"}
+      on_criterion = Map.put(asked(run, "q1", "Which basket?"), "about", about)
+      on_work_item = asked(run, "q2", "Which sale?")
 
       for id <- ["AC-3", "ac-0", "criterion-3"] do
-        assert {:error, {:invalid, {:schema, 0, %{path: "#/questions/0/criterion"}}}} =
-                 push.([Map.put(with_criterion, "criterion", id)]),
+        assert {:error, {:invalid, {:schema, 0, %{path: "#/questions/0/about/item"}}}} =
+                 push.([put_in(on_criterion, ["about", "item"], id)]),
                id
       end
 
-      assert count(Version) == 0
+      assert {:error, {:invalid, {:schema, 0, %{path: "#/questions/0"}}}} =
+               push.([Map.delete(on_work_item, "about")])
 
-      # The version keeps the criterion of q1, and q2 without one, as the run pushed them.
-      assert {:ok, %Version{number: 1} = version} = push.([with_criterion, without])
+      assert count(Version) == 1
 
-      assert stored.(version) == %{"questions" => [with_criterion, without]}
+      # The version keeps each about as the run pushed it.
+      assert {:ok, %Version{number: 1} = version} = push.([on_criterion, on_work_item])
+
+      assert stored.(version) == %{"questions" => [on_criterion, on_work_item]}
+    end
+
+    test "refuses acceptance criteria or a verification that fails its schema, and Markdown",
+         %{run: run} = context do
+      push = &Artifacts.push({:run, run}, context.work_item, &1, [&2])
+      criteria = Apiary.StagesFixtures.criteria_document()
+      verification = Apiary.StagesFixtures.verification_document()
+      [first | rest] = criteria["criteria"]
+      [row | rows] = verification["matrix"]
+
+      for {type, document, path} <- [
+            {"acceptance-criteria", Map.delete(criteria, "summary"), "#"},
+            {"acceptance-criteria", %{criteria | "criteria" => []}, "#/criteria"},
+            {"acceptance-criteria",
+             %{criteria | "criteria" => [Map.delete(first, "check") | rest]}, "#/criteria/0"},
+            {"acceptance-criteria",
+             %{criteria | "criteria" => [%{first | "id" => "AC-1"} | rest]}, "#/criteria/0/id"},
+            {"verification", %{verification | "matrix" => [%{row | "state" => "unknown"} | rows]},
+             "#/matrix/0/state"},
+            {"verification", Map.delete(verification, "target_version"), "#"},
+            {"verification", %{verification | "model_families" => []}, "#/model_families"}
+          ] do
+        assert {:error, {:invalid, {:schema, 0, %{path: ^path}}}} =
+                 push.(type, Apiary.StagesFixtures.json_file(type, document)),
+               inspect({type, path})
+      end
+
+      # A criterion's id is once in the criteria.
+      assert {:error,
+              {:invalid,
+               {:schema, 0,
+                %{
+                  path: "#/criteria/2/id",
+                  error: "give criterion 3 an id that no earlier criterion has: ac-1 is taken"
+                }}}} =
+               push.(
+                 "acceptance-criteria",
+                 Apiary.StagesFixtures.json_file("acceptance-criteria", %{
+                   criteria
+                   | "criteria" => [first | rest] |> List.replace_at(2, %{first | "check" => "x"})
+                 })
+               )
+
+      for type <- ["acceptance-criteria", "verification"] do
+        assert {:error, {:invalid, _refusal}} =
+                 push.(type, doc("#{type}.md", "## Matrix\n\n| AC-1 | Met | Done |")),
+               type
+      end
+
+      assert {:ok, _version} = push.("acceptance-criteria", criteria())
+
+      assert {:ok, _version} =
+               push.(
+                 "verification",
+                 Apiary.StagesFixtures.json_file("verification", verification)
+               )
+
+      assert Artifacts.list(context.work_item) |> Enum.map(& &1.type) |> Enum.sort() ==
+               ["acceptance-criteria", "verification"]
+    end
+
+    test "refuses an about that points at an output or a criterion the work item lacks",
+         %{run: run} = context do
+      push =
+        &Artifacts.push({:run, run}, context.work_item, "questions", [
+          json("questions.json", %{"questions" => &1})
+        ])
+
+      on = fn id, about -> Map.put(asked(run, id, "Which basket?"), "about", about) end
+      criterion = %{"type" => "acceptance-criteria", "name" => "main", "item" => "ac-9"}
+      picture = %{"type" => "screenshot", "name" => "scenario-1"}
+
+      assert push.([on.("q1", criterion)]) ==
+               {:error, {:invalid, {:kept, 0, {:about, "q1", "acceptance-criteria", "main"}}}}
+
+      {:ok, _criteria} =
+        Artifacts.push({:run, run}, context.work_item, "acceptance-criteria", [criteria()])
+
+      assert push.([on.("q1", criterion)]) ==
+               {:error,
+                {:invalid, {:kept, 0, {:about_item, "q1", "acceptance-criteria", "main", "ac-9"}}}}
+
+      assert push.([on.("q1", picture)]) ==
+               {:error, {:invalid, {:kept, 0, {:about, "q1", "screenshot", "scenario-1"}}}}
+
+      # A removed criterion keeps its id; an item of an output Qory Apiary does not read
+      # is not checked.
+      {:ok, _picture} =
+        Artifacts.push(
+          {:run, run},
+          context.work_item,
+          "screenshot",
+          [
+            file("step-1.png", @gif, "image/png")
+          ],
+          name: "scenario-1"
+        )
+
+      assert count(Version) == 2
+
+      assert {:ok, %Version{number: 1}} =
+               push.([
+                 on.("q1", %{criterion | "item" => "ac-2"}),
+                 on.("q2", Map.put(picture, "item", "step 3"))
+               ])
+
+      # A withdrawn output counts as none for a new about, and a kept one is not checked
+      # again.
+      {:ok, _withdrawal} =
+        Artifacts.withdraw({:run, run}, context.work_item, "screenshot", name: "scenario-1")
+
+      kept = [
+        on.("q1", %{criterion | "item" => "ac-2"}),
+        on.("q2", Map.put(picture, "item", "step 3"))
+      ]
+
+      assert {:ok, %Version{number: 2}} = push.(kept)
+
+      assert push.(kept ++ [on.("q3", picture)]) ==
+               {:error, {:invalid, {:kept, 0, {:about, "q3", "screenshot", "scenario-1"}}}}
+
+      # An item passes where any version of the acceptance criteria has it: version 2
+      # leaves ac-2 and ac-3 out entirely, and no version has ac-9.
+      {:ok, %Version{number: 2}} =
+        Artifacts.push({:run, run}, context.work_item, "acceptance-criteria", [
+          Apiary.StagesFixtures.json_file(
+            "acceptance-criteria",
+            Apiary.StagesFixtures.criteria_document(%{
+              "criteria" => [%{"id" => "ac-1", "text" => "A code.", "check" => "Tests"}]
+            })
+          )
+        ])
+
+      dropped = on.("q3", %{criterion | "item" => "ac-3"})
+      assert {:ok, %Version{number: 3}} = push.(kept ++ [dropped])
+
+      assert push.(kept ++ [dropped, on.("q4", criterion)]) ==
+               {:error,
+                {:invalid, {:kept, 0, {:about_item, "q4", "acceptance-criteria", "main", "ac-9"}}}}
     end
 
     test "a refused or normalised version of the questions keeps no file without a version",
@@ -1232,6 +1380,29 @@ defmodule Apiary.ArtifactsTest do
 
       assert {:ok, _version} =
                Artifacts.push({:run, run}, context.work_item, "questions", [questions])
+    end
+
+    test "takes the acceptance criteria under the name main alone", %{run: run} = context do
+      assert Artifacts.push({:run, run}, context.work_item, "acceptance-criteria", [criteria()],
+               name: "other"
+             ) == {:error, {:invalid, {:criteria_name, "other"}}}
+
+      assert count(Artifact) == 0
+
+      assert {:ok, %Version{artifact: %Artifact{name: "main"}}} =
+               Artifacts.push({:run, run}, context.work_item, "acceptance-criteria", [criteria()],
+                 name: "main"
+               )
+    end
+
+    test "checks the name of acceptance criteria before the format of their file",
+         %{run: run} = context do
+      broken = json("acceptance-criteria.json", %{"criteria" => "none"})
+      push = &Artifacts.push({:run, run}, context.work_item, "acceptance-criteria", [broken], &1)
+
+      assert push.(name: "other") == {:error, {:invalid, {:criteria_name, "other"}}}
+      assert {:error, {:invalid, {:schema, 0, _detail}}} = push.(name: "main")
+      assert count(Artifact) == 0
     end
 
     test "Explore reads the proposal named main alone", %{run: run} = context do
@@ -1783,66 +1954,9 @@ defmodule Apiary.ArtifactsTest do
     end
   end
 
-  describe "log_refusal/3" do
-    import ExUnit.CaptureLog
-
-    test "writes the refusal's shape, the work item and the type, and nothing of the files",
-         context do
-      changeset =
-        %Version{}
-        |> Ecto.Changeset.change(note: "secret note")
-        |> Ecto.Changeset.add_error(:note, "is too long, secret")
-
-      log =
-        capture_log(fn ->
-          Artifacts.log_refusal(context.work_item, "explainer", {:error, changeset})
-          Artifacts.log_refusal(context.work_item, "<b>plan.md</b>", {:odd, "plan.md", [1, 2]})
-          Artifacts.log_refusal(context.work_item, "explainer", {:error, ~c"plan.md"})
-        end)
-
-      assert log =~
-               "A push from Add a version failed: " <>
-                 "{:error, changeset of Apiary.Artifacts.Version, errors on note}; " <>
-                 "work item #{context.work_item.public_id}, type explainer"
-
-      assert log =~
-               ~s(Add a version failed: {:odd, "…", […]}; ) <>
-                 ~s(work item #{context.work_item.public_id}, type "…")
-
-      # A charlist is a list: its characters are not written, as numbers or as text.
-      assert log =~ "Add a version failed: {:error, […]}; work item"
-      refute log =~ "[112"
-
-      refute log =~ "secret"
-      refute log =~ "plan.md"
-    end
-  end
-
-  describe "push/5 by a person" do
-    test "stores the person's version and an audit entry", %{scope: scope} = context do
-      member = member_fixture(scope)
-
-      assert {:ok, %Version{writer: :person, user_id: user_id, run_id: nil}} =
-               Artifacts.push(
-                 {:person, member.scope},
-                 context.work_item,
-                 "proposal",
-                 [proposal()],
-                 note: "Scope edited"
-               )
-
-      assert user_id == member.user.id
-
-      assert [%Entry{subject_id: subject_id, details: %{"type" => "proposal", "number" => 1}}] =
-               Repo.all(from e in Entry, where: e.action == "artifact.write")
-
-      assert subject_id == context.work_item.id
-    end
-
+  describe "push/5 of a custom type" do
     test "a custom type's document that fails the then of an if is refused with the inner error",
-         %{scope: scope} = context do
-      member = member_fixture(scope)
-
+         %{scope: scope, run: run} = context do
       {:ok, _type} =
         Artifacts.create_type(scope, scope.workspace, %{
           "name" => "bids",
@@ -1859,7 +1973,7 @@ defmodule Apiary.ArtifactsTest do
         })
 
       push =
-        &Artifacts.push({:person, member.scope}, context.work_item, "bids", [
+        &Artifacts.push({:run, run}, context.work_item, "bids", [
           json("bids.json", &1)
         ])
 
@@ -1868,70 +1982,6 @@ defmodule Apiary.ArtifactsTest do
       assert {:error,
               {:invalid, {:schema, 0, %{path: "#", error: "property 'price' is required"}}}} =
                push.(%{"kind" => "fixed"})
-    end
-
-    test "is not found for a person of another organisation", context do
-      other = scope_fixture()
-
-      assert {:error, :not_found} =
-               Artifacts.push({:person, other}, context.work_item, "explainer", [doc()])
-    end
-
-    @tag with_features: Apiary.Features.all() -- [:workflow_model]
-    test "is not found with workflow_model off", %{scope: scope} = context do
-      assert {:error, :not_found} =
-               Artifacts.push({:person, scope}, context.work_item, "explainer", [doc()])
-
-      assert Artifacts.list(context.work_item) == []
-    end
-
-    test "refuses the questions and the review comments, which only member actions write",
-         %{scope: scope} = context do
-      member = member_fixture(scope)
-      at = "2026-11-04T10:00:00Z"
-
-      forged_answer = %{
-        "questions" => [
-          %{
-            "id" => "q1",
-            "question" => "Which basket?",
-            "options" => [%{"title" => "Yes", "explanation" => "Keep it."}],
-            "state" => "answered",
-            "asked" => %{"run" => 1, "at" => at},
-            "answer" => %{"option" => "Yes", "by" => %{"name" => "alice"}, "at" => at}
-          }
-        ]
-      }
-
-      forged_reply = %{
-        "review_comments" => [
-          %{
-            "id" => "c1",
-            "on" => %{"artifact" => "proposal", "version" => 1},
-            "text" => "Refund at once.",
-            "by" => %{"name" => "alice"},
-            "at" => at,
-            "state" => "closed",
-            "replies" => [
-              %{"text" => "Done.", "by" => %{"run" => 7}, "at" => at, "outcome" => "changed"}
-            ]
-          }
-        ]
-      }
-
-      for {type, document} <- [{"questions", forged_answer}, {"review-comments", forged_reply}],
-          actor_scope <- [scope, member.scope] do
-        file = json("#{type}.json", document)
-
-        assert Artifacts.push({:person, actor_scope}, context.work_item, type, [file]) ==
-                 {:error, {:unknown_type, type}}
-
-        assert Apiary.Stages.add_version(actor_scope, context.work_item, type, [file]) ==
-                 {:error, {:unknown_type, type}}
-      end
-
-      assert Artifacts.list(context.work_item) == []
-      assert Repo.all(from e in Entry, where: e.action == "artifact.write") == []
     end
   end
 
@@ -1985,11 +2035,11 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "refuses a work item in another stage, with no row and no message",
-         %{scope: scope, work_item: work_item, root: root} do
+         %{scope: scope, work_item: work_item, run: run, root: root} do
       :ok = Artifacts.subscribe(scope, work_item)
 
       assert {:error, :stage_changed} =
-               Artifacts.push({:person, scope}, work_item, "explainer", [doc()],
+               Artifacts.push({:run, run}, work_item, "explainer", [doc()],
                  stage_id: "st_aaaaaaaaaa",
                  expect_stage: "st_aaaaaaaaaa"
                )
@@ -2006,48 +2056,32 @@ defmodule Apiary.ArtifactsTest do
       assert staging_files(root) == []
     end
 
-    test "stores the version in the same stage", %{scope: scope, work_item: work_item} do
+    test "stores the version in the same stage", %{work_item: work_item, run: run} do
       assert {:ok, %Version{stage_id: "st_bbbbbbbbbb"}} =
-               Artifacts.push({:person, scope}, work_item, "explainer", [doc()],
+               Artifacts.push({:run, run}, work_item, "explainer", [doc()],
                  stage_id: "st_bbbbbbbbbb",
                  expect_stage: "st_bbbbbbbbbb"
                )
     end
 
-    test "compares nothing where the option is left out",
-         %{scope: scope, work_item: work_item} do
+    test "compares nothing where the option is left out", %{work_item: work_item, run: run} do
       assert {:ok, %Version{stage_id: "st_aaaaaaaaaa"}} =
-               Artifacts.push({:person, scope}, work_item, "explainer", [doc()],
+               Artifacts.push({:run, run}, work_item, "explainer", [doc()],
                  stage_id: "st_aaaaaaaaaa"
                )
     end
 
-    test "reads nil as a work item with no stage", %{scope: scope, work_item: work_item} do
+    test "reads nil as a work item with no stage", %{work_item: work_item, run: run} do
       assert {:error, :stage_changed} =
-               Artifacts.push({:person, scope}, work_item, "explainer", [doc()],
-                 expect_stage: nil
-               )
+               Artifacts.push({:run, run}, work_item, "explainer", [doc()], expect_stage: nil)
 
       assert {:ok, %Version{stage_id: nil}} =
                Artifacts.push(
-                 {:person, scope},
+                 {:run, run},
                  in_stage(work_item, nil),
                  "explainer",
                  [doc()],
                  expect_stage: nil
-               )
-    end
-
-    test "refuses a run's push too", %{work_item: work_item, run: run} do
-      assert {:error, :stage_changed} =
-               Artifacts.push(
-                 {:run, run},
-                 work_item,
-                 "verdict",
-                 [
-                   json("verdict.json", %{"verdict" => "passed"})
-                 ],
-                 expect_stage: "st_aaaaaaaaaa"
                )
     end
   end
@@ -2145,8 +2179,11 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "each version comes with who made it", %{run: run, scope: scope} = context do
-      {:ok, by_run} = Artifacts.push({:run, run}, context.work_item, "explainer", [doc()])
-      {:ok, by_person} = Artifacts.push({:person, scope}, context.work_item, "explainer", [doc()])
+      comments = [json("review-comments.json", %{"review_comments" => []})]
+      {:ok, by_run} = Artifacts.push({:run, run}, context.work_item, "review-comments", comments)
+
+      {:ok, by_person} =
+        Artifacts.push({:member_action, scope}, context.work_item, "review-comments", comments)
 
       assert [%Artifact{versions: [person, from_run]}] = Artifacts.list(context.work_item)
       assert {person.user.id, person.run} == {scope.user.id, nil}
@@ -2159,7 +2196,7 @@ defmodule Apiary.ArtifactsTest do
                Artifacts.versions(person.artifact_id |> then(&%Artifact{id: &1}))
 
       assert run_id == run.id
-      assert Artifacts.newest(context.work_item, "explainer").user.id == scope.user.id
+      assert Artifacts.newest(context.work_item, "review-comments").user.id == scope.user.id
     end
   end
 

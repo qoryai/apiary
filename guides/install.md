@@ -526,6 +526,11 @@ Features: skipped the saved feature <name>, which this release does not have.
 - `registry`: the private image registry's tokens and each run's registry credential. If
   it is on and `QORY_REGISTRY` is not set, the boot stops. Needs `security`.
 <!-- /feature -->
+<!-- feature: factory -->
+- `model_proxies`: the model providers whose description lists no models, such as
+  LiteLLM, in the lists where you choose a provider. Off by default. Needs
+  `observability`, `security`, `secrets` and `factory`.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - `workflow_model`: changes to the process of each workspace, its stages in order, each
   with its workflows and its gate. Owners and admins save numbered versions, and trial

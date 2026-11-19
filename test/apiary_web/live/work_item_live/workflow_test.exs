@@ -339,6 +339,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   # newest.
   defp stage_run!(work_item, stage_id, take_in \\ nil) do
     newest = newest_run(work_item)
+    attempt = if take_in, do: 1, else: newest.attempt + 1
 
     %DispatchRun{
       organisation_id: work_item.organisation_id,
@@ -348,8 +349,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item_id: work_item.id,
       step: newest.step,
       take_in: take_in || newest.take_in,
-      attempt: if(take_in, do: 1, else: newest.attempt + 1),
-      of: newest.of,
+      attempt: attempt,
+      of: max(newest.of, attempt),
       queued_at: DateTime.utc_now()
     })
     |> Ecto.Changeset.change(stage_id: stage_id, workflow: "capture-demo", round: 1)
@@ -484,8 +485,15 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       )
   end
 
-  defp push!(actor, work_item, type, stage_id) do
-    {:ok, version} = Artifacts.push(actor, work_item, type, [sample(type)], stage_id: stage_id)
+  # A version of `type` that a live run at `stage_id` pushes
+  # (`Apiary.StagesFixtures.stage_version!/4`).
+  defp stored!(work_item, type, stage_id),
+    do: stage_version!(work_item, type, [sample(type)], stage_id)
+
+  defp push!(actor, work_item, type, stage_id, name \\ "main") do
+    {:ok, version} =
+      Artifacts.push(actor, work_item, type, [sample(type)], stage_id: stage_id, name: name)
+
     version
   end
 
@@ -518,6 +526,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       ]
     })
   end
+
+  defp sample("acceptance-criteria"),
+    do:
+      Apiary.StagesFixtures.json_file(
+        "acceptance-criteria",
+        Apiary.StagesFixtures.criteria_document()
+      )
 
   defp sample(type) do
     %{filename: "#{type}.md", content_type: "text/markdown", binary: "# #{type}"}
@@ -2556,7 +2571,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "an earlier stage's artifact changed after approval", %{conn: conn, scope: scope} do
       work_item = shape_gate_fixture(scope)
-      push!({:person, scope}, work_item, "proposal", @explore)
+      stored!(work_item, "proposal", @explore)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-marks-proposal-main-m", "Approved v1; v2 is newer")
@@ -2601,13 +2616,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       [main, ten, two] =
         for name <- ["main", "scenario-10", "scenario-2"] do
-          {:ok, version} =
-            Artifacts.push({:person, scope}, work_item, "demo-video", [sample("demo-video")],
-              stage_id: @build,
-              name: name
-            )
-
-          version
+          push!({:run, live_stage_run!(work_item, @build)}, work_item, "demo-video", @build, name)
         end
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
@@ -2616,11 +2625,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert has_element?(
                view,
-               "#work-item-stage-gate-output-demo-video-scenario-2",
+               "#work-item-stage-gate-output-demo-video--scenario-2--",
                "demo video scenario-2 v1"
              )
 
-      assert has_element?(view, "#work-item-stage-gate-check-demo-video-scenario-10", "Passed")
+      assert has_element?(view, "#work-item-stage-gate-check-demo-video--scenario-10--", "Passed")
 
       ids =
         view
@@ -2632,8 +2641,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert ids == [
                "work-item-stage-gate-output-demo-video",
-               "work-item-stage-gate-output-demo-video-scenario-2",
-               "work-item-stage-gate-output-demo-video-scenario-10"
+               "work-item-stage-gate-output-demo-video--scenario-2--",
+               "work-item-stage-gate-output-demo-video--scenario-10--"
              ]
 
       view |> element("#work-item-stage-gate-ask-changes") |> render_click()
@@ -2653,7 +2662,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "the submission's draft, linked, above the outputs", %{conn: conn, scope: scope} do
       work_item = at_build(scope, :at_gate)
-      push!({:person, scope}, work_item, "submission", @build)
+      push!({:run, build_run!(work_item)}, work_item, "submission", @build)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-stage-gate-draft-0", "Submission:")
@@ -2682,8 +2691,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
           ]
         })
 
-      {:ok, _version} =
-        Artifacts.push({:person, scope}, work_item, "submission", [submission], stage_id: @build)
+      stage_version!(work_item, "submission", [submission], @build)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
@@ -2728,7 +2736,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "the submission is read once, not again on each refresh", %{conn: conn, scope: scope} do
       work_item = at_build(scope, :at_gate)
-      submission = push!({:person, scope}, work_item, "submission", @build)
+      submission = push!({:run, build_run!(work_item)}, work_item, "submission", @build)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert %{"repositories" => [_repository]} =
@@ -2765,8 +2773,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "each output with its version and its check", %{conn: conn, scope: scope} do
       work_item = at_build(scope, :at_gate)
-      push!({:person, scope}, work_item, "demo-video", @build)
-      video = push!({:person, scope}, work_item, "demo-video", @build)
+      stored!(work_item, "demo-video", @build)
+      video = stored!(work_item, "demo-video", @build)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-stage-gate-output-demo-video", "demo video v2")
@@ -2860,10 +2868,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       |> place!(version, @shape, :at_gate, stage_round: 1, stage_entry: 1)
     end
 
-    defp markdown(name),
-      do: [%{filename: name, content_type: "text/markdown", binary: "# Done"}]
-
-    test "one line, an Add for each output, and no Approve that can only fail", %{
+    test "one line, each output, and no Approve that can only fail", %{
       conn: conn,
       scope: scope
     } do
@@ -2876,46 +2881,37 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                "Shape needs acceptance criteria and explainer"
              )
 
-      assert has_element?(view, "#work-item-stage-gate-add-acceptance-criteria", "Add")
-      assert has_element?(view, "#work-item-stage-gate-add-explainer", "Add")
+      assert has_element?(view, "#work-item-stage-gate-input-acceptance-criteria")
+      assert has_element?(view, "#work-item-stage-gate-input-explainer")
+      refute has_element?(view, "[id^='work-item-stage-gate-add-']")
       refute has_element?(view, "#work-item-stage-gate-approve")
       assert has_element?(view, "#work-item-stage-gate-ask-changes")
     end
 
-    test "Add opens the artifact page with the type chosen", %{conn: conn, scope: scope} do
-      work_item = at_shape_gate(scope, ["acceptance-criteria"])
-      {:ok, view, _html} = live(conn, page(scope, work_item.number))
-
-      {:ok, new, _html} =
-        view
-        |> element("#work-item-stage-gate-add-acceptance-criteria")
-        |> render_click()
-        |> follow_redirect(conn)
-
-      assert has_element?(new, "#artifact-new")
-      assert has_element?(new, ~s|#artifact-form option[selected][value="acceptance-criteria"]|)
-    end
-
-    test "the line goes when a person adds the output, and Approve works", %{
+    test "no card has Add a version: not the gate card, its outputs or the artifacts", %{
       conn: conn,
       scope: scope
     } do
-      work_item = at_shape_gate(scope, ["acceptance-criteria"])
+      work_item = at_shape_gate(scope, ["acceptance-criteria", "explainer"])
+      stored!(work_item, "acceptance-criteria", @shape)
+
+      for tab <- ["", "/ticket"] do
+        {:ok, view, html} = live(conn, page(scope, work_item.number) <> tab)
+
+        refute html =~ "Add a version"
+        refute has_element?(view, "a[href*='/artifacts/new']")
+        refute has_element?(view, "[id^='work-item-stage-gate-add-']")
+        refute has_element?(view, "[id$='-list-add']")
+      end
+
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
-
-      {:ok, _version} =
-        Stages.add_version(scope, work_item, "acceptance-criteria", markdown("ac.md"))
-
-      refute has_element?(view, "#work-item-stage-gate-line")
-      refute has_element?(view, "#work-item-stage-gate-add-acceptance-criteria")
-
-      view |> form("#work-item-stage-gate-approve") |> render_submit()
-
-      assert [%GateDecision{stage_id: @shape}] = decisions(work_item, :approve)
-      assert Repo.get!(WorkItem, work_item.id).stage_id == @build
+      assert has_element?(view, "#work-item-stage-gate-outputs")
+      assert has_element?(view, "#work-item-stage-gate-input-explainer")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/ticket")
+      assert has_element?(view, "#work-item-artifact-list", "acceptance-criteria v1")
     end
 
-    test "a member the gate does not list may add the output and has no Approve", %{
+    test "a member the gate does not list sees the line and has no Approve", %{
       conn: conn,
       scope: scope
     } do
@@ -2925,7 +2921,6 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-stage-gate-line", "Shape needs acceptance criteria")
-      assert has_element?(view, "#work-item-stage-gate-add-acceptance-criteria")
       refute has_element?(view, "#work-item-stage-gate-approve")
     end
 
@@ -2937,7 +2932,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-stage-gate-approve")
     end
 
-    test "at a gate none: the line and Add, no Approve, and a real push passes it on", %{
+    test "at a gate none: the line, and no Approve", %{
       conn: conn,
       scope: scope
     } do
@@ -2945,21 +2940,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-stage-gate-line", "Shape needs acceptance criteria")
-      assert has_element?(view, "#work-item-stage-gate-add-acceptance-criteria", "Add")
       refute has_element?(view, "#work-item-stage-gate-approvers")
       refute has_element?(view, "#work-item-stage-gate-ask-changes")
       refute has_element?(view, "#work-item-stage-gate-approve")
-
-      {:ok, _version} =
-        Stages.add_version(scope, work_item, "acceptance-criteria", markdown("ac.md"))
-
-      assert Repo.get!(WorkItem, work_item.id).stage_id == @build
-
-      # The gate none records the approval, with no member (vault 0252).
-      assert [%GateDecision{stage_id: @shape, user_id: nil, automatic: true}] =
-               decisions(work_item, :approve)
-
-      assert has_element?(view, ~s|#work-item-head-stages-#{@build}[aria-current="step"]|)
     end
 
     test "a member Explore's gate does not list has no review links, and goes back from their form pages",
@@ -3718,7 +3701,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-stage-gate-output-proposal")
     end
 
-    test "past Explore with a proposal waiting: Shape's card keeps its needs and Approve", %{
+    test "past Explore with a proposal waiting: Shape's card keeps its needs", %{
       conn: conn,
       scope: scope
     } do
@@ -3750,13 +3733,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-stage-gate-line", "Shape needs acceptance criteria")
       assert has_element?(view, "#work-item-stage-gate-output-acceptance-criteria")
       assert has_element?(view, "#work-item-stage-gate-ask-changes")
-
-      {:ok, _version} =
-        Stages.add_version(scope, work_item, "acceptance-criteria", markdown("ac.md"))
-
-      refute has_element?(view, "#work-item-stage-gate-line")
-      view |> form("#work-item-stage-gate-approve") |> render_submit()
-      assert Repo.get!(WorkItem, work_item.id).stage_id == @build
+      refute has_element?(view, "#work-item-stage-gate-approve")
     end
 
     test "a stale Approve: the notice lists the output and the stage", %{
@@ -3777,7 +3754,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                "#work-item-stage-notice",
-               "Add acceptance criteria before you approve this stage."
+               "Move this stage back, or give it a workflow that writes acceptance criteria. " <>
+                 "Approve needs them."
              )
     end
   end
@@ -3789,9 +3767,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     } do
       listed = member_fixture(scope, :member)
       work_item = at_build(scope, :at_gate, approvers: %{"members" => [listed.user.id]})
-      push!({:person, scope}, work_item, "demo-video", @build)
-      push!({:person, scope}, work_item, "explainer", @build)
-      push!({:person, scope}, work_item, "submission", @build)
+      stored!(work_item, "demo-video", @build)
+      stored!(work_item, "explainer", @build)
+      stored!(work_item, "submission", @build)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       refute has_element?(view, "#work-item-stage-gate-approve")
@@ -3967,18 +3945,15 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   end
 
   describe "waiting" do
-    test "for inputs: what is missing, Add and Move back", %{conn: conn, scope: scope} do
+    test "for inputs: what is missing and Move back", %{conn: conn, scope: scope} do
       work_item = at_build(scope, :waiting_inputs)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(view, "#work-item-stage-state", "Waits for inputs")
       assert has_element?(view, "#work-item-stage-line", "Build needs acceptance criteria")
       refute has_element?(view, "#work-item-stage-input-mockup")
-
-      assert has_element?(
-               view,
-               ~s|#work-item-stage-add-acceptance-criteria[href="#{page(scope, work_item.number)}/artifacts/new?type=acceptance-criteria"]|
-             )
+      assert has_element?(view, "#work-item-stage-input-acceptance-criteria")
+      refute has_element?(view, "#work-item-stage-add-acceptance-criteria")
 
       render_hook(view, "stage_move", %{
         "number" => "#{work_item.number}",
@@ -4406,7 +4381,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
             close: "#work-item-stage-escalation-close"
           ] do
         work_item = at_build(scope, :escalated, round: 3)
-        push!({:person, scope}, work_item, "explainer", @build)
+        stored!(work_item, "explainer", @build)
         escalate!(work_item, :escalate, "Blocked")
         {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
@@ -5734,7 +5709,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item = at_build(scope, :escalated, round: 3)
 
       for type <- ["demo-video", "explainer"],
-          do: push!({:person, scope}, work_item, type, @build)
+          do: stored!(work_item, type, @build)
 
       escalate!(work_item, :check_failed, nil)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
@@ -6264,7 +6239,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       refute has_element?(view, "#work-item-marks-proposal-main-m")
 
-      push!({:person, scope}, work_item, "proposal", @explore)
+      stored!(work_item, "proposal", @explore)
       assert has_element?(view, "#work-item-marks-proposal-main-m", "Approved v1; v2 is newer")
 
       {1, _} =
@@ -6438,8 +6413,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       conn: conn,
       scope: scope
     } do
-      {work_item, run} = shape_with_run!(scope)
-      push!({:person, scope}, work_item, "acceptance-criteria", @shape)
+      # Shape's run pushes the acceptance criteria, then ends.
+      work_item = shape_gate_on!(scope, ["acceptance-criteria", "explainer"])
+      dispatch_run = stage_run!(work_item, @shape)
+      push!({:run, dispatch_run}, work_item, "acceptance-criteria", @shape)
+      {run, _dispatch_run} = settled_run!(work_item, dispatch_run, "completed")
       href = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
 
       for tab <- @foot_tabs do
@@ -6521,16 +6499,17 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         assert summary(view) == ["2 runs"]
       end
 
-      push!({:person, scope}, work_item, "explainer", @shape)
+      # A second run of Shape pushes the versions.
+      stored!(work_item, "explainer", @shape)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
-      assert summary(view) == ["2 runs", "explainer v1"]
+      assert summary(view) == ["3 runs", "explainer v1"]
 
-      push!({:person, scope}, work_item, "acceptance-criteria", @shape)
-      push!({:person, scope}, work_item, "explainer", @shape)
+      stored!(work_item, "acceptance-criteria", @shape)
+      stored!(work_item, "explainer", @shape)
 
       for tab <- @foot_tabs do
         {:ok, view, _html} = live(conn, page(scope, work_item.number) <> tab)
-        assert summary(view) == ["2 runs", "acceptance criteria v1", "explainer v2"]
+        assert summary(view) == ["3 runs", "acceptance criteria v1", "explainer v2"]
       end
     end
 
@@ -6581,12 +6560,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, amber)
     end
 
-    test "no runs and no artifacts: the block shows, with Add a version", %{
+    test "no runs and no artifacts: the block shows", %{
       conn: conn,
       scope: scope
     } do
       work_item = at_shape_gate(scope, ["acceptance-criteria"])
-      add = ~s(#work-item-record #work-item-artifact-list-add[href*="/artifacts/new"])
 
       for tab <- @foot_tabs do
         {:ok, view, _html} = live(conn, page(scope, work_item.number) <> tab)
@@ -6595,7 +6573,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         assert found(view, "#work-item-record-fold[open]") == 0
         assert found(view, "#work-item-record .q-xp-runrow") == 0
         assert has_element?(view, "#work-item-artifact-list-empty", "No artifacts yet.")
-        assert has_element?(view, add, "Add a version")
+        refute has_element?(view, "#work-item-artifact-list-add")
         refute has_element?(view, "#work-item-explore-wait")
         refute has_element?(view, "#work-item-explore-run")
       end
@@ -6707,14 +6685,6 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       paused
       |> Ecto.Changeset.change(
         provider_connection_id: provider.id,
-        provider_secret_id: provider.secret_id,
-        provider_chain: "organisation",
-        provider_api: %{
-          "format" => "anthropic-messages",
-          "endpoint" => "https://api.model.example/anthropic",
-          "auth" => %{"scheme" => "x-api-key"}
-        },
-        model_keys: [],
         run_settings: %{}
       )
       |> Repo.update!()
@@ -6822,21 +6792,23 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "the page's live updates refresh the block with no reload", %{conn: conn, scope: scope} do
       {work_item, _run} = shape_with_run!(scope)
+      # A second run of Shape, live, which pushes the explainer below.
+      live_stage_run!(work_item, @shape)
       {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/ticket")
 
-      assert summary(view) == ["2 runs"]
+      assert summary(view) == ["3 runs"]
       refute has_element?(view, "#work-item-artifact-list", "explainer v1")
 
       # `{:artifact_pushed, …}`
-      push!({:person, scope}, work_item, "explainer", @shape)
-      assert summary(view) == ["2 runs", "explainer v1"]
+      stored!(work_item, "explainer", @shape)
+      assert summary(view) == ["3 runs", "explainer v1"]
       assert has_element?(view, "#work-item-artifact-list", "explainer v1")
 
       # `{:work_items_changed, ids}`
       stage_run!(work_item, @shape)
       send(view.pid, {:work_items_changed, [work_item.public_id]})
-      assert summary(view) == ["3 runs", "explainer v1"]
-      assert line(view, "#work-item-details-runs") =~ "3 runs"
+      assert summary(view) == ["4 runs", "explainer v1"]
+      assert line(view, "#work-item-details-runs") =~ "4 runs"
 
       # `{:stage_changed, id}`: Build's outputs, none of which has a version.
       {1, _} =
@@ -6851,7 +6823,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       )
 
       assert has_element?(view, ~s|#work-item-head-stages-#{@build}[aria-current="step"]|)
-      assert summary(view) == ["3 runs"]
+      assert summary(view) == ["4 runs"]
       # The same element, whose `open` the page leaves as the reader set it.
       assert found(view, "#work-item-record-fold[phx-mounted]") == 1
     end
@@ -7631,7 +7603,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     test "Request changes: the dialog where the stage runs again; none at a stage with no workflow",
          %{conn: conn, scope: scope} do
       work_item = at_build(scope, :at_gate)
-      push!({:person, scope}, work_item, "explainer", @build)
+      stored!(work_item, "explainer", @build)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       before = spend_runs(work_item)
 
@@ -7700,7 +7672,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       # With the criteria, Build starts implement.
       runs = shape_gate_fixture(scope)
-      push!({:person, scope}, runs, "acceptance-criteria", @shape)
+      stored!(runs, "acceptance-criteria", @shape)
       {:ok, view, _html} = live(conn, page(scope, runs.number))
       before = spend_runs(runs)
       view |> form("#work-item-stage-gate-approve") |> render_submit()
@@ -7817,7 +7789,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     test "Accept as it is: the dialog where the next workflow starts; none where the gate follows",
          %{conn: conn, scope: scope} do
       at_gate = at_build(scope, :escalated, round: 3)
-      push!({:person, scope}, at_gate, "explainer", @build)
+      stored!(at_gate, "explainer", @build)
       escalate!(at_gate, :escalate, "Blocked")
       {:ok, view, _html} = live(conn, page(scope, at_gate.number))
 
@@ -7834,7 +7806,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id), set: [stage_entry: 0])
 
-      push!({:person, scope}, work_item, "explainer", @build)
+      stored!(work_item, "explainer", @build)
       escalate!(work_item, :escalate, "Blocked")
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       before = spend_runs(work_item)
@@ -7895,60 +7867,6 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert spend_runs(waits) == 0
     end
 
-    test "Add version: the dialog where the version starts the stage; none where it does not",
-         %{conn: conn, scope: scope} do
-      tmp =
-        Path.join(
-          System.tmp_dir!(),
-          "spend-#{System.pid()}-#{System.unique_integer([:positive])}"
-        )
-
-      previous = Application.get_env(:apiary, :artifacts_dir)
-      Application.put_env(:apiary, :artifacts_dir, tmp)
-
-      on_exit(fn ->
-        Application.put_env(:apiary, :artifacts_dir, previous)
-        File.rm_rf!(tmp)
-      end)
-
-      work_item = at_build(scope, :waiting_inputs)
-      before = spend_runs(work_item)
-
-      {:ok, view, _html} =
-        live(conn, page(scope, work_item.number) <> "/artifacts/new?type=acceptance-criteria")
-
-      add_criteria(view)
-
-      assert has_element?(view, "#spend-dialog-title", "Add version?")
-      assert has_element?(view, ~s|#spend-dialog[data-return="artifact-save"]|)
-
-      assert line(view, "#spend-dialog-line") ==
-               "Starts a run of capture-demo on #{machine(scope)}. The run uses model tokens."
-
-      assert Artifacts.list(work_item) == []
-
-      # Cancel keeps the uploaded file: Add version again opens the dialog with it.
-      view |> element("#spend-dialog-cancel") |> render_click()
-      refute has_element?(view, "#spend-dialog")
-      assert Artifacts.list(work_item) == []
-
-      submit_criteria(view)
-      assert has_element?(view, "#spend-dialog-title", "Add version?")
-      view |> form("#spend-dialog-form") |> render_submit()
-      assert [_artifact] = Artifacts.list(work_item)
-      assert spend_runs(work_item) == before + 1
-
-      # A second version at the gate of a stage with workflows starts nothing.
-      gate = at_build(scope, :at_gate)
-
-      {:ok, view, _html} =
-        live(conn, page(scope, gate.number) <> "/artifacts/new?type=acceptance-criteria")
-
-      # No dialog: the version is added and the page goes to it.
-      assert {:error, {:live_redirect, _to}} = add_criteria(view)
-      assert [_artifact] = Artifacts.list(gate)
-    end
-
     # The members' document with `changes`, a map of stage id to the keys it sets, put
     # over those stages.
     defp changed(changes) do
@@ -7981,7 +7899,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       )
 
       approve = shape_gate_fixture(scope)
-      push!({:person, scope}, approve, "acceptance-criteria", @shape)
+      stored!(approve, "acceptance-criteria", @shape)
       {:ok, view, _html} = live(conn, page(scope, approve.number))
       before = spend_runs(approve)
       view |> form("#work-item-stage-gate-approve") |> render_submit()
@@ -8106,7 +8024,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       unchanged.()
     end
 
-    test "Cancel and Escape start nothing: Confirm, Approve, Request changes, Accept as it is, Check again and Add version",
+    test "Cancel and Escape start nothing: Confirm, Approve, Request changes, Accept as it is and Check again",
          %{conn: conn, scope: scope} do
       # Confirm, where Shape has a workflow.
       save!(
@@ -8136,7 +8054,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       )
 
       approve = shape_gate_fixture(scope)
-      push!({:person, scope}, approve, "acceptance-criteria", @shape)
+      stored!(approve, "acceptance-criteria", @shape)
       {:ok, view, _html} = live(conn, page(scope, approve.number))
       before = spend_runs(approve)
 
@@ -8151,7 +8069,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       # Request changes at Build's gate.
       changes = at_build(scope, :at_gate)
-      push!({:person, scope}, changes, "explainer", @build)
+      stored!(changes, "explainer", @build)
       {:ok, view, _html} = live(conn, page(scope, changes.number))
       view |> element("#work-item-stage-gate-ask-changes") |> render_click()
       before = spend_runs(changes)
@@ -8175,7 +8093,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^accept.id), set: [stage_entry: 0])
 
-      push!({:person, scope}, accept, "explainer", @build)
+      stored!(accept, "explainer", @build)
       escalate!(accept, :escalate, "Blocked")
       {:ok, view, _html} = live(conn, page(scope, accept.number))
       before = spend_runs(accept)
@@ -8206,43 +8124,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
           assert spend_runs(check) == 0
         end
       )
-
-      # Add version of the input that Build waits for.
-      tmp =
-        Path.join(
-          System.tmp_dir!(),
-          "spend-#{System.pid()}-#{System.unique_integer([:positive])}"
-        )
-
-      previous = Application.get_env(:apiary, :artifacts_dir)
-      Application.put_env(:apiary, :artifacts_dir, tmp)
-
-      on_exit(fn ->
-        Application.put_env(:apiary, :artifacts_dir, previous)
-        File.rm_rf!(tmp)
-      end)
-
-      add = at_build(scope, :waiting_inputs)
-
-      {:ok, view, _html} =
-        live(conn, page(scope, add.number) <> "/artifacts/new?type=acceptance-criteria")
-
-      view
-      |> file_input("#artifact-form", :files, [
-        %{name: "criteria.md", content: "# Criteria", type: "text/markdown"}
-      ])
-      |> render_upload("criteria.md")
-
-      cancel_and_escape(view, fn -> submit_criteria(view) end, fn ->
-        assert Artifacts.list(add) == []
-        assert spend_runs(add) == 0
-      end)
     end
 
     test "Request changes with the note cleared in the dialog: no change, and the note's error under the page's form",
          %{conn: conn, scope: scope} do
       work_item = at_build(scope, :at_gate)
-      push!({:person, scope}, work_item, "explainer", @build)
+      stored!(work_item, "explainer", @build)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       before = spend_runs(work_item)
 
@@ -8264,24 +8151,6 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert decisions(work_item, :request_changes) == []
       assert spend_runs(work_item) == before
-    end
-
-    defp add_criteria(view) do
-      view
-      |> file_input("#artifact-form", :files, [
-        %{name: "criteria.md", content: "# Criteria", type: "text/markdown"}
-      ])
-      |> render_upload("criteria.md")
-
-      submit_criteria(view)
-    end
-
-    defp submit_criteria(view) do
-      view
-      |> form("#artifact-form",
-        artifact: %{type: "acceptance-criteria", name: "main", note: "First draft"}
-      )
-      |> render_submit()
     end
   end
 end

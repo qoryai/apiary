@@ -114,7 +114,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
 
     # Every place that links to a work item uses the address with no tab: the Work items
     # list and board, the Backlog's Take in and its ticket page, a run's page, Activity, a
-    # version's page and its Add a version page, and the link Copy in the header.
+    # version's page, and the link Copy in the header.
     test "an address with no tab opens on Explore's tab while the stage is Explore", %{
       conn: conn,
       scope: scope

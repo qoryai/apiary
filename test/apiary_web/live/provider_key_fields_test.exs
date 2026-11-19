@@ -125,9 +125,14 @@ defmodule ApiaryWeb.ProviderKeyFieldsTest do
     {:ok, lv, _html} =
       build_conn() |> log_in_user(user) |> live(~p"/#{organisation}/main/set-up/model")
 
+    # Continue saves once every tier has a model.
     lv
     |> form("#set-up-model-form",
-      model: %{provider: "anthropic", key: "\t#{@key} two \n"}
+      model: %{
+        provider: "anthropic",
+        key: "\t#{@key} two \n",
+        tiers: Apiary.ModelChoicesFixtures.every_tier("claude-opus-5-5")
+      }
     )
     |> render_submit()
 

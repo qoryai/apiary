@@ -30,7 +30,7 @@ defmodule Apiary.Secrets.Value do
     field :nonce, :binary, redact: true
     field :ciphertext, :binary, redact: true
     # When the value was last set, by this server's clock: at its insert and at each new
-    # value, never at a rename (`Apiary.ModelKeys.record/3`).
+    # value, never at a rename (`Apiary.ModelKeys.record/4`).
     field :value_set_at, :utc_datetime_usec
     # The last 4 characters of a model provider's key that is not a sign-in, written with
     # the value (`hint/1`); nil for every other value. It is derived from the secret, so it

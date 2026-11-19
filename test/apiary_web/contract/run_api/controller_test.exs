@@ -459,12 +459,6 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       people = %{"inputs" => [], "sequence" => [], "outputs" => []}
       gate = %{"kind" => "person", "approvers" => "members"}
 
-      {:ok, _type} =
-        Apiary.Artifacts.create_type(ctx.scope, ctx.work_item_workspace, %{
-          "name" => "verification",
-          "base_view" => "document"
-        })
-
       stages = [
         Map.merge(people, %{"id" => @explore, "name" => "Explore", "gate" => gate}),
         Map.merge(people, %{"id" => build, "name" => "Build", "gate" => gate}),
@@ -475,7 +469,16 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       {:ok, version} = Apiary.Processes.save(ctx.scope, ctx.work_item_workspace, document)
 
       verification =
-        store!(ctx, "verification", [file("v.md", "text/markdown", "# Criterion 2 fails")],
+        store!(
+          ctx,
+          "verification",
+          [
+            file(
+              "verification.json",
+              "application/json",
+              Jason.encode!(Apiary.StagesFixtures.verification_document())
+            )
+          ],
           stage_id: verify
         )
 
@@ -688,6 +691,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       assert body["notes"] == [
                %{
+                 "id" => first.public_id,
                  "kind" => "request_changes",
                  "stage_id" => @explore,
                  "by" => %{"name" => name},
@@ -696,6 +700,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                  "at" => at(first.inserted_at)
                },
                %{
+                 "id" => second.public_id,
                  "kind" => "move",
                  "stage_id" => @explore,
                  "by" => %{"name" => name},
@@ -704,6 +709,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                  "at" => at(second.inserted_at)
                },
                %{
+                 "id" => nil,
                  "kind" => "check",
                  "stage_id" => @explore,
                  "by" => nil,
@@ -761,6 +767,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       assert body["notes"] == [
                %{
+                 "id" => move.public_id,
                  "kind" => "move",
                  "stage_id" => shape,
                  "by" => %{"name" => name},
@@ -769,6 +776,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                  "at" => at(move.inserted_at)
                },
                %{
+                 "id" => open.public_id,
                  "kind" => "request_changes",
                  "stage_id" => @explore,
                  "by" => %{"name" => name},
@@ -881,6 +889,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                        "withdrawn" => false,
                        "stage_id" => @explore,
                        "note" => nil,
+                       "decision" => nil,
+                       "decision_at" => nil,
                        "at" =>
                          version.inserted_at
                          |> DateTime.truncate(:second)
@@ -1014,11 +1024,6 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       assert registered_id == registered.id
 
-      {:ok, _person} =
-        Apiary.Artifacts.push({:person, ctx.scope}, ctx.work_item, "explainer", [
-          file("notes.md", "text/markdown", "y")
-        ])
-
       {:ok, _cancelled} = Apiary.Runs.cancel(ctx.scope, Repo.get!(Run, ctx.run.id))
 
       body = json_response(read(ctx, "/artifacts"), 200)
@@ -1029,10 +1034,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                %{"number" => 1, "cancelled" => true}
              ] = by_type["screenshot"]
 
-      assert [
-               %{"number" => 2, "writer" => %{"kind" => "person"}, "cancelled" => false},
-               %{"number" => 1, "writer" => %{"run_id" => run_id}, "cancelled" => false}
-             ] = by_type["explainer"]
+      assert [%{"number" => 1, "writer" => %{"run_id" => run_id}, "cancelled" => false}] =
+               by_type["explainer"]
 
       assert run_id == other.run_id
     end
@@ -1884,6 +1887,55 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert [_pages, _images] = RunApiStubs.pushed()
     end
 
+    test "a criterion id that an earlier criterion has: the whole line a run gets", ctx do
+      document = Apiary.StagesFixtures.criteria_document()
+      [first | rest] = document["criteria"]
+      criteria = [first | rest] ++ [%{first | "text" => "Again."}]
+      json = Jason.encode!(%{document | "criteria" => criteria})
+
+      conn =
+        write(
+          ctx,
+          "/artifacts",
+          push_body("acceptance-criteria", [
+            {"acceptance-criteria.json", "application/json", json}
+          ])
+        )
+
+      assert json_response(conn, 422) == %{
+               "error" => "invalid_artifact",
+               "names" => ["files[0]"],
+               "message" =>
+                 "Fix acceptance-criteria.json to match the format of acceptance-criteria: " <>
+                   "at #/criteria/3/id, give criterion 4 an id that no earlier criterion has: " <>
+                   "ac-1 is taken."
+             }
+    end
+
+    test "acceptance criteria under a name other than main: the whole line a run gets", ctx do
+      json = Jason.encode!(Apiary.StagesFixtures.criteria_document())
+      files = [{"acceptance-criteria.json", "application/json", json}]
+
+      conn =
+        write(ctx, "/artifacts", push_body("acceptance-criteria", files, %{"name" => "other"}))
+
+      assert json_response(conn, 422) == %{
+               "error" => "invalid_artifact",
+               "names" => ["name"],
+               "message" =>
+                 "Name the acceptance criteria main: a work item has one set of acceptance " <>
+                   "criteria, and this push has the name other."
+             }
+
+      assert RunApiStubs.pushed() == []
+
+      conn =
+        write(ctx, "/artifacts", push_body("acceptance-criteria", files, %{"name" => "main"}))
+
+      assert %{"artifact" => %{"type" => "acceptance-criteria", "name" => "main"}} =
+               json_response(conn, 201)
+    end
+
     test "a proposal takes 10 files and 5 MiB together, and no more", ctx do
       md = {"proposal.md", "text/markdown", "# Gift cards"}
       images = for n <- 1..10, do: {"#{n}.png", "image/png", @png}
@@ -1932,7 +1984,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
          "Set reopened.run in the history of each question you reopen in questions.json " <>
            "to this run's number."},
         {"questions", :answered_changed,
-         "Leave question, context, options and criterion of each answered question in " <>
+         "Leave question, context, options and about of each answered question in " <>
            "questions.json as the newest version of questions has them, set or absent."},
         {"questions", :follows_changed,
          "Leave follows of each question in questions.json as the newest version of " <>
@@ -1956,7 +2008,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
            "question already in it to decided."},
         {"questions", :decided_changed,
          "Leave question and options of each question with a decision in questions.json " <>
-           "as the newest version of questions has them, and its context and criterion " <>
+           "as the newest version of questions has them, and its context and about " <>
            "while it stays decided or answered: to change them, withdraw the question and " <>
            "add a new one."},
         {"questions", :decision_changed,
@@ -1966,6 +2018,12 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         {"questions", :decision_run,
          "Set decision.run of each question in questions.json to the question's asked.run: " <>
            "only the run that asked a question records a decision on it."},
+        {"questions", {:about, "q4", "screenshot", "scenario-2"},
+         "Set about of question q4 in questions.json to an output of this work item, " <>
+           "or to {\"work_item\": true}: the work item has no screenshot named scenario-2."},
+        {"questions", {:about_item, "q4", "acceptance-criteria", "main", "ac-9"},
+         "Set about.item of question q4 in questions.json to a criterion id of " <>
+           "acceptance-criteria named main: no version of it has ac-9."},
         {"review-comments", :id_dropped,
          "Keep every review comment of the newest version of review-comments in " <>
            "review-comments.json: the id of a review comment is missing."},
@@ -2012,7 +2070,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       end
 
       # Every reason of each check has its message.
-      assert Enum.sort(for {"questions", reason, _} <- cases, do: reason) ==
+      assert Enum.sort(for {"questions", reason, _} <- cases, is_atom(reason), do: reason) ==
                Enum.sort(Apiary.Explore.Questions.reasons())
 
       assert Enum.sort(for {"review-comments", reason, _} <- cases, do: reason) ==
@@ -2108,6 +2166,76 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     end
   end
 
+  describe "POST artifacts with a decision (A-20)" do
+    test "stores the id of a person's note; the index has it with the note's time", ctx do
+      place!(ctx)
+      note = decide!(ctx, :request_changes, note: "Cover the empty cart.")
+      assert "gd_" <> _random = note.public_id
+
+      body =
+        push_body("screenshot", [{"one.png", "image/png", @png}], %{
+          "decision" => note.public_id
+        })
+
+      assert json_response(write(ctx, "/artifacts", body), 201)
+      [version] = RunApiStubs.pushed()
+      assert version.decision_id == note.public_id
+      assert version.opts[:decision] == note.public_id
+
+      [artifact] = json_response(read(ctx, "/artifacts"), 200)["artifacts"]
+
+      assert [%{"decision" => decision, "decision_at" => decision_at}] = artifact["versions"]
+      assert decision == note.public_id
+      assert decision_at == at(note.inserted_at)
+    end
+
+    test "an id that is not a person's note on this work item is 422 unknown_decision", ctx do
+      place!(ctx)
+      approval = decide!(ctx, :approve, versions: [])
+      theirs = other_run()
+
+      elsewhere =
+        decide!(Map.merge(ctx, %{work_item: theirs.work_item}), :request_changes, note: "Theirs.")
+
+      for id <- [
+            approval.public_id,
+            elsewhere.public_id,
+            "gd_0000000000000000",
+            "es_0000000000000000",
+            "AC-2"
+          ] do
+        body = push_body("screenshot", [{"one.png", "image/png", @png}], %{"decision" => id})
+        conn = write(ctx, "/artifacts", body)
+        assert signed_answer?(conn)
+
+        assert json_response(conn, 422) == %{
+                 "error" => "unknown_decision",
+                 "message" =>
+                   "Set decision to the id of a person's note on this work item, from notes " <>
+                     "in GET work-item, or leave decision out."
+               }
+      end
+
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "a decision that is not text is 400 invalid_request", ctx do
+      for value <- [1, true, %{"id" => "gd_0000000000000000"}] do
+        body = push_body("screenshot", [{"one.png", "image/png", @png}], %{"decision" => value})
+
+        assert json_response(write(ctx, "/artifacts", body), 400) == %{
+                 "error" => "invalid_request",
+                 "names" => ["decision"]
+               }
+      end
+
+      # A null decision is none.
+      body = push_body("screenshot", [{"one.png", "image/png", @png}], %{"decision" => nil})
+      assert json_response(write(ctx, "/artifacts", body), 201)
+      assert [%{decision_id: nil}] = RunApiStubs.pushed()
+    end
+  end
+
   describe "POST artifacts with withdraw" do
     defp withdrawal(type, name, extra \\ %{}),
       do: Map.merge(%{"type" => type, "name" => name, "withdraw" => true}, extra)
@@ -2165,6 +2293,42 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
              ] = artifact["versions"]
     end
 
+    test "stores the decision of a withdrawal, which the index lists with its time", ctx do
+      place!(ctx)
+      note = decide!(ctx, :request_changes, note: "Drop scenario-2.")
+      store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-2")
+
+      body = withdrawal("screenshot", "scenario-2", %{"decision" => note.public_id})
+      assert json_response(write(ctx, "/artifacts", body), 201)
+
+      [withdrawn] = RunApiStubs.pushed()
+      assert withdrawn.withdrawn
+      assert withdrawn.decision_id == note.public_id
+
+      [artifact] = json_response(read(ctx, "/artifacts"), 200)["artifacts"]
+
+      assert [%{"withdrawn" => true, "decision" => decision, "decision_at" => decision_at}, _] =
+               artifact["versions"]
+
+      assert decision == note.public_id
+      assert decision_at == at(note.inserted_at)
+    end
+
+    test "refuses a decision that is not a person's note with 422 unknown_decision", ctx do
+      place!(ctx)
+      approval = decide!(ctx, :approve, versions: [])
+      store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-2")
+
+      body = withdrawal("screenshot", "scenario-2", %{"decision" => approval.public_id})
+      conn = write(ctx, "/artifacts", body)
+
+      assert json_response(conn, 422)["error"] == "unknown_decision"
+      assert RunApiStubs.pushed() == []
+
+      [artifact] = json_response(read(ctx, "/artifacts"), 200)["artifacts"]
+      assert [%{"number" => 1, "withdrawn" => false}] = artifact["versions"]
+    end
+
     test "takes files as an empty list, and withdraw only as true, false or null", ctx do
       store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-2")
 
@@ -2189,7 +2353,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert [%{number: 2}] = RunApiStubs.pushed()
     end
 
-    test "refuses a name with no version, files, a withdrawal and a person's upload", ctx do
+    test "refuses a name with no version, files and a withdrawal", ctx do
       conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-2"))
       assert signed_answer?(conn)
 
@@ -2231,29 +2395,6 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                    "withdrawal."
              }
 
-      # A run's version, then a person's upload on top of it.
-      store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-1")
-
-      {:ok, _upload} =
-        Apiary.Artifacts.push(
-          {:person, ctx.scope},
-          ctx.work_item,
-          "screenshot",
-          [file("one.png", "image/png", @png <> "b")],
-          name: "scenario-1"
-        )
-
-      conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-1"))
-
-      assert json_response(conn, 409) == %{
-               "error" => "person_version",
-               "type" => "screenshot",
-               "message" =>
-                 "Leave screenshot/scenario-1 to a member. Its newest version, v2, is a " <>
-                   "version by #{Inputs.person_name(ctx.scope.user.id)}, and a run withdraws " <>
-                   "only a name whose newest version a run wrote."
-             }
-
       # Only the one withdrawal was stored.
       assert [%{number: 2, withdrawn: true}] = RunApiStubs.pushed()
 
@@ -2262,7 +2403,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
             into: %{},
             do: {artifact["name"], artifact["newest_version"]}
 
-      assert numbers == %{"scenario-1" => 2, "scenario-2" => 2}
+      assert numbers == %{"scenario-2" => 2}
     end
 
     test "refuses each type Qory Apiary reads itself, before the files", ctx do
@@ -2836,6 +2977,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
             "question" => "Which basket gets the sale?",
             "options" => [],
             "state" => "open",
+            "about" => %{"work_item" => true},
             "asked" => %{"run" => ctx.run.number, "at" => "2026-11-08T10:00:00Z"}
           }
         ]
@@ -3047,7 +3189,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     # default), of `ctx`'s work item, take in and stage unless `:same_item` is false, then
     # of another work item of that scope, ended Paused, with the transcript chunks
     # `chunks`, each `{sequence, offset, bytes}`. `ctx`'s run becomes its second attempt,
-    # with the `resume` its claim stores (`Apiary.Runs.Transcript.resume_at_claim/1`).
+    # with the `resume` its claim stores (`Apiary.Runs.Transcript.resume_at_claim/2`).
     defp paused!(ctx, chunks, opts \\ []) do
       scope = Keyword.get(opts, :scope, ctx.scope)
 

@@ -63,7 +63,11 @@ defmodule Apiary.SealedRunsFixtures do
       ModelChoices.put_choice(
         scope,
         :workspace,
-        Map.put(Map.new(Keyword.get(opts, :choice, %{})), :provider, provider.public_id)
+        opts
+        |> Keyword.get(:choice, %{})
+        |> Map.new()
+        |> Map.put(:provider, provider.public_id)
+        |> Map.put_new(:tiers, Apiary.ModelChoicesFixtures.every_tier(provider))
       )
 
     if fun = opts[:before_claim], do: fun.(provider)

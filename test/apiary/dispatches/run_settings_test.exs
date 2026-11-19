@@ -2,23 +2,25 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   # The run settings of an explore run a claim registers (`Apiary.Dispatches.RunSettings`):
   # what the model choices resolve to, the API of the provider the run uses, the causes
   # that end the run, and what the run keeps. The races with a provider's change are
-  # `run_settings_races_test.exs`; the answer's 1 MiB limit and the features off are
-  # `run_settings_budget_test.exs`.
+  # `run_settings_races_test.exs`; the answer's 1 MiB limit is
+  # `run_settings_budget_test.exs`; the order of the levels and the features off are
+  # `run_settings_defaults_test.exs`.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
   import ExUnit.CaptureLog, only: [with_log: 1]
   import Apiary.DispatchedRunsFixtures
+  import Apiary.ModelChoicesFixtures, only: [every_tier: 1]
   import Apiary.ModelKeysFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, Repo}
+  alias Apiary.{Connections, Dispatches, ModelChoices, Repo, Stacks}
   alias Apiary.Connections.Connection
   alias Apiary.Dispatches.{Dispatch, DispatchRun, RunSettings}
   alias Apiary.Kinds.{Coded, Providers, Runtimes}
   alias Apiary.ModelChoices.{ModelChoice, Resolution}
-  alias Apiary.Runs.{Projector, Run, Target}
+  alias Apiary.Runs.{ModelKey, Projector, Run, Target}
   alias Apiary.Secrets.Value
 
   @moduletag needs: :factory
@@ -27,6 +29,8 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   @runtime hd(Apiary.Kinds.Runtimes.list()).name
 
   @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
+  @harness "extends: {git: https://code.example.com/team/stacks, ref: main, path: core}\n"
+  @workflow "explore-a-ticket"
   @key "sk-ant-run-settings-0123456789"
   @efforts ~w(low medium high xhigh max)
   @messages %{
@@ -111,18 +115,50 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   defp settings(%{run_settings: settings}), do: settings |> Jason.encode!() |> Jason.decode!()
 
   # The value ids of the keys a run keeps, in its order.
-  defp value_ids(%Run{model_keys: keys}) do
+  defp value_ids(%Run{} = run) do
     by_id = Map.new(Repo.all(Value), &{&1.id, &1.value_id})
-    for %{"id" => id} <- keys, do: by_id[id]
+    for %{secret_value_id: id} <- stored_keys(run), do: by_id[id]
   end
+
+  # What the run keeps for a key's entry of the run configuration (`kept/1`), with every
+  # field `attrs` does not set at its value for none.
+  defp key(attrs),
+    do:
+      Map.merge(
+        %{
+          start: false,
+          resets_at: nil,
+          schedule_resets_at: nil,
+          cooldown_until: nil,
+          use_up_to_percent: nil
+        },
+        Map.new(attrs)
+      )
+
+  # A key row's row id, credential name and what the claim wrote for the run
+  # configuration.
+  defp kept(%ModelKey{} = key),
+    do:
+      Map.take(
+        key,
+        ~w(secret_value_id name start pause_for_s resets_at schedule_resets_at cooldown_until
+           use_up_to_percent)a
+      )
 
   defp value!(provider, value_id), do: key_value!(provider, value_id)
   defp state!(provider, value_id, attrs), do: key_state!(provider, value_id, attrs)
 
   defp choose!(scope, place, attrs) do
-    {:ok, choice} = ModelChoices.put_choice(scope, place, attrs)
+    {:ok, choice} = Apiary.ModelChoicesFixtures.put_choice(scope, place, attrs)
     choice
   end
+
+  # A tier map with `entry` on every tier.
+  defp all_tiers(entry), do: Map.new(Resolution.tiers(), &{&1, entry})
+
+  # A fallback of `provider` with `tiers`, on the runtime named `runtime`.
+  defp fallback(provider, tiers, runtime \\ @runtime),
+    do: %{provider: provider.public_id, runtime: runtime, tiers: tiers}
 
   defp models(efforts) do
     for id <- ~w(claude-opus-5-5 claude-sonnet-5-5 claude-haiku-5-5 claude-fable-5-1),
@@ -158,35 +194,46 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       assert settings(handed) == %{"runtime" => @runtime}
 
-      assert %Run{
-               run_settings: %{"runtime" => @runtime},
-               provider_connection_id: nil,
-               provider_secret_id: nil,
-               model_keys: nil,
-               provider_chain: nil,
-               provider_api: nil
-             } = Repo.get!(Run, handed.run.id)
+      assert %Run{run_settings: %{"runtime" => @runtime}, provider_connection_id: nil} =
+               Repo.get!(Run, handed.run.id)
+
+      assert stored_keys(handed.run) == []
     end
   end
 
   describe "a claim with a choice" do
+    # Changed: the tiers sat on a workspace choice with no provider; now one choice sets all.
     test "of a run with no target reads the workspace and organisation levels alone", ctx do
       scope = with_domain(ctx.scope, "example")
       target = Repo.insert!(target(scope, "acme/shop"))
+      thinking = List.last(Resolution.tiers())
+      # The run's model and effort are those of the thinking tier.
+      haiku_tiers =
+        Map.put(every_tier("claude-haiku-5-5"), thinking, %{
+          "model" => "claude-haiku-5-5",
+          "effort" => "low"
+        })
 
       choose!(scope, :organisation, %{
         provider: ctx.provider.public_id,
         model: "claude-opus-5-5",
-        effort: "high"
+        effort: "high",
+        tiers: every_tier("claude-opus-5-5")
       })
 
-      choose!(scope, :workspace, %{tiers: %{"balanced" => "claude-haiku-5-5"}})
+      # The workspace's choice (level 5) comes before the organisation's default (level 6).
+      choose!(scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        model: "claude-haiku-5-5",
+        effort: "low",
+        tiers: haiku_tiers
+      })
 
       # Levels 2 and 3 belong to a target: a run without one reads neither.
       choose!(scope, target, %{
         provider: ctx.provider.public_id,
         model: "claude-sonnet-5-5",
-        tiers: %{"balanced" => "claude-sonnet-5-5"}
+        tiers: every_tier("claude-sonnet-5-5")
       })
 
       {{:ok, handed}, _queued, _dispatch} =
@@ -196,10 +243,12 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       assert settings(handed) == %{
                "runtime" => @runtime,
-               "model" => "claude-opus-5-5",
-               "effort" => "high",
+               "model" => "claude-haiku-5-5",
+               "effort" => "low",
                "provider_models" => models(@efforts),
-               "tiers" => %{"balanced" => "claude-haiku-5-5"}
+               "tiers" =>
+                 Map.new(Resolution.tiers(), &{&1, "claude-haiku-5-5"})
+                 |> Map.put(thinking, haiku_tiers[thinking])
              }
 
       ordered = handed.run_settings |> Jason.encode!() |> Jason.decode!(objects: :ordered_objects)
@@ -215,14 +264,13 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       choose!(ctx.scope, target, %{
         provider: ctx.provider.public_id,
-        key: "spare",
         model: "claude-sonnet-5-5"
       })
 
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
 
       assert %{"model" => "claude-sonnet-5-5"} = settings(handed)
-      assert value_ids(Repo.get!(Run, handed.run.id)) == ["spare", "main"]
+      assert value_ids(Repo.get!(Run, handed.run.id)) == ["main", "spare"]
     end
 
     test "keeps the provider and the API the run uses on the run", ctx do
@@ -234,12 +282,18 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       provider_id = provider.id
       secret_id = provider.secret_id
 
-      assert %Run{
-               provider_connection_id: ^provider_id,
-               provider_secret_id: ^secret_id,
-               provider_chain: "organisation",
-               provider_api: @messages
-             } = run = Repo.get!(Run, handed.run.id)
+      assert %Run{provider_connection_id: ^provider_id} = run = Repo.get!(Run, handed.run.id)
+
+      assert [_, _] = keys = stored_keys(run)
+
+      for key <- keys do
+        assert %ModelKey{
+                 connection_id: ^provider_id,
+                 secret_id: ^secret_id,
+                 chain: "organisation",
+                 api: @messages
+               } = key
+      end
 
       # The default key first, then the other by the order they were added.
       assert value_ids(run) == ["main", "spare"]
@@ -250,13 +304,14 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert settings(handed) == %{
                "runtime" => @runtime,
                "model" => "claude-opus-5-5",
-               "provider_models" => models(@efforts)
+               "provider_models" => models(@efforts),
+               "tiers" => Map.new(Resolution.tiers(), &{&1, "claude-opus-5-5"})
              }
     end
 
     test "has no endpoint, no key, no secret id and no value id", ctx do
       %{provider: provider} = ctx
-      choose!(ctx.scope, :workspace, %{provider: provider.public_id, key: "spare"})
+      choose!(ctx.scope, :workspace, %{provider: provider.public_id})
 
       {result, log} = with_log(fn -> handover!(ctx) end)
       {{:ok, handed}, _queued, _dispatch} = result
@@ -274,34 +329,115 @@ defmodule Apiary.Dispatches.RunSettingsTest do
         refute encoded =~ "spare"
       end
 
-      assert %Run{provider_api: api} = Repo.get!(Run, handed.run.id)
-      refute Jason.encode!(api) =~ "sk-ant"
+      assert [_ | _] = keys = stored_keys(handed.run)
+      for %{api: api} <- keys, do: refute(Jason.encode!(api) =~ "sk-ant")
     end
 
     test "lists the description's models, then each chosen model it does not list", ctx do
-      choose!(ctx.scope, :workspace, %{
-        provider: ctx.provider.public_id,
-        model: "acme-large",
-        tiers: %{
-          "light" => "claude-haiku-5-5",
-          "balanced" => "acme-small",
-          "thinking" => "acme-large"
-        }
-      })
+      # A tier takes a model of the provider's suggestions that its description does not
+      # list.
+      [light, middle, thinking] = Resolution.tiers()
+
+      tiers = %{
+        light => "claude-haiku-5-5",
+        middle => "claude-sonnet-4-6",
+        thinking => "claude-opus-4-8"
+      }
+
+      choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id, tiers: tiers})
+
+      {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
+
+      # The run's model is the thinking tier's, listed first of the models the description
+      # does not list.
+      assert settings(handed) == %{
+               "runtime" => @runtime,
+               "model" => "claude-opus-4-8",
+               "provider_models" =>
+                 models(@efforts) ++
+                   [%{"id" => "claude-opus-4-8"}, %{"id" => "claude-sonnet-4-6"}],
+               "tiers" => tiers
+             }
+    end
+
+    # Changed: a tier model no list has went with the provider; now it is left out.
+    test "lists the description's models, then the chosen model it does not list, and leaves out a tier model of no list",
+         ctx do
+      [_light, middle, _thinking] = Resolution.tiers()
+
+      choice =
+        choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id, model: "acme-large"})
+
+      # Tiers a save refuses, written past its checks: no thinking tier, and a model of no
+      # list.
+      choice
+      |> Ecto.Changeset.change(tiers: %{"light" => "claude-haiku-5-5", middle => "acme-small"})
+      |> Repo.update!()
+
+      {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
+
+      # `acme-small` is in neither the description nor the suggestions of Anthropic.
+      assert settings(handed) == %{
+               "runtime" => @runtime,
+               "model" => "acme-large",
+               "provider_models" => models(@efforts) ++ [%{"id" => "acme-large"}],
+               "tiers" => %{"light" => "claude-haiku-5-5"}
+             }
+    end
+
+    test "keeps an OpenRouter thinking model that only the suggestions list, and runs on it",
+         ctx do
+      {:ok, router} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "openrouter",
+          keys: [%{value_id: "main", value: "sk-or-run-settings-0123456789"}]
+        })
+
+      # A model of `priv/models/suggestions.json` that the description does not list.
+      gemini = "google/gemini-3.1-pro-preview"
+      described = Enum.map(Connections.provider_models(router), & &1["id"])
+      refute gemini in described
+      assert gemini in ModelChoices.resolution_provider(router).suggested
+
+      choose!(ctx.scope, :workspace, %{provider: router.public_id, tiers: every_tier(gemini)})
 
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
 
       assert settings(handed) == %{
                "runtime" => @runtime,
-               "model" => "acme-large",
+               "model" => gemini,
                "provider_models" =>
-                 models(@efforts) ++ [%{"id" => "acme-large"}, %{"id" => "acme-small"}],
-               "tiers" => %{
-                 "light" => "claude-haiku-5-5",
-                 "balanced" => "acme-small",
-                 "thinking" => "acme-large"
-               }
+                 for(id <- described, do: %{"id" => id, "effort" => @efforts}) ++
+                   [%{"id" => gemini}],
+               "tiers" => Map.new(Resolution.tiers(), &{&1, gemini})
              }
+
+      assert %Run{provider_connection_id: router_id} = Repo.get!(Run, handed.run.id)
+      assert router_id == router.id
+    end
+
+    test "sends the thinking tier's model and effort as the run's", ctx do
+      [_light, middle, _thinking] = Resolution.tiers()
+
+      choose!(ctx.scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        tiers: %{
+          "thinking" => %{"model" => "claude-opus-5-5", "effort" => "max"},
+          middle => "claude-sonnet-5-5",
+          "light" => "claude-haiku-5-5"
+        }
+      })
+
+      {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
+
+      assert %{
+               "model" => "claude-opus-5-5",
+               "effort" => "max",
+               "tiers" => %{
+                 "thinking" => %{"model" => "claude-opus-5-5", "effort" => "max"},
+                 "light" => "claude-haiku-5-5"
+               }
+             } = settings(handed)
     end
   end
 
@@ -322,19 +458,19 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
       run = Repo.get!(Run, handed.run.id)
 
-      assert run.model_keys == [
-               %{
-                 "id" => value!(ctx.provider, "main").id,
-                 "name" => "#{pid}-1",
-                 "pause_for_s" => 60,
-                 "resets_at" => DateTime.to_iso8601(reset)
-               },
-               %{
-                 "id" => value!(ctx.provider, "spare").id,
-                 "name" => "#{pid}-2",
-                 "start" => true,
-                 "pause_for_s" => 300
-               }
+      assert Enum.map(stored_keys(run), &kept/1) == [
+               key(
+                 secret_value_id: value!(ctx.provider, "main").id,
+                 name: "#{pid}-1",
+                 pause_for_s: 60,
+                 resets_at: reset
+               ),
+               key(
+                 secret_value_id: value!(ctx.provider, "spare").id,
+                 name: "#{pid}-2",
+                 start: true,
+                 pause_for_s: 300
+               )
              ]
 
       assert {:ok, %{name: start}} = Apiary.Runs.ProviderCredential.for_run(run)
@@ -346,31 +482,50 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       refute encoded =~ "sk-ant"
     end
 
-    test "send a named key in cooldown after the free keys, chosen, never as the start key",
-         ctx do
-      pid = ctx.provider.public_id
-      choose!(ctx.scope, :workspace, %{provider: pid, key: "spare"})
-      until = in_seconds(3600)
-      state!(ctx.provider, "spare", until: until)
+    test "keep the Pause for of the claim after the key's setting changes", ctx do
+      choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id})
+      spare = value!(ctx.provider, "spare")
+      {:ok, _setting} = put_key_setting(ctx.scope, spare, %{pause_seconds: 300})
 
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
-      [start, cooling] = Repo.get!(Run, handed.run.id).model_keys
+      run = Repo.get!(Run, handed.run.id)
 
-      assert start == %{
-               "id" => value!(ctx.provider, "main").id,
-               "name" => "#{pid}-1",
-               "start" => true,
-               "pause_for_s" => 60
-             }
+      # A member sets the key's Pause for to 15 minutes after the claim.
+      {:ok, _setting} = put_key_setting(ctx.scope, spare, %{pause_seconds: 900})
 
-      assert cooling == %{
-               "id" => value!(ctx.provider, "spare").id,
-               "name" => "#{pid}-2",
-               "pause_for_s" => 60,
-               "resets_at" => DateTime.to_iso8601(until),
-               "cooldown_until" => DateTime.to_iso8601(until),
-               "chosen" => true
-             }
+      assert [%ModelKey{pause_for_s: 300}] =
+               Enum.filter(stored_keys(run), &(&1.secret_value_id == spare.id))
+
+      assert {:ok, credential} = Apiary.Runs.ProviderCredential.for_run(run)
+      assert %{entry: entry} = Enum.find(credential.keys, &(&1.secret_value_id == spare.id))
+      assert entry["pause_for_s"] == 300
+    end
+
+    test "send a key in cooldown after the free keys, never as the start key", ctx do
+      pid = ctx.provider.public_id
+      choose!(ctx.scope, :workspace, %{provider: pid})
+      until = in_seconds(3600)
+      state!(ctx.provider, "main", until: until)
+
+      {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
+      [start, cooling] = Enum.map(stored_keys(handed.run), &kept/1)
+
+      assert start ==
+               key(
+                 secret_value_id: value!(ctx.provider, "spare").id,
+                 name: "#{pid}-1",
+                 start: true,
+                 pause_for_s: 60
+               )
+
+      assert cooling ==
+               key(
+                 secret_value_id: value!(ctx.provider, "main").id,
+                 name: "#{pid}-2",
+                 pause_for_s: 60,
+                 resets_at: until,
+                 cooldown_until: until
+               )
     end
 
     test "are at most 6, the free keys first", ctx do
@@ -389,11 +544,11 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       assert value_ids(run) == ~w(key-3 key-4 key-5 key-6 key-7 key-8)
 
-      assert Enum.map(run.model_keys, & &1["name"]) ==
+      assert Enum.map(stored_keys(run), & &1.name) ==
                for(n <- 1..6, do: "#{many.public_id}-#{n}")
     end
 
-    test "come from the first fallback with a free key, with its model and effort, while every key of the provider is in cooldown",
+    test "come from the first fallback with a free key, with its runtime and tiers, while every key of the provider is in cooldown",
          ctx do
       {:ok, cooling} =
         Connections.create_provider(ctx.scope, %{
@@ -413,8 +568,8 @@ defmodule Apiary.Dispatches.RunSettingsTest do
         provider: ctx.provider.public_id,
         model: "claude-opus-5-5",
         fallbacks: [
-          %{provider: cooling.public_id, model: "claude-opus-5-5", effort: "max"},
-          %{provider: free.public_id, model: "claude-sonnet-5-5", effort: "high"}
+          fallback(cooling, all_tiers(%{"model" => "claude-opus-5-5", "effort" => "max"})),
+          fallback(free, all_tiers(%{"model" => "claude-sonnet-5-5", "effort" => "high"}))
         ]
       })
 
@@ -424,17 +579,93 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       {{:ok, handed}, queued, _dispatch} = handover!(ctx)
 
       assert queued.model_provider_ids == [ctx.provider.id, cooling.id, free.id]
-      assert %{"model" => "claude-sonnet-5-5", "effort" => "high"} = settings(handed)
+
+      assert %{
+               "runtime" => @runtime,
+               "model" => "claude-sonnet-5-5",
+               "effort" => "high",
+               "tiers" => tiers
+             } = settings(handed)
+
+      # The fallback's tiers, its thinking tier as the run's model and effort.
+      assert tiers == all_tiers(%{"model" => "claude-sonnet-5-5", "effort" => "high"})
 
       free_id = free.id
 
-      assert %Run{provider_connection_id: ^free_id, model_keys: [%{"name" => name} = key]} =
-               Repo.get!(Run, handed.run.id)
+      assert %Run{provider_connection_id: ^free_id} = run = Repo.get!(Run, handed.run.id)
+      assert [%ModelKey{name: name} = key] = stored_keys(run)
 
       assert name == "#{free.public_id}-1"
-      assert key["id"] == value!(free, "main").id
-      assert key["pause_for_s"] == 60
-      refute Map.has_key?(key, "chosen")
+      assert key.secret_value_id == value!(free, "main").id
+      assert key.pause_for_s == 60
+    end
+
+    test "come from a fallback on another runtime, with that runtime, an API it takes and the fallback's tiers",
+         ctx do
+      release = Runtimes.list() |> Enum.find(&(&1.name == "claude"))
+
+      # A runtime that takes only a bearer key: the API of the choice's provider, with its
+      # x-api-key header, is not one it takes; OpenRouter's is.
+      bearer = %{
+        release
+        | name: release.name <> "-bearer",
+          title: release.title <> " bearer",
+          model_keys: Enum.filter(release.model_keys, &(&1["auth"] == %{"scheme" => "bearer"}))
+      }
+
+      :ok = Runtimes.put_test_list([release, bearer])
+      {:ok, anthropic} = Providers.fetch("anthropic")
+      assert {:error, _refusal} = Providers.api(anthropic, bearer)
+
+      {:ok, router} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "openrouter",
+          keys: [%{value_id: "main", value: "sk-or-fallback-0123456789"}]
+        })
+
+      tiers = %{
+        "light" => "anthropic/claude-haiku-5.5",
+        "balanced" => "anthropic/claude-sonnet-5.5",
+        "thinking" => %{"model" => "anthropic/claude-opus-5.5", "effort" => "high"}
+      }
+
+      choose!(ctx.scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        runtime: release.name,
+        tiers: all_tiers("claude-opus-5-5"),
+        fallbacks: [fallback(router, tiers, bearer.name)]
+      })
+
+      # While a key of the choice's provider is free, the run uses it on its runtime.
+      {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
+      assert %{"runtime" => runtime, "model" => "claude-opus-5-5"} = settings(handed)
+      assert runtime == release.name
+
+      # With every key in cooldown, the run takes the fallback.
+      for key <- ["main", "spare"], do: state!(ctx.provider, key, until: in_seconds(3600))
+      {{:ok, handed}, queued, _dispatch} = handover!(ctx, %{external_ref: "acme/shop#14"})
+
+      assert queued.model_provider_ids == [ctx.provider.id, router.id]
+
+      assert %{
+               "runtime" => runtime,
+               "model" => "anthropic/claude-opus-5.5",
+               "effort" => "high",
+               "tiers" => sent
+             } = settings(handed)
+
+      assert runtime == bearer.name
+      assert sent == tiers
+
+      run = Repo.get!(Run, handed.run.id)
+      assert run.provider_connection_id == router.id
+      assert run.run_settings["runtime"] == bearer.name
+
+      # The API of the run's keys is the fallback provider's, on the fallback's runtime.
+      assert [%ModelKey{start: true, api: api} | _rest] = stored_keys(run)
+      assert api["format"] in Runtimes.formats(bearer)
+      assert api["auth"] == %{"scheme" => "bearer"}
+      assert api["endpoint"] == "https://openrouter.ai/api"
     end
 
     test "leave the run waiting while every key of the provider and its fallbacks is in cooldown",
@@ -522,8 +753,8 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       ended!(queued, dispatch, :secrets_not_allowed)
     end
 
-    test "are never built with a start key in cooldown or two chosen keys", ctx do
-      choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id, key: "main"})
+    test "are never built with a start key in cooldown", ctx do
+      choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id})
 
       for {cooled, n} <- Enum.with_index([[], ["main"], ["spare"]]) do
         for key <- ["main", "spare"], do: state!(ctx.provider, key, until: in_seconds(-1))
@@ -532,11 +763,229 @@ defmodule Apiary.Dispatches.RunSettingsTest do
         {{:ok, handed}, _queued, _dispatch} =
           handover!(ctx, %{external_ref: "acme/shop##{50 + n}"})
 
-        [start | _rest] = keys = Repo.get!(Run, handed.run.id).model_keys
+        [start | _rest] = stored_keys(handed.run)
 
-        refute Map.has_key?(start, "cooldown_until"), inspect(cooled)
-        assert Enum.count(keys, &(&1["chosen"] == true)) == 1, inspect(cooled)
+        assert start.cooldown_until == nil, inspect(cooled)
       end
+    end
+  end
+
+  describe "the keys of a claim under a workflow's override" do
+    # The run's workflow, from the workspace's stack row, and a provider for the override.
+    setup ctx do
+      {:ok, _stack} =
+        Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace, @workflow}, @harness)
+
+      %{override: other_provider!(ctx.scope, "Override keys")}
+    end
+
+    defp override!(ctx, provider, tiers) do
+      choose!(ctx.scope, {:workspace, @workflow}, %{provider: provider.public_id, tiers: tiers})
+    end
+
+    # What a claim at this moment builds for a fresh run of the queue, without the claim.
+    defp built!(ctx) do
+      work_item = work_item_fixture(ctx.scope, %{external_ref: "acme/shop##{unique()}"})
+      {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      {queued, RunSettings.build(RunSettings.hold(queued), Dispatches.now())}
+    end
+
+    defp unique, do: System.unique_integer([:positive])
+
+    test "use the override's provider and tiers while one of its keys is free", ctx do
+      override!(ctx, ctx.override, all_tiers("claude-sonnet-5-5"))
+
+      choose!(ctx.scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        tiers: all_tiers("claude-opus-5-5")
+      })
+
+      {{:ok, handed}, queued, _dispatch} = handover!(ctx)
+
+      assert queued.model_provider_ids == [ctx.override.id, ctx.provider.id]
+      assert Repo.get!(Run, handed.run.id).provider_connection_id == ctx.override.id
+
+      assert %{"model" => "claude-sonnet-5-5", "tiers" => tiers} = settings(handed)
+      assert tiers == all_tiers("claude-sonnet-5-5")
+    end
+
+    test "fall to the workspace default, with its provider and tiers, while every key of the override is in cooldown",
+         ctx do
+      override!(ctx, ctx.override, all_tiers("claude-sonnet-5-5"))
+      [_light, middle, _thinking] = Resolution.tiers()
+
+      choose!(ctx.scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        tiers: %{
+          "thinking" => %{"model" => "claude-opus-5-5", "effort" => "high"},
+          middle => "claude-sonnet-5-5",
+          "light" => "claude-haiku-5-5"
+        }
+      })
+
+      state!(ctx.override, "main", until: in_seconds(3600))
+
+      {{:ok, handed}, queued, _dispatch} = handover!(ctx)
+
+      # The queue keeps the override's provider, then the default's, for the claim's filter.
+      assert queued.model_provider_ids == [ctx.override.id, ctx.provider.id]
+
+      run = Repo.get!(Run, handed.run.id)
+      assert run.provider_connection_id == ctx.provider.id
+      assert value_ids(run) == ["main", "spare"]
+
+      assert %{"model" => "claude-opus-5-5", "effort" => "high", "tiers" => tiers} =
+               settings(handed)
+
+      assert tiers == %{
+               "thinking" => %{"model" => "claude-opus-5-5", "effort" => "high"},
+               middle => "claude-sonnet-5-5",
+               "light" => "claude-haiku-5-5"
+             }
+    end
+
+    test "fall to the default's fallbacks, not the override's stored ones, while the default cools too",
+         ctx do
+      free = other_provider!(ctx.scope, "Free keys")
+      unread = other_provider!(ctx.scope, "Unread keys")
+
+      # An override stored with a fallback, past the save: it is not read.
+      override = override!(ctx, ctx.override, all_tiers("claude-sonnet-5-5"))
+
+      Repo.insert!(%Apiary.ModelChoices.Fallback{
+        organisation_id: ctx.scope.organisation.id,
+        model_choice_id: override.id,
+        connection_id: unread.id,
+        position: 0,
+        runtime: @runtime,
+        tiers: all_tiers("claude-opus-5-5")
+      })
+
+      choose!(ctx.scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        tiers: all_tiers("claude-opus-5-5"),
+        fallbacks: [
+          fallback(free, all_tiers(%{"model" => "claude-haiku-5-5", "effort" => "low"}))
+        ]
+      })
+
+      for {provider, key} <- [
+            {ctx.override, "main"},
+            {ctx.provider, "main"},
+            {ctx.provider, "spare"}
+          ],
+          do: state!(provider, key, until: in_seconds(3600))
+
+      {{:ok, handed}, queued, _dispatch} = handover!(ctx)
+
+      assert queued.model_provider_ids == [ctx.override.id, ctx.provider.id, free.id]
+      assert Repo.get!(Run, handed.run.id).provider_connection_id == free.id
+
+      assert %{"model" => "claude-haiku-5-5", "effort" => "low", "tiers" => tiers} =
+               settings(handed)
+
+      assert tiers == all_tiers(%{"model" => "claude-haiku-5-5", "effort" => "low"})
+    end
+
+    test "leave the run waiting for the override's and the default's providers", ctx do
+      override!(ctx, ctx.override, all_tiers("claude-sonnet-5-5"))
+
+      choose!(ctx.scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        tiers: all_tiers("claude-opus-5-5")
+      })
+
+      for {provider, key} <- [
+            {ctx.override, "main"},
+            {ctx.provider, "main"},
+            {ctx.provider, "spare"}
+          ],
+          do: state!(provider, key, until: in_seconds(3600))
+
+      assert {_queued, {:cooling, _built, ids}} = built!(ctx)
+      assert ids == [ctx.override.id, ctx.provider.id]
+    end
+
+    test "wait for a provider once where the override and the default share it, then take the default's fallback",
+         ctx do
+      free = other_provider!(ctx.scope, "Free keys")
+      override!(ctx, ctx.provider, all_tiers("claude-sonnet-5-5"))
+
+      choose!(ctx.scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        tiers: all_tiers("claude-opus-5-5"),
+        fallbacks: [fallback(free, all_tiers("claude-haiku-5-5"))]
+      })
+
+      for key <- ["main", "spare"], do: state!(ctx.provider, key, until: in_seconds(3600))
+      state!(free, "main", until: in_seconds(3600))
+
+      assert {queued, {:cooling, _built, ids}} = built!(ctx)
+      assert ids == [ctx.provider.id, free.id]
+      assert queued.model_provider_ids == [ctx.provider.id, free.id]
+
+      # With the fallback's key free, the run takes the fallback.
+      state!(free, "main", until: in_seconds(-1))
+      assert {_queued, {:ok, %{columns: columns, stored: stored}}} = built!(ctx)
+      assert columns.provider_connection_id == free.id
+      assert stored["tiers"] == all_tiers("claude-haiku-5-5")
+    end
+
+    test "take the next fallback after one that names the override's provider, whose keys are in cooldown",
+         ctx do
+      free = other_provider!(ctx.scope, "Free keys")
+      override!(ctx, ctx.override, all_tiers("claude-sonnet-5-5"))
+
+      choose!(ctx.scope, :workspace, %{
+        provider: ctx.provider.public_id,
+        tiers: all_tiers("claude-opus-5-5"),
+        fallbacks: [
+          fallback(ctx.override, all_tiers("claude-opus-5-5")),
+          fallback(free, all_tiers("claude-haiku-5-5"))
+        ]
+      })
+
+      for {provider, key} <- [
+            {ctx.override, "main"},
+            {ctx.provider, "main"},
+            {ctx.provider, "spare"}
+          ],
+          do: state!(provider, key, until: in_seconds(3600))
+
+      assert {queued, {:ok, %{columns: columns, stored: stored}}} = built!(ctx)
+      assert queued.model_provider_ids == [ctx.override.id, ctx.provider.id, free.id]
+      assert columns.provider_connection_id == free.id
+      assert stored["model"] == "claude-haiku-5-5"
+
+      state!(free, "main", until: in_seconds(3600))
+      assert {_queued, {:cooling, _built, ids}} = built!(ctx)
+      assert ids == [ctx.override.id, ctx.provider.id, free.id]
+    end
+
+    test "never fall to the default while a lock of the workspace beats the override", ctx do
+      override!(ctx, ctx.override, all_tiers("claude-sonnet-5-5"))
+
+      locked =
+        choose!(ctx.scope, :workspace, %{
+          provider: ctx.provider.public_id,
+          tiers: all_tiers("claude-opus-5-5")
+        })
+
+      Repo.update!(Ecto.Changeset.change(locked, locked: true))
+
+      {{:ok, handed}, queued, _dispatch} = handover!(ctx)
+
+      assert queued.model_provider_ids == [ctx.provider.id]
+      assert Repo.get!(Run, handed.run.id).provider_connection_id == ctx.provider.id
+      assert %{"model" => "claude-opus-5-5"} = settings(handed)
+
+      # With every key of the locked provider in cooldown, the run waits for it alone: the
+      # override's provider, whose key is free, is not taken.
+      for key <- ["main", "spare"], do: state!(ctx.provider, key, until: in_seconds(3600))
+
+      provider_id = ctx.provider.id
+      assert {queued, {:cooling, _built, [^provider_id]}} = built!(ctx)
+      assert queued.model_provider_ids == [provider_id]
     end
   end
 
@@ -572,7 +1021,9 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       choose!(ctx.scope, :workspace, %{
         provider: ctx.provider.public_id,
-        fallbacks: [%{provider: other.public_id, model: "claude-opus-5-5", effort: "high"}]
+        fallbacks: [
+          fallback(other, all_tiers(%{"model" => "claude-opus-5-5", "effort" => "high"}))
+        ]
       })
 
       assert provider_ids(ctx.queued) == [ctx.provider.id, other.id]
@@ -676,15 +1127,44 @@ defmodule Apiary.Dispatches.RunSettingsTest do
           keys: [%{value_id: "main", value: "sk-team"}]
         })
 
-      choose!(ctx.scope, :workspace, %{provider: litellm.public_id})
+      # The target's level, where a choice may map no tier: no thinking tier, and no
+      # default model.
+      target = Repo.insert!(target(ctx.scope, "acme/shop"))
+      choose!(ctx.scope, target, %{provider: litellm.public_id})
 
       {answer, queued, dispatch} = handover!(ctx)
       assert answer == {:error, :gone}
       ended!(queued, dispatch, :model_gone)
     end
 
+    test "model_gone for a thinking entry that does not go with the provider", ctx do
+      # Past the save, which refuses each: a model in no list, and an effort it lacks.
+      for {thinking, n} <-
+            Enum.with_index([
+              "acme-large",
+              %{"model" => "claude-opus-5-5", "effort" => "turbo"}
+            ]) do
+        Repo.delete_all(ModelChoice)
+
+        Repo.insert!(%ModelChoice{
+          organisation_id: ctx.scope.organisation.id,
+          workspace_id: ctx.scope.workspace.id,
+          connection_id: ctx.provider.id,
+          model_id: "claude-opus-5-5",
+          effort: "high",
+          tiers: %{"thinking" => thinking, "light" => "claude-haiku-5-5"}
+        })
+
+        {answer, queued, dispatch} = handover!(ctx, %{external_ref: "acme/shop##{40 + n}"})
+        assert answer == {:error, :gone}, inspect(thinking)
+        ended!(queued, dispatch, :model_gone)
+      end
+    end
+
     test "never for a model the description does not list", ctx do
-      choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id, model: "acme-large"})
+      # The target's level, where a choice may map no tier, so the run takes its model.
+      target = Repo.insert!(target(ctx.scope, "acme/shop"))
+      choose!(ctx.scope, target, %{provider: ctx.provider.public_id, model: "acme-large"})
 
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
 
@@ -777,18 +1257,21 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert %{"model" => "team-large", "provider_models" => [%{"id" => "team-large"}]} =
                settings(handed)
 
-      assert %Run{
-               provider_api: %{
-                 "format" => "anthropic-messages",
-                 "endpoint" => "https://litellm.example.com/team",
-                 "auth" => %{"scheme" => "bearer"}
+      assert [
+               %ModelKey{
+                 api: %{
+                   "format" => "anthropic-messages",
+                   "endpoint" => "https://litellm.example.com/team",
+                   "auth" => %{"scheme" => "bearer"}
+                 }
                }
-             } = Repo.get!(Run, handed.run.id)
+             ] = stored_keys(handed.run)
     end
 
     test "is written once: a later change of the address or a rebuild keeps the run's", ctx do
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
       run = Repo.get!(Run, handed.run.id)
+      keys = stored_keys(run)
 
       {:ok, _litellm} =
         Connections.update_provider(ctx.scope, ctx.litellm, %{
@@ -797,17 +1280,16 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       assert {:ok, _rebuilt} = Projector.rebuild(run)
 
-      assert %Run{provider_api: %{"endpoint" => "https://litellm.example.com/team"}} =
-               kept = Repo.get!(Run, run.id)
+      assert [%ModelKey{api: %{"endpoint" => "https://litellm.example.com/team"}}] =
+               stored_keys(run)
 
-      assert {kept.run_settings, kept.provider_api, kept.model_keys} ==
-               {run.run_settings, run.provider_api, run.model_keys}
+      assert {Repo.get!(Run, run.id).run_settings, stored_keys(run)} == {run.run_settings, keys}
 
       # The next run takes the address as it is now.
       {{:ok, next}, _queued, _dispatch} = handover!(ctx, %{external_ref: "acme/shop#13"})
 
-      assert %Run{provider_api: %{"endpoint" => "https://models.example.com"}} =
-               Repo.get!(Run, next.run.id)
+      assert [%ModelKey{api: %{"endpoint" => "https://models.example.com"}}] =
+               stored_keys(next.run)
     end
   end
 
@@ -840,13 +1322,13 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       assert {:ok, _deleted} = Connections.delete_provider(ctx.scope, ctx.provider)
 
-      assert %Run{
-               provider_connection_id: nil,
-               provider_secret_id: nil,
-               model_keys: [%{"name" => name} | _],
-               provider_api: @messages,
-               run_settings: %{"model" => "claude-opus-5-5"}
-             } = Repo.get!(Run, run.id)
+      assert %Run{provider_connection_id: nil, run_settings: %{"model" => "claude-opus-5-5"}} =
+               Repo.get!(Run, run.id)
+
+      assert [%ModelKey{name: name} | _] = keys = stored_keys(run)
+
+      for key <- keys,
+          do: assert(%ModelKey{connection_id: nil, secret_id: nil, api: @messages} = key)
 
       assert name == "#{ctx.provider.public_id}-1"
     end
@@ -867,7 +1349,6 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       resolution = %Resolution{
         connection_id: loaded.id,
-        value_id: "main",
         model_id: "claude-opus-5-5",
         effort: "max",
         level: 5
@@ -930,10 +1411,12 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       end
     end
 
-    test "ends key_gone for a key the provider no longer has", ctx do
+    test "ends key_gone for a provider with no key", ctx do
+      no_key = %{ctx.loaded | secret: %{ctx.loaded.secret | values: []}}
+
       assert RunSettings.form(
-               %{ctx.resolution | value_id: "gone"},
-               ctx.loaded,
+               ctx.resolution,
+               no_key,
                {:ok, ctx.description},
                ctx.runtime,
                ctx.scope.workspace.id

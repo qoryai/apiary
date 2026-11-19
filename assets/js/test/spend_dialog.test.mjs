@@ -70,8 +70,8 @@ test("opens with focus on the element whose id is in data-focus", () => {
 })
 
 test("with data-focus set to an id not on the page, focus goes to Cancel", () => {
-  const doc = page("artifact-save")
-  const el = dialog(doc, "artifact-save", "spend-dialog-gone")
+  const doc = page("work-item-stage-gate-approve")
+  const el = dialog(doc, "work-item-stage-gate-approve", "spend-dialog-gone")
 
   open(el, doc)
 
@@ -105,9 +105,9 @@ test("moves focus back to the action's button, and to nothing removed from the p
 })
 
 test("the hook: mounted opens and listens for cancel; destroyed moves focus back", () => {
-  const doc = page("artifact-save")
+  const doc = page("work-item-stage-gate-approve")
   globalThis.document = doc
-  const el = dialog(doc, "artifact-save")
+  const el = dialog(doc, "work-item-stage-gate-approve")
   const hook = {...SpendDialog, el}
 
   hook.mounted()
@@ -116,6 +116,6 @@ test("the hook: mounted opens and listens for cancel; destroyed moves focus back
   assert.equal(el.listeners.cancel, keep)
 
   hook.destroyed()
-  assert.equal(doc.activeElement, doc.elements["artifact-save"])
+  assert.equal(doc.activeElement, doc.elements["work-item-stage-gate-approve"])
   delete globalThis.document
 })

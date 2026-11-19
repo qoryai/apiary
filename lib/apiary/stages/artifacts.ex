@@ -1,9 +1,9 @@
 defmodule Apiary.Stages.Artifacts do
   # Artifacts is the one place the stage runner (`Apiary.Stages`) reaches a work item's
-  # artifacts through: `push/5`, `list/1`, `exists?/3`, `cancelled?/1`, `withdrawn?/1`,
-  # `newest_counted/1` and `name_order/1` of `Apiary.Artifacts`, and
-  # `push_json/5`, `newest_of_run/3`, `read_json/1` and `stored_json/1`, which this module
-  # adds.
+  # artifacts through: `list/1`, `exists?/3`, `cancelled?/1`, `withdrawn?/1`,
+  # `member_types/0`, `newest_counted/1` and `name_order/1` of `Apiary.Artifacts`, and
+  # `newest_of_run/3`, `read_json/1` and `stored_json/1`, which this module adds. Only
+  # tests call `push/5` and `push_json/5`, which store a version as a run would.
   @moduledoc false
 
   import Ecto.Query, only: [from: 2]
@@ -49,6 +49,12 @@ defmodule Apiary.Stages.Artifacts do
   @doc false
   @spec cancelled?(map) :: boolean
   def cancelled?(version), do: Artifacts.cancelled?(version)
+
+  # member_types/0 is the types a person writes only as an answer or a review comment
+  # (`Apiary.Artifacts.member_types/0`).
+  @doc false
+  @spec member_types() :: [String.t()]
+  def member_types, do: Artifacts.member_types()
 
   # withdrawn?/1 is whether the newest version of `artifact` is a withdrawal
   # (`Apiary.Artifacts.withdrawn?/1`).

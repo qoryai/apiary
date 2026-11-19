@@ -18,15 +18,23 @@ defmodule Apiary.Stages.GateDecision do
   # `Apiary.Stages.inputs/1` reads the versions that `stage_id` made in between. The move
   # back that resolves an escalation writes one too, with no note and the `escalation_id` of
   # the escalation it resolves: the note of the escalation is the one that `notes/1` lists.
+  #
+  # `public_id` is `gd_` and sixteen lowercase Crockford base32 characters
+  # (`Apiary.PublicId`): the id of a request for changes, or of a move that resolves no
+  # escalation, in the run API's notes (`Apiary.Stages.Notes`), which a run's version may
+  # have as its `decision`.
   @moduledoc false
   use Ecto.Schema
 
   @typedoc "A decision at a stage's gate."
   @type t :: %__MODULE__{}
 
+  @prefix "gd"
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   schema "gate_decisions" do
+    field :public_id, :string, read_after_writes: true
     field :stage_id, :string
     field :kind, Ecto.Enum, values: [:approve, :request_changes, :move]
     field :to_stage_id, :string
@@ -46,4 +54,9 @@ defmodule Apiary.Stages.GateDecision do
     belongs_to :user, Apiary.Accounts.User
     belongs_to :escalation, Apiary.Stages.Escalation
   end
+
+  # prefix/0 is the prefix of a decision's public id, `gd`.
+  @doc false
+  @spec prefix() :: String.t()
+  def prefix, do: @prefix
 end

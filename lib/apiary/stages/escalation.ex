@@ -7,11 +7,16 @@ defmodule Apiary.Stages.Escalation do
   # the runner's point, then the points of the verdict of the run that reached the limit.
   # Open while `resolved_at` is nil, at most one per work item. A person resolves it with
   # `resolution`, with their `note`.
+  #
+  # `public_id` is `es_` and sixteen lowercase Crockford base32 characters
+  # (`Apiary.PublicId`): the id of the escalation in the run API's notes
+  # (`Apiary.Stages.Notes`), which a run's version may have as its `decision`.
   @moduledoc false
   use Ecto.Schema
 
   @causes [:round_limit, :escalate, :check_failed, :run_stopped, :return_limit]
   @resolutions [:accept, :another_round, :move_back, :switch, :close]
+  @prefix "es"
 
   @typedoc "An escalation of a work item's stage."
   @type t :: %__MODULE__{}
@@ -19,6 +24,7 @@ defmodule Apiary.Stages.Escalation do
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
   schema "escalations" do
+    field :public_id, :string, read_after_writes: true
     field :stage_id, :string
     field :round, :integer
     field :cause, Ecto.Enum, values: @causes
@@ -44,4 +50,9 @@ defmodule Apiary.Stages.Escalation do
   @doc false
   @spec resolutions() :: [atom]
   def resolutions, do: @resolutions
+
+  # prefix/0 is the prefix of an escalation's public id, `es`.
+  @doc false
+  @spec prefix() :: String.t()
+  def prefix, do: @prefix
 end
