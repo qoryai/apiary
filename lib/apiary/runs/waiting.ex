@@ -24,7 +24,8 @@ defmodule Apiary.Runs.Waiting do
   #       * `{:sign_in, provider, key}`, a sign-in needs a new one, and
   #         `{:new_key, provider, key}`, a provider rejected a key's value: nobody but a
   #         person's new value ends either. `provider` is the provider's public id, `key`
-  #         the key's name, for the link to the key's page; a provider of another
+  #         `%{id: row id, identity: identity line}` of the key, for the link to the key's
+  #         page and its name (`Apiary.ModelKeys.Identity`); a provider of another
   #         organisation has none of these two;
   #   * `{:image, target, build}`, it is held for the build of its target's environment
   #     image on every serving pool (`Apiary.Environments.held/1`): `build` is `:queued`
@@ -41,6 +42,7 @@ defmodule Apiary.Runs.Waiting do
   import Ecto.Query
 
   alias Apiary.{Environments, ModelKeys, Repo}
+  alias Apiary.ModelKeys.Identity
   alias Apiary.Dispatches.RunSettings
   alias Apiary.Adapters.Collection
   alias Apiary.Connections.Connection
@@ -57,7 +59,8 @@ defmodule Apiary.Runs.Waiting do
           | :no_pool
           | {:no_fit, String.t(), String.t() | :instance}
           | {:cooldown, String.t() | nil, DateTime.t()}
-          | {:refreshing | :restart | :sign_in | :new_key, String.t(), String.t()}
+          | {:refreshing | :restart | :sign_in | :new_key, String.t(),
+             %{id: Ecto.UUID.t(), identity: String.t()}}
           | {:image, String.t(), :queued | :running | nil}
           | {:busy, String.t(), non_neg_integer, pos_integer}
           | {:busy, :instance}
@@ -124,8 +127,15 @@ defmodule Apiary.Runs.Waiting do
     {:cooldown, name, until}
   end
 
-  defp words({kind, %Connection{} = provider, key}, queued) do
-    if provider.organisation_id == queued.organisation_id, do: {kind, provider.public_id, key}
+  # A reason about a key names it by its row id, for the link to its page, and its identity
+  # line (`Apiary.ModelKeys.Identity`); none for a key that was deleted meanwhile.
+  defp words({kind, %Connection{} = provider, value_id}, queued) do
+    with true <- provider.organisation_id == queued.organisation_id,
+         {row_id, identity} <- Identity.ref(provider, value_id) do
+      {kind, provider.public_id, %{id: row_id, identity: identity}}
+    else
+      _none -> nil
+    end
   end
 
   # Held for the build of its target's environment image on every serving pool, with the

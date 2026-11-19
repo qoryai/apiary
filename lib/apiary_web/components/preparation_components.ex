@@ -1232,14 +1232,14 @@ defmodule ApiaryWeb.PreparationComponents do
   # A reason about a model key (`Apiary.Runs.Waiting`: `{kind, provider's public id, key}`)
   # with the path of the key's page, Organisation settings › Model providers, in place of
   # the provider's id; none without the run's organisation.
-  defp with_key_page({kind, provider_id, key}, %{} = organisation)
+  defp with_key_page({kind, provider_id, %{id: id, identity: identity}}, %{} = organisation)
        when kind in [:refreshing, :restart, :sign_in, :new_key] and is_binary(provider_id) do
-    {kind, key, ~p"/#{organisation}/settings/model-providers/#{provider_id}/keys/#{key}/edit"}
+    {kind, identity, ~p"/#{organisation}/settings/model-providers/#{provider_id}/keys/#{id}/edit"}
   end
 
-  defp with_key_page({kind, _provider_id, key}, nil)
+  defp with_key_page({kind, _provider_id, %{identity: identity}}, nil)
        when kind in [:refreshing, :restart, :sign_in, :new_key],
-       do: {kind, key, nil}
+       do: {kind, identity, nil}
 
   defp with_key_page(reason, _organisation), do: reason
 
@@ -1268,33 +1268,33 @@ defmodule ApiaryWeb.PreparationComponents do
         time: cooldown_time(until)
       )
 
-  # The key's name is a link to the key's edit page.
+  # The key's identity line is a link to the key's edit page.
   defp waiting_words({:sign_in, key, path}),
     do:
       rich_gettext(
-        "Waiting for a model key: sign in to ChatGPT again on the page of %{key}.",
-        key: key_link(path, key)
+        "Waiting for a model key: sign in to ChatGPT again for %{identity}.",
+        identity: key_link(path, key)
       )
 
   defp waiting_words({:refreshing, key, path}),
     do:
       rich_gettext(
-        "Waiting for a model key: refreshing the ChatGPT sign-in of %{key}.",
-        key: key_link(path, key)
+        "Waiting for a model key: refreshing the ChatGPT sign-in of %{identity}.",
+        identity: key_link(path, key)
       )
 
   defp waiting_words({:restart, key, path}),
     do:
       rich_gettext(
-        "Waiting for a model key: the server is restarting; the ChatGPT sign-in of %{key} refreshes after it starts.",
-        key: key_link(path, key)
+        "Waiting for a model key: the server is restarting; the ChatGPT sign-in of %{identity} refreshes after it starts.",
+        identity: key_link(path, key)
       )
 
   defp waiting_words({:new_key, key, path}),
     do:
       rich_gettext(
-        "Waiting for a model key: enter a new value for %{key}.",
-        key: key_link(path, key)
+        "Waiting for a model key: enter a new value for %{identity}.",
+        identity: key_link(path, key)
       )
 
   defp waiting_words({:image, target, :queued}),
@@ -1340,8 +1340,8 @@ defmodule ApiaryWeb.PreparationComponents do
 
   defp waiting_words(_reason), do: nil
 
-  defp key_link(nil, key), do: {:m, key}
-  defp key_link(path, key), do: {:link, path, {:m, ExternalText.line(key)}}
+  defp key_link(nil, identity), do: ExternalText.line(identity)
+  defp key_link(path, identity), do: {:link, path, ExternalText.line(identity)}
 
   @doc false
   # cooldown_time/2 is the end of a cooldown in the reader's time zone at `now`, as a key's

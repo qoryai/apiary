@@ -17,7 +17,10 @@ defmodule Apiary.Secrets do
   to seal a value to the gateway (a model key through `Apiary.ModelKeys.reveal_for_sealing/4`),
   and only that. A listing loads the
   values without their ciphertext. Nothing logs a value, and an audit entry names a
-  secret and a value id, never a value.
+  secret and a value id, never a value. A model provider's API key also has a **hint**,
+  the last 4 characters of a value of at least 12 characters, kept beside the ciphertext
+  so that a page and an audit entry can tell one key from another
+  (`Apiary.Secrets.Value.hint/1`, `Apiary.ModelKeys.Identity`).
 
   ## At rest
 
@@ -460,7 +463,7 @@ defmodule Apiary.Secrets do
          :ok <- valid_new(how, secret_changeset, value_changesets),
          {:ok, secret} <-
            secret_changeset |> PublicId.Insert.insert() |> with_values(how, value_changesets),
-         {:ok, value_ids} <- insert_values(scope, secret, value_changesets),
+         {:ok, value_ids} <- insert_values(scope, secret, value_changesets, hint?(opts)),
          {:ok, _entry} <-
            entry(opts, scope, secret, %{
              after: %{name: secret.name, note: secret.note, value_ids: value_ids},
@@ -583,9 +586,9 @@ defmodule Apiary.Secrets do
 
   defp with_values(result, _how, _values), do: result
 
-  defp insert_values(scope, secret, changesets) do
+  defp insert_values(scope, secret, changesets, hint?) do
     Enum.reduce_while(changesets, {:ok, []}, fn changeset, {:ok, value_ids} ->
-      case insert_value(scope, secret, changeset) do
+      case insert_value(scope, secret, changeset, hint?) do
         {:ok, value} -> {:cont, {:ok, value_ids ++ [value.value_id]}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
@@ -648,7 +651,7 @@ defmodule Apiary.Secrets do
            changeset = Value.changeset(row, %{"value" => value}),
            :ok <- valid(changeset),
            {:ok, _row} <-
-             encrypt_and_write(scope, current, changeset, :update),
+             encrypt_and_write(scope, current, changeset, :update, hint?(opts)),
            {:ok, current} <- touch(scope, current),
            {:ok, _entry} <-
              entry(opts, scope, current, %{
@@ -685,7 +688,7 @@ defmodule Apiary.Secrets do
            {:ok, first} <- first_value_id(unnamed, attrs, changeset),
            :ok <- valid(changeset),
            :ok <- rename_first(scope, current, unnamed, first),
-           {:ok, _row} <- insert_value(scope, current, changeset),
+           {:ok, _row} <- insert_value(scope, current, changeset, hint?(opts)),
            {:ok, current} <- touch(scope, current),
            {:ok, _entry} <-
              entry(opts, scope, current, %{
@@ -891,7 +894,9 @@ defmodule Apiary.Secrets do
   `create_secret/2` takes several values. `{:ok, secret}`, or `{:error, refusal}` as
   `create_secret/2` answers; `:not_found` for `:workspace` with a scope whose workspace
   is not of its organisation or is marked for deletion. It leaves no `secret.write` entry:
-  the provider's `provider.write` entry records it.
+  the provider's `provider.write` entry records it. Each value keeps a hint of its last 4
+  characters (`Apiary.Secrets.Value.hint/1`) unless `opts` has `hint: false`, as it does
+  for the keys of a provider whose keys are sign-ins.
 
   `Apiary.Connections` calls it in the transaction that adds the provider, after the
   organisation's integrations lock; it asks `Apiary.Access` for `provider.write` with the
@@ -900,14 +905,15 @@ defmodule Apiary.Secrets do
   workspace's row `FOR NO KEY UPDATE`, as every write of a workspace's secrets does, so
   the workspace's first secret makes its data key alone.
   """
-  @spec create_provider_keys(Scope.t(), map, :organisation | :workspace) ::
+  @spec create_provider_keys(Scope.t(), map, :organisation | :workspace, keyword) ::
           {:ok, Secret.t()} | {:error, refusal}
-  def create_provider_keys(scope, attrs, place \\ :organisation)
+  def create_provider_keys(scope, attrs, place \\ :organisation, opts \\ [])
 
   def create_provider_keys(
         %Scope{organisation: %Organisation{id: organisation_id}} = scope,
         attrs,
-        place
+        place,
+        opts
       )
       when place in [:organisation, :workspace] do
     attrs = Map.new(attrs, fn {key, value} -> {to_string(key), value} end)
@@ -920,14 +926,15 @@ defmodule Apiary.Secrets do
           %Secret{organisation_id: organisation_id, workspace_id: workspace_id},
           %{"name" => attrs["name"], "values" => List.wrap(attrs["values"])},
           :ok,
-          provider: :new
+          provider: :new,
+          hint: Keyword.get(opts, :hint, true)
         )
       end
     end)
     |> reload()
   end
 
-  def create_provider_keys(_scope, _attrs, _place), do: {:error, :not_found}
+  def create_provider_keys(_scope, _attrs, _place, _opts), do: {:error, :not_found}
 
   # The level of a new provider's keys, its lock taken: `{:ok, nil}` for the
   # organisation's, `{:ok, workspace_id}` for the scope's workspace's.
@@ -1637,7 +1644,7 @@ defmodule Apiary.Secrets do
 
   ## Encryption
 
-  defp insert_value(scope, secret, changeset) do
+  defp insert_value(scope, secret, changeset, hint?) do
     changeset =
       changeset
       |> Ecto.Changeset.change(
@@ -1647,13 +1654,28 @@ defmodule Apiary.Secrets do
         created_by_id: scope.user.id
       )
 
-    encrypt_and_write(scope, secret, changeset, :insert)
+    encrypt_and_write(scope, secret, changeset, :insert, hint?)
+  end
+
+  # Whether the values written under `opts` keep a hint (`Apiary.Secrets.Value.hint/1`):
+  # the keys of a model provider whose keys are not sign-ins. A sign-in's value is a JSON
+  # document with the refresh token in it, an ordinary secret's value is a secret that
+  # nothing else shows a part of, and neither keeps a hint. `create_provider_keys/4` has
+  # `hint: false` for a new provider whose keys are sign-ins.
+  defp hint?(opts) do
+    case Keyword.get(opts, :provider) do
+      %Connection{} = provider -> not Login.provider?(provider)
+      :new -> Keyword.get(opts, :hint, true)
+      _other -> false
+    end
   end
 
   # Encrypts the changeset's plaintext under the data key of the secret's level, bound to
   # the value id it will have, takes the plaintext out of the changeset, and writes the
-  # row, with the time its value was set (`value_set_at`).
-  defp encrypt_and_write(scope, secret, changeset, how) do
+  # row, with the time its value was set (`value_set_at`) and, when `hint?`, the hint of
+  # the plaintext: a value written over another replaces its hint, and a value too short
+  # for one clears it.
+  defp encrypt_and_write(scope, secret, changeset, how, hint?) do
     plaintext = Ecto.Changeset.get_change(changeset, :value)
     value_id = Ecto.Changeset.get_field(changeset, :value_id)
 
@@ -1669,7 +1691,7 @@ defmodule Apiary.Secrets do
           ciphertext: ciphertext,
           value_set_at: DateTime.utc_now(),
           updated_by_id: scope.user.id
-        ] ++ key_field
+        ] ++ key_field ++ if(hint?, do: [hint: Value.hint(plaintext)], else: [])
       )
       |> then(fn changeset ->
         case how do

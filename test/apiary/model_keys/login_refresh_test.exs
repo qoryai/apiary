@@ -1315,7 +1315,8 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
   end
 
   describe "the entry of each call" do
-    test "names the provider, the key, the trigger and the reason, never a token", %{scope: scope} do
+    test "names the provider, the key, its identity line, the trigger and the reason, never a token",
+         %{scope: scope} do
       {provider, tokens} = subscription!(scope, expires_in: 60)
       fresh = new_tokens("audit")
       stub!(fresh)
@@ -1334,6 +1335,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
                "provider_id" => provider.public_id,
                "provider" => provider.name,
                "value_id" => "main",
+               "identity" => "OpenAI subscription · dana@example.com",
                "trigger" => "run",
                "run_id" => "run-1234",
                "refresh_reason" => "proactive_expiry",
@@ -1411,8 +1413,8 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
         end
 
       assert [
-               "Qory Apiary refreshed the sign-in of the key main of OpenAI subscription",
-               "Sign in again on the key main of OpenAI subscription: " <> _
+               "Qory Apiary refreshed the sign-in of OpenAI subscription · dana@example.com",
+               "Sign in again on OpenAI subscription · dana@example.com: " <> _
              ] = lines
 
       for line <- lines,

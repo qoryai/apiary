@@ -26,6 +26,16 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
     provider
   end
 
+  # The Edit key page of the key `value_id`, at its row id.
+  defp edit_path(scope, provider, value_id) do
+    value =
+      Repo.one!(
+        from v in Value, where: v.secret_id == ^provider.secret_id and v.value_id == ^value_id
+      )
+
+    "#{base(scope)}/#{provider.public_id}/keys/#{value.id}/edit"
+  end
+
   defp reject!(provider, value_id, at) do
     value =
       Repo.one!(
@@ -85,7 +95,7 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
        %{conn: conn, scope: scope} do
     provider = provider!(scope)
     reject!(provider, "main", ~U[2026-11-18 09:12:00.000000Z])
-    path = "#{base(scope)}/#{provider.public_id}/keys/main/edit"
+    path = edit_path(scope, provider, "main")
 
     {:ok, lv, html} = live(conn, path)
 
@@ -108,7 +118,7 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
     provider = provider!(scope)
     reject!(provider, "main", ~U[2026-11-18 09:12:00.000000Z])
 
-    {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}/keys/spare/edit")
+    {:ok, lv, html} = live(conn, edit_path(scope, provider, "spare"))
 
     refute has_element?(lv, "#key-new-key")
     refute html =~ "Enter a new value: the stored one no longer works."

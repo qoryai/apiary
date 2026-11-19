@@ -7,6 +7,7 @@ defmodule ApiaryWeb.ProviderKeyFieldsTest do
   # (`Apiary.Connections.trim_key/1`).
   use ApiaryWeb.ConnCase, async: true
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
 
@@ -24,6 +25,12 @@ defmodule ApiaryWeb.ProviderKeyFieldsTest do
 
   defp key_path(scope, provider, rest),
     do: "#{providers_path(scope)}/#{provider.public_id}/keys/#{rest}"
+
+  # The Edit key page of the key `value_id`, at its row id.
+  defp edit_path(scope, provider, value_id) do
+    row = Repo.get_by!(Value, secret_id: provider.secret_id, value_id: value_id)
+    key_path(scope, provider, "#{row.id}/edit")
+  end
 
   defp provider!(scope) do
     {:ok, provider} =
@@ -52,7 +59,7 @@ defmodule ApiaryWeb.ProviderKeyFieldsTest do
     {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
     assert new_password?(lv, "#key-form input[name='key[key]']")
 
-    {:ok, lv, _html} = live(conn, key_path(scope, provider, "key-1/edit"))
+    {:ok, lv, _html} = live(conn, edit_path(scope, provider, "key-1"))
     assert new_password?(lv, "#key-form input[name='key[key]']")
 
     {:ok, lv, _html} = live(conn, "#{providers_path(scope)}/new")
@@ -76,7 +83,7 @@ defmodule ApiaryWeb.ProviderKeyFieldsTest do
     html =
       lv
       |> form("#key-form",
-        key: %{value_id: "spare", key: "#{longest}\n", reset_day: "1", reset_time: ""}
+        key: %{key: "#{longest}\n", reset_day: "1", reset_time: ""}
       )
       |> render_submit()
 
@@ -88,12 +95,14 @@ defmodule ApiaryWeb.ProviderKeyFieldsTest do
     # A Key of only whitespace has the error of an empty Key.
     lv
     |> form("#key-form",
-      key: %{value_id: "spare", key: " \n\t", reset_day: "1", reset_time: ""}
+      key: %{key: " \n\t", reset_day: "1", reset_time: ""}
     )
     |> render_submit()
 
     assert has_element?(lv, "#key-value-2-error", "can't be blank")
-    refute Repo.get_by(Value, secret_id: provider.secret_id, value_id: "spare")
+
+    assert Repo.aggregate(from(v in Value, where: v.secret_id == ^provider.secret_id), :count) ==
+             1
   end
 
   test "New model provider stores its key trimmed, the spaces inside kept", ctx do

@@ -92,7 +92,10 @@ defmodule Apiary.ModelKeys.LoginLeakTest do
       with_debug_log(fn ->
         assert {:ok, :none} = walked_claim(ctx.key, Dispatches.now(), @body)
         waiting = Repo.get!(DispatchRun, queued.id)
-        assert {:refreshing, _public_id, "main"} = Waiting.reason(waiting)
+
+        assert {:refreshing, _public_id, %{identity: "OpenAI subscription · dana@example.com"}} =
+                 Waiting.reason(waiting)
+
         assert_enqueued(worker: LoginRefreshJob)
         assert %{success: 1} = Oban.drain_queue(queue: :default, with_safety: false)
         assert {:ok, %{registered: _run}} = walked_claim(ctx.key, Dispatches.now(), @body)
@@ -122,8 +125,10 @@ defmodule Apiary.ModelKeys.LoginLeakTest do
 
       {reason, log} = with_debug_log(fn -> Waiting.reason(waiting) end)
 
-      assert {:refreshing, public_id, "main"} = reason
+      assert {:refreshing, public_id, %{id: row_id, identity: identity}} = reason
       assert public_id == ctx.provider.public_id
+      assert row_id == ctx.value.id
+      assert identity == "OpenAI subscription · dana@example.com"
       refute_secrets(log, ctx.secrets)
 
       now = DateTime.utc_now()
