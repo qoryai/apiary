@@ -903,59 +903,59 @@ gets the keys of each provider its later sessions run on, one provider per sessi
 claim picks at most 6 keys in this order: the keys of the provider of the default model
 provider credential, at most 6 less the number of other providers; then one key of each
 other provider, in session order; then the other providers' remaining keys;
-`credentials` lists them provider by provider, that provider first. A run whose first
-session runs on the machine's local model provider credential, as its workflow resolves
-to no model choice, gets no key. The run keeps its keys in `run_model_keys`, one row per
-key. Each key is an API credential named `<provider's public id>-<n>`, `n` from 1 for
-each provider, with its provider's `format`, `endpoint` and `auth`, and `group`, the
-provider's public id, so each provider's keys form one key group, which the gateway
-rotates, cools and stops apart from every other group (the Forager contract, Several
-model keys). Where the workflows of a stage with `shared_run: true`, their later steps
-included (the default step under a workflow's override, then the fallbacks), use more
-than 6 providers, a save of the stage fails, and a claim of a run of the stage ends
-`too_many_providers`. A save of the stage also fails, and a claim of a run of the stage
-ends `session_key_missing`, in three cases. First, a later workflow's provider has no
-key, and neither has a provider of its later steps. Second, a workflow's runtime uses
-another API of a provider that an earlier workflow uses: one run uses one API of each
-provider. Third, the first workflow has no model choice, and a later workflow's choice
-is on a model provider. A later workflow with no model choice, which runs on the default
-runtime, never fails the save. The claim orders the provider's keys at its clock: the
-keys with no known reset, or one already passed; then the keys by their known reset, the
-closest minute first; then the keys in cooldown, the earliest `cooldown_until` first.
-Ties go in tie order: the default key first, then the other keys by when each was added.
-A key's known reset is the earliest `resets_at` that a gateway reported, else the next
-reset of its weekly schedule; a key is in cooldown while one of its windows has a
-`cooldown_until` after the claim's clock, or while one of its provider's limit windows
-has a reported `utilization` at or above the key's Use up to percentage and a
-`resets_at` after the claim's clock (`Apiary.ModelKeys.cooldown/4`). The limit windows
-are `limit_windows` of the provider's model provider role in the integrations contract's
-description, vendored with the catalogue: `five_hour` and `seven_day` for the Claude
-subscription, none for an API key. The first key of that order is the start key,
-`model_credential`, never a key in cooldown. `credentials` lists the keys in the order
-the contract has the server send them: the keys out of cooldown in tie order, then the
-keys in cooldown in tie order. Each entry has `pause_for_s`, the key's Pause for, else
-60 for an API key and 3600 for a subscription, written into the run once: by its claim,
-or, for a run claimed before runs kept several keys, by the upgrade (20261111100000).
-Where the claim had them, an entry also has `resets_at`, `schedule_resets_at` and
-`cooldown_until`; no entry has `chosen`, since a model choice chooses a provider, not
-one of its keys. A key's `cooldown_until` is the latest end of its cooldown: a window's
-`cooldown_until`, or the `resets_at` of a limit window at the key's Use up to
-percentage. A key with a Use up to percentage, of a provider with limit windows, also
-has `use_up_to_percent` and `use_up_to_windows`, the provider's limit windows. Each key
-keeps its percentage and its provider's windows in its row of `run_model_keys`, from the
-catalogue entry at the claim, so a later release does not change a live run's windows.
-An entry has both or neither. The entries are fixed for the run: a later state reaches
-the gateway in the answer to its model keys report (The model keys report, below). Where
-every key of the provider is in cooldown, the claim takes the first of the choice's
-fallbacks, in their order, with a key out of cooldown, and the fallback's runtime and
-tiers: the run's `runtime` is the fallback's, and its `provider_api` the API of the
-fallback's provider for that runtime. Where every key of the provider and of each
-fallback is in cooldown, the claim registers nothing and the run of the queue waits
-again, its `dispatch_runs.model_provider_ids` set to those providers; no claim takes a
-run of the queue while every key of each of its providers is in cooldown
-(`Apiary.ModelKeys.claimable/1`). A change of a model choice, of its fallbacks, or of a
-model provider sets the providers of each waiting run it may change again, from the
-choice in effect, once the change has committed
+`credentials` lists them provider by provider, the provider of the default model
+provider credential first. A run whose first session runs on the machine's local model
+provider credential, as its workflow resolves to no model choice, gets no key. The run
+keeps its keys in `run_model_keys`, one row per key. Each key is an API credential named
+`<provider's public id>-<n>`, `n` from 1 for each provider, with its provider's
+`format`, `endpoint` and `auth`, and `group`, the provider's public id, so each
+provider's keys form one key group, which the gateway rotates, cools and stops apart
+from every other group (the Forager contract, Several model keys). Where the workflows
+of a stage with `shared_run: true`, their later steps included (the default step under a
+workflow's override, then the fallbacks), use more than 6 providers, a save of the stage
+fails, and a claim of a run of the stage ends `too_many_providers`. A save of the stage
+also fails, and a claim of a run of the stage ends `session_key_missing`, in three
+cases. First, a later workflow's provider has no key, and neither has a provider of its
+later steps. Second, a workflow's runtime uses another API of a provider that an earlier
+workflow uses: one run uses one API of each provider. Third, the first workflow has no
+model choice, and a later workflow's choice is on a model provider. A later workflow
+with no model choice, which runs on the default runtime, never fails the save. The claim
+orders the provider's keys at its clock: the keys with no known reset, or one already
+passed; then the keys by their known reset, the closest minute first; then the keys in
+cooldown, the earliest `cooldown_until` first. Ties go in tie order: the default key
+first, then the other keys by when each was added. A key's known reset is the earliest
+`resets_at` that a gateway reported, else the next reset of its weekly schedule; a key
+is in cooldown while one of its windows has a `cooldown_until` after the claim's clock,
+or while one of its provider's limit windows has a reported `utilization` at or above
+the key's Use up to percentage and a `resets_at` after the claim's clock
+(`Apiary.ModelKeys.cooldown/4`). The limit windows are `limit_windows` of the provider's
+model provider role in the integrations contract's description, vendored with the
+catalogue: `five_hour` and `seven_day` for the Claude subscription, none for an API key.
+The first key of that order is the start key, `model_credential`, never a key in
+cooldown. `credentials` lists the keys in the order the contract has the server send
+them: the keys out of cooldown in tie order, then the keys in cooldown in tie order.
+Each entry has `pause_for_s`, the key's Pause for, else 60 for an API key and 3600 for a
+subscription, written into the run once: by its claim, or, for a run claimed before runs
+kept several keys, by the upgrade (20261111100000). Where the claim had them, an entry
+also has `resets_at`, `schedule_resets_at` and `cooldown_until`; no entry has `chosen`,
+since a model choice chooses a provider, not one of its keys. A key's `cooldown_until`
+is the latest end of its cooldown: a window's `cooldown_until`, or the `resets_at` of a
+limit window at the key's Use up to percentage. A key with a Use up to percentage, of a
+provider with limit windows, also has `use_up_to_percent` and `use_up_to_windows`, the
+provider's limit windows. Each key keeps its percentage and its provider's windows in
+its row of `run_model_keys`, from the catalogue entry at the claim, so a later release
+does not change a live run's windows. An entry has both or neither. The entries are
+fixed for the run: a later state reaches the gateway in the answer to its model keys
+report (The model keys report, below). Where every key of the provider is in cooldown,
+the claim takes the first of the choice's fallbacks, in their order, with a key out of
+cooldown, and the fallback's runtime and tiers: the run's `runtime` is the fallback's,
+and its `provider_api` the API of the fallback's provider for that runtime. Where every
+key of the provider and of each fallback is in cooldown, the claim registers nothing and
+the run of the queue waits again, its `dispatch_runs.model_provider_ids` set to those
+providers; no claim takes a run of the queue while every key of each of its providers is
+in cooldown (`Apiary.ModelKeys.claimable/1`). A change of a model choice, of its
+fallbacks, or of a model provider sets the providers of each waiting run it may change
+again, from the choice in effect, once the change has committed
 (`Apiary.Dispatches.refresh_model_providers/1`). A gateway's secrets request reveals
 each key in the request by the key's row id, from the secret of that key's provider
 alone, under the value id the key has at the request: a key renamed since the claim is
