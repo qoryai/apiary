@@ -1878,7 +1878,6 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   "Run another round: the run stored no acceptance criteria.", with the output type's
   words; before, it read "No acceptance-criteria was stored in this stage. Run another
   round." An optional output never stops either action.
-<!-- feature: workflow_model -->
 - `acceptance-criteria` and `verification` are structured types: a version is one JSON
   file that matches `acceptance-criteria.schema.json` or `verification.schema.json`, and
   any other file, Markdown too, is `422` `invalid_artifact`. A criterion's id is once in
