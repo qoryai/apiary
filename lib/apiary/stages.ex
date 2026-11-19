@@ -1444,7 +1444,7 @@ defmodule Apiary.Stages do
   end
 
   # resume/1 starts a stage that waits for a required input or for a workflow, once the
-  # input exists or the harness declares the workflow. At this commit only tests call it.
+  # input exists or the harness declares the workflow. Only tests call it.
   # A stage in any other state, or of a work item that is not `:exploring`, is left as it
   # is. `{:error, :not_placed}` for a work item the runner has not placed.
   @doc false

@@ -1528,11 +1528,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   workflow, shows that workflow and where the harness comes from on the run's page and
   on the work item.
 - In Workspace settings › Artifact types, owners and admins switch each standard type on
-  or off, and each change is an audit entry. Forms and the stage editor offer only the
-  types that are on. A push of a type that is off returns `422 unknown_type`, and the
-  message says to switch the type on. `proposal`, `questions`, `review-comments` and
-  `verdict` are always on. A person adds no version of any type: members answer questions
-  on the **Questions** tab and write comments on the **Explore** tab. A type stays on
+  or off, and each change is an audit entry. The stage editor offers only the types that
+  are on. A push of a type that is off returns `422 unknown_type`, and the message says
+  to switch the type on. `proposal`, `questions`, `review-comments` and `verdict` are
+  always on. No form adds a version: a member's answers on the **Questions** tab and
+  comments on the **Explore** tab write the versions of `questions` and
+  `review-comments`. A type stays on
   while an artifact of the workspace has it, or while the current process or a process
   version in use includes it. A workspace keeps every standard type until a person
   switches one off.

@@ -932,7 +932,7 @@ defmodule Apiary.Artifacts do
   # A member action: Moves checked the member's action, under the work item's lock, before
   # it pushes; `artifact.write` is only the audit action of its entry. The action asked is
   # the one of the type: the review comments' for them, the answer's for the questions and
-  # any other type, which `actor_type/2` refuses.
+  # any other type, for which `actor_type/2` returns `{:error, :forbidden}`.
   defp writer({:member_action, %Scope{user: %{id: user_id}} = scope}, work_item, type_name)
        when is_binary(user_id) do
     with :ok <- authorize(scope, member_action(type_name), work_item),

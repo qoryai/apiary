@@ -11,9 +11,10 @@ defmodule Apiary.WorkflowEndToEndTest do
   #   2. The run reads its work item, pushes a proposal, and ends; Explore reaches its
   #      gate.
   #   3. Dana saves version 2, in which Shape runs a workflow and has a required output,
-  #      and Build reads it and has a loop and an output, and assigns the work item to it.
-  #      Dana confirms Explore; Shape's run pushes acceptance criteria and ends; Shape is at
-  #      its gate. Dana approves Shape; Build is entered with the criteria as its input.
+  #      and Build reads the criteria and has a loop and an output, and assigns the work
+  #      item to it. Dana confirms Explore; Shape's run pushes acceptance criteria and
+  #      ends; Shape is at its gate. Dana approves Shape; Build is entered with the
+  #      criteria as its input.
   #   4. A Build run pushes an explainer and gives `changes-requested`; the second round
   #      gives `passed`. The Exists check passes, and Build is at its gate.
   #   5. Dana requests changes; the next run stops, and Build escalates (`run_stopped`).

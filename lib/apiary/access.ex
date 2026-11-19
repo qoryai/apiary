@@ -1054,12 +1054,13 @@ defmodule Apiary.Access do
 
   An action taken on the strength of something other than a role, a sign-up, an
   invitation's token, a release command run on the instance's machine or another action,
-  is in the list for the audit trail (`Apiary.Audit`), whose entries name the actions of
-  this list, and no role of the core has it: the context function checks the sign-up,
-  the token or the other action, and asks nothing here of the action itself; whoever runs
-  a release command controls the instance already. A sign-up's `organisation.create` is
-  one: the account does not exist yet. `artifact.write` is another: `work_item.answer` or
-  `work_item.review_comment` allows it.
+  is in the list for the audit trail (`Apiary.Audit`), whose entries contain the actions
+  of this list, and no role of the core has it. The context function checks the sign-up
+  or the token, or asks `authorize/3` for the other action, and makes no check for the
+  action itself; whoever runs a release command controls the instance already. A
+  sign-up's `organisation.create` is one: the account does not exist yet.
+  `artifact.write` is another: `work_item.answer` or `work_item.review_comment` allows
+  it.
 
   ## The levels a person may be given
 
