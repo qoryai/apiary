@@ -67,8 +67,8 @@ defmodule Apiary.ModelKeys do
   @typedoc """
   A model key of a run: `name`, the credential's name in the run's run configuration;
   `run_id`, the run's row id; `secret_value_id`, the value's row id; `organisation_id`, the
-  value's organisation; `copy_set_at`, when the value the run has was set (`run_keys/1`), nil when unknown; and
-  `copy_kept`, true when `copy_set_at` is the `value_set_at` of a copy of the key for the
+  value's organisation; `copy_set_at`, when the value the run has was set (`run_keys/1`),
+  nil when unknown; and `copy_kept`, true when `copy_set_at` is the `value_set_at` of a copy of the key for the
   run (`Apiary.ModelKeys.Copy`), which a secrets request kept (`keep_copies/2`) or
   migration 20261111220000 wrote for a run that was pending or running at the upgrade;
   false when it is the time the run's row was written; and `copy_login_at`, for a sign-in,
