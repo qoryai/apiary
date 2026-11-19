@@ -71,10 +71,10 @@ defmodule Apiary.Dispatches do
   # time has passed, or once the paused run's report marked a key `unauthorized`
   # (`keys_free/2`), so the paused run's model keys report, which can arrive after the
   # exit, is recorded before the claim orders the keys. The paused run
-  # keeps `paused_until`. A continuation that pauses is continued again. It writes none for a prebuild, for a work item no longer in Explore, in another
-  # workspace or at another take in, for a work item placed at another stage or whose
-  # stage does not run, or while another run of the take in has not ended: `{:error,
-  # :not_requeued}`.
+  # keeps `paused_until`. A continuation that pauses is continued again. It writes none for
+  # a prebuild, for a work item no longer in Explore, in another workspace or at another
+  # take in, for a work item placed at another stage or whose stage does not run, or while
+  # another run of the take in has not ended: `{:error, :not_requeued}`.
   #
   # `end_held(work_item_ids, workspace_id, target, now)` ends, inside the caller's
   # transaction, the waiting runs of those work items with `target` that are not

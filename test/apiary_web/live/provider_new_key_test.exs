@@ -1,5 +1,5 @@
 defmodule ApiaryWeb.ProviderNewKeyTest do
-  # A key the model provider returned 401 to (`Apiary.ModelKeys.reject/4`) on Organisation
+  # A key the model provider returned 401 to (`Apiary.ModelKeys.reject/3`) on Organisation
   # settings > Model providers: the provider's page shows Needs a new key in the key's row
   # in place of its state, with who rejected it and when, and Edit key says under New value
   # what to enter. A new value, saved on Edit key, takes the state away. The page shows no

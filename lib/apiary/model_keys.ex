@@ -1102,8 +1102,8 @@ defmodule Apiary.ModelKeys do
   Marks the keys of a run whose provider returned 401, as the run's gateway reports them
   (`Apiary.ModelKeys.Report`, `unauthorized`): `entries`, `[%{credential:, at:}]`, the key's
   credential name and when the 401 arrived, for the run's keys `keys` (`run_keys/1`), of
-  any of the run's providers. Each key leaves the claim (`Apiary.ModelKeys.Rejection`) until it gets a new
-  value, and the key's page says that the provider rejected it at `at`.
+  any of the run's providers. Each key leaves the claim (`Apiary.ModelKeys.Rejection`) until
+  it gets a new value, and the key's page says that the provider rejected it at `at`.
 
   An entry of a credential that is not among `keys` is left out. So is one of a key that no
   secrets request sent to the run (`copy_kept` false: the run has no copy of it, and a run

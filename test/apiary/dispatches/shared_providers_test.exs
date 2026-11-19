@@ -1133,7 +1133,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
 
     # The paused run's model keys report lists its key `value_id` of `provider` as
     # `unauthorized`: a secrets request kept the key's copy for the run, and the report
-    # marks the key (`Apiary.ModelKeys.reject/4`).
+    # marks the key (`Apiary.ModelKeys.reject/3`).
     defp rejected!(%Run{} = paused, provider, value_id) do
       value = key_value!(provider, value_id)
       :ok = ModelKeys.keep_copies(paused.id, [{value.id, value.value_set_at, nil}])

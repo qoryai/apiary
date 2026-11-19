@@ -65,7 +65,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
       })
   end
 
-  describe "reject/4" do
+  describe "reject/3" do
     test "marks a key of the run: the claim skips it, with the time of the 401", ctx do
       main = ctx.values["main"]
       at = ~U[2026-11-18 09:12:00.000000Z]

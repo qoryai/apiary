@@ -3,7 +3,7 @@ defmodule ApiaryWeb.Contract.ModelKeysLoginUnauthorizedTest do
   # for a run whose model key is a sign-in (`Apiary.ModelKeys.Login`), together with the
   # secrets request that renews the token (`POST /v1/secrets`). A report whose `at` is
   # before the time the run's copy took the token it has now is for an earlier token and
-  # marks nothing (`Apiary.ModelKeys.reject/4`); the three ways such a report arrives are
+  # marks nothing (`Apiary.ModelKeys.reject/3`); the three ways such a report arrives are
   # one test each. Not async, as the other contract tests of a pool: the features are the
   # whole node's.
   use ApiaryWeb.ConnCase, async: false
