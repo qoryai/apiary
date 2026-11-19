@@ -435,7 +435,7 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
     assert has_element?(view, "#{@list}-action b", "Request changes")
     assert_criteria(view, mark)
 
-    # The block reads in order: the line of what to do, then the first criterion's id with
+    # The block shows, in order, the line of what to do, then the first criterion's id with
     # the mark, its earlier text and its new text.
     assert view |> lines(@list) |> Enum.take(4) == [
              "Check that these 3 changes to the acceptance criteria match your request, then pick Approve or Request changes.",
@@ -604,8 +604,8 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
     assert has_element?(view, "#{@card}-approve-go", "Approve")
   end
 
-  test "a change at Verify after a change that Build approved: the card compares it with " <>
-         "the version Build approved",
+  test "a change at Verify after a change approved at Build: the card compares it with " <>
+         "the version approved at Build",
        %{conn: conn, scope: scope, sam: sam} do
     # v1 approved at Shape, v2 changed on sam's request and approved at Build.
     work_item = changed!(scope)

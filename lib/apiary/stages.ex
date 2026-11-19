@@ -5316,7 +5316,7 @@ defmodule Apiary.Stages do
   # `%{type:, name:, version:, by:, earlier:}`. `by` is the account id of the person who
   # wrote the note that asked for the version (`Apiary.Stages.Notes.writers/2`), nil for
   # none. `earlier` is the version of the same artifact, below this one, that was approved
-  # before the change (`approved_before/3`), nil for none. The work item page marks each
+  # before the change (`approved_before/4`), nil for none. The work item page marks each
   # such version until an approval lists it or a later version of its artifact. A gate
   # `none` lists no version with a `decision`, so the mark stays through it.
   @spec unapproved_changes(WorkItem.t(), [map]) :: %{String.t() => map}
