@@ -8314,6 +8314,53 @@ defmodule Apiary.StagesTest do
                Stages.inputs(work_item)
     end
 
+    test "unapproved_changes/2 lists a change with its writer and the version a person " <>
+           "approved before, through a gate none, until a person's approval lists it",
+         %{scope: scope} do
+      criteria_process!(scope)
+
+      {work_item, %Escalation{public_id: decision}} =
+        asked_in_build!(scope, "Cover the empty cart in AC-2.")
+
+      # Before the change no version has a decision.
+      assert Stages.unapproved_changes(work_item, Artifacts.list(work_item)) == %{}
+
+      changed =
+        pushes_one("acceptance-criteria", "# AC-2 with the empty cart", decision: decision)
+
+      work_item =
+        end_run!(work_item, both(changed, pushes_one("walkthrough", "# Walkthrough 2", [])))
+
+      new_id = criteria(work_item, 2).public_id
+      shaped_id = criteria(work_item, 1).public_id
+      user_id = scope.user.id
+
+      # The escalation's note asked for the version: its writer is the person who resolved
+      # the escalation. The earlier version is the one Shape's approval lists.
+      assert [{^new_id, change}] =
+               Map.to_list(Stages.unapproved_changes(work_item, Artifacts.list(work_item)))
+
+      assert %{
+               type: "acceptance-criteria",
+               name: "main",
+               version: %{public_id: ^new_id},
+               by: ^user_id,
+               earlier: %{public_id: ^shaped_id}
+             } = change
+
+      # Build's gate none lists no change, so the change stays.
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
+
+      assert [^new_id] =
+               Map.keys(Stages.unapproved_changes(work_item, Artifacts.list(work_item)))
+
+      # A person's approval at Verify lists it: no change is left.
+      work_item = end_run!(work_item, verdict("passed"))
+      {:ok, work_item} = Stages.approve(scope, work_item, nil, expect_stage: @verify)
+      assert Stages.unapproved_changes(work_item, Artifacts.list(work_item)) == %{}
+    end
+
     test "a change counts by the approvals that list it, not by its time", %{scope: scope} do
       criteria_process!(scope)
 

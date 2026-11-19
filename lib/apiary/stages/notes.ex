@@ -3,9 +3,10 @@ defmodule Apiary.Stages.Notes do
   # for changes or a move at a gate (`Apiary.Stages.GateDecision`, `gd_…`) and an
   # escalation that a person resolved with a note (`Apiary.Stages.Escalation`, `es_…`).
   # A run's version may have one as its `decision`, the note that asked for it (vault
-  # 0261, 624 (a)): `find/2` is the check of a push, and `times/2` the time of each note,
-  # as the notes have it. Only the two queries contain the rule for which rows are such
-  # notes, so the notes, the check and the times agree.
+  # 0261, 624 (a)): `find/2` is the check of a push, `times/2` the time of each note, as
+  # the notes have it, and `writers/2` the person who wrote each. Only the two queries
+  # contain the rule for which rows are such notes, so the notes, the check, the times and
+  # the writers agree.
   @moduledoc false
 
   import Ecto.Query, only: [from: 2]
@@ -90,6 +91,35 @@ defmodule Apiary.Stages.Notes do
             from e in escalations(work_item_id),
               where: e.public_id in ^ids,
               select: {e.public_id, e.resolved_at}
+          )
+
+        Map.new(decisions ++ escalations)
+    end
+  end
+
+  # writers/2 is the account id of the person who wrote each note of the work item among
+  # `ids`, by its id: a request's or a move's `user_id`, an escalation's `resolved_by_id`,
+  # nil where the row has none. An id that is no such note is left out.
+  @doc false
+  @spec writers(Ecto.UUID.t(), [String.t() | nil]) :: %{String.t() => Ecto.UUID.t() | nil}
+  def writers(work_item_id, ids) do
+    case ids |> Enum.filter(&is_binary/1) |> Enum.uniq() do
+      [] ->
+        %{}
+
+      ids ->
+        decisions =
+          Repo.all(
+            from d in gate_decisions(work_item_id),
+              where: d.public_id in ^ids,
+              select: {d.public_id, d.user_id}
+          )
+
+        escalations =
+          Repo.all(
+            from e in escalations(work_item_id),
+              where: e.public_id in ^ids,
+              select: {e.public_id, e.resolved_by_id}
           )
 
         Map.new(decisions ++ escalations)
