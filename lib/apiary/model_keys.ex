@@ -66,8 +66,8 @@ defmodule Apiary.ModelKeys do
 
   @typedoc """
   A model key of a run: `name`, the credential's name in the run's run configuration;
-  `secret_value_id`, the value's row id; `organisation_id`, the value's organisation;
-  `copy_set_at`, when the value the run has was set (`run_keys/1`), nil when unknown; and
+  `run_id`, the run's row id; `secret_value_id`, the value's row id; `organisation_id`, the
+  value's organisation; `copy_set_at`, when the value the run has was set (`run_keys/1`), nil when unknown; and
   `copy_kept`, true when `copy_set_at` is the `value_set_at` of a copy of the key for the
   run (`Apiary.ModelKeys.Copy`), which a secrets request kept (`keep_copies/2`) or
   migration 20261111220000 wrote for a run that was pending or running at the upgrade;
@@ -78,6 +78,7 @@ defmodule Apiary.ModelKeys do
   """
   @type run_key :: %{
           name: String.t(),
+          run_id: Ecto.UUID.t(),
           secret_value_id: Ecto.UUID.t(),
           organisation_id: Ecto.UUID.t(),
           copy_set_at: DateTime.t() | nil,
@@ -332,6 +333,7 @@ defmodule Apiary.ModelKeys do
           organisation_id != nil,
           do: %{
             name: name,
+            run_id: run.id,
             secret_value_id: id,
             organisation_id: organisation_id,
             copy_set_at: copies |> Map.get(id, {run.inserted_at, nil, nil}) |> elem(0),
@@ -1084,14 +1086,20 @@ defmodule Apiary.ModelKeys do
   `provider`. Each key leaves the claim (`Apiary.ModelKeys.Rejection`) until it gets a new
   value, and the key's page says that the provider rejected it at `at`.
 
-  An entry of a credential that is not among `keys` is left out. So is one of a key whose
-  value the run does not have (a new value was set since the run's request that sealed it:
-  `record/3` reads that as it does for states), and one of a key of a provider whose keys are
+  An entry of a credential that is not among `keys` is left out. So is one of a key that no
+  secrets request sent to the run (`copy_kept` false: the run has no copy of it, and a run
+  that never received the key has no 401 of it), one of a key whose value the run does not
+  have (a new value was set since the run's request that sealed it: `record/3` reads that
+  as it does for states), and one of a key of a provider whose keys are
   sign-ins, unless no refresh can fix it for the token the run has
   (`Apiary.ModelKeys.Login.rejectable?/3`, by the run's copy of the sign-in time and the
   database's clock): the gateway lists such a key while its renewal is pending. An entry
   whose `at` is before the time the run's copy took the token it has now is for an earlier
-  token and marks nothing (`for_an_older_token?/2`). A refresh never changes the row;
+  token and marks nothing (`for_an_older_token?/2`). A run marks a key once: the first entry
+  that passes these checks takes the run's copy of the key (`Apiary.ModelKeys.Copy`,
+  `marked_at`), and a second entry for the key, in the same report or a later one, marks
+  nothing and moves nothing; a new run marks the key again. An entry that is left out is no
+  error: the report is answered as one whose entries all marked. A refresh never changes the row;
   a new sign-in ends the state, as a new value of any key does. An entry that is older
   than the key's row keeps the row. The rows are written in the order of the keys' row
   ids, after the values' rows are locked `FOR SHARE`, as `record/3` does, so a new value
@@ -1108,12 +1116,16 @@ defmodule Apiary.ModelKeys do
     by_name = Map.new(keys, &{&1.name, &1})
     copies = Map.new(keys, &{&1.secret_value_id, {&1.copy_kept, &1.copy_set_at}})
     sealed = Map.new(keys, &{&1.secret_value_id, Map.get(&1, :copy_login_at)})
+    runs = Map.new(keys, &{&1.secret_value_id, Map.get(&1, :run_id)})
 
     marked =
       for entry <- entries,
           {:ok, key} <- [Map.fetch(by_name, entry.credential)],
           not for_an_older_token?(key, entry.at),
           do: {key, entry.at}
+
+    # One entry for a key: a report that lists it twice marks it once, by its first entry.
+    marked = Enum.uniq_by(marked, fn {key, _at} -> key.secret_value_id end)
 
     if marked != [] do
       rows =
@@ -1128,7 +1140,7 @@ defmodule Apiary.ModelKeys do
         |> Enum.sort_by(& &1.secret_value_id)
 
       {:ok, :ok} =
-        Repo.transact(fn -> {:ok, write_rejections(rows, copies, sealed, provider)} end)
+        Repo.transact(fn -> {:ok, write_rejections(rows, copies, sealed, runs, provider)} end)
     end
 
     :ok
@@ -1150,6 +1162,30 @@ defmodule Apiary.ModelKeys do
 
   defp for_an_older_token?(_key, _at), do: false
 
+  # Whether a secrets request sent the key to the run (`copy_kept`): a run that never
+  # received a key has no 401 of it to report.
+  defp sent?(row, copies), do: match?({true, _set_at}, Map.get(copies, row.secret_value_id))
+
+  # The run's one mark of the key: true for the first call, false for each later one. One
+  # conditional UPDATE of the run's copy, in the transaction that writes the rejection, so
+  # two reports of the run at once take it once: the second waits for the first's row lock
+  # and then finds `marked_at` set. A run that has no copy of the key has no mark to take.
+  defp take_mark(run_id, secret_value_id) when is_binary(run_id) do
+    {count, _rows} =
+      Repo.update_all(
+        from(c in Copy,
+          where: c.run_id == ^run_id and c.secret_value_id == ^secret_value_id,
+          where: is_nil(c.marked_at),
+          update: [set: [marked_at: fragment("timezone('utc', clock_timestamp())")]]
+        ),
+        []
+      )
+
+    count == 1
+  end
+
+  defp take_mark(_run_id, _secret_value_id), do: false
+
   # A key that is no sign-in is marked. A sign-in is marked only when no refresh can fix it
   # for the token the run has (`Login.rejectable?/3`), by the sign-in time of that token
   # and the database's clock.
@@ -1162,7 +1198,7 @@ defmodule Apiary.ModelKeys do
   # writes the value's row too, is either whole before the read or waits for this
   # transaction: a sign-in that a refresh can still fix (`Login.rejectable?/3`) is not
   # marked.
-  defp write_rejections(rows, copies, sealed, provider) do
+  defp write_rejections(rows, copies, sealed, runs, provider) do
     ids = Enum.map(rows, & &1.secret_value_id)
 
     set =
@@ -1180,8 +1216,10 @@ defmodule Apiary.ModelKeys do
 
     kept =
       for row <- rows,
+          sent?(row, copies),
           current?(row, set, copies),
           markable?(logins[row.secret_value_id], sealed[row.secret_value_id], now),
+          take_mark(runs[row.secret_value_id], row.secret_value_id),
           do: Map.put(row, :value_set_at, set[row.secret_value_id])
 
     if kept != [] do

@@ -14,7 +14,7 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
   import Apiary.DispatchedRunsFixtures, only: [walked_claim: 2, workspace_gateway!: 1]
 
   import Apiary.ModelKeysFixtures,
-    only: [cooling!: 2, key_value!: 2, device_login: 1, login_tokens: 1]
+    only: [cooling!: 2, key_value!: 2, device_login: 1, login_tokens: 1, run_key!: 2]
 
   import Apiary.NodesFixtures
   import Apiary.RunEventsFixtures
@@ -412,24 +412,19 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
           keys: [%{value_id: "main", value: "sk-ant-queued-page-main"}]
         })
 
+      # The key of a run that is handed over to a gateway, before this test's queued run.
+      value = key_value!(provider, "main")
+      key = run_key!(scope, value)
+
       {:ok, _choice} =
         Apiary.ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
 
-      value = key_value!(provider, "main")
       {_work_item, queued} = queue!(scope)
 
       {1, _rows} =
         Repo.update_all(from(d in DispatchRun, where: d.id == ^queued.id),
           set: [model_provider_ids: [provider.id]]
         )
-
-      key = %{
-        name: "model-1",
-        secret_value_id: value.id,
-        organisation_id: value.organisation_id,
-        copy_set_at: value.value_set_at,
-        copy_kept: true
-      }
 
       now = DateTime.utc_now()
       :ok = Apiary.ModelKeys.reject([key], [%{credential: "model-1", at: now}], provider, now)

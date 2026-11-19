@@ -30,15 +30,9 @@ defmodule Apiary.ModelKeys.RejectionTest do
     {provider, Map.new(values, &{&1.value_id, &1})}
   end
 
-  # A key of a run that has the value as it is now.
-  defp key(%Value{} = value, name \\ "model-1"),
-    do: %{
-      name: name,
-      secret_value_id: value.id,
-      organisation_id: value.organisation_id,
-      copy_set_at: value.value_set_at,
-      copy_kept: true
-    }
+  # A key of a new run that has the value as it is now, with the copy a secrets request
+  # keeps for it (`run_key!/4`).
+  defp key(ctx, %Value{} = value, name \\ "model-1"), do: run_key!(ctx.scope, value, name)
 
   defp unauthorized(name \\ "model-1", at \\ DateTime.utc_now()),
     do: %{credential: name, at: at}
@@ -78,7 +72,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
 
       :ok =
         ModelKeys.reject(
-          [key(main)],
+          [key(ctx, main)],
           [unauthorized("model-1", at)],
           ctx.provider,
           DateTime.utc_now()
@@ -100,7 +94,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
       assert {:ok, "sk-ant-fixture-main-0123456789", nil, %DateTime{}, nil} =
                ModelKeys.reveal_for_sealing(provider, main.id, run, wait: 100)
 
-      :ok = ModelKeys.reject([key(main)], [unauthorized()], ctx.provider, DateTime.utc_now())
+      :ok = ModelKeys.reject([key(ctx, main)], [unauthorized()], ctx.provider, DateTime.utc_now())
 
       assert ModelKeys.reveal_for_sealing(provider, main.id, run, wait: 100) ==
                {:error, :new_key_needed}
@@ -118,11 +112,16 @@ defmodule Apiary.ModelKeys.RejectionTest do
       main = ctx.values["main"]
 
       :ok =
-        ModelKeys.reject([key(main)], [unauthorized("model-9")], ctx.provider, DateTime.utc_now())
+        ModelKeys.reject(
+          [key(ctx, main)],
+          [unauthorized("model-9")],
+          ctx.provider,
+          DateTime.utc_now()
+        )
 
       assert rows(main) == []
 
-      gone = %{key(main) | secret_value_id: Ecto.UUID.generate()}
+      gone = %{key(ctx, main) | secret_value_id: Ecto.UUID.generate()}
       :ok = ModelKeys.reject([gone], [unauthorized()], ctx.provider, DateTime.utc_now())
       assert Repo.aggregate(Rejection, :count) == 0
     end
@@ -130,7 +129,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
     test "leaves out a key whose value the run does not have: a new value was set since the seal",
          ctx do
       main = ctx.values["main"]
-      old = %{key(main) | copy_set_at: DateTime.add(main.value_set_at, -60)}
+      old = %{key(ctx, main) | copy_set_at: DateTime.add(main.value_set_at, -60)}
 
       :ok = ModelKeys.reject([old], [unauthorized()], ctx.provider, DateTime.utc_now())
 
@@ -138,14 +137,68 @@ defmodule Apiary.ModelKeys.RejectionTest do
       assert %{blocked: nil} = claim_key(ctx.provider, "main")
     end
 
-    test "a later report of the same 401 keeps the row, a newer 401 moves its time", ctx do
+    test "marks a key once for a run: a second report of it marks nothing and moves nothing",
+         ctx do
       main = ctx.values["main"]
+      run_key = key(ctx, main)
       first = ~U[2026-11-18 09:12:00.000000Z]
-      newer = ~U[2026-11-18 09:30:00.000000Z]
+      later = ~U[2026-11-18 09:30:00.000000Z]
 
       :ok =
         ModelKeys.reject(
-          [key(main)],
+          [run_key],
+          [unauthorized("model-1", first)],
+          ctx.provider,
+          DateTime.utc_now()
+        )
+
+      for at <- [later, DateTime.add(first, -600)] do
+        :ok =
+          ModelKeys.reject(
+            [run_key],
+            [unauthorized("model-1", at)],
+            ctx.provider,
+            DateTime.utc_now()
+          )
+
+        assert [%Rejection{rejected_at: ^first}] = rows(main)
+      end
+    end
+
+    test "marks a key once for a report that has it twice", ctx do
+      main = ctx.values["main"]
+      first = ~U[2026-11-18 09:12:00.000000Z]
+      later = ~U[2026-11-18 09:30:00.000000Z]
+
+      :ok =
+        ModelKeys.reject(
+          [key(ctx, main)],
+          [unauthorized("model-1", first), unauthorized("model-1", later)],
+          ctx.provider,
+          DateTime.utc_now()
+        )
+
+      assert [%Rejection{rejected_at: ^first}] = rows(main)
+    end
+
+    test "marks nothing for a key the gateway never received", ctx do
+      main = ctx.values["main"]
+      never_sent = %{key(ctx, main) | copy_kept: false}
+
+      :ok = ModelKeys.reject([never_sent], [unauthorized()], ctx.provider, DateTime.utc_now())
+
+      assert rows(main) == []
+      assert %{blocked: nil} = claim_key(ctx.provider, "main")
+    end
+
+    test "lets a new run mark a key that another run marked", ctx do
+      main = ctx.values["main"]
+      first = ~U[2026-11-18 09:12:00.000000Z]
+      later = ~U[2026-11-18 09:30:00.000000Z]
+
+      :ok =
+        ModelKeys.reject(
+          [key(ctx, main)],
           [unauthorized("model-1", first)],
           ctx.provider,
           DateTime.utc_now()
@@ -153,29 +206,19 @@ defmodule Apiary.ModelKeys.RejectionTest do
 
       :ok =
         ModelKeys.reject(
-          [key(main)],
-          [unauthorized("model-1", DateTime.add(first, -600))],
+          [key(ctx, main)],
+          [unauthorized("model-1", later)],
           ctx.provider,
           DateTime.utc_now()
         )
 
-      assert [%Rejection{rejected_at: ^first}] = rows(main)
-
-      :ok =
-        ModelKeys.reject(
-          [key(main)],
-          [unauthorized("model-1", newer)],
-          ctx.provider,
-          DateTime.utc_now()
-        )
-
-      assert [%Rejection{rejected_at: ^newer}] = rows(main)
+      assert [%Rejection{rejected_at: ^later}] = rows(main)
     end
 
     test "marks the keys of one report each, in any order", ctx do
       main = ctx.values["main"]
       spare = ctx.values["spare"]
-      keys = [key(spare, "model-2"), key(main, "model-1")]
+      keys = [key(ctx, spare, "model-2"), key(ctx, main, "model-1")]
 
       :ok =
         ModelKeys.reject(
@@ -192,7 +235,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
   describe "a new value" do
     test "clears the mark and the claim takes the key again", ctx do
       main = ctx.values["main"]
-      :ok = ModelKeys.reject([key(main)], [unauthorized()], ctx.provider, DateTime.utc_now())
+      :ok = ModelKeys.reject([key(ctx, main)], [unauthorized()], ctx.provider, DateTime.utc_now())
       assert %{blocked: :new_key} = claim_key(ctx.provider, "main")
 
       new_value!(ctx.scope, ctx.provider, "main", "sk-ant-fixture-main-9876543210")
@@ -204,7 +247,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
 
     test "clears the mark when it equals the stored value", ctx do
       main = ctx.values["main"]
-      :ok = ModelKeys.reject([key(main)], [unauthorized()], ctx.provider, DateTime.utc_now())
+      :ok = ModelKeys.reject([key(ctx, main)], [unauthorized()], ctx.provider, DateTime.utc_now())
 
       new_value!(ctx.scope, ctx.provider, "main", "sk-ant-fixture-main-0123456789")
 
@@ -214,7 +257,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
 
     test "a row left by another write path stops counting when the value's time moves", ctx do
       main = ctx.values["main"]
-      :ok = ModelKeys.reject([key(main)], [unauthorized()], ctx.provider, DateTime.utc_now())
+      :ok = ModelKeys.reject([key(ctx, main)], [unauthorized()], ctx.provider, DateTime.utc_now())
 
       Repo.update_all(from(v in Value, where: v.id == ^main.id),
         set: [value_set_at: DateTime.add(main.value_set_at, 5)]
@@ -227,18 +270,20 @@ defmodule Apiary.ModelKeys.RejectionTest do
 
     test "the provider's rejection of the new value marks the key again", ctx do
       main = ctx.values["main"]
-      :ok = ModelKeys.reject([key(main)], [unauthorized()], ctx.provider, DateTime.utc_now())
+      :ok = ModelKeys.reject([key(ctx, main)], [unauthorized()], ctx.provider, DateTime.utc_now())
       new_value!(ctx.scope, ctx.provider, "main", "sk-ant-fixture-main-9876543210")
 
       renewed = Repo.get!(Value, main.id)
-      :ok = ModelKeys.reject([key(renewed)], [unauthorized()], ctx.provider, DateTime.utc_now())
+
+      :ok =
+        ModelKeys.reject([key(ctx, renewed)], [unauthorized()], ctx.provider, DateTime.utc_now())
 
       assert %{blocked: :new_key} = claim_key(ctx.provider, "main")
     end
 
     test "a rename keeps the mark", ctx do
       main = ctx.values["main"]
-      :ok = ModelKeys.reject([key(main)], [unauthorized()], ctx.provider, DateTime.utc_now())
+      :ok = ModelKeys.reject([key(ctx, main)], [unauthorized()], ctx.provider, DateTime.utc_now())
 
       Repo.update_all(from(v in Value, where: v.id == ^main.id), set: [value_id: "renamed"])
 
@@ -251,12 +296,12 @@ defmodule Apiary.ModelKeys.RejectionTest do
       now = DateTime.utc_now()
       assert claimable?([ctx.provider.id], now)
 
-      :ok = ModelKeys.reject([key(ctx.values["main"])], [unauthorized()], ctx.provider, now)
+      :ok = ModelKeys.reject([key(ctx, ctx.values["main"])], [unauthorized()], ctx.provider, now)
       assert claimable?([ctx.provider.id], now)
 
       :ok =
         ModelKeys.reject(
-          [key(ctx.values["spare"], "model-2")],
+          [key(ctx, ctx.values["spare"], "model-2")],
           [unauthorized("model-2")],
           ctx.provider,
           now
@@ -272,10 +317,10 @@ defmodule Apiary.ModelKeys.RejectionTest do
       now = DateTime.utc_now()
       later = DateTime.add(now, 3600)
 
-      :ok = ModelKeys.reject([key(ctx.values["main"])], [unauthorized()], ctx.provider, now)
+      :ok = ModelKeys.reject([key(ctx, ctx.values["main"])], [unauthorized()], ctx.provider, now)
 
       ModelKeys.record(
-        [key(ctx.values["spare"])],
+        [key(ctx, ctx.values["spare"])],
         [
           %{
             credential: "model-1",
@@ -299,7 +344,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
 
     test "has no reason to wait while one key is free, and for a provider with no key", ctx do
       now = DateTime.utc_now()
-      :ok = ModelKeys.reject([key(ctx.values["main"])], [unauthorized()], ctx.provider, now)
+      :ok = ModelKeys.reject([key(ctx, ctx.values["main"])], [unauthorized()], ctx.provider, now)
 
       assert ModelKeys.waiting_reason([ctx.provider.id], now) == nil
       assert ModelKeys.waiting_reason([], now) == nil
@@ -309,11 +354,11 @@ defmodule Apiary.ModelKeys.RejectionTest do
   describe "when keys of two providers need a person" do
     test "the reason is the first key in the run's order of providers", ctx do
       now = DateTime.utc_now()
-      :ok = ModelKeys.reject([key(ctx.values["main"])], [unauthorized()], ctx.provider, now)
+      :ok = ModelKeys.reject([key(ctx, ctx.values["main"])], [unauthorized()], ctx.provider, now)
 
       :ok =
         ModelKeys.reject(
-          [key(ctx.values["spare"], "model-2")],
+          [key(ctx, ctx.values["spare"], "model-2")],
           [unauthorized("model-2")],
           ctx.provider,
           now
@@ -353,7 +398,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
 
     # The sign-in's row as a key of a run reads it, with `login_at` as the run's copy has it.
     defp login_key(ctx, login_at),
-      do: key(ctx.login) |> Map.put(:copy_login_at, login_at)
+      do: key(ctx, ctx.login) |> Map.put(:copy_login_at, login_at)
 
     defp token_time(ctx) do
       login = Repo.get!(Login, ctx.login.id)
@@ -438,7 +483,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
       reject!(ctx, login_key(ctx, nil))
       assert rows(ctx.login) == []
 
-      reject!(ctx, key(ctx.login))
+      reject!(ctx, key(ctx, ctx.login))
       assert rows(ctx.login) == []
     end
   end

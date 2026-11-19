@@ -52,8 +52,12 @@ defmodule Apiary.ModelKeys.Report do
        same, and so are the keys of `unauthorized` (`Apiary.ModelKeys.reject/4`): each
        key of the run in it needs a new value from then until a new value; a key whose
        provider's keys are sign-ins, and whose sign-in a refresh may still renew, is not
-       marked. A run's gateway can mark any key of the run, and a key belongs to the whole
-       organisation (or to the provider), so a run marks the key for every run that uses it.
+       marked. An entry for a key that no secrets request sent to the run marks nothing, and a
+       run marks a key once: a second entry for the key, in this report or a later one,
+       marks nothing and moves nothing. An entry that marks nothing is no error: the answer
+       is the same as for one that marks. A run's gateway can mark any key it was sent, and a
+       key belongs to the whole organisation (or to the provider), so a run marks the key for
+       every run that uses it.
        `{:ok, body}`, the answer `{"version":1,"keys":[…]}`
        with the newest state of each key of the run and window, under the run's credential
        names.

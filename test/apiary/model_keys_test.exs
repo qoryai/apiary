@@ -267,6 +267,7 @@ defmodule Apiary.ModelKeysTest do
       assert ModelKeys.run_keys(run) == [
                %{
                  name: "model-1",
+                 run_id: nil,
                  secret_value_id: ctx.values["spare"].id,
                  organisation_id: ctx.scope.organisation.id,
                  copy_set_at: nil,
@@ -276,6 +277,7 @@ defmodule Apiary.ModelKeysTest do
                },
                %{
                  name: "model-2",
+                 run_id: nil,
                  secret_value_id: ctx.values["main"].id,
                  organisation_id: ctx.scope.organisation.id,
                  copy_set_at: nil,

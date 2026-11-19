@@ -17,6 +17,10 @@ defmodule Apiary.ModelKeys.Copy do
   sealed the token of that `login_at` for the run, kept while later requests seal the same
   token, and nil where `login_at` is. A 401 that the gateway reports at an `at` before it
   was a 401 for an older token (`Apiary.ModelKeys.reject/4`).
+
+  `marked_at` is the database's time (UTC) at which a report of the run marked the key as
+  rejected by its provider (`Apiary.ModelKeys.reject/4`), nil until then. A run marks a key
+  once: a later report of the key by the run marks nothing and moves nothing.
   """
 
   use Ecto.Schema
@@ -32,5 +36,6 @@ defmodule Apiary.ModelKeys.Copy do
     field :value_set_at, :utc_datetime_usec
     field :login_at, :utc_datetime_usec
     field :login_sealed_at, :utc_datetime_usec
+    field :marked_at, :utc_datetime_usec
   end
 end

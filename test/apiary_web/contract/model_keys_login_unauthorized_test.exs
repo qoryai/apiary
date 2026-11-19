@@ -152,6 +152,20 @@ defmodule ApiaryWeb.Contract.ModelKeysLoginUnauthorizedTest do
     assert [_row] = rows()
   end
 
+  test "a second report of the key by the run marks nothing and moves nothing", ctx do
+    assert secrets(ctx).status == 200
+    assert secrets(ctx, true).status == 200
+
+    first = at(5)
+    assert report(ctx, first).status == 200
+    assert [%Rejection{rejected_at: marked}] = rows()
+    assert DateTime.to_iso8601(marked) =~ String.trim_trailing(first, "Z")
+
+    # The same answer as for a report that marked: an entry left out is no error.
+    assert report(ctx, at(30)).status == 200
+    assert [%Rejection{rejected_at: ^marked}] = rows()
+  end
+
   test "a 401 of a request that was in flight before the renewal marks nothing", ctx do
     assert secrets(ctx).status == 200
     in_flight = at(-1)

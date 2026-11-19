@@ -7,6 +7,7 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
   use ApiaryWeb.ConnCase, async: false
 
   import Apiary.DebugLog
+  import Apiary.ModelKeysFixtures, only: [run_key!: 2]
   import Phoenix.LiveViewTest
 
   alias Apiary.{Connections, ModelKeys, Repo}
@@ -46,7 +47,7 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
     "provider-key-#{value.id}"
   end
 
-  defp reject!(provider, value_id, at) do
+  defp reject!(scope, provider, value_id, at) do
     value =
       Repo.one!(
         from v in Value, where: v.secret_id == ^provider.secret_id and v.value_id == ^value_id
@@ -56,12 +57,8 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
     login = Repo.get(Apiary.ModelKeys.Login, value.id)
 
     key = %{
-      name: "model-1",
-      secret_value_id: value.id,
-      organisation_id: value.organisation_id,
-      copy_set_at: value.value_set_at,
-      copy_login_at: login && (login.refreshed_at || login.signed_in_at),
-      copy_kept: true
+      run_key!(scope, value)
+      | copy_login_at: login && (login.refreshed_at || login.signed_in_at)
     }
 
     :ok =
@@ -86,7 +83,7 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
   test "the provider's page shows Needs a new key for a rejected key and the other as it was",
        %{conn: conn, scope: scope} do
     provider = provider!(scope)
-    reject!(provider, "main", ~U[2026-11-18 09:12:00.000000Z])
+    reject!(scope, provider, "main", ~U[2026-11-18 09:12:00.000000Z])
 
     {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
 
@@ -104,7 +101,7 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
   test "Edit key says what to enter, and a new value takes the state away",
        %{conn: conn, scope: scope} do
     provider = provider!(scope)
-    reject!(provider, "main", ~U[2026-11-18 09:12:00.000000Z])
+    reject!(scope, provider, "main", ~U[2026-11-18 09:12:00.000000Z])
     path = edit_path(scope, provider, "main")
 
     {:ok, lv, html} = live(conn, path)
@@ -126,7 +123,7 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
 
   test "Edit key of a key that is not rejected has the usual hint", %{conn: conn, scope: scope} do
     provider = provider!(scope)
-    reject!(provider, "main", ~U[2026-11-18 09:12:00.000000Z])
+    reject!(scope, provider, "main", ~U[2026-11-18 09:12:00.000000Z])
 
     {:ok, lv, html} = live(conn, edit_path(scope, provider, "spare"))
 
@@ -146,7 +143,7 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
       })
 
     # A sign-in made just now: no refresh can fix a 401 on it.
-    reject!(provider, "main", DateTime.utc_now())
+    reject!(scope, provider, "main", DateTime.utc_now())
 
     {{lv, html}, log} =
       with_debug_log(fn ->

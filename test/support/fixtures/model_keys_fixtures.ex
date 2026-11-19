@@ -198,4 +198,44 @@ defmodule Apiary.ModelKeysFixtures do
 
     "#{encode.(%{"alg" => "RS256", "typ" => "JWT"})}.#{encode.(claims)}.#{Base.url_encode64("signature-fixture", padding: false)}"
   end
+
+  @doc """
+  The key `value` of a new run of `scope`, as a report of the run's keys reads it
+  (`Apiary.ModelKeys.run_keys/1`, for `Apiary.ModelKeys.reject/4`): the run is handed over
+  to a gateway, and a secrets request has kept the copy of the value, `copy_set_at` its
+  `value_set_at`, with `copy_login_at` for a sign-in. `name` is the key's credential name.
+  """
+  def run_key!(scope, %Value{} = value, name \\ "model-1", copy_login_at \\ nil) do
+    provider = Repo.get_by!(Connection, secret_id: value.secret_id)
+    pool = Apiary.NodesFixtures.pool_fixture(scope)
+    %{access_key: access_key} = Apiary.AccessKeysFixtures.enrolled_key_fixture(scope, pool)
+
+    %{run: run} =
+      Apiary.DispatchedRunsFixtures.handed_over_fixture(scope, access_key, %{
+        provider_connection_id: provider.id,
+        provider_secret_id: provider.secret_id,
+        provider_chain: "organisation",
+        provider_api: %{
+          "format" => "anthropic-messages",
+          "endpoint" => "https://api.model.example/anthropic",
+          "auth" => %{"scheme" => "x-api-key"}
+        },
+        model_keys: [%{"id" => value.id, "name" => name, "pause_for_s" => 60}],
+        run_settings: %{}
+      })
+
+    :ok =
+      Apiary.ModelKeys.keep_copies(run.id, [{value.id, value.value_set_at, copy_login_at}])
+
+    %{
+      name: name,
+      run_id: run.id,
+      secret_value_id: value.id,
+      organisation_id: value.organisation_id,
+      copy_set_at: value.value_set_at,
+      copy_kept: true,
+      copy_login_at: copy_login_at,
+      copy_login_sealed_at: nil
+    }
+  end
 end

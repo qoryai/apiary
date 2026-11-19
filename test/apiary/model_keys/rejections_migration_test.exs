@@ -5,6 +5,7 @@ defmodule Apiary.ModelKeys.RejectionsMigrationTest do
   # changes the schema under every other test, so this is not async.
   use Apiary.DataCase, async: false
 
+  import Apiary.ModelKeysFixtures, only: [run_key!: 2]
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{Connections, ModelKeys}
@@ -54,13 +55,7 @@ defmodule Apiary.ModelKeys.RejectionsMigrationTest do
 
     value = Repo.one!(from v in Value, where: v.secret_id == ^provider.secret_id)
 
-    key = %{
-      name: "model-1",
-      secret_value_id: value.id,
-      organisation_id: value.organisation_id,
-      copy_set_at: value.value_set_at,
-      copy_kept: true
-    }
+    key = run_key!(scope, value)
 
     {provider, value, key}
   end
