@@ -204,13 +204,12 @@ defmodule ApiaryWeb.Contract.SecretsLoginTest do
 
     test "409 credential_unavailable for a token with no account id, with no call", ctx do
       stub!()
-      tokens = login_tokens(account: false, tag: "x")
 
-      {:ok, _provider} =
-        Apiary.Connections.update_provider_key(ctx.scope, ctx.provider, "main", %{
-          value_id: "main",
-          value: device_login(tokens: tokens)
-        })
+      store_access_token!(
+        ctx.provider,
+        ctx.value.id,
+        login_tokens(account: false, tag: "x").access_token
+      )
 
       conn = post_secrets(ctx, request(ctx))
 

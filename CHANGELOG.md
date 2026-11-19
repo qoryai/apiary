@@ -137,7 +137,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the claim of the account id in its API, once for the run; the claim is a JSON pointer
   into the access token. The server reads the account id and the expiry from the access
   token with no call to OpenAI: a stored access token with no account id counts as a
-  sign-in that needs a new one.
+  sign-in that needs a new one. The account id is read by the rules of the Forager
+  gateway, so a run waits where its gateway would refuse the token: a payload over 8 KiB,
+  a member name twice on the way to the account id, and an account id that is empty, has a
+  space or a tab at either end, or has a control character count as no account id; a
+  padded base64 payload is read.
 - A claim treats a key that needs a new sign-in as a cooldown with no end: the run waits,
   and starts on another key of its provider or a fallback, if it has one that is free. A
   sign-in whose access token expires before the end of the run's longest time limit,

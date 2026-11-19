@@ -124,11 +124,10 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
 
   # A token with the account claim and no `exp`, and one past a value's size, as the
   # provider returns them.
+  # The padding is in the signature: a payload over 8 KiB has no account id.
   defp no_exp_token(pad \\ 0) do
-    jwt(%{
-      "https://api.openai.com/auth" => %{"chatgpt_account_id" => "acct-fixture-x"},
-      "pad" => String.duplicate("a", pad)
-    })
+    jwt(%{"https://api.openai.com/auth" => %{"chatgpt_account_id" => "acct-fixture-x"}}) <>
+      String.duplicate("a", pad)
   end
 
   defp new_tokens(tag, opts \\ []) do

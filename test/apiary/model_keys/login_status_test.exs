@@ -23,14 +23,20 @@ defmodule Apiary.ModelKeys.LoginStatusTest do
     %{scope: scope}
   end
 
+  # With `account: false` the key's stored token has no account id: a device sign-in
+  # refuses to make such a login, so the token is stored after the key is made.
   defp subscription!(scope, opts \\ []) do
     tokens = login_tokens(opts)
+    signed = login_tokens(Keyword.delete(opts, :account))
 
     {:ok, provider} =
       Connections.create_provider(scope, %{
         provider: "openai-subscription",
-        keys: [%{value_id: "main", value: device_login(tokens: tokens)}]
+        keys: [%{value_id: "main", value: device_login(tokens: signed)}]
       })
+
+    if opts[:account] == false,
+      do: store_access_token!(provider, key_value!(provider, "main").id, tokens.access_token)
 
     {provider, tokens}
   end
@@ -47,22 +53,6 @@ defmodule Apiary.ModelKeys.LoginStatusTest do
     Repo.update_all(from(l in Login, where: l.secret_value_id == ^value(provider, name).id),
       set: changes
     )
-  end
-
-  # The key's stored document, with the access token `access_token`, written as a refresh
-  # writes it.
-  defp store!(provider, access_token, refresh_token) do
-    id = value(provider).id
-    {:ok, _plaintext, snapshot} = Apiary.Secrets.reveal_login_snapshot(plain(provider), id)
-
-    document =
-      Jason.encode!(%{
-        "version" => 1,
-        "access_token" => access_token,
-        "refresh_token" => refresh_token
-      })
-
-    :ok = Apiary.Secrets.write_refreshed_key(plain(provider), id, document, snapshot)
   end
 
   defp stub!(answer) do
@@ -200,8 +190,8 @@ defmodule Apiary.ModelKeys.LoginStatusTest do
     end
 
     test "a stored token that is readable but is no JWT needs a new sign-in", %{scope: scope} do
-      {provider, tokens} = subscription!(scope)
-      store!(provider, "opaque-access-token", tokens.refresh_token)
+      {provider, _tokens} = subscription!(scope)
+      store_access_token!(provider, value(provider).id, "opaque-access-token")
       stub!(%{})
       id = value(provider).id
 
@@ -281,6 +271,32 @@ defmodule Apiary.ModelKeys.LoginStatusTest do
       for token <- [none, blank, other, "not-a-jwt", nil] do
         refute Login.account?(plain(provider), token)
       end
+    end
+
+    test "is false for the account ids that the gateway refuses", %{scope: scope} do
+      {provider, _tokens} = subscription!(scope)
+
+      for id <- [" acct-fake-0001", "acct-fake-0001 ", "acct\\u0000fake", "\\tacct-fake", ""] do
+        payload = ~s({"https://api.openai.com/auth":{"chatgpt_account_id":"#{id}"}})
+        token = "e30." <> Base.url_encode64(payload, padding: false) <> ".sig"
+        refute Login.account?(plain(provider), token), id
+      end
+
+      twice =
+        ~s({"https://api.openai.com/auth":{"chatgpt_account_id":"a","chatgpt_account_id":"b"}})
+
+      refute Login.account?(plain(provider), "e30." <> Base.url_encode64(twice) <> ".sig")
+    end
+
+    test "is true for any token of a provider whose catalogue entry names no claim", %{
+      scope: scope
+    } do
+      {provider, _tokens} = subscription!(scope)
+      no_claim = %{plain(provider) | provider_kind: "provider-without-an-entry"}
+
+      assert Login.account?(no_claim, "opaque-access-token")
+      assert Login.account?(no_claim, login_tokens(account: false).access_token)
+      refute Login.account?(no_claim, nil)
     end
   end
 

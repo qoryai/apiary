@@ -123,7 +123,7 @@ defmodule Apiary.ModelKeys.Login do
   alias Apiary.Connections.Connection
   alias Apiary.Features
   alias Apiary.Kinds.{Provider, Providers}
-  alias Apiary.ModelKeys.LoginRefresh
+  alias Apiary.ModelKeys.{AccountClaim, LoginRefresh}
   alias Apiary.Organisations.Organisation
   alias Apiary.Repo
   alias Apiary.Secrets
@@ -308,30 +308,16 @@ defmodule Apiary.ModelKeys.Login do
 
   defp checked(id), do: if(account_id?(id), do: {:ok, id}, else: :error)
 
-  # The text at the JSON pointer `claim` of the payload of `token`, nil where there is none.
-  defp claimed(token, claim) when is_binary(token) do
-    with {:ok, payload} <- payload(token),
-         id when is_binary(id) <- pointer(payload, claim) do
-      id
-    else
-      _none -> nil
+  # The text at the JSON pointer `claim` of the payload of `token`, nil where there is none,
+  # read by the rules of the gateway (`Apiary.ModelKeys.AccountClaim`).
+  defp claimed(token, claim) when is_binary(token) and is_binary(claim) do
+    case AccountClaim.read(token, claim) do
+      {:ok, id} -> id
+      :error -> nil
     end
   end
 
   defp claimed(_token, _claim), do: nil
-
-  # The value at the JSON pointer (RFC 6901) `claim` of `payload`, nil where it has none.
-  defp pointer(payload, "/" <> claim) do
-    claim
-    |> String.split("/")
-    |> Enum.map(&(&1 |> String.replace("~1", "/") |> String.replace("~0", "~")))
-    |> Enum.reduce_while(payload, fn
-      key, %{} = map -> {:cont, Map.get(map, key)}
-      _key, _other -> {:halt, nil}
-    end)
-  end
-
-  defp pointer(_payload, _claim), do: nil
 
   defp expires_at(access_token, expires_in, now) do
     case bounded_expiry(access_token, now) do
@@ -455,11 +441,12 @@ defmodule Apiary.ModelKeys.Login do
 
   @doc false
   # tokens/2 is the tokens of the key `secret_value_id` of `provider`, decrypted for the
-  # refresh and for nothing else: `{:ok, %{access_token:, refresh_token:}}`, or
-  # `{:error, reason}` as the secrets module's `reveal_login/2` returns, with `:invalid`
-  # for a stored value that is not the document `from_tokens/3` makes. The tokens go to the
-  # provider's token endpoint and nowhere else: not into a log, an assign, an error or an
-  # audit entry. No module outside this one calls it (`Apiary.ModelKeys.GateTest`).
+  # refresh and for a claim's read of the account id (`statuses/3`), and for nothing else:
+  # `{:ok, %{access_token:, refresh_token:}}`, or `{:error, reason}` as the secrets module's
+  # `reveal_login/2` returns, with `:invalid` for a stored value that is not the document
+  # `from_tokens/3` makes. The refresh token goes to the provider's token endpoint and
+  # nowhere else, and no token goes into a log, an assign, an error or an audit entry. No
+  # module outside this one calls it (`Apiary.ModelKeys.GateTest`).
   @spec tokens(Connection.t(), Ecto.UUID.t()) ::
           {:ok, %{access_token: String.t(), refresh_token: String.t()}}
           | {:error, :not_found | :unavailable | :invalid}
@@ -606,33 +593,22 @@ defmodule Apiary.ModelKeys.Login do
 
   defp row_status(provider, %__MODULE__{} = row, claim, opts) do
     case tokens(provider, row.secret_value_id) do
-      {:ok, %{access_token: token}} -> token_status(row, payload(token), claim, opts)
+      {:ok, %{access_token: token}} ->
+        if account_ok?(claim, token),
+          do: status(row, Keyword.put(opts, :expires_at, token_expiry(token, row))),
+          else: :sign_in_needed
+
       # A value that cannot be read at all has the status its row gives.
-      _unreadable -> status(row, opts)
+      _unreadable ->
+        status(row, opts)
     end
   end
 
-  # A readable token that is no JWT has no payload, so no account id: the gate would refuse
-  # it, so no run may start on it.
-  defp token_status(_row, :error, _claim, _opts), do: :sign_in_needed
-
-  defp token_status(row, {:ok, payload}, claim, opts) do
-    if account_claim?(payload, claim) do
-      expires_at =
-        case payload do
-          %{"exp" => exp} when is_integer(exp) ->
-            case DateTime.from_unix(exp) do
-              {:ok, at} -> at
-              {:error, _invalid} -> row.access_expires_at
-            end
-
-          _none ->
-            row.access_expires_at
-        end
-
-      status(row, Keyword.put(opts, :expires_at, expires_at))
-    else
-      :sign_in_needed
+  # The expiry the token's `exp` gives, else the row's.
+  defp token_expiry(token, %__MODULE__{} = row) do
+    case expiry(token) do
+      {:ok, at} -> at
+      {:error, _no_exp} -> row.access_expires_at
     end
   end
 
@@ -649,45 +625,21 @@ defmodule Apiary.ModelKeys.Login do
   end
 
   @doc """
-  Whether the access token `token` has the account claim that `provider`'s catalogue entry
-  names (`auth.account_claim`): a text that is not blank. True for an entry that names no
-  claim. A token that is no JWT has none.
+  Whether the access token `token` has the account id that `provider`'s catalogue entry
+  names (`auth.account_claim`), read as the gateway of Forager reads it
+  (`Apiary.ModelKeys.AccountClaim`). True for an entry that names no claim, whatever the
+  token is. This is the one decision of the claim, the page's fallback, the gate that seals
+  the token to a run, and the refresh: a token that fails it makes a run wait for a new
+  sign-in, never fail at the gateway.
   """
   @spec account?(Connection.t(), term) :: boolean
-  def account?(%Connection{} = provider, token) when is_binary(token) do
-    case {account_claim(provider), payload(token)} do
-      {nil, _payload} -> true
-      {pointer, {:ok, payload}} -> account_claim?(payload, pointer)
-      {_pointer, :error} -> false
-    end
-  end
+  def account?(%Connection{} = provider, token) when is_binary(token),
+    do: account_ok?(account_claim(provider), token)
 
   def account?(%Connection{}, _token), do: false
 
-  defp account_claim?(_payload, nil), do: true
-
-  defp account_claim?(payload, "/" <> pointer) do
-    names =
-      pointer
-      |> String.split("/")
-      |> Enum.map(&(&1 |> String.replace("~1", "/") |> String.replace("~0", "~")))
-
-    case Enum.reduce_while(names, payload, &descend/2) do
-      account when is_binary(account) -> String.trim(account) != ""
-      _other -> false
-    end
-  end
-
-  defp account_claim?(_payload, _pointer), do: false
-
-  defp descend(name, %{} = object) do
-    case object do
-      %{^name => value} -> {:cont, value}
-      _missing -> {:halt, nil}
-    end
-  end
-
-  defp descend(_name, _other), do: {:halt, nil}
+  defp account_ok?(nil, _token), do: true
+  defp account_ok?(pointer, token), do: match?({:ok, _claim}, AccountClaim.read(token, pointer))
 
   @doc """
   Whether a 401 that the model provider returned for the key's token at `at` (the

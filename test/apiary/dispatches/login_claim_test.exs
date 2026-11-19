@@ -63,15 +63,26 @@ defmodule Apiary.Dispatches.LoginClaimTest do
 
   # A provider with the keys `keys`, `[{value_id, login_tokens opts}]`, chosen at the
   # workspace with the runtime `codex`.
+  # A key with `account: false` has a stored token with no account id, which a device
+  # sign-in refuses to make, so the token is stored after the key is made.
   defp provider!(ctx, keys) do
     {:ok, provider} =
       Connections.create_provider(ctx.scope, %{
         provider: "openai-subscription",
         keys:
           for({value_id, opts} <- keys) do
-            %{value_id: value_id, value: device_login(tokens: login_tokens(opts))}
+            signed = login_tokens(Keyword.delete(opts, :account))
+            %{value_id: value_id, value: device_login(tokens: signed)}
           end
       })
+
+    for {value_id, opts} <- keys, opts[:account] == false do
+      store_access_token!(
+        provider,
+        key_value!(provider, value_id).id,
+        login_tokens(opts).access_token
+      )
+    end
 
     {:ok, _choice} =
       ModelChoices.put_choice(ctx.scope, :workspace, %{
@@ -248,9 +259,11 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       assert {:ok, :none} = claim(ctx)
       waiting = waiting!(queued, provider)
 
-      # A value pasted with no account id is a row that is still signed in. The claim reads
-      # the token to tell, as it does for a row stored before a refresh marked such a token
-      # (`no_account`); the run's page reads the row alone and names the pool.
+      # A device sign-in refuses a token with no account id (`Login.from_tokens/3`), and a
+      # refresh that returns one marks the row `no_account`, so no new row is like this one.
+      # A row stored before that is still signed in: the claim reads the token to tell, and
+      # the run's page reads the row alone, as it never decrypts a token, and names the pool
+      # until a refresh or a new sign-in changes the row.
       assert {:pool, _name} = Waiting.reason(waiting)
       assert requests() == []
       assert Repo.get_by!(Login, secret_value_id: value(provider, "main").id).state == "signed_in"

@@ -120,6 +120,43 @@ defmodule Apiary.ModelKeys.LoginTest do
       assert Login.from_tokens(response(tokens), nil) == {:error, :invalid}
     end
 
+    # The account id is read as the gateway of Forager reads it
+    # (`Apiary.ModelKeys.AccountClaim`): a response whose token the gateway would refuse is
+    # no sign-in. The token has the payload `payload` as it is, with no `exp`.
+    defp read_payload(payload, opts \\ []) do
+      encode =
+        if opts[:padded], do: &Base.url_encode64/1, else: &Base.url_encode64(&1, padding: false)
+
+      access = "e30." <> encode.(payload) <> ".sig"
+      Login.from_tokens(response(login_tokens(), %{"access_token" => access}), "/id")
+    end
+
+    test "refuses an account id with a space at either end" do
+      for id <- [" acct-1", "acct-1 ", "\\tacct-1", "acct-1\\t"] do
+        assert read_payload(~s({"id":"#{id}"})) == {:error, :no_account}, id
+      end
+    end
+
+    test "refuses an account id with a control character" do
+      for id <- ["acct\\n1", "acct\\u0000-1", "acct\\u007F-1", "acct\\u0085-1"] do
+        assert read_payload(~s({"id":"#{id}"})) == {:error, :no_account}, id
+      end
+    end
+
+    test "refuses a payload over 8 KiB" do
+      over = ~s({"id":"acct-1","pad":"#{String.duplicate("p", 8192)}"})
+      assert read_payload(over) == {:error, :no_account}
+    end
+
+    test "refuses a payload with a member name twice" do
+      assert read_payload(~s({"id":"acct-1","id":"acct-2"})) == {:error, :no_account}
+    end
+
+    test "reads a payload with padding" do
+      assert {:ok, %{account_id: "acct-1"}} =
+               read_payload(~s({"id":"acct-1","exp":4102444800}), padded: true)
+    end
+
     test "refuses a response with no refresh token or no access token" do
       tokens = login_tokens()
 
@@ -153,32 +190,38 @@ defmodule Apiary.ModelKeys.LoginTest do
       end
     end
 
-    test "refuses an account id with a control character, a space or a character past ASCII" do
-      tokens = login_tokens()
+    # An account id that the gateway of Forager refuses (a control character, a space or a
+    # tab at either end, none) is no account id; one that it reads but that no header may
+    # have (a space or tab inside, past ASCII, over 255 characters) is no sign-in.
+    defp account_response(account_id) do
+      access =
+        jwt(%{
+          "exp" => System.os_time(:second) + 100,
+          "https://api.openai.com/auth" => %{"chatgpt_account_id" => account_id}
+        })
 
+      response(login_tokens(), %{"access_token" => access})
+    end
+
+    test "reads no account id with a control character, a space at either end, or none" do
       for account_id <- [
             "acct\r\nX-Injected: 1",
             "acct-1\n",
             "acct-1\r",
             "acct\n1",
-            "acct 1",
             " acct-1",
             "acct-1 ",
-            "acct\t1",
             "acct\0 1",
             "acct\u007F1",
-            "acct-é",
-            "acct-\u2028",
-            "",
-            String.duplicate("a", 256)
+            ""
           ] do
-        access =
-          jwt(%{
-            "exp" => System.os_time(:second) + 100,
-            "https://api.openai.com/auth" => %{"chatgpt_account_id" => account_id}
-          })
+        assert read(account_response(account_id)) == {:error, :no_account}, inspect(account_id)
+      end
+    end
 
-        assert read(response(tokens, %{"access_token" => access})) == {:error, :invalid}
+    test "refuses an account id with a space inside, past ASCII, or over 255 characters" do
+      for account_id <- ["acct 1", "acct\t1", "acct-é", "acct-\u2028", String.duplicate("a", 256)] do
+        assert read(account_response(account_id)) == {:error, :invalid}, inspect(account_id)
       end
     end
 
