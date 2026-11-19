@@ -1132,23 +1132,18 @@ defmodule Apiary.ModelKeys.Login do
   end
 
   # A renewal after a 401 (`recover: true`): the stored token is no good, whatever its
-  # `exp`, so there is no `:fresh`, unless it is newer than the run's (`newer_than:`): the
-  # 401 was for the older token, and the call is then decided as one with no `recover`, so a
-  # newer token that has expired, or is about to, is refreshed or held as any token is. The
-  # call is `{:due, "unauthorized_recovery"}` unless a
+  # `exp`, so there is no `:fresh`. (A stored token newer than the run's, `newer_than:`, is
+  # not this call: `step/1` makes it a call with no `recover`.) The call is `{:due, "unauthorized_recovery"}` unless a
   # refresh or a failed one is less than 5 minutes old (`:blocked`: the caller gets
   # `{:error, :unavailable}`, and the gateway asks again 30 seconds later), or one ended
   # after this call started, when a refresh's token is served (`:refreshed`) and a
   # failure's refusal is `:blocked`. The last refresh (the sign-in, before the first) and the
   # last failed one are `refreshed_at` and `last_failure`: a refresh that works clears
   # `last_failure`.
-  defp decide(%__MODULE__{} = row, now, %{recover: true, started: started} = ctx) do
+  defp decide(%__MODULE__{} = row, now, %{recover: true, started: started}) do
     last = latest(row.refreshed_at || row.signed_in_at, row.last_failure)
 
     cond do
-      newer?(row, ctx.newer_than) ->
-        decide(row, now, %{ctx | recover: false})
-
       last != nil and DateTime.compare(last, started) == :gt ->
         if row.refreshed_at != nil and DateTime.compare(row.refreshed_at, started) == :gt,
           do: :refreshed,
@@ -1204,6 +1199,12 @@ defmodule Apiary.ModelKeys.Login do
 
       %__MODULE__{} = row ->
         now = now(ctx)
+
+        # A renewal after a 401 for a token older than the stored one (`newer_than:`) is a
+        # call with no `recover` from here on: the stored token is served while it is
+        # valid, as for any caller, when a refresh is not allowed or fails.
+        ctx =
+          if ctx.recover and newer?(row, ctx.newer_than), do: %{ctx | recover: false}, else: ctx
 
         case decide(row, now, ctx) do
           :fresh -> serve(ctx)

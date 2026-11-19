@@ -393,6 +393,21 @@ defmodule Apiary.ModelKeys.LoginStatusTest do
       assert [%{"refresh_reason" => "proactive_expiry"}] = requests()
     end
 
+    test "serves a newer token that is valid when its refresh fails or is not allowed", %{
+      scope: scope
+    } do
+      {provider, tokens} = subscription!(scope, expires_in: 100)
+      set_login!(provider, signed_in_at: -3600, refreshed_at: -120)
+      stub!({503, %{}})
+      older = DateTime.add(DateTime.utc_now(), -600)
+
+      # The refresh is due (the token ends within the lead) and fails: the token is still
+      # valid, so it is served, as for a call with no `recover`.
+      assert {:ok, access, _at} = token(provider, recover: true, newer_than: older)
+      assert access == tokens.access_token
+      assert [%{"refresh_reason" => "proactive_expiry"}] = requests()
+    end
+
     test "serves no newer token that has expired and was refreshed 60 seconds ago or less",
          %{scope: scope} do
       {provider, _tokens} = subscription!(scope, expires_in: 864_000)
