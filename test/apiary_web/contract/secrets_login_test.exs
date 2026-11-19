@@ -147,10 +147,9 @@ defmodule ApiaryWeb.Contract.SecretsLoginTest do
       assert abs(DateTime.diff(at, DateTime.add(DateTime.utc_now(), 3600))) < 10
       assert requests() == []
 
-      refute log =~ ctx.tokens.access_token
-      refute log =~ ctx.tokens.refresh_token
+      refute_secrets(log, [ctx.tokens.access_token, ctx.tokens.refresh_token])
       assert [entry] = Repo.all(from e in Entry, where: e.action == "secret.seal")
-      refute inspect(entry) =~ ctx.tokens.access_token
+      refute_secrets(inspect(entry), [ctx.tokens.access_token])
 
       # The copy of the key the run keeps is the value's time, as for any key.
       assert [%Copy{}] = Repo.all(Copy)
@@ -200,7 +199,7 @@ defmodule ApiaryWeb.Contract.SecretsLoginTest do
       assert conn.status == 409
       assert code(conn) == "credential_unavailable"
       assert requests() == []
-      refute log =~ ctx.tokens.access_token
+      refute_secrets(log, [ctx.tokens.access_token])
     end
 
     test "409 credential_unavailable for a token with no account id, with no call", ctx do

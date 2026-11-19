@@ -19,6 +19,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
   # A list in `needs:` is read by this hook (`Apiary.TestSetup`).
   @before_compile Apiary.TestSetup
 
+  import Apiary.DebugLog, only: [refute_secrets: 2]
   import Ecto.Query
   import Apiary.ModelKeysFixtures
   import Apiary.Races
@@ -313,8 +314,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     assert %Login{lease_id: nil, failures: 0, refreshed_at: %DateTime{}} = Repo.get!(Login, id)
     assert entries(ctx.provider) == []
     assert log =~ "the entry was not written"
-    refute log =~ fresh["refresh_token"]
-    refute log =~ fresh["access_token"]
+    refute_secrets(log, [fresh["refresh_token"], fresh["access_token"]])
   end
 
   # The first `times` writes of a key's value fail in the database, as on a failing disk.
@@ -394,8 +394,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     assert [%{details: %{"outcome" => "refreshed"}}] = entries(ctx.provider)
     assert requests_made() == 1
     assert log =~ "the write failed"
-    refute log =~ fresh["refresh_token"]
-    refute log =~ fresh["access_token"]
+    refute_secrets(log, [fresh["refresh_token"], fresh["access_token"]])
   end
 
   test "a write that fails twice needs a new sign-in, and no call uses the replaced token", ctx do

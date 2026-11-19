@@ -8,6 +8,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
   use Apiary.DataCase, async: true
   use Oban.Testing, repo: Apiary.Repo
 
+  import Apiary.DebugLog, only: [refute_secrets: 2]
   import Apiary.ModelKeysFixtures
   import Apiary.OrganisationsFixtures
   import ExUnit.CaptureLog
@@ -702,8 +703,8 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
         assert %{"outcome" => "sign_in_needed", "cause" => "no_account"} = details
 
         for secret <- [fresh["access_token"], fresh["refresh_token"] | secrets_of(tokens)] do
-          refute inspect(details) =~ secret
-          refute inspect(login) =~ secret
+          refute_secrets(inspect(details), [secret])
+          refute_secrets(inspect(login), [secret])
         end
       end
     end
@@ -923,7 +924,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
             tokens.refresh_token,
             tokens.access_token
           ],
-          do: refute(log =~ secret)
+          do: refute_secrets(log, [secret])
     end
 
     test "is only a failure that may pass when the provider kept the refresh token",

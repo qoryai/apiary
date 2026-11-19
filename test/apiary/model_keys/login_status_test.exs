@@ -7,6 +7,7 @@ defmodule Apiary.ModelKeys.LoginStatusTest do
   # Every call goes to the `Req.Test` stub of `LoginRefresh`; no token reaches a log line.
   use Apiary.DataCase, async: true
 
+  import Apiary.DebugLog, only: [refute_secrets: 2]
   import Apiary.ModelKeysFixtures
   import Apiary.OrganisationsFixtures
   import ExUnit.CaptureLog
@@ -256,8 +257,7 @@ defmodule Apiary.ModelKeys.LoginStatusTest do
           Login.statuses(plain(provider), [id], expires_before: DateTime.utc_now())
         end)
 
-      refute log =~ tokens.access_token
-      refute log =~ tokens.refresh_token
+      refute_secrets(log, [tokens.access_token, tokens.refresh_token])
     end
   end
 
@@ -392,8 +392,7 @@ defmodule Apiary.ModelKeys.LoginStatusTest do
 
       log = capture_log(fn -> token(provider, recover: true) end)
 
-      refute log =~ tokens.access_token
-      refute log =~ tokens.refresh_token
+      refute_secrets(log, [tokens.access_token, tokens.refresh_token])
     end
   end
 end
