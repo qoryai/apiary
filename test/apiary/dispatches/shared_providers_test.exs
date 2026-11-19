@@ -366,7 +366,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
 
     test "leaves the run waiting for the later steps' providers where the later session's provider has no key and every later step's key is in cooldown",
          ctx do
-      %{checkout: checkout, storefront: storefront} = cooling_later!(ctx)
+      %{northwind: northwind, checkout: checkout, storefront: storefront} = cooling_later!(ctx)
       no_keys!(checkout)
       until = in_seconds(3_600)
       key_state!(storefront, "key-1", until: until)
@@ -384,6 +384,20 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert stored_keys_of_queue(queued) == []
       assert {:cooldown, "Storefront keys", at} = Apiary.Runs.Waiting.reason(waiting)
       assert DateTime.compare(at, DateTime.truncate(until, :second)) == :eq
+
+      # A second claim passes the run by, still waiting for Storefront keys alone.
+      assert {:ok, :none} = walked_claim(ctx.key, Dispatches.now(), @body)
+      assert Repo.get!(DispatchRun, queued.id).model_provider_ids == [storefront.id]
+
+      # Once Storefront keys' key is free, the claim starts the later session on it.
+      key_state!(storefront, "key-1", until: in_seconds(-1))
+      {{:ok, run}, _queued} = claimed!(ctx, queued)
+      fallback = "#{storefront.public_id}-1"
+
+      assert %{"1" => %{"workflow" => "write-acceptance-checks", "model_credential" => ^fallback}} =
+               run.session_settings
+
+      assert names(stored_keys(run)) == ["#{northwind.public_id}-1", fallback]
     end
 
     test "starts the later session on its provider's choice and keys where every fallback's key is in cooldown too",

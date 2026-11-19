@@ -3895,7 +3895,21 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
             {:secrets_not_allowed, @no_run_secrets},
             {:harness_unresolved, @no_run_unknown},
             {:variables_invalid, @no_run_unknown},
-            {:closed, @no_run_unknown}
+            {:closed, @no_run_unknown},
+            # The causes of a stage whose workflows share one run, without their values.
+            {:model_choice_missing,
+             @no_run_lead <>
+               "Run the round again. A workflow of the stage had no model, and that " <>
+               "workflow's runtime could not use the provider that the run would start on."},
+            {:session_key_missing,
+             @no_run_lead <>
+               "Run the round again. A workflow of the stage would run on a provider that " <>
+               "has no model provider credential in the run, or on a second API of a " <>
+               "provider that an earlier workflow uses."},
+            {:too_many_providers,
+             @no_run_lead <>
+               "Run the round again. The workflows of the stage used more than 6 model " <>
+               "providers, and one run takes model provider credentials of at most 6."}
           ] do
         assert no_run_line(conn, scope, item, cause) ==
                  String.replace(line, "ITEM_ID", to_string(item.number)),
