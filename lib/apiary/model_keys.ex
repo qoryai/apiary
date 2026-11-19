@@ -392,7 +392,7 @@ defmodule Apiary.ModelKeys do
             login_at: type(^usec(login_at), :utc_datetime_usec),
             login_sealed_at:
               fragment(
-                "CASE WHEN ?::timestamp IS NULL THEN NULL ELSE clock_timestamp() END",
+                "CASE WHEN ?::timestamp IS NULL THEN NULL ELSE timezone('utc', clock_timestamp()) END",
                 type(^usec(login_at), :utc_datetime_usec)
               )
           }

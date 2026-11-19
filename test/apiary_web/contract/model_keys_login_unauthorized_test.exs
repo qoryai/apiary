@@ -122,6 +122,16 @@ defmodule ApiaryWeb.Contract.ModelKeysLoginUnauthorizedTest do
     assert DateTime.compare(later, sealed) == :gt
   end
 
+  test "the time the copy took the token is the database's, whatever the session's time zone",
+       ctx do
+    # `login_sealed_at` has no time zone: the time is written in UTC.
+    Repo.query!("SET LOCAL TimeZone = 'Asia/Tokyo'")
+
+    assert secrets(ctx).status == 200
+    assert [%Copy{login_sealed_at: %DateTime{} = sealed}] = Repo.all(Copy)
+    assert abs(DateTime.diff(Login.db_now(), sealed, :second)) < 5
+  end
+
   test "a report sent again after the renewal sealed a newer copy marks nothing", ctx do
     assert secrets(ctx).status == 200
     before_renewal = at(-1)
