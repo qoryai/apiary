@@ -105,12 +105,14 @@ defmodule Apiary.Stages.PointsTest do
              %{
                "text" => "Run another round: the run stored no spec.",
                "action" => "run_again",
-               "action_in_text" => true
+               "action_in_text" => true,
+               "missing_type" => "spec"
              },
              %{
                "text" => "Run another round: the run stored no acceptance criteria.",
                "action" => "run_again",
-               "action_in_text" => true
+               "action_in_text" => true,
+               "missing_type" => "acceptance-criteria"
              }
            ]
   end

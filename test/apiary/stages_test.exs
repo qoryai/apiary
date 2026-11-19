@@ -182,13 +182,14 @@ defmodule Apiary.StagesTest do
   # A point that asks a person to run another round, as a run or Core writes it.
   defp again(text), do: %{"text" => text, "action" => "run_again"}
 
-  # The point of a failed Exists check, with the output type's words, such as "acceptance
-  # criteria" (`Apiary.Stages.Points.check_failed/1`).
-  defp stored_no(words),
+  # The point of a failed Exists check of the output type `type`, with the type's words
+  # (`Apiary.Stages.Points.check_failed/1`).
+  defp stored_no(type),
     do: %{
-      "text" => "Run another round: the run stored no #{words}.",
+      "text" => "Run another round: the run stored no #{Apiary.Artifacts.Type.words(type)}.",
       "action" => "run_again",
-      "action_in_text" => true
+      "action_in_text" => true,
+      "missing_type" => type
     }
 
   # A run of Explore that pushed proposal version 1 and a question, then a second run of

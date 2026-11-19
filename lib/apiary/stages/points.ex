@@ -14,7 +14,8 @@ defmodule Apiary.Stages.Points do
   # `round_limit` point with open findings is its sentence followed by the text of each
   # finding, up to the verdict's 20 points, so it is longer than one sentence. A point of
   # a failed check opens with its action, "Run another round:", and has `action_in_text`
-  # set to true, so the page adds no action sentence after it. A round limit's point with
+  # set to true, so the page adds no action sentence after it, and `missing_type`, the
+  # output type that the run stored no version of. A round limit's point with
   # the words "pick Accept as it is" has `without_accept`, the fields that replace them
   # where the card shows no Accept as it is. The page reads
   # `ApiaryWeb.WorkItemLive.Workflow.accept?/2` when it shows the point, not when the
@@ -108,7 +109,8 @@ defmodule Apiary.Stages.Points do
 
   # check_failed/1 is one point for each output type whose Exists check failed, with the
   # type's words (`Apiary.Artifacts.Type.words/1`): "Run another round: the run stored no
-  # acceptance criteria." for `acceptance-criteria`.
+  # acceptance criteria." for `acceptance-criteria`. Its `missing_type` is the type, so
+  # the page can write the point without its action for a reader who may not decide.
   @doc false
   @spec check_failed([String.t()]) :: [t]
   def check_failed(types) do
@@ -118,7 +120,7 @@ defmodule Apiary.Stages.Points do
           gettext("Run another round: the run stored no %{type}.", type: Type.words(type))
         end)
 
-      text |> run_again() |> Map.put("action_in_text", true)
+      text |> run_again() |> Map.merge(%{"action_in_text" => true, "missing_type" => type})
     end
   end
 

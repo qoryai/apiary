@@ -642,7 +642,8 @@ defmodule Apiary.WorkflowEndToEndTest do
     point = %{
       "text" => "Run another round: the run stored no acceptance criteria.",
       "action" => "run_again",
-      "action_in_text" => true
+      "action_in_text" => true,
+      "missing_type" => "acceptance-criteria"
     }
 
     assert %Escalation{cause: :check_failed, points: [^point]} =

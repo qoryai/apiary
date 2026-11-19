@@ -5445,6 +5445,30 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute_decision_controls(view)
     end
 
+    test "a reader who may not decide sees a failed check's fact without its action, then who decides",
+         %{scope: scope} do
+      listed = member_fixture(scope, :member)
+      name = ApiaryWeb.People.short(listed.user.email)
+      reader = log_in_user(build_conn(), member_fixture(scope, :member).user)
+
+      work_item =
+        at_build(scope, :escalated, round: 3, approvers: %{"members" => [listed.user.id]})
+
+      escalate!(work_item, :check_failed, Apiary.Stages.Points.check_failed(["demo-video"]))
+      {:ok, view, _html} = live(reader, page(scope, work_item.number))
+
+      assert texts(view, "#work-item-needs-points li") == [
+               "The run stored no demo video. An approver of Build decides: #{name}."
+             ]
+
+      refute_decision_controls(view)
+
+      # A listed approver keeps the point with its action.
+      approver = log_in_user(build_conn(), listed.user)
+      {:ok, view, _html} = live(approver, page(scope, work_item.number))
+      assert texts(view, "#work-item-needs-points li") == [@no_demo]
+    end
+
     test "a return limit's point uses the switch button's words, where the card shows a switch",
          %{conn: conn, scope: scope} do
       # Explore's gate offers Standard and Fast track. Shape and Build each run one

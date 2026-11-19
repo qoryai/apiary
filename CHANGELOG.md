@@ -1895,7 +1895,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   decides: ann and ben.", with the names of the stage's listed approvers who are
   workspace members; "A member who may approve Verify decides." where the stage lists no
   approvers; and "Nobody may approve Verify. Ask an admin to list its approvers in
-  Workspace settings › Workflows." where it lists no workspace member.
+  Workspace settings › Workflows." where it lists no workspace member. For that member,
+  the point of a missing output reads "The run stored no acceptance criteria." followed
+  by that sentence.
 - On the tab of a stage with `shared_run: true`, each run of the stage is a fold in the
   runs fold: "Attempt 3 (Run 3) · 4 workflows · round 2 of 3 · passed · 2 minutes ago", or
   "round 1" for a run with no loop. Inside it, one row for each session in the order it

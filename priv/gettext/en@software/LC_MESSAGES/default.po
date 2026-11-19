@@ -22513,6 +22513,11 @@ msgstr ""
 msgid "The run stopped: %{cause}"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "The run stored no %{type}."
+msgstr ""
+
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "The run uses a harness built into Qory Apiary, qory's hello example at a fixed version, in place of the harness of %{workspace}. The test work item has no ticket and no target. The run changes no target, and Qory Apiary sends nothing to a work source or destination."

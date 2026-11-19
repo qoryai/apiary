@@ -36,13 +36,14 @@ defmodule Apiary.Stages.RunnerTest do
 
   defp again(text), do: %{"text" => text, "action" => "run_again"}
 
-  # The point of a failed Exists check, with the output type's words
+  # The point of a failed Exists check of the output type `type`, with the type's words
   # (`Apiary.Stages.Points.check_failed/1`).
-  defp stored_no(words),
+  defp stored_no(type),
     do: %{
-      "text" => "Run another round: the run stored no #{words}.",
+      "text" => "Run another round: the run stored no #{Apiary.Artifacts.Type.words(type)}.",
       "action" => "run_again",
-      "action_in_text" => true
+      "action_in_text" => true,
+      "missing_type" => type
     }
 
   defp answer(text, question), do: %{"text" => text, "action" => "answer", "question" => question}
@@ -559,7 +560,7 @@ defmodule Apiary.Stages.RunnerTest do
                {:escalate, :round_limit,
                 [
                   again("3 of 3 rounds ran."),
-                  stored_no("demo video"),
+                  stored_no("demo-video"),
                   stored_no("submission")
                 ]}
              ]

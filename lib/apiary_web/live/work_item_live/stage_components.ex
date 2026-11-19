@@ -1278,6 +1278,13 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     do: types |> Enum.map(&gettext("the %{type}", type: type_words(&1))) |> words_list()
 
   @doc """
+  stored_no/1 is the fact of a failed Exists check of the output type `type`, without its
+  action, for a reader who may not decide: "The run stored no acceptance criteria."
+  """
+  @spec stored_no(String.t()) :: String.t()
+  def stored_no(type), do: gettext("The run stored no %{type}.", type: type_words(type))
+
+  @doc """
   approver_line/3 is the sentence that says who decides on the stage named `stage`, for a
   reader who may not: `approvers` as `ApiaryWeb.WorkItemLive.Workflow.approvers/1` returns
   them, and `members`, the workspace's memberships, each with its `user`, as

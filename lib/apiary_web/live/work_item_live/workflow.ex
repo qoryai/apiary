@@ -664,7 +664,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # only its count of returns, with no action sentence; another point keeps its words,
   # with its `without_accept` fields where the card shows no Accept as it is. For a reader
   # who may not decide (`can_decide` false; true where `controls` has none), the sentence
-  # `approver_line` takes the place of a return limit's action and of a round limit's fix.
+  # `approver_line` takes the place of a return limit's action and of a round limit's fix,
+  # and follows a failed check's fact, written without its action (`undecided/2`).
   @doc false
   @spec worded(map, map) :: map
   def worded(point, controls) do
@@ -695,12 +696,22 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   defp without_accept(point, _accept), do: point
 
-  # A round limit's point with open findings (`without_accept`, `Apiary.Stages.Points`),
-  # for a reader who may not decide: who decides in place of its fix.
+  # A point for a reader who may not decide (`Apiary.Stages.Points`): a round limit's
+  # with open findings (`without_accept`) has who decides in place of its fix; a failed
+  # check's (`missing_type`) has the fact without its action, then who decides. Another
+  # point keeps its words.
   defp undecided(point, line) do
-    case get(point, :without_accept) do
-      %{} -> point |> Map.put("fix", line) |> Map.delete("without_accept")
-      _none -> point
+    cond do
+      is_map(get(point, :without_accept)) ->
+        point |> Map.put("fix", line) |> Map.delete("without_accept")
+
+      is_binary(type = get(point, :missing_type)) ->
+        point
+        |> Map.merge(%{"text" => StageComponents.stored_no(type), "fix" => line})
+        |> Map.delete("action_in_text")
+
+      true ->
+        point
     end
   end
 
