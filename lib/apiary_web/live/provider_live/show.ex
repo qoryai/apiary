@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ProviderLive.Show do
   # A model provider's page, Organisation settings › Model providers › its name, with the
   # features `factory` and `secrets`: its keys, the default key first, then in the order
-  # they were added, each with its name and its state (`Apiary.ModelKeys`, in words of
+  # they were added, each with its identity line (`Apiary.ModelKeys.Identity`) and its state (`Apiary.ModelKeys`, in words of
   # `ApiaryWeb.ModelKeyComponents.state/4`): Available, with the use and the reset of each
   # window, or In cooldown until a time, and where that time comes from, a window at the
   # key's Use up to percentage included. A key of a provider whose keys are logins
@@ -28,7 +28,7 @@ defmodule ApiaryWeb.ProviderLive.Show do
   on_mount {ApiaryWeb.Access, :"connection.read"}
 
   alias Apiary.{Access, Connections, ModelKeys}
-  alias Apiary.ModelKeys.Login
+  alias Apiary.ModelKeys.{Identity, Login}
   alias ApiaryWeb.{ModelKeyComponents, ModelKeyDevice, SettingsComponents}
 
   @impl true
@@ -88,6 +88,8 @@ defmodule ApiaryWeb.ProviderLive.Show do
 
           %{
             value_id: key.value_id,
+            id: key.id,
+            identity: Identity.of(provider, key, logins),
             state: state,
             login:
               if(ModelKeyComponents.sign_in_needed?(login),
@@ -111,13 +113,18 @@ defmodule ApiaryWeb.ProviderLive.Show do
       |> ModelKeyDevice.reset()
       |> assign(provider: provider)
       |> assign_keys()
-      |> put_flash(:info, gettext("%{name} is saved.", name: value_id))
+      |> put_flash(
+        :info,
+        gettext("%{identity} is saved.", identity: saved_identity(provider, value_id))
+      )
     else
       _refused -> ModelKeyDevice.fail(socket)
     end
   end
 
   defp store(socket), do: socket
+
+  defp saved_identity(provider, value_id), do: Identity.for_value_id(provider, value_id)
 
   # The sign-in of a key's row: the one that is going on for the key, else the idle button.
   defp row_device(%{key: key} = device, %{value_id: key}), do: device
@@ -171,8 +178,8 @@ defmodule ApiaryWeb.ProviderLive.Show do
         <SettingsComponents.part id="provider-keys" title={gettext("Keys")}>
           <ul class="q-plain-list">
             <li :for={key <- @keys} id={"provider-key-#{key.value_id}"}>
-              <span id={"provider-key-#{key.value_id}-name"} class="font-mono text-[12.5px]">
-                {key.value_id}
+              <span id={"provider-key-#{key.value_id}-name"}>
+                {key.identity}
               </span>
               <ModelKeyComponents.state_line
                 :if={!ModelKeyComponents.sign_in_needed?(key.login) and !key.new_key}
@@ -201,9 +208,9 @@ defmodule ApiaryWeb.ProviderLive.Show do
               <.link
                 :if={@writes}
                 id={"provider-key-#{key.value_id}-edit"}
-                navigate={"#{base(@current_scope, @provider)}/keys/#{key.value_id}/edit"}
+                navigate={"#{base(@current_scope, @provider)}/keys/#{key.id}/edit"}
                 class="ml-auto text-[13px] hover:underline"
-                aria-label={gettext("Edit key %{name}", name: key.value_id)}
+                aria-label={gettext("Edit key %{identity}", identity: key.identity)}
               >
                 {gettext("Edit")}
               </.link>
