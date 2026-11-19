@@ -1033,8 +1033,8 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       soon = in_seconds(3_600)
       later = in_seconds(7_200)
 
-      # Every key cools after the claim: the start provider's until soon, Checkout keys'
-      # until later.
+      # Every key cools after the claim: the keys of the default model provider
+      # credential's provider until soon, Checkout keys until later.
       cool = fn _run ->
         key_state!(northwind, "key-1", until: soon)
         key_state!(checkout, "key-1", until: later)
