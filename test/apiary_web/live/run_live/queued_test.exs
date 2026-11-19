@@ -354,18 +354,33 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
       )
 
       view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
+      identity = "Team sign-ins · dana@example.com"
+
+      # The key's identity line is the link to its page, at the key's row id.
+      edit =
+        ~p"/#{scope.organisation}/settings/model-providers/#{provider.public_id}/keys/#{value.id}/edit"
 
       assert text(view, "#prepare-machine-why") ==
-               "Waiting for a model key: sign in to ChatGPT again on the page of main."
+               "Waiting for a model key: sign in to ChatGPT again for #{identity}."
 
-      assert has_element?(view, "#prepare-machine-why a", "main")
+      assert has_element?(view, ~s{#prepare-machine-why a[href="#{edit}"]}, identity)
+      refute render(view) =~ "key-1"
 
       # A refresh that returned no account id leaves the same line: the row says it.
       Repo.update_all(login, set: [sign_in_cause: "no_account"])
       view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
 
       assert text(view, "#prepare-machine-why") ==
-               "Waiting for a model key: sign in to ChatGPT again on the page of main."
+               "Waiting for a model key: sign in to ChatGPT again for #{identity}."
+
+      # A sign-in with no email has the account line, "acct-fixture-queued" ending in "eued".
+      Repo.update_all(login, set: [email: nil])
+      view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
+
+      assert text(view, "#prepare-machine-why") ==
+               "Waiting for a model key: sign in to ChatGPT again for Team sign-ins · account …eued."
+
+      Repo.update_all(login, set: [email: "dana@example.com"])
 
       now = DateTime.utc_now()
 
@@ -383,7 +398,9 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
       view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
 
       assert text(view, "#prepare-machine-why") ==
-               "Waiting for a model key: refreshing the ChatGPT sign-in of main."
+               "Waiting for a model key: refreshing the ChatGPT sign-in of #{identity}."
+
+      assert has_element?(view, ~s{#prepare-machine-why a[href="#{edit}"]}, identity)
     end
 
     @tag needs: [:factory, :secrets]
@@ -419,13 +436,16 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
 
       view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
 
+      identity = "#{provider.name} · …main"
+
       assert text(view, "#prepare-machine-why") ==
-               "Waiting for a model key: enter a new value for main."
+               "Waiting for a model key: enter a new value for #{identity}."
 
       edit =
-        ~p"/#{scope.organisation}/settings/model-providers/#{provider.public_id}/keys/main/edit"
+        ~p"/#{scope.organisation}/settings/model-providers/#{provider.public_id}/keys/#{value.id}/edit"
 
-      assert has_element?(view, ~s{#prepare-machine-why a[href="#{edit}"]}, "main")
+      assert has_element?(view, ~s{#prepare-machine-why a[href="#{edit}"]}, identity)
+      refute render(view) =~ "key-1"
     end
 
     @tag needs: [:factory, :secrets]
