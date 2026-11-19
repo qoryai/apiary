@@ -1103,8 +1103,8 @@ defmodule Apiary.Stages.Runner do
   def accept_to_gate?(stage, position, facts),
     do: match?({:gate, _at}, accepted(stage, position, facts))
 
-  # entry_name/2 is the name of the workflow entry at `position` of `stage`, as the
-  # process gives it, else its workflow; nil where `position` has no workflow entry.
+  # entry_name/2 is the name of the workflow entry at `position` of `stage`, from the
+  # process, else its workflow; nil where `position` has no workflow entry.
   @doc false
   @spec entry_name(map, %{entry: non_neg_integer, loop_entry: non_neg_integer | nil}) ::
           String.t() | nil

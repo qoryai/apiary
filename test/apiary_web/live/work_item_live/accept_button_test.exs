@@ -112,6 +112,13 @@ defmodule ApiaryWeb.WorkItemLive.AcceptButtonTest do
 
       assert line(view, @card) == "Start implement-the-change"
       refute render(view) =~ @accept
+
+      assert texts(view, "#work-item-needs-points li") == [
+               "The preview's booking site has no courts, so the demo shows an empty week. " <>
+                 "Run another round."
+             ]
+
+      assert_dialog(view, "Start implement-the-change", "implement-the-change")
     end
 
     test "4. the next entry has a name: Start Acceptance test run, in the button and the fix",
@@ -131,16 +138,26 @@ defmodule ApiaryWeb.WorkItemLive.AcceptButtonTest do
                  "the 2 open findings, then pick Start Acceptance test run or Run another round."
              ]
 
-      view
-      |> form("#work-item-stage-escalation-form", %{"note" => ""})
-      |> render_submit(%{"how" => "accept"})
-
-      assert line(view, "#spend-dialog-title") == "Start Acceptance test run?"
-      assert line(view, "#spend-dialog-go") == "Start Acceptance test run"
-
       # The dialog line has the workflow the run starts.
-      assert line(view, "#spend-dialog-line") ==
-               "Starts a run of verify-a-ticket on a machine. The run uses model tokens."
+      assert_dialog(view, "Start Acceptance test run", "verify-a-ticket")
+    end
+
+    test "4, stored before PIC-846: a round limit's point with no count picks Run another round",
+         %{conn: conn, scope: scope} do
+      work_item = case_three!(scope)
+      %Escalation{points: [point]} = escalated = escalation(work_item)
+
+      escalated
+      |> Ecto.Changeset.change(points: [Map.delete(point, "open_findings")])
+      |> Repo.update!()
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert line(view, @card) == "Start Acceptance test run"
+      refute render(view) =~ @accept
+
+      assert [text] = texts(view, "#work-item-needs-points li")
+      assert text =~ ~r/ Read the 2 open findings, then pick Run another round\.$/
     end
 
     test "8. a return limit on capture-demo: the action picks Start implement-the-change",
@@ -161,6 +178,8 @@ defmodule ApiaryWeb.WorkItemLive.AcceptButtonTest do
                "The spec does not say who gets the court when two members wait for it. Run " <>
                  "another round."
              ]
+
+      assert_dialog(view, "Start implement-the-change", "implement-the-change")
     end
   end
 
@@ -223,6 +242,22 @@ defmodule ApiaryWeb.WorkItemLive.AcceptButtonTest do
       assert point =~
                ~r/^2 of 2 rounds ran, and 2 review findings are still open\. .* An approver of Build decides: .+\.$/
     end
+  end
+
+  # Opens the accept's dialog: its title and button read `label`, and its line has the
+  # workflow of the run, `workflow`.
+  defp assert_dialog(view, label, workflow) do
+    view
+    |> form("#work-item-stage-escalation-form", %{"note" => ""})
+    |> render_submit(%{"how" => "accept"})
+
+    assert line(view, "#spend-dialog-title") == "#{label}?"
+    assert line(view, "#spend-dialog-go") == label
+
+    assert line(view, "#spend-dialog-line") ==
+             "Starts a run of #{workflow} on a machine. The run uses model tokens."
+
+    refute render(view) =~ @accept
   end
 
   ## The cases, as the walk's seed reaches them
