@@ -1885,6 +1885,24 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   finding, then pick Run another round." and the return limit's point reads "Pick Move
   back to return the work item to Build once more." An optional output never stops
   either action.
+- On the tab of a stage with `shared_run: true`, each run of the stage is a fold in the
+  runs fold: "Attempt 3 (Run 3) · 4 workflows · round 2 of 3 · passed · 2 minutes ago", or
+  "round 1" for a run with no loop. Inside it, one row for each session in the order it
+  ran: its workflow, "round 2" for a session in a loop, and "passed", "did not pass" or
+  "ended without a verdict"; a session that runs reads "running · started …". The latest
+  run's fold is open, earlier ones closed. The row of capture-demos reads how many demo
+  videos and pictures the session wrote, such as "recorded 2 demo videos and 3 pictures":
+  a demo video counts once and a picture counts each file. A workflow entry that the runner
+  passed over while the run ran, or before the run's start and after the run before it, is
+  a row in the run, with its round in a loop, also where the table of the stage's entries
+  shows; it counts as one of the run's workflows. A session that reported failed or
+  cancelled reads that state. The run's line and its rows show the state of a run that
+  stopped in lower case, like "passed": failed, lost, cancelled, paused or
+  "time limit reached". The Ticket tab and the Thread show the run as before.
+- In the list of a work item's outputs and on an artifact's page, a version that a run of a
+  stage with `shared_run: true` wrote shows the round of the session that wrote it, "Run 3 ·
+  round 2", and "Run 3 · round 1" for a run of a stage with no loop. In a stage with a
+  loop, a version written outside the loop shows "Run 3", also before the loop starts.
 - `acceptance-criteria` and `verification` are structured types: a version is one JSON
   file that matches `acceptance-criteria.schema.json` or `verification.schema.json`, and
   any other file, Markdown too, is `422` `invalid_artifact`. A criterion's id is once in

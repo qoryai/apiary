@@ -540,6 +540,13 @@ msgid_plural "%{count} comments on the %{item}"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{count} demo video"
+msgid_plural "%{count} demo videos"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/work_item_list_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{count} exploring"
@@ -569,6 +576,7 @@ msgstr[1] ""
 msgid "%{count} organisations match."
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/artifact_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "%{count} picture"
@@ -635,6 +643,7 @@ msgid_plural "%{count} work items match"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
 msgid "%{count} workflow"
@@ -26300,6 +26309,7 @@ msgstr ""
 msgid "by rule"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "cancelled"
@@ -26554,6 +26564,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "extends is not a source"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "failed"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex
@@ -26897,6 +26912,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "lost"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "lost %{when}"
 msgstr ""
 
@@ -27215,6 +27235,7 @@ msgid "path"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "paused"
@@ -27292,6 +27313,16 @@ msgstr ""
 msgid "reads requests to %{hosts}"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "recorded %{media}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "recorded %{videos} and %{pictures}"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "reloaded"
@@ -27312,9 +27343,15 @@ msgstr ""
 msgid "retention prune keep"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "round %{round}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "round %{round} of %{rounds}"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -27787,6 +27824,7 @@ msgid "tickets come in"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex
+#: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "time limit reached"
 msgstr ""

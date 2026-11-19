@@ -146,7 +146,9 @@ defmodule ApiaryWeb.ArtifactComponents do
     * `id`, required: the list's DOM id; each row's id is `<id>-<artifact public id>`.
     * `artifacts`, required: `Apiary.Artifacts.list/1`, each artifact with its versions,
       newest first, their files, and their `user` and `run` where the version has one,
-      as `Apiary.Artifacts.list/1` reads them.
+      as `Apiary.Artifacts.list/1` reads them. For the round of a version of a shared run,
+      `Apiary.Artifacts.with_sessions/1` reads the sessions of its run and sets the run's
+      `loop`, whether its stage's sequence has a loop, in addition.
     * `scope` and `number`: the reader's scope and the work item's number, for the links
       to each version's page. Without both, the rows have no links.
     * `checks`: a map from a type's name to `:passed`, `:missing` or `:not_checked`, the
@@ -257,14 +259,18 @@ defmodule ApiaryWeb.ArtifactComponents do
   def plain_name(type, name), do: String.replace(type, "-", " ") <> " " <> name
 
   @doc """
-  writer/2 is who made a version, in words: a person's email address, "Former member"
-  for an account that is gone; for a run, "Run" and the number of the run its claim
-  registered (`Apiary.Runs.Run`), and the round where the run of the queue has one and
-  `round` is true, such as "Run 14 · round 2" or "Run 14"; "A run" where no run is
-  registered or read. The Explore tab passes `round` false: inside a work item, its
-  runs count by attempt. A version of a run a member cancelled has its round, whatever
-  `round`, and "cancelled, not counted" after them: "Run 14 · round 2 · cancelled, not
-  counted".
+  writer/2 is who made a version, in words: a person's email address, "Former member" for an
+  account that is gone; for a run, "Run" and the number of the run its claim registered
+  (`Apiary.Runs.Run`), and the round where the run of the queue has one and `round` is
+  true, such as "Run 14 · round 2" or "Run 14". For a run of a stage with `shared_run: true`
+  the round is that of the loop session that wrote the version: the newest of the run's
+  sessions written before the version, which `Apiary.Artifacts.with_sessions/1` reads. A
+  run whose stage is known to have no loop in its sequence is round 1; a version outside
+  the loop of a stage that has one, or of a stage not known to have none, has no round.
+  "A run" where no run is registered or read. The Explore tab passes `round` false:
+  inside a work item, its runs count by attempt. A version of a run a member cancelled
+  has its round, whatever `round`, and "cancelled, not counted" after them: "Run 14 ·
+  round 2 · cancelled, not counted".
   """
   @spec writer(Version.t(), boolean) :: String.t()
   def writer(version, round \\ true) do
@@ -278,13 +284,32 @@ defmodule ApiaryWeb.ArtifactComponents do
 
   defp run_writer(%Version{writer: :person}, _round), do: People.former_member()
 
-  defp run_writer(%Version{writer: :run, run: %{run: %Run{number: number}, round: round}}, true),
-    do: run_words(number, round)
+  defp run_writer(%Version{writer: :run, run: %{run: %Run{number: number}}} = version, true),
+    do: run_words(number, version_round(version))
 
   defp run_writer(%Version{writer: :run, run: %{run: %Run{number: number}}}, _round),
     do: run_words(number, nil)
 
   defp run_writer(%Version{writer: :run}, _round), do: run_words(nil, nil)
+
+  # The round of a run's version: with `shared_run: true`, that of the newest session
+  # written before it, if that session is in a loop; else 1 where the stage's sequence is
+  # known to have no loop (`loop` false), none where it has one or `loop` is nil. Any other
+  # run has the round of its run of the queue.
+  defp version_round(%Version{run: %{sessions: [_ | _] = sessions}} = version) do
+    session =
+      sessions
+      |> Enum.filter(&(DateTime.compare(&1.inserted_at, version.inserted_at) != :gt))
+      |> List.last()
+
+    cond do
+      session && is_integer(session.loop_entry) -> session.round
+      version.run.loop == false -> 1
+      true -> nil
+    end
+  end
+
+  defp version_round(%Version{run: %{round: round}}), do: round
 
   # The run that made a version: its number, and its round where it has one.
   defp run_words(number, round) when is_integer(number) and is_integer(round),

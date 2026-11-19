@@ -338,6 +338,8 @@ defmodule ApiaryWeb.ArtifactLive.Show do
 
     with %{} = work_item <- Load.work_item(scope, number),
          %{} = version <- Load.version(work_item, version_id) do
+      # The sessions of its run, for the round its writer shows (`ArtifactComponents.writer/2`).
+      version = Artifacts.with_sessions(version)
       if connected?(socket), do: Artifacts.subscribe(scope, work_item)
       type = Load.type(work_item, version.artifact.type)
       mockup = Load.mockup(type, version)
@@ -438,7 +440,12 @@ defmodule ApiaryWeb.ArtifactLive.Show do
   end
 
   defp load_history(socket),
-    do: assign(socket, :history, Artifacts.versions(socket.assigns.version.artifact))
+    do:
+      assign(
+        socket,
+        :history,
+        socket.assigns.version.artifact |> Artifacts.versions() |> Artifacts.with_sessions()
+      )
 
   # Another file of a document version: rendered as the reader opens it, in place of the
   # one shown (`Load.content/3`). The file already shown is not rendered again. Only a

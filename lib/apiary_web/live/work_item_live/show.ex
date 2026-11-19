@@ -451,6 +451,9 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             work_item={@item}
             runs={@view.runs}
             skips={@view.skips}
+            sessions={@view.sessions}
+            sequences={@view.sequences}
+            recorded={@view.recorded}
             passed_over={@view.passed_over}
             proposal_version={@view.proposal_version}
             entries={@view.entries}
@@ -2414,9 +2417,35 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         artifacts: assigns.artifacts
       })
 
-    view = %{view | passed_over: passed_over_by(socket, view.passed_over)}
+    {sessions, sequences} = sessions_of(view)
+
+    view = %{
+      view
+      | passed_over: passed_over_by(socket, view.passed_over),
+        sessions: sessions,
+        sequences: sequences
+    }
+
     socket |> assign(:view, view) |> framed()
   end
+
+  # The sessions of the stage tab's runs whose stage has `shared_run: true` in the run's
+  # process version, and that stage's sequence there, each by the run's public id
+  # (`Apiary.Stages.shared_sequences/1`, `Apiary.Stages.run_sessions/1`); none on another
+  # tab.
+  defp sessions_of(%{stage: %{}, runs: runs}) do
+    case for(%{id: id} when is_binary(id) <- runs, do: id) do
+      [] ->
+        {%{}, %{}}
+
+      ids ->
+        sequences = Stages.shared_sequences(ids)
+        shared = Enum.filter(ids, &Map.has_key?(sequences, &1))
+        {Stages.run_sessions(shared), sequences}
+    end
+  end
+
+  defp sessions_of(_view), do: {%{}, %{}}
 
   # The person of the approval that put the work item on the track that passed the stage over
   # (`Apiary.Stages.stage_skips/1`), as the components show a person, Former member for one
@@ -3233,8 +3262,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp with_confirmers(work_item, confirmers), do: Map.put(work_item, :confirmers, confirmers)
 
   # The work item's artifacts that its page lists: every one but a name whose newest
-  # version is a withdrawal (`Apiary.Artifacts.withdrawn?/1`).
-  defp shown_artifacts(row), do: Enum.reject(Artifacts.list(row), &Artifacts.withdrawn?/1)
+  # version is a withdrawal (`Apiary.Artifacts.withdrawn?/1`), with the sessions of each
+  # version's run, for the outputs list's round (`Apiary.Artifacts.with_sessions/1`).
+  defp shown_artifacts(row),
+    do:
+      row |> Artifacts.list() |> Enum.reject(&Artifacts.withdrawn?/1) |> Artifacts.with_sessions()
 
   # The versions an approval at the current stage's gate would record, which the stage
   # card lists (`Apiary.Stages.gate_frames/3`, the set `Apiary.Stages.approve/4` records);
