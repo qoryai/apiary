@@ -1556,6 +1556,33 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert made_by(view, work_item, "spec", "second") == "Run #{n} · round 2"
     end
 
+    test "the row of an output that has no Markdown has the round of its session", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, run, registered} =
+        shared_build!(scope, looped(), %{
+          "outputs" => [%{"type" => "demo-video", "required" => false}]
+        })
+
+      :ok = verdict!(run, "passed")
+      {:session, %{workflow: "write-acceptance-checks"}} = report!(run, 1)
+      :ok = verdict!(run, "passed")
+      {:session, %{workflow: "implement-changes"}} = report!(run, 2)
+      {:session, %{workflow: "review-changes"}} = report!(run, 3)
+      :ok = verdict!(run, "changes-requested")
+      {:session, %{workflow: "implement-changes"}} = report!(run, 4)
+      :ok = media!(run, work_item, "demo-video", "second")
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+      assert has_element?(
+               view,
+               "#work-item-tab-output-demo-video--second---row",
+               "Run #{registered.number} · round 2"
+             )
+    end
+
     test "a version of a shared run with no loop is round 1; one of another run keeps its round",
          %{
            conn: conn,
@@ -2061,7 +2088,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert report!(run, 2) == :end
       :ok = exited!(run, registered)
 
-      # The report of capture-demos has no verdict version to read.
+      # Set by hand: the runner escalates a run whose last session has no verdict, so no
+      # flow writes this row. The report of capture-demos has no verdict version to read.
       {1, nil} =
         Repo.update_all(
           from(s in Stages.Session, where: s.dispatch_run_id == ^run.id and s.sequence == 2),

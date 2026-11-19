@@ -1981,9 +1981,8 @@ defmodule Apiary.Artifacts do
       )
 
   # with_sessions/1 reads the sessions of each version's run into a version, a list of
-  # versions, or a list of artifacts with their versions, as `list/1`, `versions/1` and
-  # `get_version!/1` return them. `ApiaryWeb.ArtifactComponents.writer/2` draws the round
-  # from them; the other reads leave them out.
+  # versions, or a list of artifacts with their versions, as `list/1` returns them. Only
+  # `ApiaryWeb.ArtifactComponents.writer/2` needs them, for the round.
   @doc false
   @spec with_sessions(Version.t() | [Version.t() | Artifact.t()]) ::
           Version.t() | [Version.t() | Artifact.t()]

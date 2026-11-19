@@ -151,7 +151,8 @@ defmodule ApiaryWeb.ArtifactComponents do
     * `id`, required: the list's DOM id; each row's id is `<id>-<artifact public id>`.
     * `artifacts`, required: `Apiary.Artifacts.list/1`, each artifact with its versions,
       newest first, their files, and their `user` and `run` where the version has one,
-      as `Apiary.Artifacts.list/1` reads them.
+      as `Apiary.Artifacts.list/1` reads them. For the round of a version of a shared run,
+      `Apiary.Artifacts.with_sessions/1` reads the sessions of its run in addition.
     * `scope` and `number`: the reader's scope and the work item's number, for the links
       to each version's page and to Add a version. Without both, the rows have no links.
     * `checks`: a map from a type's name to `:passed`, `:missing` or `:not_checked`, the
@@ -306,10 +307,9 @@ defmodule ApiaryWeb.ArtifactComponents do
 
   defp run_writer(%Version{writer: :run}, _round), do: run_words(nil, nil)
 
-  # The round of a run's version. In a run of a stage with `shared_run: true`, it is the
-  # round of the newest session written before the version, where that session is in a
-  # loop; 1 where no session of the run is; else none. Any other run has the round of its
-  # run of the queue.
+  # The round of a run's version: with `shared_run: true`, that of the newest session
+  # written before it, if that session is in a loop; 1 where no session of the run is;
+  # else none. Any other run has the round of its run of the queue.
   defp version_round(%Version{run: %{sessions: [_ | _] = sessions}} = version) do
     session =
       sessions
