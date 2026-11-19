@@ -483,6 +483,25 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       refute encoded =~ "sk-ant"
     end
 
+    test "keep the Pause for of the claim after the key's setting changes", ctx do
+      choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id})
+      spare = value!(ctx.provider, "spare")
+      {:ok, _setting} = put_key_setting(ctx.scope, spare, %{pause_seconds: 300})
+
+      {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
+      run = Repo.get!(Run, handed.run.id)
+
+      # A member sets the key's Pause for to 15 minutes after the claim.
+      {:ok, _setting} = put_key_setting(ctx.scope, spare, %{pause_seconds: 900})
+
+      assert [%ModelKey{pause_for_s: 300}] =
+               Enum.filter(stored_keys(run), &(&1.secret_value_id == spare.id))
+
+      assert {:ok, credential} = Apiary.Runs.ProviderCredential.for_run(run)
+      assert %{entry: entry} = Enum.find(credential.keys, &(&1.secret_value_id == spare.id))
+      assert entry["pause_for_s"] == 300
+    end
+
     test "send a key in cooldown after the free keys, never as the start key", ctx do
       pid = ctx.provider.public_id
       choose!(ctx.scope, :workspace, %{provider: pid})
