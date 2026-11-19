@@ -191,19 +191,24 @@ defmodule Apiary.StagesFixtures do
   end
 
   @doc """
-  A live run of the queue at the stage `stage_id` (nil for the work item's stage): the
-  work item's newest run when it is at that stage and has not ended, else a new waiting
-  run there, with the next attempt. For a test that needs a live run where the stage
-  runner starts none: at a stage that runs no workflow, or at a stage whose runs ended,
-  for a push after them. No step of the stage runner follows the insert.
+  A live run of the queue at the stage `stage_id` (nil for the work item's stage), handed
+  over as a claim and its handover leave it: the work item's newest run when it is at that
+  stage and has not ended, else a new run there, with the next attempt. A run not yet
+  handed over is handed over, with a registered run (`Apiary.Runs.Run`) that is running.
+  For a test that needs a live run where the stage runner starts none: at a stage that
+  runs no workflow, or at a stage whose runs ended, for a push after them. No step of the
+  stage runner follows.
   """
   def live_stage_run!(%WorkItem{} = work_item, stage_id \\ nil) do
     work_item = Repo.get!(WorkItem, work_item.id)
     stage_id = stage_id || work_item.stage_id
 
     case newest_run(work_item) do
-      %DispatchRun{stage_id: ^stage_id, state: state} = run when state != :ended ->
+      %DispatchRun{stage_id: ^stage_id, state: :handed_over} = run ->
         run
+
+      %DispatchRun{stage_id: ^stage_id, state: state} = run when state != :ended ->
+        hand_over!(run)
 
       newest ->
         attempt = if newest, do: newest.attempt + 1, else: 1
@@ -222,7 +227,24 @@ defmodule Apiary.StagesFixtures do
         })
         |> Ecto.Changeset.change(stage_id: stage_id)
         |> Repo.insert!()
+        |> hand_over!()
     end
+  end
+
+  # The run handed over, with its registered run, running: what a claim and its handover
+  # write.
+  defp hand_over!(%DispatchRun{} = run) do
+    %Run{
+      number: Apiary.RunEventsFixtures.next_run_number(run.organisation_id, run.workspace_id),
+      organisation_id: run.organisation_id,
+      workspace_id: run.workspace_id,
+      node_run_id: run.run_id,
+      dispatch_run_id: run.id
+    }
+    |> Ecto.Changeset.change(state: "running", started_at: DateTime.utc_now())
+    |> Apiary.RunEventsFixtures.insert_run!()
+
+    run |> Ecto.Changeset.change(state: :handed_over) |> Repo.update!()
   end
 
   @doc """
@@ -251,14 +273,24 @@ defmodule Apiary.StagesFixtures do
     run = newest_run(work_item)
     now = DateTime.utc_now()
 
+    # A run that `live_stage_run!/2` handed over has its registered run already.
+    running = from r in Run, where: r.dispatch_run_id == ^run.id and r.state == "running"
+
     registered =
-      %Run{
-        number: Apiary.RunEventsFixtures.next_run_number(run.organisation_id, run.workspace_id),
-        organisation_id: run.organisation_id,
-        workspace_id: run.workspace_id,
-        node_run_id: run.run_id,
-        dispatch_run_id: run.id
-      }
+      case Repo.one(running) do
+        %Run{} = running ->
+          running
+
+        nil ->
+          %Run{
+            number:
+              Apiary.RunEventsFixtures.next_run_number(run.organisation_id, run.workspace_id),
+            organisation_id: run.organisation_id,
+            workspace_id: run.workspace_id,
+            node_run_id: run.run_id,
+            dispatch_run_id: run.id
+          }
+      end
       |> Ecto.Changeset.change(%{
         state: "completed",
         exit_state: "completed",
@@ -270,7 +302,7 @@ defmodule Apiary.StagesFixtures do
         outcome_digest: :crypto.strong_rand_bytes(32)
       })
       |> Ecto.Changeset.change(run_changes)
-      |> Apiary.RunEventsFixtures.insert_run!()
+      |> saved_run!()
 
     # What the run pushes, it pushes while it is live (`Apiary.Artifacts.push/5` refuses a
     # run that ended); then it ends.
@@ -287,4 +319,9 @@ defmodule Apiary.StagesFixtures do
     run.id |> Settle.settle() |> Apiary.Dispatches.broadcast()
     Repo.get!(WorkItem, work_item.id)
   end
+
+  defp saved_run!(%Ecto.Changeset{data: %Run{id: nil}} = changeset),
+    do: Apiary.RunEventsFixtures.insert_run!(changeset)
+
+  defp saved_run!(changeset), do: Repo.update!(changeset)
 end

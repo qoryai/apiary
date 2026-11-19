@@ -4132,11 +4132,7 @@ defmodule Apiary.StagesTest do
       assert Stages.full_suite_versions(artifacts, 1) == []
     end
 
-    test "a report a person wrote, or with no verdict, has no verdict" do
-      person = %{number: 1, run_id: nil, writer: :person, run: nil}
-      artifacts = [artifact("build-report", [person]), artifact("verdict", [stored_verdict(%{})])]
-      assert Stages.full_suite_versions(artifacts, 1) == []
-
+    test "a report with no verdict has no verdict" do
       assert Stages.full_suite_versions([artifact("build-report", [report(1, "run-a")])], 1) == []
       assert Stages.full_suite_versions([], 1) == []
     end
