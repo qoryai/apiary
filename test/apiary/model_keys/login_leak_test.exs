@@ -96,10 +96,8 @@ defmodule Apiary.ModelKeys.LoginLeakTest do
         assert {:refreshing, _public_id, %{identity: "OpenAI subscription · dana@example.com"}} =
                  Waiting.reason(waiting)
 
-        assert_enqueued(worker: LoginRefreshJob)
-        # The queue also holds the jobs of the workspace's set up; the refresh is one of them.
-        assert %{failure: 0, discard: 0, cancelled: 0} =
-                 Oban.drain_queue(queue: :default, with_safety: false)
+        assert [job] = all_enqueued(worker: LoginRefreshJob)
+        assert :ok = perform_job(LoginRefreshJob, job.args)
 
         assert {:ok, %{registered: _run}} = walked_claim(ctx.key, Dispatches.now(), @body)
         waiting
