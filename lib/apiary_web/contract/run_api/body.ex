@@ -249,8 +249,9 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   end
 
   # The first member of `body` that is not `known`, by name, and `body` for a name over 64
-  # bytes. With `:named`, the run contract's rule for a next-session request, every name
-  # is the member's, but an empty one, which `names` cannot contain, is `body`.
+  # bytes. With `:named` (the run contract's rule for a next-session request), the error
+  # contains the member's name at any length. An empty name is `body`, because `names`
+  # allows no empty string.
   defp members(body, known, names \\ :short) do
     case Enum.sort(Map.keys(body) -- known) do
       [] -> :ok

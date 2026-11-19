@@ -707,15 +707,15 @@ defmodule Apiary.Stages do
 
   def next_session(_run, _report), do: {:error, :invalid_request}
 
-  # next_session_check/1 is the run checks of a next-session request of `run`, a run of the
-  # queue (or its id), which come before its body is read, in the run contract's order:
-  # `{:error, :not_found}` for an unknown run, a run of Explore, a run of a stage without
-  # `shared_run`, and a run that no claim of a shared stage registered; then
-  # `{:error, :run_ended}` or `{:error, :run_cancelled}` for a run that ended or that a
-  # member cancelled; then `{:error, :run_ended, newest}` for a run whose stage no longer
-  # runs it or whose last step returned `:end`. `newest` is the number of the newest
-  # session the run reported, nil for none: a report of that session is a repeat, which
-  # next_session/2 answers with its stored result, so that a lost answer does not end the
+  # next_session_check/1 runs the checks of the run of a next-session request of `run`, a
+  # run of the queue (or its id), which come before its body is read, in the run
+  # contract's order: `{:error, :not_found}` for an unknown run, a run of Explore, a run of
+  # a stage without `shared_run`, and a run that no claim of a shared stage registered;
+  # then `{:error, :run_ended}` or `{:error, :run_cancelled}` for a run that ended or that
+  # a member cancelled; then `{:error, :run_ended, newest}` for a run whose stage no
+  # longer runs it or whose last step returned `:end`. `newest` is the number of the newest
+  # session the run reported, nil for none: a report of that session is a repeat, for
+  # which next_session/2 returns the stored result, so that a lost answer does not end the
   # run another way. Else `:ok`. It reads without the work item's lock, and next_session/2
   # checks all of it again under the lock.
   @doc false

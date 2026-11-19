@@ -898,9 +898,9 @@ escalation, open questions, the gate, or the next stage, whose run is queued as 
   counted in `comments_omitted`.
 - A second request for the same session returns the same body, byte for byte, and steps
   nothing, whatever the newer verdicts, also once the stage no longer runs the run or its
-  last step returned `end`: qory may send it again after a `5xx` or a transport failure,
-  and a lost answer does not end the run another way. A request for an older session
-  than the newest one the run reported is `409` `session_mismatch`.
+  last step returned `end`. qory may send the request again after a `5xx` or a transport
+  failure, and a lost answer does not end the run another way. A request for an older
+  session than the newest one the run reported is `409` `session_mismatch`.
 - The step and the record of the session are stored in one transaction, under the lock of
   the work item that a push, a verdict, the end of a run and a cancel also take. An error
   writes nothing, except the end of the run for inputs that cannot be formed.
@@ -917,19 +917,23 @@ the run's checks before the request's.
    `run_ended`. A valid repeat of the newest session the run reported gets its stored
    answer instead.
 5. A body over 4 KiB is `413` `payload_too_large`.
-6. A body outside the request's schema is `400` `invalid_request`, with the first member
-   that failed in `names`, whatever the length of its name, and `body` for a body that is
-   not a JSON object or a member whose name is empty.
+6. A body outside the request's schema is `400` `invalid_request`. `names` contains the
+   first member that failed, at any length of its name. It contains `body` for a body
+   that is not a JSON object, or for a member with an empty name.
 7. A request for an older session than the newest one the run reported is `409`
    `session_mismatch`.
 8. A store that cannot read the run's newest verdict or questions is `503`
    `unavailable`.
 
-Inputs that cannot be formed come out of the step, so their `409` comes after the
-request's checks: a ticket that is no longer kept, or inputs that break the rules of
-Explore's input or do not fit the body's 1 MiB with every comment left out, end the run,
-as a claim ends a run it cannot form, with the cause `ticket_gone` or `inputs_invalid`
-and the outcome `error`, and are `409` `run_ended`. The stage escalates `run_stopped`.
+The step forms the inputs, so their `409` comes after the request's checks. The run then
+ends with the outcome `error`, as a claim ends a run it cannot form, and one of these
+causes:
+
+- `ticket_gone`: the ticket is no longer kept;
+- `inputs_invalid`: the inputs break the rules of Explore's input, or do not fit the
+  body's 1 MiB with every comment left out.
+
+The request gets `409` `run_ended`, and the stage escalates `run_stopped`.
 
 Qory Apiary never returns `410` to this request, as the gateway turns a `410` into a `502`.
 
@@ -960,7 +964,7 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 | `400` | `invalid_request` | `names`, and `message` for a report of pushed commits and a next-session request | A body that is not the request's object, a report of pushed commits over its limits or with a commit that is not a full commit id, a next-session request outside its schema, or a content that is not strict base64 |
 | `401` | `unauthorized` | | The request does not verify; unsigned |
 | `404` | `not_found` | | An unknown run, a run of another gateway, an unknown version or file; for `GET resume/transcript`, a run that ended, has no `resume`, or whose transcript cannot be served; for `POST next-session`, a run of Explore or of a stage without `shared_run`, and an instance without `workflow_model` |
-| `404` | (the error page) | | The instance does not have `workflow_model`, except for `POST next-session`, or for `GET resume/transcript`, `observability` |
+| `404` | (the error page) | | The instance does not have `workflow_model` (except for `POST next-session`), or, for `GET resume/transcript`, `observability` |
 | `409` | `run_ended` | `message` | A push or a verdict after the run ended or a member cancelled it, checked before the push and again when the version is stored; a report of pushed commits after the run ended (a cancel does not refuse it), checked before and again under the work item's lock |
 | `409` | `run_ended` | `message` | A next-session request after the run ended or a member cancelled it, after the stage stopped running the run, or for inputs that ended the run |
 | `409` | `session_mismatch` | `message` | A next-session request for an older session than the newest one the run reported |

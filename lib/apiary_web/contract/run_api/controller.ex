@@ -300,7 +300,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
             "Send the number of the session that ended last. A later session of this run ended already."
         )
 
-      # Body.next_session/1 checks the step's rules for the body first.
+      # Stages.next_session/2 returns this for a report of another form; Body.next_session/1
+      # returns `{:error, :invalid_request, member}` for such a body first.
       {:error, :invalid_request} ->
         error(conn, 400, "invalid_request", names: ["body"], message: @next_session_body)
 
