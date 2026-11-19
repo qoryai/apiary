@@ -364,6 +364,63 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       assert sessions(ctx) == stored
     end
 
+    test "checks a run that no claim of a shared stage registered before the body: 404",
+         ctx do
+      too_large = Jason.encode!(ended(1)) <> String.duplicate(" ", 4 * 1024)
+
+      # A run with no session recorded, then also a run record with no settings of a claim.
+      {_count, _rows} =
+        Repo.delete_all(from s in Session, where: s.dispatch_run_id == ^ctx.dispatch_run.id)
+
+      for unregister <- [
+            fn -> :ok end,
+            fn ->
+              {1, _rows} =
+                Repo.update_all(from(r in Run, where: r.id == ^ctx.gateway_run.id),
+                  set: [session_settings: nil]
+                )
+            end
+          ] do
+        unregister.()
+
+        for body <- ["not json", too_large, Map.put(ended(1), "verdict", "passed")] do
+          conn = request(ctx, body)
+          assert signed_answer?(conn)
+          assert conn.status == 404, inspect(body)
+          assert conn.resp_body == ~s({"error":"not_found"})
+        end
+      end
+
+      assert sessions(ctx) == []
+    end
+
+    test "checks the body before the inputs of the next session: 400, and the run goes on",
+         ctx do
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),
+          set: [item_id: nil]
+        )
+
+      :ok = verdict!(ctx, "passed")
+      stored = sessions(ctx)
+      stage_state = reload(ctx.work_item).stage_state
+
+      assert %{"error" => "invalid_request", "names" => ["body"]} =
+               json_response(request(ctx, "not json"), 400)
+
+      assert %DispatchRun{state: :handed_over, end_cause: nil} =
+               Repo.get!(DispatchRun, ctx.dispatch_run.id)
+
+      assert sessions(ctx) == stored
+      assert reload(ctx.work_item).stage_state == stage_state
+
+      # A valid body reaches the step, which cannot form the inputs.
+      assert %{"error" => "run_ended"} = json_response(request(ctx, ended(1)), 409)
+
+      assert %DispatchRun{state: :ended, end_cause: :ticket_gone} =
+               Repo.get!(DispatchRun, ctx.dispatch_run.id)
+    end
+
     test "after the end, a repeat of the final session gets its stored end; any other request is 409",
          ctx do
       :ok = verdict!(ctx, "passed")
@@ -961,17 +1018,22 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
   end
 
   describe "a run of a stage without shared_run" do
-    test "is 404 not_found and writes nothing", ctx do
+    test "is 404 not_found and writes nothing, before the body is read", ctx do
       ctx =
         shared!(ctx, [
           stage(@build, "Build", workflows(~w(plan-the-build write-acceptance-checks)))
         ])
 
       assert sessions(ctx) == []
-      conn = request(ctx, ended(1))
-      assert signed_answer?(conn)
-      assert conn.status == 404
-      assert conn.resp_body == ~s({"error":"not_found"})
+      too_large = Jason.encode!(ended(1)) <> String.duplicate(" ", 4 * 1024)
+
+      for body <- [ended(1), "not json", too_large] do
+        conn = request(ctx, body)
+        assert signed_answer?(conn)
+        assert conn.status == 404, inspect(body)
+        assert conn.resp_body == ~s({"error":"not_found"})
+      end
+
       assert sessions(ctx) == []
     end
   end

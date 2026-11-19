@@ -737,7 +737,9 @@ defmodule Apiary.Stages do
            {:ok, _pending} <- pending_session(pending, work_item) do
         :ok
       else
-        _ended -> {:error, :run_ended, newest_reported(sessions)}
+        _ended ->
+          newest = newest_reported(sessions)
+          {:error, :run_ended, newest && newest.forager_session}
       end
     else
       [] -> {:error, :not_found}
@@ -927,10 +929,7 @@ defmodule Apiary.Stages do
   # the session the run is in, the first with no report recorded yet. A run with no
   # session recorded is one that no claim of a shared stage registered.
   defp reported(sessions, number) do
-    newest =
-      sessions
-      |> Enum.filter(& &1.forager_session)
-      |> Enum.max_by(& &1.forager_session, fn -> nil end)
+    newest = newest_reported(sessions)
 
     cond do
       newest && number == newest.forager_session ->
@@ -950,12 +949,11 @@ defmodule Apiary.Stages do
     end
   end
 
-  # The number of the newest session of `sessions` that the run reported, nil for none.
+  # The newest session of `sessions` that the run reported, nil for none.
   defp newest_reported(sessions) do
     sessions
-    |> Enum.map(& &1.forager_session)
-    |> Enum.reject(&is_nil/1)
-    |> Enum.max(fn -> nil end)
+    |> Enum.filter(& &1.forager_session)
+    |> Enum.max_by(& &1.forager_session, fn -> nil end)
   end
 
   # The work item's stage, while the run is the newest of that stage, the stage runs, and
