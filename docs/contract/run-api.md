@@ -387,9 +387,11 @@ Checks, in order, after the checks of every request:
 4. Files larger together than the type's size limit, which bounds all files of one
    version: `422` `too_large`.
 5. A content that is not strict base64: `400` `invalid_request`.
-6. Files that do not match the type's format: `422` `invalid_artifact`, with the file
-   in `names`, such as `files[0]`, or `files` for a video type's version without a video
-   file and a `proposal` version without exactly one Markdown file. A version of the type
+6. A version of `acceptance-criteria` under a name other than `main` is `422`
+   `invalid_artifact`, with `name` in `names`, before its files are checked. Files that
+   do not match the type's format: `422` `invalid_artifact`, with the file in `names`,
+   such as `files[0]`, or `files` for a video type's version without a video file and a
+   `proposal` version without exactly one Markdown file. A version of the type
    `verdict` is checked against the type's JSON Schema, so its `verdict` is `passed`,
    `changes-requested` or `escalate`. A JSON file of a standard type, such as `questions`,
    `review-comments` or `verdict`, has each key once in each object: a key that comes
@@ -1025,8 +1027,9 @@ The messages:
     stage" as its name. The check is the same for `POST verdict` and for `POST artifacts` with the type
     `verdict`.
   - For a version of `acceptance-criteria` under a name other than `main`, `names` is
-    `["name"]` and the message is "Name the acceptance criteria main: a work item has one
-    set of acceptance criteria, and this push has the name other."
+    `["name"]`, and the message starts "Name the acceptance criteria main: a work item
+    has one set of acceptance criteria, and this push has the name" and ends with the
+    pushed name, such as "… this push has the name other."
   - For a version of `questions` or `review-comments` that changes what members wrote,
     one message per rule, such as "Leave each answer in questions.json as the newest
     version of questions has it: members write the answers." or "Close each review

@@ -1413,6 +1413,16 @@ defmodule Apiary.ArtifactsTest do
                )
     end
 
+    test "checks the name of acceptance criteria before the format of their file",
+         %{run: run} = context do
+      broken = json("acceptance-criteria.json", %{"criteria" => "none"})
+      push = &Artifacts.push({:run, run}, context.work_item, "acceptance-criteria", [broken], &1)
+
+      assert push.(name: "other") == {:error, {:invalid, {:criteria_name, "other"}}}
+      assert {:error, {:invalid, {:schema, 0, _detail}}} = push.(name: "main")
+      assert count(Artifact) == 0
+    end
+
     test "Explore reads the proposal named main alone", %{run: run} = context do
       push = fn name, text ->
         Artifacts.push({:run, run}, context.work_item, "proposal", [doc("proposal.md", text)],
