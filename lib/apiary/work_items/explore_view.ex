@@ -786,7 +786,8 @@ defmodule Apiary.WorkItems.ExploreView do
       # For a run that ended before it started as its stage's model choices did not fit
       # the one run, the fault as the choices are now (`Apiary.Stages.shared_models/1`):
       # `{:model_choice_missing, workflow, runtime, provider}`, `{:too_many_providers,
-      # count, providers}`, `{:session_key_missing, :no_key, workflow, provider}` or
+      # count, providers}`, `{:session_key_missing, :machine, first}`,
+      # `{:session_key_missing, :no_key, workflow, provider}` or
       # `{:session_key_missing, :other_api, workflow, api, provider, earlier}`; nil for
       # none.
       shared_models: shared_models(step.dispatch_run),

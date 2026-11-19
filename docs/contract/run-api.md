@@ -852,14 +852,16 @@ of the run contract. A next session of the same stage:
   was removed, or no longer fits the catalogue, ends the claim `provider_gone`.
 - `model_choice` has the catalogue's default runtime alone where the workflow resolves to
   no model choice at any level: the session joins the group of the run's start key, or,
-  in a run with no start key, runs on the machine's key, and uses the default model of
-  that runtime.
+  in a run with no start key, runs on the machine's local model provider credential, and
+  uses the default model of that runtime.
 - Where a session's runtime uses another API of a provider that an earlier session of the
-  run uses, or neither its provider nor a provider of its fallbacks has a key, the claim
-  ends the run before it starts, with the end cause `session_key_missing`: one run uses
-  one API of each provider. It ends the run so too where the run's first session runs on
-  the machine's key, as its workflow resolves to no model choice, and a later session
-  runs on a model provider: such a run gets no key.
+  run uses, the claim ends the run before it starts, with the end cause
+  `session_key_missing`: one run uses one API of each provider. The claim ends the run so
+  too where the session's provider has no key, and no provider of its later steps (the
+  default step under a workflow's override, then the fallbacks) has a key out of
+  cooldown. A run whose first session runs on the machine's local model provider
+  credential, as its workflow resolves to no model choice, gets no key: its claim ends it
+  `session_key_missing` where a later session runs on a model provider.
 - `model_credential`, for a session on a key of a provider other than the start key's, is
   the credential name of the key the session starts on: that provider's first key out of
   cooldown, else its first key. The claim picks at most 6 keys in this order: the start

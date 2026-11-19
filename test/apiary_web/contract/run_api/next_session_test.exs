@@ -758,11 +758,11 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       # No choice for the run's first workflow: session 1 uses the gateway's key, so the
       # run gets no key, and session 2 on a provider would have none.
       {:ok, _deleted} = ModelChoices.delete_choice(ctx.scope, :workspace)
-      :ok = choose!(ctx, {:workspace, "write-acceptance-checks"}, %{model: "claude-sonnet-5-5"})
-
       stages = [build_stage(~w(plan-the-build write-acceptance-checks))]
       document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => stages}
       {:ok, _version} = Processes.save(ctx.scope, ctx.scope.workspace, document)
+      # The choice is made after the save, which refuses it.
+      :ok = choose!(ctx, {:workspace, "write-acceptance-checks"}, %{model: "claude-sonnet-5-5"})
       work_item = taken_in_fixture(ctx.scope)
       run = Repo.one!(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
 

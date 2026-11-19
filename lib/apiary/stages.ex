@@ -571,6 +571,7 @@ defmodule Apiary.Stages do
                detail:
                  {:too_many_providers, pos_integer, [String.t()]}
                  | {:model_choice_missing, String.t(), String.t(), String.t()}
+                 | {:session_key_missing, :machine, String.t()}
                  | {:session_key_missing, :no_key, String.t(), String.t()}
                  | {:session_key_missing, :other_api, String.t(), String.t(), String.t(),
                     String.t()}

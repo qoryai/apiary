@@ -3033,6 +3033,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     end
 
     test "a run of a shared stage whose session would have no key in the run shows the fix while that fault remains" do
+      machine = {:session_key_missing, :machine, "plan-the-build"}
       no_key = {:session_key_missing, :no_key, "write-acceptance-checks", "Checkout keys"}
 
       other_api =
@@ -3043,6 +3044,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         "Run the round again. A workflow of the stage would run on a provider that has no key in the run, or on a second API of a provider that an earlier workflow uses."
 
       for {detail, body} <- [
+            {machine,
+             "Choose a model for workflow plan-the-build, or remove the model choices of the later workflows. Without a model, plan-the-build runs on the machine's local model provider credential, so later workflows get no model provider credential."},
             {no_key,
              "Add a model key to Checkout keys, or choose a model of another provider for workflow write-acceptance-checks. Checkout keys has no model key."},
             {other_api,

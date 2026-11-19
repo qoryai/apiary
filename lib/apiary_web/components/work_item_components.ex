@@ -6915,6 +6915,15 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp no_result_words(
          %{
            end_cause: :session_key_missing,
+           shared_models: {:session_key_missing, _, _} = detail
+         },
+         _earlier
+       ),
+       do: session_key_words(detail)
+
+  defp no_result_words(
+         %{
+           end_cause: :session_key_missing,
            shared_models: {:session_key_missing, _, _, _} = detail
          },
          _earlier

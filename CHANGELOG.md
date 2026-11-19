@@ -291,19 +291,23 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   run before it starts, with the end cause `too_many_providers` or `model_choice_missing`
   and the outcome error. The work item and the stop line show the same fix while the
   fault remains, and "Run the round again." once it is gone.
-- A save of a stage with `shared_run: true` also fails when neither a later workflow's
-  provider nor a provider of its fallbacks has a model key, or when a workflow's runtime
-  uses another API of a provider that an earlier workflow uses, as one run uses one API
-  of each provider. The errors are "Add a model key to Checkout, or choose a model of
-  another provider for workflow review. Checkout has no model key." and "Choose a model
-  for workflow review that uses the Anthropic Messages API of Northwind, as workflow
-  plan does, or a model of another provider. One run uses one API of each provider." A
-  workflow with no model choice, which runs on the default runtime, is never refused.
-  The claim checks both again and ends such a run before it starts, with the end cause
-  `session_key_missing` and the outcome error. It ends a run so too where its first
-  session runs on the machine's key, as its workflow has no model choice, and a later
-  session runs on a model provider: such a run gets no key. The work item and the stop line show the
-  same fix while the fault remains, and "Run the round again." once it is gone.
+- A save of a stage with `shared_run: true` also fails, in three cases, where a later
+  session would get no model key in the run. First, a later workflow's provider has no
+  model key, and neither has a provider of its later steps (the default step under a
+  workflow's override, then the fallbacks). The error is "Add a model key to Checkout, or
+  choose a model of another provider for workflow review. Checkout has no model key."
+  Second, a workflow's runtime uses another API of a provider that an earlier workflow
+  uses, as one run uses one API of each provider. The error is "Choose a model for
+  workflow review that uses the Anthropic Messages API of Northwind, as workflow plan
+  does, or a model of another provider. One run uses one API of each provider." Third,
+  the first workflow has no model choice, and a later workflow's choice is on a model
+  provider. The error is "Choose a model for workflow plan, or remove the model choices
+  of the later workflows. Without a model, plan runs on the machine's local model
+  provider credential, so later workflows get no model provider credential." A later
+  workflow with no model choice, which runs on the default runtime, never fails the save.
+  The claim checks all three again and ends such a run before it starts, with the end
+  cause `session_key_missing` and the outcome error. The work item and the stop line show
+  the same fix while the fault remains, and "Run the round again." once it is gone.
 - `full_suite` is `true` only for a session of an entry with access `write` that is in a
   loop or has `first_attempt`, whether the stage has `shared_run` or not. A run with
   access `read` or `write-no-push`, and a run of Explore, gets `false` for every session.
@@ -3000,8 +3004,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `provider_api` and `model_keys` and their checks are dropped; `provider_connection_id`
   stays. No run's keys are copied, so a run claimed before the upgrade and still running
   has no key rows: its run configuration no longer has its model keys, and its gateway's
-  secrets request is refused `410` `run_configuration_superseded`. Rolled back, the columns come back,
-  filled from the key rows of each run's start key's provider.
+  secrets request is refused `410` `run_configuration_superseded`. Rolled back, the
+  columns come back, filled from the key rows of each run's start key's provider.
 - `dispatch_runs` (20261118162300): a nullable column `report_wait_until`, the end of the
   report window of a run that continues a run paused with `model_key_switch`. It changes
   no row.

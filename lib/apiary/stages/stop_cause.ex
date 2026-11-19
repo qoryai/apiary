@@ -834,6 +834,10 @@ defmodule Apiary.Stages.StopCause do
     do:
       "Use at most 6 model providers in one stage. Its workflows use #{count}: #{Enum.join(providers, ", ")}."
 
+  defp shared_models_fix(:session_key_missing, {:session_key_missing, :machine, first}),
+    do:
+      "Choose a model for workflow #{first}, or remove the model choices of the later workflows. Without a model, #{first} runs on the machine's local model provider credential, so later workflows get no model provider credential."
+
   defp shared_models_fix(
          :session_key_missing,
          {:session_key_missing, :no_key, workflow, provider}

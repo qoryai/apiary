@@ -7664,6 +7664,11 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
+msgid "Choose a model for workflow %{first}, or remove the model choices of the later workflows. Without a model, %{first} runs on the machine's local model provider credential, so later workflows get no model provider credential."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
 msgid "Choose a model for workflow %{workflow} that uses the %{api} API of %{provider}, as workflow %{earlier} does, or a model of another provider. One run uses one API of each provider."
 msgstr ""
 

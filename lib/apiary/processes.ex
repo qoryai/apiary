@@ -532,6 +532,10 @@ defmodule Apiary.Processes do
   `{:error, {:session_key_missing, kind, ...}}` for the first workflow whose session
   would have no key in the run (`session_key_missing/3`):
 
+    * `{:session_key_missing, :machine, first}` where `first`, the first workflow, has
+      no model choice (`:none`) and a later workflow's choice is on a provider: the run's
+      first session runs on the machine's local model provider credential, so the run is
+      given no key;
     * `{:session_key_missing, :no_key, workflow, provider}` for a workflow after the
       first whose choice's provider has no model key, and no provider of its later steps
       (`choice_providers/1`) has one either;
@@ -542,8 +546,8 @@ defmodule Apiary.Processes do
       `Apiary.Kinds.Providers.api/2`): one run keeps one API of each provider. `api` is
       the title of the format of `earlier`'s API (`api_title/1`).
 
-  A workflow with no model choice (`:none`), which runs on the default runtime, is never
-  such a fault. Else `:ok`. The providers are checked first: with more than 6, no claim can give
+  A later workflow with no model choice (`:none`), which runs on the default runtime, is
+  never such a fault. Else `:ok`. The providers are checked first: with more than 6, no claim can give
   each session a key, whatever the choices. The save checks it (`validate/3`), and the
   claim checks it again (Apiary.Stages.shared_models/1), as a choice, a provider, its
   keys or the harness can change after the save.
@@ -553,6 +557,7 @@ defmodule Apiary.Processes do
           | {:error,
              {:too_many_providers, pos_integer, [String.t()]}
              | {:model_choice_missing, String.t(), String.t(), String.t()}
+             | {:session_key_missing, :machine, String.t()}
              | {:session_key_missing, :no_key, String.t(), String.t()}
              | {:session_key_missing, :other_api, String.t(), String.t(), String.t(), String.t()}}
   def shared_models(stage, %{} = models, start_ids \\ nil) when is_map(stage) do
@@ -630,14 +635,25 @@ defmodule Apiary.Processes do
     end)
   end
 
-  # The first workflow whose session would have no key in the run: one after the first
-  # whose providers have no model key (`:no_key`), else one on the provider of an earlier
-  # workflow's choice with another API of it (`:other_api`), in workflow order. A provider
+  # The first workflow whose session would have no key in the run: the first workflow
+  # where it has no model choice and a later workflow's choice is on a provider
+  # (`:machine`); else one after the first whose providers have no model key (`:no_key`),
+  # else one on the provider of an earlier workflow's choice with another API of it
+  # (`:other_api`), in workflow order. A provider
   # that is gone, or whose description cannot be read, is no fault here: the claim ends
   # such a run `provider_gone`. A runtime that is no longer in the catalogue, or that its
   # provider no longer serves, is none either: the claim gives such a session the run's
   # `run_settings`.
-  defp session_key_missing(workflows, choices, models) do
+  defp session_key_missing([first | later] = workflows, choices, models) do
+    if Map.fetch!(choices, first) == :none and
+         Enum.any?(later, &match?({:ok, %{connection_id: _}}, Map.fetch!(choices, &1))),
+       do: {:session_key_missing, :machine, first},
+       else: session_key_walk(workflows, choices, models)
+  end
+
+  defp session_key_missing([], _choices, _models), do: nil
+
+  defp session_key_walk(workflows, choices, models) do
     providers = Map.get(models, :providers, %{})
 
     workflows

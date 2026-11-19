@@ -667,8 +667,16 @@ defmodule ApiaryWeb.StagesLive.Words do
         )
 
   # A stage with `shared_run: true` whose workflow's session would have no key in the
-  # run (`Apiary.Processes.shared_models/3`): its provider has no model key, or its
-  # runtime uses another API of the provider that an earlier workflow uses.
+  # run (`Apiary.Processes.shared_models/3`): the first workflow has no model choice and
+  # runs on the machine's key; its provider has no model key; or its runtime uses another
+  # API of the provider that an earlier workflow uses.
+  def refusal(%{error: :session_key_missing, detail: {_kind, :machine, first}}, _doc),
+    do:
+      gettext(
+        "Choose a model for workflow %{first}, or remove the model choices of the later workflows. Without a model, %{first} runs on the machine's local model provider credential, so later workflows get no model provider credential.",
+        first: first
+      )
+
   def refusal(
         %{error: :session_key_missing, detail: {_kind, :no_key, workflow, provider}},
         _doc
