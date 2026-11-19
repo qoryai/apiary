@@ -302,7 +302,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
               read(ctx, "/work-item", run_id: "not-a-run"),
               read(ctx, "/artifacts", key: other.key),
               write(ctx, "/verdict", %{"verdict" => "passed"}, key: other.key),
-              write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}]),
+              write(ctx, "/artifacts", push_body("walkthrough", [{"a.md", "text/markdown", "x"}]),
                 run_id: other.run.node_run_id
               )
             ] do
@@ -862,7 +862,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert write(ctx, "/artifacts", push_body("screenshot", [{"one.png", "image/png", @png}])).status ==
                201
 
-      store!(other_run(), "explainer", [file("theirs.md", "text/markdown", "x")])
+      store!(other_run(), "walkthrough", [file("theirs.md", "text/markdown", "x")])
 
       conn = read(ctx, "/artifacts")
       assert signed_answer?(conn)
@@ -1014,7 +1014,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       refute Run.cancel_requested?(registered)
 
       other_version =
-        store!(%{ctx | dispatch_run: other}, "explainer", [
+        store!(%{ctx | dispatch_run: other}, "walkthrough", [
           file("notes.md", "text/markdown", "x")
         ])
 
@@ -1035,7 +1035,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
              ] = by_type["screenshot"]
 
       assert [%{"number" => 1, "writer" => %{"run_id" => run_id}, "cancelled" => false}] =
-               by_type["explainer"]
+               by_type["walkthrough"]
 
       assert run_id == other.run_id
     end
@@ -1055,7 +1055,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       decide!(ctx, :approve, versions: [first.public_id])
 
       # Another run of the work item stores version 2 of the screenshot and the only
-      # version of the explainer; the work item then moves on to another stage.
+      # version of the walkthrough; the work item then moves on to another stage.
       other =
         Repo.insert!(%DispatchRun{
           organisation_id: ctx.dispatch_run.organisation_id,
@@ -1078,7 +1078,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       for {type, filename, content_type, binary} <- [
             {"screenshot", "one.png", "image/png", @png <> "b"},
-            {"explainer", "notes.md", "text/markdown", "x"}
+            {"walkthrough", "notes.md", "text/markdown", "x"}
           ] do
         store!(%{ctx | dispatch_run: other}, type, [file(filename, content_type, binary)],
           stage_id: @explore
@@ -1098,7 +1098,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert %{"newest_version" => 2, "changed_after_approval" => true} =
                by_type.()["screenshot"]
 
-      assert %{"newest_version" => 1} = by_type.()["explainer"]
+      assert %{"newest_version" => 1} = by_type.()["walkthrough"]
 
       {1, _rows} =
         Repo.update_all(from(r in Run, where: r.id == ^registered.id),
@@ -1111,7 +1111,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                artifacts["screenshot"]
 
       assert %{"newest_version" => nil, "changed_after_approval" => false} =
-               artifacts["explainer"]
+               artifacts["walkthrough"]
     end
   end
 
@@ -1141,7 +1141,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     end
 
     test "serves a Markdown file with the type its bytes show, the charset included", ctx do
-      version = store!(ctx, "explainer", [file("notes.md", "text/plain", "# Notes\n")])
+      version = store!(ctx, "walkthrough", [file("notes.md", "text/plain", "# Notes\n")])
 
       conn = read(ctx, "/artifacts/#{version.public_id}/files/notes.md")
       assert response(conn, 200) == "# Notes\n"
@@ -1559,7 +1559,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       {1, _rows} =
         Repo.update_all(
           from(w in Apiary.Organisations.Workspace, where: w.id == ^ctx.work_item_workspace.id),
-          set: [shown_standard_types: ["explainer"]]
+          set: [shown_standard_types: ["walkthrough"]]
         )
 
       conn = write(ctx, "/artifacts", push_body("mockup", [{"a.png", "image/png", "x"}]))
@@ -1663,24 +1663,24 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         {{:too_large, 900}, 422,
          %{
            "error" => "too_large",
-           "type" => "explainer",
+           "type" => "walkthrough",
            "limit" => 900,
            "message" =>
-             "Shrink the files of one version of explainer to at most 900 bytes together."
+             "Shrink the files of one version of walkthrough to at most 900 bytes together."
          }},
         {{:too_many_files, 1}, 422,
          %{
            "error" => "too_many_files",
-           "type" => "explainer",
+           "type" => "walkthrough",
            "limit" => 1,
-           "message" => "Push at most 1 file in one version of explainer."
+           "message" => "Push at most 1 file in one version of walkthrough."
          }},
         {{:invalid, {:format, 0}}, 422,
          %{
            "error" => "invalid_artifact",
            "names" => ["files[0]"],
            "message" =>
-             "Fix a.md to match the format of explainer: " <>
+             "Fix a.md to match the format of walkthrough: " <>
                "a document is a Markdown file of UTF-8 text."
          }},
         {{:invalid, {:extension, 0}}, 422,
@@ -1688,7 +1688,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
            "error" => "invalid_artifact",
            "names" => ["files[0]"],
            "message" =>
-             "Fix a.md to match the format of explainer: " <>
+             "Fix a.md to match the format of walkthrough: " <>
                "the filename of a document ends in .md."
          }},
         {{:invalid, {:schema, 0, %{path: "#/summary", error: "value is not of type string"}}},
@@ -1697,7 +1697,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
            "error" => "invalid_artifact",
            "names" => ["files[0]"],
            "message" =>
-             "Fix a.md to match the format of explainer: " <>
+             "Fix a.md to match the format of walkthrough: " <>
                "at #/summary, value is not of type string."
          }},
         {{:invalid, {:unreadable, 0}}, 422,
@@ -1711,18 +1711,18 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
            "error" => "invalid_artifact",
            "names" => ["files"],
            "message" =>
-             "Add an MP4 or WebM video to the version of explainer: " <>
+             "Add an MP4 or WebM video to the version of walkthrough: " <>
                "a WebVTT file goes with a video."
          }},
         {{:invalid, {:filename, 0}}, 400,
          %{"error" => "invalid_request", "names" => ["files[0].filename"]}},
         {{:invalid, :note}, 400, %{"error" => "invalid_request", "names" => ["note"]}},
-        {{:unknown_type, "explainer"}, 422,
+        {{:unknown_type, "walkthrough"}, 422,
          %{
            "error" => "unknown_type",
-           "type" => "explainer",
+           "type" => "walkthrough",
            "message" =>
-             "Switch on the artifact type explainer in the workspace's Artifact types, " <>
+             "Switch on the artifact type walkthrough in the workspace's Artifact types, " <>
                "then run the round again."
          }},
         {:not_found, 404, %{"error" => "not_found"}},
@@ -1738,7 +1738,10 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       for {push_error, status, answer} <- cases do
         RunApiStubs.put(:push_error, push_error)
-        conn = write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}]))
+
+        conn =
+          write(ctx, "/artifacts", push_body("walkthrough", [{"a.md", "text/markdown", "x"}]))
+
         assert signed_answer?(conn)
         assert json_response(conn, status) == answer, inspect(push_error)
       end
@@ -2081,7 +2084,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       end_run!(ctx)
 
       for conn <- [
-            write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}])),
+            write(ctx, "/artifacts", push_body("walkthrough", [{"a.md", "text/markdown", "x"}])),
             write(ctx, "/verdict", %{"verdict" => "passed"})
           ] do
         assert signed_answer?(conn)
@@ -2102,7 +2105,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
          ctx do
       lost!(ctx, [])
 
-      push = write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}]))
+      push = write(ctx, "/artifacts", push_body("walkthrough", [{"a.md", "text/markdown", "x"}]))
       assert push.status == 201
       assert write(ctx, "/verdict", %{"verdict" => "passed"}).status == 201
       assert length(RunApiStubs.pushed()) == 2
@@ -2112,7 +2115,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       silenced!(ctx)
 
       for conn <- [
-            write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}])),
+            write(ctx, "/artifacts", push_body("walkthrough", [{"a.md", "text/markdown", "x"}])),
             write(ctx, "/verdict", %{"verdict" => "passed"})
           ] do
         assert json_response(conn, 409)["error"] == "run_ended"
@@ -2736,18 +2739,18 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert %{name: "explore-a-ticket"} =
                Apiary.Processes.workflow_declaration(ctx.work_item_workspace, "explore-a-ticket")
 
-      conn = write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}]))
+      conn = write(ctx, "/artifacts", push_body("walkthrough", [{"a.md", "text/markdown", "x"}]))
       version = json_response(conn, 201)["artifact"]["version"]["id"]
-      assert stored?(ctx, "explainer", version)
+      assert stored?(ctx, "walkthrough", version)
     end
 
     test "a run of a workflow the harness does not declare stores the type too", ctx do
       set_workflow!(ctx, "capture-demo")
       assert Apiary.Processes.workflow_declaration(ctx.work_item_workspace, "capture-demo") == nil
 
-      conn = write(ctx, "/artifacts", push_body("explainer", [{"a.md", "text/markdown", "x"}]))
+      conn = write(ctx, "/artifacts", push_body("walkthrough", [{"a.md", "text/markdown", "x"}]))
       version = json_response(conn, 201)["artifact"]["version"]["id"]
-      assert stored?(ctx, "explainer", version)
+      assert stored?(ctx, "walkthrough", version)
     end
   end
 
@@ -3475,11 +3478,11 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
     test "a signed push over 64 KiB is read for a gateway's key id", ctx do
       content = String.duplicate("x", 100_000)
-      body = Jason.encode!(push_body("explainer", [{"a.md", "text/markdown", content}]))
+      body = Jason.encode!(push_body("walkthrough", [{"a.md", "text/markdown", content}]))
       assert byte_size(body) > RawBody.max_bytes(:unauthenticated)
 
       conn = sent(ctx, "/artifacts", body)
-      assert json_response(conn, 201)["artifact"]["type"] == "explainer"
+      assert json_response(conn, 201)["artifact"]["type"] == "walkthrough"
       assert [%{files: [%{content: ^content}]}] = RunApiStubs.pushed()
     end
   end

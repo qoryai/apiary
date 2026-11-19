@@ -6,6 +6,9 @@
     "system": "code.example.com",
     "path": "acme/shop"
   },
+  "run_settings": {
+    "runtime": "claude"
+  },
   "inputs": {
     "version": 1,
     "work_item": {

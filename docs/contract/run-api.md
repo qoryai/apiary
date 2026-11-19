@@ -825,6 +825,8 @@ of the run contract. A next session of the same stage:
 
 ```json
 {"next": "session", "session": 2, "workflow": "write-acceptance-checks",
+ "model_choice": {"runtime": "claude", "model": "claude-sonnet-5-5", "effort": "high",
+                  "provider_models": [{"id": "claude-sonnet-5-5", "effort": ["low", "medium", "high"]}]},
  "time_limit_minutes": 180, "full_suite": false, "inputs": {"version": 1, "...": "..."}}
 ```
 
@@ -833,8 +835,44 @@ of the run contract. A next session of the same stage:
 - `workflow`, `time_limit_minutes` and `full_suite`: the entry's, as the claim kept them,
   so a time limit saved after the claim changes nothing for the run.
 - `inputs`: the input of the session, in the shape of the documents' `inputs`.
-- `model_choice` and `model_credential` are left out: every session uses the run's model
-  choice and key.
+- `model_choice`: the runtime and model of the session's workflow, as `runtime`, `model`,
+  `effort`, `provider_models` and `tiers` of the documents' `run_settings`. Every
+  `model_choice` has `runtime`: the session runs on the runtime of its workflow, or on the
+  run's runtime where `model_choice` is the run's `run_settings`. The claim
+  resolves the model choices for each workflow of the stage in the same order as for the
+  run: a locked choice of the workspace, the workflow's choice at the run's target, the
+  target's choice, the workflow's choice at the workspace, the workspace's (Workspace
+  settings › Model), and the organisation's default. The claim keeps the result, so a
+  model choice saved after the claim changes nothing for the run.
+- `model_choice` has the choice's model on the choice's provider where that provider has a
+  key out of cooldown at the claim; else the model of the choice's first fallback that
+  has one; else the choice's model on its provider, whose keys are all in cooldown. A
+  choice on the provider of the run's start key whose runtime uses the same API of that
+  provider as the run joins the group of the run's start key.
+- `model_choice` is the run's `run_settings` where the choice's runtime or model is no
+  longer valid, or its runtime is no longer in the catalogue. A choice whose provider
+  was removed, or no longer fits the catalogue, ends the claim `provider_gone`.
+- `model_choice` has the catalogue's default runtime alone where the workflow resolves to
+  no model choice at any level: the session joins the group of the run's start key, or,
+  in a run with no start key, runs on the machine's local model provider credential, and
+  uses the default model of that runtime.
+- Where a session's runtime uses another API of a provider that an earlier session of the
+  run uses, the claim ends the run before it starts, with the end cause
+  `session_key_missing`: one run uses one API of each provider. The claim ends the run so
+  too where the session's provider has no key, and no provider of its later steps (the
+  default step under a workflow's override, then the fallbacks) has a key. Where those
+  providers' keys are all in cooldown, the claim leaves the run waiting for them, as for
+  a run whose keys are all in cooldown. A run whose first session runs on the machine's
+  local model provider credential, as its workflow resolves to no model choice, gets no
+  key: its claim ends it `session_key_missing` where a later session runs on a model
+  provider.
+- `model_credential`, for a session on a key of a provider other than the start key's, is
+  the credential name of the key the session starts on: that provider's first key out of
+  cooldown, else its first key. The claim picks at most 6 keys in this order: the start
+  key's provider's keys, at most 6 less the number of other providers; then one key of
+  each other provider, in session order; then the other providers' remaining keys;
+  `credentials` lists them provider by provider, the start key's provider first. Where
+  `model_credential` is left out, the session joins the group of the run's start key.
 
 Or the end of the run, where the stage runs no further workflow in this run: an
 escalation, open questions, the gate, or the next stage, whose run is queued as any run:
@@ -970,7 +1008,7 @@ The messages:
     WebP or SVG file." For a document type, the part after the colon is "a document is a
     Markdown file of UTF-8 text"; for a video type, "a file is an MP4 or WebM video, or a
     WebVTT file (.vtt)"; for a structured type, "the file is one JSON document".
-  - "Fix notes.txt to match the format of explainer: the filename of a document ends in
+  - "Fix notes.txt to match the format of walkthrough: the filename of a document ends in
     .md."
   - "Fix verdict.json to match the format of verdict: at #/verdict, value must be one of
     the enum values: "passed", "changes-requested" or "escalate"." For a file that fails

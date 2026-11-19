@@ -29,12 +29,12 @@ defmodule Apiary.Runs.Transcript do
   **The paused run.** A run of the queue that continues a paused run, which the end of
   the paused run queues, reads the transcript of that run alone, and only while it is the
   paused run this run continues (`paused_run/1`): of the same organisation, workspace,
-  work item and stage, registered, and ended with the reason `model_key_limit`
-  (`Apiary.Runs.Run.paused?/1`). Its claim stores its `resume` (`resume_at_claim/2`) for
-  a path a machine may write at (`resumable_path?/2`), and only on the runtime of the
-  session that paused, as the contract has it fixed when the run starts; every run
-  configuration of the run then has it (`resume/1`), and its gateway fetches the file
-  through the run API.
+  work item and stage, registered, and ended paused with the reason `model_key_limit` or
+  `model_key_switch` (`Apiary.Runs.Run.paused?/1`). Its claim stores its `resume`
+  (`resume_at_claim/2`) for a path a machine may write at (`resumable_path?/2`), and only
+  on the runtime of the session that paused, as the contract has it fixed when the run
+  starts; every run configuration of the run then has it (`resume/1`), and its gateway
+  fetches the file through the run API.
 
   Nothing here logs or returns a transcript's bytes but `stream/3`, and a log line
   contains the run's id and the cause alone.
@@ -316,7 +316,7 @@ defmodule Apiary.Runs.Transcript do
                limit: 1
              )
            ),
-         true <- Run.paused?(run) and run.exit_reason == "model_key_limit" do
+         true <- Run.paused?(run) and run.exit_reason in ~w(model_key_limit model_key_switch) do
       run
     else
       _other -> nil

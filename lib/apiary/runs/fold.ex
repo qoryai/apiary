@@ -238,8 +238,12 @@ defmodule Apiary.Runs.Fold do
   # silent, or the end was never recorded.
   @lost_reasons ~w(session_lost gateway_lost)
   # The reason of an exit at the run's model keys' limit: with the state `paused`, the run
-  # paused (`exit_state/2`).
+  # paused (`exit_state/2`). So did a run that Forager ended `paused` with
+  # `model_key_switch`: a Codex session's key was out and another key of the run is
+  # usable.
   @paused_reason "model_key_limit"
+  @switch_reason "model_key_switch"
+  @paused_reasons [@paused_reason, @switch_reason]
   @streams ~w(terminal stdout stderr)
   # The states a run's starter may give as its outcome (`Apiary.Runs.Outcome`).
   @outcome_states ~w(succeeded failed cancelled)
@@ -526,16 +530,16 @@ defmodule Apiary.Runs.Fold do
       state = exit_state(given, reason)
 
       cond do
-        reason == @paused_reason and state != "paused" ->
+        reason in @paused_reasons and state != "paused" ->
           Logger.warning(
-            "a run's exit has the reason model_key_limit with a state other than paused; " <>
+            "a run's exit has the reason #{reason} with a state other than paused; " <>
               "the run ends #{state}, without a pause"
           )
 
         given == "paused" and state != "paused" ->
           Logger.warning(
-            "a run's exit has the state paused without the reason model_key_limit; " <>
-              "the run ends #{state}, without a pause"
+            "a run's exit has the state paused without the reason model_key_limit or " <>
+              "model_key_switch; the run ends #{state}, without a pause"
           )
 
         true ->
@@ -746,17 +750,19 @@ defmodule Apiary.Runs.Fold do
        contract allows `model_key_limit` with `paused` alone, and `paused` with
        `model_key_limit` alone: with another state the reason changes nothing, as an
        unknown reason does, and `paused` with another reason, or none, is read as an
-       unknown state; the fold logs one line for each.
+       unknown state; the fold logs one line for each. `paused` with `model_key_switch`
+       is paused too: Forager ended a Codex session on a key that is out while another
+       key of the run is usable, and a continuation goes on with that key.
     2. `failed` with `session_lost` or `gateway_lost` is lost: nobody knows how it ended.
     3. The state decides: `succeeded` is completed, `failed` failed, `cancelled` cancelled.
     4. Without a state, which the contract requires, `session_lost` and `gateway_lost` are
        lost, and any other reason, or none, failed.
 
-  A state other than the three, and `paused` without `model_key_limit`, is read as
-  absent.
+  A state other than the three, and `paused` without `model_key_limit` or
+  `model_key_switch`, is read as absent.
   """
   @spec exit_state(String.t() | nil, String.t() | nil) :: String.t()
-  def exit_state("paused", @paused_reason), do: "paused"
+  def exit_state("paused", reason) when reason in @paused_reasons, do: "paused"
   # The shape of a pause from a gateway built with qoryai/forager#53 and before #54,
   # which ends a paused run `cancelled`: read as Paused while such gateways run.
   def exit_state("cancelled", @paused_reason), do: "paused"

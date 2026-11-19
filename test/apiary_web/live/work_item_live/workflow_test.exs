@@ -62,7 +62,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   # The points of Build's failed Exists checks (`Apiary.Stages.Points.check_failed/1`), as
   # the page shows them: the action first, and no action sentence after.
   @no_demo "Run another round: the run stored no demo video."
-  @no_explainer "Run another round: the run stored no explainer."
+  @no_walkthrough "Run another round: the run stored no walkthrough."
 
   # The default process, with Build's inputs, sequence and outputs of § 4, and its gate's
   # approvers.
@@ -97,7 +97,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                   "check" => %{"reported" => "opened"}
                 },
                 %{"type" => "demo-video", "required" => true},
-                %{"type" => "explainer", "required" => true},
+                %{"type" => "walkthrough", "required" => true},
                 %{"type" => "decision-record", "required" => false}
               ],
               "gate" => %{"kind" => "person", "approvers" => approvers}
@@ -134,8 +134,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   defp proposal_only, do: &push_output!(&1, &2, understood_result())
 
   # A work item at Explore whose run pushed its proposal and passed, with the stage
-  # escalated `check_failed`: Explore also requires an explainer, which no run pushed.
-  defp explainer_missing!(scope) do
+  # escalated `check_failed`: Explore also requires a walkthrough, which no run pushed.
+  defp walkthrough_missing!(scope) do
     document =
       Map.update!(Processes.current(scope.workspace).document, "stages", fn stages ->
         Enum.map(stages, fn
@@ -143,7 +143,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
             Map.update!(
               stage,
               "outputs",
-              &(&1 ++ [%{"type" => "explainer", "required" => true}])
+              &(&1 ++ [%{"type" => "walkthrough", "required" => true}])
             )
 
           stage ->
@@ -158,8 +158,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   end
 
   # Runs another round of the escalated Explore of `work_item`, whose run pushes the
-  # explainer: Explore reaches its gate.
-  defp explainer_written!(scope, work_item) do
+  # walkthrough: Explore reaches its gate.
+  defp walkthrough_written!(scope, work_item) do
     {:ok, work_item} =
       Stages.resolve_escalation(scope, work_item, :another_round, nil, expect_stage: @explore)
 
@@ -169,9 +169,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
           Artifacts.push(
             {:run, run},
             Repo.get!(WorkItem, run.work_item_id),
-            "explainer",
+            "walkthrough",
             [
-              sample("explainer")
+              sample("walkthrough")
             ],
             stage_id: @explore
           )
@@ -2837,7 +2837,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                "Not checked in this version"
              )
 
-      assert has_element?(view, "#work-item-stage-gate-check-explainer", "Missing")
+      assert has_element?(view, "#work-item-stage-gate-check-walkthrough", "Missing")
       assert has_element?(view, "#work-item-stage-gate-check-decision-record", "Optional, none")
 
       view |> element("#work-item-stage-gate-ask-changes") |> render_click()
@@ -2869,27 +2869,30 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       shown = fn -> live(conn, page(scope, work_item.number) <> "/explore") |> elem(1) end
 
       {:ok, _version} =
-        Artifacts.push({:run, run}, work_item, "explainer", [sample("explainer")],
+        Artifacts.push({:run, run}, work_item, "walkthrough", [sample("walkthrough")],
           name: "draft",
           stage_id: @explore
         )
 
-      assert has_element?(shown.(), "#work-item-artifact-list", "explainer draft v1")
+      assert has_element?(shown.(), "#work-item-artifact-list", "walkthrough draft v1")
 
       {:ok, _withdrawal} =
-        Artifacts.withdraw({:run, run}, work_item, "explainer", name: "draft", stage_id: @explore)
+        Artifacts.withdraw({:run, run}, work_item, "walkthrough",
+          name: "draft",
+          stage_id: @explore
+        )
 
       view = shown.()
       assert has_element?(view, "#work-item-artifact-list", "proposal v1")
-      refute has_element?(view, "#work-item-artifact-list", "explainer")
+      refute has_element?(view, "#work-item-artifact-list", "walkthrough")
 
       {:ok, _version} =
-        Artifacts.push({:run, run}, work_item, "explainer", [sample("explainer")],
+        Artifacts.push({:run, run}, work_item, "walkthrough", [sample("walkthrough")],
           name: "draft",
           stage_id: @explore
         )
 
-      assert has_element?(shown.(), "#work-item-artifact-list", "explainer draft v3")
+      assert has_element?(shown.(), "#work-item-artifact-list", "walkthrough draft v3")
     end
   end
 
@@ -2923,17 +2926,17 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       conn: conn,
       scope: scope
     } do
-      work_item = at_shape_gate(scope, ["acceptance-criteria", "explainer"])
+      work_item = at_shape_gate(scope, ["acceptance-criteria", "walkthrough"])
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert has_element?(
                view,
                "#work-item-stage-gate-line",
-               "Shape needs the acceptance criteria and the explainer"
+               "Shape needs the acceptance criteria and the walkthrough"
              )
 
       assert has_element?(view, "#work-item-stage-gate-input-acceptance-criteria")
-      assert has_element?(view, "#work-item-stage-gate-input-explainer")
+      assert has_element?(view, "#work-item-stage-gate-input-walkthrough")
       refute has_element?(view, "[id^='work-item-stage-gate-add-']")
       refute has_element?(view, "#work-item-stage-gate-approve")
       assert has_element?(view, "#work-item-stage-gate-ask-changes")
@@ -2943,7 +2946,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       conn: conn,
       scope: scope
     } do
-      work_item = at_shape_gate(scope, ["acceptance-criteria", "explainer"])
+      work_item = at_shape_gate(scope, ["acceptance-criteria", "walkthrough"])
       stored!(work_item, "acceptance-criteria", @shape)
 
       for tab <- ["", "/ticket"] do
@@ -2957,7 +2960,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       assert has_element?(view, "#work-item-stage-gate-outputs")
-      assert has_element?(view, "#work-item-stage-gate-input-explainer")
+      assert has_element?(view, "#work-item-stage-gate-input-walkthrough")
       {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/ticket")
       assert has_element?(view, "#work-item-artifact-list", "acceptance-criteria v1")
     end
@@ -3069,9 +3072,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         |> work_item_fixture()
         |> place!(verify.([]), @verify, :at_gate, stage_round: 1, stage_entry: 1)
 
-      # A version whose Verify requires an explainer; the work item keeps its gate.
-      explainer = [%{"type" => "explainer", "required" => true}]
-      {:ok, _work_item} = Processes.assign(scope, work_item, verify.(explainer))
+      # A version whose Verify requires a walkthrough; the work item keeps its gate.
+      walkthrough = [%{"type" => "walkthrough", "required" => true}]
+      {:ok, _work_item} = Processes.assign(scope, work_item, verify.(walkthrough))
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       refute has_element?(view, "#work-item-stage-gate-approve")
 
@@ -3082,7 +3085,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       })
 
       assert line(view, "#work-item-stage-notice") ==
-               "Pick Request changes to send the work item back to Build. Approve needs the explainer."
+               "Pick Request changes to send the work item back to Build. Approve needs the walkthrough."
 
       assert has_element?(view, "#work-item-stage-gate-ask-changes", "Request changes")
     end
@@ -3953,7 +3956,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       listed = member_fixture(scope, :member)
       work_item = at_build(scope, :at_gate, approvers: %{"members" => [listed.user.id]})
       stored!(work_item, "demo-video", @build)
-      stored!(work_item, "explainer", @build)
+      stored!(work_item, "walkthrough", @build)
       stored!(work_item, "submission", @build)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
@@ -4632,7 +4635,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
          %{conn: conn, scope: scope} do
       fields = %{
         "later" => [%{"workflow" => "capture-demos"}],
-        "outputs" => [%{"type" => "explainer", "required" => true}]
+        "outputs" => [%{"type" => "walkthrough", "required" => true}]
       }
 
       work_item = at_return_limit(scope, fields)
@@ -4646,9 +4649,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                "Pick Move back to return the work item to Shape once more. Verify's run " <>
                  "asked for changes again after 2 returns to Shape, the most that Verify allows."
 
-      # With a version of the explainer, the card shows Accept as it is and the action
+      # With a version of the walkthrough, the card shows Accept as it is and the action
       # has it.
-      stored!(work_item, "explainer", @verify)
+      stored!(work_item, "walkthrough", @verify)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       assert has_element?(view, "#work-item-stage-escalation-accept")
 
@@ -4661,9 +4664,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     test "at the round limit of the last loop, with a required output missing: no Accept as it is, and the fix leaves it out",
          %{conn: conn, scope: scope} do
       # Build's loop is its last entry, so an accept would take Build to its gate; the
-      # explainer has a version, and the demo video has none.
+      # walkthrough has a version, and the demo video has none.
       work_item = at_build(scope, :escalated, round: 3, loop_entry: 1)
-      stored!(work_item, "explainer", @build)
+      stored!(work_item, "walkthrough", @build)
 
       escalate!(
         work_item,
@@ -4758,7 +4761,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
           ] do
         work_item = at_build(scope, :escalated, round: 3)
         # Build's required outputs, so the card shows Accept as it is.
-        stored!(work_item, "explainer", @build)
+        stored!(work_item, "walkthrough", @build)
         stored!(work_item, "demo-video", @build)
         escalate!(work_item, :escalate, "Blocked")
         {:ok, view, _html} = live(conn, page(scope, work_item.number))
@@ -4916,7 +4919,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "an escalation beside a proposal: no Confirm for any reader, until a round writes the output",
          %{conn: conn, scope: scope} do
-      work_item = explainer_missing!(scope)
+      work_item = walkthrough_missing!(scope)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       for {:ok, view, _html} <- [
@@ -4928,10 +4931,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         refute render(view) =~ "You approve next"
       end
 
-      # The run stored no explainer, which Explore requires: no Accept as it is.
+      # The run stored no walkthrough, which Explore requires: no Accept as it is.
       refute has_element?(view, "#work-item-stage-escalation-accept")
 
-      explainer_written!(scope, work_item)
+      walkthrough_written!(scope, work_item)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       assert render(view) =~ "You approve next"
 
@@ -4941,14 +4944,14 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "the Thread beside an escalation has no next confirmer, until a round writes the output",
          %{conn: conn, scope: scope} do
-      work_item = explainer_missing!(scope)
+      work_item = walkthrough_missing!(scope)
       thread = page(scope, work_item.number) <> "/thread"
 
       {:ok, _view, html} = live(conn, thread)
       assert html =~ "Explore wrote a proposal"
       refute html =~ "You approve next"
 
-      explainer_written!(scope, work_item)
+      walkthrough_written!(scope, work_item)
 
       {:ok, _view, html} = live(conn, thread)
       assert html =~ "You approve next"
@@ -5191,7 +5194,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item =
         shaping!(scope, [
           %{"type" => "acceptance-criteria", "required" => true},
-          %{"type" => "explainer", "required" => false}
+          %{"type" => "walkthrough", "required" => false}
         ])
 
       # The run pushes the criteria, then exits failed: the stage escalates run_stopped.
@@ -5322,12 +5325,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         |> taken_in_fixture()
         |> place!(version, @build, :escalated, stage_round: 3, stage_entry: 1)
 
-      # An earlier run of Build pushed an explainer named `other`; the escalated run, which
-      # also pushed a verdict, pushed the explainer `main`.
+      # An earlier run of Build pushed a walkthrough named `other`; the escalated run, which
+      # also pushed a verdict, pushed the walkthrough `main`.
       {_run, earlier} = registered!(work_item, stage_run!(work_item, @build), :handed_over)
 
       {:ok, _version} =
-        Artifacts.push({:run, earlier}, work_item, "explainer", [sample("explainer")],
+        Artifacts.push({:run, earlier}, work_item, "walkthrough", [sample("walkthrough")],
           name: "other",
           stage_id: @build
         )
@@ -5335,7 +5338,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {_run, escalated} = registered!(work_item, stage_run!(work_item, @build), :handed_over)
 
       {:ok, _version} =
-        Artifacts.push({:run, escalated}, work_item, "explainer", [sample("explainer")],
+        Artifacts.push({:run, escalated}, work_item, "walkthrough", [sample("walkthrough")],
           stage_id: @build
         )
 
@@ -5772,8 +5775,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item = on_track!(scope, "fast-track")
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-needs-outputs a", "explainer v1")
-      refute has_element?(view, "#work-item-needs-outputs", "explainer other")
+      assert has_element?(view, "#work-item-needs-outputs a", "walkthrough v1")
+      refute has_element?(view, "#work-item-needs-outputs", "walkthrough other")
       # The block's outputs carry the class that gives a report's headings the small bold
       # lines of the block (app.css).
       assert has_element?(view, "#work-item-needs-outputs.q-xp-needs-outputs")
@@ -6405,8 +6408,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     for {cause, {at, points}} <- [
           round_limit:
             {[round: 2, entry: 2],
-             ["2 of 3 rounds ran. Run another round.", @no_demo, @no_explainer]},
-          check_failed: {[round: 3], [@no_demo, @no_explainer]},
+             ["2 of 3 rounds ran. Run another round.", @no_demo, @no_walkthrough]},
+          check_failed: {[round: 3], [@no_demo, @no_walkthrough]},
           run_stopped: {[round: 3], ["The run stopped before its verdict. Run another round."]}
         ] do
       test "#{cause}: the block with the runner's points, and the side line", %{
@@ -6455,7 +6458,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     } do
       work_item = at_build(scope, :escalated, round: 3)
 
-      for type <- ["demo-video", "explainer"],
+      for type <- ["demo-video", "walkthrough"],
           do: stored!(work_item, type, @build)
 
       escalate!(work_item, :check_failed, nil)
@@ -7039,7 +7042,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     # A work item at Shape's gate, on a version whose Shape has the outputs `outputs`, with
     # Explore's run and one ended run of Shape.
-    defp shape_with_run!(scope, outputs \\ ["acceptance-criteria", "explainer"]) do
+    defp shape_with_run!(scope, outputs \\ ["acceptance-criteria", "walkthrough"]) do
       work_item = shape_gate_on!(scope, outputs)
       {run, _dispatch_run} = ended_run!(work_item, @shape, "completed")
       {work_item, run}
@@ -7161,7 +7164,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       scope: scope
     } do
       # Shape's run pushes the acceptance criteria, then ends.
-      work_item = shape_gate_on!(scope, ["acceptance-criteria", "explainer"])
+      work_item = shape_gate_on!(scope, ["acceptance-criteria", "walkthrough"])
       dispatch_run = stage_run!(work_item, @shape)
       push!({:run, dispatch_run}, work_item, "acceptance-criteria", @shape)
       {run, _dispatch_run} = settled_run!(work_item, dispatch_run, "completed")
@@ -7247,16 +7250,16 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       end
 
       # A second run of Shape pushes the versions.
-      stored!(work_item, "explainer", @shape)
+      stored!(work_item, "walkthrough", @shape)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
-      assert summary(view) == ["3 runs", "explainer v1"]
+      assert summary(view) == ["3 runs", "walkthrough v1"]
 
       stored!(work_item, "acceptance-criteria", @shape)
-      stored!(work_item, "explainer", @shape)
+      stored!(work_item, "walkthrough", @shape)
 
       for tab <- @foot_tabs do
         {:ok, view, _html} = live(conn, page(scope, work_item.number) <> tab)
-        assert summary(view) == ["3 runs", "acceptance criteria v1", "explainer v2"]
+        assert summary(view) == ["3 runs", "acceptance criteria v1", "walkthrough v2"]
       end
     end
 
@@ -7432,14 +7435,6 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       paused
       |> Ecto.Changeset.change(
         provider_connection_id: provider.id,
-        provider_secret_id: provider.secret_id,
-        provider_chain: "organisation",
-        provider_api: %{
-          "format" => "anthropic-messages",
-          "endpoint" => "https://api.model.example/anthropic",
-          "auth" => %{"scheme" => "x-api-key"}
-        },
-        model_keys: [],
         run_settings: %{}
       )
       |> Repo.update!()
@@ -7547,22 +7542,22 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "the page's live updates refresh the block with no reload", %{conn: conn, scope: scope} do
       {work_item, _run} = shape_with_run!(scope)
-      # A second run of Shape, live, which pushes the explainer below.
+      # A second run of Shape, live, which pushes the walkthrough below.
       live_stage_run!(work_item, @shape)
       {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/ticket")
 
       assert summary(view) == ["3 runs"]
-      refute has_element?(view, "#work-item-artifact-list", "explainer v1")
+      refute has_element?(view, "#work-item-artifact-list", "walkthrough v1")
 
       # `{:artifact_pushed, …}`
-      stored!(work_item, "explainer", @shape)
-      assert summary(view) == ["3 runs", "explainer v1"]
-      assert has_element?(view, "#work-item-artifact-list", "explainer v1")
+      stored!(work_item, "walkthrough", @shape)
+      assert summary(view) == ["3 runs", "walkthrough v1"]
+      assert has_element?(view, "#work-item-artifact-list", "walkthrough v1")
 
       # `{:work_items_changed, ids}`
       stage_run!(work_item, @shape)
       send(view.pid, {:work_items_changed, [work_item.public_id]})
-      assert summary(view) == ["4 runs", "explainer v1"]
+      assert summary(view) == ["4 runs", "walkthrough v1"]
       assert line(view, "#work-item-details-runs") =~ "4 runs"
 
       # `{:stage_changed, id}`: Build's outputs, none of which has a version.
@@ -8358,7 +8353,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     test "Request changes: the dialog where the stage runs again; none at a stage with no workflow",
          %{conn: conn, scope: scope} do
       work_item = at_build(scope, :at_gate)
-      stored!(work_item, "explainer", @build)
+      stored!(work_item, "walkthrough", @build)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       before = spend_runs(work_item)
 
@@ -8545,7 +8540,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
          %{conn: conn, scope: scope} do
       # Build's required outputs are stored, so the card shows Accept as it is.
       at_gate = at_build(scope, :escalated, round: 3)
-      stored!(at_gate, "explainer", @build)
+      stored!(at_gate, "walkthrough", @build)
       stored!(at_gate, "demo-video", @build)
       escalate!(at_gate, :escalate, "Blocked")
       {:ok, view, _html} = live(conn, page(scope, at_gate.number))
@@ -8560,7 +8555,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       # At implement, the first entry, Accept goes on to the loop's capture-demo.
       work_item = at_build(scope, :escalated, entry: 0)
 
-      stored!(work_item, "explainer", @build)
+      stored!(work_item, "walkthrough", @build)
       escalate!(work_item, :escalate, "Blocked")
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       before = spend_runs(work_item)
@@ -8589,10 +8584,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     test "Accept as it is with no demo video: offered at implement, where it starts capture-demo; absent and refused at the last entry",
          %{conn: conn, scope: scope} do
       # At implement, the first entry, Accept goes on to the loop, whose checks run later.
-      # The explainer is the stage's result; the demo video is missing.
+      # The walkthrough is the stage's result; the demo video is missing.
       work_item = at_build(scope, :escalated, entry: 0)
 
-      stored!(work_item, "explainer", @build)
+      stored!(work_item, "walkthrough", @build)
       escalate!(work_item, :escalate, "Blocked")
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       before = spend_runs(work_item)
@@ -8611,7 +8606,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       # At the loop, the last entry, Accept would take the stage to its gate.
       at_end = at_build(scope, :escalated, round: 3)
-      stored!(at_end, "explainer", @build)
+      stored!(at_end, "walkthrough", @build)
       escalate!(at_end, :escalate, "Blocked")
       {:ok, view, _html} = live(conn, page(scope, at_end.number))
       refute has_element?(view, "#work-item-stage-escalation-accept")
@@ -8864,7 +8859,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       # Request changes at Build's gate.
       changes = at_build(scope, :at_gate)
-      stored!(changes, "explainer", @build)
+      stored!(changes, "walkthrough", @build)
       {:ok, view, _html} = live(conn, page(scope, changes.number))
       view |> element("#work-item-stage-gate-ask-changes") |> render_click()
       before = spend_runs(changes)
@@ -8885,7 +8880,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       # Accept as it is at implement, which goes on to capture-demo.
       accept = at_build(scope, :escalated, entry: 0)
 
-      stored!(accept, "explainer", @build)
+      stored!(accept, "walkthrough", @build)
       escalate!(accept, :escalate, "Blocked")
       {:ok, view, _html} = live(conn, page(scope, accept.number))
       before = spend_runs(accept)
@@ -8921,7 +8916,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     test "Request changes with the note cleared in the dialog: no change, and the note's error under the page's form",
          %{conn: conn, scope: scope} do
       work_item = at_build(scope, :at_gate)
-      stored!(work_item, "explainer", @build)
+      stored!(work_item, "walkthrough", @build)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       before = spend_runs(work_item)
 

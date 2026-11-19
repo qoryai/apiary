@@ -7,13 +7,18 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
   import Ecto.Query, only: [from: 2]
   import Apiary.ContractFixtures
+  import Apiary.ModelChoicesFixtures, only: [every_tier: 2, fallback_attrs: 2]
+  import Apiary.ModelKeysFixtures, only: [key_state!: 3, in_seconds: 1, stored_keys: 1]
   import Apiary.OrganisationsFixtures
   import Apiary.SealedRunsFixtures
   import Apiary.StagesFixtures
 
-  alias Apiary.{Processes, Repo, Stages}
+  alias Apiary.{Connections, ModelChoices, ModelChoicesFixtures, Processes, Repo, Stages}
+  alias Apiary.Dispatches.RunSettings
+  alias Apiary.Kinds.{Providers, Runtimes}
+  alias Apiary.ModelChoices.ModelChoice
   alias Apiary.Dispatches.DispatchRun
-  alias Apiary.Runs.Run
+  alias Apiary.Runs.{ModelKey, Run}
   alias Apiary.Sources.Comment
   alias Apiary.Stages.{Escalation, Session}
   alias Apiary.WorkItems.WorkItem
@@ -33,7 +38,13 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
     :ok = RunApiStubs.install()
     %{scope: scope} = sign_up_fixture()
     gateway_run = sealed_run_fixture(scope)
-    %{scope: scope, key: gateway_run.secrets_key, gateway_run: gateway_run.run}
+
+    %{
+      scope: scope,
+      key: gateway_run.secrets_key,
+      gateway_run: gateway_run.run,
+      provider: gateway_run.provider
+    }
   end
 
   # The vendored schemas by their URL under the contracts' base, and Forager's from its
@@ -97,7 +108,9 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
   # The scope's process with `stages`, a work item taken in at its first stage, and the
   # gateway's run of the context made the run record of that stage's first run of the queue,
-  # handed over and claimed as a claim keeps it (`Apiary.Stages.claim_sessions!/2`).
+  # handed over and claimed as a claim keeps it (`Apiary.Stages.claim_sessions!/3`), with
+  # the models of its later sessions and the run's keys as the claim forms them
+  # (`Apiary.Dispatches.RunSettings.build/2`).
   defp shared!(ctx, stages) do
     document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => stages}
     {:ok, _version} = Processes.save(ctx.scope, ctx.scope.workspace, document)
@@ -117,7 +130,22 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id), set: [state: :handed_over])
 
     run = Repo.get!(DispatchRun, run.id)
-    {:ok, :ok} = Repo.transact(fn -> {:ok, Stages.claim_sessions!(run, %{})} end)
+
+    # The models of the later sessions, as a claim of the run forms them.
+    {:ok, built} = run |> RunSettings.hold() |> RunSettings.build()
+
+    {:ok, :ok} =
+      Repo.transact(fn ->
+        {:ok, Stages.claim_sessions!(run, %{}, Map.get(built, :sessions, %{}))}
+      end)
+
+    # The run's key rows, as the claim stores them, in place of those of the gateway's run.
+    Repo.delete_all(from(k in ModelKey, where: k.run_id == ^ctx.gateway_run.id))
+    rows = for key <- Map.get(built, :keys, []), do: Map.take(key, ModelKey.fields())
+    rows = Enum.map(rows, &Map.put(&1, :run_id, ctx.gateway_run.id))
+    {count, _rows} = Repo.insert_all(ModelKey, rows)
+    ^count = length(rows)
+
     Map.merge(ctx, %{work_item: work_item, dispatch_run: run})
   end
 
@@ -196,7 +224,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       ])
     end
 
-    test "returns session 2 for the end of session 1, without the members that are nil",
+    test "returns session 2 for the end of session 1, with the workspace's runtime and model",
          ctx do
       :ok = verdict!(ctx, "passed")
       conn = request(ctx, ended(1))
@@ -213,13 +241,32 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
                "inputs" => %{"version" => 1, "work_item" => %{}, "run" => %{}}
              } = body
 
-      refute Map.has_key?(body, "model_choice")
+      # The workspace's choice has no model: the provider's default model.
+      assert %{"runtime" => "claude", "model" => model, "provider_models" => [_ | _]} =
+               body["model_choice"]
+
+      assert model == ctx.gateway_run.run_settings["model"]
       refute Map.has_key?(body, "model_credential")
 
       assert String.starts_with?(conn.resp_body, ~s({"next":"session","session":2,))
 
       assert [{1, 1, "plan-the-build", _}, {2, nil, "write-acceptance-checks", nil}] =
                sessions(ctx)
+    end
+
+    test "keeps the model of the claim: a choice saved after the claim changes nothing",
+         ctx do
+      {:ok, _choice} =
+        ModelChoicesFixtures.put_choice(ctx.scope, {:workspace, "write-acceptance-checks"}, %{
+          provider: ctx.provider.public_id,
+          model: "claude-sonnet-5-5"
+        })
+
+      :ok = verdict!(ctx, "passed")
+      body = json_response(request(ctx, ended(1)), 200)
+
+      assert body["model_choice"]["model"] == ctx.gateway_run.run_settings["model"]
+      refute Map.has_key?(body, "model_credential")
     end
 
     @tag :contract
@@ -431,6 +478,295 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
       # The repeat finds the run ended.
       assert %{"error" => "run_ended"} = json_response(request(ctx, ended(1)), 409)
+    end
+  end
+
+  describe "the model of a later session, as the claim kept it" do
+    defp choose!(ctx, place, attrs) do
+      {:ok, _choice} =
+        ModelChoicesFixtures.put_choice(
+          ctx.scope,
+          place,
+          Map.put(attrs, :provider, ctx.provider.public_id)
+        )
+
+      :ok
+    end
+
+    defp next!(ctx, stages) do
+      ctx = shared!(ctx, stages)
+      :ok = verdict!(ctx, "passed")
+      json_response(request(ctx, ended(1)), 200)
+    end
+
+    @tag :contract
+    test "is the workflow's choice, with its effort and tiers, valid against the answer's schema",
+         ctx do
+      # The session's model and effort are those of the thinking tier.
+      :ok =
+        choose!(ctx, {:workspace, "write-acceptance-checks"}, %{
+          tiers: %{
+            "light" => "claude-haiku-5-5",
+            "balanced" => "claude-sonnet-5-5",
+            "thinking" => %{"model" => "claude-opus-5-5", "effort" => "max"}
+          }
+        })
+
+      body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
+
+      assert %{
+               "model" => "claude-opus-5-5",
+               "effort" => "max",
+               "provider_models" => [_ | _],
+               "tiers" => %{
+                 "light" => "claude-haiku-5-5",
+                 "balanced" => "claude-sonnet-5-5",
+                 "thinking" => %{"model" => "claude-opus-5-5"}
+               }
+             } = body["model_choice"]
+
+      assert body["model_choice"]["runtime"] == "claude"
+      refute Map.has_key?(body, "model_credential")
+      assert answer_valid?(body)
+    end
+
+    test "is the run's model where the workflow's choice is no longer valid", ctx do
+      :ok =
+        choose!(ctx, {:workspace, "write-acceptance-checks"}, %{
+          tiers: every_tier("claude-sonnet-5-5", "high")
+        })
+
+      # An effort the model no longer offers, on every tier, written past the save's
+      # checks.
+      {1, _rows} =
+        Repo.update_all(
+          from(c in ModelChoice, where: c.workflow == "write-acceptance-checks"),
+          set: [tiers: every_tier("claude-sonnet-5-5", "gone")]
+        )
+
+      body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
+
+      assert %{"runtime" => "claude", "model" => model} = body["model_choice"]
+      assert model == ctx.gateway_run.run_settings["model"]
+      refute Map.has_key?(body, "model_credential")
+    end
+
+    test "is the default runtime alone where the session's workflow resolves to no choice",
+         ctx do
+      # The run's provider comes from the choice of its first workflow alone.
+      {:ok, _deleted} = ModelChoices.delete_choice(ctx.scope, :workspace)
+      :ok = choose!(ctx, {:workspace, "plan-the-build"}, %{})
+
+      body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
+
+      assert %{"workflow" => "write-acceptance-checks"} = body
+      assert body["model_choice"] == %{"runtime" => "claude"}
+      refute Map.has_key?(body, "model_credential")
+    end
+
+    test "is the fallback's where every key of the choice's provider is in cooldown at the claim",
+         ctx do
+      {:ok, fallback} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "anthropic",
+          name: "Fallback keys",
+          keys: [%{value_id: "main", value: "sk-ant-fallback-0123456789"}]
+        })
+
+      {:ok, _choice} =
+        ModelChoicesFixtures.put_choice(ctx.scope, :workspace, %{
+          provider: ctx.provider.public_id,
+          model: "claude-opus-5-5",
+          fallbacks: [fallback_attrs(fallback, every_tier("claude-sonnet-5-5", "high"))]
+        })
+
+      key_state!(ctx.provider, "main", until: in_seconds(3600))
+
+      body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
+
+      assert %{"model" => "claude-sonnet-5-5", "effort" => "high"} = body["model_choice"]
+      # The run's keys are the fallback's: the session joins with the start key's group.
+      refute Map.has_key?(body, "model_credential")
+    end
+
+    test "is the workflow's choice on another provider with a free key, not the fall back onto the run's provider",
+         ctx do
+      {:ok, other} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "anthropic",
+          name: "Checkout keys",
+          keys: [%{value_id: "main", value: "sk-ant-other-0123456789"}]
+        })
+
+      # A workflow's choice falls back to the workspace's choice, on the run's provider,
+      # only while every key of its provider is in cooldown. Checkout keys has a free key.
+      :ok =
+        choose!(ctx, :workspace, %{
+          model: "claude-sonnet-5-5",
+          tiers: every_tier("claude-sonnet-5-5", "high")
+        })
+
+      {:ok, _choice} =
+        ModelChoicesFixtures.put_choice(ctx.scope, {:workspace, "write-acceptance-checks"}, %{
+          provider: other.public_id,
+          model: "claude-opus-5-5"
+        })
+
+      ctx = shared!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
+      :ok = verdict!(ctx, "passed")
+      body = json_response(request(ctx, ended(1)), 200)
+
+      # Session 2 starts on the first key of Checkout keys, with the choice's model.
+      assert %{"runtime" => "claude", "model" => "claude-opus-5-5"} = body["model_choice"]
+      assert body["model_credential"] == "#{other.public_id}-1"
+
+      # The run keeps the keys of both providers, the start key's provider's first.
+      providers = ctx.gateway_run |> stored_keys() |> Enum.map(& &1.connection_id)
+      assert Enum.uniq(providers) == [ctx.provider.id, other.id]
+    end
+
+    test "is the workflow's choice on its provider, with that provider's first key, where its choice has another provider",
+         ctx do
+      {:ok, other} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "anthropic",
+          name: "Checkout keys",
+          keys: [%{value_id: "main", value: "sk-ant-other-0123456789"}]
+        })
+
+      :ok = choose!(ctx, :workspace, %{model: "claude-opus-5-5"})
+
+      {:ok, _choice} =
+        ModelChoicesFixtures.put_choice(ctx.scope, {:workspace, "write-acceptance-checks"}, %{
+          provider: other.public_id,
+          model: "claude-sonnet-5-5"
+        })
+
+      ctx = shared!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
+      :ok = verdict!(ctx, "passed")
+      body = json_response(request(ctx, ended(1)), 200)
+
+      # Session 2 runs on Checkout keys: the choice's model, on its first key.
+      assert %{"runtime" => "claude", "model" => "claude-sonnet-5-5"} = body["model_choice"]
+      assert body["model_credential"] == "#{other.public_id}-1"
+
+      # The run keeps the keys of both providers, the start key's provider's first.
+      assert [%ModelKey{start: true} = start | rest] = stored_keys(ctx.gateway_run)
+      assert start.connection_id == ctx.provider.id
+      assert Enum.map(rest, &{&1.connection_id, &1.name}) == [{other.id, "#{other.public_id}-1"}]
+    end
+
+    @tag :contract
+    test "is the workflow's runtime with its model where that runtime uses the run's API",
+         ctx do
+      # The default runtime and a copy of it under another name: it uses the same API.
+      release = ModelChoices.default_runtime()
+      second = %{release | name: release.name <> "-second", title: release.title <> " second"}
+      :ok = Runtimes.put_test_list([release, second])
+
+      :ok =
+        choose!(ctx, {:workspace, "write-acceptance-checks"}, %{
+          runtime: second.name,
+          model: "claude-sonnet-5-5"
+        })
+
+      body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
+
+      assert %{"runtime" => runtime, "model" => "claude-sonnet-5-5"} = body["model_choice"]
+      assert runtime == second.name
+      refute Map.has_key?(body, "model_credential")
+      assert answer_valid?(body)
+    end
+
+    test "ends the claim session_key_missing where the workflow's runtime uses another API of the run's provider",
+         ctx do
+      release = ModelChoices.default_runtime()
+      second = %{release | name: release.name <> "-second", title: release.title <> " second"}
+      :ok = Runtimes.put_test_list([release, second])
+
+      # The run's provider with two APIs: the release's runtime uses the first, and the
+      # second runtime the other, with another auth.
+      providers =
+        for provider <- Providers.list() do
+          if provider.name == ctx.provider.provider_kind do
+            [api] = provider.apis
+
+            other =
+              api
+              |> Map.put("runtimes", [second.name])
+              |> Map.put("auth", %{"scheme" => "bearer"})
+
+            %{provider | apis: [Map.put(api, "runtimes", [release.name]), other]}
+          else
+            provider
+          end
+        end
+
+      :ok = Providers.put_test_list(providers)
+
+      # Saved while both workflows run on the release's runtime, then the second
+      # workflow's runtime changes: the session would have no key in the run.
+      stages = [build_stage(~w(plan-the-build write-acceptance-checks))]
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => stages}
+      {:ok, _version} = Processes.save(ctx.scope, ctx.scope.workspace, document)
+
+      :ok =
+        choose!(ctx, {:workspace, "write-acceptance-checks"}, %{
+          runtime: second.name,
+          model: "claude-sonnet-5-5"
+        })
+
+      work_item = taken_in_fixture(ctx.scope)
+      run = Repo.one!(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
+
+      # The claim's guard ends the run first; the build ends it too, where the choice
+      # changed after the guard.
+      assert {:error,
+              %{
+                detail:
+                  {:session_key_missing, :other_api, "write-acceptance-checks", _api, _provider,
+                   "plan-the-build"}
+              }} =
+               Stages.shared_models(run)
+
+      assert run |> RunSettings.hold() |> RunSettings.build() == {:end, :session_key_missing}
+    end
+
+    test "is the run's run_settings where the workflow's runtime is no longer in the catalogue",
+         ctx do
+      release = ModelChoices.default_runtime()
+      second = %{release | name: release.name <> "-second", title: release.title <> " second"}
+      :ok = Runtimes.put_test_list([release, second])
+
+      :ok =
+        choose!(ctx, {:workspace, "write-acceptance-checks"}, %{
+          runtime: second.name,
+          model: "claude-sonnet-5-5"
+        })
+
+      :ok = Runtimes.put_test_list([release])
+      body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
+
+      assert %{"runtime" => runtime, "model" => model} = body["model_choice"]
+      assert runtime == release.name
+      assert model == ctx.gateway_run.run_settings["model"]
+      refute Map.has_key?(body, "model_credential")
+    end
+
+    test "is no session: the claim ends session_key_missing where session 1 has no provider's key",
+         ctx do
+      # No choice for the run's first workflow: session 1 uses the gateway's key, so the
+      # run gets no key, and session 2 on a provider would have none.
+      {:ok, _deleted} = ModelChoices.delete_choice(ctx.scope, :workspace)
+      stages = [build_stage(~w(plan-the-build write-acceptance-checks))]
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => stages}
+      {:ok, _version} = Processes.save(ctx.scope, ctx.scope.workspace, document)
+      # The choice is made after the save, which refuses it.
+      :ok = choose!(ctx, {:workspace, "write-acceptance-checks"}, %{model: "claude-sonnet-5-5"})
+      work_item = taken_in_fixture(ctx.scope)
+      run = Repo.one!(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
+
+      assert run |> RunSettings.hold() |> RunSettings.build() == {:end, :session_key_missing}
     end
   end
 

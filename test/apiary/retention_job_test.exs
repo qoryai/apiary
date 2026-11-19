@@ -187,7 +187,7 @@ defmodule Apiary.RetentionJobTest do
       {:ok, %DispatchRun{id: continuation_id}} =
         Repo.transact(fn ->
           dispatch_run = Repo.get!(DispatchRun, dispatch_run.id)
-          Apiary.Dispatches.requeue_for_pause(dispatch_run, nil)
+          Apiary.Dispatches.requeue_for_pause(dispatch_run, nil, nil)
         end)
 
       assert {:ok, _results} = Retention.prune_all(now: @now)

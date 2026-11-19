@@ -151,14 +151,14 @@ defmodule Apiary.ArtifactsTest do
       names = Enum.map(Artifacts.types(scope.workspace), & &1.name)
 
       assert names ==
-               ~w(acceptance-criteria explainer decision-record mockup screenshot demo-video
+               ~w(acceptance-criteria walkthrough decision-record mockup screenshot demo-video
                   proposal questions review-comments verdict verification demo-findings)
     end
 
     test "have the base views and dedicated views of the workflow model", %{scope: scope} do
       types = Map.new(Artifacts.types(scope.workspace), &{&1.name, &1})
 
-      for name <- ~w(explainer decision-record proposal),
+      for name <- ~w(walkthrough decision-record proposal),
           do: assert(types[name].base_view == :document)
 
       for name <- ~w(acceptance-criteria verification) do
@@ -241,7 +241,7 @@ defmodule Apiary.ArtifactsTest do
                ~w(mockup screenshot proposal questions review-comments verdict demo-findings)
 
       assert %Type{name: "mockup"} = Artifacts.type(scope.workspace, "mockup")
-      assert Artifacts.type(scope.workspace, "explainer") == nil
+      assert Artifacts.type(scope.workspace, "walkthrough") == nil
     end
 
     test "an empty list keeps the always-on types and the custom types", %{scope: scope} do
@@ -278,11 +278,11 @@ defmodule Apiary.ArtifactsTest do
 
       for workspace <- [unset, older] do
         assert workspace.shown_standard_types == nil
-        assert Artifacts.type(workspace, "explainer") == nil
-        refute "explainer" in names(Artifacts.types(workspace))
+        assert Artifacts.type(workspace, "walkthrough") == nil
+        refute "walkthrough" in names(Artifacts.types(workspace))
 
-        assert %Type{name: "explainer", shown: false} =
-                 Enum.find(Artifacts.all_types(workspace), &(&1.name == "explainer"))
+        assert %Type{name: "walkthrough", shown: false} =
+                 Enum.find(Artifacts.all_types(workspace), &(&1.name == "walkthrough"))
       end
     end
 
@@ -306,15 +306,15 @@ defmodule Apiary.ArtifactsTest do
       assert %Type{} = Artifacts.type(scope.workspace, "demo-findings")
       refute_received {:query, "SELECT w0.\"shown_standard_types\"" <> _rest}
 
-      assert Artifacts.type(scope.workspace, "explainer") == nil
+      assert Artifacts.type(scope.workspace, "walkthrough") == nil
       assert_received {:query, "SELECT w0.\"shown_standard_types\"" <> _rest}
     end
 
     test "a push of a hidden type is refused, and writes no row", ctx do
       show!(ctx.scope.workspace, ["mockup"])
 
-      assert {:error, {:unknown_type, "explainer"}} =
-               Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
+      assert {:error, {:unknown_type, "walkthrough"}} =
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "walkthrough", [doc()])
 
       assert count(Artifact) == 0
       assert count(Version) == 0
@@ -324,8 +324,8 @@ defmodule Apiary.ArtifactsTest do
     test "a type hidden between the push's read and its lock is refused, with no row", ctx do
       ArtifactStoreHook.on_stage(fn -> show!(ctx.scope.workspace, ["mockup"]) end)
 
-      assert {:error, {:unknown_type, "explainer"}} =
-               Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
+      assert {:error, {:unknown_type, "walkthrough"}} =
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "walkthrough", [doc()])
 
       assert count(Artifact) == 0
       assert count(Version) == 0
@@ -334,14 +334,14 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "a push goes on when the list changes before the lock and still has the type", ctx do
-      show!(ctx.scope.workspace, ["explainer"])
-      ArtifactStoreHook.on_stage(fn -> show!(ctx.scope.workspace, ["explainer", "mockup"]) end)
+      show!(ctx.scope.workspace, ["walkthrough"])
+      ArtifactStoreHook.on_stage(fn -> show!(ctx.scope.workspace, ["walkthrough", "mockup"]) end)
 
       assert {:ok, %Version{}} =
-               Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
+               Artifacts.push({:run, ctx.run}, ctx.work_item, "walkthrough", [doc()])
 
       assert Repo.get!(Workspace, ctx.scope.workspace.id).shown_standard_types ==
-               ["explainer", "mockup"]
+               ["walkthrough", "mockup"]
     end
 
     test "a push of an always-on type or a custom type does not depend on the list", ctx do
@@ -360,12 +360,12 @@ defmodule Apiary.ArtifactsTest do
       stage = "st_aaaaaaaaaa"
 
       {:ok, _version} =
-        Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()], stage_id: stage)
+        Artifacts.push({:run, ctx.run}, ctx.work_item, "walkthrough", [doc()], stage_id: stage)
 
-      assert Artifacts.exists?(ctx.work_item, stage, "explainer")
+      assert Artifacts.exists?(ctx.work_item, stage, "walkthrough")
 
       show!(ctx.scope.workspace, ["mockup"])
-      refute Artifacts.exists?(ctx.work_item, stage, "explainer")
+      refute Artifacts.exists?(ctx.work_item, stage, "walkthrough")
     end
   end
 
@@ -611,7 +611,7 @@ defmodule Apiary.ArtifactsTest do
                Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "mockup", false)
 
       assert stored(ctx.scope) ==
-               ~w(acceptance-criteria explainer decision-record screenshot demo-video verification)
+               ~w(acceptance-criteria walkthrough decision-record screenshot demo-video verification)
 
       assert Artifacts.type(ctx.scope.workspace, "mockup") == nil
       refute "mockup" in names(Artifacts.types(ctx.scope.workspace))
@@ -647,9 +647,9 @@ defmodule Apiary.ArtifactsTest do
       show!(ctx.scope.workspace, ~w(mockup verdict))
 
       assert {:ok, %Type{}} =
-               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", true)
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "walkthrough", true)
 
-      assert stored(ctx.scope) == ~w(explainer mockup)
+      assert stored(ctx.scope) == ~w(walkthrough mockup)
     end
 
     test "a repeat of the state writes no row and no audit entry", ctx do
@@ -660,11 +660,11 @@ defmodule Apiary.ArtifactsTest do
 
       assert Repo.get!(Workspace, ctx.scope.workspace.id) == before
 
-      {:ok, _version} = Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
+      {:ok, _version} = Artifacts.push({:run, ctx.run}, ctx.work_item, "walkthrough", [doc()])
       show!(ctx.scope.workspace, ["mockup"])
 
       assert {:ok, %Type{shown: false}} =
-               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "walkthrough", false)
 
       assert stored(ctx.scope) == ["mockup"]
       assert switches() == []
@@ -683,25 +683,25 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "fails for a type an artifact of the workspace has", ctx do
-      {:ok, _version} = Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
+      {:ok, _version} = Artifacts.push({:run, ctx.run}, ctx.work_item, "walkthrough", [doc()])
 
       assert {:error, :has_artifacts} =
-               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "walkthrough", false)
 
       assert stored(ctx.scope) == nil
       assert switches() == []
     end
 
     test "checks the artifacts before the current process", ctx do
-      {:ok, _version} = Artifacts.push({:run, ctx.run}, ctx.work_item, "explainer", [doc()])
-      {:ok, _version} = Processes.save(ctx.scope, ctx.scope.workspace, with_type("explainer"))
+      {:ok, _version} = Artifacts.push({:run, ctx.run}, ctx.work_item, "walkthrough", [doc()])
+      {:ok, _version} = Processes.save(ctx.scope, ctx.scope.workspace, with_type("walkthrough"))
 
       assert {:error, :has_artifacts} =
-               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "walkthrough", false)
     end
 
     test "fails for a type a stage of the current process has", ctx do
-      for {key, type} <- [{"outputs", "explainer"}, {"inputs", "mockup"}] do
+      for {key, type} <- [{"outputs", "walkthrough"}, {"inputs", "mockup"}] do
         {:ok, _version} = Processes.save(ctx.scope, ctx.scope.workspace, with_type(type, key))
 
         assert {:error, :current_process} =
@@ -713,38 +713,38 @@ defmodule Apiary.ArtifactsTest do
 
     test "checks the current process before the versions in use", ctx do
       {:ok, _trial} =
-        Processes.save(ctx.scope, ctx.scope.workspace, with_type("explainer"), trial: true)
+        Processes.save(ctx.scope, ctx.scope.workspace, with_type("walkthrough"), trial: true)
 
-      {:ok, _version} = Processes.save(ctx.scope, ctx.scope.workspace, with_type("explainer"))
+      {:ok, _version} = Processes.save(ctx.scope, ctx.scope.workspace, with_type("walkthrough"))
 
       assert {:error, :current_process} =
-               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "walkthrough", false)
     end
 
     test "fails for a type of a trial version", ctx do
       {:ok, _trial} =
-        Processes.save(ctx.scope, ctx.scope.workspace, with_type("explainer"), trial: true)
+        Processes.save(ctx.scope, ctx.scope.workspace, with_type("walkthrough"), trial: true)
 
       assert {:error, :version_in_use} =
-               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "walkthrough", false)
     end
 
     test "fails for a type of a version a work item keeps", ctx do
-      keep!(ctx.work_item, past_version(ctx.scope, "explainer"))
+      keep!(ctx.work_item, past_version(ctx.scope, "walkthrough"))
 
       assert {:error, :version_in_use} =
-               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "walkthrough", false)
     end
 
     test "a past version no work item keeps does not count", ctx do
-      past_version(ctx.scope, "explainer")
+      past_version(ctx.scope, "walkthrough")
 
       assert {:ok, %Type{shown: false}} =
-               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "walkthrough", false)
     end
 
     test "a version only an ended work item keeps does not count", ctx do
-      version = past_version(ctx.scope, "explainer")
+      version = past_version(ctx.scope, "walkthrough")
       now = DateTime.utc_now()
 
       for state <- WorkItems.State.ended_states() do
@@ -756,7 +756,7 @@ defmodule Apiary.ArtifactsTest do
         show!(ctx.scope.workspace, nil)
 
         assert {:ok, %Type{shown: false}} =
-                 Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+                 Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "walkthrough", false)
       end
     end
 
@@ -773,12 +773,12 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "a closed work item counts only while a run on its version has not ended", ctx do
-      version = past_version(ctx.scope, "explainer")
+      version = past_version(ctx.scope, "walkthrough")
       keep!(ctx.work_item, version, state: :closed, closed_at: DateTime.utc_now())
       run = run_on!(ctx.work_item, version, :handed_over)
 
       assert {:error, :version_in_use} =
-               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "walkthrough", false)
 
       {1, _rows} =
         Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
@@ -786,11 +786,11 @@ defmodule Apiary.ArtifactsTest do
         )
 
       assert {:ok, %Type{shown: false}} =
-               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "walkthrough", false)
     end
 
     test "a claimed run that stayed on a version after an assign counts", ctx do
-      version = past_version(ctx.scope, "explainer")
+      version = past_version(ctx.scope, "walkthrough")
       keep!(ctx.work_item, version)
       run_on!(ctx.work_item, version, :claimed)
 
@@ -804,11 +804,11 @@ defmodule Apiary.ArtifactsTest do
       refute assigned.process_version_id == version.id
 
       assert {:error, :version_in_use} =
-               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "walkthrough", false)
     end
 
     test "a work item taken in again leaves the version it kept", %{scope: scope} do
-      version = past_version(scope, "explainer")
+      version = past_version(scope, "walkthrough")
       ticket = backlog_ticket_fixture(scope, connection: ticket_connection_fixture(scope))
       {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
       keep!(work_item, version)
@@ -820,15 +820,15 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "a type in use can be switched off once nothing uses it", ctx do
-      keep!(ctx.work_item, past_version(ctx.scope, "explainer"))
+      keep!(ctx.work_item, past_version(ctx.scope, "walkthrough"))
 
       assert {:error, :version_in_use} =
-               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "walkthrough", false)
 
       keep!(ctx.work_item, Processes.current(ctx.scope.workspace))
 
       assert {:ok, %Type{shown: false}} =
-               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "explainer", false)
+               Artifacts.switch_type(ctx.scope, ctx.scope.workspace, "walkthrough", false)
     end
 
     test "an always-on type has no switch", ctx do
@@ -943,16 +943,16 @@ defmodule Apiary.ArtifactsTest do
 
       for n <- 1..3 do
         assert {:ok, %Version{number: ^n}} =
-                 Artifacts.push({:run, run}, work_item, "explainer", [doc("v#{n}.md")])
+                 Artifacts.push({:run, run}, work_item, "walkthrough", [doc("v#{n}.md")])
       end
 
       assert {:ok, %Version{number: 1}} =
-               Artifacts.push({:run, run}, work_item, "explainer", [doc()], name: "design")
+               Artifacts.push({:run, run}, work_item, "walkthrough", [doc()], name: "design")
 
       assert %Version{number: 3, files: [%{filename: "v3.md"}]} =
-               Artifacts.newest(work_item, "explainer")
+               Artifacts.newest(work_item, "walkthrough")
 
-      assert %Version{number: 1} = Artifacts.newest(work_item, "explainer", "design")
+      assert %Version{number: 1} = Artifacts.newest(work_item, "walkthrough", "design")
       assert Artifacts.newest(work_item, "mockup") == nil
 
       assert [%Artifact{name: "design"}, %Artifact{name: "main", versions: versions} = main] =
@@ -963,7 +963,7 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "keeps the same content once in the store", %{run: run, root: root} = context do
-      {:ok, one} = Artifacts.push({:run, run}, context.work_item, "explainer", [doc("a.md")])
+      {:ok, one} = Artifacts.push({:run, run}, context.work_item, "walkthrough", [doc("a.md")])
 
       {:ok, two} =
         Artifacts.push({:run, run}, context.work_item, "decision-record", [doc("b.md")])
@@ -997,7 +997,7 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "writes no audit entry", %{run: run} = context do
-      {:ok, _version} = Artifacts.push({:run, run}, context.work_item, "explainer", [doc()])
+      {:ok, _version} = Artifacts.push({:run, run}, context.work_item, "walkthrough", [doc()])
       assert Repo.all(from e in Entry, where: e.action == "artifact.write") == []
     end
 
@@ -1011,20 +1011,20 @@ defmodule Apiary.ArtifactsTest do
           )
       end)
 
-      assert Artifacts.push({:run, run}, context.work_item, "explainer", [doc()]) ==
+      assert Artifacts.push({:run, run}, context.work_item, "walkthrough", [doc()]) ==
                {:error, :run_ended}
 
       assert count(Artifact) == 0
       assert count(Version) == 0
 
       # A run ended before the push is refused the same way.
-      assert Artifacts.push({:run, run}, context.work_item, "explainer", [doc()]) ==
+      assert Artifacts.push({:run, run}, context.work_item, "walkthrough", [doc()]) ==
                {:error, :run_ended}
     end
 
     test "refuses a run of another work item", %{scope: scope, run: run} do
       other = work_item_fixture(scope, %{external_ref: "acme/shop#13"})
-      assert {:error, :not_found} = Artifacts.push({:run, run}, other, "explainer", [doc()])
+      assert {:error, :not_found} = Artifacts.push({:run, run}, other, "walkthrough", [doc()])
       assert count(Artifact) == 0
     end
 
@@ -1323,7 +1323,7 @@ defmodule Apiary.ArtifactsTest do
       commit_raises()
 
       assert_raise RuntimeError, "the store failed", fn ->
-        Artifacts.push({:run, run}, context.work_item, "explainer", [doc()])
+        Artifacts.push({:run, run}, context.work_item, "walkthrough", [doc()])
       end
 
       assert stored_paths(root) == []
@@ -1355,7 +1355,7 @@ defmodule Apiary.ArtifactsTest do
       store!(CopyRemoved)
 
       ExUnit.CaptureLog.capture_log(fn ->
-        assert Artifacts.push({:run, run}, context.work_item, "explainer", [doc()]) ==
+        assert Artifacts.push({:run, run}, context.work_item, "walkthrough", [doc()]) ==
                  {:error, :store_unavailable}
       end)
 
@@ -1425,7 +1425,7 @@ defmodule Apiary.ArtifactsTest do
     test "stores every type the workspace shows, for a run", context do
       %{run: run, work_item: work_item} = context
 
-      assert {:ok, _version} = Artifacts.push({:run, run}, work_item, "explainer", [doc()])
+      assert {:ok, _version} = Artifacts.push({:run, run}, work_item, "walkthrough", [doc()])
 
       assert {:ok, _version} =
                Artifacts.push({:run, run}, work_item, "mockup", [file("a.png", @png)])
@@ -1469,7 +1469,7 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "refuses a name, a stage or a note of the wrong form", %{run: run} = context do
-      push = &Artifacts.push({:run, run}, context.work_item, "explainer", [doc()], &1)
+      push = &Artifacts.push({:run, run}, context.work_item, "walkthrough", [doc()], &1)
 
       assert {:error, {:invalid, :name}} = push.(name: "Main")
       assert {:error, {:invalid, :name}} = push.(name: "")
@@ -1483,7 +1483,7 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "counts a note's length in code points, as the database does", %{run: run} = context do
-      push = &Artifacts.push({:run, run}, context.work_item, "explainer", [doc()], &1)
+      push = &Artifacts.push({:run, run}, context.work_item, "walkthrough", [doc()], &1)
 
       # "e" and U+0301: one grapheme, two code points.
       accent = "e\u0301"
@@ -1496,16 +1496,16 @@ defmodule Apiary.ArtifactsTest do
          %{run: run} = context do
       push = &Artifacts.push({:run, run}, context.work_item, &1, &2)
 
-      assert {:error, {:invalid, :no_files}} = push.("explainer", [])
-      assert {:error, {:too_many_files, 1}} = push.("explainer", [doc("a.md"), doc("b.md")])
+      assert {:error, {:invalid, :no_files}} = push.("walkthrough", [])
+      assert {:error, {:too_many_files, 1}} = push.("walkthrough", [doc("a.md"), doc("b.md")])
 
       assert {:error, {:too_many_files, 10}} =
                push.("screenshot", for(n <- 1..11, do: file("#{n}.png", @png)))
 
-      assert {:error, {:invalid, {:file, 0}}} = push.("explainer", [%{filename: "a.md"}])
+      assert {:error, {:invalid, {:file, 0}}} = push.("walkthrough", [%{filename: "a.md"}])
 
       assert {:error, {:invalid, {:file, 0}}} =
-               push.("explainer", [%{"filename" => "a.md", "binary" => "x"}])
+               push.("walkthrough", [%{"filename" => "a.md", "binary" => "x"}])
     end
 
     test "refuses a filename that is not a base name, or that is there twice",
@@ -1590,13 +1590,13 @@ defmodule Apiary.ArtifactsTest do
          %{run: run, root: root} = context do
       push = &Artifacts.push({:run, run}, context.work_item, &1, &2)
 
-      assert {:error, {:invalid, {:extension, 0}}} = push.("explainer", [doc("notes.txt")])
+      assert {:error, {:invalid, {:extension, 0}}} = push.("walkthrough", [doc("notes.txt")])
 
       assert {:error, {:invalid, {:format, 0}}} =
-               push.("explainer", [doc("notes.md", <<0xFF, 0xFE>>)])
+               push.("walkthrough", [doc("notes.md", <<0xFF, 0xFE>>)])
 
       assert {:error, {:invalid, {:format, 0}}} =
-               push.("explainer", [doc("notes.md", "a\u0000b")])
+               push.("walkthrough", [doc("notes.md", "a\u0000b")])
 
       assert {:error, {:invalid, {:format, 1}}} =
                push.("screenshot", [file("a.png", @png), file("b.png", "<html></html>")])
@@ -1623,7 +1623,7 @@ defmodule Apiary.ArtifactsTest do
         Enum.map(version.files, & &1.content_type)
       end
 
-      assert push.("explainer", [doc("Notes.MD")]) == ["text/markdown; charset=utf-8"]
+      assert push.("walkthrough", [doc("Notes.MD")]) == ["text/markdown; charset=utf-8"]
 
       assert push.("mockup", [file("a.png", @png), file("b.svg", @svg), file("c.gif", @gif)]) ==
                ["image/png", "image/svg+xml", "image/gif"]
@@ -2006,7 +2006,7 @@ defmodule Apiary.ArtifactsTest do
     end
 
     test "is forbidden for any other type", %{scope: scope} = context do
-      assert Artifacts.push({:member_action, scope}, context.work_item, "explainer", [doc()]) ==
+      assert Artifacts.push({:member_action, scope}, context.work_item, "walkthrough", [doc()]) ==
                {:error, :forbidden}
 
       assert Artifacts.list(context.work_item) == []
@@ -2039,7 +2039,7 @@ defmodule Apiary.ArtifactsTest do
       :ok = Artifacts.subscribe(scope, work_item)
 
       assert {:error, :stage_changed} =
-               Artifacts.push({:run, run}, work_item, "explainer", [doc()],
+               Artifacts.push({:run, run}, work_item, "walkthrough", [doc()],
                  stage_id: "st_aaaaaaaaaa",
                  expect_stage: "st_aaaaaaaaaa"
                )
@@ -2058,7 +2058,7 @@ defmodule Apiary.ArtifactsTest do
 
     test "stores the version in the same stage", %{work_item: work_item, run: run} do
       assert {:ok, %Version{stage_id: "st_bbbbbbbbbb"}} =
-               Artifacts.push({:run, run}, work_item, "explainer", [doc()],
+               Artifacts.push({:run, run}, work_item, "walkthrough", [doc()],
                  stage_id: "st_bbbbbbbbbb",
                  expect_stage: "st_bbbbbbbbbb"
                )
@@ -2066,20 +2066,20 @@ defmodule Apiary.ArtifactsTest do
 
     test "compares nothing where the option is left out", %{work_item: work_item, run: run} do
       assert {:ok, %Version{stage_id: "st_aaaaaaaaaa"}} =
-               Artifacts.push({:run, run}, work_item, "explainer", [doc()],
+               Artifacts.push({:run, run}, work_item, "walkthrough", [doc()],
                  stage_id: "st_aaaaaaaaaa"
                )
     end
 
     test "reads nil as a work item with no stage", %{work_item: work_item, run: run} do
       assert {:error, :stage_changed} =
-               Artifacts.push({:run, run}, work_item, "explainer", [doc()], expect_stage: nil)
+               Artifacts.push({:run, run}, work_item, "walkthrough", [doc()], expect_stage: nil)
 
       assert {:ok, %Version{stage_id: nil}} =
                Artifacts.push(
                  {:run, run},
                  in_stage(work_item, nil),
-                 "explainer",
+                 "walkthrough",
                  [doc()],
                  expect_stage: nil
                )
@@ -2158,7 +2158,7 @@ defmodule Apiary.ArtifactsTest do
       :ok = Artifacts.subscribe(context.scope, work_item)
       Phoenix.PubSub.subscribe(Apiary.PubSub, Apiary.WorkItems.topic(work_item.workspace_id))
 
-      {:ok, version} = Artifacts.push({:run, run}, work_item, "explainer", [doc()])
+      {:ok, version} = Artifacts.push({:run, run}, work_item, "walkthrough", [doc()])
 
       assert_receive {:artifact_pushed, work_item_id, version_id}
       assert {work_item_id, version_id} == {work_item.public_id, version.public_id}
@@ -2167,7 +2167,7 @@ defmodule Apiary.ArtifactsTest do
       refute_receive {:artifact_pushed, _work_item_id, _version_id}
 
       assert {:error, {:invalid, :no_files}} =
-               Artifacts.push({:run, run}, work_item, "explainer", [])
+               Artifacts.push({:run, run}, work_item, "walkthrough", [])
 
       refute_receive {:artifact_pushed, _work_item_id, _version_id}
     end
@@ -2202,13 +2202,13 @@ defmodule Apiary.ArtifactsTest do
 
   describe "the rows" do
     test "go with their work item", %{run: run} = context do
-      {:ok, _version} = Artifacts.push({:run, run}, context.work_item, "explainer", [doc()])
+      {:ok, _version} = Artifacts.push({:run, run}, context.work_item, "walkthrough", [doc()])
       Repo.delete!(context.work_item)
       assert {count(Artifact), count(Version), count(ArtifactFile)} == {0, 0, 0}
     end
 
     test "keep a run's version once its run of the queue goes", %{run: run} = context do
-      {:ok, version} = Artifacts.push({:run, run}, context.work_item, "explainer", [doc()])
+      {:ok, version} = Artifacts.push({:run, run}, context.work_item, "walkthrough", [doc()])
       Repo.delete_all(from r in Apiary.Runs.Run, where: r.dispatch_run_id == ^run.id)
       Repo.delete!(run)
       assert %Version{writer: :run, run_id: nil} = Repo.get!(Version, version.id)

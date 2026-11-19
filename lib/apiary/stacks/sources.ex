@@ -2186,7 +2186,9 @@ defmodule Apiary.Stacks.Sources do
   # is the key of no domain's type, which a page read before can still send
   # (`Apiary.Lingo.Domain.known_type?/1`), or whose `submit` names no structured entry of
   # its `artifact_types` (`Apiary.Artifacts.TemplateTypes.check_submit/1`); or `{:error,
-  # errors}` for a process `Apiary.Processes.validate/1` refuses.
+  # errors}` for a process `Apiary.Processes.validate/3` refuses, its stages with
+  # `shared_run: true` checked against the organisation's default model choice, the one
+  # level a workspace not yet made reaches (`Apiary.ModelChoices.default_models/1`).
   @spec check_start(Scope.t(), start) ::
           :ok | {:error, Access.reason() | :invalid | [Apiary.Processes.error()]}
   def check_start(
@@ -2198,7 +2200,11 @@ defmodule Apiary.Stacks.Sources do
          true <- listed?(scope, source),
          true <- not narrowed?(narrowing) and Domain.known_type?(template.type),
          {:submit, :ok} <- {:submit, TemplateTypes.check_submit(template)} do
-      Apiary.Processes.validate(template.process)
+      Apiary.Processes.validate(
+        template.process,
+        %{},
+        Apiary.ModelChoices.default_models(scope)
+      )
     else
       false -> {:error, :invalid}
       {:submit, {:error, _refusals}} -> {:error, :invalid}

@@ -97,7 +97,16 @@ defmodule Apiary.Dispatches.DispatchRun do
   # outcome `error`; `shared_access_differs`, a claimed run of a stage whose workflows
   # share one run, whose workflows would run with different access levels, as an update
   # from the harness changed a level after the process was saved
-  # (`Apiary.Stages.shared_access/1`), with the outcome `error`.
+  # (`Apiary.Stages.shared_access/1`), with the outcome `error`; `model_choice_missing`
+  # and `too_many_providers`, a claimed run of such a stage whose workflows' model
+  # choices no longer fit one run, as a choice, a provider or the harness changed after
+  # the process was saved: a workflow with no model choice whose runtime cannot use the
+  # provider the run starts on, or more than 6 model providers
+  # (`Apiary.Stages.shared_models/1`), with the outcome `error`; `session_key_missing`, a
+  # claimed run of such a stage where a workflow's session would have no key in the run:
+  # its provider has no model key, or its runtime uses another API of a provider that an
+  # earlier workflow uses (`Apiary.Stages.shared_models/1`,
+  # `Apiary.Dispatches.RunSettings`), with the outcome `error`.
   @end_causes [
     :released,
     :closed,
@@ -120,7 +129,10 @@ defmodule Apiary.Dispatches.DispatchRun do
     :harness_unresolved,
     :target_access_gone,
     :write_without_work_item,
-    :shared_access_differs
+    :shared_access_differs,
+    :model_choice_missing,
+    :too_many_providers,
+    :session_key_missing
   ]
 
   # What a run of Explore gave once it ended (`Apiary.Explore.Outcome`); `:error` and
@@ -204,6 +216,12 @@ defmodule Apiary.Dispatches.DispatchRun do
     # of those cooldowns, nil for every other run. No changeset casts them.
     belongs_to :continues, __MODULE__
     field :paused_until, :utc_datetime_usec
+    # On a run that continues a run whose exit paused it with `model_key_switch`, the end
+    # of the window after that exit in which Qory Apiary still records the paused run's
+    # model keys report (`Apiary.ModelKeys.Report.after_exit_seconds/0`): a claim takes the
+    # run only once it has passed (`Apiary.Dispatches.requeue_for_pause/3`). Nil for every
+    # other run. No changeset casts it.
+    field :report_wait_until, :utc_datetime_usec
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace

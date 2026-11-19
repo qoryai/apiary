@@ -423,6 +423,16 @@ defmodule Apiary.Stages.StopCause do
       {"The run did not start, because the model provider of its model choice was removed, or no longer applies to #{n.workspace}.",
        "Owners and admins of #{n.workspace} choose another model provider in Workspace settings › Model."}
 
+  # A run of a stage whose workflows share one run, whose model choices did not fit the
+  # one run at its claim. While the fault remains, the fix has the values of the check run
+  # again (`Apiary.Stages.shared_models/1`); once it is fixed, or the check finds the other
+  # fault, the fix is to run the round again.
+  defp lines(%DispatchRun{end_cause: cause} = run, _n, _ctx)
+       when cause in [:model_choice_missing, :too_many_providers, :session_key_missing] do
+    {stage, detail} = shared_models(run)
+    {shared_models_cause(cause, stage), shared_models_fix(cause, detail)}
+  end
+
   defp lines(%DispatchRun{end_cause: :runtime_unserved}, n, _ctx),
     do:
       {"The run did not start, because the chosen model provider no longer serves the chosen runtime.",
@@ -793,6 +803,56 @@ defmodule Apiary.Stages.StopCause do
         {(stage && stage["name"]) || "the stage", nil}
     end
   end
+
+  defp shared_models(%DispatchRun{} = run) do
+    case Apiary.Stages.shared_models(run) do
+      {:error, %{stage: stage, detail: detail}} -> {stage, detail}
+      :ok -> {elem(shared_access(run), 0), nil}
+    end
+  end
+
+  defp shared_models_cause(:model_choice_missing, stage),
+    do:
+      "The run did not start, because a workflow of #{stage} had no model, and that workflow's runtime could not use the provider that the run would start on."
+
+  defp shared_models_cause(:session_key_missing, stage),
+    do:
+      "The run did not start, because a workflow of #{stage} would run on a provider that has no key in the run, or on a second API of a provider that an earlier workflow uses."
+
+  defp shared_models_cause(:too_many_providers, stage),
+    do:
+      "The run did not start, because the workflows of #{stage} used more than 6 model providers."
+
+  defp shared_models_fix(
+         :model_choice_missing,
+         {:model_choice_missing, workflow, runtime, provider}
+       ),
+       do:
+         "Choose a model for workflow #{workflow}. Without one it runs on #{runtime}, and this stage's runs can start on #{provider}, which #{runtime} cannot use."
+
+  defp shared_models_fix(:too_many_providers, {:too_many_providers, count, providers}),
+    do:
+      "Use at most 6 model providers in one stage. Its workflows use #{count}: #{Enum.join(providers, ", ")}."
+
+  defp shared_models_fix(:session_key_missing, {:session_key_missing, :machine, first}),
+    do:
+      "Choose a model for workflow #{first}, or remove the model choices of the later workflows. Without a model, #{first} runs on the machine's local model provider credential, so later workflows get no model provider credential."
+
+  defp shared_models_fix(
+         :session_key_missing,
+         {:session_key_missing, :no_key, workflow, provider}
+       ),
+       do:
+         "Add a model key to #{provider}, or choose a model of another provider for workflow #{workflow}. #{provider} has no model key."
+
+  defp shared_models_fix(
+         :session_key_missing,
+         {:session_key_missing, :other_api, workflow, api, provider, earlier}
+       ),
+       do:
+         "Choose a model for workflow #{workflow} that uses the #{api} API of #{provider}, as workflow #{earlier} does, or a model of another provider. One run uses one API of each provider."
+
+  defp shared_models_fix(_cause, _fixed_or_other), do: "Run the round again."
 
   # The fix for a run whose stage's workflows would run with different access, because
   # the harness sets `workflow` a lower level than `other`, the level the other workflows

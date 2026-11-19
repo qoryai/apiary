@@ -1,0 +1,8 @@
+draft_number 34
+draft_url https://code.example.com/acme/shop/pull/34
+draft_title Show delivery dates at checkout
+draft_state draft
+draft_action opened
+commit_url 3e2d1c0b9a8f7e6d5c4b3a291807f6e5d4c3b2a1 https://code.example.com/acme/shop/commit/3e2d1c0b9a8f7e6d5c4b3a291807f6e5d4c3b2a1
+commit_url 9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c https://code.example.com/acme/shop/commit/9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c
+commit_url 4c3b2a190807f6e5d4c3b2a1908f7e6d5c4b3a29 https://code.example.com/acme/shop/commit/4c3b2a190807f6e5d4c3b2a1908f7e6d5c4b3a29

@@ -1,8 +1,9 @@
 defmodule Apiary.Dispatches.RunSettingsMigrationTest do
   # The migration of what a run keeps of its model choice, run down and up again inside
   # the test's transaction, which rolls it all back, and the checks it adds on a run a
-  # claim registered, each at its bound and one past it. It changes the tables under
-  # every other test, so this is not async.
+  # claim registered, each at its bound and one past it. The checks of the provider
+  # columns are tested with the later migration that drops those columns run down, and
+  # up again after. It changes the tables under every other test, so this is not async.
   use Apiary.DataCase, async: false
 
   # Running a migration up again while later ones are applied makes Ecto warn that an
@@ -27,11 +28,16 @@ defmodule Apiary.Dispatches.RunSettingsMigrationTest do
   @keys_version 20_261_111_100_000
   @keys_migration Apiary.Repo.Migrations.KeepARunSModelKeys
   @keys_name "keep_a_run_s_model_keys"
+  # The later migration that drops the provider columns but `provider_connection_id`,
+  # once a run keeps its keys as rows of `run_model_keys`: run down before the others and
+  # up after them.
+  @rows_version 20_261_118_162_200
+  @rows_migration Apiary.Repo.Migrations.DropARunSOneProviderColumns
+  @rows_name "drop_a_run_s_one_provider_columns"
   @options [log: false, migration_lock: false]
   @columns ~w(provider_api provider_chain provider_connection_id provider_secret_id
               model_keys provider_value_id run_settings)
-  @now ~w(provider_api provider_chain provider_connection_id provider_secret_id
-          model_keys run_settings)
+  @now ~w(provider_connection_id run_settings)
   @api %{
     "format" => "anthropic-messages",
     "endpoint" => "https://api.anthropic.com",
@@ -41,7 +47,8 @@ defmodule Apiary.Dispatches.RunSettingsMigrationTest do
   setup_all do
     for {migration, file} <- [
           {@migration, "#{@version}_#{@name}.exs"},
-          {@keys_migration, "#{@keys_version}_#{@keys_name}.exs"}
+          {@keys_migration, "#{@keys_version}_#{@keys_name}.exs"},
+          {@rows_migration, "#{@rows_version}_#{@rows_name}.exs"}
         ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
@@ -53,14 +60,19 @@ defmodule Apiary.Dispatches.RunSettingsMigrationTest do
   end
 
   defp down! do
+    rows_down!()
     :ok = Ecto.Migrator.down(Repo, @keys_version, @keys_migration, @options)
     Ecto.Migrator.down(Repo, @version, @migration, @options)
   end
 
   defp up! do
     :ok = Ecto.Migrator.up(Repo, @version, @migration, @options)
-    Ecto.Migrator.up(Repo, @keys_version, @keys_migration, @options)
+    :ok = Ecto.Migrator.up(Repo, @keys_version, @keys_migration, @options)
+    rows_up!()
   end
+
+  defp rows_down!, do: :ok = Ecto.Migrator.down(Repo, @rows_version, @rows_migration, @options)
+  defp rows_up!, do: Ecto.Migrator.up(Repo, @rows_version, @rows_migration, @options)
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -171,6 +183,7 @@ defmodule Apiary.Dispatches.RunSettingsMigrationTest do
     end
 
     test "the provider's fields are all set, with run settings, or none is", %{run_id: run_id} do
+      rows_down!()
       assert set(run_id, provider(@api)) == :ok
 
       for {column, _value} <- provider(@api) -- [run_settings: %{"runtime" => "claude"}] do
@@ -183,9 +196,12 @@ defmodule Apiary.Dispatches.RunSettingsMigrationTest do
 
       assert set(run_id, provider(@api, model_keys: [%{"id" => "x", "name" => "m"}])) ==
                "runs_model_keys_check"
+
+      assert :ok = rows_up!()
     end
 
     test "the API has a format, an endpoint and an auth, at most 8 KiB", %{run_id: run_id} do
+      rows_down!()
       assert set(run_id, provider(Map.put(@api, "key_prefixes", ["sk-"]))) == :ok
 
       for missing <- ~w(format endpoint auth) do
@@ -214,6 +230,8 @@ defmodule Apiary.Dispatches.RunSettingsMigrationTest do
 
       assert set(run_id, provider(%{@api | "endpoint" => String.duplicate("x", padding + 1)})) ==
                "runs_provider_api_check"
+
+      assert :ok = rows_up!()
     end
   end
 end

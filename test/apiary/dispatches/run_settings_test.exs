@@ -2,8 +2,9 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   # The run settings of an explore run a claim registers (`Apiary.Dispatches.RunSettings`):
   # what the model choices resolve to, the API of the provider the run uses, the causes
   # that end the run, and what the run keeps. The races with a provider's change are
-  # `run_settings_races_test.exs`; the answer's 1 MiB limit and the features off are
-  # `run_settings_budget_test.exs`.
+  # `run_settings_races_test.exs`; the answer's 1 MiB limit is
+  # `run_settings_budget_test.exs`; the order of the levels and the features off are
+  # `run_settings_defaults_test.exs`.
   use Apiary.DataCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -19,7 +20,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   alias Apiary.Dispatches.{Dispatch, DispatchRun, RunSettings}
   alias Apiary.Kinds.{Coded, Providers, Runtimes}
   alias Apiary.ModelChoices.{ModelChoice, Resolution}
-  alias Apiary.Runs.{Projector, Run, Target}
+  alias Apiary.Runs.{ModelKey, Projector, Run, Target}
   alias Apiary.Secrets.Value
 
   @moduletag needs: :factory
@@ -114,10 +115,35 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   defp settings(%{run_settings: settings}), do: settings |> Jason.encode!() |> Jason.decode!()
 
   # The value ids of the keys a run keeps, in its order.
-  defp value_ids(%Run{model_keys: keys}) do
+  defp value_ids(%Run{} = run) do
     by_id = Map.new(Repo.all(Value), &{&1.id, &1.value_id})
-    for %{"id" => id} <- keys, do: by_id[id]
+    for %{secret_value_id: id} <- stored_keys(run), do: by_id[id]
   end
+
+  # What the run keeps for a key's entry of the run configuration (`kept/1`), with every
+  # field `attrs` does not set at its value for none.
+  defp key(attrs),
+    do:
+      Map.merge(
+        %{
+          start: false,
+          resets_at: nil,
+          schedule_resets_at: nil,
+          cooldown_until: nil,
+          use_up_to_percent: nil
+        },
+        Map.new(attrs)
+      )
+
+  # A key row's row id, credential name and what the claim wrote for the run
+  # configuration.
+  defp kept(%ModelKey{} = key),
+    do:
+      Map.take(
+        key,
+        ~w(secret_value_id name start pause_for_s resets_at schedule_resets_at cooldown_until
+           use_up_to_percent)a
+      )
 
   defp value!(provider, value_id), do: key_value!(provider, value_id)
   defp state!(provider, value_id, attrs), do: key_state!(provider, value_id, attrs)
@@ -168,14 +194,10 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       assert settings(handed) == %{"runtime" => @runtime}
 
-      assert %Run{
-               run_settings: %{"runtime" => @runtime},
-               provider_connection_id: nil,
-               provider_secret_id: nil,
-               model_keys: nil,
-               provider_chain: nil,
-               provider_api: nil
-             } = Repo.get!(Run, handed.run.id)
+      assert %Run{run_settings: %{"runtime" => @runtime}, provider_connection_id: nil} =
+               Repo.get!(Run, handed.run.id)
+
+      assert stored_keys(handed.run) == []
     end
   end
 
@@ -260,12 +282,18 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       provider_id = provider.id
       secret_id = provider.secret_id
 
-      assert %Run{
-               provider_connection_id: ^provider_id,
-               provider_secret_id: ^secret_id,
-               provider_chain: "organisation",
-               provider_api: @messages
-             } = run = Repo.get!(Run, handed.run.id)
+      assert %Run{provider_connection_id: ^provider_id} = run = Repo.get!(Run, handed.run.id)
+
+      assert [_, _] = keys = stored_keys(run)
+
+      for key <- keys do
+        assert %ModelKey{
+                 connection_id: ^provider_id,
+                 secret_id: ^secret_id,
+                 chain: "organisation",
+                 api: @messages
+               } = key
+      end
 
       # The default key first, then the other by the order they were added.
       assert value_ids(run) == ["main", "spare"]
@@ -301,8 +329,8 @@ defmodule Apiary.Dispatches.RunSettingsTest do
         refute encoded =~ "spare"
       end
 
-      assert %Run{provider_api: api} = Repo.get!(Run, handed.run.id)
-      refute Jason.encode!(api) =~ "sk-ant"
+      assert [_ | _] = keys = stored_keys(handed.run)
+      for %{api: api} <- keys, do: refute(Jason.encode!(api) =~ "sk-ant")
     end
 
     test "lists the description's models, then each chosen model it does not list", ctx do
@@ -430,19 +458,19 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
       run = Repo.get!(Run, handed.run.id)
 
-      assert run.model_keys == [
-               %{
-                 "id" => value!(ctx.provider, "main").id,
-                 "name" => "#{pid}-1",
-                 "pause_for_s" => 60,
-                 "resets_at" => DateTime.to_iso8601(reset)
-               },
-               %{
-                 "id" => value!(ctx.provider, "spare").id,
-                 "name" => "#{pid}-2",
-                 "start" => true,
-                 "pause_for_s" => 300
-               }
+      assert Enum.map(stored_keys(run), &kept/1) == [
+               key(
+                 secret_value_id: value!(ctx.provider, "main").id,
+                 name: "#{pid}-1",
+                 pause_for_s: 60,
+                 resets_at: reset
+               ),
+               key(
+                 secret_value_id: value!(ctx.provider, "spare").id,
+                 name: "#{pid}-2",
+                 start: true,
+                 pause_for_s: 300
+               )
              ]
 
       assert {:ok, %{name: start}} = Apiary.Runs.ProviderCredential.for_run(run)
@@ -454,6 +482,25 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       refute encoded =~ "sk-ant"
     end
 
+    test "keep the Pause for of the claim after the key's setting changes", ctx do
+      choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id})
+      spare = value!(ctx.provider, "spare")
+      {:ok, _setting} = put_key_setting(ctx.scope, spare, %{pause_seconds: 300})
+
+      {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
+      run = Repo.get!(Run, handed.run.id)
+
+      # A member sets the key's Pause for to 15 minutes after the claim.
+      {:ok, _setting} = put_key_setting(ctx.scope, spare, %{pause_seconds: 900})
+
+      assert [%ModelKey{pause_for_s: 300}] =
+               Enum.filter(stored_keys(run), &(&1.secret_value_id == spare.id))
+
+      assert {:ok, credential} = Apiary.Runs.ProviderCredential.for_run(run)
+      assert %{entry: entry} = Enum.find(credential.keys, &(&1.secret_value_id == spare.id))
+      assert entry["pause_for_s"] == 300
+    end
+
     test "send a key in cooldown after the free keys, never as the start key", ctx do
       pid = ctx.provider.public_id
       choose!(ctx.scope, :workspace, %{provider: pid})
@@ -461,22 +508,24 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       state!(ctx.provider, "main", until: until)
 
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
-      [start, cooling] = Repo.get!(Run, handed.run.id).model_keys
+      [start, cooling] = Enum.map(stored_keys(handed.run), &kept/1)
 
-      assert start == %{
-               "id" => value!(ctx.provider, "spare").id,
-               "name" => "#{pid}-1",
-               "start" => true,
-               "pause_for_s" => 60
-             }
+      assert start ==
+               key(
+                 secret_value_id: value!(ctx.provider, "spare").id,
+                 name: "#{pid}-1",
+                 start: true,
+                 pause_for_s: 60
+               )
 
-      assert cooling == %{
-               "id" => value!(ctx.provider, "main").id,
-               "name" => "#{pid}-2",
-               "pause_for_s" => 60,
-               "resets_at" => DateTime.to_iso8601(until),
-               "cooldown_until" => DateTime.to_iso8601(until)
-             }
+      assert cooling ==
+               key(
+                 secret_value_id: value!(ctx.provider, "main").id,
+                 name: "#{pid}-2",
+                 pause_for_s: 60,
+                 resets_at: until,
+                 cooldown_until: until
+               )
     end
 
     test "are at most 6, the free keys first", ctx do
@@ -495,7 +544,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       assert value_ids(run) == ~w(key-3 key-4 key-5 key-6 key-7 key-8)
 
-      assert Enum.map(run.model_keys, & &1["name"]) ==
+      assert Enum.map(stored_keys(run), & &1.name) ==
                for(n <- 1..6, do: "#{many.public_id}-#{n}")
     end
 
@@ -543,13 +592,12 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       free_id = free.id
 
-      assert %Run{provider_connection_id: ^free_id, model_keys: [%{"name" => name} = key]} =
-               Repo.get!(Run, handed.run.id)
+      assert %Run{provider_connection_id: ^free_id} = run = Repo.get!(Run, handed.run.id)
+      assert [%ModelKey{name: name} = key] = stored_keys(run)
 
       assert name == "#{free.public_id}-1"
-      assert key["id"] == value!(free, "main").id
-      assert key["pause_for_s"] == 60
-      refute Map.has_key?(key, "chosen")
+      assert key.secret_value_id == value!(free, "main").id
+      assert key.pause_for_s == 60
     end
 
     test "come from a fallback on another runtime, with that runtime, an API it takes and the fallback's tiers",
@@ -612,9 +660,12 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       run = Repo.get!(Run, handed.run.id)
       assert run.provider_connection_id == router.id
       assert run.run_settings["runtime"] == bearer.name
-      assert run.provider_api["format"] in Runtimes.formats(bearer)
-      assert run.provider_api["auth"] == %{"scheme" => "bearer"}
-      assert run.provider_api["endpoint"] == "https://openrouter.ai/api"
+
+      # The API of the run's keys is the fallback provider's, on the fallback's runtime.
+      assert [%ModelKey{start: true, api: api} | _rest] = stored_keys(run)
+      assert api["format"] in Runtimes.formats(bearer)
+      assert api["auth"] == %{"scheme" => "bearer"}
+      assert api["endpoint"] == "https://openrouter.ai/api"
     end
 
     test "leave the run waiting while every key of the provider and its fallbacks is in cooldown",
@@ -702,7 +753,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       ended!(queued, dispatch, :secrets_not_allowed)
     end
 
-    test "are never built with a start key in cooldown, and none is chosen", ctx do
+    test "are never built with a start key in cooldown", ctx do
       choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id})
 
       for {cooled, n} <- Enum.with_index([[], ["main"], ["spare"]]) do
@@ -712,10 +763,9 @@ defmodule Apiary.Dispatches.RunSettingsTest do
         {{:ok, handed}, _queued, _dispatch} =
           handover!(ctx, %{external_ref: "acme/shop##{50 + n}"})
 
-        [start | _rest] = keys = Repo.get!(Run, handed.run.id).model_keys
+        [start | _rest] = stored_keys(handed.run)
 
-        refute Map.has_key?(start, "cooldown_until"), inspect(cooled)
-        refute Enum.any?(keys, &Map.has_key?(&1, "chosen")), inspect(cooled)
+        assert start.cooldown_until == nil, inspect(cooled)
       end
     end
   end
@@ -1207,18 +1257,21 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert %{"model" => "team-large", "provider_models" => [%{"id" => "team-large"}]} =
                settings(handed)
 
-      assert %Run{
-               provider_api: %{
-                 "format" => "anthropic-messages",
-                 "endpoint" => "https://litellm.example.com/team",
-                 "auth" => %{"scheme" => "bearer"}
+      assert [
+               %ModelKey{
+                 api: %{
+                   "format" => "anthropic-messages",
+                   "endpoint" => "https://litellm.example.com/team",
+                   "auth" => %{"scheme" => "bearer"}
+                 }
                }
-             } = Repo.get!(Run, handed.run.id)
+             ] = stored_keys(handed.run)
     end
 
     test "is written once: a later change of the address or a rebuild keeps the run's", ctx do
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
       run = Repo.get!(Run, handed.run.id)
+      keys = stored_keys(run)
 
       {:ok, _litellm} =
         Connections.update_provider(ctx.scope, ctx.litellm, %{
@@ -1227,17 +1280,16 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       assert {:ok, _rebuilt} = Projector.rebuild(run)
 
-      assert %Run{provider_api: %{"endpoint" => "https://litellm.example.com/team"}} =
-               kept = Repo.get!(Run, run.id)
+      assert [%ModelKey{api: %{"endpoint" => "https://litellm.example.com/team"}}] =
+               stored_keys(run)
 
-      assert {kept.run_settings, kept.provider_api, kept.model_keys} ==
-               {run.run_settings, run.provider_api, run.model_keys}
+      assert {Repo.get!(Run, run.id).run_settings, stored_keys(run)} == {run.run_settings, keys}
 
       # The next run takes the address as it is now.
       {{:ok, next}, _queued, _dispatch} = handover!(ctx, %{external_ref: "acme/shop#13"})
 
-      assert %Run{provider_api: %{"endpoint" => "https://models.example.com"}} =
-               Repo.get!(Run, next.run.id)
+      assert [%ModelKey{api: %{"endpoint" => "https://models.example.com"}}] =
+               stored_keys(next.run)
     end
   end
 
@@ -1270,13 +1322,13 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       assert {:ok, _deleted} = Connections.delete_provider(ctx.scope, ctx.provider)
 
-      assert %Run{
-               provider_connection_id: nil,
-               provider_secret_id: nil,
-               model_keys: [%{"name" => name} | _],
-               provider_api: @messages,
-               run_settings: %{"model" => "claude-opus-5-5"}
-             } = Repo.get!(Run, run.id)
+      assert %Run{provider_connection_id: nil, run_settings: %{"model" => "claude-opus-5-5"}} =
+               Repo.get!(Run, run.id)
+
+      assert [%ModelKey{name: name} | _] = keys = stored_keys(run)
+
+      for key <- keys,
+          do: assert(%ModelKey{connection_id: nil, secret_id: nil, api: @messages} = key)
 
       assert name == "#{ctx.provider.public_id}-1"
     end

@@ -15,7 +15,7 @@ defmodule Apiary.WorkflowEndToEndTest do
   #      item to it. Dana confirms Explore; Shape's run pushes acceptance criteria and
   #      ends; Shape is at its gate. Dana approves Shape; Build is entered with the
   #      criteria as its input.
-  #   4. A Build run pushes an explainer and gives `changes-requested`; the second round
+  #   4. A Build run pushes a walkthrough and gives `changes-requested`; the second round
   #      gives `passed`. The Exists check passes, and Build is at its gate.
   #   5. Dana requests changes; the next run stops, and Build escalates (`run_stopped`).
   #      Dana runs another round with a note, and the next run reads the note.
@@ -23,8 +23,8 @@ defmodule Apiary.WorkflowEndToEndTest do
   #      the work item to it; the run queued for round 3 moves to version 3.
   #
   # Test 7 drives steps 1 and 2, then step 7: Dana saves version 2, in which Build runs
-  # capture-demo once, outside a loop. Build's run pushes an explainer and ends with no
-  # verdict; Build escalates (`run_stopped`), and Dana accepts the explainer as it is.
+  # capture-demo once, outside a loop. Build's run pushes a walkthrough and ends with no
+  # verdict; Build escalates (`run_stopped`), and Dana accepts the walkthrough as it is.
   #
   # Test 8 drives steps 1 and 2, then step 8 (decision 838 (a)): Dana saves version 2, in
   # which Shape runs shape-a-ticket and requires a spec and acceptance criteria. Shape's
@@ -232,7 +232,7 @@ defmodule Apiary.WorkflowEndToEndTest do
 
   # 3. Dana saves version 2, whose Shape runs shape-a-ticket and must output acceptance
   # criteria, and whose Build reads them and runs a loop of capture-demo that must write an
-  # explainer, and assigns the work item to it. Dana confirms Explore's proposal at its
+  # walkthrough, and assigns the work item to it. Dana confirms Explore's proposal at its
   # gate: Shape's run is queued. The run pushes the criteria through the run API and gives
   # `passed`, and Shape waits at its gate. Dana approves Shape: Build is entered with its
   # input.
@@ -312,10 +312,10 @@ defmodule Apiary.WorkflowEndToEndTest do
     Map.merge(ctx, %{work_item: work_item, v2: v2, criteria: criteria})
   end
 
-  # 4. Build's first run reads the approved criteria, pushes an explainer and gives
+  # 4. Build's first run reads the approved criteria, pushes a walkthrough and gives
   # `changes-requested`: the loop's ring of one workflow starts round 2. The second run
-  # pushes the next explainer and gives `passed`: the loop ends, the Exists check of the
-  # explainer passes, and Build waits at its gate.
+  # pushes the next walkthrough and gives `passed`: the loop ends, the Exists check of the
+  # walkthrough passes, and Build waits at its gate.
   defp step_4(ctx) do
     run = claim!(ctx)
     snapshot = json_response(read!(ctx, run, "/work-item"), 200)
@@ -344,10 +344,15 @@ defmodule Apiary.WorkflowEndToEndTest do
            ]
 
     assert snapshot["outputs"] == [
-             %{"type" => "explainer", "required" => true, "version" => nil, "check" => "missing"}
+             %{
+               "type" => "walkthrough",
+               "required" => true,
+               "version" => nil,
+               "check" => "missing"
+             }
            ]
 
-    pushed = push_explainer!(ctx, run, "# Gift cards\n\nThe payment step has a field.\n")
+    pushed = push_walkthrough!(ctx, run, "# Gift cards\n\nThe payment step has a field.\n")
     assert pushed["version"]["number"] == 1
 
     verdict!(ctx, run, %{"verdict" => "changes-requested"})
@@ -370,10 +375,10 @@ defmodule Apiary.WorkflowEndToEndTest do
     assert %{"verdict" => "changes-requested", "points" => nil} = snapshot["verdict"]
     assert snapshot["gaps"] == nil
 
-    assert [%{"type" => "explainer", "check" => "passed", "version" => %{"number" => 1}}] =
+    assert [%{"type" => "walkthrough", "check" => "passed", "version" => %{"number" => 1}}] =
              snapshot["outputs"]
 
-    pushed = push_explainer!(ctx, second, "# Gift cards\n\nTwo gift cards pay one order.\n")
+    pushed = push_walkthrough!(ctx, second, "# Gift cards\n\nTwo gift cards pay one order.\n")
     assert pushed["version"]["number"] == 2
     verdict!(ctx, second, %{"verdict" => "passed"})
     end_run!(ctx, second)
@@ -382,7 +387,7 @@ defmodule Apiary.WorkflowEndToEndTest do
     assert_place(work_item, @build, :at_gate, 2)
 
     status = Stages.status(work_item, ctx.scope)
-    assert [%{type: "explainer", check: :passed, version: %{number: 2}}] = status.outputs
+    assert [%{type: "walkthrough", check: :passed, version: %{number: 2}}] = status.outputs
     assert status.gate.approvable?
     assert status.escalation == nil
 
@@ -390,13 +395,13 @@ defmodule Apiary.WorkflowEndToEndTest do
              Stages.runs(work_item)
 
     index = json_response(read!(ctx, second, "/artifacts"), 200)
-    explainer = artifact(index, "explainer")
-    assert %{"stage_id" => @build, "newest_version" => 2} = explainer
+    walkthrough = artifact(index, "walkthrough")
+    assert %{"stage_id" => @build, "newest_version" => 2} = walkthrough
 
     assert [
              %{"number" => 2, "writer" => %{"run_id" => second_id}},
              %{"number" => 1, "writer" => %{"run_id" => first_id}}
-           ] = explainer["versions"]
+           ] = walkthrough["versions"]
 
     assert {second_id, first_id} == {second.run_id, run.run_id}
 
@@ -415,10 +420,10 @@ defmodule Apiary.WorkflowEndToEndTest do
 
     assert approved == ctx.criteria.public_id
 
-    Map.merge(ctx, %{work_item: work_item, explainer_id: hd(explainer["versions"])["id"]})
+    Map.merge(ctx, %{work_item: work_item, walkthrough_id: hd(walkthrough["versions"])["id"]})
   end
 
-  # 5. Dana requests changes at Build's gate, pointing at the explainer: round 1 of the
+  # 5. Dana requests changes at Build's gate, pointing at the walkthrough: round 1 of the
   # loop runs again. That run stops with a failed exit and no verdict, and Build escalates
   # with the cause `run_stopped`. Dana runs another round with a note; the next run reads
   # both notes as work item data.
@@ -427,7 +432,7 @@ defmodule Apiary.WorkflowEndToEndTest do
     change_note = "Show a payment with two gift cards."
 
     {:ok, _work_item} =
-      Stages.request_changes(scope, ctx.work_item, change_note, ctx.explainer_id,
+      Stages.request_changes(scope, ctx.work_item, change_note, ctx.walkthrough_id,
         expect_stage: @build
       )
 
@@ -449,7 +454,7 @@ defmodule Apiary.WorkflowEndToEndTest do
 
     assert is_binary(name)
 
-    assert artifact_version_id == ctx.explainer_id
+    assert artifact_version_id == ctx.walkthrough_id
 
     end_run!(ctx, stopped, state: "failed")
 
@@ -552,11 +557,11 @@ defmodule Apiary.WorkflowEndToEndTest do
   end
 
   # 7. Dana saves version 2, whose Build runs capture-demo once, outside a loop, and must
-  # output an explainer, and assigns the work item to it. Dana confirms Explore and
+  # output a walkthrough, and assigns the work item to it. Dana confirms Explore and
   # approves Shape, which has no workflow and no output: Build is entered. Build's run
-  # pushes an explainer and ends by its exit with no verdict: Build escalates with the
+  # pushes a walkthrough and ends by its exit with no verdict: Build escalates with the
   # cause `run_stopped` and its point, and the stage's run list shows no verdict for the run.
-  # The explainer has a version, so Dana accepts it as it is, and Build waits at its gate.
+  # The walkthrough has a version, so Dana accepts it as it is, and Build waits at its gate.
   defp step_7(ctx) do
     %{scope: scope} = ctx
 
@@ -580,7 +585,7 @@ defmodule Apiary.WorkflowEndToEndTest do
            } = newest_run(work_item)
 
     run = claim!(ctx)
-    push_explainer!(ctx, run, "# Gift cards\n\nThe payment step has a field.\n")
+    push_walkthrough!(ctx, run, "# Gift cards\n\nThe payment step has a field.\n")
     end_run!(ctx, run)
 
     work_item = reload(work_item)
@@ -602,7 +607,7 @@ defmodule Apiary.WorkflowEndToEndTest do
 
     work_item = reload(work_item)
     assert_place(work_item, @build, :at_gate, 1)
-    assert [%{type: "explainer", check: :passed}] = Stages.status(work_item, scope).outputs
+    assert [%{type: "walkthrough", check: :passed}] = Stages.status(work_item, scope).outputs
 
     Map.put(ctx, :work_item, work_item)
   end
@@ -820,10 +825,10 @@ defmodule Apiary.WorkflowEndToEndTest do
     if String.ends_with?(filename, ".md"), do: "text/markdown", else: "application/json"
   end
 
-  defp push_explainer!(ctx, run, text) do
-    body = push_body("explainer", "explainer.md", text)
+  defp push_walkthrough!(ctx, run, text) do
+    body = push_body("walkthrough", "walkthrough.md", text)
     pushed = json_response(write!(ctx, run, "/artifacts", body), 201)
-    assert %{"type" => "explainer", "name" => "main"} = pushed["artifact"]
+    assert %{"type" => "walkthrough", "name" => "main"} = pushed["artifact"]
     pushed["artifact"]
   end
 
@@ -858,7 +863,7 @@ defmodule Apiary.WorkflowEndToEndTest do
   end
 
   # Version 2: Shape runs shape-a-ticket and must output acceptance criteria; Build reads
-  # them, runs a loop of capture-demo, at most 3 rounds, and must output an explainer.
+  # them, runs a loop of capture-demo, at most 3 rounds, and must output a walkthrough.
   defp build_document(document) do
     update_stage(document, fn
       %{"id" => @shape} = stage ->
@@ -873,7 +878,7 @@ defmodule Apiary.WorkflowEndToEndTest do
           "sequence" => [
             %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "capture-demo"}]}}
           ],
-          "outputs" => [%{"type" => "explainer", "required" => true}]
+          "outputs" => [%{"type" => "walkthrough", "required" => true}]
         })
 
       stage ->
@@ -904,13 +909,13 @@ defmodule Apiary.WorkflowEndToEndTest do
   end
 
   # Version 2 for test 7: Build runs capture-demo once, outside a loop, and must output an
-  # explainer.
+  # walkthrough.
   defp single_build_document(document) do
     update_stage(document, fn
       %{"id" => @build} = stage ->
         Map.merge(stage, %{
           "sequence" => [%{"workflow" => "capture-demo"}],
-          "outputs" => [%{"type" => "explainer", "required" => true}]
+          "outputs" => [%{"type" => "walkthrough", "required" => true}]
         })
 
       stage ->

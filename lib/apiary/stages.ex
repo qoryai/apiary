@@ -135,7 +135,18 @@ defmodule Apiary.Stages do
   # The most bytes a session's result takes, encoded (`session_answer_limit/0`).
   @session_answer_bytes 1_048_576
 
-  alias Apiary.{Access, Audit, Dispatches, Features, MachineTypes, Processes, PublicId, Repo}
+  alias Apiary.{
+    Access,
+    Audit,
+    Dispatches,
+    Features,
+    MachineTypes,
+    ModelChoices,
+    Processes,
+    PublicId,
+    Repo
+  }
+
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.Qory
@@ -399,7 +410,7 @@ defmodule Apiary.Stages do
 
   def session_flags(%DispatchRun{}, _level), do: %{shared_run: false, full_suite: false}
 
-  # claim_sessions!/2 keeps, at the claim of `run`, a run of the queue of a stage with
+  # claim_sessions!/3 keeps, at the claim of `run`, a run of the queue of a stage with
   # `shared_run: true` (`shared_stage/1`), what its later sessions read, inside the
   # caller's transaction, which holds the run and wrote its run record
   # (`Apiary.Dispatches.Handover`):
@@ -407,9 +418,15 @@ defmodule Apiary.Stages do
   #   * on its run record, `session_settings` (`Apiary.Runs.Run`): for each workflow entry
   #     of the stage, those in a loop's body included, by its place, its `workflow`, its
   #     `time_limit_minutes` (the workflow's minutes in `limits`, the time limits as the
-  #     claim read them, `Apiary.Dispatches.RunSettings.hold/1`, else read now) and
-  #     `full_suite` (`full_suite?/4`, with the run's access level, which every entry of
-  #     the stage shares). `next_session/2` reads these, so a change to the time limits
+  #     claim read them, `Apiary.Dispatches.RunSettings.hold/1`, else read now; none with
+  #     `factory` off), `full_suite` (`full_suite?/4`, with the run's access level, which
+  #     every entry of the stage shares), and `model_choice`, the workflow's runtime and
+  #     model in `models` as the claim formed them
+  #     (`Apiary.Dispatches.RunSettings.build/2`, `sessions`), present for every entry of
+  #     a claimed run, and `model_credential`, the key the session starts on, for a
+  #     session on a provider other than the default model provider credential's; without
+  #     it, the session joins the group of the run's default model provider credential.
+  #     `next_session/2` reads these, so a change to the time limits or the model choices
   #     after the claim changes nothing for the run;
   #   * its first session (`Apiary.Stages.Session`), sequence 1, at the run's position,
   #     with the run's workflow. The sessions of an earlier claim of the run that no
@@ -417,8 +434,13 @@ defmodule Apiary.Stages do
   #
   # Nothing for any other run.
   @doc false
-  @spec claim_sessions!(DispatchRun.t(), %{optional(String.t()) => pos_integer}) :: :ok
-  def claim_sessions!(%DispatchRun{} = run, limits) when is_map(limits) do
+  @spec claim_sessions!(
+          DispatchRun.t(),
+          %{optional(String.t()) => pos_integer},
+          %{optional(String.t()) => %{String.t() => map | String.t()}}
+        ) :: :ok
+  def claim_sessions!(%DispatchRun{} = run, limits, models \\ %{})
+      when is_map(limits) and is_map(models) do
     case shared_stage(run) do
       nil ->
         :ok
@@ -436,11 +458,14 @@ defmodule Apiary.Stages do
               end)
 
             {place,
-             %{
-               "workflow" => workflow,
-               "time_limit_minutes" => minutes,
-               "full_suite" => full_suite?(run, entry, loop_entry, level)
-             }}
+             Map.merge(
+               %{
+                 "workflow" => workflow,
+                 "time_limit_minutes" => minutes,
+                 "full_suite" => full_suite?(run, entry, loop_entry, level)
+               },
+               Map.take(Map.get(models, workflow, %{}), ["model_choice", "model_credential"])
+             )}
           end)
 
         {1, _rows} =
@@ -528,6 +553,57 @@ defmodule Apiary.Stages do
     end
   end
 
+  # shared_models/1 checks, at the claim of `run`, a run of the queue, that the model
+  # choices of the workflows of its stage, where the stage has `shared_run: true`, fit the
+  # one run (`Apiary.Processes.shared_models/3`), with the choices resolved at the run's
+  # target as the claim resolves them (`Apiary.ModelChoices.shared_models/3`): a changed
+  # default provider, a cleared model choice or a change of the harness can break them
+  # after the save. The providers the run can start on are those of the stage's first
+  # workflow's choice, or, for a run that continues a paused run, the provider of the
+  # session that paused (`Apiary.Runs.Run.session_provider_ids/2`). `:ok` for any other
+  # run; `{:error, %{stage: name, detail: detail}}` for a run whose choices do not fit,
+  # which the claim ends `too_many_providers`, `model_choice_missing` or
+  # `session_key_missing` (`Apiary.Dispatches.Handover`), and which the lines of such a
+  # run read again.
+  @doc false
+  @spec shared_models(DispatchRun.t()) ::
+          :ok
+          | {:error,
+             %{
+               stage: String.t(),
+               detail:
+                 {:too_many_providers, pos_integer, [String.t()]}
+                 | {:model_choice_missing, String.t(), String.t(), String.t()}
+                 | {:session_key_missing, :machine, String.t()}
+                 | {:session_key_missing, :no_key, String.t(), String.t()}
+                 | {:session_key_missing, :other_api, String.t(), String.t(), String.t(),
+                    String.t()}
+             }}
+  def shared_models(%DispatchRun{} = run) do
+    with %{} = stage <- shared_stage(run),
+         workspace = Repo.get!(Workspace, run.workspace_id),
+         target = Apiary.Dispatches.RunSettings.target_of(run),
+         start_ids = start_provider_ids(run),
+         models =
+           ModelChoices.shared_models(workspace, target, shared_workflows(run), start_ids || []),
+         {:error, detail} <- Processes.shared_models(stage, models, start_ids) do
+      {:error, %{stage: stage["name"], detail: detail}}
+    else
+      _fits -> :ok
+    end
+  end
+
+  # The providers a continuation starts on: those of the session that paused in the run
+  # it continues; nil for a run that continues none.
+  defp start_provider_ids(%DispatchRun{continues_id: id}) when is_binary(id) do
+    case Repo.one(from r in Run, where: r.dispatch_run_id == ^id, limit: 1) do
+      %Run{} = paused -> Run.session_provider_ids(paused, paused.paused_session)
+      nil -> nil
+    end
+  end
+
+  defp start_provider_ids(_run), do: nil
+
   # The stage of `run`, a run of the queue, where the stage has `shared_run: true` and the
   # run is no run of Explore; nil for any other run.
   defp shared_stage(%DispatchRun{
@@ -566,15 +642,18 @@ defmodule Apiary.Stages do
   # escalation, open questions, the gate, or the next stage, whose run is queued through
   # today's dispatch). `next` has `session`, Qory Apiary's number for it in the run,
   # `workflow`, `time_limit_minutes` and `full_suite` (the settings of its entry as the
-  # claim kept them, `claim_sessions!/2`), `inputs` (the run's inputs,
-  # `Apiary.Dispatches.Inputs.explore/4`), and `model_choice` and `model_credential`,
-  # both nil: no model choice or key is resolved per session here.
+  # claim kept them, `claim_sessions!/3`), `inputs` (the run's inputs,
+  # `Apiary.Dispatches.Inputs.explore/4`), and `model_choice` and `model_credential`, the
+  # runtime and model of the entry's workflow and the credential the session joins with,
+  # as the claim kept them (`claim_sessions!/3`); each nil where the claim kept none. With
+  # no `model_credential`, the session joins with the group of the run's default model
+  # provider credential.
   #
   # The step is recorded with its result, and a repeat for the same `session` returns
   # that result and steps nothing. Errors, with nothing written:
   # `{:error, :not_found}` for an unknown run, a run of Explore, a run of a stage
   # without `shared_run`, and a run that no claim of a shared stage registered
-  # (`claim_sessions!/2`); `{:error, :invalid_request}` for a report of another form;
+  # (`claim_sessions!/3`); `{:error, :invalid_request}` for a report of another form;
   # `{:error, :run_ended}` for a run that ended, that the stage no longer runs, whose work
   # item is placed in another process version whose stage is gone or has other entries
   # than the run's, whose next entry has no settings the claim kept, or whose last step
@@ -678,7 +757,7 @@ defmodule Apiary.Stages do
   end
 
   # The settings of the entries of the run's stage, as its claim kept them on its run
-  # record (`claim_sessions!/2`); `:not_found` for a run no such claim registered.
+  # record (`claim_sessions!/3`); `:not_found` for a run no such claim registered.
   defp session_settings(%DispatchRun{id: id}) do
     case Repo.one(from r in Run, where: r.dispatch_run_id == ^id, select: r.session_settings) do
       %{} = settings -> {:ok, settings}
@@ -710,6 +789,55 @@ defmodule Apiary.Stages do
   end
 
   def newest_session(%DispatchRun{}), do: nil
+
+  # session_credential/2 is the `model_credential` that the claim of `run`, a registered
+  # run of a stage with `shared_run: true`, kept for its session number `session`
+  # (`claim_sessions!/3`): the key whose group that session starts on. The session is the
+  # one a report numbered `session` ended, else the open session (`open_session/1`), the
+  # one a run that paused was in. Nil for a session of the default model provider
+  # credential's group, and for a run with no session settings. `sessions`, the run's
+  # sessions as `session_rows_by_dispatch_run/1` reads them, is read here where it is nil.
+  @doc false
+  @spec session_credential(map, pos_integer, [Session.t()] | nil) :: String.t() | nil
+  def session_credential(run, session, sessions \\ nil)
+
+  def session_credential(
+        %{dispatch_run_id: dispatch_run_id, session_settings: %{} = settings},
+        session,
+        sessions
+      )
+      when is_binary(dispatch_run_id) and is_integer(session) do
+    sessions =
+      sessions || Map.get(session_rows_by_dispatch_run([dispatch_run_id]), dispatch_run_id, [])
+
+    case Enum.find(sessions, &(&1.forager_session == session)) ||
+           Enum.find(sessions, &is_nil(&1.forager_session)) do
+      %Session{stage_entry: entry, loop_entry: loop_entry} when is_integer(entry) ->
+        get_in(settings, [session_place(entry, loop_entry), "model_credential"])
+
+      _none ->
+        nil
+    end
+  end
+
+  def session_credential(_run, _session, _sessions), do: nil
+
+  # session_rows_by_dispatch_run/1 is the stored `Session` rows of the runs of the queue
+  # `dispatch_run_ids`, by run of the queue, each run's newest first: one read for every
+  # run. Unlike `run_sessions/1`, which a page reads by public id, it keeps
+  # `forager_session` and reads no session records or verdicts.
+  @doc false
+  @spec session_rows_by_dispatch_run([Ecto.UUID.t()]) :: %{Ecto.UUID.t() => [Session.t()]}
+  def session_rows_by_dispatch_run([]), do: %{}
+
+  def session_rows_by_dispatch_run(dispatch_run_ids) when is_list(dispatch_run_ids) do
+    Repo.all(
+      from s in Session,
+        where: s.dispatch_run_id in ^Enum.uniq(dispatch_run_ids),
+        order_by: [asc: s.dispatch_run_id, desc: s.sequence]
+    )
+    |> Enum.group_by(& &1.dispatch_run_id)
+  end
 
   # open_session/1 is the newest session of `run` that no report ended
   # (`newest_session/1`): the session a run that paused was in; nil for none.
@@ -780,7 +908,7 @@ defmodule Apiary.Stages do
 
   # The work item's stage, while the run is the newest of that stage, the stage runs, and
   # the stage has the entries it had in the process version the run was claimed for: the
-  # settings the claim kept are that version's (`claim_sessions!/2`). A work item moved to
+  # settings the claim kept are that version's (`claim_sessions!/3`). A work item moved to
   # another version whose stage is gone or has other entries ends the run as a stage that
   # no longer runs it does. Another version whose stage differs only in its entries'
   # machine types, such as a machine type's new key (`Apiary.Processes.rekey_machine/3`),
@@ -923,9 +1051,8 @@ defmodule Apiary.Stages do
       "next" => "session",
       "session" => pending.sequence + 1,
       "workflow" => spec.workflow,
-      # No model choice or key is resolved per session here: both are nil.
-      "model_choice" => nil,
-      "model_credential" => nil,
+      "model_choice" => entry["model_choice"],
+      "model_credential" => entry["model_credential"],
       "time_limit_minutes" => entry["time_limit_minutes"],
       "full_suite" => entry["full_suite"],
       "inputs" => %{}

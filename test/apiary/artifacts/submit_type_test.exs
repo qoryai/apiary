@@ -341,7 +341,7 @@ defmodule Apiary.Artifacts.SubmitTypeTest do
     @template %{
       submit: %{"type" => "submission", "send" => "after_gate"},
       artifact_types: [
-        %{"name" => "explainer"},
+        %{"name" => "walkthrough"},
         %{
           "name" => "submission",
           "base_view" => "structured",
@@ -360,7 +360,7 @@ defmodule Apiary.Artifacts.SubmitTypeTest do
     end
 
     test "has no schema when the template lists none for the submit type" do
-      template = %{@template | artifact_types: [%{"name" => "explainer"}]}
+      template = %{@template | artifact_types: [%{"name" => "walkthrough"}]}
       record = Processes.with_submit(%{"source" => "repository"}, template)
       refute Map.has_key?(record, "submit_schema")
 

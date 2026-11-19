@@ -108,8 +108,8 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
   describe "a version's page" do
     test "shows a document's Markdown with no raw HTML, and its diagram for the hook", ctx do
-      pushed!(ctx, "explainer", [{"plan.md", "# First"}])
-      version = pushed!(ctx, "explainer", [{"plan.md", @document}], note: "Second pass")
+      pushed!(ctx, "walkthrough", [{"plan.md", "# First"}])
+      version = pushed!(ctx, "walkthrough", [{"plan.md", @document}], note: "Second pass")
 
       # The files are read and rendered once, on the connected mount: the first render,
       # the one a GET answers, has an empty block.
@@ -120,8 +120,8 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       {:ok, view, html} = live(ctx.conn, page(ctx, version))
       assert html =~ "q-ticket-formatted"
 
-      assert has_element?(view, "#artifact-header-title", "explainer v2")
-      assert has_element?(view, "#artifact-type", "explainer")
+      assert has_element?(view, "#artifact-header-title", "walkthrough v2")
+      assert has_element?(view, "#artifact-type", "walkthrough")
       assert has_element?(view, "#artifact-number", "2")
       short = "Run #{ctx.claimed.number}"
       run_page = "/#{ctx.scope.organisation.slug}/#{ctx.scope.workspace.slug}/runs/"
@@ -563,7 +563,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
         set: [round: 2]
       )
 
-      version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
+      version = pushed!(ctx, "walkthrough", [{"plan.md", "# First"}])
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))
       writer = "Run #{ctx.claimed.number} · round 2"
       assert has_element?(view, "#artifact-writer a", writer)
@@ -573,7 +573,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
         explore_run_fixture(ctx.work_item, state: :waiting, registered: false)
 
       {:ok, by_unclaimed} =
-        Artifacts.push({:run, unclaimed}, ctx.work_item, "explainer", [
+        Artifacts.push({:run, unclaimed}, ctx.work_item, "walkthrough", [
           %{filename: "plan.md", binary: "# Second"}
         ])
 
@@ -583,7 +583,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
     end
 
     test "names the run without a link for a reader who may not read runs", ctx do
-      pushed!(ctx, "explainer", [{"plan.md", "# First"}])
+      pushed!(ctx, "walkthrough", [{"plan.md", "# First"}])
       [%{versions: [version]}] = Artifacts.list(ctx.work_item)
       short = "Run #{ctx.claimed.number}"
 
@@ -606,7 +606,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       ticket = backlog_ticket_fixture(ctx.scope, connection: connection)
       {:ok, work_item} = WorkItems.take_in(ctx.scope, ticket.public_id)
       %{dispatch_run: run, run: claimed} = explore_run_fixture(work_item, state: :handed_over)
-      pushed!(%{ctx | run: run, work_item: work_item}, "explainer", [{"plan.md", "# First"}])
+      pushed!(%{ctx | run: run, work_item: work_item}, "walkthrough", [{"plan.md", "# First"}])
 
       there = workspace_scope(ctx.scope.user, workspace_fixture(ctx.scope.organisation))
 
@@ -625,7 +625,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
     test "offers a document over 256 KiB as a download, not shown", ctx do
       assert ApiaryWeb.ArtifactLive.Markdown.max_bytes() == 262_144
       large = "# Large\n" <> String.duplicate("a", 262_144)
-      version = pushed!(ctx, "explainer", [{"plan.md", large}])
+      version = pushed!(ctx, "walkthrough", [{"plan.md", large}])
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))
 
       assert render(view) =~ "This document is too large to show here. Download it to read it."
@@ -633,7 +633,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       refute has_element?(view, "h3", "Large")
 
       # At 256 KiB the same document is shown.
-      fits = pushed!(ctx, "explainer", [{"plan.md", binary_part(large, 0, 262_144)}])
+      fits = pushed!(ctx, "walkthrough", [{"plan.md", binary_part(large, 0, 262_144)}])
       {:ok, view, _html} = live(ctx.conn, page(ctx, fits))
       assert has_element?(view, "h3", "Large")
     end
@@ -675,14 +675,14 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
     end
 
     test "stops reading the history once the reader loses the work item", ctx do
-      version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
+      version = pushed!(ctx, "walkthrough", [{"plan.md", "# First"}])
       %{user: member, membership: membership} = member_fixture(ctx.scope, :member)
       {:ok, view, _html} = live(log_in_user(build_conn(), member), page(ctx, version))
       listeners = Registry.lookup(Apiary.PubSub, Artifacts.topic(ctx.work_item))
       assert Enum.any?(listeners, fn {pid, _value} -> pid == view.pid end)
 
       Apiary.Repo.delete!(membership)
-      newer = pushed!(ctx, "explainer", [{"plan.md", "# Second"}])
+      newer = pushed!(ctx, "walkthrough", [{"plan.md", "# Second"}])
 
       refute has_element?(view, "#artifact-history-#{newer.public_id}")
 
@@ -692,17 +692,17 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
     end
 
     test "lists a withdrawal as Withdrew, with its artifact and version", ctx do
-      version = pushed!(ctx, "explainer", [{"plan.md", "# First"}], name: "scenario-2")
+      version = pushed!(ctx, "walkthrough", [{"plan.md", "# First"}], name: "scenario-2")
 
       {:ok, withdrawal} =
-        Artifacts.withdraw({:run, ctx.run}, ctx.work_item, "explainer", name: "scenario-2")
+        Artifacts.withdraw({:run, ctx.run}, ctx.work_item, "walkthrough", name: "scenario-2")
 
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))
 
       assert has_element?(
                view,
                "#artifact-history-#{withdrawal.public_id} a",
-               "Withdrew explainer scenario-2 (version 2)"
+               "Withdrew walkthrough scenario-2 (version 2)"
              )
 
       assert has_element?(view, "#artifact-history-#{version.public_id} a", "Version 1")
@@ -734,17 +734,17 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
     end
 
     test "a withdrawal's own page reads as a withdrawal, with no view and no file list", ctx do
-      version = pushed!(ctx, "explainer", [{"plan.md", "# First"}], name: "scenario-2")
+      version = pushed!(ctx, "walkthrough", [{"plan.md", "# First"}], name: "scenario-2")
 
       {:ok, withdrawal} =
-        Artifacts.withdraw({:run, ctx.run}, ctx.work_item, "explainer", name: "scenario-2")
+        Artifacts.withdraw({:run, ctx.run}, ctx.work_item, "walkthrough", name: "scenario-2")
 
       {:ok, view, _html} = live(ctx.conn, page(ctx, withdrawal))
 
       assert has_element?(
                view,
                "#artifact-withdrawn",
-               "Withdrew explainer scenario-2 (version 2)"
+               "Withdrew walkthrough scenario-2 (version 2)"
              )
 
       refute has_element?(view, "#artifact-view-part")
@@ -762,20 +762,20 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
       assert Components.plain_name("demo-video", "scenario-1") == "demo video scenario-1"
       assert Components.plain_name("demo-video", "main") == "demo video"
-      assert Components.plain_name("explainer", nil) == "explainer"
+      assert Components.plain_name("walkthrough", nil) == "walkthrough"
     end
 
     test "is read again when a version is pushed to its work item", ctx do
-      version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
+      version = pushed!(ctx, "walkthrough", [{"plan.md", "# First"}])
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))
 
-      newer = pushed!(ctx, "explainer", [{"plan.md", "# Second"}])
+      newer = pushed!(ctx, "walkthrough", [{"plan.md", "# Second"}])
       assert render(view) =~ "Version 2"
       assert has_element?(view, "#artifact-history-#{newer.public_id}")
     end
 
     test "is open to the owner and a member, with no Add a version", ctx do
-      version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
+      version = pushed!(ctx, "walkthrough", [{"plan.md", "# First"}])
       %{user: member} = member_fixture(ctx.scope, :member)
 
       # Neither the owner nor a member has Add a version.
@@ -796,12 +796,12 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert status(ctx.conn, path) == 404
 
       # A version of the same work item has a page.
-      assert status(ctx.conn, page(ctx, pushed!(ctx, "explainer", [{"plan.md", "# First"}]))) ==
+      assert status(ctx.conn, page(ctx, pushed!(ctx, "walkthrough", [{"plan.md", "# First"}]))) ==
                200
     end
 
     test "the page's two columns use the class with the 1007 px breakpoint", ctx do
-      version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
+      version = pushed!(ctx, "walkthrough", [{"plan.md", "# First"}])
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))
 
       assert has_element?(view, ".q-art-cols #artifact-details")
@@ -835,7 +835,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert doc |> LazyHTML.query("section > details.q-xp-sources:last-child") |> Enum.count() ==
                1
 
-      other = pushed!(ctx, "explainer", [{"plan.md", text}])
+      other = pushed!(ctx, "walkthrough", [{"plan.md", text}])
       {:ok, view, _html} = live(ctx.conn, page(ctx, other))
       render_async(view)
 
@@ -845,7 +845,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
     test "a wide table scrolls in a frame on a version's page, and only there", ctx do
       version =
-        pushed!(ctx, "explainer", [{"plan.md", "| A | B |\n|---|---|\n| one | two |\n"}])
+        pushed!(ctx, "walkthrough", [{"plan.md", "| A | B |\n|---|---|\n| one | two |\n"}])
 
       {:ok, view, _html} = live(ctx.conn, page(ctx, version))
       assert has_element?(view, ".q-art-cols .q-ticket-formatted table")
@@ -873,7 +873,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
     end
 
     test "is not found for another work item's version or another workspace", ctx do
-      version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
+      version = pushed!(ctx, "walkthrough", [{"plan.md", "# First"}])
       other = work_item_fixture(ctx.scope)
 
       assert status(
@@ -916,8 +916,8 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
 
   describe "the plain list" do
     test "shows each artifact's newest version, files, writer and check, with links", ctx do
-      pushed!(ctx, "explainer", [{"plan.md", "# First"}])
-      newest = pushed!(ctx, "explainer", [{"plan.md", "# Second"}])
+      pushed!(ctx, "walkthrough", [{"plan.md", "# First"}])
+      newest = pushed!(ctx, "walkthrough", [{"plan.md", "# Second"}])
       pushed!(ctx, "mockup", [{"a.png", @png}, {"b.png", @png}], name: "checkout")
 
       html =
@@ -926,10 +926,10 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
           artifacts: Artifacts.list(ctx.work_item),
           scope: ctx.scope,
           number: ctx.work_item.number,
-          checks: %{"explainer" => :passed}
+          checks: %{"walkthrough" => :passed}
         )
 
-      assert html =~ "explainer v2"
+      assert html =~ "walkthrough v2"
       assert html =~ "mockup checkout v1"
       assert html =~ "2 files"
       assert html =~ "Check passed"
@@ -950,7 +950,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
     @describetag with_features: Apiary.Features.all() -- [:workflow_model]
 
     test "the page is not found", ctx do
-      version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
+      version = pushed!(ctx, "walkthrough", [{"plan.md", "# First"}])
       assert status(ctx.conn, page(ctx, version)) == 404
     end
   end

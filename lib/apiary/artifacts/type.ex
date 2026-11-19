@@ -73,7 +73,7 @@ defmodule Apiary.Artifacts.Type do
   # The standard types: name, base view, size limit, most files, and the dedicated view.
   @standard [
     {"acceptance-criteria", :structured, @mib, 1, nil},
-    {"explainer", :document, @mib, 1, nil},
+    {"walkthrough", :document, @mib, 1, nil},
     {"decision-record", :document, @mib, 1, nil},
     {"mockup", :image, 10 * @mib, 10, nil},
     {"screenshot", :image, 10 * @mib, 10, nil},

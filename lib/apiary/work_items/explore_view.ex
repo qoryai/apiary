@@ -783,6 +783,14 @@ defmodule Apiary.WorkItems.ExploreView do
       # different access, the difference as the harness declares the levels now
       # (`Apiary.Stages.shared_access/1`); nil for none.
       shared_access: shared_access(step.dispatch_run),
+      # For a run that ended before it started as its stage's model choices did not fit
+      # the one run, the fault as the choices are now (`Apiary.Stages.shared_models/1`):
+      # `{:model_choice_missing, workflow, runtime, provider}`, `{:too_many_providers,
+      # count, providers}`, `{:session_key_missing, :machine, first}`,
+      # `{:session_key_missing, :no_key, workflow, provider}` or
+      # `{:session_key_missing, :other_api, workflow, api, provider, earlier}`; nil for
+      # none.
+      shared_models: shared_models(step.dispatch_run),
       adapter_failure: adapter_failure(step.dispatch_run),
       harness_failure: harness_failure(step.dispatch_run),
       workflow_gap: workflow_gap(step, work_item),
@@ -840,6 +848,16 @@ defmodule Apiary.WorkItems.ExploreView do
   end
 
   defp shared_access(_dispatch_run), do: nil
+
+  defp shared_models(%{end_cause: cause} = dispatch_run)
+       when cause in [:model_choice_missing, :too_many_providers, :session_key_missing] do
+    case Apiary.Stages.shared_models(dispatch_run) do
+      {:error, %{detail: detail}} -> detail
+      :ok -> nil
+    end
+  end
+
+  defp shared_models(_dispatch_run), do: nil
 
   defp confirmed_result(
          %{take_in: take_in, attempt: attempt},

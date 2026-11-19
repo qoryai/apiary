@@ -651,6 +651,68 @@ defmodule ApiaryWeb.StagesLive.Words do
     )
   end
 
+  # A stage with `shared_run: true` whose workflow has no model choice, while its runs can
+  # start on a provider that the workflow's runtime cannot use
+  # (`Apiary.Processes.shared_models/3`).
+  def refusal(
+        %{error: :model_choice_missing, detail: {_kind, workflow, runtime, provider}},
+        _doc
+      ),
+      do:
+        gettext(
+          "Choose a model for workflow %{workflow}. Without one it runs on %{runtime}, and this stage's runs can start on %{provider}, which %{runtime} cannot use.",
+          workflow: workflow,
+          runtime: runtime,
+          provider: provider
+        )
+
+  # A stage with `shared_run: true` whose workflow's session would have no key in the
+  # run (`Apiary.Processes.shared_models/3`): the first workflow has no model choice and
+  # runs on the machine's local model provider credential; its provider has no model key;
+  # or its runtime uses another API of the provider that an earlier workflow uses.
+  def refusal(%{error: :session_key_missing, detail: {_kind, :machine, first}}, _doc),
+    do:
+      gettext(
+        "Choose a model for workflow %{first}, or remove the model choices of the later workflows. Without a model, %{first} runs on the machine's local model provider credential, so later workflows get no model provider credential.",
+        first: first
+      )
+
+  def refusal(
+        %{error: :session_key_missing, detail: {_kind, :no_key, workflow, provider}},
+        _doc
+      ),
+      do:
+        gettext(
+          "Add a model key to %{provider}, or choose a model of another provider for workflow %{workflow}. %{provider} has no model key.",
+          workflow: workflow,
+          provider: provider
+        )
+
+  def refusal(
+        %{
+          error: :session_key_missing,
+          detail: {_kind, :other_api, workflow, api, provider, earlier}
+        },
+        _doc
+      ),
+      do:
+        gettext(
+          "Choose a model for workflow %{workflow} that uses the %{api} API of %{provider}, as workflow %{earlier} does, or a model of another provider. One run uses one API of each provider.",
+          workflow: workflow,
+          api: api,
+          provider: provider,
+          earlier: earlier
+        )
+
+  # A stage with `shared_run: true` whose workflows use more than 6 model providers.
+  def refusal(%{error: :too_many_providers, detail: {_kind, count, providers}}, _doc),
+    do:
+      gettext(
+        "Use at most 6 model providers in one stage. Its workflows use %{count}: %{providers}.",
+        count: count,
+        providers: Enum.join(providers, ", ")
+      )
+
   # A workflow entry of a stage with `shared_run: true` whose access level or machine type
   # differs from the stage's first entry (`Apiary.Processes.validate/2`); where the
   # harness's level for a workflow lowers its entry's, that workflow, its level, and the

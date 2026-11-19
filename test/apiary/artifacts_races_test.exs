@@ -85,7 +85,7 @@ defmodule Apiary.ArtifactsRacesTest do
       together(
         for n <- 1..sides do
           fn ->
-            Artifacts.push({:run, run}, work_item, "explainer", [
+            Artifacts.push({:run, run}, work_item, "walkthrough", [
               %{filename: "v#{n}.md", content_type: "text/markdown", binary: "# Version #{n}"}
             ])
           end
@@ -121,7 +121,7 @@ defmodule Apiary.ArtifactsRacesTest do
 
     push =
       start(fn ->
-        Artifacts.push({:run, run}, work_item, "explainer", [
+        Artifacts.push({:run, run}, work_item, "walkthrough", [
           %{filename: "plan.md", content_type: "text/markdown", binary: "# Plan"}
         ])
       end)
@@ -168,16 +168,16 @@ defmodule Apiary.ArtifactsRacesTest do
   test "a push that comes after a switch off waits for it, and then finds the type hidden",
        %{scope: scope, work_item: work_item, run: run} do
     {held, holder} =
-      hold(fn -> Artifacts.switch_type(scope, scope.workspace, "explainer", false) end)
+      hold(fn -> Artifacts.switch_type(scope, scope.workspace, "walkthrough", false) end)
 
     assert {:ok, %Type{shown: false}} = held.result
 
-    push = start(fn -> Artifacts.push({:run, run}, work_item, "explainer", plan()) end)
+    push = start(fn -> Artifacts.push({:run, run}, work_item, "walkthrough", plan()) end)
 
     await_blocked(push.backend, holder)
     commit(held)
 
-    assert {:error, {:unknown_type, "explainer"}} = Task.await(push.task, 15_000)
+    assert {:error, {:unknown_type, "walkthrough"}} = Task.await(push.task, 15_000)
     assert Repo.all(from a in Artifact, where: a.work_item_id == ^work_item.id) == []
   end
 
@@ -187,11 +187,11 @@ defmodule Apiary.ArtifactsRacesTest do
     shown = Repo.get!(Workspace, scope.workspace.id).shown_standard_types
 
     {held, holder} =
-      hold(fn -> Artifacts.push({:run, run}, work_item, "explainer", plan()) end)
+      hold(fn -> Artifacts.push({:run, run}, work_item, "walkthrough", plan()) end)
 
     assert {:ok, %Version{}} = held.result
 
-    switch = start(fn -> Artifacts.switch_type(scope, scope.workspace, "explainer", false) end)
+    switch = start(fn -> Artifacts.switch_type(scope, scope.workspace, "walkthrough", false) end)
 
     await_blocked(switch.backend, holder)
     commit(held)
@@ -205,7 +205,7 @@ defmodule Apiary.ArtifactsRacesTest do
        %{scope: scope} do
     document = Processes.default_document("software")
     [first | rest] = document["stages"]
-    output = %{"type" => "explainer", "required" => true}
+    output = %{"type" => "walkthrough", "required" => true}
     first = Map.update!(first, "outputs", &(&1 ++ [output]))
 
     {held, holder} =
@@ -215,7 +215,7 @@ defmodule Apiary.ArtifactsRacesTest do
 
     assert {:ok, %Processes.Version{}} = held.result
 
-    switch = start(fn -> Artifacts.switch_type(scope, scope.workspace, "explainer", false) end)
+    switch = start(fn -> Artifacts.switch_type(scope, scope.workspace, "walkthrough", false) end)
 
     await_blocked(switch.backend, holder)
     commit(held)
@@ -249,7 +249,7 @@ defmodule Apiary.ArtifactsRacesTest do
 
       document = Processes.default_document("software")
       [first | rest] = document["stages"]
-      output = %{"type" => "explainer", "required" => true}
+      output = %{"type" => "walkthrough", "required" => true}
       first = Map.update!(first, "outputs", &(&1 ++ [output]))
 
       {held, holder} =

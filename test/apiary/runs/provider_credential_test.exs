@@ -16,7 +16,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
   alias Apiary.{Connections, Policy, Repo}
   alias Apiary.Connections.Connection
   alias Apiary.Policy.{ComposedConfiguration, Render, Rule}
-  alias Apiary.Runs.{ProviderCredential, Registration, Run}
+  alias Apiary.Runs.{ModelKey, ProviderCredential, Registration, Run}
 
   @moduletag needs: :factory
   # Without the `registry` feature, whose members `ApiaryWeb.RegistryTokenTest`
@@ -81,6 +81,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       assert Jason.decode!(document)["credentials"] == [
                %{
                  "name" => name,
+                 "group" => ctx.provider.public_id,
                  "format" => "anthropic-messages",
                  "endpoint" => "https://api.anthropic.com",
                  "auth" => %{"scheme" => "header", "header" => "x-api-key"},
@@ -101,7 +102,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
 
       # No key, no secret id, no value id.
       refute document =~ model_key()
-      refute document =~ Repo.get!(Apiary.Secrets.Secret, ctx.run.provider_secret_id).public_id
+      refute document =~ Repo.get!(Apiary.Secrets.Secret, ctx.provider.secret_id).public_id
       refute document =~ ~s("main")
 
       # The reload returns the same bytes, under the same digest, which the run keeps.
@@ -140,14 +141,14 @@ defmodule Apiary.Runs.ProviderCredentialTest do
     end
 
     test "every run of the provider names its start key by the provider and its place", ctx do
-      %{run: run} = ctx
+      run = Repo.preload(ctx.run, :model_keys)
       {:ok, credential} = ProviderCredential.for_run(run)
       {:ok, again} = ProviderCredential.for_run(%{run | id: Ecto.UUID.generate()})
       assert credential.name == again.name
       assert credential.name == "#{ctx.provider.public_id}-1"
       assert [%{name: name, secret_value_id: id}] = credential.keys
       assert name == credential.name
-      assert [%{"id" => ^id}] = run.model_keys
+      assert [%ModelKey{secret_value_id: ^id}] = run.model_keys
     end
 
     test "a provider row that fails its integrity code leaves no run configuration", ctx do
@@ -163,9 +164,15 @@ defmodule Apiary.Runs.ProviderCredentialTest do
     end
 
     test "a run whose provider is gone has no run configuration", ctx do
+      # A deleted provider's row leaves the run and its key rows with no provider.
       {1, _rows} =
         Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
           set: [provider_connection_id: nil]
+        )
+
+      {1, _rows} =
+        Repo.update_all(from(k in ModelKey, where: k.run_id == ^ctx.run.id),
+          set: [connection_id: nil]
         )
 
       {answer, _log} = with_log(fn -> reload(ctx) end)
@@ -330,21 +337,30 @@ defmodule Apiary.Runs.ProviderCredentialTest do
           keys: [%{value_id: "main", value: "sk-team"}]
         })
 
-      run = %{
-        provider_connection_id: litellm.id,
-        provider_api: %{
+      key = %ModelKey{
+        position: 1,
+        name: "model-1",
+        start: true,
+        secret_value_id: Ecto.UUID.generate(),
+        connection_id: litellm.id,
+        secret_id: litellm.secret_id,
+        chain: "organisation",
+        api: %{
           "format" => "anthropic-messages",
           "endpoint" => "https://litellm.example.com",
           "auth" => %{"scheme" => "bearer"}
         },
-        model_keys: [%{"id" => Ecto.UUID.generate(), "name" => "model-1", "pause_for_s" => 60}]
+        pause_for_s: 60
       }
+
+      run = %{provider_connection_id: litellm.id, model_keys: [key]}
 
       assert {:ok, %{hosts: ["litellm.example.com"], keys: [%{entry: entry}]}} =
                ProviderCredential.for_run(run)
 
       assert Jason.encode!(entry) ==
-               ~s({"name":"model-1","format":"anthropic-messages",) <>
+               ~s({"name":"model-1","group":"#{litellm.public_id}",) <>
+                 ~s("format":"anthropic-messages",) <>
                  ~s("endpoint":"https://litellm.example.com","auth":{"scheme":"bearer"},) <>
                  ~s("pause_for_s":60})
     end

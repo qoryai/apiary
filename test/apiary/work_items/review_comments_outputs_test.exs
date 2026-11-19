@@ -14,7 +14,7 @@ defmodule Apiary.WorkItems.ReviewCommentsOutputsTest do
 
   @moduletag needs: [:factory, :workflow_model]
 
-  @other "explainer"
+  @other "walkthrough"
 
   setup do
     %{scope: scope} = sign_up_fixture()
