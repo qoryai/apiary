@@ -2367,7 +2367,7 @@ defmodule Apiary.StagesTest do
           paused
           |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended)
           |> Repo.update!()
-          |> Apiary.Dispatches.requeue_for_pause(nil)
+          |> Apiary.Dispatches.requeue_for_pause(nil, nil)
         end)
 
       assert %DispatchRun{attempt: 2, round: 1} = continuation

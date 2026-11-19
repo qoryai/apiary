@@ -116,6 +116,9 @@ defmodule ApiaryWeb.WorkItemComponents do
     :target_access_gone,
     :write_without_work_item,
     :shared_access_differs,
+    :model_choice_missing,
+    :too_many_providers,
+    :session_key_missing,
     :build_failed
   ]
   # The walk's failure codes that `ApiaryWeb.HarnessComponents.public_read_words/2` words.
@@ -2193,7 +2196,8 @@ defmodule ApiaryWeb.WorkItemComponents do
     * a run without a result (no result, lost, at its time limit or cancelled): what
       happened, and the run's page; for a run that ended at its claim, before it started
       (`:end_cause` `:variables_invalid`, `:ticket_gone`, `:inputs_invalid`, `:target_access_gone`,
-      `:write_without_work_item` or `:shared_access_differs`),
+      `:write_without_work_item`, `:shared_access_differs`, `:model_choice_missing`,
+      `:too_many_providers` or `:session_key_missing`),
       while it waited for its environment image's build, which failed (`:build_failed`),
       or because its harness walk failed (`:harness_unresolved`, with
       `:harness_failure`), what a member fixes and why; for a run whose harness had no
@@ -7276,6 +7280,68 @@ defmodule ApiaryWeb.WorkItemComponents do
             other: other
           )}
 
+  # A run whose stage's workflows share one run, whose model choices still do not fit the
+  # one run (`Apiary.Stages.shared_models/1`): the fix, with the values of that check.
+  defp no_result_words(
+         %{
+           end_cause: :model_choice_missing,
+           shared_models: {:model_choice_missing, workflow, runtime, provider}
+         },
+         _earlier
+       ),
+       do:
+         {"hero-exclamation-triangle-micro", gettext("The run did not start."),
+          gettext(
+            "Choose a model for workflow %{workflow}. Without one it runs on %{runtime}, and this stage's runs can start on %{provider}, which %{runtime} cannot use.",
+            workflow: workflow,
+            runtime: runtime,
+            provider: provider
+          )}
+
+  defp no_result_words(
+         %{
+           end_cause: :too_many_providers,
+           shared_models: {:too_many_providers, count, providers}
+         },
+         _earlier
+       ),
+       do:
+         {"hero-exclamation-triangle-micro", gettext("The run did not start."),
+          gettext(
+            "Use at most 6 model providers in one stage. Its workflows use %{count}: %{providers}.",
+            count: count,
+            providers: Enum.join(providers, ", ")
+          )}
+
+  # A run whose stage's workflow's session would still have no key in the run: the fix of
+  # the save, with the values of that check (`ApiaryWeb.StagesLive.Words.refusal/2`).
+  defp no_result_words(
+         %{
+           end_cause: :session_key_missing,
+           shared_models: {:session_key_missing, _, _} = detail
+         },
+         _earlier
+       ),
+       do: session_key_words(detail)
+
+  defp no_result_words(
+         %{
+           end_cause: :session_key_missing,
+           shared_models: {:session_key_missing, _, _, _} = detail
+         },
+         _earlier
+       ),
+       do: session_key_words(detail)
+
+  defp no_result_words(
+         %{
+           end_cause: :session_key_missing,
+           shared_models: {:session_key_missing, _, _, _, _, _} = detail
+         },
+         _earlier
+       ),
+       do: session_key_words(detail)
+
   # A run whose stage's entries set different access, with no harness level between them.
   defp no_result_words(%{end_cause: :shared_access_differs, shared_access: :access}, _earlier),
     do:
@@ -7327,6 +7393,13 @@ defmodule ApiaryWeb.WorkItemComponents do
            ),
          else: gettext("The run's last result was an error. There is nothing to show or approve.")
        )}
+
+  # The line of a run that ended `session_key_missing` while that fault remains: the
+  # save's fix, with its values.
+  defp session_key_words(detail),
+    do:
+      {"hero-exclamation-triangle-micro", gettext("The run did not start."),
+       StagesWords.refusal(%{error: :session_key_missing, detail: detail}, nil)}
 
   # What is left to read below a run with no result: a proposal of an earlier round
   # (`earlier`), or nothing.
@@ -7696,6 +7769,24 @@ defmodule ApiaryWeb.WorkItemComponents do
     do:
       gettext(
         "Run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."
+      )
+
+  defp unstarted_words(:model_choice_missing),
+    do:
+      gettext(
+        "Run the round again. A workflow of the stage had no model, and that workflow's runtime could not use the provider that the run would start on."
+      )
+
+  defp unstarted_words(:session_key_missing),
+    do:
+      gettext(
+        "Run the round again. A workflow of the stage would run on a provider that has no key in the run, or on a second API of a provider that an earlier workflow uses."
+      )
+
+  defp unstarted_words(:too_many_providers),
+    do:
+      gettext(
+        "Run the round again. The workflows of the stage used more than 6 model providers, and one run takes keys of at most 6."
       )
 
   defp unstarted_words(:build_failed),

@@ -1,6 +1,6 @@
 defmodule Apiary.Stages.SharedRunTest do
   # The entries of a stage with `shared_run: true` run as sessions of one run: what the
-  # claim keeps (`Apiary.Stages.claim_sessions!/2`), the step on each session's end
+  # claim keeps (`Apiary.Stages.claim_sessions!/3`), the step on each session's end
   # (`Apiary.Stages.next_session/2`), the sessions it records, and the run's end at the
   # first outcome that queues no workflow of the stage.
   # Not async: the artifact store is the application's setting.
@@ -530,7 +530,7 @@ defmodule Apiary.Stages.SharedRunTest do
           run
           |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended)
           |> Repo.update!()
-          |> Apiary.Dispatches.requeue_for_pause(nil)
+          |> Apiary.Dispatches.requeue_for_pause(nil, nil)
         end)
 
       assert %DispatchRun{
@@ -621,7 +621,7 @@ defmodule Apiary.Stages.SharedRunTest do
           run
           |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended)
           |> Repo.update!()
-          |> Apiary.Dispatches.requeue_for_pause(nil)
+          |> Apiary.Dispatches.requeue_for_pause(nil, nil)
         end)
 
       {Repo.get!(Run, registered.id), continuation}

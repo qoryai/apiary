@@ -14,7 +14,7 @@ defmodule ApiaryWeb.Contract.SecretsWorkspaceKeyTest do
 
   alias Apiary.{Connections, Repo, SealedOpen, SigningKey}
   alias Apiary.Audit.Entry
-  alias Apiary.Runs.Run
+  alias Apiary.Runs.{ModelKey, Run}
   alias Apiary.Secrets.Secret
   alias ApiaryWeb.Contract.SignedRequest
 
@@ -83,7 +83,12 @@ defmodule ApiaryWeb.Contract.SecretsWorkspaceKeyTest do
 
     {1, _rows} =
       Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
-        set: [provider_connection_id: theirs.id, provider_secret_id: theirs.secret_id]
+        set: [provider_connection_id: theirs.id]
+      )
+
+    {1, _rows} =
+      Repo.update_all(from(k in ModelKey, where: k.run_id == ^ctx.run.id),
+        set: [connection_id: theirs.id, secret_id: theirs.secret_id]
       )
 
     # The digest of what a reload returns now, which contains their provider.

@@ -131,6 +131,7 @@ defmodule Apiary.ModelChoices do
   alias Apiary.ModelChoices.{Fallback, ModelChoice, Resolution}
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Target
+  alias Apiary.Secrets.Value
   alias ApiaryWeb.Format
 
   # A workflow's name.
@@ -265,20 +266,121 @@ defmodule Apiary.ModelChoices do
           uniq: true,
           do: id
 
-    providers =
-      if ids == [] do
-        %{}
-      else
-        Repo.all(
-          from c in Connection,
-            where:
-              c.id in ^ids and c.organisation_id == ^workspace.organisation_id and
-                not is_nil(c.provider_kind) and c.chain == "organisation"
-        )
-        |> Map.new(&{&1.id, resolution_provider(&1)})
-      end
+    rows = provider_rows(workspace.organisation_id, input.choices, ids)
 
-    Map.put(input, :providers, providers)
+    input
+    |> Map.put(:providers, Map.new(rows, &{&1.id, resolution_provider(&1)}))
+    |> Map.put(:rows, rows)
+  end
+
+  # The provider rows of the organisation's chain that `choices` and their fallbacks use,
+  # or those of `ids`.
+  defp provider_rows(organisation_id, choices, ids \\ nil) do
+    ids =
+      ids ||
+        for choice <- choices,
+            id <- [choice.connection_id | Enum.map(choice.fallbacks, & &1.connection_id)],
+            is_binary(id),
+            uniq: true,
+            do: id
+
+    if ids == [] do
+      []
+    else
+      Repo.all(
+        from c in Connection,
+          where:
+            c.id in ^ids and c.organisation_id == ^organisation_id and
+              not is_nil(c.provider_kind) and c.chain == "organisation"
+      )
+    end
+  end
+
+  @doc false
+  # shared_models/3 is the model choices of `workflows`, the workflows of a stage with
+  # `shared_run: true` of `workspace`, at `target` (nil for none: the workspace's levels
+  # 4 to 6), as `Apiary.Processes.shared_models/3` takes them: `choices`, each workflow's
+  # resolution by its name (`Apiary.ModelChoices.Resolution.resolve/1`), and `providers`,
+  # the `name`, the catalogue `description` (`Apiary.Connections.provider/1`) and
+  # `keyed`, whether it has a model key, of each provider those choices and their
+  # fallbacks use, by row id, and of `start_ids`, the providers a continuation starts on.
+  # Read without a lock.
+  @spec shared_models(Workspace.t(), Target.t() | nil, [String.t()], [Ecto.UUID.t()]) :: map
+  def shared_models(%Workspace{} = workspace, target, workflows, start_ids \\ [])
+      when is_list(workflows) and is_list(start_ids) do
+    inputs = Map.new(workflows, &{&1, input(workspace, target, &1)})
+    choices = Map.new(inputs, fn {workflow, input} -> {workflow, Resolution.resolve(input)} end)
+
+    rows =
+      Enum.flat_map(Map.values(inputs), &Map.get(&1, :rows, [])) ++
+        provider_rows(workspace.organisation_id, [], start_ids)
+
+    %{choices: choices, providers: described_providers(rows)}
+  end
+
+  @doc false
+  # default_models/1 is what `shared_models/3` returns for a workspace not yet made in the
+  # organisation `organisation` (a scope or the organisation): only its default (level 6)
+  # reaches it. The default choice, with its fallbacks and their providers, resolved once
+  # (`Apiary.ModelChoices.Resolution.resolve/1`, which places a level-6 choice whatever
+  # the workspace and the workflow), is `default`, the choice of every workflow. Read
+  # without a lock.
+  @spec default_models(Scope.t() | Organisation.t()) :: map
+  def default_models(%Scope{organisation: %Organisation{} = organisation}),
+    do: default_models(organisation)
+
+  def default_models(%Organisation{id: organisation_id}) do
+    choices =
+      Repo.all(
+        from c in ModelChoice,
+          where: c.organisation_id == ^organisation_id and c.chain == "organisation",
+          where: is_nil(c.workspace_id),
+          preload: :fallbacks
+      )
+
+    rows = provider_rows(organisation_id, choices)
+
+    input = %{
+      choices: choices,
+      workspace_id: nil,
+      target_id: nil,
+      workflow: nil,
+      providers: Map.new(rows, &{&1.id, resolution_provider(&1)}),
+      default_runtime: default_runtime().name,
+      effort_values: Map.new(Runtimes.list(), &{&1.name, &1.effort_values})
+    }
+
+    %{choices: %{}, default: Resolution.resolve(input), providers: described_providers(rows)}
+  end
+
+  # Each provider's name, catalogue description and whether it has a model key
+  # (`keyed`), by row id.
+  defp described_providers(rows) do
+    rows = Enum.uniq_by(rows, & &1.id)
+    keyed = keyed_secrets(rows)
+
+    Map.new(rows, fn row ->
+      {row.id,
+       %{
+         name: row.name,
+         description: Connections.provider(row),
+         keyed: MapSet.member?(keyed, row.secret_id)
+       }}
+    end)
+  end
+
+  # The ids of the secrets of `rows` that have at least one value: a provider's keys are
+  # the values of its secret.
+  defp keyed_secrets(rows) do
+    case rows |> Enum.map(& &1.secret_id) |> Enum.filter(&is_binary/1) do
+      [] ->
+        MapSet.new()
+
+      ids ->
+        from(v in Value, where: v.secret_id in ^ids, distinct: true, select: v.secret_id)
+        |> Repo.all()
+        |> MapSet.new()
+    end
   end
 
   @doc false

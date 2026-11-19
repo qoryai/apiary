@@ -277,6 +277,37 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   then compares the levels again and ends such a run before it starts, with the end
   cause `shared_access_differs` and the outcome error. Owners and admins see
   an escalation with the save's fix and "then run the round again" after it.
+- A save of a stage with `shared_run: true` fails when its workflows, their later steps
+  included (the default step under a workflow's override, then the fallbacks), use more
+  than 6 model providers, as one run takes keys of at most 6. The error is "Use at most
+  6 model providers in one stage. Its workflows use 7: Northwind, …". The save also
+  fails when a workflow has no model choice and the stage's runs can start on a provider
+  that the default runtime cannot use. That error is "Choose a model for workflow
+  review. Without one it runs on Claude Code, and this stage's runs can start on
+  Northwind, which Claude Code cannot use." Update from harness shows the same lines.
+  Making a workspace from a template shows the line alone, checked against the
+  organisation's default. The claim checks both again, as a changed default provider, a
+  cleared model choice or a harness change can break them after the save. It ends such a
+  run before it starts, with the end cause `too_many_providers` or
+  `model_choice_missing` and the outcome error. The work item and the stop line show the
+  same fix while the fault remains, and "Run the round again." once it is gone.
+- A save of a stage with `shared_run: true` also fails, in three cases, where a later
+  session would get no model key in the run. First, a later workflow's provider has no
+  model key, and neither has a provider of its later steps (the default step under a
+  workflow's override, then the fallbacks). The error is "Add a model key to Checkout,
+  or choose a model of another provider for workflow review. Checkout has no model key."
+  Second, a workflow's runtime uses another API of a provider that an earlier workflow
+  uses, as one run uses one API of each provider. The error is "Choose a model for
+  workflow review that uses the Anthropic Messages API of Northwind, as workflow plan
+  does, or a model of another provider. One run uses one API of each provider." Third,
+  the first workflow has no model choice, and a later workflow's choice is on a model
+  provider. The error is "Choose a model for workflow plan, or remove the model choices
+  of the later workflows. Without a model, plan runs on the machine's local model
+  provider credential, so later workflows get no model provider credential." A later
+  workflow with no model choice, which runs on the default runtime, never fails the
+  save. The claim checks all three again and ends such a run before it starts, with the
+  end cause `session_key_missing` and the outcome error. The work item and the stop line
+  show the same fix while the fault remains, and "Run the round again." once it is gone.
 - `full_suite` is `true` only for a session of an entry with access `write` that is in a
   loop or has `first_attempt`, whether the stage has `shared_run` or not. A run with
   access `read` or `write-no-push`, and a run of Explore, gets `false` for every session.
@@ -1869,6 +1900,41 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+<!-- feature: factory -->
+- The claim builds an Explore run's `run_settings`, a stage's runs among them, with the
+  feature `factory` or `secrets` off too: the choice's runtime and model, no model key,
+  and, with `factory` off, no `time_limit_minutes`. A pool claims a run only with
+  `factory` on, and `factory` needs `secrets`, so a claimed run gets the same
+  `run_settings` as before. The runtime and model come from the first model choice in
+  this order: a locked choice of the workspace, the workflow's choice at the run's
+  target, the target's choice, the workflow's choice at the workspace, the workspace's on
+  Workspace settings › Model, and the organisation's default. With no choice,
+  `run_settings` has the catalogue's default runtime alone, and the run uses the
+  gateway's key. A prebuild gets no `run_settings`.
+<!-- /feature -->
+<!-- feature: workflow_model -->
+- The answer to a next-session request has `model_choice`, the runtime and model of the
+  session's workflow, resolved in the same order at the claim. Each session runs on the
+  runtime of its workflow, or on the run's runtime where `model_choice` is the run's
+  `run_settings`. The claim keeps the result for each workflow of the stage, so a model
+  choice saved after the claim changes nothing for the run. `model_choice` has the
+  choice's model on its provider where that provider has a key out of cooldown, else on
+  its first fallback with one, else on its provider; and the run's `run_settings` where
+  the choice's runtime or model is no longer valid, or its runtime is no longer in the
+  catalogue. It has the default runtime alone where the workflow resolves to no model
+  choice at any level: the session uses that runtime's default model. A choice whose
+  provider was removed ends the claim `provider_gone`. Where the session's provider has
+  no key and the keys of its later steps are all in cooldown, the claim leaves the run
+  waiting for those steps' providers. A run takes the keys of each provider its sessions
+  run on, each kept as a row of `run_model_keys`. The claim picks at most 6 keys in this
+  order: the start key's provider's keys, then one key of each other provider, then the
+  rest; `credentials` lists them provider by provider, the start key's provider first.
+  Each key's entry in the run configuration has `group`, its provider's public id, so
+  the gateway rotates each provider's keys apart from the others. For a session on a key
+  of a provider other than the start key's, the answer has `model_credential`, the key
+  that session starts on; without it, the session joins the group of the run's start
+  key.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - On the tab of a stage with `shared_run: true`, each run of the stage is a fold in the
   runs fold: "Attempt 3 (Run 3) · 4 workflows · round 2 of 3 · passed · 2 minutes ago", or
@@ -2690,6 +2756,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Fixed
 
+<!-- feature: factory, secrets -->
+- A Codex run that Forager ends `paused` with `model_key_switch`, as its key is out while
+  another key of the run is usable, is Paused, where it read as failed. The run that
+  continues it resumes the session that paused, once 60 seconds have passed after the
+  exit, so that the run's model keys report is recorded first. A paused run waits for the
+  keys of the provider of the session that paused, and its Paused line shows that
+  provider.
+<!-- /feature -->
+
 <!-- feature: factory -->
 - When an Explore run ends at its time limit, the work item page reads that the time
   limit was reached, where it read that the run was cancelled. The header and the step
@@ -2931,6 +3006,27 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Migrations
 
 <!-- feature: factory, secrets -->
+- `dispatch_runs` and `dispatches` (20261118162000): the checks on `end_cause` and on
+  `dispatch_runs.result_outcome` take the causes `model_choice_missing` and
+  `too_many_providers`. Each new check scans its table as it is added, under a lock that
+  blocks reads and writes. It changes no row.
+- `dispatch_runs` and `dispatches` (20261118162400): the checks on `end_cause` and on
+  `dispatch_runs.result_outcome` take the cause `session_key_missing`. Each new check
+  scans its table as it is added, under a lock that blocks reads and writes. It changes
+  no row.
+- `run_model_keys` (20261118162100): a new table, one row for each model key a run's
+  claim stored, at most 6 per run, with its foreign keys to `runs`,
+  `organisation_connections` and `secrets`, and its indexes and checks. It changes no
+  existing table.
+- `runs` (20261118162200): the columns `provider_secret_id`, `provider_chain`,
+  `provider_api` and `model_keys` and their checks are dropped; `provider_connection_id`
+  stays. No run's keys are copied, so a run claimed before the upgrade and still running
+  has no key rows: its run configuration no longer has its model keys, and its gateway's
+  secrets request is refused `410` `run_configuration_superseded`. Rolled back, the
+  columns come back, filled from the key rows of each run's start key's provider.
+- `dispatch_runs` (20261118162300): a nullable column `report_wait_until`, the end of the
+  report window of a run that continues a run paused with `model_key_switch`. It changes
+  no row.
 - `runs` (20261118151000): a nullable column `paused_session`, the number of the session
   where a run paused at its keys' limit. It changes no row.
 - `model_choices` and `model_choice_fallbacks` (20261118163000): `model_choices` drops

@@ -23,6 +23,7 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
 
   import Ecto.Query
   import Apiary.DispatchedRunsFixtures
+  import Apiary.ModelKeysFixtures, only: [stored_keys: 1]
   import Apiary.Races
   import Apiary.WorkItemsFixtures
 
@@ -141,6 +142,10 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
 
   defp run!(%{run: %Run{id: id}}), do: Repo.get!(Run, id)
 
+  # The endpoints of the APIs of the run's keys, each once; none for a run with no key.
+  defp endpoints(%{run: run}),
+    do: run |> stored_keys() |> Enum.map(& &1.api["endpoint"]) |> Enum.uniq()
+
   defp provider_there?(ctx),
     do: Repo.exists?(from c in Connection, where: c.id == ^ctx.provider.id)
 
@@ -155,7 +160,7 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
       commit(first)
 
       assert {:ok, %Connection{}} = Task.await(second.task)
-      assert %Run{provider_api: %{"endpoint" => @old_address}} = run!(handed)
+      assert endpoints(handed) == [@old_address]
     end
 
     test "the change first: the claim waits, and the run takes the address after", ctx do
@@ -168,7 +173,7 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
       commit(first)
 
       assert {:ok, handed} = Task.await(second.task)
-      assert %Run{provider_api: %{"endpoint" => @new_address}} = run!(handed)
+      assert endpoints(handed) == [@new_address]
     end
   end
 
@@ -192,10 +197,10 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
 
       assert %Run{
                provider_connection_id: provider_id,
-               provider_api: %{"endpoint" => @old_address},
                run_settings: %{"model" => "team-large"}
              } = run
 
+      assert endpoints(handed) == [@old_address]
       assert provider_id == ctx.provider.id
     end
 
@@ -223,8 +228,8 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
       assert Jason.encode!(handed.run_settings) ==
                ~s({"runtime":"#{@runtime}"})
 
-      assert %Run{provider_connection_id: nil, provider_api: nil, run_settings: settings} =
-               run!(handed)
+      assert %Run{provider_connection_id: nil, run_settings: settings} = run!(handed)
+      assert stored_keys(handed.run) == []
 
       assert settings == %{"runtime" => @runtime}
     end

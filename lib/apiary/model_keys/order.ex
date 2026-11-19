@@ -25,9 +25,9 @@ defmodule Apiary.ModelKeys.Order do
   **Tie order:** the default key first, then the others by `inserted_at`, then by `id`.
 
   The keys in cooldown follow, the earliest `cooldown_until` first, ties in tie order. Of
-  the result, a run gets the first
-  `max_keys/0`; the others serve later runs. The run's start key is its first free key
-  (`start/2`): never a key in cooldown.
+  the result, a run gets the first `max_keys/0`; the others serve later runs. The run's
+  default model provider credential is its first free key (`start/2`): never a key in
+  cooldown.
 
   **The order sent** (`sent/2`): the run configuration has the keys a run gets in tie
   order, as the Forager contract has the server send them, and the gateway orders them

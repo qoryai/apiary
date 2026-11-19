@@ -3,11 +3,13 @@ defmodule Apiary.Dispatches.Pause do
 
   # A paused run as the pages show it (`ApiaryWeb.PauseWords`): a registered run that its
   # gateway ended at its model keys' limit (`Apiary.Runs.Run.paused?/1`), and the run that
-  # continues it (`Apiary.Dispatches.requeue_for_pause/2`).
+  # continues it (`Apiary.Dispatches.requeue_for_pause/3`).
   #
   # `of/1` is, for each paused run of `run_ids` (`runs.id`), `%{provider: name | nil,
   # other_organisation: boolean, until: time | nil, number: n | nil, workspace_id: id |
-  # nil}`: the name of the run's model provider, nil once the provider is deleted, and nil
+  # nil}`: the name of the model provider of the session that paused, the first of the
+  # run's providers when that session is not known (`Apiary.Runs.Run.session_provider_ids/2`),
+  # nil once the provider is deleted, and nil
   # for a provider of another organisation than the run's, left from when an operator
   # managed whole organisations, whose name the run's organisation's people do not read
   # (`other_organisation: true`); when every key of that provider was in cooldown as the
@@ -41,34 +43,64 @@ defmodule Apiary.Dispatches.Pause do
   defp read(_key, []), do: %{}
 
   defp read(key, values) do
-    Repo.all(
-      from r in Run,
-        left_join: d in DispatchRun,
-        on: d.id == r.dispatch_run_id,
-        left_join: c in DispatchRun,
-        on: c.continues_id == d.id,
-        left_join: next in Run,
-        on: next.dispatch_run_id == c.id,
-        left_join: p in Connection,
-        on: p.id == r.provider_connection_id,
-        where: field(r, ^key) in ^Enum.uniq(values) and r.state == "paused",
-        select:
-          {field(r, ^key),
-           %{
-             provider:
-               fragment(
-                 "CASE WHEN ? = ? THEN ? END",
-                 p.organisation_id,
-                 r.organisation_id,
-                 p.name
-               ),
-             other_organisation: coalesce(p.organisation_id != r.organisation_id, false),
-             until: d.paused_until,
-             number: next.number,
-             workspace_id: next.workspace_id
-           }}
-    )
-    |> Map.new()
+    rows =
+      Repo.all(
+        from r in Run,
+          left_join: d in DispatchRun,
+          on: d.id == r.dispatch_run_id,
+          left_join: c in DispatchRun,
+          on: c.continues_id == d.id,
+          left_join: next in Run,
+          on: next.dispatch_run_id == c.id,
+          where: field(r, ^key) in ^Enum.uniq(values) and r.state == "paused",
+          select:
+            {field(r, ^key),
+             struct(r, [
+               :id,
+               :organisation_id,
+               :provider_connection_id,
+               :dispatch_run_id,
+               :session_settings,
+               :paused_session
+             ]), %{until: d.paused_until, number: next.number, workspace_id: next.workspace_id}}
+      )
+
+    # The runs' key rows and sessions, each read once for every run.
+    runs = rows |> Enum.map(&elem(&1, 1)) |> Repo.preload(:model_keys)
+    sessions = runs |> Enum.map(& &1.dispatch_run_id) |> Enum.reject(&is_nil/1)
+    sessions = Apiary.Stages.session_rows_by_dispatch_run(sessions)
+
+    paused =
+      Map.new(runs, fn run ->
+        {run.id, provider_id(run, Map.get(sessions, run.dispatch_run_id, []))}
+      end)
+
+    ids = paused |> Map.values() |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    providers =
+      from(p in Connection, where: p.id in ^ids, select: {p.id, p})
+      |> Repo.all()
+      |> Map.new()
+
+    Map.new(rows, fn {value, run, rest} ->
+      provider = Map.get(providers, Map.fetch!(paused, run.id))
+      other = provider != nil and provider.organisation_id != run.organisation_id
+
+      {value,
+       Map.merge(rest, %{
+         provider: if(provider && not other, do: provider.name),
+         other_organisation: other
+       })}
+    end)
+  end
+
+  # The provider of the session that paused (`Apiary.Runs.Run.session_provider_ids/2`),
+  # its first for a session not known; nil for a run with none.
+  defp provider_id(%Run{} = run, sessions) do
+    case Run.session_provider_ids(run, run.paused_session, sessions) do
+      [id | _rest] -> id
+      [] -> nil
+    end
   end
 
   @doc false

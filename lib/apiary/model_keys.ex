@@ -47,7 +47,7 @@ defmodule Apiary.ModelKeys do
   alias Apiary.Kinds.{Provider, Providers}
   alias Apiary.ModelKeys.{Copy, Setting, State}
   alias Apiary.Repo
-  alias Apiary.Runs.{ProviderCredential, Run, Sessions}
+  alias Apiary.Runs.{ModelKey, ProviderCredential, Run, Sessions}
   alias Apiary.Secrets.Value
 
   @api_key_pause_seconds 60
@@ -268,10 +268,10 @@ defmodule Apiary.ModelKeys do
   `secrets` features on among `features`: by default the ones the run kept when it was
   claimed, until it has ended, or the instance's for a run that has ended or kept none
   (`Apiary.Runs.Run.kept_features/1`). They are the keys the run's claim stored
-  (`runs.model_keys`), each by its row id, so a key renamed since the claim stays a key of
-  the run. A key removed since the claim, or no longer a value of the run's secret, and
-  every key of a run whose provider's row no longer has that secret, is not a key of the
-  run.
+  (`run_model_keys`, `Apiary.Runs.ModelKey`), of one or more providers, each by its row
+  id, so a key renamed since the claim stays a key of the run. A key removed since the
+  claim, or no longer a value of the secret its row keeps, and every key whose provider's
+  row no longer has that secret, is not a key of the run.
 
   Each has `copy_set_at`, when the value the run has was set: that of the value a secrets
   request sealed for the run last (`keep_copies/2`), with `copy_kept` true; for a key no
@@ -286,25 +286,19 @@ defmodule Apiary.ModelKeys do
 
   def run_keys(%Run{} = run, :kept), do: run_keys(run, Run.kept_features(run))
 
-  def run_keys(
-        %Run{
-          provider_api: %{},
-          provider_connection_id: connection_id,
-          provider_secret_id: secret_id,
-          model_keys: [_ | _] = keys
-        } = run,
-        features
-      )
-      when is_binary(connection_id) and is_binary(secret_id) do
-    if ProviderCredential.applies?(features) do
-      ids = for %{"id" => id} <- keys, do: id
+  def run_keys(%Run{} = run, features) do
+    with true <- ProviderCredential.applies?(features),
+         [_ | _] = rows <- ProviderCredential.rows(run) do
+      ids = Enum.map(rows, & &1.secret_value_id)
 
       found =
         Repo.all(
           from v in Value,
+            join: k in ModelKey,
+            on: k.secret_value_id == v.id and k.secret_id == v.secret_id,
             join: c in Connection,
-            on: c.id == ^connection_id and c.secret_id == v.secret_id,
-            where: v.secret_id == ^secret_id and v.id in ^ids,
+            on: c.id == k.connection_id and c.secret_id == v.secret_id,
+            where: k.run_id == ^run.id and v.id in ^ids,
             where: not is_nil(c.provider_kind),
             select: {v.id, v.organisation_id}
         )
@@ -312,7 +306,7 @@ defmodule Apiary.ModelKeys do
 
       copies = copies(run, ids)
 
-      for %{"id" => id, "name" => name} <- keys,
+      for %ModelKey{secret_value_id: id, name: name} <- rows,
           organisation_id = found[id],
           organisation_id != nil,
           do: %{
@@ -323,11 +317,9 @@ defmodule Apiary.ModelKeys do
             copy_kept: Map.has_key?(copies, id)
           }
     else
-      []
+      _none -> []
     end
   end
-
-  def run_keys(%Run{}, _features), do: []
 
   # The `value_set_at` of the value of each key of `ids` that a secrets request sealed for
   # `run` last, or that migration 20261111220000 copied for a run pending or running at
@@ -434,6 +426,9 @@ defmodule Apiary.ModelKeys do
 
     windows = limit_windows(provider)
 
+    # A key that needs a new value, after a provider refused it, is to be left out here,
+    # so that `Apiary.ModelKeys.Order` never picks it and the next key becomes the start
+    # key. That state does not exist yet; the filter of `values` goes here once it does.
     for value <- values do
       key_states = Map.get(states, value.id, [])
       setting = Map.get(settings, value.id)

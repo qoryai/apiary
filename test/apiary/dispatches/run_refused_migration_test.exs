@@ -154,7 +154,8 @@ defmodule Apiary.Dispatches.RunRefusedMigrationTest do
 
     # Every cause before the migration stays, `secrets_not_allowed` among them;
     # `build_failed`, `harness_unresolved`, `target_access_gone`,
-    # `write_without_work_item` and `shared_access_differs` came after it.
+    # `write_without_work_item`, `shared_access_differs`, `model_choice_missing`,
+    # `too_many_providers` and `session_key_missing` came after it.
     before =
       DispatchRun.end_causes() --
         [
@@ -163,7 +164,10 @@ defmodule Apiary.Dispatches.RunRefusedMigrationTest do
           :harness_unresolved,
           :target_access_gone,
           :write_without_work_item,
-          :shared_access_differs
+          :shared_access_differs,
+          :model_choice_missing,
+          :too_many_providers,
+          :session_key_missing
         ]
 
     for table <- ~w(dispatch_runs dispatches) do
