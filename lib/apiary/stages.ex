@@ -707,6 +707,44 @@ defmodule Apiary.Stages do
 
   def next_session(_run, _report), do: {:error, :invalid_request}
 
+  # next_session_check/1 is the run checks of a next-session request of `run`, a run of the
+  # queue (or its id), which come before its body is read, in the run contract's order:
+  # `{:error, :not_found}` for an unknown run, a run of Explore, a run of a stage without
+  # `shared_run`, and a run that no claim of a shared stage registered; then
+  # `{:error, :run_ended}` or `{:error, :run_cancelled}` for a run that ended or that a
+  # member cancelled; then `{:error, :run_ended, newest}` for a run whose stage no longer
+  # runs it or whose last step returned `:end`. `newest` is the number of the newest
+  # session the run reported, nil for none: a report of that session is a repeat, which
+  # next_session/2 answers with its stored result, so that a lost answer does not end the
+  # run another way. Else `:ok`. It reads without the work item's lock, and next_session/2
+  # checks all of it again under the lock.
+  @doc false
+  @spec next_session_check(DispatchRun.t() | Ecto.UUID.t()) ::
+          :ok
+          | {:error, :not_found | :run_ended | :run_cancelled}
+          | {:error, :run_ended, pos_integer | nil}
+  def next_session_check(%DispatchRun{id: id}), do: next_session_check(id)
+
+  def next_session_check(id) when is_binary(id) do
+    with {:ok, run} <- shared_run(id),
+         {:ok, _settings} <- session_settings(run),
+         [_ | _] = sessions <- sessions(run),
+         :ok <- run_live(run) do
+      work_item = Repo.get!(WorkItem, run.work_item_id)
+
+      with %Session{} = pending <- Enum.find(sessions, &is_nil(&1.forager_session)),
+           {:ok, _version, _stage} <- session_stage(work_item, run),
+           {:ok, _pending} <- pending_session(pending, work_item) do
+        :ok
+      else
+        _ended -> {:error, :run_ended, newest_reported(sessions)}
+      end
+    else
+      [] -> {:error, :not_found}
+      {:error, _reason} = refused -> refused
+    end
+  end
+
   defp session_step(id, number, state, reason) do
     :ok = MachineTypes.hold()
 
@@ -910,6 +948,14 @@ defmodule Apiary.Stages do
           pending -> {:step, pending}
         end
     end
+  end
+
+  # The number of the newest session of `sessions` that the run reported, nil for none.
+  defp newest_reported(sessions) do
+    sessions
+    |> Enum.map(& &1.forager_session)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.max(fn -> nil end)
   end
 
   # The work item's stage, while the run is the newest of that stage, the stage runs, and

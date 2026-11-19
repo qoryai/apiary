@@ -151,7 +151,7 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
 
   def next_session(raw_body) do
     with {:ok, body} <- object(raw_body),
-         :ok <- members(body, ~w(session state reason)),
+         :ok <- members(body, ~w(session state reason), :named),
          {:ok, session} <- required(body, "session", &(is_integer(&1) and &1 >= 1)),
          {:ok, state} <- required(body, "state", &(&1 in @session_states)),
          {:ok, reason} <- required(body, "reason", &reason?/1),
@@ -248,10 +248,14 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
     end
   end
 
-  defp members(body, known) do
+  # The first member of `body` that is not `known`, by name, and `body` for a name over 64
+  # bytes. With `:named`, the run contract's rule for a next-session request, every name
+  # is the member's, but an empty one, which `names` cannot contain, is `body`.
+  defp members(body, known, names \\ :short) do
     case Enum.sort(Map.keys(body) -- known) do
       [] -> :ok
-      [member | _] when byte_size(member) <= 64 -> {:error, :invalid_request, member}
+      ["" | _] when names == :named -> {:error, :invalid_request, "body"}
+      [member | _] when byte_size(member) <= 64 or names == :named -> invalid(member)
       [_long | _] -> {:error, :invalid_request, "body"}
     end
   end
