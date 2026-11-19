@@ -38,13 +38,15 @@ defmodule Apiary.PublicId.InsertDefaultTest do
   describe "a target" do
     setup do
       %{scope: scope} = sign_up_fixture()
-      %{scope: scope}
+      %{scope: Map.put(scope, :adapter_id, bare_adapter_fixture().id)}
     end
 
     defp target(scope, path) do
       %Target{
         organisation_id: scope.organisation.id,
         workspace_id: scope.workspace.id,
+        adapter_id: scope.adapter_id,
+        collection_external_ref: path,
         system: "git.example",
         path: path,
         first_seen_at: DateTime.utc_now()
@@ -83,6 +85,8 @@ defmodule Apiary.PublicId.InsertDefaultTest do
             id: Ecto.UUID.generate(),
             organisation_id: scope.organisation.id,
             workspace_id: scope.workspace.id,
+            adapter_id: scope.adapter_id,
+            collection_external_ref: path,
             system: "git.example",
             path: path,
             first_seen_at: now,

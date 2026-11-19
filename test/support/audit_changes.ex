@@ -1656,7 +1656,7 @@ defmodule Apiary.AuditChanges do
   defp prepare(:"target.set_further_repositories", %{scope: scope}) do
     :ok =
       Apiary.Runs.Target.insert_new(scope.organisation.id, scope.workspace.id, [
-        %{system: "code.example.com", path: "acme/shop"}
+        Apiary.NodesFixtures.target_key(%{system: "code.example.com", path: "acme/shop"})
       ])
 
     Targets.get(scope, "code.example.com", "acme/shop")
@@ -1677,7 +1677,7 @@ defmodule Apiary.AuditChanges do
 
     :ok =
       Apiary.Runs.Target.insert_new(scope.organisation.id, scope.workspace.id, [
-        %{system: "code.example.com", path: "acme/shop"}
+        Apiary.NodesFixtures.target_key(%{system: "code.example.com", path: "acme/shop"})
       ])
 
     Targets.get(scope, "code.example.com", "acme/shop")

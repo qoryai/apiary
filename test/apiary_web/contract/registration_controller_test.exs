@@ -23,7 +23,7 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
   end
 
   defp target_fixture(scope, system, path) do
-    Repo.insert!(%Target{
+    Apiary.NodesFixtures.target_fixture(%{
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
       system: system,

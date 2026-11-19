@@ -3435,7 +3435,7 @@ defmodule Apiary.Harnesses.WalkTest do
       end
 
       target =
-        Repo.insert!(%Apiary.Runs.Target{
+        Apiary.NodesFixtures.target_fixture(%{
           organisation_id: ctx.scope.organisation.id,
           workspace_id: ctx.scope.workspace.id,
           system: "code.example.com",

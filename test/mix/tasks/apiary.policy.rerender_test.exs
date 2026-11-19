@@ -24,7 +24,7 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
   end
 
   defp target_fixture(scope, path \\ "acme/site") do
-    Repo.insert!(%Target{
+    Apiary.NodesFixtures.target_fixture(%{
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
       system: "github.example",

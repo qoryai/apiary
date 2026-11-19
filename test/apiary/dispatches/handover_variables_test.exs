@@ -36,7 +36,7 @@ defmodule Apiary.Dispatches.HandoverVariablesTest do
     %{scope: scope} = sign_up_fixture()
 
     target =
-      Repo.insert!(%Target{
+      Apiary.NodesFixtures.target_fixture(%{
         organisation_id: scope.organisation.id,
         workspace_id: scope.workspace.id,
         system: "forge.example.com",

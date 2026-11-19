@@ -1,15 +1,20 @@
 defmodule Apiary.Runs.Target do
   @moduledoc """
-  What the workspace's runs change, in the system it lives in: created the first time the
-  workspace names it (`insert_new/3`), as the projector does from a run's labels, which
-  the workspace's domain reads (`Apiary.Lingo.Domain`). Unique per workspace on system
-  and path. The software domain calls a target a repository and its system a forge.
+  What the workspace's runs change: one of an adapter's collections, by the adapter
+  (`adapter_id`) and the adapter's ref of the collection (`collection_external_ref`), and,
+  when the place has one, its address on a system (`system` and `path`, both or neither).
+  Created the first time the workspace names it (`insert_new/3`): when a collection with a
+  target is assigned to the workspace, or a claim forms a run of it. Unique per workspace
+  on adapter and collection ref. A place that is not on a host, such as a support queue,
+  has no address. The software domain calls a target a repository and its system a
+  forge, and needs an address (`Apiary.Lingo.Domain.check_target/2`).
 
   `public_id` is the id Qory Apiary gives the target, `tg_` and 16 characters
   (`Apiary.PublicId`): its page is addressed by it, `/:org/:workspace/targets/tg_…`.
-  `system` and `path` are the labels Forager sent, named after the system they come
-  from. `insert_new/3` sets the id when it creates the target; a row written without one
-  gets the column's default, of the same shape, read back on insert.
+  `system` and `path` are the address the adapter sent, the labels a run of the target
+  has (`Apiary.Lingo.Domain.target_labels/1`). `insert_new/3` sets the id when it creates
+  the target; a row written without one gets the column's default, of the same shape,
+  read back on insert.
   """
 
   # With the `factory` feature:
@@ -52,32 +57,38 @@ defmodule Apiary.Runs.Target do
   @insert_chunk 1_000
 
   @doc """
-  Creates each of `targets`, `%{system:, path:}` as a domain names them
-  (`Apiary.Lingo.Domain.target/2`), in the workspace `workspace_id` of the organisation
+  Creates each of `targets` (`Apiary.Lingo.Domain.target/0`), by adapter and collection
+  ref, with its address or none, in the workspace `workspace_id` of the organisation
   `organisation_id`, unless the workspace has it already: one seen before keeps its row,
-  its public id and its `first_seen_at`, since the conflict writes nothing. A new one is
-  first seen now. The targets are inserted sorted by system and path, once each, so two
-  callers that name the same targets take them in the same order. The query is kept out
-  of the query log (`log: false`), since the labels may be event data.
+  its public id, its address and its `first_seen_at`, since the conflict writes nothing.
+  A new one is first seen now. The targets are inserted sorted by adapter and collection
+  ref, once each, so two callers that name the same targets take them in the same order.
+  The query is kept out of the query log (`log: false`), since the labels may be event
+  data.
   """
+  # shortcut: a target seen before keeps the address it was first seen with, though its
+  # collection's address changes later; replace it when an address can change at the
+  # source.
   @spec insert_new(Ecto.UUID.t(), Ecto.UUID.t(), [Apiary.Lingo.Domain.target()]) :: :ok
   def insert_new(organisation_id, workspace_id, targets) when is_list(targets) do
     now = DateTime.utc_now()
 
     targets
-    |> Enum.map(&{&1.system, &1.path})
-    |> Enum.uniq()
+    |> Enum.map(&{{&1.adapter_id, &1.collection_external_ref}, {&1.system, &1.path}})
+    |> Enum.uniq_by(&elem(&1, 0))
     |> Enum.sort()
     |> Enum.chunk_every(@insert_chunk)
     |> Enum.each(fn chunk ->
       PublicId.Insert.insert_all(
         __MODULE__,
-        for {system, path} <- chunk do
+        for {{adapter_id, ref}, {system, path}} <- chunk do
           %{
             id: Ecto.UUID.generate(),
             public_id: Apiary.PublicId.generate("tg"),
             organisation_id: organisation_id,
             workspace_id: workspace_id,
+            adapter_id: adapter_id,
+            collection_external_ref: ref,
             system: system,
             path: path,
             first_seen_at: now,
@@ -86,7 +97,7 @@ defmodule Apiary.Runs.Target do
           }
         end,
         on_conflict: :nothing,
-        conflict_target: [:workspace_id, :system, :path],
+        conflict_target: [:workspace_id, :adapter_id, :collection_external_ref],
         log: false
       )
     end)
@@ -96,6 +107,7 @@ defmodule Apiary.Runs.Target do
   @foreign_key_type :binary_id
   schema "targets" do
     field :public_id, :string, read_after_writes: true
+    field :collection_external_ref, :string
     field :system, :string
     field :path, :string
     field :first_seen_at, :utc_datetime_usec
@@ -108,6 +120,7 @@ defmodule Apiary.Runs.Target do
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
+    belongs_to :adapter, Apiary.Nodes.Node
     has_many :runs, Apiary.Runs.Run
 
     timestamps(type: :utc_datetime_usec)

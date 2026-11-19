@@ -217,13 +217,13 @@ defmodule Apiary.PublicId.CallersTest do
       PublicIdSource.force([@taken])
 
       Target.insert_new(scope.organisation.id, scope.workspace.id, [
-        %{system: "git", path: "a/one"}
+        Apiary.NodesFixtures.target_key(%{system: "git", path: "a/one"})
       ])
 
       PublicIdSource.force([@taken])
 
       Target.insert_new(scope.organisation.id, scope.workspace.id, [
-        %{system: "git", path: "a/two"}
+        Apiary.NodesFixtures.target_key(%{system: "git", path: "a/two"})
       ])
 
       ids = Repo.all(from t in Target, order_by: t.path, select: {t.path, t.public_id})

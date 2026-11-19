@@ -26,7 +26,7 @@ defmodule ApiaryWeb.Contract.RunVariablesClaimedTest do
     {:ok, %{digest: digest}} = Policy.current_configuration(scope, nil)
 
     target =
-      Repo.insert!(%Target{
+      Apiary.NodesFixtures.target_fixture(%{
         organisation_id: scope.organisation.id,
         workspace_id: scope.workspace.id,
         system: "forge.example.com",

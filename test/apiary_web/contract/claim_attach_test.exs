@@ -182,7 +182,7 @@ defmodule ApiaryWeb.Contract.ClaimAttachTest do
   test "the attach answer's labels carry the repository and its further repositories", ctx do
     :ok =
       Apiary.Runs.Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [
-        %{system: "forge.example.com", path: "acme/shop"}
+        Apiary.NodesFixtures.target_key(%{system: "forge.example.com", path: "acme/shop"})
       ])
 
     target = Apiary.Targets.get(ctx.scope, "forge.example.com", "acme/shop")

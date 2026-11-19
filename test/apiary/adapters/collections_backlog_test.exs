@@ -307,7 +307,7 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
 
       # A target with no collection, which a run made, and one whose collection ended.
       lone =
-        Repo.insert!(%Target{
+        Apiary.NodesFixtures.target_fixture(%{
           organisation_id: ctx.scope.organisation.id,
           workspace_id: ctx.workspace.id,
           system: "code.example.com",

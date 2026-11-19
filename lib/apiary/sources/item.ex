@@ -12,8 +12,10 @@ defmodule Apiary.Sources.Item do
   # `filed_by_kind`, `:person` or `:automation`, are stored as sent. `labels` are at most
   # 100, each 1 to 100 characters, each once. `state` is `:open` or `:closed`, with
   # `state_reason`, at most 64 characters, or nil. `type` is the adapter's word for what
-  # it is, or nil. The target (`target_system`, `target_path`, both or neither) is where
-  # a change for it would go. `truncated` names the fields the adapter cut, each once.
+  # it is, or nil. The target is where a change for it would go: the ref of one of the
+  # adapter's collections (`target_collection_external_ref`), and, when the place has
+  # one, its address (`target_system`, `target_path`, both or neither), or none of the
+  # three. `truncated` names the fields the adapter cut, each once.
   # `comment_count` is how many comments it has at its source. `source_created_at` and
   # `source_updated_at` are its times at its source, which tell an earlier write of it from
   # a later one.
@@ -86,6 +88,7 @@ defmodule Apiary.Sources.Item do
     :state,
     :state_reason,
     :type,
+    :target_collection_external_ref,
     :target_system,
     :target_path,
     :truncated,
@@ -124,6 +127,7 @@ defmodule Apiary.Sources.Item do
     field :state, Ecto.Enum, values: @states
     field :state_reason, :string
     field :type, :string
+    field :target_collection_external_ref, :string
     field :target_system, :string
     field :target_path, :string
     field :truncated, {:array, :string}, default: []
@@ -206,6 +210,12 @@ defmodule Apiary.Sources.Item do
     |> check_constraint(:state_reason, name: :source_items_state_reason_check)
     |> check_constraint(:type, name: :source_items_type_check)
     |> check_constraint(:target_system, name: :source_items_target_check)
+    |> check_constraint(:target_collection_external_ref,
+      name: :source_items_target_collection_check
+    )
+    |> check_constraint(:target_collection_external_ref,
+      name: :source_items_target_collection_external_ref_check
+    )
     |> check_constraint(:truncated, name: :source_items_truncated_check)
     |> check_constraint(:comment_count, name: :source_items_comment_count_check)
     |> check_constraint(:closed_by_listing_at, name: :source_items_closed_by_listing_check)
@@ -214,9 +224,16 @@ defmodule Apiary.Sources.Item do
     |> foreign_key_constraint(:collection_id, name: :source_items_collection_id_fkey)
   end
 
-  # Both or neither, the system to the contract's pattern and the path 1 to 200
-  # characters.
+  # The collection ref 1 to 200 characters; the address both or neither, and only with a
+  # ref, the system to the contract's pattern and the path 1 to 200 characters.
   defp validate_target(changeset) do
+    changeset =
+      validate_length(changeset, :target_collection_external_ref,
+        min: 1,
+        max: @max_ref,
+        count: :codepoints
+      )
+
     case {get_field(changeset, :target_system), get_field(changeset, :target_path)} do
       {nil, nil} ->
         changeset
@@ -229,6 +246,7 @@ defmodule Apiary.Sources.Item do
 
       {_system, _path} ->
         changeset
+        |> validate_required(:target_collection_external_ref)
         |> validate_format(:target_system, @system)
         |> validate_length(:target_path, min: 1, max: @max_path, count: :codepoints)
     end

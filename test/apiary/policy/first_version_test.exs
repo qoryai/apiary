@@ -395,7 +395,7 @@ defmodule Apiary.Policy.FirstVersionTest do
       workspace = second_workspace!(scope)
 
       target =
-        Repo.insert!(%Target{
+        Apiary.NodesFixtures.target_fixture(%{
           organisation_id: workspace.organisation_id,
           workspace_id: workspace.id,
           system: "github.example",

@@ -60,7 +60,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
 
   # The work item's target, as the claim finds it by system and path.
   defp target!(scope) do
-    Repo.insert!(%Target{
+    Apiary.NodesFixtures.target_fixture(%{
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
       system: "forge.example.com",

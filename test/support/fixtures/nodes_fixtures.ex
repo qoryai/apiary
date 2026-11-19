@@ -85,6 +85,47 @@ defmodule Apiary.NodesFixtures do
   end
 
   @doc """
+  An adapter of the instance, with no organisation, written straight into the table, so
+  that it needs no feature on: the adapter of a target's collection
+  (`target_fixture/1`).
+  """
+  def bare_adapter_fixture do
+    %Node{
+      kind: :adapter,
+      organisation_id: nil,
+      workspace_id: nil,
+      instance_limit: nil,
+      gateway_choice: :direct
+    }
+    |> Node.adapter_changeset(%{name: unique_node_name()})
+    |> Repo.insert!()
+  end
+
+  @doc """
+  `attrs` as a target (`Apiary.Lingo.Domain.target/0`, `Apiary.Runs.Target.insert_new/3`)
+  has them: of a fresh adapter (`bare_adapter_fixture/0`) and a fresh collection ref,
+  unless `attrs` sets `adapter_id` or `collection_external_ref`. With no `system` and
+  `path` it has no address.
+  """
+  def target_key(attrs \\ %{}) do
+    attrs = Map.new(attrs)
+
+    %{collection_external_ref: "R_#{System.unique_integer([:positive])}", system: nil, path: nil}
+    |> Map.merge(attrs)
+    |> Map.put_new_lazy(:adapter_id, fn -> bare_adapter_fixture().id end)
+  end
+
+  @doc """
+  A target (`Apiary.Runs.Target`) written straight into the table with the fields of
+  `attrs`, which sets its organisation and its workspace: of a fresh adapter and a fresh
+  collection ref (`target_key/1`), first seen now, unless `attrs` sets them.
+  """
+  def target_fixture(attrs) do
+    fields = Map.merge(%{first_seen_at: DateTime.utc_now()}, target_key(attrs))
+    Repo.insert!(struct!(Apiary.Runs.Target, fields))
+  end
+
+  @doc """
   The instance's node pool, with no organisation and no workspace, written straight into
   the table, on `:default` unless `attrs` gives its `gateway_choice`. The instance has
   one in use at most, so a test that makes it is not async.

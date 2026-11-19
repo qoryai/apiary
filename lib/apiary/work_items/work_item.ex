@@ -9,9 +9,12 @@ defmodule Apiary.WorkItems.WorkItem do
   # the ticket's row is gone; `external_ref`, the ticket's ref at its source, an external
   # id, 1 to 200 characters; `url`, its address, `https://`, 2,048 characters at most;
   # `title`, 1 to 1,024 characters; `collection_title`, the title of the collection that
-  # holds it, 1 to 1,024 characters; and where a change for it goes, its target, both or
-  # neither: `target_system`, a host name to the contract's pattern, and `target_path`, 1
-  # to 200 characters. Whether it needs a target is its workspace's domain's rule
+  # holds it, 1 to 1,024 characters; and where a change for it goes, its target: the ref
+  # of one of its adapter's collections, `target_collection_external_ref`, 1 to 200
+  # characters, and, when the place has one, its address, both or neither:
+  # `target_system`, a host name to the contract's pattern, and `target_path`, 1 to 200
+  # characters. A work item without a ref has no target, and no address either. Whether
+  # it needs a target is its workspace's domain's rule
   # (`Apiary.Lingo.Domain.target_required?/1`). A later change at the source does not change it until a take in again,
   # which takes the ticket's current record, its connection, its title, its address and
   # its collection's title as they are then (`take_in_again_changeset/2`). A ticket has
@@ -78,6 +81,7 @@ defmodule Apiary.WorkItems.WorkItem do
     field :url, :string
     field :title, :string
     field :collection_title, :string
+    field :target_collection_external_ref, :string
     field :target_system, :string
     field :target_path, :string
     field :take_in, :integer
@@ -144,6 +148,7 @@ defmodule Apiary.WorkItems.WorkItem do
         :url,
         :title,
         :collection_title,
+        :target_collection_external_ref,
         :target_system,
         :target_path,
         :owner_id,
@@ -177,6 +182,12 @@ defmodule Apiary.WorkItems.WorkItem do
     |> check_constraint(:target_system, name: :work_items_target_check)
     |> check_constraint(:target_system, name: :work_items_target_shape_check)
     |> check_constraint(:target_path, name: :work_items_target_pair_check)
+    |> check_constraint(:target_collection_external_ref,
+      name: :work_items_target_collection_check
+    )
+    |> check_constraint(:target_collection_external_ref,
+      name: :work_items_target_collection_external_ref_check
+    )
     |> check_constraint(:first_instruction, name: :work_items_first_instruction_check)
     |> unique_constraint(:number, name: :work_items_workspace_id_number_index)
     |> unique_constraint(:external_ref,
@@ -207,6 +218,7 @@ defmodule Apiary.WorkItems.WorkItem do
         :url,
         :title,
         :collection_title,
+        :target_collection_external_ref,
         :target_system,
         :target_path,
         :owner_id,
@@ -235,6 +247,12 @@ defmodule Apiary.WorkItems.WorkItem do
     |> check_constraint(:target_system, name: :work_items_target_check)
     |> check_constraint(:target_system, name: :work_items_target_shape_check)
     |> check_constraint(:target_path, name: :work_items_target_pair_check)
+    |> check_constraint(:target_collection_external_ref,
+      name: :work_items_target_collection_check
+    )
+    |> check_constraint(:target_collection_external_ref,
+      name: :work_items_target_collection_external_ref_check
+    )
     |> check_constraint(:first_instruction, name: :work_items_first_instruction_check)
     |> unique_constraint(:number, name: :work_items_workspace_id_number_index)
     |> foreign_key_constraint(:owner_id, name: :work_items_owner_id_fkey)
@@ -288,11 +306,20 @@ defmodule Apiary.WorkItems.WorkItem do
     |> foreign_key_constraint(:owner_id, name: :work_items_owner_id_fkey)
   end
 
-  # The target: both its system and its path, or neither, for a work item without one;
-  # the system a host name's characters, and the path 1 to `@max_target_path` code
-  # points. Whether a work item needs one, and what else its path must be, are its
-  # workspace's domain's rules, which Take in checks (`Apiary.Lingo.Domain`).
+  # The target: its collection ref, 1 to `@max_external_ref` code points, or none for a
+  # work item without one; its address both its system and its path, or neither, and
+  # only with a ref, the system a host name's characters, and the path 1 to
+  # `@max_target_path` code points. Whether a work item needs a target, and what else its
+  # address must be, are its workspace's domain's rules, which Take in checks
+  # (`Apiary.Lingo.Domain`).
   defp validate_target(changeset) do
+    changeset =
+      validate_length(changeset, :target_collection_external_ref,
+        min: 1,
+        max: @max_external_ref,
+        count: :codepoints
+      )
+
     case {get_field(changeset, :target_system), get_field(changeset, :target_path)} do
       {nil, nil} ->
         changeset
@@ -305,6 +332,7 @@ defmodule Apiary.WorkItems.WorkItem do
 
       {_system, _path} ->
         changeset
+        |> validate_required(:target_collection_external_ref)
         |> validate_format(:target_system, @system)
         |> validate_length(:target_path, min: 1, max: @max_target_path, count: :codepoints)
     end

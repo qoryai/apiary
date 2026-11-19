@@ -358,7 +358,7 @@ defmodule Apiary.TargetsTest do
 
       :ok =
         Apiary.Runs.Target.insert_new(scope.organisation.id, scope.workspace.id, [
-          %{system: "code.example.com", path: "acme/shop"}
+          Apiary.NodesFixtures.target_key(%{system: "code.example.com", path: "acme/shop"})
         ])
 
       %{scope: scope, shop: target(scope, "code.example.com", "acme/shop")}

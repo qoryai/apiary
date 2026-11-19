@@ -54,7 +54,7 @@ defmodule Apiary.Environments.RebuildTest do
   defp target(scope) do
     :ok =
       Target.insert_new(scope.organisation.id, scope.workspace.id, [
-        %{system: @system, path: @path}
+        Apiary.NodesFixtures.target_key(%{system: @system, path: @path})
       ])
 
     Targets.get(scope, @system, @path)

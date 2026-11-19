@@ -99,7 +99,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
   defp target_row(scope, system, path),
     do:
       Target.insert_new(scope.organisation.id, scope.workspace.id, [
-        %{system: system, path: path}
+        Apiary.NodesFixtures.target_key(%{system: system, path: path})
       ])
 
   defp target_name(scope, system, path) do

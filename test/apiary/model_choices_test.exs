@@ -283,7 +283,7 @@ defmodule Apiary.ModelChoicesTest do
       other = second_workspace(scope)
 
       stranger =
-        Repo.insert!(%Apiary.Runs.Target{
+        Apiary.NodesFixtures.target_fixture(%{
           organisation_id: scope.organisation.id,
           workspace_id: other.id,
           system: "github.example",
