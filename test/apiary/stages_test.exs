@@ -8361,6 +8361,74 @@ defmodule Apiary.StagesTest do
       assert Stages.unapproved_changes(work_item, Artifacts.list(work_item)) == %{}
     end
 
+    test "unapproved_changes/2 lists each of several changes until a person's approval " <>
+           "lists the highest",
+         %{scope: scope} do
+      criteria_process!(scope)
+
+      {work_item, %Escalation{public_id: decision}} =
+        asked_in_build!(scope, "Cover the empty cart in AC-2.")
+
+      second = pushes_one("acceptance-criteria", "# AC-2, empty cart", decision: decision)
+      third = pushes_one("acceptance-criteria", "# AC-2, empty cart, 2", decision: decision)
+
+      work_item =
+        end_run!(
+          work_item,
+          both(second, both(third, pushes_one("walkthrough", "# Walkthrough 2", [])))
+        )
+
+      [shaped_id, second_id, third_id] =
+        for number <- 1..3, do: criteria(work_item, number).public_id
+
+      # Both changes are marked; the earlier version of each is the one Shape's approval
+      # lists.
+      changes = Stages.unapproved_changes(work_item, Artifacts.list(work_item))
+      assert Enum.sort(Map.keys(changes)) == Enum.sort([second_id, third_id])
+
+      for id <- [second_id, third_id],
+          do: assert(%{earlier: %{public_id: ^shaped_id}} = changes[id])
+
+      # Verify's approval lists v3 alone, the highest: no change is left, v2 included.
+      work_item = end_run!(work_item, verdict("passed"))
+      work_item = end_run!(work_item, verdict("passed"))
+      {:ok, work_item} = Stages.approve(scope, work_item, nil, expect_stage: @verify)
+
+      assert %GateDecision{versions: versions} =
+               Enum.find(decisions(work_item), &(&1.stage_id == @verify))
+
+      assert third_id in versions
+      refute second_id in versions
+
+      assert Stages.unapproved_changes(work_item, Artifacts.list(work_item)) == %{}
+    end
+
+    test "unapproved_changes/2 leaves out a change by a run a member cancelled",
+         %{scope: scope} do
+      criteria_process!(scope)
+
+      {work_item, %Escalation{public_id: decision}} =
+        asked_in_build!(scope, "Cover the empty cart in AC-2.")
+
+      changed = pushes_one("acceptance-criteria", "# AC-2, empty cart", decision: decision)
+
+      work_item =
+        end_run!(work_item, fn run, registered ->
+          changed.(run, registered)
+
+          {1, _rows} =
+            Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^registered.id),
+              set: [
+                cancel_requested_at: DateTime.utc_now(),
+                cancel_requested_by_id: scope.user.id
+              ]
+            )
+        end)
+
+      assert %{decision_id: ^decision} = criteria(work_item, 2)
+      assert Stages.unapproved_changes(work_item, Artifacts.list(work_item)) == %{}
+    end
+
     test "a change counts by the approvals that list it, not by its time", %{scope: scope} do
       criteria_process!(scope)
 

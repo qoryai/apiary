@@ -46,7 +46,7 @@ defmodule Apiary.Stages do
   # run reads that version in place of the approved one (`read_version/6`), and the next
   # approval by a person at a gate lists it (`approve/4`). A gate `none` lists no version
   # with a `decision`. The work item page marks the version until a person's approval
-  # lists it (`unapproved_changes/2`).
+  # lists it or a later version of its artifact (`unapproved_changes/2`).
   #
   # ## After the last stage
   #
@@ -5206,22 +5206,24 @@ defmodule Apiary.Stages do
 
   @doc false
   # unapproved_changes/2 is each version of `artifacts`, the work item's
-  # (`Artifacts.list/1`), that is a person's change no person's approval lists yet
-  # (`unapproved_change?/2`), by its public id, as `%{type:, name:, version:, by:,
-  # earlier:}`. `by` is the account id of the person who wrote the note that asked for the
-  # version (`Apiary.Stages.Notes.writers/2`), nil for none. `earlier` is the
-  # highest-numbered version of the same artifact, below this one, that a person's
-  # approval lists, nil for none: the text a person approved before the change. The work
-  # item page marks each such version until a person's approval lists it.
+  # (`Artifacts.list/1`), that is a person's change (`changes/2`) above every version of
+  # its artifact that a person's approval lists (`person_listed/1`), by its public id, as
+  # `%{type:, name:, version:, by:, earlier:}`. `by` is the account id of the person who
+  # wrote the note that asked for the version (`Apiary.Stages.Notes.writers/2`), nil for
+  # none. `earlier` is the highest-numbered version of the same artifact, below this one,
+  # that a person's approval lists, nil for none: the text a person approved before the
+  # change. The work item page marks each such version until a person's approval lists it
+  # or a later version of its artifact.
   @spec unapproved_changes(WorkItem.t(), [map]) :: %{String.t() => map}
   def unapproved_changes(%WorkItem{} = work_item, artifacts) do
     if Enum.any?(artifacts, fn a -> Enum.any?(a.versions, &is_binary(&1.decision_id)) end) do
       approvals = approvals_by_version(work_item)
 
+      listed = person_listed(approvals)
+
       found =
         for artifact <- artifacts,
-            version <- artifact.versions,
-            unapproved_change?(version, approvals),
+            version <- changes(artifact, listed),
             do: {artifact, version}
 
       writers = Notes.writers(work_item.id, Enum.map(found, &elem(&1, 1).decision_id))
@@ -5233,7 +5235,7 @@ defmodule Apiary.Stages do
            name: artifact.name,
            version: version,
            by: Map.get(writers, version.decision_id),
-           earlier: approved_before(artifact, version, approvals)
+           earlier: approved_before(artifact, version, listed)
          }}
       end)
     else
@@ -5241,22 +5243,22 @@ defmodule Apiary.Stages do
     end
   end
 
-  # Whether `version` is a change no person's approval lists yet: it has a `decision`, the
-  # note that asked for it, and no approval of `approvals` (`approvals_by_version/1`) that
-  # lists it is a person's (`person_approval?/1`). The one rule of the mark on the page.
-  defp unapproved_change?(version, approvals) do
-    is_binary(version.decision_id) and
-      not Enum.any?(Map.get(approvals, version.public_id, []), &person_approval?/1)
+  # The public ids of the versions that a person's approval (`person_approval?/1`) of
+  # `approvals` (`approvals_by_version/1`) lists. An automatic approval, such as that of a
+  # gate `none`, does not end the page's mark of a change, as `listed/1` does for the
+  # version that later runs read.
+  defp person_listed(approvals) do
+    for {public_id, list} <- approvals,
+        Enum.any?(list, &person_approval?/1),
+        into: MapSet.new(),
+        do: public_id
   end
 
-  # The highest-numbered version of `artifact` below `version` that a person's approval of
-  # `approvals` lists, nil for none.
-  defp approved_before(artifact, version, approvals) do
+  # The highest-numbered version of `artifact` below `version` that a person's approval
+  # lists (`listed`, `person_listed/1`), nil for none.
+  defp approved_before(artifact, version, listed) do
     artifact.versions
-    |> Enum.filter(fn v ->
-      v.number < version.number and
-        Enum.any?(Map.get(approvals, v.public_id, []), &person_approval?/1)
-    end)
+    |> Enum.filter(&(&1.number < version.number and MapSet.member?(listed, &1.public_id)))
     |> Enum.max_by(& &1.number, fn -> nil end)
   end
 
