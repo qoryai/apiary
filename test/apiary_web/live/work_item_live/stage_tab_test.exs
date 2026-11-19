@@ -2377,6 +2377,27 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert List.last(rows) =~ ~r/^implement-changes · round 2 · failed · /
     end
 
+    test "a session row of a shared run that reached its time limit reads it in lower case",
+         %{conn: conn, scope: scope} do
+      {work_item, run, registered} = shared_build!(scope, looped())
+      :ok = to_round_2!(run)
+
+      registered
+      |> Ecto.Changeset.change(state: "cancelled", reason: "timeout")
+      |> Repo.update!()
+
+      run
+      |> Repo.reload!()
+      |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended, result_outcome: :error)
+      |> Repo.update!()
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+      assert [line | rows] = fold_rows(view)
+      assert line =~ ~r/^Attempt 3 \(Run #{registered.number}\) · 4 workflows · round 2 of 3 · /
+      assert untimed(List.last(rows)) == "implement-changes · round 2 · time limit reached"
+    end
+
     for state <- ["lost", "cancelled", "paused"] do
       test "a shared run #{state} in round 2 reads #{state} in lower case", %{
         conn: conn,
