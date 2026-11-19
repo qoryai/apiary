@@ -865,8 +865,8 @@ defmodule Apiary.Stages.Runner do
       failed == [] ->
         gate(stage, position)
 
-      # No run makes the outputs of a stage with no workflow, so it waits at its gate,
-      # where Approve needs a workflow that writes them (`Apiary.Stages`).
+      # No run makes the outputs of a stage with no workflow, so it waits at its gate:
+      # Approve needs them, and only a workflow's run can write them (`Apiary.Stages`).
       people?(stage) ->
         %{state: :at_gate, position: position, actions: []}
 
