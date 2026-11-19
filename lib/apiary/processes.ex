@@ -541,8 +541,8 @@ defmodule Apiary.Processes do
 
     choices = Map.new(workflows, &{&1, model_choice(models, &1)})
 
-    # Every provider a choice or one of its fallbacks uses counts, by the fallback's
-    # provider. A fallback's runtime is not read here.
+    # Every provider a choice, its default step under a workflow's override, or one of
+    # their fallbacks uses counts, by the step's provider.
     used =
       workflows
       |> Enum.flat_map(&choice_providers(Map.fetch!(choices, &1)))
@@ -565,19 +565,28 @@ defmodule Apiary.Processes do
   defp model_choice(models, workflow),
     do: Map.get(Map.get(models, :choices, %{}), workflow, Map.get(models, :default, :none))
 
-  # The providers of a resolved choice: its provider, then its fallbacks' providers.
-  defp choice_providers({:ok, %{connection_id: id, fallbacks: fallbacks}}),
-    do: Enum.uniq([id | Enum.map(fallbacks, & &1.connection_id)])
+  # The providers of a resolved choice: its provider, then, under a workflow's override,
+  # its default step's, then the fallbacks' providers, in the order the claim walks them.
+  defp choice_providers({:ok, %{connection_id: id, fallbacks: fallbacks} = resolved}) do
+    default = Map.get(resolved, :default)
+    later = if default, do: [default.connection_id | default.fallbacks], else: fallbacks
+
+    Enum.uniq([id | Enum.map(later, &step_provider/1)])
+  end
 
   defp choice_providers(_none_or_gone), do: []
+
+  defp step_provider(id) when is_binary(id), do: id
+  defp step_provider(%{connection_id: id}), do: id
 
   # The first workflow with no model choice whose default runtime cannot use a provider of
   # `start_ids`, with that provider. A start provider that is gone, or whose description
   # cannot be read, is no fault here: the claim ends such a run `provider_gone`.
   #
-  # The check of a fallback's runtime against the start provider goes here once a
-  # fallback has a runtime set apart from its choice's; until then a fallback runs on its choice's
-  # runtime, and only the providers count.
+  # A start provider counts whatever the runtime of the step that starts on it: the save
+  # of a choice refuses a fallback whose runtime cannot use its provider
+  # (`Apiary.ModelChoices.put_choice/4`), and the claim passes over a step that no longer
+  # forms.
   defp missing_choice(workflows, choices, start_ids, models) do
     runtime = Apiary.ModelChoices.default_runtime()
 

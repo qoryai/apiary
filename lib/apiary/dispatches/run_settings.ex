@@ -805,15 +805,16 @@ defmodule Apiary.Dispatches.RunSettings do
       else: {:ok, %{"runtime" => runtime.name}, nil}
   end
 
-  # The first fallback of `resolution`, in their order, that forms and has a free key at
-  # the claim, or that is the start key's provider with the same API: `{:ok, choice,
-  # group}`, or nil for none. Each fallback forms on its runtime and tiers
-  # (`Apiary.ModelChoices.Resolution.fallback/3`). A fallback that does not form, or whose
-  # settings check ran out of time or crashed, is passed over.
-  defp on_fallback(input, %Resolution{fallbacks: fallbacks} = resolution, start, ctx) do
-    Enum.find_value(fallbacks, fn %{connection_id: id} = fallback ->
+  # The first later step of `resolution` (`later_steps/2`), in order, that forms and has a
+  # free key at the claim, or that is the start key's provider with the same API:
+  # `{:ok, choice, group}`, or nil for none. Each step forms on its runtime and tiers. A
+  # step that does not form, or whose settings check ran out of time or crashed, is passed
+  # over.
+  defp on_fallback(input, %Resolution{} = resolution, start, ctx) do
+    input
+    |> later_steps(resolution)
+    |> Enum.find_value(fn %Resolution{connection_id: id} = fallen ->
       provider = Map.fetch!(ctx.providers, id)
-      fallen = Resolution.fallback(input, resolution, fallback)
 
       with true <- Connections.intact?(provider),
            {:ok, runtime} <- runtime(fallen),
@@ -947,17 +948,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # which a later claim checks again. A step that does not form for a cause that ends a
   # run on the choice's provider is passed over and left out of `ids`.
   defp fall_back(input, %Resolution{} = resolution, {providers, described}, provider, ws, now) do
-    steps =
-      case resolution.default do
-        nil ->
-          for fallback <- resolution.fallbacks,
-              do: Resolution.fallback(input, resolution, fallback)
-
-        %Resolution{} = default ->
-          [default] ++
-            for fallback <- default.fallbacks,
-                do: Resolution.fallback(input, default, fallback)
-      end
+    steps = later_steps(input, resolution)
 
     steps
     |> Enum.reduce_while({:cooling, [], [provider.id]}, fn step, acc ->
@@ -968,6 +959,19 @@ defmodule Apiary.Dispatches.RunSettings do
       {:cooling, ids, _cooled} -> {:cooling, ids}
     end
   end
+
+  # The later steps of `resolution`, in order: under a workflow's override, the default
+  # step, then its fallbacks; else the choice's fallbacks. Each is a resolution with its
+  # runtime and tiers (`Apiary.ModelChoices.Resolution.fallback/3`).
+  defp later_steps(input, %Resolution{default: nil} = resolution),
+    do:
+      for(fallback <- resolution.fallbacks, do: Resolution.fallback(input, resolution, fallback))
+
+  defp later_steps(input, %Resolution{default: %Resolution{} = default}),
+    do: [
+      default
+      | for(fallback <- default.fallbacks, do: Resolution.fallback(input, default, fallback))
+    ]
 
   # One step of `fall_back/6`: `{:halt, {:ok, built}}` for a step with a free key, else
   # the providers waited for and those whose keys are all in cooldown (`cooled`).
