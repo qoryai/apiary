@@ -300,7 +300,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
   describe "a claim of a stage whose later workflow's provider has every key in cooldown" do
     # Northwind keys for the first workflow; the workspace's choice on Checkout keys, with
     # Claude Opus, and a fallback on Storefront keys, with Claude Sonnet, for the second,
-    # which has no choice of its own; saved. Then Checkout keys' one key cools.
+    # which has no workflow choice; saved. Then Checkout keys' one key cools.
     defp cooling_later!(ctx) do
       northwind = provider!(ctx.scope, "Northwind keys")
       checkout = provider!(ctx.scope, "Checkout keys")
