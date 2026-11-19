@@ -205,8 +205,8 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert Enum.map(credential.keys, & &1.entry["name"]) == [start, other]
       assert Enum.map(credential.providers, & &1.id) == [northwind.id, checkout.id]
 
-      # The document composed for the run names the default model provider credential
-      # by the contract's member, and passes the contract's schema.
+      # The document composed for the run has the default model provider credential's
+      # name in the contract's member, and passes the contract's schema.
       {:ok, members} = ComposedConfiguration.members(run)
       {:composed, document, nil} = ComposedConfiguration.shape(nil, nil, false, false, members)
       decoded = Jason.decode!(document)
