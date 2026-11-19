@@ -59,9 +59,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   # The point of a run outside a loop that ended with no verdict (`Apiary.Stages.Points`).
   @no_verdict %{"text" => "The run stopped before its verdict.", "action" => "run_again"}
 
-  # The points of Build's failed Exists checks (`Apiary.Stages.Points.check_failed/1`).
-  @no_demo "No demo-video was stored in this stage."
-  @no_explainer "No explainer was stored in this stage."
+  # The points of Build's failed Exists checks (`Apiary.Stages.Points.check_failed/1`), as
+  # the page shows them: the action first, and no action sentence after.
+  @no_demo "Run another round: the run stored no demo video."
+  @no_explainer "Run another round: the run stored no explainer."
 
   # The default process, with Build's inputs, sequence and outputs of § 4, and its gate's
   # approvers.
@@ -5803,11 +5804,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     # As an escalation open when points replaced gaps reads: the points the stage runner
     # writes for its cause, from what the stage reads now.
     # A round limit past the sequence's end is at round 2 of the loop's 3, so the shown
-    # limit is the loop's, not the round.
-    for {cause, at, points} <- [
-          round_limit: {[round: 2, entry: 2], ["2 of 3 rounds ran.", @no_demo, @no_explainer]},
+    # limit is the loop's, not the round. Each point is shown as the page shows it.
+    for {cause, {at, points}} <- [
+          round_limit:
+            {[round: 2, entry: 2],
+             ["2 of 3 rounds ran. Run another round.", @no_demo, @no_explainer]},
           check_failed: {[round: 3], [@no_demo, @no_explainer]},
-          run_stopped: {[round: 3], ["The run stopped before its verdict."]}
+          run_stopped: {[round: 3], ["The run stopped before its verdict. Run another round."]}
         ] do
       test "#{cause}: the block with the runner's points, and the side line", %{
         conn: conn,
@@ -5817,8 +5820,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         escalate!(work_item, unquote(cause), nil)
         {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-        assert texts(view, "#work-item-needs-points li") ==
-                 Enum.map(unquote(points), &(&1 <> " Run another round."))
+        assert texts(view, "#work-item-needs-points li") == unquote(points)
 
         assert has_element?(
                  view,

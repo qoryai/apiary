@@ -1,8 +1,9 @@
 defmodule Apiary.Stages.Points do
   # Points are what an escalation asks of a person (`Apiary.Stages.Escalation`), each
-  # `%{"text", "action", "question"?, "fix"?}` as `verdict.schema.json` has them: `text`
-  # states what is wrong, and `action` is `answer`, with the id of an open question in
-  # `question`, or `run_again`. The page adds the action's sentence. A `run_again` point
+  # `%{"text", "action", "question"?, "fix"?}` as `verdict.schema.json` has them, and
+  # `"action_in_text"?` on a point of a failed check (below): `text` states what is
+  # wrong, and `action` is `answer`, with the id of an open question in `question`, or
+  # `run_again`. The page adds the action's sentence. A `run_again` point
   # may have `fix`, a line that the page shows in place of the action's sentence. A run
   # writes points in its verdict, each `text` one sentence of at most 500 characters. For
   # the causes the stage runner sets itself (`round_limit`, `check_failed`, `run_stopped`,

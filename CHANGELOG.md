@@ -1869,6 +1869,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+<!-- feature: workflow_model -->
 - A stage passes only with every required output. **Accept as it is** shows, and works,
   only where every required output of the stage has a version, and the gate of every stage
   shows no **Approve**, and takes no approval, while a required output is missing. Before,
