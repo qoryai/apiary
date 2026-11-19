@@ -1153,7 +1153,7 @@ msgstr ""
 
 #: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/provider_live/show.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "%{identity} is saved."
 msgstr ""
 
@@ -3817,12 +3817,12 @@ msgid "%{value_id} of %{name} is now %{new}."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "%{value} is deleted from %{name}."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "%{value} of %{name} is saved."
 msgstr ""
 
@@ -5043,7 +5043,7 @@ msgid "Actions for %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Actions for %{value} of %{name}"
 msgstr ""
 
@@ -7001,7 +7001,7 @@ msgid "Change %{criterion}:"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Change %{value} of %{name}"
 msgstr ""
 
@@ -7102,7 +7102,7 @@ msgid "Change value"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Change value %{value} of %{name}"
 msgstr ""
 
@@ -8913,7 +8913,7 @@ msgid "Delete %{title}?"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Delete %{value} of %{name}?"
 msgstr ""
 
@@ -9008,7 +9008,7 @@ msgid "Delete this workspace"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Delete value %{value} of %{name}"
 msgstr ""
 
@@ -9683,7 +9683,7 @@ msgid "Edit key"
 msgstr ""
 
 #: lib/apiary_web/live/provider_live/show.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Edit key %{identity}"
 msgstr ""
 
@@ -17424,12 +17424,12 @@ msgid "Qory Apiary could not refresh the sign-in of the key %{key} of %{provider
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Qory Apiary could not save the new sign-in"
 msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Qory Apiary could not save the new sign-in on %{time}."
 msgstr ""
 
@@ -17589,7 +17589,7 @@ msgid "Qory Apiary stores the key encrypted, and nobody can view it again. You c
 msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Qory Apiary stores the sign-in encrypted, and no page shows it."
 msgstr ""
 
@@ -24871,7 +24871,7 @@ msgid "Waiting for a machine: no pool offers a machine that fits %{type}."
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
-#, elixir-autogen, elixir-format, fuzzy
+#, elixir-autogen, elixir-format
 msgid "Waiting for a model key: enter a new value for %{identity}."
 msgstr ""
 
