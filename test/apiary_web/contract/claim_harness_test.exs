@@ -514,21 +514,25 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
 
       {run, sessions} = claimed(work_item)
 
+      # No model choice: each entry runs on the default runtime.
       assert run.session_settings == %{
                "0" => %{
                  "workflow" => "plan-the-build",
                  "time_limit_minutes" => 45,
-                 "full_suite" => true
+                 "full_suite" => true,
+                 "model_choice" => %{"runtime" => "claude"}
                },
                "1.0" => %{
                  "workflow" => "implement-changes",
                  "time_limit_minutes" => 180,
-                 "full_suite" => true
+                 "full_suite" => true,
+                 "model_choice" => %{"runtime" => "claude"}
                },
                "1.1" => %{
                  "workflow" => "review-changes",
                  "time_limit_minutes" => 90,
-                 "full_suite" => true
+                 "full_suite" => true,
+                 "model_choice" => %{"runtime" => "claude"}
                }
              }
 

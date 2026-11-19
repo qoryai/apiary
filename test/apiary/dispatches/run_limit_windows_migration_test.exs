@@ -2,7 +2,9 @@ defmodule Apiary.Dispatches.RunLimitWindowsMigrationTest do
   # The migration that lets a run keep its model provider's limit windows in
   # `runs.provider_api` as `use_up_to_windows`, run down and up again inside the test's
   # transaction, which rolls it all back, and the check it replaces, at its bounds and one
-  # past them. It changes the tables under every other test, so this is not async.
+  # past them. The later migration that drops `provider_api` and the run's other provider
+  # columns runs down before each test, and up again at its end. It changes the tables
+  # under every other test, so this is not async.
   use Apiary.DataCase, async: false
 
   # Running a migration up again while later ones are applied makes Ecto warn that an
@@ -20,6 +22,9 @@ defmodule Apiary.Dispatches.RunLimitWindowsMigrationTest do
   @version 20_261_112_110_000
   @migration Apiary.Repo.Migrations.KeepARunSLimitWindows
   @file_name "#{@version}_keep_a_run_s_limit_windows.exs"
+  @columns_version 20_261_118_162_200
+  @columns_migration Apiary.Repo.Migrations.DropARunSOneProviderColumns
+  @columns_file_name "#{@columns_version}_drop_a_run_s_one_provider_columns.exs"
   @options [log: false, migration_lock: false]
   @api %{
     "format" => "anthropic-messages",
@@ -29,9 +34,13 @@ defmodule Apiary.Dispatches.RunLimitWindowsMigrationTest do
   @windows ~w(five_hour seven_day)
 
   setup_all do
-    if not Code.ensure_loaded?(@migration) do
+    for {migration, file} <- [
+          {@migration, @file_name},
+          {@columns_migration, @columns_file_name}
+        ],
+        not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
-      |> Path.join(@file_name)
+      |> Path.join(file)
       |> Code.require_file()
     end
 
@@ -44,9 +53,13 @@ defmodule Apiary.Dispatches.RunLimitWindowsMigrationTest do
     work_item = work_item_fixture(scope)
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
     %{registered: run} = dispatched!(key)
+    assert :ok = Ecto.Migrator.down(Repo, @columns_version, @columns_migration, @options)
 
     %{run_id: run.id}
   end
+
+  defp columns_up!,
+    do: assert(:ok = Ecto.Migrator.up(Repo, @columns_version, @columns_migration, @options))
 
   # `api` written to the run as its `provider_api`, with the other provider columns, in a
   # savepoint: :ok, or the name of the check it broke.
@@ -94,6 +107,7 @@ defmodule Apiary.Dispatches.RunLimitWindowsMigrationTest do
     assert :ok = Ecto.Migrator.up(Repo, @version, @migration, @options)
     assert set(run_id, with_windows) == :ok
     assert api_of(run_id) == with_windows
+    columns_up!()
   end
 
   test "the windows are 1 to 11 names of the contract's limit windows", %{run_id: run_id} do
@@ -126,6 +140,7 @@ defmodule Apiary.Dispatches.RunLimitWindowsMigrationTest do
     end
 
     assert set(run_id, Map.put(@api, "limit_windows", @windows)) == "runs_provider_api_check"
+    columns_up!()
   end
 
   # The largest API the catalogue's schema and the endpoint rule allow, but a basic
@@ -155,5 +170,6 @@ defmodule Apiary.Dispatches.RunLimitWindowsMigrationTest do
     over = %{api | "endpoint" => api["endpoint"] <> String.duplicate("p", padding + 1)}
     assert text_bytes(over) == 8193
     assert set(run_id, over) == "runs_provider_api_check"
+    columns_up!()
   end
 end
