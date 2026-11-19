@@ -19,7 +19,7 @@ defmodule Apiary.Repo.Migrations.KeepARunSModelKeysByProvider do
   #   `endpoint`, `auth` and, when the description lists them, `key_prefixes` and
   #   `use_up_to_windows`, at most 8 KiB.
   # - what the claim wrote for the run configuration: `pause_for_s`, and, where the claim
-  #   had them, `resets_at`, `schedule_resets_at`, `cooldown_until`, `chosen` and
+  #   had them, `resets_at`, `schedule_resets_at`, `cooldown_until` and
   #   `use_up_to_percent`.
   #
   # No row has a key value. The table starts empty: the next migration drops the run's

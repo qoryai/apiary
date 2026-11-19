@@ -15,7 +15,7 @@ defmodule Apiary.Runs.ModelKey do
   with a setting resolved to its address, `auth`, and, when the description lists them,
   `key_prefixes` and the limit windows as `use_up_to_windows`. The rest is what the claim
   wrote for the run configuration: the key's Pause for (`pause_for_s`), and, where the
-  claim had them, `resets_at`, `schedule_resets_at`, `cooldown_until`, `chosen` and
+  claim had them, `resets_at`, `schedule_resets_at`, `cooldown_until` and
   `use_up_to_percent`. No row has a key value. The key's row id, the secret's id and the
   API are left out of the struct's inspection.
   """
