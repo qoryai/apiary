@@ -2571,7 +2571,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :recorded, :map,
     default: %{},
     doc:
-      "by a run's public id, the versions of demo videos and of pictures it wrote (`ApiaryWeb.WorkItemLive.StageTab.view/3`'s `recorded`)"
+      "by a run's public id, its demo video and picture versions (`ApiaryWeb.WorkItemLive.StageTab.view/3`'s `recorded`)"
 
   attr :passed_over, :map,
     default: nil,
@@ -6236,11 +6236,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :skips, :list,
     default: [],
     doc:
-      "the workflow entries the runner passed over among `runs` (`Apiary.Stages.skips/1`): each a row inside the run of `sessions` it was passed over in, else before the first run after it"
+      "the workflow entries the runner passed over among `runs` (`Apiary.Stages.skips/1`): each a row inside the run of `sessions` it was passed over in, else inside the next run where that run has `sessions`, else before it"
 
   attr :outside, :boolean,
     default: true,
-    doc: "whether a skip that no run of `sessions` holds has a row; false hides it"
+    doc: "whether a skip outside every run of `sessions` has a row; false hides it"
 
   attr :sessions, :map,
     default: %{},
@@ -6254,7 +6254,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :recorded, :map,
     default: %{},
     doc:
-      "by a run's public id, the versions of demo videos and of pictures it wrote, as `%{videos:, pictures:}`"
+      "by a run's public id, its demo video and picture versions that are not withdrawn, oldest first, as `%{kind:, at:, count:}`: `kind` `:videos` or `:pictures`, `at` when it was written, `count` 1 for a video, the files of a picture"
 
   attr :latest, :map, default: nil, doc: "its latest run, where it is among `runs`"
 
@@ -6280,8 +6280,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   # with nothing to show, and a later stage's run, a row. A run with `sessions` is a fold
   # of them (`shared_run/1`), open for the latest run. A workflow entry the runner passed
   # over is a row with its workflow and the reason (`skip_row/1`): inside the run of
-  # `sessions` it was passed over in (`record_rows/3`), else before the first run queued
-  # after it, where `outside` is true; the count leaves it out. A proposal the page has
+  # `sessions` it was passed over in, or in the next run where it has `sessions`
+  # (`record_rows/3`), else before the first run queued after it, where `outside` is
+  # true; the count leaves it out. A proposal the page has
   # not read (`:unread`) is read when its fold opens (`"open_fold"`, with its version). The
   # folds keep the state the reader gave them when the page draws again.
   defp record(assigns) do
@@ -6318,7 +6319,7 @@ defmodule ApiaryWeb.WorkItemComponents do
               open={run == @latest}
               stage_run={@verdicts[run[:attempt]]}
               sequence={@sequence}
-              recorded={Map.get(@recorded, run[:id], %{})}
+              recorded={Map.get(@recorded, run[:id], [])}
               now={@now}
             />
             <%= case kind == :run && run_shows(run, run == @latest) do %>
@@ -6395,9 +6396,9 @@ defmodule ApiaryWeb.WorkItemComponents do
     |> Enum.map(fn {{{_key, kind, row}, _place}, i} -> {kind, row, i} end)
   end
 
-  # The skips passed over while a run with `sessions` ran, by the run's public id: those
-  # passed over between the run's start and its end, or now for a run that has not
-  # ended; and the other skips, oldest first.
+  # The skips inside a run with `sessions`, by its public id: one passed over after the
+  # run's start and before its end, if it ended, else one whose next run it is; and the
+  # other skips, oldest first.
   defp skips_inside(runs, skips, sessions) do
     windows =
       for %{id: id, started_at: %DateTime{} = from} = run <- runs,
@@ -6405,11 +6406,27 @@ defmodule ApiaryWeb.WorkItemComponents do
           do: {id, from, run[:ended_at]}
 
     Enum.reduce(Enum.reverse(skips), {%{}, []}, fn skip, {inside, outside} ->
-      case Enum.find(windows, &in_window?(skip[:inserted_at], &1)) do
-        {id, _from, _to} -> {Map.update(inside, id, [skip], &[skip | &1]), outside}
-        nil -> {inside, [skip | outside]}
-      end
+      held =
+        case Enum.find(windows, &in_window?(skip[:inserted_at], &1)) do
+          {id, _from, _to} -> id
+          nil -> next_shared(runs, skip, sessions)
+        end
+
+      if held,
+        do: {Map.update(inside, held, [skip], &[skip | &1]), outside},
+        else: {inside, [skip | outside]}
     end)
+  end
+
+  # The public id of the first run after the skip's `after_attempt`, where it has
+  # `sessions`; nil for none.
+  defp next_shared(runs, skip, sessions) do
+    case runs
+         |> Enum.filter(&((&1[:attempt] || 0) > skip.after_attempt))
+         |> Enum.min_by(& &1[:attempt], fn -> nil end) do
+      %{id: id} when is_binary(id) -> if match?([_ | _], Map.get(sessions, id)), do: id
+      _none -> nil
+    end
   end
 
   defp in_window?(%DateTime{} = at, {_id, from, to}),
@@ -6442,7 +6459,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :open, :boolean, required: true
   attr :stage_run, :map, default: nil
   attr :sequence, :list, required: true
-  attr :recorded, :map, required: true
+  attr :recorded, :list, required: true
   attr :now, :any, required: true
 
   # A run of a stage with `shared_run: true`: a fold whose line is `shared_parts/5`, with a
@@ -6518,8 +6535,8 @@ defmodule ApiaryWeb.WorkItemComponents do
             gettext("round %{round}", round: Format.number(stage_run.round))
       end
 
-    # The run's verdict is its newest session's: running while it runs, the run's state
-    # once it stopped in a session (`run_parts/4`), else that session's verdict.
+    # While no report ended the newest session, the run reads running, the run's state
+    # once it stopped (`run_parts/4`), else that session's verdict; else the run's verdict.
     stage_run = stage_run && %{stage_run | workflow: nil, round: nil}
     newest = List.last(sessions)
 
@@ -6534,7 +6551,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         newest.state == nil and run[:state] in @stopped ->
           %{stage_run | shows: :no_verdict}
 
-        stage_run.shows in [:passed, :failed, :no_verdict] ->
+        newest.state == nil and stage_run.shows in [:passed, :failed, :no_verdict] ->
           %{stage_run | shows: session_shows(newest)}
 
         true ->
@@ -6545,22 +6562,24 @@ defmodule ApiaryWeb.WorkItemComponents do
     [attempt, count | List.wrap(round)] ++ rest
   end
 
+  # Run another round at the limit runs one round more, so the limit shown is never under
+  # the round, as the stage card counts it.
   defp loop_round(session, rounds) when is_integer(rounds),
     do:
       gettext("round %{round} of %{rounds}",
         round: Format.number(session.round),
-        rounds: Format.number(rounds)
+        rounds: Format.number(max(session.round, rounds))
       )
 
   defp loop_round(session, nil),
     do: gettext("round %{round}", round: Format.number(session.round))
 
-  # The workflow of the harness that records the demos; its row reads what its run recorded.
+  # The workflow of the harness that records the demos; its row reads what it recorded.
   @capture "capture-demos"
 
   # A session's row: workflow, round inside a loop, verdict and end. With no report, it
   # reads running while its run runs, the run's state once it stopped, else as ended.
-  # capture-demos reads what its run recorded (`recorded_words/1`) in place of a verdict.
+  # capture-demos reads what it recorded (`recorded_words/1`) in place of a verdict.
   defp session_parts(session, run, recorded, now) do
     round =
       if is_integer(session.loop_entry),
@@ -6569,7 +6588,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     said =
       cond do
         not is_nil(session.state) ->
-          ended_parts(session, session.ended_at, recorded, now)
+          ended_parts(session, run, session.ended_at, recorded, now)
 
         run[:cancelling] == true ->
           [cancelling_word(%{run: run})]
@@ -6589,17 +6608,42 @@ defmodule ApiaryWeb.WorkItemComponents do
           [run_state_word(run), run[:ended_at] && ended_ago(run.ended_at, now)]
 
         true ->
-          ended_parts(session, run[:ended_at], recorded, now)
+          ended_parts(session, run, run[:ended_at], recorded, now)
       end
 
     Enum.reject([{:b, session.workflow}, round | said], &is_nil/1)
   end
 
-  defp ended_parts(session, ended_at, recorded, now) do
+  # A session that reported failed or cancelled with no verdict reads that state, in the
+  # word of a run's state (`ApiaryWeb.RunComponents.state_label/1`).
+  defp ended_parts(session, run, ended_at, recorded, now) do
     words =
-      (session.workflow == @capture && recorded_words(recorded)) || session_verdict(session)
+      cond do
+        is_nil(session.verdict) and session.state in ["failed", "cancelled"] ->
+          RunComponents.state_label(session.state)
+
+        session.workflow == @capture ->
+          recorded_words(recorded_in(session, run, recorded)) || session_verdict(session)
+
+        true ->
+          session_verdict(session)
+      end
 
     [words, ended_at && ended_ago(ended_at, now)]
+  end
+
+  # The demo videos and pictures among `recorded`, the run's media versions, written
+  # between the session's start and its end, or its run's end for a session no report
+  # ended: `%{videos:, pictures:}`, a video version counting 1 and a picture each file.
+  defp recorded_in(session, run, recorded) do
+    to = session.ended_at || run[:ended_at]
+
+    for %{kind: kind, at: at, count: count} <- recorded,
+        DateTime.compare(at, session.started_at) != :lt,
+        is_nil(to) or DateTime.compare(at, to) != :gt,
+        reduce: %{videos: 0, pictures: 0} do
+      counts -> Map.update!(counts, kind, &(&1 + count))
+    end
   end
 
   defp session_verdict(session),
@@ -6615,8 +6659,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp session_shows(%{verdict: :failed}), do: :failed
   defp session_shows(_session), do: :no_verdict
 
-  # What a run of capture-demos recorded: its versions of demo videos and of pictures,
-  # each left out at 0; nil for none.
+  # What a session of capture-demos recorded (`recorded_in/3`): its demo videos and
+  # pictures, each left out at 0; nil for none.
   defp recorded_words(recorded) do
     videos = Map.get(recorded, :videos, 0)
     pictures = Map.get(recorded, :pictures, 0)

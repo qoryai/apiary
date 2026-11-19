@@ -247,6 +247,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       name: get(stage, :name),
       gate: get(stage, :gate) || %{},
       sequence: get(stage, :sequence) || [],
+      shared_run: get(stage, :shared_run) == true,
       outputs: for(output <- get(stage, :outputs) || [], do: get(output, :type))
     }
   end

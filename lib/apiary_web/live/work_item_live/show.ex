@@ -2423,7 +2423,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   # The sessions of the stage tab's runs of a stage with `shared_run: true`
   # (`Apiary.Stages.run_sessions/1`); none on another tab.
-  defp sessions_of(%{stage: %{}, runs: runs}) do
+  defp sessions_of(%{stage: %{shared_run: true}, runs: runs}) do
     case for(%{id: id} when is_binary(id) <- runs, do: id) do
       [] -> %{}
       ids -> Stages.run_sessions(ids)
@@ -3260,8 +3260,11 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   defp with_confirmers(work_item, confirmers), do: Map.put(work_item, :confirmers, confirmers)
 
   # The work item's artifacts that its page lists: every one but a name whose newest
-  # version is a withdrawal (`Apiary.Artifacts.withdrawn?/1`).
-  defp shown_artifacts(row), do: Enum.reject(Artifacts.list(row), &Artifacts.withdrawn?/1)
+  # version is a withdrawal (`Apiary.Artifacts.withdrawn?/1`), with the sessions of each
+  # version's run, for the outputs list's round (`Apiary.Artifacts.with_sessions/1`).
+  defp shown_artifacts(row),
+    do:
+      row |> Artifacts.list() |> Enum.reject(&Artifacts.withdrawn?/1) |> Artifacts.with_sessions()
 
   # The versions an approval at the current stage's gate would record, which the stage
   # card lists (`Apiary.Stages.gate_frames/3`, the set `Apiary.Stages.approve/4` records);

@@ -1905,9 +1905,7 @@ defmodule Apiary.Artifacts do
         where: a.work_item_id == ^id and a.workspace_id == ^workspace_id,
         order_by: [a.type, a.name],
         preload: [
-          versions:
-            ^{versions_query(),
-             [:user, run: [run: runs_query(), sessions: sessions_query()], files: files_query()]}
+          versions: ^{versions_query(), [:user, run: [run: runs_query()], files: files_query()]}
         ]
     )
   end
@@ -1920,7 +1918,7 @@ defmodule Apiary.Artifacts do
         where: v.artifact_id == ^id,
         preload: [
           :user,
-          run: [run: ^runs_query(), sessions: ^sessions_query()],
+          run: [run: ^runs_query()],
           files: ^files_query()
         ]
     )
@@ -1939,7 +1937,7 @@ defmodule Apiary.Artifacts do
         limit: 1,
         preload: [
           :user,
-          run: [run: ^runs_query(), sessions: ^sessions_query()],
+          run: [run: ^runs_query()],
           artifact: a,
           files: ^files_query()
         ]
@@ -1958,7 +1956,7 @@ defmodule Apiary.Artifacts do
         preload: [
           :artifact,
           :user,
-          run: [run: ^runs_query(), sessions: ^sessions_query()],
+          run: [run: ^runs_query()],
           files: ^files_query()
         ]
     )
@@ -1982,9 +1980,20 @@ defmodule Apiary.Artifacts do
           ])
       )
 
-  # The sessions of a run of a stage with `shared_run: true`, for the round of the session
-  # that wrote a version (`ApiaryWeb.ArtifactComponents.writer/2`): their place and when
-  # each was written, in the order they ran.
+  # with_sessions/1 reads the sessions of each version's run into a version, a list of
+  # versions, or a list of artifacts with their versions, as `list/1`, `versions/1` and
+  # `get_version!/1` return them. `ApiaryWeb.ArtifactComponents.writer/2` draws the round
+  # from them; the other reads leave them out.
+  @doc false
+  @spec with_sessions(Version.t() | [Version.t() | Artifact.t()]) ::
+          Version.t() | [Version.t() | Artifact.t()]
+  def with_sessions([%Artifact{} | _rest] = artifacts),
+    do: Repo.preload(artifacts, versions: [run: [sessions: sessions_query()]])
+
+  def with_sessions(versions), do: Repo.preload(versions, run: [sessions: sessions_query()])
+
+  # The sessions of a run of a stage with `shared_run: true`: their place and when each
+  # was written, in the order they ran.
   defp sessions_query,
     do:
       from(s in Apiary.Stages.Session,

@@ -2800,39 +2800,53 @@ defmodule Apiary.Stages do
 
     run_ids = rows |> Enum.map(fn {_id, session} -> session.dispatch_run_id end) |> Enum.uniq()
     records = session_records(run_ids)
-    verdicts = session_verdicts(run_ids)
+    versions = verdict_versions(run_ids)
 
-    rows
-    |> Enum.group_by(fn {id, _session} -> id end, fn {_id, session} -> session end)
-    |> Map.new(fn {id, sessions} ->
-      {shown, _seen} =
-        Enum.map_reduce(sessions, nil, fn session, seen ->
-          record = records[{session.dispatch_run_id, session.forager_session}]
-          number = session.verdict_number
+    # Each session with the number of the verdict version it stored, nil for none.
+    numbered =
+      rows
+      |> Enum.group_by(fn {id, _session} -> id end, fn {_id, session} -> session end)
+      |> Map.new(fn {id, sessions} ->
+        {numbered, _seen} =
+          Enum.map_reduce(sessions, nil, fn session, seen ->
+            # A session no report ended has the run's newest verdict, where it is newer
+            # than the one the session before read, as the step on the run's end reads it.
+            number = session.verdict_number || unreported(session, versions, seen)
+            stored = if is_integer(number) and number != seen, do: number
+            {{session, stored}, number || seen}
+          end)
 
-          # A session no report ended has the run's newest verdict, where it is newer
-          # than the one the session before read, as the step on the run's end reads it.
-          number = number || unreported(session, verdicts, seen)
+        {id, numbered}
+      end)
 
-          verdict =
-            if is_integer(number) and number != seen,
-              do: verdicts[{session.dispatch_run_id, number}]
+    verdicts =
+      for {_id, sessions} <- numbered,
+          {session, number} <- sessions,
+          version = number && versions[{session.dispatch_run_id, number}],
+          version != nil,
+          uniq: true,
+          do: version
 
-          {shown_session(session, record, verdict), number || seen}
-        end)
+    read =
+      verdicts |> Repo.preload(:files) |> Map.new(&{{&1.run_id, &1.number}, stored_verdict(&1)})
 
-      {id, shown}
+    Map.new(numbered, fn {id, sessions} ->
+      {id,
+       for {session, number} <- sessions do
+         record = records[{session.dispatch_run_id, session.forager_session}]
+         shown_session(session, record, number && read[{session.dispatch_run_id, number}])
+       end}
     end)
   end
 
-  defp unreported(%Session{state: nil, dispatch_run_id: id}, verdicts, seen) do
+  defp unreported(%Session{state: nil, dispatch_run_id: id}, versions, seen) do
     newest =
-      for({{^id, number}, _verdict} <- verdicts, do: number) |> Enum.max(fn -> nil end)
+      for({{^id, number}, _version} <- versions, do: number) |> Enum.max(fn -> nil end)
 
     if newest && (is_nil(seen) or newest > seen), do: newest
   end
 
-  defp unreported(_session, _verdicts, _seen), do: nil
+  defp unreported(_session, _versions, _seen), do: nil
 
   defp shown_session(session, record, verdict) do
     ended? = not is_nil(session.state)
@@ -2862,18 +2876,17 @@ defmodule Apiary.Stages do
     |> Map.new()
   end
 
-  # The verdict of each `verdict` version the runs of the queue `run_ids` stored, by run
-  # and version number (`stored_verdict/1`).
-  defp session_verdicts([]), do: %{}
+  # The `verdict` versions the runs of the queue `run_ids` stored, without their files, by
+  # run and version number; `run_sessions/1` reads the files of those it shows.
+  defp verdict_versions([]), do: %{}
 
-  defp session_verdicts(run_ids) do
+  defp verdict_versions(run_ids) do
     Repo.all(
       from v in Apiary.Artifacts.Version,
         join: a in assoc(v, :artifact),
-        where: v.run_id in ^run_ids and a.type == "verdict" and a.name == "main",
-        preload: [:files]
+        where: v.run_id in ^run_ids and a.type == "verdict" and a.name == "main"
     )
-    |> Map.new(&{{&1.run_id, &1.number}, stored_verdict(&1)})
+    |> Map.new(&{{&1.run_id, &1.number}, &1})
   end
 
   # notes/1 is what the work item's next run reads as work item data, oldest first: what
