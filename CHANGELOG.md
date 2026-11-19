@@ -1777,8 +1777,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   its first fallback with one, else on its provider; and the run's `run_settings` where
   the choice's runtime, key or model is no longer valid, or its runtime is no longer in
   the catalogue. It has `runtime` alone where its runtime uses another API of a provider
-  that an earlier session uses, where its provider has no key or the run has no start
-  key, and, with the default runtime, where the workflow resolves to no model choice at
+  that an earlier session uses or where its provider has no key, and, with the default
+  runtime, where the workflow resolves to no model choice at
   any level: the session uses that runtime's default model. A choice whose provider was
   removed ends the claim `provider_gone`. A run takes the keys of each provider its
   sessions run on, at most 6 across them: the start key's provider's keys, then one key
@@ -1787,7 +1787,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   gateway rotates each provider's keys apart from the others. For a
   session on a provider other than the start key's, the answer has `model_credential`,
   the key that session starts on; without it, the session joins the group of the run's
-  start key.
+  start key. A run whose first session runs on the machine's key has no start key: it
+  takes the keys of its later sessions' providers, in session order, at least one each,
+  and its run configuration has no `model_credential`. A run whose every session runs on
+  the machine's key takes no key.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
 - A run receives the variables of its workspace. When a claim registers a run, Qory

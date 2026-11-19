@@ -786,8 +786,8 @@ of the run contract. A next session of the same stage:
   no longer valid, or its runtime is no longer in the catalogue. A choice whose provider
   was removed, or no longer fits the catalogue, ends the claim `provider_gone`.
 - `model_choice` has `runtime` alone where its runtime uses another API of a provider that
-  an earlier session of the run uses, where its provider has no key, or where the run has
-  no start key; and the catalogue's default runtime alone where the workflow resolves to
+  an earlier session of the run uses, or where its provider has no key; and the
+  catalogue's default runtime alone where the workflow resolves to
   no model choice at any level. The session uses the default model of that runtime.
 - `model_credential`, for a session on a provider other than that of the run's start key,
   is the credential name of the key the session starts on: that provider's first key out
@@ -795,7 +795,12 @@ of the run contract. A next session of the same stage:
   providers of its sessions: the start key's provider's keys, at most 6 less the number
   of other providers; then one key of each other provider, in session order; then the
   other providers' remaining keys. Where `model_credential` is left out, the session joins
-  the group of the run's start key.
+  the group of the run's start key. A run whose first session runs on the machine's key,
+  as its workflow resolves to no model choice, has no start key and no `model_credential`
+  in its run configuration: its 6 keys fill from the providers of its later sessions, in
+  session order, at least one key each, and each such session's `model_credential` is its
+  provider's first key out of cooldown, else its first key. A run whose every session
+  runs on the machine's key gets no key.
 
 Or the end of the run, where the stage runs no further workflow in this run: an
 escalation, open questions, the gate, or the next stage, whose run is queued as any run:

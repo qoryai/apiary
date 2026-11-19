@@ -902,7 +902,12 @@ push credentials, and the harness links. A run of a stage with `shared_run: true
 gets the keys of each provider its later sessions run on, one provider per session, at
 most 6 keys across them: the start key's provider's keys, at most 6 less the number of
 other providers; then one key of each other provider, in session order; then the other
-providers' remaining keys. The run keeps them in `run_model_keys`, one row per key. Each
+providers' remaining keys. A run whose first session runs on the machine's key, as its
+workflow resolves to no model choice, has no start key: its 6 keys fill from the
+providers of its later sessions, in session order, at least one key each, its run
+configuration has no `model_credential`, and none of its keys is in the group of the
+machine's key, which is in no group. A run whose every session runs on the machine's
+key gets no key. The run keeps them in `run_model_keys`, one row per key. Each
 key is an API credential named `<provider's public id>-<n>`, `n` from 1 for each
 provider, with its provider's `format`, `endpoint` and `auth`, and `group`, the
 provider's public id, so each provider's keys form one key group, which the gateway
