@@ -530,7 +530,8 @@ defmodule Apiary.Runs.Run do
   it waits for them. A run whose session 1 runs on the machine's local model provider
   credential has no default model provider credential, so session 1 has no provider and
   runs on none. Reads the run's key rows, unless `model_keys` is loaded, and its
-  sessions, unless given as `sessions`, as Apiary.Stages.run_sessions/1 reads them.
+  sessions, unless given as `sessions`, as
+  Apiary.Stages.session_rows_by_dispatch_run/1 reads them.
   """
   @spec session_provider_ids(t() | map(), pos_integer() | nil, list | nil) :: [Ecto.UUID.t()]
   def session_provider_ids(run, session, sessions \\ nil)

@@ -789,7 +789,7 @@ defmodule Apiary.Stages do
   # one a report numbered `session` ended, else the open session (`open_session/1`), the
   # one a run that paused was in. Nil for a session of the default model provider
   # credential's group, and for a run with no session settings. `sessions`, the run's
-  # sessions as `run_sessions/1` reads them, is read here where it is nil.
+  # sessions as `session_rows_by_dispatch_run/1` reads them, is read here where it is nil.
   @doc false
   @spec session_credential(map, pos_integer, [Session.t()] | nil) :: String.t() | nil
   def session_credential(run, session, sessions \\ nil)
@@ -800,7 +800,8 @@ defmodule Apiary.Stages do
         sessions
       )
       when is_binary(dispatch_run_id) and is_integer(session) do
-    sessions = sessions || Map.get(run_sessions([dispatch_run_id]), dispatch_run_id, [])
+    sessions =
+      sessions || Map.get(session_rows_by_dispatch_run([dispatch_run_id]), dispatch_run_id, [])
 
     case Enum.find(sessions, &(&1.forager_session == session)) ||
            Enum.find(sessions, &is_nil(&1.forager_session)) do
@@ -814,13 +815,15 @@ defmodule Apiary.Stages do
 
   def session_credential(_run, _session, _sessions), do: nil
 
-  # run_sessions/1 is the sessions of the runs of the queue `dispatch_run_ids`, by run of
-  # the queue, each run's newest first: one read for every run.
+  # session_rows_by_dispatch_run/1 is the stored `Session` rows of the runs of the queue
+  # `dispatch_run_ids`, by run of the queue, each run's newest first: one read for every
+  # run. Unlike `run_sessions/1`, which a page reads by public id, it keeps
+  # `forager_session` and reads no session records or verdicts.
   @doc false
-  @spec run_sessions([Ecto.UUID.t()]) :: %{Ecto.UUID.t() => [Session.t()]}
-  def run_sessions([]), do: %{}
+  @spec session_rows_by_dispatch_run([Ecto.UUID.t()]) :: %{Ecto.UUID.t() => [Session.t()]}
+  def session_rows_by_dispatch_run([]), do: %{}
 
-  def run_sessions(dispatch_run_ids) when is_list(dispatch_run_ids) do
+  def session_rows_by_dispatch_run(dispatch_run_ids) when is_list(dispatch_run_ids) do
     Repo.all(
       from s in Session,
         where: s.dispatch_run_id in ^Enum.uniq(dispatch_run_ids),

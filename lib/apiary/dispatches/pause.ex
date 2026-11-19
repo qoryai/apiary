@@ -68,7 +68,7 @@ defmodule Apiary.Dispatches.Pause do
     # The runs' key rows and sessions, each read once for every run.
     runs = rows |> Enum.map(&elem(&1, 1)) |> Repo.preload(:model_keys)
     sessions = runs |> Enum.map(& &1.dispatch_run_id) |> Enum.reject(&is_nil/1)
-    sessions = Apiary.Stages.run_sessions(sessions)
+    sessions = Apiary.Stages.session_rows_by_dispatch_run(sessions)
 
     paused =
       Map.new(runs, fn run ->
