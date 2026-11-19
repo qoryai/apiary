@@ -6213,6 +6213,11 @@ msgstr[1] ""
 msgid "Approve the proposal, or add a comment and run another round."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Approve the sign-in at OpenAI before %{time}."
+msgstr "The code works until %{time}."
+
 #: lib/apiary_web/live/work_item_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Approve this stage?"
@@ -21686,16 +21691,6 @@ msgstr ""
 msgid "The chosen model provider fails its checks. Choose or add another provider on the Model step, then press Run the test."
 msgstr ""
 
-#: lib/apiary_web/components/model_key_components.ex
-#, elixir-autogen, elixir-format
-msgid "The code expired before the sign-in was approved."
-msgstr ""
-
-#: lib/apiary_web/components/model_key_components.ex
-#, elixir-autogen, elixir-format
-msgid "The code works until %{time}."
-msgstr ""
-
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "The command connects %{name} by itself, through the Qory Gateway: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine."
@@ -22834,6 +22829,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "The sha256 of the policy this run ran under. Two runs with the same digest had the same policy."
 msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "The sign-in expired before it was approved."
+msgstr "The code expired before the sign-in was approved."
 
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format

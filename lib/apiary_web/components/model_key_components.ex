@@ -645,8 +645,8 @@ defmodule ApiaryWeb.ModelKeyComponents do
     * `:signed_in`: the state of a new sign-in;
     * `:expired`, `:off`, `:failed`: the fix, the cause and the button.
 
-  `errors` are the form's errors on the sign-in, as sentences or `:sign_in_missing`. `key` is the value id of the
-  key a button in a list row starts the sign-in for, nil on a form.
+  `errors` are the form's errors on the sign-in, as sentences or `:sign_in_missing`. `key`
+  is the value id of the key a button in a list row starts the sign-in for, nil on a form.
   """
   attr :id, :string, required: true
 
@@ -705,7 +705,9 @@ defmodule ApiaryWeb.ModelKeyComponents do
         <.copy_button id={"#{@id}-copy"} text={@device.user_code} />
       </div>
       <p id={"#{@id}-until"} class="text-muted">
-        {gettext("The code works until %{time}.", time: Format.time(@device.expires_at))}
+        {gettext("Approve the sign-in at OpenAI before %{time}.",
+          time: Format.time(@device.expires_at)
+        )}
       </p>
       <div class="flex items-center gap-3">
         <span class="loading loading-spinner loading-xs text-faint" aria-hidden="true" />
@@ -747,7 +749,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
         <% end %>
       </span>
       <span :if={@device.state == :expired} id={"#{@id}-cause"} class="text-muted">
-        {gettext("The code expired before the sign-in was approved.")}
+        {gettext("The sign-in expired before it was approved.")}
       </span>
       <span :if={@device.state == :off} id={"#{@id}-cause"} class="text-muted">
         {gettext(

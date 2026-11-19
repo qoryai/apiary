@@ -240,8 +240,8 @@ defmodule Apiary.ModelKeys.Login do
   `{:error, :no_account}` for a response that is a sign-in but has no account id at the
   claim of the access token; `{:error, :invalid}` for any other response: one without a
   refresh token or a printable access token, or with different account ids in the access
-  token and the ID token (the ID token's id is compared only when it has one). It makes no network call, never raises, and its return value contains nothing of
-  `response`.
+  token and the ID token (the ID token's id is compared only when it has one). It makes no
+  network call, never raises, and its return value contains nothing of `response`.
 
   The expiry is the access token's `exp`, else `expires_in` seconds after `now`, else nil.
   Either is used only when it is 1 second to 366 days after `now`; a value outside that
