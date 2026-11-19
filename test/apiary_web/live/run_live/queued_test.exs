@@ -12,7 +12,10 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
   import Phoenix.LiveViewTest
   import Apiary.AccessKeysFixtures
   import Apiary.DispatchedRunsFixtures, only: [walked_claim: 2, workspace_gateway!: 1]
-  import Apiary.ModelKeysFixtures, only: [cooling!: 2]
+
+  import Apiary.ModelKeysFixtures,
+    only: [cooling!: 2, key_value!: 2, login_paste: 1, login_tokens: 1]
+
   import Apiary.NodesFixtures
   import Apiary.RunEventsFixtures
   import Apiary.WorkItemsFixtures
@@ -314,6 +317,117 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
 
     # A provider of another organisation than the run's, left from when an operator
     # managed whole organisations.
+    @tag needs: [:factory, :secrets]
+    test "says why a run waits for a sign-in: a new one is needed, or a refresh runs",
+         %{conn: conn, scope: scope} do
+      {:ok, provider} =
+        Apiary.Connections.create_provider(scope, %{
+          provider: "openai-subscription",
+          name: "Team sign-ins",
+          keys: [
+            %{
+              value_id: "main",
+              value: login_paste(tokens: login_tokens(tag: "queued", expires_in: 3600))
+            }
+          ]
+        })
+
+      {:ok, _choice} =
+        Apiary.ModelChoices.put_choice(scope, :workspace, %{
+          provider: provider.public_id,
+          runtime: "codex",
+          model: "gpt-6-sol"
+        })
+
+      value = key_value!(provider, "main")
+      {_work_item, queued} = queue!(scope)
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^queued.id),
+          set: [model_provider_ids: [provider.id]]
+        )
+
+      login = from(l in Apiary.ModelKeys.Login, where: l.secret_value_id == ^value.id)
+
+      Repo.update_all(login,
+        set: [state: "sign_in_needed", sign_in_cause: "refresh_token_expired"]
+      )
+
+      view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
+
+      assert text(view, "#prepare-machine-why") ==
+               "Waiting for a model key: sign in to ChatGPT again on the page of main."
+
+      assert has_element?(view, "#prepare-machine-why a", "main")
+
+      # A refresh that returned no account id leaves the same line: the row says it.
+      Repo.update_all(login, set: [sign_in_cause: "no_account"])
+      view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
+
+      assert text(view, "#prepare-machine-why") ==
+               "Waiting for a model key: sign in to ChatGPT again on the page of main."
+
+      now = DateTime.utc_now()
+
+      Repo.update_all(login,
+        set: [
+          state: "signed_in",
+          sign_in_cause: nil,
+          signed_in_at: DateTime.add(now, -3600),
+          access_expires_at: DateTime.add(now, 600),
+          lease_id: Ecto.UUID.generate(),
+          lease_until: DateTime.add(now, 30)
+        ]
+      )
+
+      view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
+
+      assert text(view, "#prepare-machine-why") ==
+               "Waiting for a model key: refreshing the ChatGPT sign-in of main."
+    end
+
+    @tag needs: [:factory, :secrets]
+    test "says a run waits for a new value when every key was rejected, and links to the key",
+         %{conn: conn, scope: scope} do
+      {:ok, provider} =
+        Apiary.Connections.create_provider(scope, %{
+          provider: "anthropic",
+          keys: [%{value_id: "main", value: "sk-ant-queued-page-main"}]
+        })
+
+      {:ok, _choice} =
+        Apiary.ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+
+      value = key_value!(provider, "main")
+      {_work_item, queued} = queue!(scope)
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^queued.id),
+          set: [model_provider_ids: [provider.id]]
+        )
+
+      key = %{
+        name: "model-1",
+        secret_value_id: value.id,
+        organisation_id: value.organisation_id,
+        copy_set_at: value.value_set_at,
+        copy_kept: true
+      }
+
+      now = DateTime.utc_now()
+      :ok = Apiary.ModelKeys.reject([key], [%{credential: "model-1", at: now}], provider, now)
+
+      view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
+
+      assert text(view, "#prepare-machine-why") ==
+               "Waiting for a model key: enter a new value for main."
+
+      edit =
+        ~p"/#{scope.organisation}/settings/model-providers/#{provider.public_id}/keys/main/edit"
+
+      assert has_element?(view, ~s{#prepare-machine-why a[href="#{edit}"]}, "main")
+    end
+
     @tag needs: [:factory, :secrets]
     test "says a run waits for a model key, without the name of another organisation's provider",
          %{conn: conn, scope: scope} do

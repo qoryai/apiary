@@ -9866,6 +9866,11 @@ msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format
+msgid "Enter a new value: the stored one no longer works."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
 msgid "Enter a percentage from 1 to 99."
 msgstr ""
 
@@ -13998,6 +14003,11 @@ msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format
+msgid "Needs a new key"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
 msgid "Needs a new sign-in"
 msgstr ""
 
@@ -16225,9 +16235,19 @@ msgstr ""
 msgid "OpenAI returned HTTP 401 to the refresh"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI returned no account id"
+msgstr ""
+
 #: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format
 msgid "OpenAI returned no account id for this sign-in."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI returned no account id on %{time}."
 msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
@@ -24678,12 +24698,32 @@ msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
+msgid "Waiting for a model key: enter a new value for %{key}."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
 msgid "Waiting for a model key: every key of %{provider} is in cooldown until %{time}."
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
 msgid "Waiting for a model key: every model key is in cooldown until %{time}."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for a model key: refreshing the ChatGPT sign-in of %{key}."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for a model key: sign in to ChatGPT again on the page of %{key}."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for a model key: the server is restarting; the ChatGPT sign-in of %{key} refreshes after it starts."
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex

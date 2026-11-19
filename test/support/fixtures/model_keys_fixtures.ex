@@ -81,8 +81,9 @@ defmodule Apiary.ModelKeysFixtures do
   @doc """
   The tokens of a login as a device sign-in returns them: a map with `access_token`, a JWT
   that expires `expires_in` seconds from now (default 10 days) or at `exp` and has the
-  account id in its claim, `refresh_token`, `id_token` and `account_id`. `tag` makes the
-  values differ between logins.
+  account id in its claim (`account_claim/0`), unless `account: false`, a token with no
+  account id, `refresh_token`, `id_token` and `account_id`. `tag` makes the values differ
+  between logins.
   """
   def login_tokens(opts \\ []) do
     tag = Keyword.get(opts, :tag, "a")
@@ -91,14 +92,19 @@ defmodule Apiary.ModelKeysFixtures do
     exp =
       Keyword.get(opts, :exp, System.os_time(:second) + Keyword.get(opts, :expires_in, 864_000))
 
+    account =
+      if Keyword.get(opts, :account, true),
+        do: %{"https://api.openai.com/auth" => %{"chatgpt_account_id" => account_id}},
+        else: %{}
+
     %{
       access_token:
-        jwt(%{
-          "exp" => exp,
-          "client_id" => "app-fixture",
-          "jti" => "access-#{tag}",
-          "https://api.openai.com/auth" => %{"chatgpt_account_id" => account_id}
-        }),
+        jwt(
+          Map.merge(
+            %{"exp" => exp, "client_id" => "app-fixture", "jti" => "access-#{tag}"},
+            account
+          )
+        ),
       refresh_token: "rt-fixture-refresh-token-#{tag}-0123456789",
       id_token:
         jwt(%{"exp" => exp - 860_000, "email" => "dana@example.com", "jti" => "id-#{tag}"}),

@@ -656,12 +656,13 @@ defmodule ApiaryWeb.ProviderLoginTest do
       refute html =~ "refresh_token_reused"
     end
 
-    test "says Qory Apiary could not save a new sign-in for token_not_stored only", ctx do
+    test "says what failed for token_not_stored and no_account, and OpenAI rejected it otherwise",
+         ctx do
       %{conn: conn, scope: scope} = ctx
       tokens = login_tokens()
       provider = subscription!(scope, tokens)
       value = key_value!(provider, "main")
-      assert length(Login.causes()) == 6
+      assert length(Login.causes()) == 7
 
       for cause <- Login.causes() do
         Repo.update_all(from(l in Login, where: l.secret_value_id == ^value.id),
@@ -675,14 +676,23 @@ defmodule ApiaryWeb.ProviderLoginTest do
         {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
         line = text(lv, "#provider-key-main-login")
 
-        if cause == "token_not_stored" do
-          assert line =~
-                   ~r/\ANeeds a new sign-inQory Apiary could not save the new sign-in on [^.]*2026[^.]*\.\z/
+        cond do
+          cause == "token_not_stored" ->
+            assert line =~
+                     ~r/\ANeeds a new sign-inQory Apiary could not save the new sign-in on [^.]*2026[^.]*\.\z/
 
-          refute line =~ "rejected it"
-        else
-          assert line =~ ~r/\ANeeds a new sign-inOpenAI rejected it on .*2026.*\.\z/
-          refute line =~ "Qory Apiary could not save"
+            refute line =~ "rejected it"
+
+          cause == "no_account" ->
+            assert line =~
+                     ~r/\ANeeds a new sign-inOpenAI returned no account id on [^.]*2026[^.]*\.\z/
+
+            refute line =~ "rejected it"
+            refute line =~ "Qory Apiary could not save"
+
+          true ->
+            assert line =~ ~r/\ANeeds a new sign-inOpenAI rejected it on .*2026.*\.\z/
+            refute line =~ "Qory Apiary could not save"
         end
 
         refute_tokens(html, tokens)

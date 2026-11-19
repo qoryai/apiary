@@ -895,7 +895,35 @@ for each other and never on each other at once:
    the report writes is left out of it, and a new value of a key, which updates its row
    and then deletes its state rows, waits for the report or comes before it: the report
    then leaves out a key whose value is not the one the run has, a `value_set_at` other
-   than the run's copy.
+   than the run's copy. The report's `unauthorized` list is written the same way
+   (`Apiary.ModelKeys.reject/4`): it takes the rows of the keys in `secret_values` `FOR
+   SHARE`, by id, then reads the sign-in rows of those keys, then writes
+   `model_key_rejections` with the `value_set_at` it read, so a new value, which deletes
+   the rejection rows with the state rows, waits for it or comes before it, a rejection
+   row whose `value_set_at` is no longer the key's counts for nothing, and a refresh of a
+   sign-in, which writes the key's row too, is whole before the check that no refresh can
+   fix the 401 (`Apiary.ModelKeys.Login.rejectable?/2`) or waits for this transaction. An
+   entry whose `at` is more than 5 minutes before the run was registered is left out. A
+   run's gateway can mark any key of the run, and a key belongs to the whole organisation
+   or the provider, so one run marks the key for every run that uses it (the plan
+   accepts this).
+   A secrets request reveals every model key through one function,
+   `Apiary.ModelKeys.reveal_for_sealing/4`. For a key whose provider has an
+   `oauth_refresh` it reads no stored value: it asks `Apiary.ModelKeys.Login` for the
+   access token, which takes the lease of the sign-in as a refresh does (above) with no
+   transaction open, waits for another caller's refresh until 2 seconds before the request's
+   deadline (the work credential's call and the answer need that time), and then decrypts the token,
+   so the copy of the key keeps the `value_set_at` that was read first. A refresh keeps
+   `value_set_at`, so a run's copy of the key stays the key's value across refreshes, and a
+   new sign-in changes it.
+   A run's page that says why the run waits reads a sign-in's row alone
+   (`Apiary.ModelKeys.Login.statuses/3` with `decrypt: false`): it decrypts no token, and a
+   time limit it cannot read counts as no horizon, so the page never raises.
+   A claim reads a sign-in's expiry and account id from the stored access token
+   (`Apiary.ModelKeys.Login.statuses/3`) without a lock and without a call, and starts the
+   background refresh of one that expires before the end of the run's time limit as a job
+   (`Apiary.ModelKeys.LoginRefreshJob`), in the claim's transaction: a claim that rolls back
+   enqueues nothing.
    A provider's deletion is refused while a run uses it that is pending or running, or
    lost after its attach and not lost for good (`Apiary.Runs.Sender.live?/2`), so the
    run's provider columns are empty only on a run that ended, and the request for such a

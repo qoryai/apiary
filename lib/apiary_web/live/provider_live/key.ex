@@ -55,6 +55,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
       subscription = ModelKeyComponents.subscription?(provider)
       setting = key && ModelKeys.setting(key.id)
       login? = Login.provider?(provider)
+      rejection = key && ModelKeys.rejections(provider)[key.id]
 
       {:ok,
        socket
@@ -64,7 +65,8 @@ defmodule ApiaryWeb.ProviderLive.Key do
          key: key,
          subscription: subscription,
          login: login?,
-         sign_in: login? && key && sign_in_needed(provider, key),
+         sign_in: login? && key && sign_in_needed(provider, key, rejection),
+         new_key: key && ModelKeyComponents.new_key(rejection, provider),
          limit_windows: ModelKeys.limit_windows(provider),
          chosen: chosen(provider, subscription),
          sections: SettingsComponents.sections(scope, :organisation),
@@ -91,9 +93,16 @@ defmodule ApiaryWeb.ProviderLive.Key do
   end
 
   # The key's state when it needs a new sign-in, as the provider's page shows it; else nil.
-  defp sign_in_needed(provider, key) do
+  # The refresh's verdict comes first, then a rejection by the provider that a run reported.
+  defp sign_in_needed(provider, key, rejection) do
     login = ModelKeyComponents.login(Map.get(Login.by_key(provider), key.id), provider)
-    if ModelKeyComponents.sign_in_needed?(login), do: login
+    rejected = ModelKeyComponents.new_key(rejection, provider)
+
+    cond do
+      ModelKeyComponents.sign_in_needed?(login) -> login
+      ModelKeyComponents.sign_in_needed?(rejected) -> rejected
+      true -> nil
+    end
   end
 
   defp key_of(_provider, :new, _params), do: {:ok, nil}
@@ -394,6 +403,12 @@ defmodule ApiaryWeb.ProviderLive.Key do
             login={@sign_in}
             errors={ModelKeyDevice.errors(@form[:key])}
           />
+          <ModelKeyComponents.new_key_state
+            :if={match?({:new_key, _line}, @new_key)}
+            id="key-new-key"
+            state={@new_key}
+            provider={@provider}
+          />
           <.input
             :if={!@login}
             field={@form[:key]}
@@ -401,7 +416,11 @@ defmodule ApiaryWeb.ProviderLive.Key do
             type="password"
             value={nil}
             label={key_label(@live_action)}
-            hint={key_hint(@live_action)}
+            hint={
+              if match?({:new_key, _line}, @new_key),
+                do: ModelKeyComponents.new_key_hint(),
+                else: key_hint(@live_action)
+            }
             autocomplete="new-password"
             spellcheck="false"
             phx-update="ignore"

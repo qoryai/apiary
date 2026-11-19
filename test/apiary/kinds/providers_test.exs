@@ -210,6 +210,78 @@ defmodule Apiary.Kinds.ProvidersTest do
                    end
     end
 
+    test "load!/1 raises for paths past 256 octets each or 3,072 together", %{tmp_dir: dir} do
+      path = Path.join(dir, "anthropic.json")
+      document = Jason.decode!(description("anthropic"))
+      [api] = document["roles"]["model_provider"]["apis"]
+
+      write = fn paths ->
+        File.write!(
+          path,
+          document
+          |> put_in(["roles", "model_provider", "apis"], [Map.put(api, "paths", paths)])
+          |> Jason.encode!()
+        )
+      end
+
+      refused = fn paths ->
+        write.(paths)
+
+        assert_raise ArgumentError, ~r/has paths past 256 octets each/, fn ->
+          Provider.load!(path)
+        end
+      end
+
+      # A path of 256 octets fits, 257 do not. Each path takes 258 octets with its quotes
+      # and 2 for its comma and space, so 11 paths take 2,860 and 12 take 3,120.
+      ascii = fn n -> "/" <> String.duplicate("p", 252) <> String.pad_leading("#{n}", 3, "0") end
+      write.(for n <- 1..11, do: ascii.(n))
+      assert %Provider{} = Provider.load!(path)
+      refused.(["/" <> String.duplicate("p", 256)])
+      refused.(for n <- 1..12, do: ascii.(n))
+    end
+
+    test "load!/1 counts the octets of a path, not its characters", %{tmp_dir: dir} do
+      path = Path.join(dir, "anthropic.json")
+      document = Jason.decode!(description("anthropic"))
+      [api] = document["roles"]["model_provider"]["apis"]
+
+      write = fn paths ->
+        File.write!(
+          path,
+          document
+          |> put_in(["roles", "model_provider", "apis"], [Map.put(api, "paths", paths)])
+          |> Jason.encode!()
+        )
+      end
+
+      # "/" and 63 characters of 4 octets are 64 characters and 253 octets: within 256.
+      fits = "/" <> String.duplicate("\u{1F600}", 63)
+      write.([fits])
+      assert %Provider{} = Provider.load!(path)
+
+      # "/" and 64 of them are 65 characters and 257 octets: past 256 octets only.
+      write.(["/" <> String.duplicate("\u{1F600}", 64)])
+
+      assert_raise ArgumentError, ~r/has paths past 256 octets each/, fn ->
+        Provider.load!(path)
+      end
+
+      # A path of 253 octets takes 257 with its quotes, comma and space: 11 take 2,827, which
+      # fits, and 12 take 3,084, which does not, though 12 x 66 = 792 characters is few.
+      wide = fn n ->
+        "/" <> String.duplicate("\u{1F600}", 62) <> String.pad_leading("#{n}", 4, "0")
+      end
+
+      write.(for n <- 1..11, do: wide.(n))
+      assert %Provider{} = Provider.load!(path)
+      write.(for n <- 1..12, do: wide.(n))
+
+      assert_raise ArgumentError, ~r/has paths past 256 octets each/, fn ->
+        Provider.load!(path)
+      end
+    end
+
     test "load!/1 raises for a URL endpoint the endpoint rule refuses", %{tmp_dir: dir} do
       path = Path.join(dir, "anthropic.json")
       document = Jason.decode!(description("anthropic"))

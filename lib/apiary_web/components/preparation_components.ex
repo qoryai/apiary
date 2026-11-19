@@ -75,6 +75,7 @@ defmodule ApiaryWeb.PreparationComponents do
   """
   use Phoenix.Component
   use Gettext, backend: ApiaryWeb.Gettext
+  use ApiaryWeb, :verified_routes
 
   import ApiaryWeb.CoreComponents, only: [icon: 1]
   import ApiaryWeb.ExternalText, only: [external_text: 1]
@@ -1149,7 +1150,7 @@ defmodule ApiaryWeb.PreparationComponents do
   # A queued run's list: Queue the run, running since the run of the queue began
   # to wait, then each step after it, not run yet.
   defp queued_nodes(%{queued_at: at} = queued) do
-    reason = Map.get(queued, :reason)
+    reason = queued |> Map.get(:reason) |> with_key_page(Map.get(queued, :organisation))
     type = Map.get(queued, :machine_type)
 
     queue =
@@ -1228,6 +1229,20 @@ defmodule ApiaryWeb.PreparationComponents do
 
   defp waiting_fix(_reason, _queued), do: nil
 
+  # A reason about a model key (`Apiary.Runs.Waiting`: `{kind, provider's public id, key}`)
+  # with the path of the key's page, Organisation settings › Model providers, in place of
+  # the provider's id; none without the run's organisation.
+  defp with_key_page({kind, provider_id, key}, %{} = organisation)
+       when kind in [:refreshing, :restart, :sign_in, :new_key] and is_binary(provider_id) do
+    {kind, key, ~p"/#{organisation}/settings/model-providers/#{provider_id}/keys/#{key}/edit"}
+  end
+
+  defp with_key_page({kind, _provider_id, key}, nil)
+       when kind in [:refreshing, :restart, :sign_in, :new_key],
+       do: {kind, key, nil}
+
+  defp with_key_page(reason, _organisation), do: reason
+
   defp pool_words(:instance), do: gettext("Qory Pool")
   defp pool_words(pool), do: ExternalText.line(pool)
 
@@ -1251,6 +1266,35 @@ defmodule ApiaryWeb.PreparationComponents do
         "Waiting for a model key: every key of %{provider} is in cooldown until %{time}.",
         provider: ExternalText.line(provider),
         time: cooldown_time(until)
+      )
+
+  # The key's name is a link to the key's edit page.
+  defp waiting_words({:sign_in, key, path}),
+    do:
+      rich_gettext(
+        "Waiting for a model key: sign in to ChatGPT again on the page of %{key}.",
+        key: key_link(path, key)
+      )
+
+  defp waiting_words({:refreshing, key, path}),
+    do:
+      rich_gettext(
+        "Waiting for a model key: refreshing the ChatGPT sign-in of %{key}.",
+        key: key_link(path, key)
+      )
+
+  defp waiting_words({:restart, key, path}),
+    do:
+      rich_gettext(
+        "Waiting for a model key: the server is restarting; the ChatGPT sign-in of %{key} refreshes after it starts.",
+        key: key_link(path, key)
+      )
+
+  defp waiting_words({:new_key, key, path}),
+    do:
+      rich_gettext(
+        "Waiting for a model key: enter a new value for %{key}.",
+        key: key_link(path, key)
       )
 
   defp waiting_words({:image, target, :queued}),
@@ -1295,6 +1339,9 @@ defmodule ApiaryWeb.PreparationComponents do
     do: gettext("Waiting for %{node} to run it.", node: ExternalText.line(name))
 
   defp waiting_words(_reason), do: nil
+
+  defp key_link(nil, key), do: {:m, key}
+  defp key_link(path, key), do: {:link, path, {:m, ExternalText.line(key)}}
 
   @doc false
   # cooldown_time/2 is the end of a cooldown in the reader's time zone at `now`, as a key's

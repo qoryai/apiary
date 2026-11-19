@@ -30,7 +30,7 @@ defmodule Apiary.ModelKeys.LoginSweep do
   # One sign-in at a time: an exception of one does not end the pass for the others. It is
   # logged by its kind alone, as a refresh's arguments hold tokens.
   defp refresh(provider, secret_value_id) do
-    _result = Login.access_token(provider, secret_value_id, trigger: :schedule)
+    _result = Login.refresh(provider, secret_value_id, trigger: :schedule)
     :ok
   rescue
     exception ->

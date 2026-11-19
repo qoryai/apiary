@@ -924,9 +924,20 @@ no claim takes a run of the queue while every key of each of its providers is in
 (`Apiary.ModelKeys.claimable/1`). A change of a model choice, of its fallbacks, or of a
 model provider sets the providers of each waiting run it may change again, from the choice
 in effect, once the change has committed (`Apiary.Dispatches.refresh_model_providers/1`).
+A key that needs a new value (its sign-in needs a new one, or a gateway's model keys
+report listed it in `unauthorized`, which stays until a new value) is a key in cooldown
+with no end for the claim: the run waits while every key of the provider and of each
+fallback is in cooldown or needs a new value, and the paused run's `paused_until` has no
+time for such a key. A sign-in whose access token expires before the end of the run's
+longest time limit, counted from the claim, is not given to the run: a job refreshes it,
+and the run waits for the job. The claim calls no provider.
 A gateway's secrets request reveals each key in the request by the key's row id, under the
 value id the key has at the request: a key renamed since the claim is revealed, and a
-request for a key deleted since fails. A run stored before runs kept several keys keeps
+request for a key deleted since fails. For a key of a provider with an `oauth_refresh` it
+seals the key's access token with `expires_at`, and, for a key the request lists in
+`unauthorized`, renews it first with the refresh reason `unauthorized_recovery`, at most
+once in 5 minutes per sign-in; an access token with no account id, the claim named by the
+API's `auth.account_claim`, is refused as `credential_unavailable`. A run stored before runs kept several keys keeps
 its one key, under the provider's public id, and its run configuration has the key's Pause
 for.
 

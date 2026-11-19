@@ -3,8 +3,8 @@ defmodule Apiary.ModelKeys.LoginRefresh do
   The call that refreshes a key's sign-in (`Apiary.ModelKeys.Login`): one HTTPS POST to
   the token endpoint of the provider's catalogue entry, `oauth_refresh`, as `codex` sends
   it. The body is JSON, not form-encoded: `grant_type` `refresh_token`, `client_id`,
-  `refresh_token` and `refresh_reason` (`proactive_expiry` or `scheduled`), and no
-  `scope`.
+  `refresh_token` and `refresh_reason` (`proactive_expiry`, `scheduled`, or
+  `unauthorized_recovery` after the model provider returned 401), and no `scope`.
 
   This is the one call to the provider's login server that Qory Apiary makes, with no
   adapter. The URL and the client id come from the catalogue entry alone, never from a
@@ -18,7 +18,8 @@ defmodule Apiary.ModelKeys.LoginRefresh do
   one, the new refresh token, or a failure that is `{:permanent, cause}` for a refusal
   that stays (the provider rejected the refresh token: the cause is one of the first five
   of `Apiary.ModelKeys.Login.causes/0`; that module sets the sixth, `token_not_stored`,
-  when it cannot store a new sign-in) or `{:transient, cause}` for one that may pass:
+  when it cannot store a new sign-in, and the seventh, `no_account`, when the access token of
+  the answer has no account id) or `{:transient, cause}` for one that may pass:
   `http_<status>`, `timeout`, `network`, `bad_response`, `bad_endpoint`, or `:shutdown` when
   the supervisor stopped the call's task (a deploy), which counts as no failure. A cause is one of
   those fixed words, never a part of the provider's answer. Neither the answer's body, the
@@ -52,7 +53,7 @@ defmodule Apiary.ModelKeys.LoginRefresh do
   @max_answer 65_536
   @user_agent "qory-apiary"
   @named_codes ~w(refresh_token_expired refresh_token_reused refresh_token_invalidated)
-  @reasons ~w(proactive_expiry scheduled)
+  @reasons ~w(proactive_expiry scheduled unauthorized_recovery)
 
   @typedoc "The catalogue entry's `oauth_refresh`: the token endpoint and the client id."
   @type endpoint :: %{required(String.t()) => String.t()}
@@ -74,8 +75,8 @@ defmodule Apiary.ModelKeys.LoginRefresh do
 
   @doc """
   Refreshes the sign-in whose refresh token is `refresh_token`, at the endpoint
-  `oauth_refresh` of the catalogue entry, for `reason`, `"proactive_expiry"` or
-  `"scheduled"`.
+  `oauth_refresh` of the catalogue entry, for `reason`, `"proactive_expiry"`,
+  `"scheduled"` or `"unauthorized_recovery"`.
   """
   @spec call(endpoint, String.t(), String.t()) :: result
   def call(%{"url" => url, "client_id" => client_id}, refresh_token, reason)

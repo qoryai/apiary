@@ -22,7 +22,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
   alias Apiary.Connections.Connection
   alias Apiary.Kinds.{Provider, Providers}
   alias Apiary.ModelKeys
-  alias Apiary.ModelKeys.{Login, Setting, State}
+  alias Apiary.ModelKeys.{Login, Rejection, Setting, State}
   alias ApiaryWeb.UserLive.Settings, as: UserSettings
 
   @fields ~w(reset_day reset_time reset_zone pause_number pause_unit use_up_to)
@@ -553,7 +553,8 @@ defmodule ApiaryWeb.ModelKeyComponents do
       nil until the first refresh;
     * `{:sign_in_needed, rejected}`: the heading "Needs a new sign-in" and "OpenAI
       rejected it on 2026-11-12 10:04." ("Qory Apiary could not save the new sign-in on
-      2026-11-12 10:04." for a rotated sign-in that Qory Apiary could not store).
+      2026-11-12 10:04." for a rotated sign-in that Qory Apiary could not store, "OpenAI
+      returned no account id on 2026-11-12 10:04." for an answer whose token has none).
   """
   @spec login(Login.t() | nil, Connection.t()) :: login | nil
   def login(nil, _provider), do: nil
@@ -567,9 +568,13 @@ defmodule ApiaryWeb.ModelKeyComponents do
   end
 
   # A sign-in that the provider rejected says so. For a rotated sign-in that Qory Apiary
-  # could not store, Qory Apiary failed, and the line says that.
+  # could not store, Qory Apiary failed, and the line says that. An answer with no account
+  # id says that.
   defp cause_line("token_not_stored", _provider, time),
     do: gettext("Qory Apiary could not save the new sign-in on %{time}.", time: time)
+
+  defp cause_line("no_account", _provider, time),
+    do: gettext("OpenAI returned no account id on %{time}.", time: time)
 
   defp cause_line(_cause, provider, time),
     do:
@@ -862,4 +867,72 @@ defmodule ApiaryWeb.ModelKeyComponents do
   # A page's address without its scheme, as the person reads it.
   defp address("https://" <> address), do: address
   defp address(address), do: address
+
+  ## A key whose provider rejected its value
+
+  @typedoc """
+  The state of a key that needs a new value, as `new_key/2` has it: `{:new_key, line}`, or,
+  for a key of a provider whose keys are sign-ins, the sign-in state `login/2` has.
+  """
+  @type new_key :: {:new_key, String.t()} | {:sign_in_needed, String.t()}
+
+  @doc """
+  The state of a key whose provider rejected its value with a 401 that a run's gateway
+  reported (`Apiary.ModelKeys.Rejection`), in the reader's time zone: nil for a key with no
+  rejection that counts (`Apiary.ModelKeys.rejections/1`). The line is "Anthropic rejected
+  it on 2026-11-18 09:12.", under the heading "Needs a new key" (`new_key_state/1`). For a
+  provider whose keys are sign-ins it is the state of a sign-in that needs a new one, with
+  the heading "Needs a new sign-in" (`login_line/1`). The state has no name that a page
+  shows.
+  """
+  @spec new_key(Rejection.t() | nil, Connection.t()) :: new_key | nil
+  def new_key(nil, _provider), do: nil
+
+  def new_key(%Rejection{rejected_at: rejected_at}, %Connection{} = provider) do
+    line =
+      gettext("%{vendor} rejected it on %{time}.",
+        vendor: capitalise(vendor(provider)),
+        time: Format.datetime(rejected_at)
+      )
+
+    if Login.provider?(provider),
+      do: {:sign_in_needed, line},
+      else: {:new_key, line}
+  end
+
+  @doc """
+  The hint under the New value of a key that needs a new value: the stored value no longer
+  works, so an empty field would keep nothing that works.
+  """
+  @spec new_key_hint() :: String.t()
+  def new_key_hint, do: gettext("Enter a new value: the stored one no longer works.")
+
+  @doc """
+  A key that needs a new value (`new_key/2`, `{:new_key, line}`): the heading, the line, and
+  the provider's key help (`ApiaryWeb.ProviderLive.Index.get_key/1`).
+  """
+  attr :id, :string, required: true
+  attr :state, :any, required: true
+  attr :provider, :any, required: true
+
+  def new_key_state(%{state: {:new_key, line}} = assigns) do
+    assigns = assign(assigns, line: line, chosen: chosen(assigns.provider))
+
+    ~H"""
+    <span id={@id} class="grid gap-1 text-[13px]/5">
+      <span class="grid">
+        <span class="font-medium text-error">{gettext("Needs a new key")}</span>
+        <span class="text-muted">{@line}</span>
+      </span>
+      <ApiaryWeb.ProviderLive.Index.get_key id={"#{@id}-get-key"} chosen={@chosen} />
+    </span>
+    """
+  end
+
+  defp chosen(%Connection{provider_kind: kind}) do
+    case Providers.fetch(kind) do
+      {:ok, chosen} -> chosen
+      :error -> nil
+    end
+  end
 end

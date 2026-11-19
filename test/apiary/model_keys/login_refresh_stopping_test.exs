@@ -42,12 +42,17 @@ defmodule Apiary.ModelKeys.LoginRefreshStoppingTest do
     {provider, key_value!(provider, "main").id}
   end
 
+  # The access token of the refresh's answer: it has the account claim.
+  @fresh Apiary.ModelKeysFixtures.jwt(%{
+           "https://api.openai.com/auth" => %{"chatgpt_account_id" => "acct-fixture-x"}
+         })
+
   defp stub! do
     test = self()
 
     Req.Test.stub(LoginRefresh, fn conn ->
       send(test, :requested)
-      Req.Test.json(conn, %{"access_token" => "x", "refresh_token" => "y"})
+      Req.Test.json(conn, %{"access_token" => @fresh, "refresh_token" => "y"})
     end)
   end
 
@@ -59,7 +64,7 @@ defmodule Apiary.ModelKeys.LoginRefreshStoppingTest do
 
     for trigger <- [{:run, "run-1"}, :schedule] do
       assert {:ok, access, _at} = Login.access_token(provider, id, trigger: trigger)
-      assert is_binary(access) and access != "x"
+      assert is_binary(access) and access != @fresh
     end
 
     refute_received :requested
@@ -81,7 +86,7 @@ defmodule Apiary.ModelKeys.LoginRefreshStoppingTest do
     stub!()
     stopping!(false)
 
-    assert {:ok, "x", _at} = Login.access_token(provider, id, trigger: {:run, "run-1"})
+    assert {:ok, @fresh, _at} = Login.access_token(provider, id, trigger: {:run, "run-1"})
     assert_received :requested
   end
 
@@ -90,7 +95,7 @@ defmodule Apiary.ModelKeys.LoginRefreshStoppingTest do
     stub!()
     refute match?({:stopping, _}, :init.get_status())
 
-    assert {:ok, "x", _at} = Login.access_token(provider, id, trigger: {:run, "run-1"})
+    assert {:ok, @fresh, _at} = Login.access_token(provider, id, trigger: {:run, "run-1"})
   end
 
   test "the sweep returns no key", %{scope: scope} do

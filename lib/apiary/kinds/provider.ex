@@ -32,6 +32,16 @@ defmodule Apiary.Kinds.Provider do
   @models_max 200
   @title_max 128
 
+  # The most a run's `provider_api` takes of the paths of an API, so it stays within the
+  # 8192 octets of `runs_provider_api_check` with the largest endpoint, auth, key prefixes
+  # and limit windows the contract allows. The stored text is UTF-8, so the bounds count
+  # octets, not characters (a character is up to 4): each path at most 256 octets, and the
+  # paths of one API together at most 3072 octets as the stored JSON text has them, each
+  # with its quotes and escapes (`Jason.encode!/1`, as the database writes them) and 2 more
+  # for its comma and space.
+  @path_max 256
+  @paths_max 3_072
+
   @enforce_keys [:name, :title, :description]
   defstruct name: nil,
             title: nil,
@@ -68,7 +78,9 @@ defmodule Apiary.Kinds.Provider do
   other than `model_provider`, when its `name` differs from the file's name without
   `.json`, when two of its APIs have the same `format`, when the URL endpoint of an API
   or the `default` of an address setting breaks the rule of `Apiary.Kinds.Endpoint`, or
-  when it has more than 200 models or a model title of more than 128 characters.
+  when it has more than 200 models or a model title of more than 128 characters, or when
+  the `paths` of an API take more than 256 octets each or 3,072 octets together (as the
+  stored JSON text has them, with quotes, escapes, comma and space).
   `Apiary.Kinds.Providers` calls it when the application is compiled, so a description
   that fails stops the compile.
   """
@@ -81,22 +93,28 @@ defmodule Apiary.Kinds.Provider do
       {:ok, %Description{name: ^file, program_version: nil, roles: ["model_provider"]} = read} ->
         provider = %{from(read) | sha256: sha256(bytes)}
 
-        case {formats_repeated(provider), addresses_refused(provider), models_refused(provider)} do
-          {[], [], []} ->
+        case {formats_repeated(provider), addresses_refused(provider), models_refused(provider),
+              paths_refused(provider)} do
+          {[], [], [], []} ->
             provider
 
-          {[], [], refused} ->
+          {[], [], [], refused} ->
+            raise ArgumentError,
+                  "#{path} has paths past #{@path_max} octets each, or #{@paths_max} " <>
+                    "octets together for one API: " <> inspect(refused)
+
+          {[], [], refused, _paths} ->
             raise ArgumentError,
                   "#{path} has more than #{@models_max} models, or a model title longer " <>
                     "than #{@title_max} characters: " <>
                     inspect(refused)
 
-          {[], refused, _models} ->
+          {[], refused, _models, _paths} ->
             raise ArgumentError,
                   "#{path} has an address that Apiary.Kinds.Endpoint refuses: " <>
                     inspect(refused)
 
-          {repeated, _addresses, _models} ->
+          {repeated, _addresses, _models, _paths} ->
             raise ArgumentError,
                   "#{path} has more than one API of the format #{inspect(repeated)}"
         end
@@ -175,6 +193,15 @@ defmodule Apiary.Kinds.Provider do
   defp models_refused(%__MODULE__{models: models}) do
     count = if length(models) > @models_max, do: [{:models, length(models)}], else: []
     count ++ for(%{"title" => t} <- models, String.length(t) > @title_max, do: {:title, t})
+  end
+
+  # The APIs whose `paths` are too long, by `format`: a path past `@path_max` octets, or
+  # all of one API's together past `@paths_max`.
+  defp paths_refused(%__MODULE__{apis: apis}) do
+    for %{"format" => format, "paths" => paths} <- apis,
+        Enum.any?(paths, &(byte_size(&1) > @path_max)) or
+          paths |> Enum.map(&(byte_size(Jason.encode!(&1)) + 2)) |> Enum.sum() > @paths_max,
+        do: format
   end
 
   defp sha256(bytes), do: :sha256 |> :crypto.hash(bytes) |> Base.encode16(case: :lower)

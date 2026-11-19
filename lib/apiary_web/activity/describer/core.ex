@@ -956,6 +956,8 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp model_key_cause("token_not_stored"),
     do: gettext("Qory Apiary could not save the new sign-in")
 
+  defp model_key_cause("no_account"), do: gettext("OpenAI returned no account id")
+
   defp model_key_cause("timeout"), do: gettext("the refresh request to OpenAI timed out")
   defp model_key_cause("network"), do: gettext("Qory Apiary could not connect to OpenAI")
 
