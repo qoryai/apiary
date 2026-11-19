@@ -764,6 +764,57 @@ defmodule Apiary.Stages.SharedRunTest do
     run.id |> Apiary.Dispatches.Settle.settle() |> Apiary.Dispatches.broadcast()
   end
 
+  describe "the sessions a page reads (run_sessions/1)" do
+    test "each session in order, with the verdict it stored and its times", %{scope: scope} do
+      save!(scope, [
+        build(
+          workflows(~w(plan-the-build)) ++ [loop(workflows(~w(implement-changes review-changes)))]
+        )
+      ])
+
+      {_work_item, run} = taken_in!(scope)
+      registered = registered!(scope, run)
+
+      :ok = verdict!(run, "passed")
+      assert {:session, %{workflow: "implement-changes"}} = report(run, 1)
+      assert {:session, %{workflow: "review-changes"}} = report(run, 2)
+      :ok = verdict!(run, "changes-requested")
+      assert {:session, %{session: 4, workflow: "implement-changes"}} = report(run, 3)
+
+      # Session 1's record has its times; the others have none, so their rows' times stand.
+      started = ~U[2026-11-02 09:00:00.000000Z]
+      ended = ~U[2026-11-02 09:10:00.000000Z]
+
+      Repo.insert!(%Apiary.Runs.SessionRecord{
+        organisation_id: run.organisation_id,
+        workspace_id: run.workspace_id,
+        run_id: registered.id,
+        dispatch_run_id: run.id,
+        work_item_id: run.work_item_id,
+        session_number: 1,
+        started_at: started,
+        ended_at: ended
+      })
+
+      assert Stages.run_sessions([]) == %{}
+      assert Stages.run_sessions(["rn_none"]) == %{}
+
+      id = registered.public_id
+      assert %{^id => sessions} = Stages.run_sessions([id])
+      [one, two, three, four] = sessions
+
+      assert %{workflow: "plan-the-build", round: 1, loop_entry: nil, state: "succeeded"} = one
+      assert %{verdict: :passed, started_at: ^started, ended_at: ^ended} = one
+
+      assert %{workflow: "implement-changes", round: 1, loop_entry: 0, verdict: nil} = two
+      assert %DateTime{} = two.ended_at
+      assert %{workflow: "review-changes", round: 1, loop_entry: 1, verdict: :failed} = three
+
+      assert %{workflow: "implement-changes", round: 2, state: nil, ended_at: nil} = four
+      assert %{verdict: nil, started_at: %DateTime{}} = four
+    end
+  end
+
   describe "a run that ends with no report of its newest session" do
     setup %{scope: scope} do
       save!(scope, [
