@@ -533,9 +533,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # than the start key's, `model_credential`, the name of that provider's first free key
   # (`Apiary.ModelKeys.Order.start/2`), else its first key: the session starts on that
   # key's group. A session with no `model_credential` joins the group of the run's start
-  # key. A run whose first session starts on the machine's key has no start key: each
-  # later session on a provider gets that provider's key as `model_credential`, and a
-  # session with none runs on the machine's key.
+  # key.
   #
   # `model_choice` is, for the choices of the workflow (`session_choice/4`):
   #   * the `runtime`, `model`, `effort`, `provider_models` and `tiers` of the choice on
@@ -549,8 +547,9 @@ defmodule Apiary.Dispatches.RunSettings do
   #   * `runtime` alone, the runtime of the choice, where the run gets no key (`keyed`
   #     false); or the catalogue's default runtime
   #     (`Apiary.ModelChoices.default_runtime/0`), where the choices resolve to no choice
-  #     at any level, and the session runs on the machine's key. The session then uses
-  #     the default model of that runtime.
+  #     at any level: the session joins the group of the run's start key, or, in a run
+  #     with no start key, runs on the machine's key. The session then uses the default
+  #     model of that runtime.
   #
   # A session whose choice's provider is gone ends the claim `provider_gone`, as the run's
   # does: the choice is set to a provider that was removed, or its provider is not there,
@@ -628,11 +627,8 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # The run's keys, at most `Apiary.ModelKeys.Order.max_keys/0`, as `keys` (`merge/3`),
   # `columns` with the start key's provider, and each session's entry with the name of
-  # its group's start key as `model_credential`. A run whose first session starts on the
-  # machine's key, with no start key here, keeps the keys of its later sessions'
-  # providers, none of them a start key, and no start key's provider; a run with neither
-  # keeps no key.
-  defp merged(built, nil, {chosen, []}, _now) do
+  # its group's start key as `model_credential`. A run with no start key keeps no key.
+  defp merged(built, nil, {chosen, _groups}, _now) do
     sessions = Map.new(chosen, fn {workflow, choice, _group} -> {workflow, entry(choice)} end)
     built |> Map.put(:keys, []) |> Map.put(:sessions, sessions)
   end
@@ -646,7 +642,7 @@ defmodule Apiary.Dispatches.RunSettings do
       end)
 
     built
-    |> Map.put(:columns, %{provider_connection_id: start && start.provider.id})
+    |> Map.put(:columns, %{provider_connection_id: start.provider.id})
     |> Map.put(:keys, keys)
     |> Map.put(:sessions, sessions)
   end
@@ -667,17 +663,12 @@ defmodule Apiary.Dispatches.RunSettings do
   # the place counted per provider from 1; and the name of each other provider's first
   # free key (`Apiary.ModelKeys.Order.start/2`), else its first, by provider id. The
   # claim's guard keeps the providers of a run's stage at 6 or fewer
-  # (`Apiary.Stages.shared_models/1`), so every provider gets a key. With `start` nil, a
-  # run whose first session starts on the machine's key, the 6 fill from the other
-  # providers alone, and no key is the start key.
+  # (`Apiary.Stages.shared_models/1`), so every provider gets a key.
   @doc false
-  @spec merge(map | nil, [map], DateTime.t()) :: {[map], %{Ecto.UUID.t() => String.t()}}
-  def merge(nil, groups, %DateTime{} = now),
-    do: merge(%{provider: nil, keys: []}, groups, now)
-
+  @spec merge(map, [map], DateTime.t()) :: {[map], %{Ecto.UUID.t() => String.t()}}
   def merge(start, groups, %DateTime{} = now) do
     max = Order.max_keys()
-    others = Enum.take(groups, if(start.provider, do: max - 1, else: max))
+    others = Enum.take(groups, max - 1)
     first = Enum.take(start.keys, max - length(others))
     heads = Enum.map(others, &Enum.take(&1.keys, 1))
     left = max - length(first) - Enum.sum(Enum.map(heads, &length/1))
@@ -688,10 +679,7 @@ defmodule Apiary.Dispatches.RunSettings do
         {taken, left - length(taken)}
       end)
 
-    taken =
-      [{start, first} | Enum.zip([others, heads, tails]) |> Enum.map(&taken/1)]
-      |> Enum.reject(fn {_group, keys} -> keys == [] end)
-
+    taken = [{start, first} | Enum.zip([others, heads, tails]) |> Enum.map(&taken/1)]
     start_key = Order.start(first, now)
 
     named =
@@ -713,7 +701,7 @@ defmodule Apiary.Dispatches.RunSettings do
       end)
 
     credentials =
-      for {group, keys} <- named, group != start, into: %{} do
+      for {group, keys} <- tl(named), into: %{} do
         {first_key, first_name} = hd(keys)
         free = Order.start(Enum.map(keys, &elem(&1, 0)), now) || first_key
         {_key, name} = Enum.find(keys, {first_key, first_name}, &(elem(&1, 0).id == free.id))
@@ -747,16 +735,19 @@ defmodule Apiary.Dispatches.RunSettings do
     end
   end
 
-  # A run without the features that give it keys (`keyed` false) keeps no key: the
-  # session gets `runtime` alone, once its provider is checked for `provider_gone`. A run
-  # whose first session starts on the machine's key, with no start key here, still takes
-  # the keys of each later session's provider (the clause below).
-  defp session_on(_input, resolution, runtime, built, nil, %{held: %{keyed: false}} = context) do
+  # A run with no start key keeps no key, once the session's provider is checked for
+  # `provider_gone`. Without the features under which a run is given keys (`keyed`
+  # false), the session gets `runtime` alone. Else the run's first session runs on the
+  # machine's key, so a later session on a model provider would have no key in the run:
+  # the claim ends the run `session_key_missing`.
+  defp session_on(_input, resolution, runtime, built, nil, context) do
     provider = Map.fetch!(context.providers, resolution.connection_id)
 
     with :ok <- intact(provider),
          {:ok, _formed} <- session_form(resolution, provider, runtime, built, context) do
-      {:ok, %{"runtime" => runtime.name}, nil}
+      if context.held.keyed,
+        do: {:end, :session_key_missing},
+        else: {:ok, %{"runtime" => runtime.name}, nil}
     end
     |> session_result(built)
   end
@@ -767,7 +758,7 @@ defmodule Apiary.Dispatches.RunSettings do
     with :ok <- intact(provider),
          {:ok, formed} <- session_form(resolution, provider, runtime, built, context) do
       cond do
-        start != nil and provider.id == start.provider.id ->
+        provider.id == start.provider.id ->
           on_start(formed, start)
 
         group = free_group(provider, formed, context) ->
@@ -832,7 +823,7 @@ defmodule Apiary.Dispatches.RunSettings do
            {:ok, runtime} <- runtime(fallen),
            {:ok, formed} <- session_form(fallen, provider, runtime, nil, ctx) do
         cond do
-          start != nil and id == start.provider.id ->
+          id == start.provider.id ->
             if same_api?(formed.columns.provider_api, start.api),
               do: {:ok, formed.stored, nil}
 

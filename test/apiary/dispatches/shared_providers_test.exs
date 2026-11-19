@@ -27,7 +27,6 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
 
   @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
   @build "st_6ns22c4pav"
-  @image "registry.example.com/northwind/storefront@sha256:" <> String.duplicate("3b9d", 16)
 
   setup do
     %{scope: scope} = sign_up_fixture()
@@ -222,50 +221,16 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert credential == "#{checkout.public_id}-1"
     end
 
-    test "whose first session starts on the machine's key keeps every key of the second session's provider, which starts on the first",
+    test "whose first session runs on the machine's key ends session_key_missing where a later session runs on a provider with keys",
          ctx do
       northwind = provider!(ctx.scope, "Northwind keys", count: 2)
       # plan-the-build has no model choice at any level: session 1 runs on the default
-      # runtime with the machine's key.
+      # runtime with the machine's key, so the run gets no key.
       choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, northwind)
       assert {:ok, _version} = save(ctx.scope, ~w(plan-the-build write-acceptance-checks))
 
-      {{:ok, run}, _queued} = claim!(ctx)
-      first = "#{northwind.public_id}-1"
-
-      assert run.provider_connection_id == nil
-      assert %{"1" => %{"model_credential" => ^first}} = run.session_settings
-
-      assert [%ModelKey{position: 1, start: false}, %ModelKey{position: 2, start: false}] =
-               keys = stored_keys(run)
-
-      assert names(keys) == [first, "#{northwind.public_id}-2"]
-      assert Enum.all?(keys, &(&1.connection_id == northwind.id))
-
-      # The run configuration has both keys in the group of their provider, and no
-      # model_credential: session 1 starts on the machine's key, which is in no group.
-      assert {:ok, credential} = ProviderCredential.for_run(run)
-      assert credential.name == nil
-      entries = credential.keys |> Enum.map(& &1.entry) |> Jason.encode!() |> Jason.decode!()
-      assert Enum.map(entries, & &1["group"]) == [northwind.public_id, northwind.public_id]
-
-      # The run configuration composed for the run has both keys and no
-      # `model_credential`, which the copied schema allows.
-      assert {:ok, members} = Apiary.Policy.ComposedConfiguration.members(run)
-
-      assert {:composed, document, _image} =
-               Apiary.Policy.ComposedConfiguration.shape(nil, @image, false, false, members)
-
-      assert %{"credentials" => sent} = composed = Jason.decode!(document)
-      refute Map.has_key?(composed, "model_credential")
-      # The registry credential, with the feature `registry`, follows the model keys.
-      assert Enum.map(sent, & &1["name"]) -- [Apiary.Registry.Credential.name()] == names(keys)
-      assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
-
-      # A pause in session 1, on the machine's key, waits for no provider's keys; a pause
-      # in no known session waits for the keys of every provider of the run.
-      assert Run.session_provider_ids(run, 1) == []
-      assert Run.session_provider_ids(run, nil) == [northwind.id]
+      # `claim!/1` checks that the ended claim stored no key row.
+      assert {{:ended, :session_key_missing}, _queued} = claim!(ctx)
     end
 
     test "where every session runs on the machine's key keeps no key", ctx do
@@ -826,43 +791,6 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert DateTime.compare(dispatch_run.paused_until, soon) == :eq
       assert %{provider: "Northwind keys"} = Pause.of_run(paused)
       assert paused_line(paused) =~ "Paused: every key of Northwind keys is in cooldown until "
-    end
-
-    test "whose first session ran on the machine's key, with no session that paused, waits for the keys of its later session's provider",
-         ctx do
-      # plan-the-build has no model choice at any level: session 1 runs on the machine's
-      # key, and the run keeps Checkout keys' key alone.
-      checkout = provider!(ctx.scope, "Checkout keys")
-      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, checkout)
-      assert {:ok, _version} = save(ctx.scope, ~w(plan-the-build write-acceptance-checks))
-      later = in_seconds(7_200)
-      cool = fn _run -> key_state!(checkout, "key-1", until: later) end
-
-      {paused, dispatch_run, _continuation} = paused!(ctx, session: nil, before_exit: cool)
-
-      assert paused.provider_connection_id == nil
-      assert paused.paused_session == nil
-      assert Run.session_provider_ids(paused, nil) == [checkout.id]
-      assert DateTime.compare(dispatch_run.paused_until, later) == :eq
-      assert %{provider: "Checkout keys", until: until} = Pause.of_run(paused)
-      assert DateTime.compare(until, later) == :eq
-    end
-
-    test "whose first session ran on the machine's key, in its second session, waits for that session's provider",
-         ctx do
-      checkout = provider!(ctx.scope, "Checkout keys")
-      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, checkout)
-      assert {:ok, _version} = save(ctx.scope, ~w(plan-the-build write-acceptance-checks))
-      later = in_seconds(7_200)
-      cool = fn _run -> key_state!(checkout, "key-1", until: later) end
-
-      {paused, dispatch_run, _continuation} = paused!(ctx, session: 2, before_exit: cool)
-
-      assert paused.paused_session == 2
-      assert Run.session_provider_ids(paused, 2) == [checkout.id]
-      assert Run.session_provider_ids(paused, 1) == []
-      assert DateTime.compare(dispatch_run.paused_until, later) == :eq
-      assert paused_line(paused) =~ "Paused: every key of Checkout keys is in cooldown until "
     end
 
     test "in a Codex session after a Claude Code session resumes the Codex session with an OpenAI key",

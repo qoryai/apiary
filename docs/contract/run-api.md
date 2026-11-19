@@ -851,24 +851,22 @@ of the run contract. A next session of the same stage:
   no longer valid, or its runtime is no longer in the catalogue. A choice whose provider
   was removed, or no longer fits the catalogue, ends the claim `provider_gone`.
 - `model_choice` has the catalogue's default runtime alone where the workflow resolves to
-  no model choice at any level: the session runs on the machine's key and uses the
-  default model of that runtime.
+  no model choice at any level: the session joins the group of the run's start key, or,
+  in a run with no start key, runs on the machine's key, and uses the default model of
+  that runtime.
 - Where a session's runtime uses another API of a provider that an earlier session of the
   run uses, or neither its provider nor a provider of its fallbacks has a key, the claim
   ends the run before it starts, with the end cause `session_key_missing`: one run uses
-  one API of each provider.
+  one API of each provider. It ends the run so too where the run's first session runs on
+  the machine's key, as its workflow resolves to no model choice, and a later session
+  runs on a model provider: such a run gets no key.
 - `model_credential`, for a session on a key of a provider other than the start key's, is
   the credential name of the key the session starts on: that provider's first key out of
   cooldown, else its first key. The claim picks at most 6 keys in this order: the start
   key's provider's keys, at most 6 less the number of other providers; then one key of
   each other provider, in session order; then the other providers' remaining keys;
-  `credentials` lists them provider by provider, the start key's provider first. Where `model_credential` is left out, the session joins
-  the group of the run's start key. A run whose first session runs on the machine's key,
-  as its workflow resolves to no model choice, has no start key and no `model_credential`
-  in its run configuration: its 6 keys fill from the providers of its later sessions, in
-  session order, at least one key each, and each such session's `model_credential` is its
-  provider's first key out of cooldown, else its first key. A run whose every session
-  runs on the machine's key gets no key.
+  `credentials` lists them provider by provider, the start key's provider first. Where
+  `model_credential` is left out, the session joins the group of the run's start key.
 
 Or the end of the run, where the stage runs no further workflow in this run: an
 escalation, open questions, the gate, or the next stage, whose run is queued as any run:

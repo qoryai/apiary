@@ -753,26 +753,20 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       refute Map.has_key?(body, "model_credential")
     end
 
-    test "is the workflow's choice, on its provider's first key, where session 1 has no provider's key",
+    test "is no session: the claim ends session_key_missing where session 1 has no provider's key",
          ctx do
-      # No choice for the run's first workflow: session 1 uses the gateway's key.
+      # No choice for the run's first workflow: session 1 uses the gateway's key, so the
+      # run gets no key, and session 2 on a provider would have none.
       {:ok, _deleted} = ModelChoices.delete_choice(ctx.scope, :workspace)
       :ok = choose!(ctx, {:workspace, "write-acceptance-checks"}, %{model: "claude-sonnet-5-5"})
 
-      ctx = shared!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
-      :ok = verdict!(ctx, "passed")
-      body = json_response(request(ctx, ended(1)), 200)
+      stages = [build_stage(~w(plan-the-build write-acceptance-checks))]
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => stages}
+      {:ok, _version} = Processes.save(ctx.scope, ctx.scope.workspace, document)
+      work_item = taken_in_fixture(ctx.scope)
+      run = Repo.one!(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
 
-      # Session 2 starts on the first key of its provider, which the run keeps; no key is
-      # the start key.
-      assert %{"runtime" => "claude", "model" => "claude-sonnet-5-5"} = body["model_choice"]
-      first = "#{ctx.provider.public_id}-1"
-      assert body["model_credential"] == first
-
-      assert [%ModelKey{name: ^first, start: false, connection_id: id}] =
-               stored_keys(ctx.gateway_run)
-
-      assert id == ctx.provider.id
+      assert run |> RunSettings.hold() |> RunSettings.build() == {:end, :session_key_missing}
     end
   end
 

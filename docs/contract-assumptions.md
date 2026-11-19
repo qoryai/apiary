@@ -903,12 +903,10 @@ gets the keys of each provider its later sessions run on, one provider per sessi
 claim picks at most 6 keys in this order: the start key's provider's keys, at most 6 less
 the number of other providers; then one key of each other provider, in session order;
 then the other providers' remaining keys; `credentials` lists them provider by provider,
-the start key's provider first. A run whose first session runs on the machine's key, as its
-workflow resolves to no model choice, has no start key: its 6 keys fill from the
-providers of its later sessions, in session order, at least one key each, its run
-configuration has no `model_credential`, and none of its keys is in the group of the
-machine's key, which is in no group. A run whose every session runs on the machine's
-key gets no key. The run keeps them in `run_model_keys`, one row per key. Each
+the start key's provider first. A run whose first session runs on the machine's key, as
+its workflow resolves to no model choice, gets no key, and its claim ends
+`session_key_missing` where a later session runs on a model provider. The run keeps its
+keys in `run_model_keys`, one row per key. Each
 key is an API credential named `<provider's public id>-<n>`, `n` from 1 for each
 provider, with its provider's `format`, `endpoint` and `auth`, and `group`, the
 provider's public id, so each provider's keys form one key group, which the gateway
@@ -919,7 +917,7 @@ ends `too_many_providers`. Where neither a later workflow's provider nor a provi
 fallbacks has a key, or a workflow's runtime uses another API of a provider that an
 earlier workflow uses, a save of the stage fails, and a claim of a run of the stage ends
 `session_key_missing`: one run uses one API of each provider. A workflow with no model
-choice runs on the machine's key and is never refused. The claim orders the provider's
+choice, which runs on the default runtime, is never refused. The claim orders the provider's
 keys at its clock: the keys with no known reset, or one already passed; then the keys by
 their known reset, the closest minute first; then the keys in cooldown, the earliest
 `cooldown_until` first. Ties

@@ -298,9 +298,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   another provider for workflow review. Checkout has no model key." and "Choose a model
   for workflow review that uses the Anthropic Messages API of Northwind, as workflow
   plan does, or a model of another provider. One run uses one API of each provider." A
-  workflow with no model choice runs on the machine's key and is never refused. The
-  claim checks both again and ends such a run before it starts, with the end cause
-  `session_key_missing` and the outcome error. The work item and the stop line show the
+  workflow with no model choice, which runs on the default runtime, is never refused.
+  The claim checks both again and ends such a run before it starts, with the end cause
+  `session_key_missing` and the outcome error. It ends a run so too where its first
+  session runs on the machine's key, as its workflow has no model choice, and a later
+  session runs on a model provider: such a run gets no key. The work item and the stop line show the
   same fix while the fault remains, and "Run the round again." once it is gone.
 - `full_suite` is `true` only for a session of an entry with access `write` that is in a
   loop or has `first_attempt`, whether the stage has `shared_run` or not. A run with
@@ -1923,10 +1925,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   choice's model on its provider where that provider has a key out of cooldown, else on
   its first fallback with one, else on its provider; and the run's `run_settings` where
   the choice's runtime, key or model is no longer valid, or its runtime is no longer in
-  the catalogue. It has `runtime` alone where its runtime uses another API of a provider
-  that an earlier session uses or where its provider has no key, and, with the default
-  runtime, where the workflow resolves to no model choice at
-  any level: the session uses that runtime's default model. A choice whose provider was
+  the catalogue. It has the default runtime alone where the workflow resolves to no
+  model choice at any level: the session uses that runtime's default model. A choice whose provider was
   removed ends the claim `provider_gone`. A run takes the keys of each provider its
   sessions run on, each kept as a row of `run_model_keys`. The claim picks at most 6
   keys in this order: the start key's provider's keys, then one key of each other
@@ -1935,10 +1935,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   provider's public id, so the gateway rotates each provider's keys apart from the
   others. For a session on a key of a provider other than the start key's, the answer has `model_credential`,
   the key that session starts on; without it, the session joins the group of the run's
-  start key. A run whose first session runs on the machine's key has no start key: it
-  takes the keys of its later sessions' providers, in session order, at least one each,
-  and its run configuration has no `model_credential`. A run whose every session runs on
-  the machine's key takes no key.
+  start key.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - `acceptance-criteria` and `verification` are structured types: a version is one JSON

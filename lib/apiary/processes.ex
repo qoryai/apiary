@@ -542,8 +542,8 @@ defmodule Apiary.Processes do
       `Apiary.Kinds.Providers.api/2`): one run keeps one API of each provider. `api` is
       the title of the format of `earlier`'s API (`api_title/1`).
 
-  A workflow with no model choice (`:none`) runs on the machine's key and is never such a
-  fault. Else `:ok`. The providers are checked first: with more than 6, no claim can give
+  A workflow with no model choice (`:none`), which runs on the default runtime, is never
+  such a fault. Else `:ok`. The providers are checked first: with more than 6, no claim can give
   each session a key, whatever the choices. The save checks it (`validate/3`), and the
   claim checks it again (Apiary.Stages.shared_models/1), as a choice, a provider, its
   keys or the harness can change after the save.
