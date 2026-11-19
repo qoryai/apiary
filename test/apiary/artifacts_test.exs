@@ -1395,6 +1395,24 @@ defmodule Apiary.ArtifactsTest do
                Artifacts.push({:run, run}, context.work_item, "questions", [questions])
     end
 
+    test "takes the acceptance criteria under the name main alone, from a run or a person",
+         %{scope: scope, run: run} = context do
+      member = member_fixture(scope)
+
+      for actor <- [{:run, run}, {:person, member.scope}] do
+        assert Artifacts.push(actor, context.work_item, "acceptance-criteria", [criteria()],
+                 name: "other"
+               ) == {:error, {:invalid, {:criteria_name, "other"}}}
+      end
+
+      assert count(Artifact) == 0
+
+      assert {:ok, %Version{artifact: %Artifact{name: "main"}}} =
+               Artifacts.push({:run, run}, context.work_item, "acceptance-criteria", [criteria()],
+                 name: "main"
+               )
+    end
+
     test "Explore reads the proposal named main alone", %{run: run} = context do
       push = fn name, text ->
         Artifacts.push({:run, run}, context.work_item, "proposal", [doc("proposal.md", text)],

@@ -34,8 +34,10 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      `Apiary.Artifacts.push/5` returns, the files that do not match the type's format
   #      among it, `422` `invalid_artifact`; a run's version of `questions` or
   #      `review-comments` that changes what members wrote, `422` `invalid_artifact` with
-  #      the rule it breaks; a `decision` that is not the id of a person's note on the
-  #      work item (`Apiary.Stages.Notes`), `422` `unknown_decision`; and a version of
+  #      the rule it breaks; a version of `acceptance-criteria` under a name other than
+  #      `main`, `422` `invalid_artifact` with `name` in `names`, before its file is
+  #      checked; a `decision` that is not the id of a person's note on the work item
+  #      (`Apiary.Stages.Notes`), `422` `unknown_decision`; and a version of
   #      `questions` or `review-comments` whose file is over the size limit as stored,
   #      with each number that is an integer in value written as an integer (`1e3` as
   #      `1000`), `422` `too_large`;
@@ -598,6 +600,15 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     do: {:error, :invalid_request, Atom.to_string(member)}
 
   defp refused({:unknown_decision, _decision}, _push), do: {:error, :unknown_decision}
+
+  # A version of the acceptance criteria under a name other than `main`: `422`
+  # `invalid_artifact` for `name`, whose form `Apiary.Artifacts.push/5` checked first.
+  defp refused({:invalid, {:criteria_name, name}}, _push) when is_binary(name),
+    do:
+      {:error,
+       {:invalid_artifact, "name",
+        "Name the acceptance criteria main: a work item has one set of acceptance " <>
+          "criteria, and this push has the name #{name}."}}
 
   defp refused({:invalid, :no_files}, _push), do: {:error, :invalid_request, "files"}
 

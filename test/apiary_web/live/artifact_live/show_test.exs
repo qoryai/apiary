@@ -1213,6 +1213,36 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert Artifacts.list(ctx.work_item) == []
     end
 
+    test "says to name the acceptance criteria main, and stores them under main", ctx do
+      {:ok, view, _html} = live(ctx.conn, new_page(ctx, "acceptance-criteria"))
+      json = Jason.encode!(criteria_document())
+
+      input =
+        file_input(view, "#artifact-form", :files, [
+          %{name: "acceptance-criteria.json", content: json, type: "application/json"}
+        ])
+
+      render_upload(input, "acceptance-criteria.json")
+
+      html =
+        view
+        |> form("#artifact-form",
+          artifact: %{type: "acceptance-criteria", name: "other", note: ""}
+        )
+        |> render_submit()
+
+      assert html =~
+               "Name the acceptance criteria main: a work item has one set of acceptance criteria, and this push has the name other."
+
+      assert Artifacts.list(ctx.work_item) == []
+
+      view
+      |> form("#artifact-form", artifact: %{type: "acceptance-criteria", name: "main", note: ""})
+      |> render_submit()
+
+      assert [%{type: "acceptance-criteria", name: "main"}] = Artifacts.list(ctx.work_item)
+    end
+
     test "shows the line to remove a proposal's file that is neither Markdown nor an image",
          ctx do
       {:ok, view, _html} = live(ctx.conn, new_page(ctx, "proposal"))

@@ -1796,6 +1796,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   file that matches `acceptance-criteria.schema.json` or `verification.schema.json`, and
   any other file, Markdown too, is `422` `invalid_artifact`. A criterion's id is once in
   the criteria. Qory Apiary reads no output's Markdown for data.
+- A work item has one set of acceptance criteria, under the name `main`. A run's push of
+  `acceptance-criteria` under another name is `422` `invalid_artifact`, with `name` in
+  `names` and the message "Name the acceptance criteria main: a work item has one set of
+  acceptance criteria, and this push has the name other." **Add a version** shows the
+  same line under **Name** and stores nothing.
 - A question has `about` in place of `criterion`: `{"work_item": true}`, or the type and
   name of an output of the work item, with an `item` such as `ac-4`. A pushed question
   whose `about` points at an output the work item lacks, or at a criterion that no version
