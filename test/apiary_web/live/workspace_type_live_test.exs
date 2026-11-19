@@ -912,10 +912,10 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
         end
 
       {:ok, _choice} =
-        Apiary.ModelChoices.put_choice(scope, :organisation, %{
+        Apiary.ModelChoicesFixtures.put_choice(scope, :organisation, %{
           provider: first.public_id,
           model: "claude-opus-5-5",
-          fallbacks: for(p <- rest, do: %{provider: p.public_id, model: "claude-sonnet-5-5"})
+          fallbacks: Enum.map(rest, &Apiary.ModelChoicesFixtures.fallback_attrs/1)
         })
 
       view = open(conn, user, organisation, ctx.collection.public_id <> ".support-desk")

@@ -378,7 +378,6 @@ defmodule Apiary.ModelKeys.UseUpToTest do
             secret_value_id: Ecto.UUID.generate(),
             name: name.(n),
             start: n == 1,
-            chosen: n == 1,
             pause_for_s: 604_800,
             resets_at: time,
             schedule_resets_at: time,
@@ -395,8 +394,8 @@ defmodule Apiary.ModelKeys.UseUpToTest do
       run_keys!(run, keys, api: api)
       stored = stored_keys(run)
 
-      assert Enum.map(stored, &Map.take(&1, [:name, :start, :chosen, :api])) ==
-               for(k <- keys, do: %{name: k.name, start: k.start, chosen: k.chosen, api: api})
+      assert Enum.map(stored, &Map.take(&1, [:name, :start, :api])) ==
+               for(k <- keys, do: %{name: k.name, start: k.start, api: api})
 
       assert Enum.all?(
                stored,
