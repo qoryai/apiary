@@ -7,8 +7,9 @@ defmodule Apiary.ModelKeys.LoginDevice do
 
     * `request_code/2`: `usercode_url`, a JSON body with `client_id`; the response has the
       code to show (`user_code`, at most 64 characters: a longer one is a `bad_response`),
-      the device id, the seconds between two polls (`interval`,
-      a number or a string of one) and when the code stops working (`expires_at`); a
+      the device id, the seconds between two polls (`interval`, a number or a string of
+      one, taken as 5 to 60: a shorter one is 5) and when the code stops working
+      (`expires_at`); a
       missing or unreadable `expires_at` (its format was never measured) is taken as 15
       minutes from the call;
     * `poll/2`: `poll_url`, a JSON body with `device_auth_id` and `user_code`; while the
@@ -43,6 +44,7 @@ defmodule Apiary.ModelKeys.LoginDevice do
   @max_response 65_536
   @default_lifetime 15 * 60
   @retry_after_max 60
+  @interval_min 5
   @code_max 64
   @user_agent "qory-apiary"
 
@@ -165,7 +167,8 @@ defmodule Apiary.ModelKeys.LoginDevice do
   end
 
   # The provider sends the interval as a string, as the probe of 2026-11-18 measured, or
-  # a number: 1 to 60 seconds, 5 where it is neither.
+  # a number: 5 to 60 seconds (a shorter interval is read as 5, so that 200 sign-ins make at
+  # most 40 calls a second), 5 where it is neither.
   defp interval(value) when is_binary(value) do
     case Integer.parse(String.trim(value)) do
       {seconds, ""} -> interval(seconds)
@@ -173,7 +176,8 @@ defmodule Apiary.ModelKeys.LoginDevice do
     end
   end
 
-  defp interval(value) when is_number(value), do: value |> trunc() |> max(1) |> min(60)
+  defp interval(value) when is_number(value),
+    do: value |> trunc() |> max(@interval_min) |> min(60)
 
   defp interval(_value), do: 5
 

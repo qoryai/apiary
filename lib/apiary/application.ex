@@ -134,8 +134,9 @@ defmodule Apiary.Application do
       # (`Apiary.ModelKeys.LoginDevice`), and each sign-in, which belongs to the process of
       # its form (`Apiary.ModelKeys.DeviceSignIn`).
       {Task.Supervisor, name: Apiary.ModelKeys.LoginDevice.supervisor()},
-      # At most 200 sign-ins at once: each lives 30 minutes at most, and polls every 5
-      # seconds, so the bound is about 40 calls a second to the provider. A sign-in over the
+      # At most 200 sign-ins at once: each lives 30 minutes at most and polls no faster than
+      # once every 5 seconds (`Apiary.ModelKeys.LoginDevice` reads a shorter interval as 5),
+      # so 200 sign-ins make 40 calls a second to the provider at most. A sign-in over the
       # bound does not start, and its form shows a failed sign-in.
       {DynamicSupervisor,
        name: Apiary.ModelKeys.DeviceSignIn.supervisor(), strategy: :one_for_one, max_children: 200},

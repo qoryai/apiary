@@ -9,7 +9,7 @@ defmodule Apiary.ModelKeys.DeviceSignIn do
 
   The sign-in is a process that belongs to the form's process (the `owner`): it monitors
   the owner and ends when the owner ends, and when `stop/1` says so. It polls every
-  `interval` seconds the provider sent, until the code's `expires_at` or 30 minutes after
+  `interval` seconds the provider sent, at least 5 (`Apiary.ModelKeys.LoginDevice`), until the code's `expires_at` or 30 minutes after
   the start, whichever is first, and makes no call after it ends. A poll that gets a 429
   or a 5xx waits for the longer of the interval and the `Retry-After` header (at most 60
   seconds); a 429 does not count as a failure, and five failed polls in a

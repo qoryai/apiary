@@ -23,8 +23,19 @@ defmodule Apiary.ModelKeys.LoginDeviceTest do
                LoginDevice.request_code(Stub.device(), @client)
     end
 
-    test "reads a number interval, bounds it and defaults a bad one" do
-      for {sent, taken} <- [{3, 3}, {0, 1}, {900, 60}, {"x", 5}, {nil, 5}] do
+    test "reads a number interval, bounds it to 5 to 60 seconds and defaults a bad one" do
+      for {sent, taken} <- [
+            {7, 7},
+            {5, 5},
+            {3, 5},
+            {1, 5},
+            {0, 5},
+            {"1", 5},
+            {"60", 60},
+            {900, 60},
+            {"x", 5},
+            {nil, 5}
+          ] do
         stub(fn conn ->
           Req.Test.json(conn, %{
             "device_auth_id" => "d",
