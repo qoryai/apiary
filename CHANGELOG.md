@@ -894,14 +894,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   report, its first failed removal and the removal.
 - **Copy diagnostics**, in the menu of a run's page, copies the run's diagnostics as
   JSON, for owners, admins and members who may read the run's log. The diagnostics
-  contain the run with its machine type's key and name, its queue entry and claim, how
-  its machine was prepared, its latest 5,000 events at most, the output that belongs to
-  no step, its last 1 MiB, the output of each step, and the secrets found printed in the
-  run, at most 8 MiB in all. Only an instance admin's copy contains the machine logs. A
-  copy contains no key, no run code and no variable value, only the variables' names.
-  Text is copied as Qory Apiary stored it, so a secret a run printed is in the copy.
-  When the copy fails, the menu shows the fix first, such as “Sign in again, then copy
-  again. Your session ended.”
+  contain the run with its machine type and that type's name, its queue entry and
+  claim, how its machine was prepared, its latest 5,000 events at most, the output that
+  belongs to no step, its last 1 MiB, the output of each step, and the secrets found
+  printed in the run, at most 8 MiB in all. Only an instance admin's copy contains the
+  machine logs. A copy contains no key, no run code and no variable value, only the
+  variables' names. Text is copied as Qory Apiary stored it, so a secret a run printed is
+  in the copy. When the copy fails, the menu shows the fix first, such as “Sign in again,
+  then copy again. Your session ended.”
 - Instance settings › **Diagnostics keys**, for instance admins, lists the diagnostics
   keys. With a diagnostics key, a computer lists the runs on this instance, with their
   organisation, workspace and work item title, and reads the diagnostics of any of them,
@@ -1970,10 +1970,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   changed, and that access key or code is gone."
 - In a run's diagnostics, the machine type is `run.machine.type`, in place of
   `run.machine.key`. A harness document without `extends` may set `plan` and `tier` on a
-  workflow, as `qory-stack.yaml` does, and a document whose workflow sets `time_limit` is
-  refused at the save. The copies of the integrations run and diagnostics contracts are at
-  the commit that makes these changes, which also adds the refusals of the next-session
-  request.
+  workflow, as in `qory-stack.yaml`, and a workflow with `plan` has `access: write`. The
+  save of a document whose workflow sets `time_limit` fails. The copies of the
+  integrations run and diagnostics contracts are at the commit that makes these changes.
 <!-- feature: factory, secrets -->
 - The run configuration's `model_credential` is now
   `default_model_provider_credential_name`, the default model provider credential, as in

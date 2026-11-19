@@ -115,8 +115,8 @@ defmodule Apiary.Dispatches.WireTest do
   # of a stage, the tier balanced in place of fast, the outcome of a run with its end
   # codes, a later session's runtime, run_settings on every explore run, and
   # model_provider_credential_name in place of model_credential in the next-session
-  # answer. The diagnostics contract is at the same commit as the run contract, whose
-  # machine of a run has type in place of key.
+  # answer. The diagnostics contract is at the same commit as the run contract, at which
+  # a run's machine has `type` in place of `key`.
   # The integration contract is at 805a7bdb, which adds `vendor`, and `runtimes`,
   # `paths` and `oauth_refresh` of an API, to the description of a model provider.
   test "the vendored contracts are the commits their refs name" do

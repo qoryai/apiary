@@ -322,9 +322,7 @@ defmodule Apiary.StacksTest do
           "workflows:\n  implement-changes: {access: write, plan: build-plan}\n"
 
       assert {:ok, %Stack{harness: ^document}} =
-               Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document,
-                 choice: :repository
-               )
+               Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document)
     end
 
     test "take modules by git, by export and at the root, with the other keys", ctx do
