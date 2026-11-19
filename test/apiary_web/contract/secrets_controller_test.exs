@@ -363,6 +363,23 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert seals() == []
     end
 
+    # A run claimed before runs kept their keys as rows has none: its run configuration no
+    # longer has its model keys, so the digest its gateway read at the attach is
+    # superseded.
+    test "410 run_configuration_superseded for a run whose key rows are gone since its digest was read",
+         ctx do
+      assert {count, _rows} =
+               Repo.delete_all(from k in ModelKey, where: k.run_id == ^ctx.run.id)
+
+      assert count > 0
+
+      conn = post_secrets(ctx, request(ctx))
+      assert conn.status == 410
+      assert code(conn) == "run_configuration_superseded"
+      assert signed_answer?(conn)
+      assert seals() == []
+    end
+
     test "409 credentials_differ for a credential the run does not have", ctx do
       for credentials <- [["forge"], [start(ctx), "forge"], [ctx.provider.public_id]] do
         conn = post_secrets(ctx, request(ctx, credentials: credentials))
