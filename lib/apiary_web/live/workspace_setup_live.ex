@@ -1167,7 +1167,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   # Key, one radio group as `input/1` draws one: the first `shared` options under "Shared
   # in <organisation>", each marked "every workspace", then the others. With no shared
   # option, no heading. With an error, or with `described_by`, the group has
-  # `aria-invalid` and a red ring (`app.css`), and is described by each error and the line.
+  # `aria-invalid` and a red ring (`.q-ring-invalid` in `app.css`), and is described by
+  # each error and the line.
   defp key_choice(assigns) do
     {shared, others} = assigns.options |> Enum.with_index() |> Enum.split(assigns.shared)
     errors = Enum.map(assigns.field.errors, &translate_error/1)
@@ -1186,7 +1187,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     ~H"""
     <fieldset
       id={@id}
-      class="fieldset"
+      class="fieldset q-ring-invalid"
       aria-invalid={@described != [] && "true"}
       aria-describedby={@described != [] && Enum.join(@described, " ")}
     >

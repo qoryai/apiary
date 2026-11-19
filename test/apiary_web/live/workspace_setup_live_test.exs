@@ -5088,10 +5088,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert words(lv, "#set-up-model-no-runtime") ==
              "DeepSeek works with no runtime in this version of Qory. Pick another provider."
 
-    # The red ring of `app.css` follows `aria-invalid` on the group.
+    # The red ring of `.q-ring-invalid` in `app.css` follows `aria-invalid` on the group.
     assert has_element?(
              lv,
-             ~s{fieldset#set-up-model-source[aria-invalid="true"][aria-describedby="set-up-model-no-runtime"]}
+             ~s{fieldset#set-up-model-source.q-ring-invalid[aria-invalid="true"][aria-describedby="set-up-model-no-runtime"]}
            )
 
     # OpenRouter serves the bearer runtime: the line and the attributes go.
@@ -5107,7 +5107,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     _anthropic = provider!(scope, "anthropic", "main")
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
-    assert has_element?(lv, "fieldset#set-up-model-source")
+    assert has_element?(lv, "fieldset#set-up-model-source.q-ring-invalid")
     refute has_element?(lv, "#set-up-model-no-runtime")
     refute has_element?(lv, "fieldset#set-up-model-source[aria-invalid]")
     refute has_element?(lv, "fieldset#set-up-model-source[aria-describedby]")

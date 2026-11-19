@@ -10134,9 +10134,9 @@
   fieldset[aria-invalid="true"] .q-choice {
     border-color: var(--color-error);
   }
-  /* A refused group of plain radios, such as set-up's Provider: a red ring around the
-     group. An outline, so the layout does not move when the ring shows. */
-  fieldset[aria-invalid="true"]:not(:has(.q-choice)) {
+  /* Set-up's Provider, a group of plain radios, while it is refused: a red ring around
+     the group. An outline, so the layout does not move when the ring shows. */
+  fieldset.q-ring-invalid[aria-invalid="true"] {
     outline: 1px solid var(--color-error);
     outline-offset: 6px;
     border-radius: var(--radius-field);
