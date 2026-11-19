@@ -167,7 +167,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
             switch: switch,
             earlier: earlier,
             can_decide: can_decide,
-            approver_line: approver_line(scope, stage, state, can_decide)
+            approver_line: approver_line(scope, stage, get(status, :escalation), can_decide)
           }
         )
         |> entry(stage),
@@ -202,9 +202,12 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   # Who decides the escalation of `stage`, for a reader who may not
   # (`ApiaryWeb.WorkItemLive.StageComponents.approver_line/3`): the sentence that takes the
-  # place of the action in the points (`worded/2`). nil where the stage is not escalated
-  # or the reader may decide. Only a stage that lists approvers reads the members.
-  defp approver_line(scope, stage, :escalated, false) do
+  # place of the action in the points (`worded/2`), in any state that keeps the
+  # escalation, such as waiting for answers. nil with no escalation or for a reader who
+  # may decide. The page reads the members only for a stage that lists approvers.
+  defp approver_line(_scope, _stage, nil, _can_decide), do: nil
+
+  defp approver_line(scope, stage, _escalation, false) do
     approvers = approvers(stage)
 
     members =
@@ -216,7 +219,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     StageComponents.approver_line(stage.name, approvers, members)
   end
 
-  defp approver_line(_scope, _stage, _state, _can_decide), do: nil
+  defp approver_line(_scope, _stage, _escalation, true), do: nil
 
   defp switch_tracks(row, :escalated),
     do: Stages.switch_tracks(row)

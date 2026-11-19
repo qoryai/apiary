@@ -4460,6 +4460,106 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     # with the fields `approver_line/3` reads.
     defp approver_member(id, email), do: %{user: %Apiary.Accounts.User{id: id, email: email}}
 
+    # A work item escalated by real runs, with the gates of Build and Verify listing only
+    # the account `approver`: `:return_limit` after three changes-requested verdicts at
+    # Verify, whose return to Build allows 2; `:round_limit` after a changes-requested
+    # verdict with one finding in each of the 2 rounds of Build's loop.
+    defp by_runs!(scope, cause, approver) do
+      gate = %{"kind" => "person", "approvers" => %{"members" => [approver]}}
+      none = %{"kind" => "none"}
+      plain = %{"inputs" => [], "outputs" => []}
+
+      build =
+        case cause do
+          :return_limit ->
+            %{"sequence" => [%{"workflow" => "implement"}], "gate" => none}
+
+          :round_limit ->
+            loop = %{"rounds" => 2, "body" => [%{"workflow" => "implement"}]}
+            %{"sequence" => [%{"loop" => loop}], "gate" => gate}
+        end
+
+      verify = %{
+        "sequence" => [
+          %{"workflow" => "verify-a-ticket", "return" => %{"stage" => @build, "limit" => 2}}
+        ],
+        "outputs" => [],
+        "gate" => gate
+      }
+
+      document =
+        Map.update!(document("members"), "stages", fn stages ->
+          for stage <- stages do
+            case stage["id"] do
+              @shape ->
+                Map.merge(
+                  stage,
+                  %{
+                    "sequence" => [%{"workflow" => "shape-a-ticket"}],
+                    "gate" => none
+                  }
+                  |> Map.merge(plain)
+                )
+
+              @build ->
+                stage |> Map.merge(plain) |> Map.merge(build)
+
+              @verify ->
+                Map.merge(stage, verify)
+
+              _other ->
+                stage
+            end
+          end
+        end)
+
+      save!(scope, document)
+      work_item = explore_gate_fixture(scope)
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1)
+      work_item = WorkItem |> Repo.get!(work_item.id) |> end_run!(passed())
+
+      changes = fn points ->
+        fn run, _registered ->
+          {:ok, _version} =
+            Stages.Artifacts.push_json(
+              {:run, run},
+              Repo.get!(WorkItem, run.work_item_id),
+              "verdict",
+              if(points == [],
+                do: %{"verdict" => "changes-requested"},
+                else: %{"verdict" => "changes-requested", "points" => points}
+              ),
+              stage_id: run.stage_id
+            )
+        end
+      end
+
+      finding = [%{"text" => "The export has no title.", "action" => "run_again"}]
+
+      work_item =
+        case cause do
+          :return_limit ->
+            work_item = end_run!(work_item, passed())
+
+            work_item =
+              Enum.reduce(1..2, work_item, fn _return, work_item ->
+                work_item = end_run!(work_item, changes.([]))
+                assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+                end_run!(work_item, passed())
+              end)
+
+            end_run!(work_item, changes.([]))
+
+          :round_limit ->
+            work_item = end_run!(work_item, changes.(finding))
+            assert %WorkItem{stage_id: @build, stage_state: :running, stage_round: 2} = work_item
+            end_run!(work_item, changes.(finding))
+        end
+
+      assert %WorkItem{stage_state: :escalated} = work_item
+      work_item
+    end
+
     defp refute_decision_controls(view) do
       refute render(view) =~ "Pick "
       refute render(view) =~ "Run another round"
@@ -4479,7 +4579,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
               do:
                 stage
                 |> Map.put("sequence", sequence ++ Map.get(fields, "later", []))
-                |> Map.merge(Map.drop(fields, ["later", "findings"])),
+                |> Map.merge(Map.delete(fields, "later")),
               else: stage
           end
         end)
@@ -4493,7 +4593,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         work_item,
         :return_limit,
         Apiary.Stages.Points.return_limit(2, "Verify", "Shape") ++
-          Map.get(fields, "findings", ["Criterion 2 is not met: the export has no PDF."])
+          ["Criterion 2 is not met: the export has no PDF."]
       )
 
       work_item
@@ -5410,24 +5510,51 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     test "a reader who may not decide sees who decides, with no Pick, no Run another round and no buttons",
          %{scope: scope} do
       listed = member_fixture(scope, :member)
-      gate = %{"kind" => "person", "approvers" => %{"members" => [listed.user.id]}}
       name = ApiaryWeb.People.short(listed.user.email)
       reader = log_in_user(build_conn(), member_fixture(scope, :member).user)
 
-      # A return limit: who decides, then the count of returns.
-      work_item = at_return_limit(scope, %{"gate" => gate, "findings" => []})
+      # A return limit, reached by three changes-requested verdicts at Verify: who
+      # decides, then the count of returns.
+      work_item = by_runs!(scope, :return_limit, listed.user.id)
+      assert %Escalation{cause: :return_limit} = escalation(work_item)
       {:ok, view, _html} = live(reader, page(scope, work_item.number))
 
       assert texts(view, "#work-item-needs-points li") == [
                "An approver of Verify decides: #{name}. Verify's run asked for changes again " <>
-                 "after 2 returns to Shape, the most that Verify allows."
+                 "after 2 returns to Build, the most that Verify allows."
              ]
 
       refute_decision_controls(view)
 
-      # A round limit with an open finding: who decides, in place of the fix.
+      # A round limit, reached by a changes-requested verdict in the last round of Build's
+      # loop: who decides, in place of the fix.
+      work_item = by_runs!(scope, :round_limit, listed.user.id)
+      assert %Escalation{cause: :round_limit} = escalation(work_item)
+      {:ok, view, _html} = live(reader, page(scope, work_item.number))
+
+      assert texts(view, "#work-item-needs-points li") == [
+               "2 of 2 rounds ran, and 1 review finding is still open. The export has no " <>
+                 "title. An approver of Build decides: #{name}."
+             ]
+
+      refute_decision_controls(view)
+    end
+
+    test "page/2 words a kept escalation for a reader who may not decide while the stage waits for answers",
+         %{scope: scope} do
+      listed = member_fixture(scope, :member)
+      name = ApiaryWeb.People.short(listed.user.email)
+      reader = member_fixture(scope, :member)
+
+      reader_scope =
+        Apiary.Organisations.load_scope(Apiary.Accounts.Scope.for_user(reader.user))
+
       work_item =
-        at_build(scope, :escalated, round: 3, loop_entry: 1, approvers: gate["approvers"])
+        at_build(scope, :waiting_answers,
+          round: 3,
+          loop_entry: 1,
+          approvers: %{"members" => [listed.user.id]}
+        )
 
       escalate!(
         work_item,
@@ -5435,14 +5562,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         Apiary.Stages.Points.round_limit(3, 3, ["The export has no title."])
       )
 
-      {:ok, view, _html} = live(reader, page(scope, work_item.number))
+      assert %{state: :waiting_answers, can_decide: false, escalation: %{points: [point]}} =
+               ApiaryWeb.WorkItemLive.Workflow.page(
+                 reader_scope,
+                 Repo.get!(WorkItem, work_item.id)
+               )
 
-      assert texts(view, "#work-item-needs-points li") == [
-               "3 of 3 rounds ran, and 1 review finding is still open. The export has no " <>
-                 "title. An approver of Build decides: #{name}."
-             ]
-
-      refute_decision_controls(view)
+      assert point.fix == "An approver of Build decides: #{name}."
     end
 
     test "a reader who may not decide sees a failed check's fact without its action, then who decides",

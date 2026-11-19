@@ -1285,12 +1285,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   def stored_no(type), do: gettext("The run stored no %{type}.", type: type_words(type))
 
   @doc """
-  approver_line/3 is the sentence that says who decides on the stage named `stage`, for a
+  approver_line/3 is the sentence of who decides on the stage whose name is `stage`, for a
   reader who may not: `approvers` as `ApiaryWeb.WorkItemLive.Workflow.approvers/1` returns
   them, and `members`, the workspace's memberships, each with its `user`, as
   `Apiary.Organisations.list_workspace_members/1` returns them. The names of the listed
   members follow the list's order; a listed id that is no member's is left out. With no
-  member left, or none listed, the sentence says that nobody may approve the stage.
+  member left, or none listed, the sentence is that nobody may approve the stage.
   """
   @spec approver_line(String.t(), :members | {:listed, [String.t()]}, [map]) :: String.t()
   def approver_line(stage, :members, _members),
