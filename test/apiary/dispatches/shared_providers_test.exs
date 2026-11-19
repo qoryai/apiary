@@ -1194,6 +1194,60 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert id == second.id
     end
 
+    test "a mark from before this pause's window does not end the wait", ctx do
+      provider = two_keys!(ctx)
+
+      {paused, _dispatch_run, continuation} =
+        paused!(ctx, session: nil, reason: "model_key_switch")
+
+      rejected!(paused, provider, "key-1")
+
+      # The mark is 1 s older than the window, as one of an earlier pause of the run.
+      older = DateTime.add(continuation.report_wait_until, -61, :second)
+
+      {1, _rows} =
+        Repo.update_all(from(c in Apiary.ModelKeys.Copy, where: c.run_id == ^paused.id),
+          set: [marked_at: older]
+        )
+
+      assert {:ok, :none} = walked_claim(ctx.key, Dispatches.now(), @body)
+      assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, continuation.id)
+    end
+
+    test "a mark on a key of another run does not end the wait", ctx do
+      provider = two_keys!(ctx)
+
+      {_paused, _dispatch_run, waiting} =
+        paused!(ctx, session: nil, reason: "model_key_switch")
+
+      {other, _dispatch_run, other_continuation} =
+        paused!(ctx, session: nil, reason: "model_key_switch")
+
+      rejected!(other, provider, "key-1")
+
+      # The other run's continuation is taken; the first stays waiting.
+      assert {{:ok, _run}, _queued} = claimed!(ctx, other_continuation)
+      assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, waiting.id)
+    end
+
+    test "a mark whose key has a new value since does not end the wait", ctx do
+      provider = two_keys!(ctx)
+
+      {paused, _dispatch_run, continuation} =
+        paused!(ctx, session: nil, reason: "model_key_switch")
+
+      rejected!(paused, provider, "key-1")
+
+      {:ok, _provider} =
+        Connections.update_provider_key(ctx.scope, provider, "key-1", %{
+          value_id: "key-1",
+          value: "sk-ant-northwind-keys-1-9876543210"
+        })
+
+      assert {:ok, :none} = walked_claim(ctx.key, Dispatches.now(), @body)
+      assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, continuation.id)
+    end
+
     test "is continued on the paused session's provider, which the default runtime can use, though session 1's cannot",
          ctx do
       storefront = provider!(ctx.scope, "Storefront keys", kind: "openai")

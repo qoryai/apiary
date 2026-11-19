@@ -1690,10 +1690,12 @@ defmodule Apiary.Dispatches do
   # (`requeue_for_pause/3`). The wait is about the paused run's report, not its keys.
   #
   # The report's arrival ends the wait early too: the run it continues (`continues_id`) has
-  # a copy of a key that its report marked (`model_key_copies.marked_at`, set by
-  # `Apiary.ModelKeys.reject/3` for a key in `unauthorized`), and the key still needs a new
-  # value (`Apiary.ModelKeys.Rejection`, whose `value_set_at` is the value's). The run
-  # then starts on the next key at once, as the claim skips a key in that state.
+  # a copy of a key that a report marked in this pause's window
+  # (`model_key_copies.marked_at`, set by `Apiary.ModelKeys.reject/3`, not before the
+  # window opened, 60 seconds before `report_wait_until`), and the key still needs a new
+  # value (`Apiary.ModelKeys.Rejection`, whose `value_set_at` is the value's). A mark from
+  # an earlier pause of the run does not count. The run then starts on the next key at
+  # once, as the claim skips a key in that state.
   #
   # shortcut: the rejection condition is written in SQL again, as in
   # `Apiary.ModelKeys.claimable/2`, and a sign-in key that the report lists while its
@@ -1710,9 +1712,12 @@ defmodule Apiary.Dispatches do
             JOIN secret_values v ON v.id = c.secret_value_id
             JOIN model_key_rejections j ON j.secret_value_id = v.id
               AND j.value_set_at IS NOT DISTINCT FROM v.value_set_at
-            WHERE paused.dispatch_run_id = ? AND c.marked_at IS NOT NULL)
+            WHERE paused.dispatch_run_id = ?
+              AND c.marked_at >= ? - (?::integer * interval '1 second'))
           """,
-          r.continues_id
+          r.continues_id,
+          r.report_wait_until,
+          ^Apiary.ModelKeys.Report.after_exit_seconds()
         )
     )
   end
