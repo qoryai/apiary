@@ -147,4 +147,80 @@ defmodule Apiary.ModelKeys.AccountClaimTest do
       assert read(~s({"id":"acct-\xFF"}), "/id") == :error
     end
   end
+
+  # Each case is a probe of `credential.AccountClaim` in forager (`credential.go`, Go 1.27.4,
+  # `jsontext.AllowInvalidUTF8`), whose result is in the test name: the decoder reads each
+  # invalid byte of a member name, and each lone surrogate escape, as one U+FFFD.
+  describe "read/2 reads invalid UTF-8 as the gateway's decoder does" do
+    @auth ~s("https://api.openai.com/auth":{"chatgpt_account_id":"acct-1"})
+    @auth_pointer "/https:~1~1api.openai.com~1auth/chatgpt_account_id"
+
+    test "Go: names \\xFF and \\xFE off the pointer's way are the same name, refused" do
+      assert read("{\"\xFF\":1,\"\xFE\":2," <> @auth <> "}", @auth_pointer) == :error
+    end
+
+    test "Go: a name \\xFF twice off the pointer's way is refused" do
+      assert read("{\"\xFF\":1,\"\xFF\":2," <> @auth <> "}", @auth_pointer) == :error
+    end
+
+    test "Go: one name \\xFF off the pointer's way is read" do
+      assert read("{\"\xFF\":1," <> @auth <> "}", @auth_pointer) == {:ok, "acct-1"}
+      assert read("{\"\xFF\":1,\"id\":\"acct-1\"}", "/id") == {:ok, "acct-1"}
+    end
+
+    test "Go: names \\xFF and \\xFE in the object on the pointer's way are refused" do
+      payload =
+        ~s({"https://api.openai.com/auth":{"\xFF":1,"\xFE":2,"chatgpt_account_id":"acct-1"}})
+
+      assert read(payload, @auth_pointer) == :error
+    end
+
+    test "Go: names \\xC3 and \\xFF in the object on the pointer's way are refused" do
+      payload =
+        ~s({"https://api.openai.com/auth":{"\xC3":1,"\xFF":2,"chatgpt_account_id":"acct-1"}})
+
+      assert read(payload, @auth_pointer) == :error
+    end
+
+    test "Go: names \\xC3 and \\xE2\\x82 differ: one U+FFFD and two" do
+      assert read("{\"\xC3\":1,\"\xE2\x82\":2,\"id\":\"acct-1\"}", "/id") == {:ok, "acct-1"}
+    end
+
+    test "Go: a name \\xFF and a name U+FFFD are the same name, refused" do
+      assert read("{\"\xFF\":1,\"\u{FFFD}\":2," <> @auth <> "}", @auth_pointer) == :error
+    end
+
+    test "Go: one lone surrogate escape in a name off the pointer's way is read" do
+      assert read(~s({"\\ud800":1,) <> @auth <> "}", @auth_pointer) == {:ok, "acct-1"}
+    end
+
+    test "Go: the names \\ud800 and \\udc00 off the pointer's way are the same name, refused" do
+      assert read(~s({"\\ud800":1,"\\udc00":2,) <> @auth <> "}", @auth_pointer) == :error
+    end
+
+    test "Go: the names \\ud800 and \\ufffd off the pointer's way are the same name, refused" do
+      assert read(~s({"\\ud800":1,"\\ufffd":2,) <> @auth <> "}", @auth_pointer) == :error
+    end
+
+    test "Go: the names \\ud800 and \\udc00 on the pointer's way are refused" do
+      payload =
+        ~s({"https://api.openai.com/auth":{"\\ud800":1,"\\udc00":2,"chatgpt_account_id":"acct-1"}})
+
+      assert read(payload, @auth_pointer) == :error
+    end
+
+    test "Go: the pointer U+FFFD reaches a member named \\ud800 or \\xFF" do
+      assert read(~s({"\\ud800":"acct-1"}), "/\u{FFFD}") == {:ok, "acct-1"}
+      assert read("{\"\xFF\":\"acct-1\"}", "/\u{FFFD}") == {:ok, "acct-1"}
+    end
+
+    test "Go: the pointer \\xFF reaches no member, even one named \\xFF" do
+      assert read("{\"\xFF\":\"acct-1\"}", "/\xFF") == :error
+    end
+
+    test "Go: an invalid byte or a lone surrogate escape in the account id is refused" do
+      assert read("{\"id\":\"acct-\xFF\"}", "/id") == :error
+      assert read(~s({"id":"acct-\\ud800"}), "/id") == :error
+    end
+  end
 end

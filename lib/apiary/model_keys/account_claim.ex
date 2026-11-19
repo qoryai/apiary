@@ -22,8 +22,10 @@ defmodule Apiary.ModelKeys.AccountClaim do
   sets the account header, and the model provider checks the token.
 
   Where Forager accepts a payload with invalid UTF-8 inside a string off the pointer's
-  way, so does this module; a lone surrogate escape (`\\ud800`) in a member name is read as
-  U+FFFD, and in the claim it is refused, as the claim must be UTF-8.
+  way, so does this module. In a member name, each invalid byte and each lone surrogate
+  escape (`\\ud800`) is read as U+FFFD, as Forager's decoder reads it, so the names `\\xFF`
+  and `\\xFE` are the same name, and so are `\\ud800` and `\\udc00`. In the claim they are
+  refused, as the claim must be UTF-8.
   """
 
   @max_payload 8 * 1024
@@ -294,8 +296,8 @@ defmodule Apiary.ModelKeys.AccountClaim do
   ## Strings
 
   # The text of the raw bytes of a JSON string: the escapes read. With `strict`, invalid
-  # UTF-8 and a lone surrogate are an error (a claim must be UTF-8); without it, invalid
-  # bytes stay and a lone surrogate is U+FFFD (a member name is only compared).
+  # UTF-8 and a lone surrogate are an error (a claim must be UTF-8); without it, an invalid
+  # byte and a lone surrogate escape are each one U+FFFD (a member name is only compared).
   defp unescape(raw, strict) do
     text = unescape_bytes(raw, strict, [])
 
@@ -350,8 +352,17 @@ defmodule Apiary.ModelKeys.AccountClaim do
     unescape_bytes(rest, strict, [<<char>> | acc])
   end
 
-  defp unescape_bytes(<<c, rest::binary>>, strict, acc),
-    do: unescape_bytes(rest, strict, [<<c>> | acc])
+  defp unescape_bytes(<<c::utf8, rest::binary>>, strict, acc),
+    do: unescape_bytes(rest, strict, [<<c::utf8>> | acc])
+
+  # A byte that starts no UTF-8 character: one U+FFFD for each such byte in a member name,
+  # as Go's decoder reads it, so two names that differ in invalid bytes only are the same
+  # name; kept in a claim, where `unescape/2` then refuses it.
+  defp unescape_bytes(<<c, rest::binary>>, true, acc),
+    do: unescape_bytes(rest, true, [<<c>> | acc])
+
+  defp unescape_bytes(<<_c, rest::binary>>, false, acc),
+    do: unescape_bytes(rest, false, ["�" | acc])
 
   defp lone(_rest, true, _acc), do: :error
   defp lone(rest, false, acc), do: unescape_bytes(rest, false, ["�" | acc])
