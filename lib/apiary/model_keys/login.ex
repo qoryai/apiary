@@ -5,10 +5,12 @@ defmodule Apiary.ModelKeys.Login do
   (`Apiary.ModelKeys.DeviceSignIn`) returns. The key is still one value of the provider's
   secret (`Apiary.ModelKeys`). Its stored value is the document `from_tokens/3` makes,
   `{"version": 1, "access_token", "refresh_token"}`, encrypted like any other key value,
-  and nothing else of the response is kept; an `id_token` is not stored.
+  and nothing else of the response is kept; an `id_token` is not stored, but for the email
+  in its `email` claim, which the row keeps for the key's identity line
+  (`Apiary.ModelKeys.Identity`).
   The row of this module has what the server needs to know about the sign-in without
-  decrypting it: the account, when the access token expires, and whether the provider
-  still accepts the refresh token.
+  decrypting it: the account, the email, when the access token expires, and whether the
+  provider still accepts the refresh token.
 
   `from_tokens/3` reads the response and makes no network call. It trusts the TLS channel
   to the token address of the catalogue entry's `oauth_refresh`: the JWT payloads (the
@@ -135,17 +137,19 @@ defmodule Apiary.ModelKeys.Login do
   defmodule Parsed do
     @moduledoc false
     # What `Apiary.ModelKeys.Login.from_tokens/3` reads from an answer. `document` has the
-    # tokens, so `inspect/2` shows the account and the expiry alone.
+    # tokens, so `inspect/2` shows the account and the expiry alone; `email` is the
+    # `id_token`'s `email` claim, nil when it has none.
     @derive {Inspect, only: [:account_id, :access_expires_at]}
     @enforce_keys [:document, :account_id, :access_expires_at]
-    defstruct [:document, :account_id, :access_expires_at]
+    defstruct [:document, :account_id, :access_expires_at, :email]
   end
 
   @typedoc "What `from_tokens/3` reads from an answer."
   @type parsed :: %Parsed{
           document: binary,
           account_id: String.t(),
-          access_expires_at: DateTime.t()
+          access_expires_at: DateTime.t(),
+          email: String.t() | nil
         }
 
   @states ~w(signed_in sign_in_needed)
@@ -194,6 +198,9 @@ defmodule Apiary.ModelKeys.Login do
     belongs_to :organisation, Apiary.Organisations.Organisation
 
     field :account_id, :string, redact: true
+    # The `email` claim of the `id_token` of the sign-in, nil when it had none; the only
+    # data of the `id_token` that is kept (`from_tokens/3`).
+    field :email, :string, redact: true
     field :access_expires_at, :utc_datetime_usec
     field :signed_in_at, :utc_datetime_usec
     field :refreshed_at, :utc_datetime_usec
@@ -245,7 +252,8 @@ defmodule Apiary.ModelKeys.Login do
   `refresh_token` and, as the provider sends them, `id_token` and `expires_in`.
   `account_claim` is the JSON pointer of the account id in the access token's payload,
   `auth.account_claim` of the catalogue entry's API. `{:ok, parsed}` with the document to
-  store as the key's value, the account id and when the access token expires;
+  store as the key's value, the account id, the ID token's `email` claim (nil when the ID
+  token has none, or text that is no email) and when the access token expires;
   `{:error, :no_account}` for a response that is a sign-in but has no account id at the
   claim of the access token; `{:error, :invalid}` for any other response: one without a
   refresh token or a printable access token, or with different account ids in the access
@@ -271,7 +279,8 @@ defmodule Apiary.ModelKeys.Login do
        %Parsed{
          document: document,
          account_id: account_id,
-         access_expires_at: expires_at(access_token, response["expires_in"], now)
+         access_expires_at: expires_at(access_token, response["expires_in"], now),
+         email: email(response["id_token"])
        }}
     else
       :no_account -> {:error, :no_account}
@@ -307,6 +316,21 @@ defmodule Apiary.ModelKeys.Login do
   defp account_id(_response, _claim, _access_token), do: :error
 
   defp checked(id), do: if(account_id?(id), do: {:ok, id}, else: :error)
+
+  # The `email` claim of the ID token, the only part of it that is kept: text of 3 to 254
+  # characters with one `@` between other characters, and no space or control character.
+  # Nil for an ID token without one, so the key's identity line has its account instead.
+  @email ~r/\A[^\s@[:cntrl:]]+@[^\s@[:cntrl:]]+\z/u
+
+  defp email(id_token) do
+    case claimed(id_token, "/email") do
+      email when is_binary(email) ->
+        if String.length(email) <= 254 and Regex.match?(@email, email), do: email
+
+      _none ->
+        nil
+    end
+  end
 
   # The text at the JSON pointer `claim` of the payload of `token`, nil where there is none.
   defp claimed(token, claim) when is_binary(token) do
@@ -410,6 +434,7 @@ defmodule Apiary.ModelKeys.Login do
 
     fresh = [
       account_id: parsed.account_id,
+      email: parsed.email,
       access_expires_at: parsed.access_expires_at,
       signed_in_at: now,
       refreshed_at: nil,
