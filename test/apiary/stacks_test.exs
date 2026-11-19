@@ -728,10 +728,23 @@ defmodule Apiary.StacksTest do
           "workflows:\n  implement-changes: {access: write, time_limit: 45m}\n"
 
       assert refused(ctx, document) == [
-               "does not follow the harness format at " <>
-                 "#/workflows/implement-changes/time_limit: " <>
-                 "value was rejected from boolean schema: false"
+               "Remove time_limit from workflow implement-changes: " <>
+                 "a harness document takes no time limit for a workflow."
              ]
+    end
+
+    test "refuse a workflow's plan without access: write", ctx do
+      for access <- ["", "access: read, ", "access: write-no-push, "] do
+        document =
+          "modules: [{source: {git: #{@stacks}, ref: v1}}]\n" <>
+            "workflows:\n  implement-changes: {#{access}plan: build-plan}\n"
+
+        assert refused(ctx, document) == [
+                 "Set access: write on workflow implement-changes, or remove its plan: " <>
+                   "only a workflow with access: write takes a plan."
+               ],
+               access
+      end
     end
 
     test "refuse a document the reader refuses", ctx do

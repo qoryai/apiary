@@ -475,6 +475,7 @@ defmodule Apiary.Stacks.Document do
           JSV.normalize_error(error)
 
         bind_refusal(section, pointer(place))
+        workflow_refusal(section, pointer(place))
 
         refuse("does not follow the harness format at %{place}: %{rule}",
           place: place,
@@ -538,6 +539,53 @@ defmodule Apiary.Stacks.Document do
   end
 
   defp bind_refusal(_section, _pointer), do: :ok
+
+  # A schema refusal of a workflow of a stack the document defines, in words that start
+  # with the fix: a plan on a workflow without `access: write`, and a `time_limit`, which
+  # a workflow of the run contract does not take. Any other refusal keeps the schema's
+  # words.
+  defp workflow_refusal(%{"workflows" => workflows}, ["workflows", name]) do
+    case workflows do
+      %{^name => %{"plan" => _plan} = workflow} when not is_map_key(workflow, "access") ->
+        plan_refusal(name)
+
+      %{^name => %{"plan" => _plan, "access" => access}} when access != "write" ->
+        plan_refusal(name)
+
+      _other ->
+        :ok
+    end
+  end
+
+  defp workflow_refusal(%{"workflows" => workflows}, ["workflows", name, "time_limit"]) do
+    case workflows do
+      %{^name => %{"time_limit" => _minutes}} ->
+        refuse(
+          dgettext_noop(
+            "errors",
+            "Remove time_limit from workflow %{workflow}: " <>
+              "a harness document takes no time limit for a workflow."
+          ),
+          workflow: name
+        )
+
+      _other ->
+        :ok
+    end
+  end
+
+  defp workflow_refusal(_section, _pointer), do: :ok
+
+  defp plan_refusal(name) do
+    refuse(
+      dgettext_noop(
+        "errors",
+        "Set access: write on workflow %{workflow}, or remove its plan: " <>
+          "only a workflow with access: write takes a plan."
+      ),
+      workflow: name
+    )
+  end
 
   # The keys of a JSON pointer such as `#/bind/agents~1developer`: `["bind",
   # "agents/developer"]`.
