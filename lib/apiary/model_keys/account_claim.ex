@@ -54,12 +54,19 @@ defmodule Apiary.ModelKeys.AccountClaim do
   defp decode(payload) do
     enc = trim_padding(payload)
 
-    if div(byte_size(enc) * 6, 8) > @max_payload do
-      :error
-    else
-      enc
-      |> :binary.replace(["\r", "\n"], "", [:global])
-      |> Base.url_decode64(padding: false)
+    cond do
+      div(byte_size(enc) * 6, 8) > @max_payload ->
+        :error
+
+      # Go's decoder has no padding: a `=` that is not at the end of the payload, such as
+      # one before a line feed, is an error, whatever is trimmed or skipped around it.
+      :binary.match(enc, "=") != :nomatch ->
+        :error
+
+      true ->
+        enc
+        |> :binary.replace(["\r", "\n"], "", [:global])
+        |> Base.url_decode64(padding: false)
     end
   end
 
