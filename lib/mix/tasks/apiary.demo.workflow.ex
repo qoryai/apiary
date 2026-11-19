@@ -331,9 +331,9 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
     unless Map.has_key?(declared, @shape_workflow) do
       Shell.raise!(
-        "Set QORY_HARNESS_URL to a harness that declares #{@shape_workflow}, then drop " <>
-          "the database, create it again and run the fill again. Web shop's harness " <>
-          "declares no #{@shape_workflow}, the workflow of Shape."
+        "Set QORY_HARNESS_URL to a harness that declares #{@shape_workflow}, then fill a " <>
+          "new database.\nWeb shop's harness declares no #{@shape_workflow}, the workflow " <>
+          "of Shape. Drop this database and create it again before the next fill."
       )
     end
 

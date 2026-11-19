@@ -150,9 +150,9 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       error = assert_raise Mix.Error, fn -> Workflow.run([]) end
 
       assert error.message ==
-               "Set QORY_HARNESS_URL to a harness that declares shape-a-ticket, then drop " <>
-                 "the database, create it again and run the fill again. Web shop's harness " <>
-                 "declares no shape-a-ticket, the workflow of Shape."
+               "Set QORY_HARNESS_URL to a harness that declares shape-a-ticket, then fill a " <>
+                 "new database.\nWeb shop's harness declares no shape-a-ticket, the workflow " <>
+                 "of Shape. Drop this database and create it again before the next fill."
     end
 
     test "fills an empty instance: people, versions with a trial, and work items in each state" do
