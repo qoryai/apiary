@@ -1132,9 +1132,9 @@ defmodule Apiary.ModelKeys.Login do
   end
 
   # A renewal after a 401 (`recover: true`): the stored token is no good, whatever its
-  # `exp`, so there is no `:fresh`. (A stored token newer than the run's, `newer_than:`, is
-  # not this call: `step/1` makes it a call with no `recover`.) The call is `{:due, "unauthorized_recovery"}` unless a
-  # refresh or a failed one is less than 5 minutes old (`:blocked`: the caller gets
+  # `exp`, so there is no `:fresh`. (A stored token newer than the run's, `newer_than:`,
+  # is not this call: `step/1` makes it a call with no `recover`.) The call is
+  # `{:due, "unauthorized_recovery"}` unless a refresh or a failed one is less than 5 minutes old (`:blocked`: the caller gets
   # `{:error, :unavailable}`, and the gateway asks again 30 seconds later), or one ended
   # after this call started, when a refresh's token is served (`:refreshed`) and a
   # failure's refusal is `:blocked`. The last refresh (the sign-in, before the first) and the

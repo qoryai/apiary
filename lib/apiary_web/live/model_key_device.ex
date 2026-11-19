@@ -162,7 +162,10 @@ defmodule ApiaryWeb.ModelKeyDevice do
     end)
   end
 
-  @doc "The row id of the key's value that the sign-in was started for (the button of a key's row sends it), nil on a form."
+  @doc """
+  The row id of the key's value that the sign-in was started for (the button of a key's
+  row sends it), nil on a form.
+  """
   @spec key(Phoenix.LiveView.Socket.t()) :: String.t() | nil
   def key(socket), do: socket.assigns[:device] && socket.assigns.device.key
 
