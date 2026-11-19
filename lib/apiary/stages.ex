@@ -2277,9 +2277,11 @@ defmodule Apiary.Stages do
   # records (`gate_names/4`). `missing_outputs` is the
   # required output types whose Exists check fails (`missing_outputs/1`); while it has
   # one, the gate of the stage is not approvable. `accept_needs` is the missing required
-  # output types that Accept as it is requires (`accept_needs/4`). `loop` is whether the
-  # work item is in a loop of its stage: `rounds` is that loop's limit, or, past the last
-  # loop, the limit of the loop it left, which a later entry's runs do not count by.
+  # output types that Accept as it is requires (`accept_needs/4`). `accept_entry` is the
+  # entry that an accept of the open escalation starts, where it starts the next entry
+  # (`accept_entry/4`), else nil. `loop` is whether the work item is in a loop of its
+  # stage: `rounds` is that loop's limit, or, past the last loop, the limit of the loop it
+  # left, which a later entry's runs do not count by.
   # `escalation` is the open escalation with its `points` (`shown_points/5`), also while
   # the stage waits for answers; `gaps` is why a stage waits for a workflow, else the
   # failed checks that started its round, nil with an escalation.
@@ -2310,6 +2312,7 @@ defmodule Apiary.Stages do
         outputs: outputs,
         missing_outputs: missing,
         accept_needs: accept_needs(work_item, stage, facts, missing),
+        accept_entry: accept_entry(work_item, version, stage, escalation),
         inputs: inputs(work_item, version, stage, artifacts, facts, approvals),
         escalation: escalation_map(escalation, work_item, stage, outputs, artifacts),
         waiting_workflow: waiting_workflow(work_item, stage, facts),
@@ -3745,7 +3748,9 @@ defmodule Apiary.Stages do
     %{work_item | state: :closed, closed_at: now}
   end
 
-  defp facts(work_item, version, stage) do
+  # The facts the stage runner steps on (`Runner.step/4`). `strict?` is
+  # `condition_facts/6`'s: false for a page, which must not raise.
+  defp facts(work_item, version, stage, strict? \\ true) do
     # The whole row: `Apiary.Processes.workflow_declaration/2` reads its stack.
     workspace = Repo.get!(Workspace, work_item.workspace_id)
     artifacts = Artifacts.list(work_item)
@@ -3755,7 +3760,7 @@ defmodule Apiary.Stages do
 
     # Read once per event: the outputs' checks and the runner both use it.
     approvals = approvals_by_version(work_item)
-    conditions = condition_facts(work_item, version, stage, artifacts, true, approvals)
+    conditions = condition_facts(work_item, version, stage, artifacts, strict?, approvals)
 
     Map.merge(conditions, %{
       missing_inputs:
@@ -5011,6 +5016,38 @@ defmodule Apiary.Stages do
       position -> if Runner.accept_to_gate?(stage, position, facts), do: missing, else: []
     end
   end
+
+  # accept_entry/4 is the name of the entry whose run an accept of the open escalation
+  # `escalation` queues in the stage, else its workflow (`Runner.entry_name/2`): the run
+  # that `starts/2` finds for `:accept`, by the runner's rules on the facts read now,
+  # after loops and `when`/`unless` conditions. nil where the accept takes the stage to
+  # its gate (`Runner.accept_to_gate?/3`), or queues no run of this stage: no run, or a
+  # run of a stage that the step enters (`:advance`, `{:return, _}`). The escalation
+  # card's accept button reads Start and this entry (`ApiaryWeb.WorkItemLive.Workflow`).
+  defp accept_entry(
+         %WorkItem{stage_state: :escalated} = work_item,
+         version,
+         stage,
+         %Escalation{cause: cause}
+       ) do
+    facts = facts(work_item, version, stage, false)
+
+    with %{} = position <- position(work_item),
+         false <- Runner.accept_to_gate?(stage, position, facts) do
+      %{actions: actions} = Runner.step(stage, position, {:accept, cause}, facts)
+
+      Enum.reduce_while(actions, nil, fn
+        {:queue, spec}, nil -> {:halt, Runner.entry_name(stage, spec)}
+        :advance, nil -> {:halt, nil}
+        {:return, _stage_id}, nil -> {:halt, nil}
+        _other, nil -> {:cont, nil}
+      end)
+    else
+      _gate -> nil
+    end
+  end
+
+  defp accept_entry(_work_item, _version, _stage, _escalation), do: nil
 
   # A stage is approved only once every required output exists. The refusal is set by
   # who makes the outputs: people (a stage with no workflow, § 4) or the stage's runs.
