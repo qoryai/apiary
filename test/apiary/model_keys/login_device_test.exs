@@ -85,6 +85,23 @@ defmodule Apiary.ModelKeys.LoginDeviceTest do
       end
     end
 
+    test "refuses a user code of more than 64 characters" do
+      for {code, result} <- [
+            {String.duplicate("A", 64), :ok},
+            {String.duplicate("A", 65), :refused},
+            {String.duplicate("é", 65), :refused},
+            {String.duplicate("A", 60_000), :refused}
+          ] do
+        Stub.script(code: code)
+        answer = LoginDevice.request_code(Stub.device(), @client)
+
+        case result do
+          :ok -> assert {:ok, %{user_code: ^code}} = answer
+          :refused -> assert answer == {:error, "bad_response"}
+        end
+      end
+    end
+
     test "keeps at most 64 KiB of a response" do
       stub(&Plug.Conn.send_resp(&1, 200, String.duplicate("a", 70_000)))
       assert LoginDevice.request_code(Stub.device(), @client) == {:error, "bad_response"}

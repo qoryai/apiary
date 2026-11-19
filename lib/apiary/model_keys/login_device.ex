@@ -6,7 +6,8 @@ defmodule Apiary.ModelKeys.LoginDevice do
   `codex-rs/login/src/device_code_auth.rs`, `oauth/client.rs`):
 
     * `request_code/2`: `usercode_url`, a JSON body with `client_id`; the response has the
-      code to show (`user_code`), the device id, the seconds between two polls (`interval`,
+      code to show (`user_code`, at most 64 characters: a longer one is a `bad_response`),
+      the device id, the seconds between two polls (`interval`,
       a number or a string of one) and when the code stops working (`expires_at`); a
       missing or unreadable `expires_at` (its format was never measured) is taken as 15
       minutes from the call;
@@ -42,6 +43,7 @@ defmodule Apiary.ModelKeys.LoginDevice do
   @max_response 65_536
   @default_lifetime 15 * 60
   @retry_after_max 60
+  @code_max 64
   @user_agent "qory-apiary"
 
   @typedoc "The addresses of a catalogue entry's `oauth_device`."
@@ -148,7 +150,8 @@ defmodule Apiary.ModelKeys.LoginDevice do
     with %{} = response <- decode(body),
          id when is_binary(id) and id != "" <- response["device_auth_id"],
          code when is_binary(code) and code != "" <-
-           response["user_code"] || response["usercode"] do
+           response["user_code"] || response["usercode"],
+         true <- String.length(code) <= @code_max do
       {:ok,
        %{
          device_auth_id: id,
@@ -171,6 +174,7 @@ defmodule Apiary.ModelKeys.LoginDevice do
   end
 
   defp interval(value) when is_number(value), do: value |> trunc() |> max(1) |> min(60)
+
   defp interval(_value), do: 5
 
   # When the code stops working: an ISO 8601 text with an offset, or seconds since 1970.
