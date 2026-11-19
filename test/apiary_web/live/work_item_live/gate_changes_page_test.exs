@@ -435,6 +435,15 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
     assert has_element?(view, "#{@list}-action b", "Request changes")
     assert_criteria(view, mark)
 
+    # The block reads in order: the line of what to do, then the first criterion's id with
+    # the mark, its earlier text and its new text.
+    assert view |> lines(@list) |> Enum.take(4) == [
+             "Check that these 3 changes to the acceptance criteria match your request, then pick Approve or Request changes.",
+             "AC-2 · #{mark}",
+             "Earlier: A member can cancel up to 24 hours before the booking starts.",
+             "New: A member can cancel up to 12 hours before the booking starts."
+           ]
+
     # For an approver the line about who may approve stays, and both controls show.
     assert text(view, "#{@card}-approvers") == "Only the members this stage lists can approve."
     assert has_element?(view, "#{@card}-approve-go", "Approve")
@@ -593,6 +602,64 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
 
     assert_criteria(view, mark)
     assert has_element?(view, "#{@card}-approve-go", "Approve")
+  end
+
+  test "a change at Verify after a change that Build approved: the card compares it with " <>
+         "the version Build approved",
+       %{conn: conn, scope: scope, sam: sam} do
+    # v1 approved at Shape, v2 changed on sam's request and approved at Build.
+    work_item = changed!(scope)
+    {:ok, _at_verify} = Stages.approve(scope, reload(work_item), nil, expect_stage: @build)
+    work_item = end_run(work_item, fn run, _registered -> passed!(run) end)
+    assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+
+    # v3 changed on sam's Request changes at Verify.
+    {:ok, _again} =
+      Stages.request_changes(scope, work_item, "Make it 6 hours.", nil, expect_stage: @verify)
+
+    decision =
+      Repo.one!(
+        from d in Stages.GateDecision,
+          where:
+            d.work_item_id == ^work_item.id and d.kind == :request_changes and
+              d.stage_id == @verify,
+          select: d.public_id
+      )
+
+    six =
+      update_in(@criteria_two["criteria"], fn criteria ->
+        Enum.map(criteria, fn
+          %{"id" => "ac-2"} = ac2 ->
+            %{ac2 | "text" => "A member can cancel up to 6 hours before the booking starts."}
+
+          criterion ->
+            criterion
+        end)
+      end)
+
+    work_item =
+      end_run(work_item, fn run, _registered ->
+        json!(run, "acceptance-criteria", six, decision: decision)
+        passed!(run)
+      end)
+
+    assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+
+    conn = log_in_user(conn, sam)
+    {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+    mark = "Changed on your request"
+
+    assert text(view, "#{@card}-recorded-acceptance-criteria") ==
+             "acceptance criteria v3 · #{mark}"
+
+    assert lines(view, @list) == [
+             "Check that this change to the acceptance criteria matches your request, then pick Approve or Request changes.",
+             "AC-2 · #{mark}",
+             "Earlier: A member can cancel up to 12 hours before the booking starts.",
+             "New: A member can cancel up to 6 hours before the booking starts.",
+             "AC-1, AC-3 and AC-4 are unchanged."
+           ]
   end
 
   test "after a person's approval lists the version, no mark and no criteria",
