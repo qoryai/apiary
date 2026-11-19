@@ -28,7 +28,7 @@ defmodule Apiary.ModelKeys.LoginStatusTest do
     {:ok, provider} =
       Connections.create_provider(scope, %{
         provider: "openai-subscription",
-        keys: [%{value_id: "main", value: login_paste(tokens: tokens)}]
+        keys: [%{value_id: "main", value: device_login(tokens: tokens)}]
       })
 
     {provider, tokens}

@@ -35,7 +35,7 @@ defmodule Apiary.ModelKeys.LoginLeakTest do
     {:ok, provider} =
       Connections.create_provider(scope, %{
         provider: "openai-subscription",
-        keys: [%{value_id: "main", value: login_paste(tokens: old)}]
+        keys: [%{value_id: "main", value: device_login(tokens: old)}]
       })
 
     {:ok, _choice} =

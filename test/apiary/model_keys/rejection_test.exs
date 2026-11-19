@@ -299,7 +299,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
       {:ok, login} =
         Connections.create_provider(ctx.scope, %{
           provider: "openai-subscription",
-          keys: [%{value_id: "login", value: login_paste()}]
+          keys: [%{value_id: "login", value: device_login()}]
         })
 
       Repo.update_all(Login,
@@ -321,7 +321,7 @@ defmodule Apiary.ModelKeys.RejectionTest do
       {:ok, provider} =
         Connections.create_provider(ctx.scope, %{
           provider: "openai-subscription",
-          keys: [%{value_id: "login", value: login_paste()}]
+          keys: [%{value_id: "login", value: device_login()}]
         })
 
       value = key_value!(provider, "login")
