@@ -12,8 +12,12 @@ defmodule Apiary.ModelKeysRacesTest do
   import Ecto.Query
   import Apiary.Races
 
+  import Apiary.ModelKeysFixtures, only: [run_key!: 2]
+
   alias Apiary.{Connections, ModelKeys, Repo}
-  alias Apiary.ModelKeys.State
+  alias Apiary.AccessKeys.{AccessKey, EnrolmentCode, PublicKey}
+  alias Apiary.ModelKeys.{Copy, Rejection, State}
+  alias Apiary.Nodes.Node
   alias Apiary.Secrets.Value
 
   @moduletag needs: [:factory, :secrets]
@@ -26,6 +30,25 @@ defmodule Apiary.ModelKeysRacesTest do
     keys = for id <- ~w(main spare), do: %{value_id: id, value: "sk-ant-races-#{id}-0123456789"}
     {:ok, provider} = Connections.create_provider(scope, %{provider: "anthropic", keys: keys})
     values = Repo.all(from v in Value, where: v.secret_id == ^provider.secret_id)
+
+    # Before the clean up of `setup_races`: what the fixtures of a run leave after the
+    # organisation, the nodes of the person with their keys, and the keys' public halves.
+    on_exit(fn ->
+      :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
+
+      Repo.delete_all(
+        from o in Apiary.Organisations.Organisation, where: o.id == ^scope.organisation.id
+      )
+
+      nodes = Repo.all(from n in Node, where: n.created_by_id == ^scope.user.id, select: n.id)
+      keys = Repo.all(from k in AccessKey, where: k.node_id in ^nodes, select: k.public_key)
+      Repo.delete_all(from k in AccessKey, where: k.node_id in ^nodes)
+      Repo.delete_all(from c in EnrolmentCode, where: c.node_id in ^nodes)
+      Repo.delete_all(from n in Node, where: n.id in ^nodes)
+      Repo.delete_all(from p in PublicKey, where: p.public_key in ^keys)
+      Ecto.Adapters.SQL.Sandbox.checkin(Repo)
+    end)
+
     %{scope: scope, provider: provider, values: Map.new(values, &{&1.value_id, &1})}
   end
 
@@ -150,5 +173,66 @@ defmodule Apiary.ModelKeysRacesTest do
 
     assert {:ok, _deleted} = Task.await(deletion.task)
     assert Repo.all(from v in Value, where: v.id in ^[low, high]) == []
+  end
+
+  describe "two reports of one run's key" do
+    setup ctx do
+      main = ctx.values["main"]
+      run_key = run_key!(ctx.scope, main)
+      %{main: main, run_key: run_key}
+    end
+
+    defp report(run_key, at),
+      do: fn ->
+        ModelKeys.reject([run_key], [%{credential: "model-1", at: at}], nil, DateTime.utc_now())
+      end
+
+    defp copy(run_key),
+      do: Repo.get_by!(Copy, run_id: run_key.run_id, secret_value_id: run_key.secret_value_id)
+
+    defp rejections(%Value{id: id}),
+      do: Repo.all(from r in Rejection, where: r.secret_value_id == ^id)
+
+    test "wait for the run's copy, and the one that gets it marks, the other leaves it", ctx do
+      first = ~U[2026-11-18 09:00:00.000000Z]
+      second = ~U[2026-11-18 09:00:01.000000Z]
+
+      # A change of the copy's row, held: each report waits for its mark.
+      {held, holder} =
+        hold(fn ->
+          {1, _} =
+            Repo.update_all(
+              from(c in Copy, where: c.run_id == ^ctx.run_key.run_id),
+              set: [marked_at: nil]
+            )
+        end)
+
+      one = start(report(ctx.run_key, first))
+      await_blocked(one.backend, holder)
+
+      # The second report waits behind the first one, which holds the row's queue.
+      two = start(report(ctx.run_key, second))
+      await_blocked(two.backend, one.backend)
+
+      assert rejections(ctx.main) == []
+      commit(held)
+
+      assert :ok = Task.await(one.task)
+      assert :ok = Task.await(two.task)
+      assert [%Rejection{rejected_at: ^first}] = rejections(ctx.main)
+      assert %Copy{marked_at: %DateTime{}} = copy(ctx.run_key)
+    end
+
+    test "sent at once, take the mark once", ctx do
+      first = ~U[2026-11-18 09:00:00.000000Z]
+      second = ~U[2026-11-18 09:00:01.000000Z]
+
+      assert [:ok, :ok] =
+               together([report(ctx.run_key, first), report(ctx.run_key, second)])
+
+      assert [%Rejection{rejected_at: at}] = rejections(ctx.main)
+      assert at in [first, second]
+      assert %Copy{marked_at: %DateTime{}} = copy(ctx.run_key)
+    end
   end
 end
