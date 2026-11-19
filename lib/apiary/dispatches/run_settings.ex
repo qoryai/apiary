@@ -653,6 +653,9 @@ defmodule Apiary.Dispatches.RunSettings do
 
   defp same_api(choice, group, _groups), do: {:ok, choice, group}
 
+  # shortcut: `paths`, `key_prefixes` and the windows are not compared. A description has one API
+  # for each format (`Apiary.Kinds.Provider.load!/1`), so one provider and one format give one
+  # entry; compare them if a description may list a format twice.
   defp same_api?(api, other),
     do: Map.take(api, ~w(format endpoint auth)) == Map.take(other, ~w(format endpoint auth))
 
