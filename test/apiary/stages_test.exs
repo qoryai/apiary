@@ -7938,13 +7938,12 @@ defmodule Apiary.StagesTest do
     @verify "st_m1mqbeywdg"
     @release "st_q4ncz8w2xe"
 
-    # Shape, which runs shape-a-ticket, whose run makes the acceptance criteria; Build, a
-    # loop with a gate none, as the software process has it, which reads the criteria and
-    # makes the explainer; and Verify, which reads both, with a person's gate. `last` is
-    # the last stage: `:build`, `:verify`, or `:release`, a stage after Verify that reads
-    # the criteria. `type` is the
-    # type in place of the acceptance criteria, for a test of several names of one type:
-    # the acceptance criteria take the name `main` alone.
+    # Shape, whose run of shape-a-ticket makes the acceptance criteria; Build, a loop with
+    # a gate none, as the software process has it, which reads the criteria and makes the
+    # explainer; and Verify, which reads both, with a person's gate. `last` is the last
+    # stage: `:build`, `:verify`, or `:release`, a stage after Verify that reads the
+    # criteria. `type` is the type in place of the acceptance criteria, for a test of
+    # several names of one type: the acceptance criteria take the name `main` alone.
     defp criteria_process!(scope, last \\ :verify, type \\ "acceptance-criteria") do
       stages = [
         explore_stage(),

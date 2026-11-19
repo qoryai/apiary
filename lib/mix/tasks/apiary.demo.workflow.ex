@@ -331,7 +331,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
     unless Map.has_key?(declared, @shape_workflow) do
       Shell.raise!(
-        "Point the Qory harness at a commit that declares #{@shape_workflow}, then drop " <>
+        "Set QORY_HARNESS_URL to a harness that declares #{@shape_workflow}, then drop " <>
           "the database, create it again and run the fill again. Web shop's harness " <>
           "declares no #{@shape_workflow}, the workflow of Shape."
       )
