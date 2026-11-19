@@ -1984,7 +1984,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
       push_key(lv, browser_key())
       assert_reply(lv, reply)
       refute Map.has_key?(reply, :key_id)
-      assert render(lv) =~ "Only owners and admins manage a machine&#39;s access keys."
+      assert render(lv) =~ "Only owners and admins add a machine&#39;s access keys."
 
       assert AccessKeys.list_for_node(scope, node) == []
       assert add_entries(node) == []
@@ -2071,12 +2071,12 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         assert html =~ String.replace(words, "'", "&#39;")
       end
 
-      for {event, params} <- [
-            {"create_code", %{}},
+      for {event, params, verb} <- [
+            {"create_code", %{}, "manage"},
             {"generate_key",
-             %{"key" => %{"label" => "x", "public_key" => ed25519_key_pair().encoded}}},
-            {"revoke", %{}},
-            {"revoke_code", %{}}
+             %{"key" => %{"label" => "x", "public_key" => ed25519_key_pair().encoded}}, "add"},
+            {"revoke", %{}, "manage"},
+            {"revoke_code", %{}, "manage"}
           ] do
         # A page of its own for each, so each refusal is its own flash.
         {:ok, lv, _html} = live(conn, tab_path(scope, node))
@@ -2084,7 +2084,7 @@ defmodule ApiaryWeb.NodeLive.AccessKeyTest do
         render_hook(lv, event, params)
 
         assert lv |> element("#flash-group") |> render() =~
-                 "Only owners and admins manage a machine&#39;s access keys."
+                 "Only owners and admins #{verb} a machine&#39;s access keys."
       end
 
       assert is_nil(Repo.get!(AccessKey, key.id).revoked_at)
