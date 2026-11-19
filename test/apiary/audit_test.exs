@@ -203,6 +203,39 @@ defmodule Apiary.AuditTest do
       assert Repo.get(Apiary.Organisations.Invitation, recent.id)
     end
 
+    test "the identity line of a key is kept by two actions only, and only as a line", ctx do
+      entry = fn action, identity ->
+        %Entry{
+          action: action,
+          organisation_id: ctx.scope.organisation.id,
+          before: nil,
+          after: nil,
+          details: %{"identity" => identity}
+        }
+      end
+
+      for action <- ~w(model_key.refresh provider.write),
+          line <- [
+            "OpenAI subscription · dana@example.com",
+            "OpenAI subscription · account …4f2a",
+            "Anthropic API · …9c2e",
+            "Anthropic API"
+          ] do
+        assert :ok = refute_personal(entry.(action, line), nil)
+      end
+
+      for {action, line} <- [
+            {"member.invite", "dana@corp"},
+            {"member.invite", "OpenAI subscription · dana@example.com"},
+            {"provider.write", "dana@corp"},
+            {"provider.write", "Dana Smith dana@corp.example"},
+            {"model_key.refresh", "OpenAI subscription · dana@example.com · more"},
+            {"model_key.refresh", 42}
+          ] do
+        assert_raise ExUnit.AssertionError, fn -> refute_personal(entry.(action, line), nil) end
+      end
+    end
+
     test "a deleted account ends each membership, an entry in each organisation", ctx do
       %{user: user, membership: here} = member_fixture(ctx.scope, :owner)
       %{organisation: own} = signed_up = sign_up_fixture()
