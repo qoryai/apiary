@@ -8,11 +8,11 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # provider stays listed while it is not offered. Runs take the chosen provider's keys.
   # A provider that works with no runtime of the catalogue (`Apiary.Kinds.Providers.runtimes/1`)
   # is listed too: chosen, it shows "<Provider> works with no runtime in this version of
-  # Qory Apiary. Pick another provider." under Provider, and Save writes nothing. With no
-  # provider that works with a runtime, one line per cause says what to do instead
-  # (`unserved/1`). Then the tiers of the provider, Thinking, Balanced and Light, each a
-  # Model and an Effort, as `ApiaryWeb.ModelTiers` draws them. Then Runtime
-  # (`ApiaryWeb.ModelTiers.runtime_part/1`): the runtimes the provider serves, as text
+  # Qory. Pick another provider." under Provider, which has a red border, and Save
+  # writes nothing. With no provider that works with a runtime, one line per cause says
+  # what to do instead (`unserved/1`). Then the tiers of the provider, Thinking, Balanced
+  # and Light, each a Model and an Effort, as `ApiaryWeb.ModelTiers` draws them. Then
+  # Runtime (`ApiaryWeb.ModelTiers.runtime_part/1`): the runtimes the provider serves, as text
   # where it serves one, else a select, with a line of why. The runtime is the saved
   # choice's while the provider serves it, else the first it serves; a change of Provider
   # keeps the runtime while the new provider serves it, else moves to its first. A change
@@ -30,16 +30,16 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # work with no runtime, but the chosen provider and those of the other rows. Add
   # fallback adds a row of the first provider left that works with a runtime, else of the
   # first left. A row whose provider works with no runtime shows "<Provider> works with
-  # no runtime in this version of Qory Apiary. Pick another provider." under its
-  # Provider, no tiers and no Runtime, and Save writes nothing while it shows. A stored
-  # row whose provider no longer applies to the workspace, or whose description cannot be
-  # read, shows one line of why under its Provider and no tiers. A new row, and a row
-  # whose provider changes, starts with empty tiers and on the choice's runtime where its
-  # provider serves it, else on the first runtime its provider serves. A stored row shows
-  # its stored runtime. A change of a row's Runtime keeps its models, and an effort that
-  # runtime does not accept goes back to Not set. Save writes the rows with the choice;
-  # each refusal shows under its row's field, a refusal of Runtime under Provider while
-  # the row shows no Runtime.
+  # no runtime in this version of Qory. Pick another provider." under its Provider,
+  # which has a red border, no tiers and no Runtime, and Save writes nothing while it
+  # shows. A stored row whose provider no longer applies to the workspace, or whose
+  # description cannot be read, shows one line of why under its Provider and no tiers.
+  # A new row, and a row whose provider changes, starts with empty tiers and on the
+  # choice's runtime where its provider serves it, else on the first runtime its provider
+  # serves. A stored row shows its stored runtime. A change of a row's Runtime keeps its
+  # models, and an effort that runtime does not accept goes back to Not set. Save writes
+  # the rows with the choice; each refusal shows under its row's field, a refusal of
+  # Runtime under Provider while the row shows no Runtime.
   #
   # Every member reads it (`connection.read`); owners and admins change it
   # (`model_choice.write`), and anyone else sees the fields disabled, no Save, and one line
@@ -203,7 +203,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
 
   # The line under Provider while the chosen provider works with no runtime, or, for the
   # saved choice's provider, its description cannot be read: "<Provider> works with no
-  # runtime in this version of Qory Apiary. Pick another provider.", or the page's line of
+  # runtime in this version of Qory. Pick another provider.", or the page's line of
   # why the provider serves nothing (`unserved_text/2`); nil for any other provider. A
   # check that ran out of time or crashed has no line: the next read checks it again.
   defp provider_line(%{entry: %{provider: provider}, providers: providers} = assigns) do
@@ -226,6 +226,13 @@ defmodule ApiaryWeb.ModelChoiceLive do
   end
 
   defp provider_line(_assigns), do: nil
+
+  # Whether the chosen provider works with no runtime: its Provider then has the red
+  # border, and the line of `provider_line/1` describes it.
+  defp no_runtime?(%{entry: %{provider: provider}, providers: providers}),
+    do: match?(%{unfit: :no_runtime}, provider_entry(providers, provider))
+
+  defp no_runtime?(_assigns), do: false
 
   # The runtime of the form for `entry`: the one named `name` while its provider serves
   # it, else the first it serves; with no provider, or one that serves no runtime, the
@@ -450,7 +457,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
   end
 
   # The line under a row's Provider, nil for none: for a provider that works with no
-  # runtime, "<Provider> works with no runtime in this version of Qory Apiary. Pick
+  # runtime, "<Provider> works with no runtime in this version of Qory. Pick
   # another provider."; for a stored row's provider that no longer applies to the
   # workspace, the error a save returns for it; for one whose description cannot be
   # read, the line the choice's Provider shows for such a provider (`unserved_text/2`).
@@ -800,7 +807,6 @@ defmodule ApiaryWeb.ModelChoiceLive do
       )
 
   attr :page, :map, required: true, doc: "the page's assigns that `fallback_page/1` takes"
-  attr :provider, Connection, required: true, doc: "the chosen provider"
 
   # The Fallbacks part: its line, a row per fallback, Add fallback, or what to add first.
   defp fallbacks(%{page: page} = assigns) do
@@ -815,8 +821,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
     <SettingsComponents.part id="model-fallbacks" title={gettext("Fallbacks")}>
       <p id="model-fallbacks-line" class="text-[13.5px]/5 text-muted">
         {gettext(
-          "When every key of %{provider} is in cooldown, runs use these, in order, from the next run.",
-          provider: @provider.name
+          "When every key of this provider is in cooldown, runs use these, in order, from the next run."
         )}
       </p>
       <ol :if={@rows != []} id="model-fallback-rows" class="grid gap-4">
@@ -881,6 +886,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
         form: row_form(row, index, %{index => shown}),
         line: line,
         line_shown: line && not Enum.any?(shown, &match?({:provider, _error}, &1)),
+        no_runtime: match?(%{unfit: :no_runtime}, entry),
         number: index + 1,
         providers: row_providers(page, row, index),
         entry: row_entry(page, row),
@@ -914,6 +920,8 @@ defmodule ApiaryWeb.ModelChoiceLive do
           type="select"
           label={gettext("Provider")}
           options={for provider <- @providers, do: {provider.name, provider.public_id}}
+          invalid={@no_runtime}
+          aria-describedby={@no_runtime && @line_shown && "model-fallback-#{@index}-line"}
           disabled={!@page.writes}
         />
         <p
@@ -1049,6 +1057,8 @@ defmodule ApiaryWeb.ModelChoiceLive do
             type="choice"
             label={gettext("Provider")}
             options={ModelTiers.options(@entries)}
+            invalid={no_runtime?(assigns)}
+            aria-describedby={no_runtime?(assigns) && "model-provider-unfit"}
             disabled={!@writes}
           />
           <p
@@ -1083,7 +1093,6 @@ defmodule ApiaryWeb.ModelChoiceLive do
           <.fallbacks
             :if={main_provider(assigns)}
             page={fallback_page(assigns)}
-            provider={main_provider(assigns)}
           />
           <SettingsComponents.save id="model-save">
             <.button

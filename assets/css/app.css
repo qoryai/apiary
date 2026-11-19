@@ -10134,6 +10134,13 @@
   fieldset[aria-invalid="true"] .q-choice {
     border-color: var(--color-error);
   }
+  /* Set-up's Provider, a group of plain radios, with aria-invalid: a red ring around the
+     group. An outline does not move the layout when the ring shows. */
+  fieldset.q-ring-invalid[aria-invalid="true"] {
+    outline: 1px solid var(--color-error);
+    outline-offset: 6px;
+    border-radius: var(--radius-field);
+  }
   .q-choice .radio {
     margin-top: 2px;
   }
