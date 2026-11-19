@@ -174,6 +174,7 @@ defmodule Apiary.Dispatches.RunSettings do
           | :model_gone
           | :model_choice_missing
           | :too_many_providers
+          | :session_key_missing
 
   @typedoc """
   What a claim writes: `wire`, the documents' `run_settings`; `stored`, the same as a
@@ -194,9 +195,10 @@ defmodule Apiary.Dispatches.RunSettings do
   @spec max_bytes() :: pos_integer
   def max_bytes, do: @max_bytes
 
-  # causes/0 is every cause `build/1` ends a run for, and the two of the claim's check of
-  # a shared stage's model choices (`Apiary.Stages.shared_models/1`), which the claim
-  # runs before it stores keys: `model_choice_missing` and `too_many_providers`.
+  # causes/0 is every cause `build/1` ends a run for, and those of the claim's check of a
+  # shared stage's model choices (`Apiary.Stages.shared_models/1`), which the claim runs
+  # before it stores keys: `model_choice_missing`, `too_many_providers` and
+  # `session_key_missing`, which `build/1` also ends a run for (`with_sessions/3`).
   @doc false
   @spec causes() :: [cause]
   def causes,
@@ -206,7 +208,8 @@ defmodule Apiary.Dispatches.RunSettings do
       :key_gone,
       :model_gone,
       :model_choice_missing,
-      :too_many_providers
+      :too_many_providers,
+      :session_key_missing
     ]
 
   # hold/1 is what the claim of the run of the queue `dispatch_run` holds before it
@@ -543,17 +546,21 @@ defmodule Apiary.Dispatches.RunSettings do
   #     joins the start key's group;
   #   * the run's `run_settings`, where that choice's runtime, key or model is no longer
   #     valid (`form/6`), or its runtime is no longer in the catalogue;
-  #   * `runtime` alone, the runtime of the choice, where its runtime uses another API of
-  #     a provider an earlier session uses, where its provider has no key, or where the
-  #     run gets no key (`keyed` false); or the catalogue's default runtime
+  #   * `runtime` alone, the runtime of the choice, where the run gets no key (`keyed`
+  #     false); or the catalogue's default runtime
   #     (`Apiary.ModelChoices.default_runtime/0`), where the choices resolve to no choice
-  #     at any level. The session then uses the default model of that runtime.
+  #     at any level, and the session runs on the machine's key. The session then uses
+  #     the default model of that runtime.
   #
   # A session whose choice's provider is gone ends the claim `provider_gone`, as the run's
   # does: the choice is set to a provider that was removed, or its provider is not there,
-  # fails its integrity code, or `form/6` ends `provider_gone` for it. A settings check of
-  # the session's provider that ran out of time or crashed is `{:unchecked, provider}`,
-  # which leaves the run waiting as for the run's provider.
+  # fails its integrity code, or `form/6` ends `provider_gone` for it. A session that
+  # would have no key in the run ends the claim `session_key_missing`: its runtime uses
+  # another API of a provider that an earlier session uses (`same_api/3`, `on_start/2`),
+  # or the claim reads no key of its provider and no later step has a free key
+  # (`session_on/6`). A settings check of the session's provider that ran out of time or
+  # crashed is `{:unchecked, provider}`, which leaves the run waiting as for the run's
+  # provider.
   defp with_sessions({:ok, built}, start, context) do
     sessions = context.held.sessions
     context = Map.put(context, :claim_keys, session_keys(sessions, context))
@@ -562,13 +569,13 @@ defmodule Apiary.Dispatches.RunSettings do
     |> Map.get(:shared, Map.keys(sessions))
     |> Enum.filter(&Map.has_key?(sessions, &1))
     |> Enum.reduce_while({:ok, [], []}, fn workflow, {:ok, chosen, groups} ->
-      case session_choice(Map.fetch!(sessions, workflow), built, start, context) do
-        {:ok, choice, group} ->
-          {choice, group} = same_api(choice, group, groups)
-          groups = if is_map(group) and group not in groups, do: groups ++ [group], else: groups
-          {:cont, {:ok, chosen ++ [{workflow, choice, group}], groups}}
-
-        {:end, :provider_gone} = ended ->
+      with {:ok, choice, group} <-
+             session_choice(Map.fetch!(sessions, workflow), built, start, context),
+           {:ok, choice, group} <- same_api(choice, group, groups) do
+        groups = if is_map(group) and group not in groups, do: groups ++ [group], else: groups
+        {:cont, {:ok, chosen ++ [{workflow, choice, group}], groups}}
+      else
+        {:end, cause} = ended when cause in [:provider_gone, :session_key_missing] ->
           {:halt, ended}
 
         {:unchecked, _provider} = unchecked ->
@@ -600,21 +607,21 @@ defmodule Apiary.Dispatches.RunSettings do
   end
 
   # A session's group, where an earlier session's group of the same provider uses the
-  # same API, is that group; where it uses another API, the session gets `runtime` alone:
-  # a provider's keys are kept with one API per run.
+  # same API, is that group; where it uses another API, the claim ends
+  # `session_key_missing`: a provider's keys are kept with one API per run.
   defp same_api(choice, %{provider: %{id: id}, api: api} = group, groups) do
     case Enum.find(groups, &(&1.provider.id == id)) do
       nil ->
-        {choice, group}
+        {:ok, choice, group}
 
       earlier ->
         if same_api?(earlier.api, api),
-          do: {choice, earlier},
-          else: {%{"runtime" => choice["runtime"]}, nil}
+          do: {:ok, choice, earlier},
+          else: {:end, :session_key_missing}
     end
   end
 
-  defp same_api(choice, group, _groups), do: {choice, group}
+  defp same_api(choice, group, _groups), do: {:ok, choice, group}
 
   defp same_api?(api, other),
     do: Map.take(api, ~w(format endpoint auth)) == Map.take(other, ~w(format endpoint auth))
@@ -720,7 +727,8 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # What the choices `input` of a later session's workflow come to (`with_sessions/3`):
   # `{:ok, model_choice, group}`, `group` the session's provider's group where it is not
-  # the start key's, else nil; `{:end, :provider_gone}`; or `{:unchecked, provider}`.
+  # the start key's, else nil; `{:end, :provider_gone}`; `{:end, :session_key_missing}`;
+  # or `{:unchecked, provider}`.
   defp session_choice(input, built, start, context) do
     input = Map.put(input, :providers, context.resolved)
 
@@ -760,7 +768,7 @@ defmodule Apiary.Dispatches.RunSettings do
          {:ok, formed} <- session_form(resolution, provider, runtime, built, context) do
       cond do
         start != nil and provider.id == start.provider.id ->
-          on_start(formed, runtime, start)
+          on_start(formed, start)
 
         group = free_group(provider, formed, context) ->
           {:ok, formed.stored, group}
@@ -771,7 +779,7 @@ defmodule Apiary.Dispatches.RunSettings do
         true ->
           case session_group(provider, formed, context) do
             %{keys: [_ | _]} = group -> {:ok, formed.stored, group}
-            _no_key -> {:ok, %{"runtime" => runtime.name}, nil}
+            _no_key -> {:end, :session_key_missing}
           end
       end
     end
@@ -791,18 +799,22 @@ defmodule Apiary.Dispatches.RunSettings do
     )
   end
 
-  # A session whose provider is gone ends the claim; one whose choice no longer forms for
-  # another cause gets the run's `run_settings`.
-  defp session_result({:end, :provider_gone} = ended, _built), do: ended
+  # A session whose provider is gone, or that would have no key in the run, ends the
+  # claim; one whose choice no longer forms for another cause gets the run's
+  # `run_settings`.
+  defp session_result({:end, cause} = ended, _built)
+       when cause in [:provider_gone, :session_key_missing],
+       do: ended
+
   defp session_result({:end, _cause}, built), do: {:ok, built.stored, nil}
   defp session_result(other, _built), do: other
 
   # A choice on the start key's provider joins the start key's group where its runtime
-  # uses the same API; else the session gets `runtime` alone.
-  defp on_start(formed, runtime, start) do
+  # uses the same API; else the claim ends `session_key_missing`.
+  defp on_start(formed, start) do
     if same_api?(formed.columns.provider_api, start.api),
       do: {:ok, formed.stored, nil},
-      else: {:ok, %{"runtime" => runtime.name}, nil}
+      else: {:end, :session_key_missing}
   end
 
   # The first later step of `resolution` (`later_steps/2`), in order, that forms and has a

@@ -77,8 +77,8 @@ defmodule Apiary.Dispatches.Handover do
   #      workflows would run with different access levels with the levels their harness
   #      declares now (`Apiary.Stages.shared_access/1`), `shared_access_differs`; a run
   #      of such a stage whose workflows' model choices no longer fit one run
-  #      (`Apiary.Stages.shared_models/1`), `too_many_providers` or
-  #      `model_choice_missing`; an
+  #      (`Apiary.Stages.shared_models/1`), `too_many_providers`,
+  #      `model_choice_missing` or `session_key_missing`; an
   #      explore run of the Qory harness or of the built-in one,
   #      whose read of the harness for the claim failed (`at_claim/4`),
   #      `harness_unresolved`; an explore run whose model choice cannot be formed
@@ -953,7 +953,8 @@ defmodule Apiary.Dispatches.Handover do
   # A run of a stage whose workflows share one run, whose model choices no longer fit the
   # one run, ends before its keys are stored (`Apiary.Stages.shared_models/1`): with more
   # than 6 model providers, `too_many_providers`; with a workflow with no model choice
-  # whose runtime cannot use the provider the run starts on, `model_choice_missing`.
+  # whose runtime cannot use the provider the run starts on, `model_choice_missing`; with
+  # a workflow whose session would have no key in the run, `session_key_missing`.
   defp shared_models(dispatch_run) do
     case Apiary.Stages.shared_models(dispatch_run) do
       :ok -> :ok

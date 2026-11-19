@@ -102,7 +102,11 @@ defmodule Apiary.Dispatches.DispatchRun do
   # choices no longer fit one run, as a choice, a provider or the harness changed after
   # the process was saved: a workflow with no model choice whose runtime cannot use the
   # provider the run starts on, or more than 6 model providers
-  # (`Apiary.Stages.shared_models/1`), with the outcome `error`.
+  # (`Apiary.Stages.shared_models/1`), with the outcome `error`; `session_key_missing`, a
+  # claimed run of such a stage where a workflow's session would have no key in the run:
+  # its provider has no model key, or its runtime uses another API of a provider that an
+  # earlier workflow uses (`Apiary.Stages.shared_models/1`,
+  # `Apiary.Dispatches.RunSettings`), with the outcome `error`.
   @end_causes [
     :released,
     :closed,
@@ -127,7 +131,8 @@ defmodule Apiary.Dispatches.DispatchRun do
     :write_without_work_item,
     :shared_access_differs,
     :model_choice_missing,
-    :too_many_providers
+    :too_many_providers,
+    :session_key_missing
   ]
 
   # What a run of Explore gave once it ended (`Apiary.Explore.Outcome`); `:error` and
