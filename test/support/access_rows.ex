@@ -207,7 +207,7 @@ defmodule Apiary.AccessRows do
       {:"work_item.comment_delete", yes: @owners ++ [:admin]},
       {:"process.edit", yes: @owners ++ [:admin]},
       {:"gate.approve", yes: @owners ++ [:member, :admin]},
-      {:"artifact.write", yes: @owners ++ [:member, :admin]},
+      {:"artifact.write", yes: []},
       {:"artifact_type.edit", yes: @owners ++ [:admin]},
       {:"workspace_type.edit", yes: @instance_admins_of_feature},
       {:"machine_type.rekey", yes: @instance_admins_of_feature},

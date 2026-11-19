@@ -1024,11 +1024,6 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
 
       assert registered_id == registered.id
 
-      {:ok, _person} =
-        Apiary.Artifacts.push({:person, ctx.scope}, ctx.work_item, "explainer", [
-          file("notes.md", "text/markdown", "y")
-        ])
-
       {:ok, _cancelled} = Apiary.Runs.cancel(ctx.scope, Repo.get!(Run, ctx.run.id))
 
       body = json_response(read(ctx, "/artifacts"), 200)
@@ -1039,10 +1034,8 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                %{"number" => 1, "cancelled" => true}
              ] = by_type["screenshot"]
 
-      assert [
-               %{"number" => 2, "writer" => %{"kind" => "person"}, "cancelled" => false},
-               %{"number" => 1, "writer" => %{"run_id" => run_id}, "cancelled" => false}
-             ] = by_type["explainer"]
+      assert [%{"number" => 1, "writer" => %{"run_id" => run_id}, "cancelled" => false}] =
+               by_type["explainer"]
 
       assert run_id == other.run_id
     end
@@ -1919,6 +1912,30 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
              }
     end
 
+    test "acceptance criteria under a name other than main: the whole line a run gets", ctx do
+      json = Jason.encode!(Apiary.StagesFixtures.criteria_document())
+      files = [{"acceptance-criteria.json", "application/json", json}]
+
+      conn =
+        write(ctx, "/artifacts", push_body("acceptance-criteria", files, %{"name" => "other"}))
+
+      assert json_response(conn, 422) == %{
+               "error" => "invalid_artifact",
+               "names" => ["name"],
+               "message" =>
+                 "Name the acceptance criteria main: a work item has one set of acceptance " <>
+                   "criteria, and this push has the name other."
+             }
+
+      assert RunApiStubs.pushed() == []
+
+      conn =
+        write(ctx, "/artifacts", push_body("acceptance-criteria", files, %{"name" => "main"}))
+
+      assert %{"artifact" => %{"type" => "acceptance-criteria", "name" => "main"}} =
+               json_response(conn, 201)
+    end
+
     test "a proposal takes 10 files and 5 MiB together, and no more", ctx do
       md = {"proposal.md", "text/markdown", "# Gift cards"}
       images = for n <- 1..10, do: {"#{n}.png", "image/png", @png}
@@ -2336,7 +2353,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert [%{number: 2}] = RunApiStubs.pushed()
     end
 
-    test "refuses a name with no version, files, a withdrawal and a person's upload", ctx do
+    test "refuses a name with no version, files and a withdrawal", ctx do
       conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-2"))
       assert signed_answer?(conn)
 
@@ -2378,29 +2395,6 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                    "withdrawal."
              }
 
-      # A run's version, then a person's upload on top of it.
-      store!(ctx, "screenshot", [file("one.png", "image/png", @png)], name: "scenario-1")
-
-      {:ok, _upload} =
-        Apiary.Artifacts.push(
-          {:person, ctx.scope},
-          ctx.work_item,
-          "screenshot",
-          [file("one.png", "image/png", @png <> "b")],
-          name: "scenario-1"
-        )
-
-      conn = write(ctx, "/artifacts", withdrawal("screenshot", "scenario-1"))
-
-      assert json_response(conn, 409) == %{
-               "error" => "person_version",
-               "type" => "screenshot",
-               "message" =>
-                 "Leave screenshot/scenario-1 to a member. Its newest version, v2, is a " <>
-                   "version by #{Inputs.person_name(ctx.scope.user.id)}, and a run withdraws " <>
-                   "only a name whose newest version a run wrote."
-             }
-
       # Only the one withdrawal was stored.
       assert [%{number: 2, withdrawn: true}] = RunApiStubs.pushed()
 
@@ -2409,7 +2403,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
             into: %{},
             do: {artifact["name"], artifact["newest_version"]}
 
-      assert numbers == %{"scenario-1" => 2, "scenario-2" => 2}
+      assert numbers == %{"scenario-2" => 2}
     end
 
     test "refuses each type Qory Apiary reads itself, before the files", ctx do

@@ -131,14 +131,12 @@ Returns `200` with the work item snapshot:
 ```
 
 - `inputs` contains each input of the current stage with the version that the gate of
-  the stage that made it approved, or a version a person added; `version` is null when
-  there is none. A person's change to an approved output comes first. A change is a
-  version that has a `decision` (`POST artifacts`) or that a person uploaded, in any
-  stage, that no approval lists, and whose number is higher than that of every version
-  of its artifact that an approval lists. A withdrawal, a version of a withdrawn name and
-  a version by a run that a member cancelled are never a change. A person's version of the
-  type in `submit.type` of the work item's process version is not a change: no approval
-  lists it, `outputs` leaves it out, and runs read the run's version. Each name's change is
+  the stage that made it approved; `version` is null when there is none. A person's
+  change to an approved output comes first. A change is a version that has a `decision`
+  (`POST artifacts`), in any stage, that no approval lists, and whose number is higher
+  than that of every version of its artifact that an approval lists. A withdrawal, a
+  version of a withdrawn name and a version by a run that a member cancelled are never a
+  change. Each name's change is
   its highest-numbered one, and the input is the newest of those by time. Every later run
   reads that version in place of the approved one, until an approval lists it. Where an
   approval lists several versions of one name, the input is the highest-numbered one.
@@ -159,7 +157,7 @@ Returns `200` with the work item snapshot:
   a stage after it, and only for the take in of the move. A stage that the work item left
   twice counts by its newer move. An entry is left out when an input above it already has
   that version. The key `from` is present on these entries, and no approval lists such
-  a version, unless a person made it: that is a change.
+  a version, unless it has a `decision`: then it is a change.
 - After a run of a stage returns the work item to an earlier stage (the `return` key of a
   workflow entry), `inputs` ends with the newest `verdict` and then the newest
   `verification` made in the stage that returned it, each as
@@ -171,8 +169,7 @@ Returns `200` with the work item snapshot:
   and a decision in another stage end nothing. A later return lists the newer versions. No
   approval lists them, and `notes` does not.
 - `outputs` contains each output of the current stage with the version its gate shows
-  and its check: `passed`, `missing` or `not_checked`. For the type in `submit.type`,
-  only a run's version passes the check. The version is the newest one
+  and its check: `passed`, `missing` or `not_checked`. The version is the newest one
   made in the stage, or a higher-numbered version of that artifact that a person's
   approval lists or that is a change, which every later run reads, also after a move
   back to the stage.
@@ -275,9 +272,6 @@ none; `newest_version` is the number of the newest version, leaving out versions
 run a member cancelled, and null when a run a member cancelled wrote every version.
 `changed_after_approval` is true when that newest version is
 newer than the approved one and was made in a stage other than the work item's stage.
-For the type in `submit.type` of the work item's process version, `changed_after_approval`
-compares the newest version a run wrote in place of `newest_version`, as a person's
-version of that type is not a change.
 A version
 written by a run has `"writer": {"kind": "run", "run_id": "..."}`, with the `run_id` of
 the answer to the redemption of the run code; a version written
@@ -348,7 +342,9 @@ version cannot be pushed through the run API, whatever the type's size limit:
 - `name`: optional, the same form, `main` by default. Several artifacts of one type
   have different names, such as screenshots of two screens. `questions` and
   `review-comments` take only `main`: another name is `400` `invalid_request`, with
-  `name` in `names`.
+  `name` in `names`. `acceptance-criteria` takes only `main` too, because a work item has
+  one set of acceptance criteria: another name is `422` `invalid_artifact`, with `name` in
+  `names`, after the base64 check and before the format check.
 - `note`: optional, at most 4000 code points, with no control character but a tab or a
   line break, no format character but U+200C and U+200D, and no line or paragraph
   separator.
@@ -385,9 +381,11 @@ Checks, in order, after the checks of every request:
 4. Files larger together than the type's size limit, which bounds all files of one
    version: `422` `too_large`.
 5. A content that is not strict base64: `400` `invalid_request`.
-6. Files that do not match the type's format: `422` `invalid_artifact`, with the file
-   in `names`, such as `files[0]`, or `files` for a video type's version without a video
-   file and a `proposal` version without exactly one Markdown file. A version of the type
+6. A version of `acceptance-criteria` under a name other than `main` is `422`
+   `invalid_artifact`, with `name` in `names`, before its files are checked. Files that
+   do not match the type's format: `422` `invalid_artifact`, with the file in `names`,
+   such as `files[0]`, or `files` for a video type's version without a video file and a
+   `proposal` version without exactly one Markdown file. A version of the type
    `verdict` is checked against the type's JSON Schema, so its `verdict` is `passed`,
    `changes-requested` or `escalate`. A JSON file of a standard type, such as `questions`,
    `review-comments` or `verdict`, has each key once in each object: a key that comes
@@ -631,8 +629,7 @@ Checks, in order, after the checks of every request:
 5. Under the work item's lock, with the check of a run that ended, by the newest version
    of the name, leaving out versions by a run a member cancelled: one that a member
    approved at a gate, `422` `type_not_withdrawable`, checked before the rest; none, `409`
-   `no_version`; a withdrawal, `409` `already_withdrawn`; a version a person uploaded,
-   `409` `person_version`. A run withdraws only a name whose newest version a run wrote.
+   `no_version`; a withdrawal, `409` `already_withdrawn`.
 6. A `decision`, as check 8 of a push: `422` `unknown_decision`.
 
 No version is stored for a refused withdrawal.
@@ -941,7 +938,6 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 | `409` | `inputs_invalid` | | A ticket value that breaks Explore's input rules |
 | `409` | `no_version` | `type`, `message` | A withdrawal of a name that has no version outside cancelled runs |
 | `409` | `already_withdrawn` | `type`, `message` | A withdrawal of a name whose newest version is a withdrawal |
-| `409` | `person_version` | `type`, `message` | A withdrawal of a name whose newest version a person uploaded |
 | `410` | `ticket_gone` | | The work item's ticket is no longer kept |
 | `413` | `payload_too_large` | | A body over its size |
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type, or hides the standard type |
@@ -950,7 +946,7 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 | `422` | `type_not_withdrawable` | `type`, `message` | A withdrawal of `questions`, `review-comments`, `verdict` or `proposal`, of a name of a type with `withdrawable: false`, of a name of the type in `submit.type` of the run's process version or the work item's, or of a name whose newest version a member approved at a gate |
 | `422` | `withdrawal_with_files` | `type`, `message` | A withdrawal with one file or more |
 | `422` | `unknown_decision` | `message` | A push's `decision` is not the id of a person's note on the run's work item |
-| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, a verdict's `answer` point is about a question that is not open, or a verdict's `track.id` is a track the gate of the run's stage does not offer (`names` is `["track"]`) |
+| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, a verdict's `answer` point is about a question that is not open, a verdict's `track.id` is a track the gate of the run's stage does not offer (`names` is `["track"]`), or a version of `acceptance-criteria` has a name other than `main` (`names` is `["name"]`) |
 | `503` | `unavailable` | | The request could not be completed, such as a newest version of `questions` or `review-comments` that cannot be read; try again |
 
 The messages:
@@ -982,8 +978,6 @@ The messages:
   version outside cancelled runs."
 - `already_withdrawn`: "Leave demo-script/scenario-2 as it is. Its newest version, v3, is
   already a withdrawal."
-- `person_version`: "Leave demo-script/scenario-2 to a member. Its newest version, v2, is
-  a version by dana, and a run withdraws only a name whose newest version a run wrote."
 - `type_not_withdrawable`: "Push a new version of questions instead. Qory Apiary reads
   questions, review-comments, verdict and proposal itself, so a run cannot withdraw
   them."
@@ -1060,6 +1054,10 @@ The messages:
     of Shape offers no track." A stage the process version does not have reads "the run's
     stage" as its name. The check is the same for `POST verdict` and for `POST artifacts` with the type
     `verdict`.
+  - For a version of `acceptance-criteria` under a name other than `main`, `names` is
+    `["name"]`, and the message starts "Name the acceptance criteria main: a work item
+    has one set of acceptance criteria, and this push has the name" and ends with the
+    pushed name, such as "… this push has the name other."
   - For a version of `questions` or `review-comments` that changes what members wrote,
     one message per rule, such as "Leave each answer in questions.json as the newest
     version of questions has it: members write the answers." or "Close each review

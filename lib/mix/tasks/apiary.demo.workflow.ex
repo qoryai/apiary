@@ -25,16 +25,17 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       and is its instance admin, with the software workspace **Web shop**.
       **ana@example.com** joins as an admin, **max@example.com** as a member.
     * Version 1 of the process comes from the workspace's creation; Dana saves versions 2
-      and 3 (`Apiary.Processes.save/4`): version 2 adds an optional acceptance-criteria output to Shape, makes it a required
+      and 3 (`Apiary.Processes.save/4`): version 2 gives Shape the workflow
+      `shape-a-ticket` and an optional acceptance-criteria output, makes it a required
       input of Build, and adds to Build a loop of the workflows `capture-demo` and
       `fix-demo-findings`, which the harness does not declare; version 3 removes that
-      loop again, and adds an optional mockup output to Shape and an optional screenshot
-      output to Verify.
-    * A read of Web shop's harness is recorded, which lists only `explore-a-ticket`.
+      loop again, and adds an optional mockup output to Shape.
+    * A read of Web shop's harness is recorded: the workflows the harness declares, among
+      them `explore-a-ticket` and `shape-a-ticket`, and not Build's loop.
     * The adapter **Tracker** is made and connected for Acme, with the repository
       `acme/web-shop` in Web shop and its tickets; Dana and Max take ten of them in.
       With `workflow_model` on, a take in enters Explore.
-    * The node pool **preview-pool** and its key. A run of Explore needs a gateway to be
+    * The node pool **preview-pool** and its key. A run needs a gateway to be
       claimed, and the preview has none: the task hands a waiting run over in the
       database, pushes the run's artifacts as the run would through the run API, and
       posts its events under the pool's key (`Apiary.Runs.Ingest`), its start and its
@@ -46,7 +47,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
         version 2 of its proposal, whose run replied to the comment Dana wrote on
         version 1 and closed it;
       * Search returns no results for words with umlauts: Explore approved by Dana,
-        Shape at its gate;
+        Shape at its gate after its run, which made no output;
       * Basket badge shows 0 after signing in: Explore and Shape approved by Dana, Build
         waiting for its acceptance-criteria input;
       * Product images load twice on the listing page: two runs that ask questions, each
@@ -55,19 +56,19 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       * TypeError in the address form after autofill: a run that exited failed with no
         proposal, escalated as a run that stopped;
       * Show delivery dates on the product page: Shape at its gate, with acceptance
-        criteria and a mockup image that Max added;
-      * Remove the old promotion banner: acceptance criteria that Max added in Shape,
+        criteria and a mockup image that Shape's run made;
+      * Remove the old promotion banner: acceptance criteria that Shape's run made,
         then Shape approved by Dana, Build at its gate;
-      * Record a demo of the new checkout: on version 2, acceptance criteria that Max
-        added in Shape, then Shape approved by Dana, Build waiting for its workflows,
-        which the harness does not declare;
+      * Record a demo of the new checkout: on version 2, acceptance criteria that Shape's
+        run made, then Shape approved by Dana, Build waiting for its workflows, which
+        the harness does not declare;
       * Show the size guide in German: Explore escalated, as a run that stopped. The
         harness file at the root of `acme/web-shop` has no skill for the workflow
         `explore-a-ticket`, so qory closed the run failed with the reason
         `workflow_not_in_harness`, which the run's page and the work item show with
         the workflow and that file.
-    * Last, Dana saves a trial version (Explore with an optional acceptance-criteria
-      output) and assigns the first work item to it.
+    * Last, Dana saves a trial version (Explore with a description) and assigns the first
+      work item to it.
 
   Running it again on the instance it filled adds nothing. The trial version, the fill's
   last step, marks a fill that finished; an Acme without it is a fill that stopped half
@@ -120,6 +121,11 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   @grant_ref "G_acme"
   @pool "preview-pool"
   @forager "0.10.0"
+  # The workflow of Shape from version 2, which the software stack of the Qory harness
+  # declares.
+  @shape_workflow "shape-a-ticket"
+  # The description of Explore in the trial version, the trial's one change.
+  @trial_description "Read the ticket and the code, ask what is unclear, then propose a change."
   # Dana's review comment on the first version of a proposal.
   @comment "Also check the total when a customer changes the basket after the reload."
 
@@ -316,10 +322,20 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     versions!(dana_scope)
 
     # A stage waits for a workflow only against a recorded read of the harness: with none,
-    # its run starts.
+    # its run starts. Shape's run makes the outputs of three work items, so the harness
+    # must declare Shape's workflow.
     workspace = dana_scope.workspace
     chosen = Apiary.Stacks.Sources.chosen(workspace)
-    :ok = Processes.record_declared(workspace, Processes.qory_workflow_levels(chosen, workspace))
+    declared = Processes.qory_workflow_levels(chosen, workspace)
+    :ok = Processes.record_declared(workspace, declared)
+
+    unless Map.has_key?(declared, @shape_workflow) do
+      Shell.raise!(
+        "Set QORY_HARNESS_URL to a harness that declares #{@shape_workflow}, then fill a " <>
+          "new database.\nWeb shop's harness declares no #{@shape_workflow}, the workflow " <>
+          "of Shape. Drop this database and create it again before the next fill."
+      )
+    end
 
     Shell.info(
       "Process versions 1 to 3: version 1 from the workspace's creation, 2 and 3 saved by Dana"
@@ -460,7 +476,11 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
     v2 =
       v1
-      |> update_stage("Shape", &Map.put(&1, "outputs", [optional("acceptance-criteria")]))
+      |> update_stage("Shape", fn stage ->
+        stage
+        |> Map.put("sequence", [%{"workflow" => @shape_workflow}])
+        |> Map.put("outputs", [optional("acceptance-criteria")])
+      end)
       |> update_stage("Build", fn stage ->
         stage
         |> Map.put("inputs", [%{"type" => "acceptance-criteria", "required" => true}])
@@ -481,7 +501,6 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
         "Shape",
         &Map.update!(&1, "outputs", fn outputs -> outputs ++ [optional("mockup")] end)
       )
-      |> update_stage("Verify", &Map.put(&1, "outputs", [optional("screenshot")]))
 
     [v1, v2, v3]
   end
@@ -491,10 +510,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     workspace
     |> documents()
     |> List.last()
-    |> update_stage(
-      "Explore",
-      &Map.update!(&1, "outputs", fn outputs -> outputs ++ [optional("acceptance-criteria")] end)
-    )
+    |> update_stage("Explore", &Map.put(&1, "description", @trial_description))
   end
 
   defp optional(type), do: %{"type" => type, "required" => false}
@@ -768,10 +784,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     current(ctx.dana, work_item)
   end
 
-  defp drive!(:shape_gate, ctx, work_item) do
-    work_item = proposed!(ctx, work_item)
-    confirm!(ctx.dana, work_item)
-  end
+  defp drive!(:shape_gate, ctx, work_item), do: shaped!(ctx, work_item, [])
 
   defp drive!(:build_inputs, ctx, work_item) do
     work_item = drive!(:shape_gate, ctx, work_item)
@@ -803,33 +816,15 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   end
 
   defp drive!(:artifacts, ctx, work_item) do
-    work_item = drive!(:shape_gate, ctx, work_item)
-
-    push!(ctx.max, work_item, "acceptance-criteria", ctx.stages["Shape"], [
-      %{
-        filename: "acceptance-criteria.json",
-        content_type: "application/json",
-        binary: delivery_dates_criteria()
-      }
+    shaped!(ctx, work_item, [
+      {"acceptance-criteria", criteria_file(delivery_dates_criteria())},
+      {"mockup", %{filename: "product-page.png", content_type: "image/png", binary: mockup_png()}}
     ])
-
-    push!(ctx.max, work_item, "mockup", ctx.stages["Shape"], [
-      %{filename: "product-page.png", content_type: "image/png", binary: mockup_png()}
-    ])
-
-    current(ctx.dana, work_item)
   end
 
   defp drive!(:approved, ctx, work_item) do
-    work_item = drive!(:shape_gate, ctx, work_item)
-
-    push!(ctx.max, work_item, "acceptance-criteria", ctx.stages["Shape"], [
-      %{
-        filename: "acceptance-criteria.json",
-        content_type: "application/json",
-        binary: banner_criteria()
-      }
-    ])
+    work_item =
+      shaped!(ctx, work_item, [{"acceptance-criteria", criteria_file(banner_criteria())}])
 
     approve!(ctx.dana, work_item, "The criteria cover the banner and its styles.")
   end
@@ -837,24 +832,28 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   # On version 2, whose Build runs workflows the harness does not declare: Build does not
   # start, and waits for them.
   defp drive!(:waiting_workflow, ctx, work_item) do
-    work_item = drive!(:shape_gate, ctx, work_item)
+    work_item =
+      shaped!(ctx, work_item, [{"acceptance-criteria", criteria_file(demo_criteria())}])
 
     version_2 =
       Enum.find(Processes.list_versions(ctx.dana.workspace), &(&1.number == 2)) ||
         Shell.raise!("Web shop has no process version 2")
 
     ok!(Processes.assign(ctx.dana, work_item, version_2), "the work item on version 2")
-
-    push!(ctx.max, work_item, "acceptance-criteria", ctx.stages["Shape"], [
-      %{
-        filename: "acceptance-criteria.json",
-        content_type: "application/json",
-        binary: demo_criteria()
-      }
-    ])
-
     approve!(ctx.dana, work_item, "Ready for the demo recording.")
   end
+
+  # Explore approved by Dana, and Shape's run ended passed with `outputs`, each
+  # `{type, file}`: Shape at its gate.
+  defp shaped!(ctx, work_item, outputs) do
+    work_item = proposed!(ctx, work_item)
+    work_item = confirm!(ctx.dana, work_item)
+    record_result!(ctx, work_item, {:shaped, outputs})
+    current(ctx.dana, work_item)
+  end
+
+  defp criteria_file(json),
+    do: %{filename: "acceptance-criteria.json", content_type: "application/json", binary: json}
 
   defp proposed!(ctx, work_item) do
     record_result!(ctx, work_item, {:proposal, proposal(work_item.title, :first)})
@@ -882,46 +881,40 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     current(scope, work_item)
   end
 
-  defp push!(%Scope{} = scope, %WorkItem{} = work_item, type, stage_id, files) do
-    ok!(
-      Artifacts.push({:person, scope}, current(scope, work_item), type, files,
-        name: "main",
-        stage_id: stage_id,
-        note: "Added for the review of Shape."
-      ),
-      "an artifact"
-    )
-  end
-
   defp current(%Scope{} = scope, %WorkItem{public_id: id}),
     do: WorkItems.get_by_public_id(scope, id)
 
   defp ok!({:ok, value}, _what), do: value
   defp ok!(other, what), do: Shell.raise!("#{what} was not made: #{inspect(other)}")
 
-  ## A run of Explore and what it pushes
+  ## A run and what it pushes
 
-  # The waiting run of `work_item`'s Explore, handed over to the preview's pool; what it
-  # gives, pushed as the run pushes it through the run API; and its events posted under
-  # the pool's key as a gateway posts them: it starts and exits. `result` is
+  # The waiting run of `work_item`, of Explore or Shape, handed over to the preview's
+  # pool; what it gives, pushed as the run pushes it through the run API; and its events
+  # posted under the pool's key as a gateway posts them: it starts and exits. `result` is
   # `{:proposal, markdown}`, with `:reply` a third element when the run also replies to
   # each open review comment and closes it; `{:questions, questions}`, the questions it
-  # adds; `:failed`, a run that exits failed; or `:workflow_not_in_harness`. A proposal
-  # ends with the verdict `passed`, as a normal end with no open question does. The exit,
+  # adds; `{:shaped, outputs}`, Shape's outputs, each `{type, file}`; `:failed`, a run
+  # that exits failed; or `:workflow_not_in_harness`. A proposal and Shape's outputs end
+  # with the verdict `passed`, as a normal end with no open question does. The exit,
   # once projected, ends the run of the queue, which reads what the run pushed. Returns
   # the run of the queue.
-  defp record_result!(%{key: key}, %WorkItem{} = work_item, result) do
+  defp record_result!(%{key: key, stages: stages}, %WorkItem{} = work_item, result) do
     dispatch_run =
       Repo.one(
         from d in DispatchRun,
           where: d.work_item_id == ^work_item.id and d.state == :waiting,
           order_by: [desc: d.attempt],
           limit: 1
-      ) || Shell.raise!("#{work_item.title} has no run of Explore waiting")
+      ) || Shell.raise!("#{work_item.title} has no run waiting")
 
     now = DateTime.utc_now()
+
+    kind =
+      Enum.find_value(stages, "Explore", fn {name, id} -> id == dispatch_run.stage_id && name end)
+
     if result == :workflow_not_in_harness, do: walked_file!(dispatch_run)
-    run = hand_over!(dispatch_run, work_item, key, now)
+    run = hand_over!(dispatch_run, work_item, key, now, kind)
     push_run!(dispatch_run, run, work_item, result, now)
     push_verdict!(dispatch_run, work_item, result)
 
@@ -932,7 +925,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       run_configuration: nil
     }
 
-    case Ingest.ingest(key, batch!(run, work_item, result, now), meta) do
+    case Ingest.ingest(key, batch!(run, work_item, result, now, kind), meta) do
       {:ok, %{status: 202}} -> dispatch_run
       other -> Shell.raise!("the run of #{work_item.title} was not stored: #{inspect(other)}")
     end
@@ -1005,9 +998,15 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     )
   end
 
+  defp push_run!(dispatch_run, _run, work_item, {:shaped, outputs}, _now) do
+    for {type, file} <- outputs, do: run_push!(dispatch_run, work_item, type, file)
+    :ok
+  end
+
   defp push_run!(_dispatch_run, _run, _work_item, _result, _now), do: :ok
 
-  defp push_verdict!(dispatch_run, work_item, result) when elem(result, 0) == :proposal do
+  defp push_verdict!(dispatch_run, work_item, result)
+       when elem(result, 0) in [:proposal, :shaped] do
     run_push!(dispatch_run, work_item, "verdict", %{
       filename: "verdict.json",
       content_type: "application/json",
@@ -1032,7 +1031,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   # Stands in for the claim and handover, which need a gateway the preview does not have:
   # writes the handed-over run of the queue and its registered run straight to the
   # database. For development only, as is the whole task.
-  defp hand_over!(%DispatchRun{} = dispatch_run, %WorkItem{} = work_item, key, now) do
+  defp hand_over!(%DispatchRun{} = dispatch_run, %WorkItem{} = work_item, key, now, kind) do
     {:ok, run} =
       Repo.transact(fn ->
         {1, _rows} =
@@ -1051,7 +1050,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
           registered_at: now,
           # A direct registration has every registration column set.
           registration_labels: %{},
-          registration_about: %{"kind" => "Explore", "title" => work_item.title},
+          registration_about: %{"kind" => kind, "title" => work_item.title},
           registration_digest: :crypto.hash(:sha256, dispatch_run.run_id),
           registration_interval_seconds: 60,
           registration_answer_digest:
@@ -1107,10 +1106,10 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       )
   end
 
-  defp batch!(%Run{node_run_id: subject}, work_item, result, now) do
+  defp batch!(%Run{node_run_id: subject}, work_item, result, now, kind) do
     body =
       result
-      |> events(work_item)
+      |> events(work_item, kind)
       |> Enum.with_index(2)
       |> Enum.map(fn {{seconds, {type, data}}, sequence} ->
         %{
@@ -1137,19 +1136,19 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
   # A run that qory closed before the runtime started: the run starts, then exits failed
   # with the reason, and no session.
-  defp events(:workflow_not_in_harness, work_item),
+  defp events(:workflow_not_in_harness, work_item, kind),
     do: [
-      {-3, {"dev.qory.run.started", started(work_item)}},
+      {-3, {"dev.qory.run.started", started(work_item, kind)}},
       {0,
        {"dev.qory.run.exited",
         %{"state" => "failed", "reason" => "workflow_not_in_harness", "exit_code" => -1}}}
     ]
 
-  defp events(result, work_item) do
+  defp events(result, work_item, kind) do
     {state, exit_code} = if result == :failed, do: {"failed", 1}, else: {"succeeded", 0}
 
     [
-      {-90, {"dev.qory.run.started", started(work_item)}},
+      {-90, {"dev.qory.run.started", started(work_item, kind)}},
       {-89,
        {"dev.qory.session.started",
         %{
@@ -1169,14 +1168,14 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     ]
   end
 
-  defp started(work_item),
+  defp started(work_item, kind),
     do: %{
       "opened_by" => "run",
       "forager_version" => @forager,
       "host" => @pool,
       "wall" => "docker",
       "labels" => %{},
-      "about" => %{"kind" => "Explore", "title" => work_item.title}
+      "about" => %{"kind" => kind, "title" => work_item.title}
     }
 
   # The proposal's Markdown: its first version, or the version that changed for Dana's
@@ -1285,7 +1284,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     }
   end
 
-  ## The artifacts that Max adds
+  ## The outputs of Shape's runs
 
   # The acceptance criteria of a work item, in the format of
   # `acceptance-criteria.schema.json`: `summary`, then each criterion `{text, check}`, with

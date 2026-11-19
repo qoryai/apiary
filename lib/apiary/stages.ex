@@ -40,9 +40,9 @@ defmodule Apiary.Stages do
   #
   # ## A person's change to an approved output
   #
-  # A run of a later stage, or a person by upload, stores a new version of an approved
-  # output (vault 0261, 624 (a)). A run's version links to the person's note that asked
-  # for it, its `decision` (`Apiary.Stages.Notes`); a person's upload has none. Every later
+  # A run of a later stage stores a new version of an approved output (vault 0261, 624
+  # (a)). The version links to a person's note, its `decision` (`Apiary.Stages.Notes`),
+  # which contains the change the person asked for. Every later
   # run reads that version in place of the approved one (`read_version/6`), and the next
   # approval by a person at a gate lists it (`approve/4`). A gate `none` lists no version
   # with a `decision`.
@@ -108,12 +108,8 @@ defmodule Apiary.Stages do
   # the person as `resolved_by`, and the trail the entry `escalation_another_round`; a run
   # again from the gate, the entry `another_round`.
   #
-  # `add_version/5` stores a version a person adds on the work item, made in its current
-  # stage, then acts on that stage (`version_added/1`): a stage that waits for inputs
-  # starts once its last required input exists, and the Exists checks run again. A stage with
-  # no workflow waits at its gate while a required output is missing
-  # (`missing_outputs/1`); `approve/4` refuses it, `{:error, {:outputs_missing, types}}`,
-  # and a gate `none` passes on once every required output exists.
+  # A stage with no workflow waits at its gate while a required output is missing
+  # (`missing_outputs/1`); `approve/4` returns `{:error, {:outputs_missing, types}}`.
   #
   # ## What is told
   #
@@ -150,7 +146,7 @@ defmodule Apiary.Stages do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.Qory
   alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Runs.{Cancel, Run}
+  alias Apiary.Runs.{Cancel, Run, SessionRecord}
   alias Apiary.Stacks.Sources
   alias Apiary.Stages.{Approvers, Artifacts, Check, Escalation, GateDecision, Notes, Points}
   alias Apiary.Stages.{Runner, Session, Skip}
@@ -1572,10 +1568,9 @@ defmodule Apiary.Stages do
   end
 
   # resume/1 starts a stage that waits for a required input or for a workflow, once the
-  # input exists or the harness declares the workflow: after a person adds an input, or
-  # the harness changes. A stage in any other state, or of a work item that is not
-  # `:exploring`, is left as it is. `{:error, :not_placed}` for a work item the runner has
-  # not placed.
+  # input exists or the harness declares the workflow. Only tests call it.
+  # A stage in any other state, or of a work item that is not `:exploring`, is left as it
+  # is. `{:error, :not_placed}` for a work item the runner has not placed.
   @doc false
   @spec resume(WorkItem.t()) :: {:ok, WorkItem.t()} | {:error, refusal}
   def resume(%WorkItem{id: id}) do
@@ -1597,72 +1592,6 @@ defmodule Apiary.Stages do
       end
     end)
   end
-
-  # add_version/5 stores a version a person adds on the work item, as the scope's person
-  # (`Apiary.Artifacts.push/5`, `{:person, scope}`, which refuses the questions and the
-  # review comments as `{:unknown_type, name}`), with the `stage_id` of the stage the
-  # work item is in, whatever `opts` gives, then acts on that stage (`version_added/1`):
-  # `{:ok, version}`, or the push's refusal, with no action on the stage. The stage is read
-  # before the push takes the work item's lock, so the push checks it again under the lock
-  # (`expect_stage`): `{:error, :stage_changed}` when the work item moved in between.
-  @doc false
-  @spec add_version(Scope.t(), WorkItem.t(), term, [map], keyword) ::
-          {:ok, map} | {:error, term}
-  def add_version(%Scope{} = scope, %WorkItem{id: id}, type, files, opts \\ []) do
-    case Repo.get(WorkItem, id) do
-      nil ->
-        {:error, :not_found}
-
-      work_item ->
-        opts =
-          Keyword.merge(opts, stage_id: work_item.stage_id, expect_stage: work_item.stage_id)
-
-        with {:ok, version} <- Artifacts.push({:person, scope}, work_item, type, files, opts) do
-          _placed_or_not = version_added(work_item)
-          {:ok, version}
-        end
-    end
-  end
-
-  # version_added/1 acts on the work item's stage after a person added a version in it. A
-  # stage that waits for inputs starts once its last required input exists (`resume/1`).
-  # At the gate of a stage with no workflow the Exists checks run again: a gate `none`
-  # passes on once every required output exists, and a person gate keeps waiting. A stage
-  # in any other state, or of a work item that is not `:exploring`, is left as it is.
-  # `{:error, :not_placed}` for a work item the runner has not placed.
-  @doc false
-  @spec version_added(WorkItem.t()) :: {:ok, WorkItem.t()} | {:error, :not_placed}
-  def version_added(%WorkItem{id: id}) do
-    transact(fn ->
-      work_item = lock!(id)
-
-      case placed(work_item) do
-        {:ok, version, stage} ->
-          case on_version_added(work_item, stage) do
-            nil ->
-              {:ok, work_item}
-
-            event ->
-              {work_item, _run} = apply_event(work_item, version, stage, event)
-              {:ok, work_item}
-          end
-
-        :not_placed ->
-          {:error, :not_placed}
-      end
-    end)
-  end
-
-  # The runner's event for a version a person added in the work item's stage
-  # (`version_added/1`): `:resume` for a stage that waits for inputs, `:version_added` at
-  # the gate of a stage with no workflow; nil where the stage is left as it is.
-  defp on_version_added(%WorkItem{state: :exploring, stage_state: :waiting_inputs}, _stage),
-    do: :resume
-
-  defp on_version_added(%WorkItem{state: :exploring, stage_state: :at_gate}, stage),
-    do: if(Runner.people?(stage), do: :version_added)
-
-  defp on_version_added(%WorkItem{}, _stage), do: nil
 
   # check_workflows/2 reads the workflows the workspace's harness lists now, with their
   # access levels, as the scope's person, through the harness sources
@@ -1778,7 +1707,7 @@ defmodule Apiary.Stages do
   # one entry in the trail. It covers the versions `recorded_versions/4` gives, which the
   # work item page frames (`gate_frames/3`).
   defp approve_locked(scope, work_item, version, stage, note, audit?, track) do
-    artifacts = work_item |> Artifacts.list() |> recordable(work_item)
+    artifacts = Artifacts.list(work_item)
     approvals = approvals_by_version(work_item)
     covered = Enum.map(recorded_versions(stage, artifacts, approvals, true), & &1.public_id)
     details = %{"stage_id" => stage["id"], "versions" => covered}
@@ -2077,9 +2006,6 @@ defmodule Apiary.Stages do
   #     track entered on `track` (`resolve_escalation/5`);
   #   * `:found` - a stage that waits for a workflow, once the harness lists it
   #     (`check_workflows/3`);
-  #   * `{:version_added, type}`, `{:version_added, type, sizes}` - a version of `type`
-  #     added in the stage (`add_version/5`), counted as existing; with `sizes`, the sizes
-  #     of its files in bytes, it counts for a condition when one is more than 0;
   #   * `:next_run` - the next round of the stage (`next_run/2`).
   #
   # `noted` is whether the act comes with a note or a comment that is not blank, which is
@@ -2158,45 +2084,6 @@ defmodule Apiary.Stages do
     end
   end
 
-  # The added version counts as existing: as an input of the stage, or as an output at
-  # its gate. An output at a gate `none` is also an input of each later stage that the
-  # approval moves the work item to, though it is not read yet (`approved/5`). With the
-  # sizes of its files, it counts for a condition when one is more than 0 bytes
-  # (`counts?/1`); with nil, the input types that count are those read now.
-  defp would_start(work_item, version, stage, {:version_added, type}) when is_binary(type),
-    do: would_start(work_item, version, stage, {:version_added, type, nil})
-
-  defp would_start(work_item, version, stage, {:version_added, type, sizes})
-       when is_binary(type) do
-    added = fn facts ->
-      %{
-        facts
-        | missing_inputs: facts.missing_inputs -- [type],
-          counted: added_counted(facts.counted, type, sizes)
-      }
-      |> stored_now(type)
-    end
-
-    case on_version_added(work_item, stage) do
-      :resume ->
-        stepped(work_item, version, stage, :resume, added)
-
-      :version_added ->
-        stepped(
-          work_item,
-          version,
-          stage,
-          :version_added,
-          fn facts -> %{facts | failed_checks: facts.failed_checks -- [type]} end,
-          & &1,
-          added
-        )
-
-      nil ->
-        :none
-    end
-  end
-
   defp would_start(work_item, version, stage, :next_run),
     do: next_run_starts(work_item, version, stage, %{})
 
@@ -2269,19 +2156,6 @@ defmodule Apiary.Stages do
 
   defp stored_as_approved(facts, _approved_at), do: facts
 
-  # A version of `type` that a person added now, as `stored_as_approved/2` has it.
-  defp stored_now(facts, type), do: stored_as_approved(facts, [{type, DateTime.utc_now()}])
-
-  # The input types that count, `counted`, with a version of `type` added whose files have
-  # `sizes` (`counts?/1`); as they are for nil.
-  defp added_counted(counted, _type, nil), do: counted
-
-  defp added_counted(counted, type, sizes) when is_list(sizes) do
-    if counts?(%{files: Enum.map(sizes, &%{size: &1})}),
-      do: Enum.uniq(counted ++ [type]),
-      else: counted -- [type]
-  end
-
   # The run that entering `stage` queues, on the facts read now as `later` changes them;
   # none for no stage.
   defp entered(work_item, version, stage, later \\ & &1)
@@ -2328,7 +2202,7 @@ defmodule Apiary.Stages do
   # approvals of earlier stages: applied first, so the nearest approval wins, as a stage
   # reads its inputs (`read_version/6`).
   defp approved(work_item, stage, gate, later, own \\ & &1) do
-    artifacts = work_item |> Artifacts.list() |> recordable(work_item)
+    artifacts = Artifacts.list(work_item)
 
     shown =
       case gate do
@@ -2378,7 +2252,7 @@ defmodule Apiary.Stages do
 
     with %WorkItem{} <- work_item,
          {:ok, version, stage} <- placed(work_item) do
-      artifacts = work_item |> Artifacts.list() |> recordable(work_item)
+      artifacts = Artifacts.list(work_item)
       escalation = open_escalation(work_item) || placed_escalation(work_item, version, stage)
       # Read once: the shown state, the inputs and the condition inputs that count use them.
       approvals = approvals_by_version(work_item)
@@ -2426,11 +2300,9 @@ defmodule Apiary.Stages do
   end
 
   # inputs/1 is, for each input of the work item's stage, the version it reads: a
-  # person's change to it that no approval lists yet, else a person's version added on
-  # the work item in this stage, else the version the gate of the stage that made it
-  # approved; nil for none (`read_version/6`). A name whose newest version is a
-  # withdrawal is left out (`Apiary.Artifacts.withdrawn?/1`), and so is a person's version
-  # of the submission type (`recordable/2`).
+  # person's change to it that no approval lists yet, else the version the gate of the
+  # stage that made it approved; nil for none (`read_version/6`). A name whose newest
+  # version is a withdrawal is left out (`Apiary.Artifacts.withdrawn?/1`).
   #
   # After a person moved the work item to an earlier stage, it ends with one entry for each
   # output of each stage the work item left that way (`moved_inputs/5`), marked
@@ -2444,7 +2316,7 @@ defmodule Apiary.Stages do
 
     case placed(work_item) do
       {:ok, version, stage} ->
-        artifacts = work_item |> Artifacts.list() |> recordable(work_item)
+        artifacts = Artifacts.list(work_item)
         approvals = approvals_by_version(work_item)
         facts = condition_facts(work_item, version, stage, artifacts, false, approvals)
         read = inputs(work_item, version, stage, artifacts, facts, approvals)
@@ -2461,8 +2333,8 @@ defmodule Apiary.Stages do
   # since (`departures/2`): the newest version of each of its outputs made in it from the
   # time the work item last entered it to the time it left, marked `from: :move` and not
   # required. Newest departure first, outputs in the stage's order. An output whose version
-  # `read` has already is left out. No approval lists these versions: they are not outputs
-  # of the work item's stage.
+  # `read` has already is left out. No approval lists such a version, unless it has a
+  # `decision`: then it is a change.
   defp moved_inputs(work_item, version, stage, artifacts, read) do
     ids = Enum.map(version.document["stages"], & &1["id"])
 
@@ -2617,9 +2489,7 @@ defmodule Apiary.Stages do
   # `decision_at`: the person's note that asked for it and the note's time, nil for none.
   # A version a cancelled run wrote stays in `versions`, and the artifact's stage and its
   # changed mark leave it out. `newest` is the public id of the newest version that
-  # counts, nil for none: no cancelled run's, and no person's version of the type in
-  # `submit.type` (`recordable/2`), which also stays in `versions` and is no newer version
-  # and no change.
+  # counts, nil for none: no cancelled run's.
   @doc false
   @spec artifact_index(WorkItem.t(), [Artifacts.Artifact.t()] | nil) :: [map]
   def artifact_index(%WorkItem{} = work_item, artifacts \\ nil) do
@@ -2627,15 +2497,11 @@ defmodule Apiary.Stages do
     approvals = approvals_by_version(work_item)
     artifacts = artifacts || Artifacts.list(work_item)
     times = decision_times(work_item, Enum.flat_map(artifacts, & &1.versions))
-    submit_type = Artifacts.submit_type(work_item)
 
     for artifact <- artifacts do
       versions = Enum.map(artifact.versions, &version_map(&1, approvals, times))
 
-      newest =
-        Artifacts.newest_counted(%{
-          versions: recordable_versions(versions, artifact, submit_type)
-        })
+      newest = Artifacts.newest_counted(%{versions: versions})
 
       approved_version = Enum.find(versions, &(&1.approvals != []))
 
@@ -2712,7 +2578,9 @@ defmodule Apiary.Stages do
   # the newest attempt of the take in when the runner passed it over (0 for none); for an
   # entry a first attempt passed over, `reason` is
   # `first_attempt_passed` and `cause_entry` is the first attempt's name, else its
-  # workflow (both nil for a condition). `earlier_skips/1` is those of the take ins before
+  # workflow (both nil for a condition); with its `round`, `stage_entry` and `loop_entry`
+  # (the entry's place, `loop_entry` nil outside a loop) and when it was passed over
+  # (`inserted_at`). `earlier_skips/1` is those of the take ins before
   # the current one, each with its `take_in`; `stage_skips/1` the stages passed over whole
   # in the current take in (`skip_records/1`).
   @doc false
@@ -2779,8 +2647,11 @@ defmodule Apiary.Stages do
         reason: skip.reason,
         cause_entry: skip.cause_entry,
         round: skip.round,
+        stage_entry: skip.stage_entry,
+        loop_entry: skip.loop_entry,
         take_in: skip.take_in,
-        after_attempt: skip.after_attempt
+        after_attempt: skip.after_attempt,
+        inserted_at: skip.inserted_at
       }
     end
 
@@ -2874,15 +2745,186 @@ defmodule Apiary.Stages do
         version <- Enum.reverse(artifact.versions),
         is_binary(version.run_id),
         into: %{} do
-      verdict =
-        case (Artifacts.read_json(version) || %{})["verdict"] do
-          "passed" -> :passed
-          value when value in ["changes-requested", "escalate"] -> :failed
-          _none -> nil
-        end
-
-      {version.run_id, verdict}
+      {version.run_id, stored_verdict(version)}
     end
+  end
+
+  # The verdict a version of `verdict` stores: `:passed`; `:failed` for changes-requested
+  # or escalate; nil for none, and for a file the store cannot read.
+  defp stored_verdict(version) do
+    case (Artifacts.read_json(version) || %{})["verdict"] do
+      "passed" -> :passed
+      value when value in ["changes-requested", "escalate"] -> :failed
+      _none -> nil
+    end
+  end
+
+  # run_sessions/1 is the sessions of each of the registered runs `ids` (their public ids,
+  # `rn_…`) that ran as one run of a stage with `shared_run: true` (`Apiary.Stages.Session`),
+  # in the order they ran, by the run's public id; a run with no session has no entry. Each
+  # is `%{sequence:, workflow:, round:, stage_entry:, loop_entry:, state:, verdict:,
+  # started_at:, ended_at:, stamped_from:, stamped_to:}`:
+  #
+  #   * `state` is the end the run reported for the session ("succeeded", "failed" or
+  #     "cancelled"), nil for a session no report ended: the one the run is in, or was in
+  #     when it stopped;
+  #   * `verdict` is that of the run's `verdict` version that the session stored, read as
+  #     `runs/1` reads a run's (`:passed`, `:failed` or nil): the version the step on the
+  #     session's end read (`verdict_number`), or for a session no report ended the run's
+  #     newest, where it is newer than the one the session before read; else nil;
+  #   * `started_at` and `ended_at` are those of the session's `Apiary.Runs.SessionRecord`;
+  #     with no record, or none of that time, when the row was written and, for a session a
+  #     report ended, when the report was recorded. `ended_at` is nil for no end. With a
+  #     record they are the machine's times, shown as they are; without
+  #     one, they fall back to the row's stamps;
+  #   * `stamped_from` and `stamped_to` are Qory Apiary's clock: when the row was written,
+  #     and for a session a report ended, when the report was recorded (the row's
+  #     `updated_at`); `stamped_to` is nil for a session no report ended. A version or a
+  #     skip, which Qory Apiary also stamps, is compared with these, never with
+  #     `started_at` and `ended_at`.
+  @doc false
+  @spec run_sessions([String.t()]) :: %{String.t() => [map]}
+  def run_sessions([]), do: %{}
+
+  def run_sessions(ids) when is_list(ids) do
+    rows =
+      Repo.all(
+        from s in Session,
+          join: r in subquery(Run.registered()),
+          on: r.dispatch_run_id == s.dispatch_run_id,
+          where: r.public_id in ^ids,
+          order_by: [s.dispatch_run_id, s.sequence],
+          select: {r.public_id, s}
+      )
+
+    run_ids = rows |> Enum.map(fn {_id, session} -> session.dispatch_run_id end) |> Enum.uniq()
+    records = session_records(run_ids)
+    versions = verdict_versions(run_ids)
+
+    # Each session with the number of the verdict version it stored, nil for none.
+    numbered =
+      rows
+      |> Enum.group_by(fn {id, _session} -> id end, fn {_id, session} -> session end)
+      |> Map.new(fn {id, sessions} ->
+        {numbered, _seen} =
+          Enum.map_reduce(sessions, nil, fn session, seen ->
+            # A session no report ended has the run's newest verdict, where it is newer
+            # than the one the session before read, as the step on the run's end reads it.
+            number = session.verdict_number || unreported(session, versions, seen)
+            stored = if is_integer(number) and number != seen, do: number
+            {{session, stored}, number || seen}
+          end)
+
+        {id, numbered}
+      end)
+
+    verdicts =
+      for {_id, sessions} <- numbered,
+          {session, number} <- sessions,
+          version = number && versions[{session.dispatch_run_id, number}],
+          version != nil,
+          uniq: true,
+          do: version
+
+    read =
+      verdicts |> Repo.preload(:files) |> Map.new(&{{&1.run_id, &1.number}, stored_verdict(&1)})
+
+    Map.new(numbered, fn {id, sessions} ->
+      {id,
+       for {session, number} <- sessions do
+         record = records[{session.dispatch_run_id, session.forager_session}]
+         shown_session(session, record, number && read[{session.dispatch_run_id, number}])
+       end}
+    end)
+  end
+
+  # shared_sequences/1 is, by public id, the sequence of the stage of each of the
+  # registered runs `ids` whose stage has `shared_run: true` in the run's process version.
+  # The stage is read from the version's document by the run's `process_version_id` and
+  # `stage_id`, so a later change of the work item's process changes nothing for a run.
+  @doc false
+  @spec shared_sequences([String.t()]) :: %{String.t() => list}
+  def shared_sequences([]), do: %{}
+
+  def shared_sequences(ids) when is_list(ids) do
+    rows =
+      Repo.all(
+        from d in DispatchRun,
+          join: r in subquery(Run.registered()),
+          on: r.dispatch_run_id == d.id,
+          where: r.public_id in ^ids,
+          where: not is_nil(d.process_version_id) and not is_nil(d.stage_id),
+          select: {r.public_id, d.process_version_id, d.stage_id}
+      )
+
+    versions = rows |> Enum.map(&elem(&1, 1)) |> Enum.uniq()
+
+    documents =
+      if versions == [],
+        do: %{},
+        else:
+          Repo.all(
+            from v in Processes.Version, where: v.id in ^versions, select: {v.id, v.document}
+          )
+          |> Map.new()
+
+    for {id, version_id, stage_id} <- rows,
+        stage = Processes.stage(documents[version_id], stage_id),
+        Processes.shared_run?(stage),
+        into: %{},
+        do: {id, stage["sequence"] || []}
+  end
+
+  defp unreported(%Session{state: nil, dispatch_run_id: id}, versions, seen) do
+    newest =
+      for({{^id, number}, _version} <- versions, do: number) |> Enum.max(fn -> nil end)
+
+    if newest && (is_nil(seen) or newest > seen), do: newest
+  end
+
+  defp unreported(_session, _versions, _seen), do: nil
+
+  defp shown_session(session, record, verdict) do
+    ended? = not is_nil(session.state)
+
+    %{
+      sequence: session.sequence,
+      workflow: session.workflow,
+      round: session.round,
+      stage_entry: session.stage_entry,
+      loop_entry: session.loop_entry,
+      state: session.state,
+      verdict: verdict,
+      started_at: (record && record.started_at) || session.inserted_at,
+      ended_at: if(ended?, do: (record && record.ended_at) || session.updated_at),
+      stamped_from: session.inserted_at,
+      stamped_to: if(ended?, do: session.updated_at)
+    }
+  end
+
+  # The session records of the runs of the queue `run_ids`, by run and session number.
+  defp session_records([]), do: %{}
+
+  defp session_records(run_ids) do
+    Repo.all(
+      from r in SessionRecord,
+        where: r.dispatch_run_id in ^run_ids,
+        select: {{r.dispatch_run_id, r.session_number}, r}
+    )
+    |> Map.new()
+  end
+
+  # The `verdict` versions the runs of the queue `run_ids` stored, without their files, by
+  # run and version number; `run_sessions/1` reads the files of those it shows.
+  defp verdict_versions([]), do: %{}
+
+  defp verdict_versions(run_ids) do
+    Repo.all(
+      from v in Apiary.Artifacts.Version,
+        join: a in assoc(v, :artifact),
+        where: v.run_id in ^run_ids and a.type == "verdict" and a.name == "main"
+    )
+    |> Map.new(&{{&1.run_id, &1.number}, &1})
   end
 
   # notes/1 is what the work item's next run reads as work item data, oldest first: what
@@ -3195,9 +3237,7 @@ defmodule Apiary.Stages do
   # member, `automatic`, when the stage passed its gate; with the member `by` who accepted
   # the escalation that ended the stage. The accept approves the newest versions that
   # exist, as the stage's checks did not run. A version with a `decision` is left out: only
-  # a person's approval at a gate lists it (vault 0261, 624 (a); C-2 note, section 5). A
-  # person's upload stays in: an output made in this stage, which the gate approves. A
-  # person's version of the submission type is the exception (`recordable/2`).
+  # a person's approval at a gate lists it (vault 0261, 624 (a); C-2 note, section 5).
   defp approve_none!(work_item, version, stage, by) do
     %GateDecision{
       public_id: PublicId.generate(GateDecision.prefix()),
@@ -3212,7 +3252,7 @@ defmodule Apiary.Stages do
       take_in: work_item.take_in,
       versions:
         for(
-          v <- newest_outputs(stage, work_item |> Artifacts.list() |> recordable(work_item)),
+          v <- newest_outputs(stage, Artifacts.list(work_item)),
           is_nil(v.decision_id),
           do: v.public_id
         ),
@@ -3314,7 +3354,7 @@ defmodule Apiary.Stages do
   def switch_tracks(%WorkItem{} = work_item) do
     with {:ok, version, stage} <- placed(work_item),
          {gate, others} <- switch_offers(work_item, version, stage) do
-      artifacts = work_item |> Artifacts.list() |> recordable(work_item)
+      artifacts = Artifacts.list(work_item)
 
       for track <- others do
         {first, later} = switch_plan(work_item, version, gate, track.id, artifacts)
@@ -3406,9 +3446,9 @@ defmodule Apiary.Stages do
   # `number` among `artifacts` (the work item's artifacts, `Apiary.Artifacts.list/1`), newest
   # first: the versions of the artifact `verdict`, name `main`, that the run which wrote the
   # report wrote, that are no withdrawal and that no cancelled run wrote
-  # (`Artifacts.cancelled?/1`). [] where the report has no run (a person wrote it) or that run
-  # pushed no verdict. A verdict of another run or another stage is never the result of the
-  # work the report is about.
+  # (`Artifacts.cancelled?/1`). [] where the report has no run, or that run pushed no
+  # verdict. A verdict of another run or another stage is never the result of the work the
+  # report is about.
   @spec full_suite_versions([Artifacts.Artifact.t()], pos_integer) :: [map]
   def full_suite_versions(artifacts, number) do
     with %{run_id: run_id} when is_binary(run_id) <- report_version(artifacts, number) do
@@ -3671,7 +3711,7 @@ defmodule Apiary.Stages do
   defp facts(work_item, version, stage) do
     # The whole row: `Apiary.Processes.workflow_declaration/2` reads its stack.
     workspace = Repo.get!(Workspace, work_item.workspace_id)
-    artifacts = work_item |> Artifacts.list() |> recordable(work_item)
+    artifacts = Artifacts.list(work_item)
 
     declarations =
       Map.new(Runner.workflows(stage), &{&1, Processes.workflow_declaration(workspace, &1)})
@@ -4284,22 +4324,19 @@ defmodule Apiary.Stages do
   # person's approval, the gate compares the versions it shows (`gate_versions/3`), which
   # that approval covered. After a gate `none` approval, it compares the newest outputs,
   # where one with a `decision` does not reopen the gate: `approve_none!/4` leaves such a
-  # version out, and only a person's approval lists it. Neither lists a person's version
-  # of the submission type (`recordable/2`), so it does not reopen the gate either.
+  # version out, and only a person's approval lists it.
   # `approvals` is `approvals_by_version/1`, read here for nil.
   defp reopened?(work_item, stage, artifacts, approvals) do
     case last_approval(work_item, stage["id"]) do
       %GateDecision{versions: covered} = approval ->
-        recordable = recordable(artifacts, work_item)
-
         newest =
           if gate_none_approval?(approval) do
-            for v <- newest_outputs(stage, recordable),
+            for v <- newest_outputs(stage, artifacts),
                 not is_binary(v.decision_id),
                 do: v.public_id
           else
             Enum.map(
-              gate_versions(stage, recordable, approvals || approvals_by_version(work_item)),
+              gate_versions(stage, artifacts, approvals || approvals_by_version(work_item)),
               & &1.public_id
             )
           end
@@ -4762,8 +4799,8 @@ defmodule Apiary.Stages do
   # person's change made that no approval lists yet (`changed_versions/2`), as a person's
   # approval is the one that lists such a version (vault 0261, 624 (a)). An approval is
   # made only at the work item's stage, so only there are the changes the gate's. Of two
-  # versions of one artifact, such as a person's upload at the gate and a run's version
-  # after it, the higher-numbered one is taken, in the place of the first.
+  # versions of one artifact, such as a run's version at the gate and a change after it,
+  # the higher-numbered one is taken, in the place of the first.
   defp recorded_versions(stage, artifacts, approvals, changes?) do
     changed = if changes?, do: changed_versions(artifacts, listed(approvals)), else: []
     versions = gate_versions(stage, artifacts, approvals) ++ changed
@@ -4782,9 +4819,8 @@ defmodule Apiary.Stages do
   # At the work item's stage, until its last stage is done, they are the versions an
   # approval would record now (`recorded_versions/4`, the set `approve_locked/7` lists).
   # At any other stage with a person's approval in this take in, they are the versions the
-  # newest such approval recorded, in its order; with none, the versions its gate shows. A
-  # person's version of the submission type is never one (`recordable/2`). [] for a stage
-  # the work item's process version does not have.
+  # newest such approval recorded, in its order; with none, the versions its gate shows. []
+  # for a stage the work item's process version does not have.
   @doc false
   @spec gate_frames(WorkItem.t(), Processes.Version.t(), String.t()) :: [
           %{type: String.t(), name: String.t(), version: Artifacts.Version.t()}
@@ -4796,7 +4832,7 @@ defmodule Apiary.Stages do
         []
 
       stage ->
-        artifacts = work_item |> Artifacts.list() |> recordable(work_item)
+        artifacts = Artifacts.list(work_item)
         by_id = Map.new(artifacts, &{&1.id, &1})
 
         for version <- framed_versions(work_item, stage, artifacts) do
@@ -4808,36 +4844,6 @@ defmodule Apiary.Stages do
         end
     end
   end
-
-  # recordable/2 is `artifacts` with no version a person made of the submission type, the
-  # type in `submit.type` that the Submissions list reads (`Artifacts.submit_type/1`): only
-  # a run's submit step writes a submission (696 (c)), so a person's version of it is no
-  # change. An approval records none, at a person's gate or a gate `none`
-  # (`approve_none!/4`); the work item page frames none (`recorded_versions/4`,
-  # `gate_frames/3`); none reopens a gate (`reopened?/4`); the gate's outputs leave it out
-  # (`status/2`, `gate_versions/3`); no stage reads it as an input (`inputs/1`,
-  # `read_version/6`, by way of `status/2`, `facts/3` and `approved/5`), nor does a
-  # switch's plan (`switch_tracks/1`); and the artifact index has no newer version or
-  # change for it (`artifact_index/2`). A person's version of every other type stays.
-  defp recordable(artifacts, work_item) do
-    case Artifacts.submit_type(work_item) do
-      nil ->
-        artifacts
-
-      type ->
-        for artifact <- artifacts,
-            do: %{artifact | versions: recordable_versions(artifact.versions, artifact, type)}
-    end
-  end
-
-  defp recordable_list(work_item), do: work_item |> Artifacts.list() |> recordable(work_item)
-
-  # The versions of `artifact` that `recordable/2` keeps, for the submit type `submit_type`
-  # (nil for none).
-  defp recordable_versions(versions, %{type: type}, type) when is_binary(type),
-    do: Enum.reject(versions, &(&1.writer == :person))
-
-  defp recordable_versions(versions, _artifact, _submit_type), do: versions
 
   defp framed_versions(work_item, stage, artifacts) do
     here? = work_item.stage_id == stage["id"]
@@ -4946,7 +4952,7 @@ defmodule Apiary.Stages do
 
     case placed(work_item) do
       {:ok, version, stage} ->
-        missing(outputs(work_item, version, stage, recordable_list(work_item)))
+        missing(outputs(work_item, version, stage, Artifacts.list(work_item)))
 
       :not_placed ->
         []
@@ -4959,7 +4965,7 @@ defmodule Apiary.Stages do
   defp outputs_exist(work_item, version, stage) do
     with true <- Runner.people?(stage),
          [_one | _more] = types <-
-           missing(outputs(work_item, version, stage, recordable_list(work_item))) do
+           missing(outputs(work_item, version, stage, Artifacts.list(work_item))) do
       {:error, {:outputs_missing, types}}
     else
       _none -> :ok
@@ -4992,28 +4998,21 @@ defmodule Apiary.Stages do
 
   # The version of `type` that `stage` reads, whether or not the stage lists it as an
   # input: a person's change to it that no approval lists yet (`changed_version/3`), else
-  # a person's version added on the work item in this stage, else the approved version:
+  # the approved version:
   # what the gate of the nearest earlier stage that approved one approved, and what the
   # newest person's approval at this stage or a later one listed (`listed_later/4`). Of
   # those two, the higher-numbered where both are versions of one name, else the newer
   # version (`newest_listed/1`); nil for none. Where an approval lists several versions
   # of one artifact, as a person's approval that lists a change beside an older output
   # does, the read is the highest-numbered of them (`approved_version/3`). A withdrawn
-  # name is never read (`Artifacts.withdrawn?/1`): neither a person's version nor an
-  # approved one of it. `approvals` is `approvals_by_version/1`.
+  # name is never read (`Artifacts.withdrawn?/1`): neither a change nor an approved
+  # version of it. `approvals` is `approvals_by_version/1`.
   defp read_version(work_item, version, stage, artifacts, type, approvals) do
     changed = changed_version(artifacts, type, listed(approvals))
     artifacts = Enum.reject(artifacts, &Artifacts.withdrawn?/1)
 
     by_id =
       for a <- artifacts, v <- a.versions, into: %{}, do: {v.public_id, {a.type, a.name, v}}
-
-    person =
-      artifacts
-      |> Enum.filter(&(&1.type == type))
-      |> Enum.flat_map(& &1.versions)
-      |> Enum.filter(&(&1.writer == :person and &1.stage_id in [nil, stage["id"]]))
-      |> Enum.max_by(& &1.number, fn -> nil end)
 
     earlier = earlier_stage_ids(version, stage)
 
@@ -5030,7 +5029,7 @@ defmodule Apiary.Stages do
     approved =
       newest_listed(for v <- [gated, later], v != nil, do: {elem(by_id[v.public_id], 1), v})
 
-    changed || person || approved
+    changed || approved
   end
 
   # The version of `type` that the newest person's approval at a stage not in `earlier`
@@ -5073,9 +5072,9 @@ defmodule Apiary.Stages do
   end
 
   # A person's change to an output (vault 0261, 624 (a)): a version that has a `decision`,
-  # the person's note that asked for it, or that a person stored, in any stage, that no
-  # approval lists (`listed`), and whose number is higher than that of every version of
-  # its artifact that an approval lists. A push numbers its version under the work item's
+  # a person's note that contains the change asked for, in any stage, that no approval
+  # lists (`listed`), and whose number is higher than that of every version of its
+  # artifact that an approval lists. A push numbers its version under the work item's
   # lock, as an approval reads the versions it lists, so the numbers order the two where a
   # time taken before the lock would not. A version of a withdrawn name, a withdrawal and a
   # version by a run a member cancelled are never one. Nor is a version of the questions or
@@ -5113,8 +5112,7 @@ defmodule Apiary.Stages do
         |> Enum.max(fn -> 0 end)
 
       Enum.filter(artifact.versions, fn version ->
-        (is_binary(version.decision_id) or version.writer == :person) and
-          version.number > highest and not version.withdrawn and
+        is_binary(version.decision_id) and version.number > highest and not version.withdrawn and
           not Artifacts.cancelled?(version)
       end)
     end

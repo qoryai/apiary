@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ArtifactLive.Load do
-  # What the artifact pages read (`ApiaryWeb.ArtifactLive.Show`, `ApiaryWeb.ArtifactLive.New`):
-  # a work item by its number for a reader who may read it, a version of one of its
-  # artifacts, a type, and the content of the files a view shows.
+  # What the artifact page reads (`ApiaryWeb.ArtifactLive.Show`): a work item by its
+  # number for a reader who may read it, a version of one of its artifacts, a type, and
+  # the content of the files a view shows.
   #
   # The module reference leaves out this module of the `workflow_model` feature.
   @moduledoc false

@@ -34,8 +34,10 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      `Apiary.Artifacts.push/5` returns, the files that do not match the type's format
   #      among it, `422` `invalid_artifact`; a run's version of `questions` or
   #      `review-comments` that changes what members wrote, `422` `invalid_artifact` with
-  #      the rule it breaks; a `decision` that is not the id of a person's note on the
-  #      work item (`Apiary.Stages.Notes`), `422` `unknown_decision`; and a version of
+  #      the rule it breaks; a version of `acceptance-criteria` under a name other than
+  #      `main`, `422` `invalid_artifact` with `name` in `names`, before its file is
+  #      checked; a `decision` that is not the id of a person's note on the work item
+  #      (`Apiary.Stages.Notes`), `422` `unknown_decision`; and a version of
   #      `questions` or `review-comments` whose file is over the size limit as stored,
   #      with each number that is an integer in value written as an integer (`1e3` as
   #      `1000`), `422` `too_large`;
@@ -46,9 +48,9 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      then files with it `422` `withdrawal_with_files`, then what
   #      `Apiary.Artifacts.withdraw/4` returns under the work item's lock: a name whose
   #      newest version a person approved at a gate `422` `type_not_withdrawable`, a name
-  #      with no version `409` `no_version`, a name whose newest version is a withdrawal
-  #      `409` `already_withdrawn`, and one whose newest version a person wrote `409`
-  #      `person_version`, then a `decision` as for a push, `422` `unknown_decision`.
+  #      with no version `409` `no_version`, and a name whose newest version is a
+  #      withdrawal `409` `already_withdrawn`, then a `decision` as for a push, `422`
+  #      `unknown_decision`.
   #
   # A file is sent from the store, with `send_file` or in chunks, and signed over the
   # SHA-256 Qory Apiary computed from its bytes when it stored them. It is served as a
@@ -68,7 +70,6 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   alias Apiary.Artifacts.Format
   alias Apiary.Dispatches.RunEnd
-  alias Apiary.Dispatches.Inputs
   alias Apiary.PublicId
   alias Apiary.Runs.PushedCommit
   alias ApiaryWeb.Contract.Configuration
@@ -599,6 +600,15 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   defp refused({:unknown_decision, _decision}, _push), do: {:error, :unknown_decision}
 
+  # A version of the acceptance criteria under a name other than `main`: `422`
+  # `invalid_artifact` for `name`, whose form `Apiary.Artifacts.push/5` checked first.
+  defp refused({:invalid, {:criteria_name, name}}, _push) when is_binary(name),
+    do:
+      {:error,
+       {:invalid_artifact, "name",
+        "Name the acceptance criteria main: a work item has one set of acceptance " <>
+          "criteria, and this push has the name #{name}."}}
+
   defp refused({:invalid, :no_files}, _push), do: {:error, :invalid_request, "files"}
 
   # A verdict whose `track` the gate of the version's stage does not offer: `422`
@@ -681,7 +691,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
         "Add an MP4 or WebM video to the version of #{push.name}: " <>
           "a WebVTT file goes with a video."}}
 
-  # A run of another work item; the person's refusals never come to a run.
+  # A run of another work item; `:forbidden` is a member action's refusal, which a run's
+  # push does not return.
   defp refused(code, _push) when code in [:not_found, :forbidden], do: {:error, :not_found}
 
   # A run that ended after `live/1` read it, found ended under the work item's lock.
@@ -1003,16 +1014,6 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       message:
         "Leave #{type}/#{name} as it is. Its newest version, v#{number}, is already a " <>
           "withdrawal."
-    )
-  end
-
-  defp write_error(conn, {:error, {:withdraw, {:person, number, user_id}, type, name}}) do
-    error(conn, 409, "person_version",
-      type: type,
-      message:
-        "Leave #{type}/#{name} to a member. Its newest version, v#{number}, is a version " <>
-          "by #{Inputs.person_name(user_id)}, and a run withdraws only a name whose newest " <>
-          "version a run wrote."
     )
   end
 

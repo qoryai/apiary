@@ -179,6 +179,10 @@ defmodule Apiary.Dispatches.DispatchRun do
     # start. No changeset casts them.
     belongs_to :process_version, Apiary.Processes.Version
     field :stage_id, :string
+    # Whether the stage's sequence in the run's process version has a loop. Not stored:
+    # `Apiary.Artifacts.with_sessions/1` sets it for a run with sessions and a process
+    # version whose document has the stage; nil is unknown, for any other run.
+    field :loop, :boolean, virtual: true
     field :round, :integer
     field :stage_entry, :integer
     field :loop_entry, :integer
@@ -227,6 +231,8 @@ defmodule Apiary.Dispatches.DispatchRun do
 
     has_many :dispatches, Apiary.Dispatches.Dispatch
     has_one :run, Apiary.Runs.Run
+    # The sessions of a run of a stage with `shared_run: true` (`Apiary.Stages.Session`).
+    has_many :sessions, Apiary.Stages.Session
 
     timestamps(type: :utc_datetime_usec)
   end

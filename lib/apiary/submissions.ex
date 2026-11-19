@@ -86,8 +86,8 @@ defmodule Apiary.Submissions do
 
   @doc """
   The rows of the work item's submissions of `type`, newest first, from `artifacts`
-  (`Apiary.Artifacts.list/1`). A version a cancelled run wrote, a withdrawal and a version a
-  member added by hand are left out. `[]` for none.
+  (`Apiary.Artifacts.list/1`). A version a cancelled run wrote and a withdrawal are left
+  out. `[]` for none.
 
   A row is `%{id:, number:, run:, run_id:, workspace_id:, stage_id:, at:, approved:, ref:,
   repositories:}`: the version's public id and number, its run's number, public id and
@@ -124,7 +124,7 @@ defmodule Apiary.Submissions do
         nil -> []
       end
 
-    listed = all |> counted() |> Enum.filter(&(&1.writer == :run)) |> within(only)
+    listed = all |> counted() |> within(only)
     included = MapSet.new(listed, & &1.public_id)
     ends = run_ends(listed)
     approved = approved(work_item, listed)
@@ -300,11 +300,11 @@ defmodule Apiary.Submissions do
     end
   end
 
-  # Whether a version older than `version` that is a run's submission is not among the rows:
-  # beyond the window, or written by a run a member cancelled. Its head may be the base.
+  # Whether a submission older than `version` is not among the rows: beyond the window, or
+  # written by a run a member cancelled. Its head may be the base.
   defp hidden_before?(all, version, included) do
     Enum.any?(all, fn other ->
-      other.number < version.number and not other.withdrawn and other.writer == :run and
+      other.number < version.number and not other.withdrawn and
         not MapSet.member?(included, other.public_id)
     end)
   end
