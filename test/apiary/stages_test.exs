@@ -2429,7 +2429,7 @@ defmodule Apiary.StagesTest do
     end
 
     # The last stage, Explore, with the output walkthrough beside the proposal; its run
-    # pushes the proposal and an walkthrough of each of `names`, and the stage is approved.
+    # pushes the proposal and a walkthrough of each of `names`, and the stage is approved.
     # `by` is who approved the gate: `:automatic`, as a gate `none` records it, with no
     # member, or `:person`, the member who approved.
     defp done_with_walkthroughs!(scope, names, by \\ :automatic) do
@@ -2744,7 +2744,7 @@ defmodule Apiary.StagesTest do
     defp scenarios(binary),
       do: [%{filename: "demo-scenarios.md", content_type: "text/markdown", binary: binary}]
 
-    # The end of a run of verify-a-ticket: an walkthrough and the verdict passed.
+    # The end of a run of verify-a-ticket: a walkthrough and the verdict passed.
     defp verified(run, registered) do
       {:ok, _version} =
         Artifacts.push(
@@ -5317,7 +5317,7 @@ defmodule Apiary.StagesTest do
   describe "inputs after a move to an earlier stage" do
     @verify "st_m1mqbeywdg"
 
-    # Explore, Shape (reads Explore's proposal), Build (makes an walkthrough and a spec) and
+    # Explore, Shape (reads Explore's proposal), Build (makes a walkthrough and a spec) and
     # Verify.
     defp moved_process!(scope) do
       save!(scope, [

@@ -1043,7 +1043,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
   describe "the input frames beside a Scenarios frame" do
     # The frames of a Verify gate as `StageTab.verify_frames/2` and `input_frames/2` return
     # them: a film and pictures are one Scenarios frame, and Verify's inputs are a film,
-    # pictures and an walkthrough.
+    # pictures and a walkthrough.
     test "fold every film and picture into the Scenarios frame" do
       stage = %{outputs: ~w(verification demo-video screenshot)}
       outputs = StageTab.verify_frames(stage, %{"demo-video" => 1, "screenshot" => 2})

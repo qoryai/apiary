@@ -15,7 +15,7 @@ defmodule Apiary.WorkflowEndToEndTest do
   #      item to it. Dana confirms Explore; Shape's run pushes acceptance criteria and
   #      ends; Shape is at its gate. Dana approves Shape; Build is entered with the
   #      criteria as its input.
-  #   4. A Build run pushes an walkthrough and gives `changes-requested`; the second round
+  #   4. A Build run pushes a walkthrough and gives `changes-requested`; the second round
   #      gives `passed`. The Exists check passes, and Build is at its gate.
   #   5. Dana requests changes; the next run stops, and Build escalates (`run_stopped`).
   #      Dana runs another round with a note, and the next run reads the note.
@@ -23,7 +23,7 @@ defmodule Apiary.WorkflowEndToEndTest do
   #      the work item to it; the run queued for round 3 moves to version 3.
   #
   # Test 7 drives steps 1 and 2, then step 7: Dana saves version 2, in which Build runs
-  # capture-demo once, outside a loop. Build's run pushes an walkthrough and ends with no
+  # capture-demo once, outside a loop. Build's run pushes a walkthrough and ends with no
   # verdict; Build escalates (`run_stopped`), and Dana accepts the walkthrough as it is.
   #
   # Not async: the store's folder and the modules the stage runner and the run API call
@@ -299,7 +299,7 @@ defmodule Apiary.WorkflowEndToEndTest do
     Map.merge(ctx, %{work_item: work_item, v2: v2, criteria: criteria})
   end
 
-  # 4. Build's first run reads the approved criteria, pushes an walkthrough and gives
+  # 4. Build's first run reads the approved criteria, pushes a walkthrough and gives
   # `changes-requested`: the loop's ring of one workflow starts round 2. The second run
   # pushes the next walkthrough and gives `passed`: the loop ends, the Exists check of the
   # walkthrough passes, and Build waits at its gate.
@@ -544,9 +544,9 @@ defmodule Apiary.WorkflowEndToEndTest do
   end
 
   # 7. Dana saves version 2, whose Build runs capture-demo once, outside a loop, and must
-  # output an walkthrough, and assigns the work item to it. Dana confirms Explore and
+  # output a walkthrough, and assigns the work item to it. Dana confirms Explore and
   # approves Shape, which has no workflow and no output: Build is entered. Build's run
-  # pushes an walkthrough and ends by its exit with no verdict: Build escalates with the
+  # pushes a walkthrough and ends by its exit with no verdict: Build escalates with the
   # cause `run_stopped` and its point, and the stage's run list shows no verdict for the run.
   # The walkthrough has a version, so Dana accepts it as it is, and Build waits at its gate.
   defp step_7(ctx) do
@@ -740,7 +740,7 @@ defmodule Apiary.WorkflowEndToEndTest do
   end
 
   # Version 2: Shape runs shape-a-ticket and must output acceptance criteria; Build reads
-  # them, runs a loop of capture-demo, at most 3 rounds, and must output an walkthrough.
+  # them, runs a loop of capture-demo, at most 3 rounds, and must output a walkthrough.
   defp build_document(document) do
     update_stage(document, fn
       %{"id" => @shape} = stage ->

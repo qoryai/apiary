@@ -4882,7 +4882,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         |> taken_in_fixture()
         |> place!(version, @build, :escalated, stage_round: 3, stage_entry: 1)
 
-      # An earlier run of Build pushed an walkthrough named `other`; the escalated run, which
+      # An earlier run of Build pushed a walkthrough named `other`; the escalated run, which
       # also pushed a verdict, pushed the walkthrough `main`.
       {_run, earlier} = registered!(work_item, stage_run!(work_item, @build), :handed_over)
 
