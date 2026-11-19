@@ -1911,8 +1911,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: factory, secrets -->
 - The run configuration's `model_credential` is now
   `default_model_provider_credential_name`, the default model provider credential, as in
-  Forager's run contract, which Qory Apiary copies at the version that renames it; an API
-  credential there has no `chosen`.
+  Forager's contract (`contracts/forager/v1`), which Qory Apiary copies at the commit that
+  renames it; an API credential there has no `chosen`.
+- The same copy of Forager's contract adds the `runtime.result` event of a Codex launch,
+  and the member `agent` of a runtime in `runtimes.json`, which Qory Apiary skips when it
+  reads the file.
 <!-- /feature -->
 <!-- feature: factory -->
 - The claim builds an Explore run's `run_settings`, a stage's runs among them, with the

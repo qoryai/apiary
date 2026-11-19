@@ -526,7 +526,7 @@ defmodule ApiaryWeb.NodeLive.AccessKey do
          refused(
            socket,
            :"access_key.add",
-           gettext("Only owners and admins manage a machine's access keys.")
+           gettext("Only owners and admins add a machine's access keys.")
          )}
   end
 
