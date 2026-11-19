@@ -193,8 +193,9 @@ defmodule Apiary.StagesFixtures do
   @doc """
   A live run of the queue at the stage `stage_id` (nil for the work item's stage): the
   work item's newest run when it is at that stage and has not ended, else a new waiting
-  run there, with the next attempt. For a test whose stage runs no workflow, so that a
-  run pushes the stage's versions; no step of the stage runner follows the insert.
+  run there, with the next attempt. For a test that needs a live run where the stage
+  runner starts none: at a stage that runs no workflow, or at a stage whose runs ended,
+  for a push after them. No step of the stage runner follows the insert.
   """
   def live_stage_run!(%WorkItem{} = work_item, stage_id \\ nil) do
     work_item = Repo.get!(WorkItem, work_item.id)
