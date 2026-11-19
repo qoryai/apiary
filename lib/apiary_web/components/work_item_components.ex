@@ -2570,8 +2570,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :sequences, :map,
     default: %{},
-    doc:
-      "by the public id of each of `runs` with `sessions`, its stage's sequence in its process version (`Apiary.Stages.shared_sequences/1`)"
+    doc: "by a shared run's public id, its stage's sequence (`Stages.shared_sequences/1`)"
 
   attr :recorded, :map,
     default: %{},
@@ -6259,8 +6258,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :sequences, :map,
     default: %{},
-    doc:
-      "by a run's public id, its stage's sequence in its process version, in place of `sequence` for that run's round limit"
+    doc: "by a run's public id, its stage's sequence, in place of `sequence` for that run"
 
   attr :recorded, :map,
     default: %{},

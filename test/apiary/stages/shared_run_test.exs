@@ -824,7 +824,7 @@ defmodule Apiary.Stages.SharedRunTest do
     end
   end
 
-  describe "the runs of a shared stage (shared_run_ids/1)" do
+  describe "the runs of a shared stage (shared_sequences/1)" do
     setup %{scope: scope} do
       save!(scope, [build(workflows(~w(plan-the-build review-changes)))])
 
@@ -833,28 +833,57 @@ defmodule Apiary.Stages.SharedRunTest do
       %{run: run, id: registered.public_id}
     end
 
-    test "are those whose stage has shared_run in the run's process version", %{id: id} do
-      assert Stages.shared_run_ids([]) == []
-      assert Stages.shared_run_ids(["rn_none"]) == []
-      assert Stages.shared_run_ids([id, "rn_none"]) == [id]
+    test "are the runs of a shared stage, each with the sequence of its process version",
+         %{scope: scope, id: id} do
+      first = workflows(~w(plan-the-build review-changes))
+
+      assert Stages.shared_sequences([]) == %{}
+      assert Stages.shared_sequences(["rn_none"]) == %{}
+      assert Stages.shared_sequences([id, "rn_none"]) == %{id => first}
+
+      # A later version of the process with another sequence: a run claimed under it has
+      # that sequence, and the first run keeps the sequence of its version.
+      save!(scope, [build(workflows(~w(plan-the-build)))])
+      {_work_item, run} = taken_in!(scope)
+      second = registered!(scope, run).public_id
+
+      assert Stages.shared_sequences([id, second]) == %{
+               id => first,
+               second => workflows(~w(plan-the-build))
+             }
+    end
+
+    test "give a stage with no sequence an empty one", %{run: run, id: id} do
+      version = Repo.get!(Processes.Version, run.process_version_id)
+
+      stages =
+        for stage <- version.document["stages"],
+            do: if(stage["id"] == run.stage_id, do: Map.delete(stage, "sequence"), else: stage)
+
+      {1, nil} =
+        Repo.update_all(from(v in Processes.Version, where: v.id == ^version.id),
+          set: [document: %{version.document | "stages" => stages}]
+        )
+
+      assert Stages.shared_sequences([id]) == %{id => []}
     end
 
     test "leave out a run whose stage its process version does not have", %{run: run, id: id} do
-      assert Stages.shared_run_ids([id]) == [id]
+      assert Map.keys(Stages.shared_sequences([id])) == [id]
 
       {1, nil} =
         Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
           set: [stage_id: "st_zzzzzzzzzz"]
         )
 
-      assert Stages.shared_run_ids([id]) == []
+      assert Stages.shared_sequences([id]) == %{}
     end
 
     test "leave out a run with no process version, and read no version for it", %{
       run: run,
       id: id
     } do
-      assert Stages.shared_run_ids([id]) == [id]
+      assert Map.keys(Stages.shared_sequences([id])) == [id]
 
       {1, nil} =
         Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
@@ -863,7 +892,7 @@ defmodule Apiary.Stages.SharedRunTest do
 
       queries!()
 
-      assert Stages.shared_run_ids([id]) == []
+      assert Stages.shared_sequences([id]) == %{}
       assert_received {:query, "SELECT" <> _rest = rows}
       assert rows =~ ~s(FROM "dispatch_runs")
       refute_received {:query, _query}
@@ -872,7 +901,7 @@ defmodule Apiary.Stages.SharedRunTest do
     test "and run_sessions/1 read nothing for no run", %{id: id} do
       queries!()
 
-      assert Stages.shared_run_ids([]) == []
+      assert Stages.shared_sequences([]) == %{}
       assert Stages.run_sessions([]) == %{}
       refute_received {:query, _query}
 

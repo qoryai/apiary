@@ -2848,16 +2848,6 @@ defmodule Apiary.Stages do
     end)
   end
 
-  # shared_run_ids/1 is those of the registered runs `ids` (their public ids, `rn_…`)
-  # whose stage has `shared_run: true` in the run's process version, in the order of `ids`
-  # (`shared_sequences/1`).
-  @doc false
-  @spec shared_run_ids([String.t()]) :: [String.t()]
-  def shared_run_ids(ids) do
-    sequences = shared_sequences(ids)
-    Enum.filter(ids, &Map.has_key?(sequences, &1))
-  end
-
   # shared_sequences/1 is, by public id, the sequence of the stage of each of the
   # registered runs `ids` whose stage has `shared_run: true` in the run's process version.
   # The stage is read from the version's document by the run's `process_version_id` and

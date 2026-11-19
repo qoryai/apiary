@@ -1262,7 +1262,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       {work_item, run, registered} = shared_build!(scope, looped())
       :ok = to_round_2!(run)
 
-      # A later version of the process gives the loop 5 rounds, and the work item is placed
+      # In a later version of the process the loop has 5 rounds, and the work item is placed
       # in it: the run claimed under the first version keeps its limit of 3.
       [plan, checks, %{"loop" => loop}] = looped()
 
@@ -1271,6 +1271,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
           "sequence" => [plan, checks, %{"loop" => %{loop | "rounds" => 5}}],
           "shared_run" => true
         })
+
+      assert second.id != run.process_version_id
 
       {1, nil} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
