@@ -1189,10 +1189,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end
   end
 
+  # The dialog has the words of the card's accept button (`StageComponents.accept_label/1`).
   defp stage_spend("stage_resolve", %{"how" => "accept"} = params, socket) do
+    start = get_in(socket.assigns, [:flow, :escalation, :start])
+
     ask_if_run("stage_resolve", params, socket, :accept,
-      title: gettext("Accept as it is?"),
-      action: gettext("Accept as it is"),
+      title: StageComponents.accept_title(start),
+      action: StageComponents.accept_label(start),
       return_to: "work-item-stage-escalation-accept",
       note: escalation_note()
     )

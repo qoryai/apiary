@@ -4894,13 +4894,12 @@ msgstr "About this repository"
 msgid "About work sources"
 msgstr ""
 
-#: lib/apiary_web/live/work_item_live/show.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Accept as it is"
 msgstr ""
 
-#: lib/apiary_web/live/work_item_live/show.ex
+#: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Accept as it is?"
 msgstr ""
@@ -16656,6 +16655,11 @@ msgstr ""
 
 #: lib/apiary/stages/points.ex
 #, elixir-autogen, elixir-format
+msgid "Pick Move back to return the work item to %{to} once more, or pick Start %{workflow}."
+msgstr ""
+
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
 msgid "Pick Move back to return the work item to %{to} once more."
 msgstr ""
 
@@ -17530,6 +17534,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "Read the open finding, then pick Run another round."
 msgid_plural "Read the %{count} open findings, then pick Run another round."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
+msgid "Read the open finding, then pick Start %{workflow} or Run another round."
+msgid_plural "Read the %{count} open findings, then pick Start %{workflow} or Run another round."
 msgstr[0] ""
 msgstr[1] ""
 
@@ -20418,6 +20429,16 @@ msgstr ""
 #: lib/apiary_web/live/artifact_live/types.ex
 #, elixir-autogen, elixir-format
 msgid "Standard types"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Start %{workflow}"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Start %{workflow}?"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/registration.ex
