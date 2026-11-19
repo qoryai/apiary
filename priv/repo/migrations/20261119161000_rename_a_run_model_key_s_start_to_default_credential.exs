@@ -1,9 +1,9 @@
 defmodule Apiary.Repo.Migrations.RenameARunModelKeySStartToDefaultCredential do
   use Ecto.Migration
 
-  # `run_model_keys.default_credential`, formerly `start`: true on the run's default model
-  # provider credential, at most one per run. The index that keeps it to one per run moves
-  # with it, its condition then on `default_credential`.
+  # The column `run_model_keys.start` is renamed `default_credential`: true on the run's
+  # default model provider credential, at most one per run. The index that keeps it to one
+  # per run is renamed too, and its condition is then on `default_credential`.
   def change do
     rename table(:run_model_keys), :start, to: :default_credential
 
