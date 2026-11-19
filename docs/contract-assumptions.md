@@ -380,28 +380,28 @@ a run with a workflow (`Apiary.Stacks.workflow/2`, or, with the workflow model, 
 workflow of its stage entry) and `factory` on: the limit set for that workflow at the
 run's target, else the one set at its workspace (`Apiary.TimeLimits`), else 180 minutes.
 With no workflow for the run, the member is absent: Qory Apiary sets no time limit for
-session 1. After it come `shared_run`, `true` for a run
-of a stage with `shared_run: true`, and `full_suite`, `true` for a run with `write` access
-of an entry in a loop or with `first_attempt: true`, never for a run of Explore; each is
-absent where it would be `false`. The claim registers the run, and the run endpoint
-refuses, under any key, a registration whose `run_id` is that of such a run, waiting,
-claimed, handed over or ended, with the signed `409` `run_id_used`, decided first: before
-the stored answer to a repeat and before the instance limit, the Forager contract giving
-the other causes and their order. Qory Apiary reads "first" as the first of the run
-endpoint's checks, so the lookup (`dispatch_runs.run_id`, unique on the instance, read
-across every workspace and organisation) comes after the refusals every signed request
-gets, the body's `400` and the `time`'s `401` included, so nothing is looked up for a
-request that does not verify or is not fresh, and before every answer that depends on the
-key: the `404` of a key that may not open a run, the repeat, the `410`, the resolution's
-`409`s and the instance limit. A node's key, a node pool's and a gateway's, one of a
-workspace or of an organisation, are given that one answer for such an id, and the answer
-never tells which kind of key asked or what the key may do. The refusal stores nothing
-beyond what every verified request leaves, the spent token of the key's rate and the
-instance's sighting (`Apiary.Nodes.seen/3`): no run, no count of the node's instance
-limit, no use recorded on the key. A lookup the database cannot answer is `503`
-`unavailable`. A run of the queue is given its `run_id`, a fresh UUID, when it is queued,
-before anyone outside the instance learns it, and the id never changes, so no registration
-can come between the queue and the lookup.
+session 1. After `time_limit_minutes` come `shared_run`, `true` for a run of a stage with
+`shared_run: true`, and `full_suite`, `true` for a run with `write` access of an entry in
+a loop or with `first_attempt: true`, never for a run of Explore; each is absent where it
+would be `false`. The claim registers the run, and the run endpoint refuses, under any
+key, a registration whose `run_id` is that of such a run, waiting, claimed, handed over or
+ended, with the signed `409` `run_id_used`, decided first: before the stored answer to a
+repeat and before the instance limit, the Forager contract giving the other causes and
+their order. Qory Apiary reads "first" as the first of the run endpoint's checks, so the
+lookup (`dispatch_runs.run_id`, unique on the instance, read across every workspace and
+organisation) comes after the refusals every signed request gets, the body's `400` and the
+`time`'s `401` included, so nothing is looked up for a request that does not verify or is
+not fresh, and before every answer that depends on the key: the `404` of a key that may
+not open a run, the repeat, the `410`, the resolution's `409`s and the instance limit. A
+node's key, a node pool's and a gateway's, one of a workspace or of an organisation, are
+given that one answer for such an id, and the answer never tells which kind of key asked
+or what the key may do. The refusal stores nothing beyond what every verified request
+leaves, the spent token of the key's rate and the instance's sighting
+(`Apiary.Nodes.seen/3`): no run, no count of the node's instance limit, no use recorded on
+the key. A lookup the database cannot answer is `503` `unavailable`. A run of the queue is
+given its `run_id`, a fresh UUID, when it is queued, before anyone outside the instance
+learns it, and the id never changes, so no registration can come between the queue and the
+lookup.
 
 The events endpoint holds such a run the same way. A batch whose subject is its `run_id`,
 from a key that does not reach a run under that id, is `409` `run_id_used`, before or
