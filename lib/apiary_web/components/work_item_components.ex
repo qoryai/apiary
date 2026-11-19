@@ -6369,10 +6369,9 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
-  # The rows of the record's fold, as `{kind, row, place}`: each run, a run with `sessions`
-  # as `{:shared, rows}` with its sessions and the skips passed over in it
-  # (`shared_rows/2`), and each other skip before the first run whose attempt is after the
-  # skip's `after_attempt`, the skips after the last run at the end.
+  # The fold's rows, `{kind, row, place}`: each run, one with `sessions` as `{:shared, rows}`
+  # (`shared_rows/2`), and each other skip before the first run whose attempt is after its
+  # `after_attempt`, those after the last run at the end.
   defp record_rows(runs, skips, sessions) do
     {inside, skips} = skips_inside(runs, skips, sessions)
 
@@ -6446,10 +6445,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :recorded, :map, required: true
   attr :now, :any, required: true
 
-  # A run of a stage with `shared_run: true`: a fold whose line has the run's attempt, how
-  # many workflows it ran or passed over, its round, of the loop's limit inside a loop, its
-  # verdict and when it ended (`shared_parts/5`); in it, a row for each session
-  # (`session_parts/4`) and each workflow passed over in the run, in the order they ran.
+  # A run of a stage with `shared_run: true`: a fold whose line is `shared_parts/5`, with a
+  # row for each session (`session_parts/4`) and each workflow passed over in the run, in
+  # the order they ran.
   defp shared_run(assigns) do
     assigns =
       assign(assigns,
@@ -6494,6 +6492,9 @@ defmodule ApiaryWeb.WorkItemComponents do
     """
   end
 
+  # The states of a run that stopped before its end (`run_state_word/1`).
+  @stopped [:failed, :lost, :cancelled, :paused]
+
   # The line of a run with sessions: as `run_parts/4` with no workflow and no round, then
   # after the attempt how many workflows the run ran or passed over, and the round: that
   # of its newest session in a loop, with the loop's limit; else the round of its run.
@@ -6517,11 +6518,29 @@ defmodule ApiaryWeb.WorkItemComponents do
             gettext("round %{round}", round: Format.number(stage_run.round))
       end
 
-    # While the run is in a session, the verdict an earlier session stored is no verdict
-    # of the run's.
-    open? = match?(%{state: nil}, List.last(sessions)) and run[:state] == :running
+    # The run's verdict is its newest session's: running while it runs, the run's state
+    # once it stopped in a session (`run_parts/4`), else that session's verdict.
     stage_run = stage_run && %{stage_run | workflow: nil, round: nil}
-    stage_run = if stage_run && open?, do: %{stage_run | shows: :running}, else: stage_run
+    newest = List.last(sessions)
+
+    stage_run =
+      cond do
+        is_nil(stage_run) ->
+          nil
+
+        newest.state == nil and run[:state] == :running ->
+          %{stage_run | shows: :running}
+
+        newest.state == nil and run[:state] in @stopped ->
+          %{stage_run | shows: :no_verdict}
+
+        stage_run.shows in [:passed, :failed, :no_verdict] ->
+          %{stage_run | shows: session_shows(newest)}
+
+        true ->
+          stage_run
+      end
+
     [attempt | rest] = run_parts(attempt_words(run), run, stage_run, now)
     [attempt, count | List.wrap(round)] ++ rest
   end
@@ -6539,10 +6558,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   # The workflow of the harness that records the demos; its row reads what its run recorded.
   @capture "capture-demos"
 
-  # A session's row: its workflow, its round inside a loop, its verdict and when it ended.
-  # A session no report ended reads running, with when it started, while its run runs,
-  # else the run's state. A session of capture-demos that ended reads what its run
-  # recorded (`recorded_words/1`) in place of its verdict, where it recorded any.
+  # A session's row: workflow, round inside a loop, verdict and end. With no report, it
+  # reads running while its run runs, the run's state once it stopped, else as ended.
+  # capture-demos reads what its run recorded (`recorded_words/1`) in place of a verdict.
   defp session_parts(session, run, recorded, now) do
     round =
       if is_integer(session.loop_entry),
@@ -6551,20 +6569,12 @@ defmodule ApiaryWeb.WorkItemComponents do
     said =
       cond do
         not is_nil(session.state) ->
-          ended = [session_verdict(session), session.ended_at && ended_ago(session.ended_at, now)]
-
-          case session.workflow == @capture && recorded_words(recorded) do
-            words when is_binary(words) -> [words, List.last(ended)]
-            _none -> ended
-          end
+          ended_parts(session, session.ended_at, recorded, now)
 
         run[:cancelling] == true ->
           [cancelling_word(%{run: run})]
 
-        run[:state] in [:failed, :lost, :cancelled, :paused] ->
-          [run_state_word(run), run[:ended_at] && ended_ago(run.ended_at, now)]
-
-        true ->
+        run[:state] in [nil, :pending, :running] ->
           [
             hd(
               StageComponents.verdict_parts(
@@ -6574,21 +6584,36 @@ defmodule ApiaryWeb.WorkItemComponents do
             ),
             rich_gettext("started %{when}", when: inline_ago(session.started_at, now))
           ]
+
+        run[:state] in @stopped ->
+          [run_state_word(run), run[:ended_at] && ended_ago(run.ended_at, now)]
+
+        true ->
+          ended_parts(session, run[:ended_at], recorded, now)
       end
 
     Enum.reject([{:b, session.workflow}, round | said], &is_nil/1)
   end
 
-  defp session_verdict(session) do
-    shows =
-      case session.verdict do
-        :passed -> :passed
-        :failed -> :failed
-        nil -> :no_verdict
-      end
+  defp ended_parts(session, ended_at, recorded, now) do
+    words =
+      (session.workflow == @capture && recorded_words(recorded)) || session_verdict(session)
 
-    hd(StageComponents.verdict_parts(%{workflow: nil, round: nil, shows: shows}, nil))
+    [words, ended_at && ended_ago(ended_at, now)]
   end
+
+  defp session_verdict(session),
+    do:
+      hd(
+        StageComponents.verdict_parts(
+          %{workflow: nil, round: nil, shows: session_shows(session)},
+          nil
+        )
+      )
+
+  defp session_shows(%{verdict: :passed}), do: :passed
+  defp session_shows(%{verdict: :failed}), do: :failed
+  defp session_shows(_session), do: :no_verdict
 
   # What a run of capture-demos recorded: its versions of demo videos and of pictures,
   # each left out at 0; nil for none.

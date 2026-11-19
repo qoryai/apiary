@@ -241,10 +241,9 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     {reload(work_item), run, claimed!(run)}
   end
 
-  # A work item whose Build runs build-it, which passes, and whose Build is then approved
-  # into Verify, which runs `sequence` as one shared run, claimed (`claimed!/1`). Any
-  # entry passed over before the run is passed over at that approval. With `track`,
-  # Explore's gate offers that track and the confirm picks it.
+  # A work item whose Build passes and is approved into Verify, which runs `sequence` as one
+  # shared run, claimed (`claimed!/1`). With `track`, Explore's gate offers that track and
+  # the confirm picks it.
   defp shared_verify!(scope, sequence, track \\ nil) do
     :ok = scenarios_type!(scope)
 
@@ -1642,6 +1641,56 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert List.last(rows) =~ ~r/^implement-changes · round 2 · running · started \S/
       assert length(rows) == 5
+    end
+
+    test "a shared run that ended with no report of its last session: that session ended", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, run, registered} = shared_build!(scope, looped())
+      :ok = to_round_2!(run)
+      :ok = exited!(run, registered)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+      # The runner steps on the run's end: review-changes runs next, in a new run.
+      assert [line | rows] = fold_rows(view)
+
+      assert untimed(line) =~
+               ~r/^Attempt 3 \(Run #{registered.number}\) · 4 workflows · round 2 of 3 · ended without a verdict$/
+
+      assert [_plan, _checks, _implement, _review, implement, next] = rows
+      assert untimed(implement) == "implement-changes · round 2 · ended without a verdict"
+      assert next =~ ~r/^Attempt 4 · review-changes · round 2 · queued/
+    end
+
+    test "a shared run lost in round 2: the run's state, not round 1's verdict", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, run, registered} = shared_build!(scope, looped())
+      :ok = to_round_2!(run)
+
+      registered
+      |> Ecto.Changeset.change(state: "failed", exit_state: "lost", exited_at: DateTime.utc_now())
+      |> Repo.update!()
+
+      run
+      |> Repo.reload!()
+      |> Ecto.Changeset.change(state: :ended, end_cause: :lost)
+      |> Repo.update!()
+
+      {:ok, _told} = Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+      assert [line | rows] = fold_rows(view)
+
+      assert line =~
+               ~r/^Attempt 3 \(Run #{registered.number}\) · 4 workflows · round 2 of 3 · (Failed|Lost) · /
+
+      refute line =~ "did not pass"
+      assert List.last(rows) =~ ~r/^implement-changes · round 2 · (Failed|Lost) · /
     end
 
     test "a shared run with no loop reads its round, and a session row no round", %{

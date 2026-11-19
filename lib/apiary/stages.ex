@@ -2780,8 +2780,8 @@ defmodule Apiary.Stages do
   #     when it stopped;
   #   * `verdict` is that of the run's `verdict` version that the session stored, read as
   #     `runs/1` reads a run's (`:passed`, `:failed` or nil): the version the step on the
-  #     session's end read (`verdict_number`), where it is newer than the one the session
-  #     before read; nil for a session that stored none;
+  #     session's end read (`verdict_number`), or for a session no report ended the run's
+  #     newest, where it is newer than the one the session before read; else nil;
   #   * `started_at` and `ended_at` are those of the session's `Apiary.Runs.SessionRecord`;
   #     with no record, or none of that time, when the row was written and, for a session a
   #     report ended, when the report was recorded. `ended_at` is nil for no end.
@@ -2810,6 +2810,10 @@ defmodule Apiary.Stages do
           record = records[{session.dispatch_run_id, session.forager_session}]
           number = session.verdict_number
 
+          # A session no report ended has the run's newest verdict, where it is newer
+          # than the one the session before read, as the step on the run's end reads it.
+          number = number || unreported(session, verdicts, seen)
+
           verdict =
             if is_integer(number) and number != seen,
               do: verdicts[{session.dispatch_run_id, number}]
@@ -2820,6 +2824,15 @@ defmodule Apiary.Stages do
       {id, shown}
     end)
   end
+
+  defp unreported(%Session{state: nil, dispatch_run_id: id}, verdicts, seen) do
+    newest =
+      for({{^id, number}, _verdict} <- verdicts, do: number) |> Enum.max(fn -> nil end)
+
+    if newest && (is_nil(seen) or newest > seen), do: newest
+  end
+
+  defp unreported(_session, _verdicts, _seen), do: nil
 
   defp shown_session(session, record, verdict) do
     ended? = not is_nil(session.state)
