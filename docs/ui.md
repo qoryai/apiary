@@ -499,9 +499,10 @@ replaces the navigation it is in.
 - **Workspace settings › Model** (`/settings/model`, `ApiaryWeb.ModelChoiceLive`) has
   Provider, each model provider by its name, whose keys runs take. A provider that works
   with no runtime shows under Provider "<Provider> works with no runtime in this version
-  of Qory Apiary. Pick another provider.", and Save writes nothing while it shows. The part
+  of Qory. Pick another provider.", Provider has a red border, and Save writes nothing
+  while the line shows. The part
   Fallbacks (`#model-fallbacks`) is under Provider, the tiers and Runtime: the line "When
-  every key of Northwind Claude is in cooldown, runs use these, in order, from the next
+  every key of this provider is in cooldown, runs use these, in order, from the next
   run.", then one row for each fallback, in order, from the second on with a rule above
   it. A row is a group named by its place, "Fallback 2", with Provider, Model and effort
   per tier (`ApiaryWeb.ModelTiers.tiers/1`, as the default models have it) and Runtime
@@ -510,8 +511,8 @@ replaces the navigation it is in.
   up"). A row's Provider lists every provider that applies to the workspace, also one that
   works with no runtime, but the chosen provider and those of the other rows. A row whose
   provider works with no runtime shows "<Provider> works with no runtime in this version
-  of Qory Apiary. Pick another provider." under its Provider, and Save is disabled while
-  it shows. Add fallback adds a row of the first provider left that works with a runtime,
+  of Qory. Pick another provider." under its Provider, which has a red border, and Save
+  is disabled while the line shows. Add fallback adds a row of the first provider left that works with a runtime,
   else of the first provider left. A new row, and a row whose provider changes, has no
   models and starts on the chosen runtime where its provider works with it, else on the
   first runtime that does; a change of a row's Runtime keeps its models, and an effort

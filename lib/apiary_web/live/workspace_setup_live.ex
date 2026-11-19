@@ -83,7 +83,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     Provider, under "Shared in <organisation>", each marked "every workspace"; with
   #     none, Provider has no heading. With no provider to reuse, Add a key alone, open.
   #     A provider that works with no runtime of the catalogue has "<Provider> works with
-  #     no runtime in this version of Qory Apiary. Pick another provider." under
+  #     no runtime in this version of Qory. Pick another provider." under
   #     Provider, Continue disabled, and a save of it writes nothing. Then the tiers
   #     (`ApiaryWeb.ModelTiers.tiers/1`, each tier's name and line above its fields,
   #     under a heading `h2`): a Model and an Effort for each tier, from the models

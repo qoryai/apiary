@@ -230,7 +230,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   workspace default: <Provider>.", or the organisation's default, or "No default is set.
   Set one in Workspace settings › Model." **Provider** lists every model provider, by its
   name. A provider that works with no runtime shows “<Provider> works with no runtime
-  in this version of Qory Apiary. Pick another provider.” under **Provider**, and **Save
+  in this version of Qory. Pick another provider.” under **Provider**, and **Save
   model choice** stays disabled. A model provider shows **Model and effort per tier**, as
   on Workspace settings › Model, then **Runtime**, as there, and **Save model choice**,
   enabled once every tier has a model and something changed. "Use workspace default"
@@ -1039,7 +1039,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - **Model**, “Which models do runs in Main use?”, has three fields. **Provider** lists each
   model provider with a key that reaches the workspace, by its name, then **Add a key**.
   A provider that works with no runtime shows “<Provider> works with no runtime in
-  this version of Qory Apiary. Pick another provider.” under **Provider**, and **Continue** is
+  this version of Qory. Pick another provider.” under **Provider**, and **Continue** is
   disabled.
   **Add a key** is the one option where there is no provider to reuse. It opens
   **Kind of provider**, **Key**, and an address for a provider that needs one, as **Organisation
@@ -1230,7 +1230,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the new provider works with it, else takes the first that does. A change of
   **Runtime** keeps the models, and an effort the runtime does not accept goes back to
   “Not set”. A provider that works with no runtime shows “<Provider> works with no
-  runtime in this version of Qory Apiary. Pick another provider.” under **Provider**, and
+  runtime in this version of Qory. Pick another provider.” under **Provider**, and
   **Save** writes nothing until another provider is chosen. A saved choice whose
   provider's settings no longer fit keeps its provider in **Provider**, with the line of
   why under it; no other provider is chosen in its place, and **Save** writes nothing
@@ -1766,7 +1766,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   value** keeps the key's value. The value of any other secret stays as you typed it,
   its last newline included.
 - **Workspace settings › Model** has the part **Fallbacks** under Provider, the tiers and
-  Runtime: “When every key of Northwind Claude is in cooldown, runs use these, in order,
+  Runtime: “When every key of this provider is in cooldown, runs use these, in order,
   from the next run.” Each fallback has **Provider**, **Model and effort per tier**, as
   the default models have, and **Runtime**, with **Move up**, **Move down** and
   **Remove**. **Runtime** lists the runtimes that work with the fallback's provider: one
@@ -1775,7 +1775,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   **Provider** lists every provider that applies to the workspace, also one that works
   with no runtime, but the chosen provider and the other fallbacks' providers. A
   fallback whose provider works with no runtime shows “<Provider> works with no runtime
-  in this version of Qory Apiary. Pick another provider.” under its **Provider**, and
+  in this version of Qory. Pick another provider.” under its **Provider**, and
   **Save** is disabled while it shows. **Add fallback** adds the first provider left that
   works with a runtime, else the first provider left. A new fallback, and a fallback
   whose provider changes, starts with no models and on the chosen runtime where its
@@ -1787,6 +1787,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   “Add another model provider in Organisation settings › Model providers, then add it here
   as a fallback.” A save that changes the chosen provider to a fallback's provider drops
   that fallback.
+- On **Workspace settings › Model**, **Provider** has a red border while the chosen
+  provider works with no runtime, and a fallback's **Provider** while the fallback's
+  provider does, as a workflow's **Provider** on **Workspace settings › Workflows** has.
+  The line under **Provider** reads “<Provider> works with no runtime in this version of
+  Qory. Pick another provider.” on both pages and on the set-up's **Model** step, as the
+  runtimes come from Forager's catalogue, not from Qory Apiary. The line of
+  **Fallbacks** reads “When every key of this provider is in cooldown, runs use these,
+  in order, from the next run.”
 - Only a run of Explore uses a model key. Such a run gets up to 6 keys of its model
   provider at its claim, each a separate credential of the run, named after the
   provider's public id: `con_…-1` to `con_…-6`. The run starts with a key with no known

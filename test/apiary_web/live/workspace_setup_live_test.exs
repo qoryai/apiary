@@ -5046,7 +5046,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     lv |> form("#set-up-model-form", model: %{source: anthropic.public_id}) |> render_change()
 
     assert words(lv, "#set-up-model-no-runtime") ==
-             "Anthropic API key works with no runtime in this version of Qory Apiary. Pick another provider."
+             "Anthropic API key works with no runtime in this version of Qory. Pick another provider."
 
     refute has_element?(lv, "#set-up-model-runtime")
     refute continue?(lv)

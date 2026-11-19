@@ -831,7 +831,7 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
       assert has_element?(
                view,
                "#stage-entry-0-model-provider-error",
-               "Anthropic API key works with no runtime in this version of Qory Apiary. Pick another provider."
+               "Anthropic API key works with no runtime in this version of Qory. Pick another provider."
              )
 
       assert has_element?(view, ~s{select#{@provider}[aria-invalid="true"]})

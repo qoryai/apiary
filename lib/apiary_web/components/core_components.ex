@@ -670,6 +670,11 @@ defmodule ApiaryWeb.CoreComponents do
     doc: "a form field struct retrieved from the form, for example: @form[:email]"
 
   attr :errors, :list, default: []
+
+  attr :invalid, :boolean,
+    default: false,
+    doc: "a select or choice with the red border of an error, where a line under it says why"
+
   attr :checked, :boolean, doc: "the checked flag for checkbox inputs"
   attr :prompt, :string, default: nil, doc: "the prompt for select and choice inputs"
 
@@ -762,9 +767,9 @@ defmodule ApiaryWeb.CoreComponents do
       <select
         id={@id}
         name={@name}
-        class={["select", "select-#{@size}", @errors != [] && "select-error", @class]}
+        class={["select", "select-#{@size}", (@errors != [] or @invalid) && "select-error", @class]}
         multiple={@multiple}
-        aria-invalid={@errors != [] && "true"}
+        aria-invalid={(@errors != [] or @invalid) && "true"}
         aria-describedby={describedby(@id, @errors, @hint, @rest)}
         {without_describedby(@rest)}
       >
@@ -868,13 +873,13 @@ defmodule ApiaryWeb.CoreComponents do
           "q-pick-btn",
           "q-pick-#{@size}",
           !@chosen && "is-prompt",
-          @errors != [] && "q-pick-error",
+          (@errors != [] or @invalid) && "q-pick-error",
           @class
         ]}
         aria-expanded="false"
         aria-controls={"#{@id}-panel"}
         aria-labelledby={if @label, do: "#{@id}-label #{@id}-shown", else: "#{@id}-shown"}
-        aria-invalid={@errors != [] && "true"}
+        aria-invalid={(@errors != [] or @invalid) && "true"}
         aria-describedby={describedby(@id, @errors, @hint, @rest)}
         disabled={@rest[:disabled]}
         phx-mounted={JS.ignore_attributes(["aria-expanded"])}

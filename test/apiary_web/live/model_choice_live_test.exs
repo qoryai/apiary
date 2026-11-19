@@ -299,7 +299,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
     assert has_element?(
              lv,
              "#model-fallbacks-line",
-             "When every key of #{second.name} is in cooldown"
+             "When every key of this provider is in cooldown"
            )
 
     # Saved, the choice stores the provider.
@@ -561,8 +561,8 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
           from f in Apiary.ModelChoices.Fallback, where: f.connection_id == ^provider.id
         )
 
-    test "with no other provider, names the chosen one and says what to add", ctx do
-      %{conn: conn, scope: scope, provider: provider} = ctx
+    test "with no other provider, shows its line and says what to add", ctx do
+      %{conn: conn, scope: scope} = ctx
       {:ok, lv, _html} = live(conn, path(scope))
 
       assert has_element?(lv, "#model-fallbacks h2", "Fallbacks")
@@ -570,7 +570,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert has_element?(
                lv,
                "#model-fallbacks-line",
-               "When every key of #{provider.name} is in cooldown, runs use these, in order, from the next run."
+               "When every key of this provider is in cooldown, runs use these, in order, from the next run."
              )
 
       refute has_element?(lv, "#model-fallback-rows")
@@ -1056,6 +1056,12 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
 
     defp choose_runtime(lv, name),
       do: lv |> form("#model-form", model_choice: %{runtime: name}) |> render_change()
+
+    defp choose_row_provider(lv, index, value),
+      do:
+        lv
+        |> form("#model-form", model_choice: %{fallbacks: %{"#{index}" => %{provider: value}}})
+        |> render_change()
 
     defp choose_row_runtime(lv, index, name),
       do:
@@ -1606,7 +1612,13 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert has_element?(
                lv,
                "#model-provider-unfit",
-               "Anthropic API key works with no runtime in this version of Qory Apiary. Pick another provider."
+               "Anthropic API key works with no runtime in this version of Qory. Pick another provider."
+             )
+
+      # Provider has the red border, and the line describes it.
+      assert has_element?(
+               lv,
+               ~s{button#model_choice_provider.q-pick-error[aria-invalid="true"][aria-describedby="model-provider-unfit"]}
              )
 
       refute has_element?(lv, "#model-runtime")
@@ -1619,9 +1631,11 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       refute has_element?(lv, "#flash-info")
       refute has_element?(lv, "#model_choice_provider-error")
 
-      # Another provider: the line goes.
+      # Another provider: the line and the red border go.
       choose_provider(lv, openrouter.public_id)
       refute has_element?(lv, "#model-provider-unfit")
+      refute has_element?(lv, "button#model_choice_provider.q-pick-error")
+      refute has_element?(lv, ~s{button#model_choice_provider[aria-invalid]})
       assert has_element?(lv, "#model-runtime-name", bearer.title)
     end
 
@@ -1642,7 +1656,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert has_element?(
                lv,
                "#model-provider-unfit",
-               "DeepSeek works with no runtime in this version of Qory Apiary. Pick another provider."
+               "DeepSeek works with no runtime in this version of Qory. Pick another provider."
              )
     end
   end
@@ -1688,7 +1702,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert has_element?(
                lv,
                "#model-provider-unfit",
-               "Anthropic API key works with no runtime in this version of Qory Apiary. Pick another provider."
+               "Anthropic API key works with no runtime in this version of Qory. Pick another provider."
              )
 
       refute has_element?(lv, "#model-runtime")
@@ -1849,7 +1863,7 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert has_element?(
                lv,
                "#model-fallback-0-line",
-               "Anthropic API key works with no runtime in this version of Qory Apiary. Pick another provider."
+               "Anthropic API key works with no runtime in this version of Qory. Pick another provider."
              )
 
       refute has_element?(lv, "#model-fallback-0-tiers")
@@ -1868,6 +1882,46 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
       assert choice(scope) == nil
       refute has_element?(lv, "#flash-info")
       assert has_element?(lv, "#model-fallback-0-line")
+    end
+
+    test "a row's Provider has the red border while its provider works with no runtime",
+         ctx do
+      %{conn: conn, scope: scope, provider: anthropic} = ctx
+      openrouter = openrouter(scope)
+      team = openrouter_team(scope)
+      _bearer = bearer_only()
+      {:ok, lv, _html} = live(conn, path(scope))
+      choose_provider(lv, openrouter.public_id)
+
+      # Add fallback adds the provider left that works with a runtime: no red border.
+      lv |> element("#model-fallback-add") |> render_click()
+
+      assert has_element?(
+               lv,
+               ~s{#model_choice_fallbacks_0_provider option[value="#{team.public_id}"][selected]}
+             )
+
+      refute has_element?(lv, "#model-fallback-0-line")
+      refute has_element?(lv, "#model_choice_fallbacks_0_provider.select-error")
+      refute has_element?(lv, "#model_choice_fallbacks_0_provider[aria-invalid]")
+
+      choose_row_provider(lv, 0, anthropic.public_id)
+
+      assert has_element?(
+               lv,
+               "#model-fallback-0-line",
+               "Anthropic API key works with no runtime in this version of Qory. Pick another provider."
+             )
+
+      assert has_element?(
+               lv,
+               ~s{select#model_choice_fallbacks_0_provider.select-error[aria-invalid="true"][aria-describedby="model-fallback-0-line"]}
+             )
+
+      # A provider that works with a runtime again: the line and the red border go.
+      choose_row_provider(lv, 0, team.public_id)
+      refute has_element?(lv, "#model-fallback-0-line")
+      refute has_element?(lv, "#model_choice_fallbacks_0_provider.select-error")
     end
 
     test "a stored row whose provider no longer applies to the workspace says so under its Provider",
