@@ -2211,7 +2211,13 @@ defmodule Apiary.Stages do
   defp stepped(work_item, version, stage, event, adjust, later \\ & &1, own \\ & &1) do
     facts = adjust.(facts(work_item, version, stage))
     %{actions: actions} = Runner.step(stage, position(work_item), event, facts)
+    queued(work_item, version, stage, actions, later, own)
+  end
 
+  # The run that the runner's `actions` for `stage` queue: their first `:queue`, or what
+  # their `:advance` or `{:return, _}` enters, in the order `apply_outcome/6` applies them
+  # (`stepped/7`).
+  defp queued(work_item, version, stage, actions, later \\ & &1, own \\ & &1) do
     Enum.reduce_while(actions, {:none, later}, fn
       {:queue, %{workflow: workflow}}, _acc ->
         {:halt, {{:run, workflow}, later}}
@@ -2278,9 +2284,11 @@ defmodule Apiary.Stages do
   # records (`gate_names/4`). `missing_outputs` is the
   # required output types whose Exists check fails (`missing_outputs/1`); while it has
   # one, the gate of the stage is not approvable. `accept_needs` is the missing required
-  # output types that Accept as it is requires (`accept_needs/4`). `loop` is whether the
-  # work item is in a loop of its stage: `rounds` is that loop's limit, or, past the last
-  # loop, the limit of the loop it left, which a later entry's runs do not count by.
+  # output types that Accept as it is requires (`accept_needs/4`). `accept_entry` is the
+  # entry that an accept of the open escalation starts, where the accept does not take
+  # the stage to its gate (`accept_entry/5`), else nil. `loop` is whether the work item is
+  # in a loop of its stage: `rounds` is that loop's limit, or, past the last loop, the
+  # limit of the loop it left, which a later entry's runs do not count by.
   # `escalation` is the open escalation with its `points` (`shown_points/5`), also while
   # the stage waits for answers; `gaps` is why a stage waits for a workflow, else the
   # failed checks that started its round, nil with an escalation.
@@ -2311,6 +2319,13 @@ defmodule Apiary.Stages do
         outputs: outputs,
         missing_outputs: missing,
         accept_needs: accept_needs(work_item, stage, facts, missing),
+        accept_entry:
+          accept_entry(work_item, version, stage, escalation,
+            strict: false,
+            artifacts: artifacts,
+            approvals: approvals,
+            conditions: facts
+          ),
         inputs: inputs(work_item, version, stage, artifacts, facts, approvals),
         escalation: escalation_map(escalation, work_item, stage, outputs, artifacts),
         waiting_workflow: waiting_workflow(work_item, stage, facts),
@@ -3746,17 +3761,27 @@ defmodule Apiary.Stages do
     %{work_item | state: :closed, closed_at: now}
   end
 
-  defp facts(work_item, version, stage) do
+  # The facts the stage runner steps on (`Runner.step/4`). `read` has what the caller has
+  # read already: `artifacts` (`Artifacts.list/1`), `approvals`
+  # (`approvals_by_version/1`) and `conditions`, the condition facts (`condition_facts/6`)
+  # read with `strict`, which is true by default; a page reads them with false, so the
+  # read does not raise.
+  defp facts(work_item, version, stage, read \\ []) do
     # The whole row: `Apiary.Processes.workflow_declaration/2` reads its stack.
     workspace = Repo.get!(Workspace, work_item.workspace_id)
-    artifacts = Artifacts.list(work_item)
+    artifacts = Keyword.get_lazy(read, :artifacts, fn -> Artifacts.list(work_item) end)
 
     declarations =
       Map.new(Runner.workflows(stage), &{&1, Processes.workflow_declaration(workspace, &1)})
 
     # Read once per event: the outputs' checks and the runner both use it.
-    approvals = approvals_by_version(work_item)
-    conditions = condition_facts(work_item, version, stage, artifacts, true, approvals)
+    approvals = Keyword.get_lazy(read, :approvals, fn -> approvals_by_version(work_item) end)
+    strict? = Keyword.get(read, :strict, true)
+
+    conditions =
+      Keyword.get_lazy(read, :conditions, fn ->
+        condition_facts(work_item, version, stage, artifacts, strict?, approvals)
+      end)
 
     Map.merge(conditions, %{
       missing_inputs:
@@ -5010,6 +5035,86 @@ defmodule Apiary.Stages do
     case position(work_item) do
       nil -> missing
       position -> if Runner.accept_to_gate?(stage, position, facts), do: missing, else: []
+    end
+  end
+
+  # accept_entry/5 is the name of the entry of the stage that an accept of the open
+  # escalation `escalation` starts, else its workflow (`Runner.entry_name/2`), where the
+  # accept does not take the stage to its gate (`Runner.accept_to_gate?/3`); else nil.
+  # The entry is the one whose run the runner's step queues in the stage, after loops and
+  # `when`/`unless` conditions, or whose workflow the stage then waits for
+  # (`started_entry/2`). `read` is what `status/2` has read (`facts/4`): the gate test
+  # reads only the condition facts, and the other facts are read only where the accept
+  # does not go to the gate. The escalation card's accept button reads Start and this
+  # entry (`ApiaryWeb.WorkItemLive.Workflow`).
+  defp accept_entry(
+         %WorkItem{stage_state: :escalated} = work_item,
+         version,
+         stage,
+         %Escalation{cause: cause},
+         read
+       ) do
+    with %{} = position <- position(work_item),
+         false <- Runner.accept_to_gate?(stage, position, Keyword.fetch!(read, :conditions)) do
+      facts = facts(work_item, version, stage, read)
+      stage |> Runner.step(position, {:accept, cause}, facts) |> started_entry(stage)
+    else
+      _gate -> nil
+    end
+  end
+
+  defp accept_entry(_work_item, _version, _stage, _escalation, _read), do: nil
+
+  # The entry of `stage` that the runner's `outcome` of an accept starts: the entry of its
+  # first `:queue`, where no `:advance` or `{:return, _}` comes first, as those enter
+  # another stage; with none, the entry whose workflow the stage waits for
+  # (`:waiting_workflow`), which the accept starts once the harness lists it. nil for
+  # none.
+  defp started_entry(%{actions: actions} = outcome, stage) do
+    first =
+      Enum.find(actions, fn action ->
+        match?({:queue, _spec}, action) or action == :advance or
+          match?({:return, _stage_id}, action)
+      end)
+
+    case {first, outcome} do
+      {{:queue, spec}, _outcome} -> Runner.entry_name(stage, spec)
+      {nil, %{state: :waiting_workflow, position: at}} -> Runner.entry_name(stage, at)
+      _other -> nil
+    end
+  end
+
+  # accept_starts/1 is what an accept of the work item's open escalation starts, read
+  # once at the click, by the runner's rules on the facts read now: `entry`, the entry
+  # whose name the accept button shows (`accept_entry/5`), nil where the accept takes the
+  # stage to its gate; and `run`, the run it queues, as `starts/2` finds
+  # it, from the same step. The spend dialog reads both, so its title, its button and its
+  # line come from one step.
+  @doc false
+  @spec accept_starts(WorkItem.t()) :: %{entry: String.t() | nil, run: {:run, String.t()} | :none}
+  def accept_starts(%WorkItem{id: id} = work_item) do
+    with %WorkItem{state: :exploring, stage_state: :escalated} = work_item <-
+           Repo.get(WorkItem, id),
+         {:ok, version, stage} <- placed(work_item),
+         %Escalation{cause: cause} <-
+           open_escalation(work_item) || placed_escalation(work_item, version, stage),
+         %{} = position <- position(work_item) do
+      facts = facts(work_item, version, stage)
+
+      if accept_needs(work_item, stage, facts, facts.failed_checks) == [] do
+        outcome = Runner.step(stage, position, {:accept, cause}, facts)
+
+        entry =
+          if Runner.accept_to_gate?(stage, position, facts),
+            do: nil,
+            else: started_entry(outcome, stage)
+
+        %{entry: entry, run: queued(work_item, version, stage, outcome.actions)}
+      else
+        %{entry: nil, run: :none}
+      end
+    else
+      _other -> %{entry: nil, run: starts(work_item, :accept)}
     end
   end
 

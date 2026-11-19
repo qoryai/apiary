@@ -1199,13 +1199,27 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     end
   end
 
+  # The title, the button and the line come from one step of the stage runner at the
+  # click (`Apiary.Stages.accept_starts/1`): Start and the entry, else Accept as it is
+  # (`StageComponents.accept_label/1`), and the run's workflow. A note does not change
+  # what an accept starts, so both lines are the same.
   defp stage_spend("stage_resolve", %{"how" => "accept"} = params, socket) do
-    ask_if_run("stage_resolve", params, socket, :accept,
-      title: gettext("Accept as it is?"),
-      action: gettext("Accept as it is"),
-      return_to: "work-item-stage-escalation-accept",
-      note: escalation_note()
-    )
+    case Stages.accept_starts(socket.assigns.row) do
+      %{entry: entry, run: {:run, _workflow} = run} ->
+        line = workflow_line(socket, run)
+
+        SpendDialog.ask("stage_resolve", params,
+          title: StageComponents.accept_title(entry),
+          action: StageComponents.accept_label(entry),
+          line: line,
+          noted_line: line,
+          return_to: "work-item-stage-escalation-accept",
+          note: escalation_note()
+        )
+
+      %{run: :none} ->
+        nil
+    end
   end
 
   defp stage_spend("stage_resolve", %{"how" => "another_round"} = params, socket) do

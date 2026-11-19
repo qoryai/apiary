@@ -2023,6 +2023,31 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Workspace settings › Workflows." where it lists no workspace member. For that member,
   the point of a missing output reads "The run stored no acceptance criteria." followed
   by that sentence.
+- Where an accept of an escalation starts a run of the stage, or an entry whose workflow
+  the stage then waits for, the escalation card's button reads Start and the name of that
+  entry, in place of **Accept as it is**: "Start %{workflow}", such as **Start
+  capture-demo**. Its dialog's title reads "Start %{workflow}?" in place of "Accept as it
+  is?", and its button "Start %{workflow}". The dialog's line is as before: "Starts a run
+  of %{workflow} on %{machine}. The run uses model tokens.", such as "Starts a run of
+  capture-demo on a machine. The run uses model tokens.", with the run's workflow. The
+  entry's name is its `name` in the stage's `sequence` in the process version, else its
+  workflow, read when the page is drawn and again at the click, after loops and
+  `when`/`unless` conditions: for a loop, its first workflow; a later entry whose
+  condition is not met is passed over; where every later entry is passed over and a
+  required output is missing, the first workflow of the loop that the accept starts again;
+  where the harness does not list the entry's workflow, that entry, which the stage then
+  waits for. Qory Apiary's code and texts contain no workflow name. Where the accept takes
+  the stage to its gate, the button reads **Accept as it is**, as before, while every
+  required output has a version; where the stage escalates again, as when its checks fail
+  at a loop's round limit, the button stays **Accept as it is**. Where the button reads
+  Start and the entry's name, the round limit's fix reads "Read the open finding, then
+  pick Start %{workflow} or Run another round." or "Read the %{count} open findings, then
+  pick Start %{workflow} or Run another round.", and the return limit's point "Pick Move
+  back to return the work item to %{to} once more, or pick Start %{workflow}." The
+  Accepted findings frame ("Accepted as it is in Build by …") and the activity log line
+  are as before. A round limit's point stored before this change has no count of its open
+  findings: where the button reads Start and the entry's name, its fix reads "Read the 2
+  open findings, then pick Run another round."
 - On the tab of a stage with `shared_run: true`, each run of the stage is a fold in the
   runs fold: "Attempt 3 (Run 3) · 4 workflows · round 2 of 3 · passed · 2 minutes ago", or
   "round 1" for a run with no loop. Inside it, one row for each session in the order it

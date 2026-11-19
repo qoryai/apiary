@@ -1176,7 +1176,8 @@ defmodule Apiary.Stages.SharedRunTest do
                  "Read the 2 open findings, then pick Accept as it is or Run another round.",
                "without_accept" => %{
                  "fix" => "Read the 2 open findings, then pick Run another round."
-               }
+               },
+               "open_findings" => 2
              }
     end
 

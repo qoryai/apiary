@@ -808,7 +808,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             value="accept"
             variant="primary"
           >
-            {gettext("Accept as it is")}
+            {accept_label(@escalation.start)}
           </.button>
         </div>
         <div :if={Workflow.move_back?(@switch, @page.earlier)} class="q-wi-acts flex-wrap">
@@ -838,6 +838,19 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     </div>
     """
   end
+
+  # accept_label/1 is the label of the escalation card's accept button: Start and the
+  # entry that the accept starts (`start`, `ApiaryWeb.WorkItemLive.Workflow`), else
+  # Accept as it is. accept_title/1 is the title of its spend dialog.
+  @doc false
+  @spec accept_label(String.t() | nil) :: String.t()
+  def accept_label(nil), do: gettext("Accept as it is")
+  def accept_label(start), do: gettext("Start %{workflow}", workflow: start)
+
+  @doc false
+  @spec accept_title(String.t() | nil) :: String.t()
+  def accept_title(nil), do: gettext("Accept as it is?")
+  def accept_title(start), do: gettext("Start %{workflow}?", workflow: start)
 
   # switch_label/1 is the label of the button that switches to `track`; a return limit's
   # point uses it for the button's words (`ApiaryWeb.WorkItemLive.Workflow`).

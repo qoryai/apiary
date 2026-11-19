@@ -168,6 +168,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
           %{
             switch: switch,
             earlier: earlier,
+            start: get(status, :accept_entry),
             can_decide: can_decide,
             approver_line: approver_line(scope, stage, get(status, :escalation), can_decide)
           }
@@ -604,9 +605,12 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # (`accept_needs` of `Apiary.Stages.status/2`: the missing ones where the accept takes
   # the stage to its gate): with any, the stage has no result to accept. `accept` is
   # whether the card shows Accept as it is (`accept?/2`). `controls` has `switch` and
-  # `earlier`, the page's tracks to switch to and earlier stages, `can_decide` and
+  # `earlier`, the page's tracks to switch to and earlier stages, `start`, the entry that
+  # an accept starts (`accept_entry` of `Apiary.Stages.status/2`), `can_decide` and
   # `approver_line` (`approver_line/4`); the points' words follow the controls the card
-  # shows (`points/2`).
+  # shows (`points/2`). `start` is that entry where the card shows the accept button, and
+  # the button then reads Start and the entry in place of Accept as it is
+  # (`StageComponents.accept_label/1`); nil elsewhere.
   defp escalation(scope, escalation, runs, outputs, missing, controls) do
     %{switch: switch} = controls
     cause = get(escalation, :cause)
@@ -620,11 +624,14 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
         result?(cause, outputs, get(escalation, :no_verdict) == true, run)
 
     accept = accept?(result, switch)
+    start = if accept, do: Map.get(controls, :start)
 
     %{
       cause: cause,
       accept: accept,
-      points: points(get(escalation, :points), Map.put(controls, :accept, accept)),
+      start: start,
+      points:
+        points(get(escalation, :points), Map.merge(controls, %{accept: accept, start: start})),
       round: get(escalation, :round),
       run: run,
       # The id of the run in the queue (`Apiary.Dispatches.DispatchRun`) that the versions
@@ -671,16 +678,19 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   # The action of a return limit's point to the stage `to` (`Apiary.Stages.Points`), for
   # the controls the card shows: the switch buttons by their labels, else Move back with
-  # Accept as it is where the card shows both, else Move back alone. nil where the card
-  # shows neither a switch nor Move back.
+  # the accept button where the card shows both, Start and the entry (`start`) or Accept as
+  # it is, else Move back alone. nil where the card shows neither a switch nor Move back.
   defp return_action(to, %{switch: [_ | _] = switch}) do
     labels = switch |> Enum.map(&StageComponents.switch_label/1) |> SourceComponents.joined(:or)
     Points.return_action(to, {:switch, labels})
   end
 
-  defp return_action(to, %{accept: accept, switch: switch, earlier: earlier}) do
+  defp return_action(to, %{accept: accept, switch: switch, earlier: earlier} = controls) do
+    start = Map.get(controls, :start)
+
     cond do
       not move_back?(switch, earlier) -> nil
+      accept and is_binary(start) -> Points.return_action(to, {:start, start})
       accept -> Points.return_action(to, :accept)
       true -> Points.return_action(to, :move_back)
     end
@@ -722,7 +732,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # `controls` (`%{accept:, switch:, earlier:}`): a return limit's point has the action
   # for them (`return_action/2`), or, where the card shows neither a switch nor Move back,
   # only its count of returns, with no action sentence; another point keeps its words,
-  # with its `without_accept` fields where the card shows no Accept as it is. For a reader
+  # with its `without_accept` fields where the card shows no Accept as it is, and a round
+  # limit's fix with Start and the entry where the card shows them (`start`). For a reader
   # who may not decide (`can_decide` false; true where `controls` has none), the sentence
   # `approver_line` takes the place of a return limit's action and of a round limit's fix,
   # and follows a failed check's fact, written without its action (`undecided/2`).
@@ -734,7 +745,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     case get(point, :return_stage) do
       to when is_binary(to) and decides -> return_worded(point, return_action(to, controls))
       to when is_binary(to) -> return_worded(point, controls.approver_line)
-      _other when decides -> without_accept(point, controls.accept)
+      _other when decides -> without_accept(point, controls.accept, Map.get(controls, :start))
       _other -> undecided(point, controls.approver_line)
     end
   end
@@ -747,14 +758,33 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   defp return_worded(point, text), do: Map.put(point, "text", text)
 
-  defp without_accept(point, false) do
+  defp without_accept(point, false, _start) do
     case get(point, :without_accept) do
       %{} = words -> Map.merge(point, Map.take(words, ["text", "fix"]))
       _none -> point
     end
   end
 
-  defp without_accept(point, _accept), do: point
+  defp without_accept(point, _accept, start) when is_binary(start), do: with_start(point, start)
+  defp without_accept(point, _accept, _start), do: point
+
+  # A round limit's point where the card shows Start and the entry `start` in place of
+  # Accept as it is: its fix has that button's words (`Points.start_fix/2`), with the
+  # count of open findings (`open_findings`). A point stored with no count has its
+  # `without_accept` fields, which contain only Run another round. Another point keeps
+  # its words.
+  defp with_start(point, start) do
+    case {get(point, :open_findings), get(point, :without_accept)} do
+      {count, _words} when is_integer(count) ->
+        Map.put(point, "fix", Points.start_fix(count, start))
+
+      {_none, %{} = words} ->
+        Map.merge(point, Map.take(words, ["text", "fix"]))
+
+      _other ->
+        point
+    end
+  end
 
   # A point for a reader who may not decide (`Apiary.Stages.Points`): a round limit's
   # with open findings (`without_accept`) has who decides in place of its fix; a failed
