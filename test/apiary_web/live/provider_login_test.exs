@@ -28,6 +28,13 @@ defmodule ApiaryWeb.ProviderLoginTest do
   defp base(scope), do: ~p"/#{scope.organisation}/settings/model-providers"
   defp key_path(scope, provider, rest), do: "#{base(scope)}/#{provider.public_id}/keys/#{rest}"
 
+  # The Edit key page of the key `value_id`, at its row id.
+  defp edit_path(scope, provider, value_id),
+    do: key_path(scope, provider, "#{key_value!(provider, value_id).id}/edit")
+
+  # The identity line of a sign-in of `provider` with the email `email`.
+  defp line(provider, email \\ "dana@example.com"), do: "#{provider.name} · #{email}"
+
   defp subscription!(scope, tokens \\ login_tokens(), place \\ :organisation) do
     {:ok, provider} =
       Connections.create_provider(
@@ -94,7 +101,8 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
       assert text(lv, "#key-sign-in-start") == "Sign in with ChatGPT"
       assert text(lv, "#key-sign-in-hint") == @hint
-      assert has_element?(lv, ~s{#key-form label[for="key_value_id"]}, "Name")
+      refute has_element?(lv, "#key_value_id")
+      refute has_element?(lv, ~s{#key-form label}, "Name")
       refute has_element?(lv, "#key-form input[type=password]")
       refute html =~ "Sign-in"
       refute html =~ "auth.json"
@@ -125,7 +133,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
       refute has_element?(lv, "#key-sign-in-start")
       refute has_element?(lv, "#key-form input[type=password]")
 
-      lv |> form("#key-form", key: %{value_id: "spare"}) |> render_submit()
+      lv |> form("#key-form") |> render_submit()
 
       assert text(lv, "#key-sign-in-error-1") ==
                "Click Sign in with ChatGPT, then save. This key has no sign-in yet."
@@ -173,14 +181,21 @@ defmodule ApiaryWeb.ProviderLoginTest do
 
       log =
         capture_log(fn ->
-          lv |> form("#key-form", key: %{value_id: "spare"}) |> render_submit()
-          assert_redirect(lv, "#{base(scope)}/#{provider.public_id}")
+          lv |> form("#key-form") |> render_submit()
+
+          flash = assert_redirect(lv, "#{base(scope)}/#{provider.public_id}")
+          assert flash["info"] == "#{line(provider)} is added."
         end)
 
       refute_tokens(log, tokens)
 
-      assert %Login{state: "signed_in", account_id: account, refreshed_at: nil, generation: 1} =
-               login_of(provider, "spare")
+      assert %Login{
+               state: "signed_in",
+               account_id: account,
+               email: "dana@example.com",
+               refreshed_at: nil,
+               generation: 1
+             } = login_of(provider, "key-1")
 
       assert account == tokens.account_id
     end
@@ -197,9 +212,9 @@ defmodule ApiaryWeb.ProviderLoginTest do
       refute_tokens(render(lv), tokens)
       refute_in_assigns(lv, tokens)
 
-      # A refused save (a name with a space) draws the page again.
-      html = lv |> form("#key-form", key: %{value_id: "Bad Name"}) |> render_submit()
-      assert has_element?(lv, "#key_value_id-error")
+      # A refused save (a reset time with no day) draws the page again.
+      html = lv |> form("#key-form", key: %{reset_time: "09:00"}) |> render_submit()
+      assert has_element?(lv, "#key_reset_day-resets-error")
       assert has_element?(lv, "#key-sign-in-state")
       refute_tokens(html, tokens)
       refute_in_assigns(lv, tokens)
@@ -332,15 +347,15 @@ defmodule ApiaryWeb.ProviderLoginTest do
       refute lv |> element("#key-sign-in-copy") |> render() =~ "data-copy-target"
     end
 
-    test "refuses a save before the sign-in, with the Name's errors", ctx do
+    test "refuses a save before the sign-in, with the errors of the settings", ctx do
       %{conn: conn, scope: scope} = ctx
       Stub.put()
       provider = subscription!(scope)
       {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
 
-      lv |> form("#key-form", key: %{value_id: "Bad Name"}) |> render_submit()
+      lv |> form("#key-form", key: %{reset_time: "09:00"}) |> render_submit()
 
-      assert has_element?(lv, "#key_value_id-error")
+      assert has_element?(lv, "#key_reset_day-resets-error")
 
       assert text(lv, "#key-sign-in-error-1") ==
                "Click Sign in with ChatGPT, then save. This key has no sign-in yet."
@@ -354,7 +369,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
       %{conn: conn, scope: scope} = ctx
       Stub.put()
       provider = subscription!(scope)
-      {:ok, lv, html} = live(conn, key_path(scope, provider, "main/edit"))
+      {:ok, lv, html} = live(conn, edit_path(scope, provider, "main"))
 
       assert text(lv, "#key-sign-in-start") == "Sign in with ChatGPT"
       assert text(lv, "#key-sign-in-hint") == @hint
@@ -377,7 +392,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
         ]
       )
 
-      {:ok, lv, html} = live(conn, key_path(scope, provider, "main/edit"))
+      {:ok, lv, html} = live(conn, edit_path(scope, provider, "main"))
 
       assert text(lv, "#key-sign-in-needed") =~
                ~r/\ANeeds a new sign-inOpenAI rejected it on .*2026.*\.\z/
@@ -390,7 +405,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
       signed_in!(lv, "key-sign-in")
       refute has_element?(lv, "#key-sign-in-needed")
 
-      lv |> form("#key-form", key: %{value_id: "main"}) |> render_submit()
+      lv |> form("#key-form") |> render_submit()
       assert_redirect(lv, "#{base(scope)}/#{provider.public_id}")
 
       assert %Login{state: "signed_in", generation: 2, sign_in_cause: nil} =
@@ -417,7 +432,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
              "Click Sign in with ChatGPT for a new code."}
           ] do
         Stub.put(script)
-        {:ok, lv, _html} = live(conn, key_path(scope, provider, "main/edit"))
+        {:ok, lv, _html} = live(conn, edit_path(scope, provider, "main"))
         lv |> element("#key-sign-in-start") |> render_click()
         eventually(fn -> assert has_element?(lv, "#key-sign-in-fix") end)
 
@@ -435,15 +450,15 @@ defmodule ApiaryWeb.ProviderLoginTest do
       tokens = Stub.put(tokens: login_tokens(tag: "edit"))
       provider = subscription!(scope)
 
-      {:ok, lv, _html} = live(conn, key_path(scope, provider, "main/edit"))
-      lv |> form("#key-form", key: %{value_id: "main"}) |> render_submit()
+      {:ok, lv, _html} = live(conn, edit_path(scope, provider, "main"))
+      lv |> form("#key-form") |> render_submit()
       assert_redirect(lv, "#{base(scope)}/#{provider.public_id}")
       assert %Login{generation: 1, account_id: "acct-fixture-a"} = login_of(provider, "main")
 
-      {:ok, lv, _html} = live(conn, key_path(scope, provider, "main/edit"))
+      {:ok, lv, _html} = live(conn, edit_path(scope, provider, "main"))
       sign_in!(lv, "key-sign-in")
       signed_in!(lv, "key-sign-in")
-      lv |> form("#key-form", key: %{value_id: "main"}) |> render_submit()
+      lv |> form("#key-form") |> render_submit()
       assert_redirect(lv, "#{base(scope)}/#{provider.public_id}")
 
       assert %Login{generation: 2, account_id: account} = login_of(provider, "main")
@@ -460,7 +475,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
           keys: [%{value_id: "main", value: "sk-proj-an-api-key"}]
         })
 
-      {:ok, lv, _html} = live(conn, key_path(scope, provider, "main/edit"))
+      {:ok, lv, _html} = live(conn, edit_path(scope, provider, "main"))
 
       assert has_element?(lv, ~s{#key-form label[for="key-value-0"]}, "New value")
       assert text(lv, "#key-value-0-hint") == "Leave it empty to keep the value."
@@ -717,6 +732,85 @@ defmodule ApiaryWeb.ProviderLoginTest do
     end
   end
 
+  describe "the provider's page, the identity line of a sign-in" do
+    defp set_login!(provider, value_id, attrs) do
+      value = key_value!(provider, value_id)
+      Repo.update_all(from(l in Login, where: l.secret_value_id == ^value.id), set: attrs)
+    end
+
+    # A provider with a sign-in for each tag, the first with the key `main`.
+    defp subscription_with!(scope, [first | rest]) do
+      provider = subscription!(scope, login_tokens(tag: first))
+
+      Enum.reduce(rest, provider, fn tag, provider ->
+        {:ok, provider} =
+          Connections.add_provider_key(scope, provider, %{value: device_login(tag: tag)})
+
+        provider
+      end)
+    end
+
+    test "each row shows the email of its sign-in, the keys of five accounts apart", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = subscription_with!(scope, ~w(a b c d))
+      ids = ~w(main key-1 key-2 key-3)
+      emails = ~w(sam@example.com kim@example.com lee@example.com jo@example.com)
+
+      for {id, email} <- Enum.zip(ids, emails), do: set_login!(provider, id, email: email)
+
+      {:ok, lv, html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+
+      for {id, email} <- Enum.zip(ids, emails) do
+        assert text(lv, "#provider-key-#{id}-name") == line(provider, email)
+
+        assert has_element?(
+                 lv,
+                 ~s{#provider-key-#{id}-edit[aria-label="Edit key #{line(provider, email)}"]}
+               )
+      end
+
+      refute html =~ "account …"
+    end
+
+    test "a sign-in with no email shows the last 4 characters of its account", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = subscription_with!(scope, ~w(a b))
+      set_login!(provider, "main", email: nil)
+      set_login!(provider, "key-1", email: "kim@example.com")
+
+      {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+
+      # "acct-fixture-a" ends in "re-a".
+      assert text(lv, "#provider-key-main-name") == "#{provider.name} · account …re-a"
+      assert text(lv, "#provider-key-key-1-name") == line(provider, "kim@example.com")
+
+      {:ok, edit, _html} = live(conn, edit_path(scope, provider, "main"))
+      assert has_element?(edit, "h1", "#{provider.name} · account …re-a")
+    end
+
+    test "a sign-in saved before the email was kept shows its account", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = subscription!(scope, login_tokens(tag: "x"))
+      set_login!(provider, "main", email: nil, account_id: "acct-9d81c27e7c1d")
+
+      {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+      assert text(lv, "#provider-key-main-name") == "#{provider.name} · account …7c1d"
+      refute has_element?(lv, "#provider-key-main-name", "dana@example.com")
+    end
+
+    test "a provider named differently from its kind shows its name in the line", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = subscription!(scope)
+
+      Repo.update_all(from(c in Apiary.Connections.Connection, where: c.id == ^provider.id),
+        set: [name: "Web shop key"]
+      )
+
+      {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+      assert text(lv, "#provider-key-main-name") == "Web shop key · dana@example.com"
+    end
+  end
+
   describe "the provider's page, a sign-in from a key's row" do
     defp needs_sign_in!(provider, value_id) do
       value = key_value!(provider, value_id)
@@ -775,7 +869,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
       eventually(fn -> assert text(lv, "#provider-key-main-login") =~ "Signed in." end)
 
       assert text(lv, "#provider-key-main-login") == "Signed in." <> @stored
-      assert render(lv) =~ "main is saved."
+      assert render(lv) =~ "#{line(provider)} is saved."
       refute has_element?(lv, "#provider-key-main-sign-in")
 
       assert %Login{state: "signed_in", generation: 2, account_id: account} =
@@ -874,18 +968,47 @@ defmodule ApiaryWeb.ProviderLoginTest do
     defp secrets_path(scope, rest),
       do: "/#{scope.organisation.slug}/#{scope.workspace.slug}/settings/secrets#{rest}"
 
-    test "has the button on Add value of a workspace's key, and Save stores the sign-in", ctx do
+    # The Change value page of the key `value_id` of the secret `secret`, at its row id.
+    defp change_path(scope, provider, secret, value_id),
+      do:
+        secrets_path(
+          scope,
+          "/#{secret.public_id}/values/#{key_value!(provider, value_id).id}/change"
+        )
+
+    test "has no Add value for a login key: that path and Rename are not found", ctx do
       %{conn: conn, scope: scope} = ctx
-      tokens = Stub.put(tokens: login_tokens(tag: "workspace"), hold: true)
+      Stub.put()
       provider = subscription!(scope, login_tokens(), :workspace)
       secret = Repo.get!(Apiary.Secrets.Secret, provider.secret_id)
 
-      {:ok, lv, html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
+      for rest <- ["/add-value", "/values/main/rename"] do
+        assert {:error, {:live_redirect, %{flash: %{"error" => error}}}} =
+                 live(conn, secrets_path(scope, "/#{secret.public_id}#{rest}"))
+
+        assert error == "That secret is no longer in this workspace."
+      end
+
+      {:ok, lv, _html} = live(conn, secrets_path(scope, ""))
+      row = "#secret-#{secret.public_id}"
+      assert has_element?(lv, "#{row}-main-value-id", line(provider))
+      refute has_element?(lv, "#{row}-add")
+      refute has_element?(lv, "#{row}-main-rename")
+    end
+
+    test "has the button on Change value of a login key, and Save stores the sign-in", ctx do
+      %{conn: conn, scope: scope} = ctx
+      tokens = Stub.put(tokens: login_tokens(tag: "change"), hold: true)
+      provider = subscription!(scope, login_tokens(), :workspace)
+      secret = Repo.get!(Apiary.Secrets.Secret, provider.secret_id)
+
+      {:ok, lv, html} = live(conn, change_path(scope, provider, secret, "main"))
 
       assert text(lv, "#secret-sign-in-start") == "Sign in with ChatGPT"
       assert text(lv, "#secret-sign-in-hint") == @hint
       refute has_element?(lv, "#secret-form textarea")
       refute html =~ "Sign-in"
+      assert has_element?(lv, "h1", "Change #{line(provider)} of #{secret.name}")
 
       sign_in!(lv, "secret-sign-in")
       assert text(lv, "#secret-sign-in-code") == "7QKD-M4TPX"
@@ -893,47 +1016,12 @@ defmodule ApiaryWeb.ProviderLoginTest do
       Stub.approve()
       signed_in!(lv, "secret-sign-in")
 
-      html = lv |> form("#secret-form", secret_value: %{value_id: "spare"}) |> render_submit()
+      html = lv |> form("#secret-form") |> render_submit()
 
       refute_tokens(html, tokens)
-      assert %Login{account_id: account} = login_of(provider, "spare")
-      assert account == tokens.account_id
-      refute_in_assigns(lv, tokens)
-    end
-
-    test "refuses Add value before the sign-in", ctx do
-      %{conn: conn, scope: scope} = ctx
-      Stub.put()
-      provider = subscription!(scope, login_tokens(), :workspace)
-      secret = Repo.get!(Apiary.Secrets.Secret, provider.secret_id)
-      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
-
-      lv |> form("#secret-form", secret_value: %{value_id: "spare"}) |> render_submit()
-
-      assert text(lv, "#secret-sign-in-error-1") ==
-               "Click Sign in with ChatGPT, then save. This key has no sign-in yet."
-
-      assert has_element?(lv, "#secret-sign-in-start")
-    end
-
-    test "has the button on Change value of a login key too, and Save stores the sign-in", ctx do
-      %{conn: conn, scope: scope} = ctx
-      tokens = Stub.put(tokens: login_tokens(tag: "change"))
-      provider = subscription!(scope, login_tokens(), :workspace)
-      secret = Repo.get!(Apiary.Secrets.Secret, provider.secret_id)
-
-      {:ok, lv, _html} =
-        live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
-
-      assert text(lv, "#secret-sign-in-start") == "Sign in with ChatGPT"
-      refute has_element?(lv, "#secret-form textarea")
-
-      sign_in!(lv, "secret-sign-in")
-      signed_in!(lv, "secret-sign-in")
-      lv |> form("#secret-form") |> render_submit()
-
       assert %Login{generation: 2, account_id: account} = login_of(provider, "main")
       assert account == tokens.account_id
+      refute_in_assigns(lv, tokens)
     end
 
     test "keeps the sign-in when Change value is saved without a new one", ctx do
@@ -942,8 +1030,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
       provider = subscription!(scope, login_tokens(), :workspace)
       secret = Repo.get!(Apiary.Secrets.Secret, provider.secret_id)
 
-      {:ok, lv, _html} =
-        live(conn, secrets_path(scope, "/#{secret.public_id}/values/main/change"))
+      {:ok, lv, _html} = live(conn, change_path(scope, provider, secret, "main"))
 
       lv |> form("#secret-form") |> render_submit()
 
@@ -955,7 +1042,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
       Stub.put(pending: :never)
       provider = subscription!(scope, login_tokens(), :workspace)
       secret = Repo.get!(Apiary.Secrets.Secret, provider.secret_id)
-      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
+      {:ok, lv, _html} = live(conn, change_path(scope, provider, secret, "main"))
 
       sign_in!(lv, "secret-sign-in")
       pid = device_of(lv).pid
@@ -964,18 +1051,10 @@ defmodule ApiaryWeb.ProviderLoginTest do
       assert_ended(pid)
     end
 
-    test "keeps Value for the secrets that are no login", ctx do
+    test "keeps Value on Add value for a secret that is no model provider's", ctx do
       %{conn: conn, scope: scope} = ctx
       Stub.put()
-
-      {:ok, provider} =
-        Connections.create_provider(
-          scope,
-          %{provider: "openai", keys: [%{value_id: "main", value: "sk-proj-an-api-key"}]},
-          :workspace
-        )
-
-      secret = Repo.get!(Apiary.Secrets.Secret, provider.secret_id)
+      {:ok, secret} = Apiary.Secrets.create_secret(scope, %{name: "DEPLOY_TOKEN", value: "prod"})
       {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
 
       assert has_element?(lv, ~s{#secret-form label[for="secret_value_value"]}, "Value")
