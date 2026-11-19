@@ -115,7 +115,7 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
       })
     end
 
-    for name <- ~w(spec build-report) do
+    for name <- ~w(spec build-report verify-report) do
       {:ok, _type} =
         Artifacts.create_type(scope, workspace, %{
           "name" => name,
@@ -139,10 +139,10 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
 
   # The default process with Shape writing the spec and the acceptance criteria, Build
   # reading them and writing the build report, which it requires, its gate listing
-  # `approvers`, and Verify. With `none?`, Build's gate is a gate `none`, and Verify's
-  # entry does not run on the track "fast-track", so on that track Verify starts no run and
-  # waits at its gate.
-  defp process!(scope, approvers, none? \\ false) do
+  # `approvers`, and Verify, with the fields of `verify` in place of these. With `none?`,
+  # Build's gate is a gate `none`, and Verify's entry does not run on the track
+  # "fast-track", so on that track Verify starts no run and waits at its gate.
+  defp process!(scope, approvers, none? \\ false, verify \\ %{}) do
     document = Processes.default_document("software")
 
     stages =
@@ -167,7 +167,7 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
               %{"type" => "acceptance-criteria", "required" => false}
             ],
             "sequence" => [%{"workflow" => "plan-the-build"}],
-            "outputs" => [%{"type" => "build-report", "required" => true}],
+            "outputs" => [%{"type" => "build-report", "required" => false}],
             "gate" =>
               if(none?,
                 do: %{"kind" => "none"},
@@ -190,6 +190,7 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
             "outputs" => [],
             "gate" => %{"kind" => "person", "approvers" => "members"}
           })
+          |> Map.merge(verify)
 
         stage ->
           stage
@@ -275,6 +276,52 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
       end)
 
     assert %WorkItem{stage_id: @build, stage_state: :at_gate} = work_item
+    work_item
+  end
+
+  # A work item at Verify's gate, on the track "fast-track", where Verify starts no run,
+  # with acceptance criteria v2: Build's second run stored it after the reader moved the
+  # work item back from Verify's gate with a note, the version's `decision`, and Build's
+  # gate `none` passed it on. Needs `process!/4` with `none?`.
+  defp passed_to_verify!(scope) do
+    work_item = scope |> taken_in_fixture() |> end_run!(understood_result())
+    {:ok, _confirmed} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+
+    work_item =
+      end_run(work_item, fn run, _registered ->
+        markdown!(run, "spec", "## Spec\n\nLet members cancel a booking.")
+        json!(run, "acceptance-criteria", @criteria_one)
+        passed!(run)
+      end)
+
+    {:ok, _at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+
+    work_item =
+      end_run(work_item, fn run, _registered ->
+        markdown!(run, "build-report", "## Build report\n\nA cancel rule of 24 hours.")
+        passed!(run)
+      end)
+
+    # Verify starts no run on the track: the work item waits at its gate.
+    assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+    {:ok, _moved} = Stages.move(scope, work_item, @build, @note, expect_stage: @verify)
+
+    decision =
+      Repo.one!(
+        from d in Stages.GateDecision,
+          where: d.work_item_id == ^work_item.id and d.kind == :move,
+          select: d.public_id
+      )
+
+    work_item =
+      end_run(work_item, fn run, _registered ->
+        json!(run, "acceptance-criteria", @criteria_two, decision: decision)
+        markdown!(run, "build-report", "## Build report\n\nA cancel rule of 12 hours.")
+        passed!(run)
+      end)
+
+    # Build's gate none passed the change on; no person's approval lists it.
+    assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
     work_item
   end
 
@@ -491,18 +538,19 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
 
   test "with a required output missing, the card shows only Request changes, and the line " <>
          "contains it alone",
-       %{conn: conn, scope: scope, sam: sam} do
-    work_item = changed!(scope)
+       %{conn: conn, scope: scope, sam: sam, alex: alex} do
+    # Verify has no workflow and requires a verify report, which no run writes: it waits at
+    # its gate with the output missing.
+    process!(scope, [sam.id, alex.id], true, %{
+      "sequence" => [],
+      "outputs" => [%{"type" => "verify-report", "required" => true}]
+    })
 
-    Repo.delete_all(
-      from a in Artifacts.Artifact,
-        where: a.work_item_id == ^work_item.id and a.type == "build-report"
-    )
-
-    assert %{missing_outputs: ["build-report"]} = Stages.status(work_item, scope)
+    work_item = passed_to_verify!(scope)
+    assert %{missing_outputs: ["verify-report"]} = Stages.status(work_item, scope)
 
     conn = log_in_user(conn, sam)
-    {:ok, view, _html} = live(conn, page(scope, work_item.number, "/stages/#{@build}"))
+    {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
     assert text(view, "#{@list}-action") ==
              "Check that these 3 changes to the acceptance criteria match your request. If they do not, pick Request changes."
@@ -518,44 +566,7 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
          "it and lists its criteria",
        %{conn: conn, scope: scope, sam: sam, alex: alex} do
     process!(scope, [sam.id, alex.id], true)
-    work_item = scope |> taken_in_fixture() |> end_run!(understood_result())
-    {:ok, _confirmed} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
-
-    work_item =
-      end_run(work_item, fn run, _registered ->
-        markdown!(run, "spec", "## Spec\n\nLet members cancel a booking.")
-        json!(run, "acceptance-criteria", @criteria_one)
-        passed!(run)
-      end)
-
-    {:ok, _at_build} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
-
-    work_item =
-      end_run(work_item, fn run, _registered ->
-        markdown!(run, "build-report", "## Build report\n\nA cancel rule of 24 hours.")
-        passed!(run)
-      end)
-
-    # Verify's entry does not run on the track: the work item waits at its gate with no run.
-    assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
-    {:ok, _moved} = Stages.move(scope, work_item, @build, @note, expect_stage: @verify)
-
-    decision =
-      Repo.one!(
-        from d in Stages.GateDecision,
-          where: d.work_item_id == ^work_item.id and d.kind == :move,
-          select: d.public_id
-      )
-
-    work_item =
-      end_run(work_item, fn run, _registered ->
-        json!(run, "acceptance-criteria", @criteria_two, decision: decision)
-        markdown!(run, "build-report", "## Build report\n\nA cancel rule of 12 hours.")
-        passed!(run)
-      end)
-
-    # Build's gate none passed the change on; no person's approval lists it.
-    assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+    work_item = passed_to_verify!(scope)
 
     conn = log_in_user(conn, sam)
     {:ok, view, _html} = live(conn, page(scope, work_item.number))

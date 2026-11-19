@@ -8087,13 +8087,23 @@ defmodule Apiary.StagesTest do
     # walkthrough; and Verify, which reads both, with a person's gate. `last` is the last
     # stage: `:build`, `:verify`, or `:release`, a stage after Verify that reads the
     # criteria. `type` is the type in place of the acceptance criteria, for a test of
-    # several names of one type: the acceptance criteria take the name `main` alone.
-    defp criteria_process!(scope, last \\ :verify, type \\ "acceptance-criteria") do
+    # several names of one type: the acceptance criteria take the name `main` alone. With
+    # `shape_gate`, Shape's gate is that gate in place of a person's.
+    defp criteria_process!(
+           scope,
+           last \\ :verify,
+           type \\ "acceptance-criteria",
+           shape_gate \\ nil
+         ) do
+      shape =
+        Map.merge(
+          %{"outputs" => [%{"type" => type, "required" => true}]},
+          if(shape_gate, do: %{"gate" => shape_gate}, else: %{})
+        )
+
       stages = [
         explore_stage(),
-        stage(@shape, "Shape", [%{"workflow" => "shape-a-ticket"}], %{
-          "outputs" => [%{"type" => type, "required" => true}]
-        }),
+        stage(@shape, "Shape", [%{"workflow" => "shape-a-ticket"}], shape),
         stage(
           @build,
           "Build",
@@ -8191,7 +8201,17 @@ defmodule Apiary.StagesTest do
           verdict("passed").(run, registered)
         end)
 
-      {:ok, work_item} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      # A gate `none` at Shape passes the work item on; a person's gate waits for Approve.
+      work_item =
+        case work_item do
+          %WorkItem{stage_id: @shape} ->
+            {:ok, approved} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+            approved
+
+          passed ->
+            passed
+        end
+
       assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
 
       work_item =
@@ -8426,6 +8446,49 @@ defmodule Apiary.StagesTest do
         end)
 
       assert %{decision_id: ^decision} = criteria(work_item, 2)
+      assert Stages.unapproved_changes(work_item, Artifacts.list(work_item)) == %{}
+    end
+
+    test "unapproved_changes/2 leaves out a change once a gate none lists a later version " <>
+           "of its artifact",
+         %{scope: scope} do
+      criteria_process!(scope, :verify, "acceptance-criteria", %{"kind" => "none"})
+
+      {work_item, %Escalation{public_id: decision}} =
+        asked_in_build!(scope, "Cover the empty cart in AC-2.")
+
+      changed = pushes_one("acceptance-criteria", "# AC-2, empty cart", decision: decision)
+
+      work_item =
+        work_item
+        |> end_run!(both(changed, pushes_one("walkthrough", "# Walkthrough 2", [])))
+        |> end_run!(verdict("passed"))
+        |> end_run!(verdict("passed"))
+
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+      second_id = criteria(work_item, 2).public_id
+
+      assert [^second_id] =
+               Map.keys(Stages.unapproved_changes(work_item, Artifacts.list(work_item)))
+
+      # Moved back to Shape, whose run writes v3; Shape's gate none lists v3, a later
+      # version of the criteria, so v2 has no mark.
+      {:ok, work_item} = Stages.move(scope, work_item, @shape, nil, expect_stage: @verify)
+
+      work_item =
+        end_run!(work_item, fn run, registered ->
+          pushes_one("acceptance-criteria", "# AC-2, from Shape", []).(run, registered)
+          verdict("passed").(run, registered)
+        end)
+
+      assert %WorkItem{stage_id: @build} = work_item
+      third_id = criteria(work_item, 3).public_id
+
+      assert Enum.any?(
+               decisions(work_item),
+               &(&1.stage_id == @shape and &1.automatic and third_id in &1.versions)
+             )
+
       assert Stages.unapproved_changes(work_item, Artifacts.list(work_item)) == %{}
     end
 

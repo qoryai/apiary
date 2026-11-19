@@ -45,8 +45,8 @@ defmodule Apiary.Stages do
   # which contains the change the person asked for. Every later
   # run reads that version in place of the approved one (`read_version/6`), and the next
   # approval by a person at a gate lists it (`approve/4`). A gate `none` lists no version
-  # with a `decision`. The work item page marks the version until a person's approval
-  # lists it or a later version of its artifact (`unapproved_changes/2`).
+  # with a `decision`. The work item page marks the version until an approval lists it
+  # or a later version of its artifact (`unapproved_changes/2`).
   #
   # ## After the last stage
   #
@@ -5311,24 +5311,24 @@ defmodule Apiary.Stages do
 
   @doc false
   # unapproved_changes/2 is each version of `artifacts`, the work item's
-  # (`Artifacts.list/1`), that is a person's change (`changes/2`) above every version of
-  # its artifact that a person's approval lists (`person_listed/1`), by its public id, as
+  # (`Artifacts.list/1`), that is a person's change (`changes/2`, by the approvals that
+  # `listed/1` reads, as for the version that later runs read), by its public id, as
   # `%{type:, name:, version:, by:, earlier:}`. `by` is the account id of the person who
   # wrote the note that asked for the version (`Apiary.Stages.Notes.writers/2`), nil for
   # none. `earlier` is the highest-numbered version of the same artifact, below this one,
-  # that a person's approval lists, nil for none: the text a person approved before the
-  # change. The work item page marks each such version until a person's approval lists it
-  # or a later version of its artifact.
+  # that a person's approval lists (`person_listed/1`), nil for none: the text a person
+  # approved before the change. The work item page marks each such version until an
+  # approval lists it or a later version of its artifact. A gate `none` lists no version
+  # with a `decision`, so the mark stays through it.
   @spec unapproved_changes(WorkItem.t(), [map]) :: %{String.t() => map}
   def unapproved_changes(%WorkItem{} = work_item, artifacts) do
     if Enum.any?(artifacts, fn a -> Enum.any?(a.versions, &is_binary(&1.decision_id)) end) do
       approvals = approvals_by_version(work_item)
-
       listed = person_listed(approvals)
 
       found =
         for artifact <- artifacts,
-            version <- changes(artifact, listed),
+            version <- changes(artifact, listed(approvals)),
             do: {artifact, version}
 
       writers = Notes.writers(work_item.id, Enum.map(found, &elem(&1, 1).decision_id))
@@ -5349,9 +5349,8 @@ defmodule Apiary.Stages do
   end
 
   # The public ids of the versions that a person's approval (`person_approval?/1`) of
-  # `approvals` (`approvals_by_version/1`) lists. An automatic approval, such as that of a
-  # gate `none`, does not end the page's mark of a change, as `listed/1` does for the
-  # version that later runs read.
+  # `approvals` (`approvals_by_version/1`) lists: the versions a person approved, from which
+  # `approved_before/3` takes the earlier text of a change.
   defp person_listed(approvals) do
     for {public_id, list} <- approvals,
         Enum.any?(list, &person_approval?/1),
