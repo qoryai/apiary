@@ -221,6 +221,40 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert credential == "#{checkout.public_id}-1"
     end
 
+    test "with 1 key on the start key's provider and 5 on the other keeps 1, then 5", ctx do
+      northwind = provider!(ctx.scope, "Northwind keys", count: 1)
+      checkout = provider!(ctx.scope, "Checkout keys", count: 5)
+      choose!(ctx.scope, {:workspace, "plan-the-build"}, northwind)
+      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, checkout)
+      assert {:ok, _version} = save(ctx.scope, ~w(plan-the-build write-acceptance-checks))
+
+      {{:ok, run}, _queued} = claim!(ctx)
+
+      # The start key's provider keeps fewer than its share: the other provider's
+      # remaining keys fill the run to 6.
+      assert names(stored_keys(run)) ==
+               ["#{northwind.public_id}-1"] ++ for(n <- 1..5, do: "#{checkout.public_id}-#{n}")
+    end
+
+    test "keeps the provider of a later session's keys from deletion while the run is live",
+         ctx do
+      northwind = provider!(ctx.scope, "Northwind keys")
+      checkout = provider!(ctx.scope, "Checkout keys")
+      choose!(ctx.scope, {:workspace, "plan-the-build"}, northwind)
+      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, checkout)
+      assert {:ok, _version} = save(ctx.scope, ~w(plan-the-build write-acceptance-checks))
+
+      {{:ok, run}, _queued} = claim!(ctx)
+      assert run.provider_connection_id == northwind.id
+
+      # No choice uses Checkout keys now; the run has a key row of it, for session 2.
+      {:ok, _deleted} =
+        ModelChoices.delete_choice(ctx.scope, {:workspace, "write-acceptance-checks"})
+
+      assert Connections.delete_provider(ctx.scope, checkout) ==
+               {:error, {:provider_in_use, %{places: [], runs: [run.public_id]}}}
+    end
+
     test "whose first session runs on the machine's key ends session_key_missing where a later session runs on a provider with keys",
          ctx do
       northwind = provider!(ctx.scope, "Northwind keys", count: 2)
@@ -260,6 +294,64 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
         |> Apiary.Kinds.Providers.put_test_list()
 
       assert {{:ended, :provider_gone}, _queued} = claim!(ctx)
+    end
+  end
+
+  describe "a claim of a stage whose later workflow's provider has every key in cooldown" do
+    # Northwind keys for the first workflow; the workspace's choice on Checkout keys, with
+    # Claude Opus, and a fallback on Storefront keys, with Claude Sonnet, for the second,
+    # which has no choice of its own; saved. Then Checkout keys' one key cools.
+    defp cooling_later!(ctx) do
+      northwind = provider!(ctx.scope, "Northwind keys")
+      checkout = provider!(ctx.scope, "Checkout keys")
+      storefront = provider!(ctx.scope, "Storefront keys")
+      sonnet = Apiary.ModelChoicesFixtures.every_tier("claude-sonnet-5-5")
+      fallback = Apiary.ModelChoicesFixtures.fallback_attrs(storefront, sonnet)
+      choose!(ctx.scope, {:workspace, "plan-the-build"}, northwind)
+      choose!(ctx.scope, :workspace, checkout, %{fallbacks: [fallback]})
+      assert {:ok, _version} = save(ctx.scope, ~w(plan-the-build write-acceptance-checks))
+      key_state!(checkout, "key-1", until: in_seconds(3_600))
+      %{northwind: northwind, checkout: checkout, storefront: storefront}
+    end
+
+    test "starts the later session on the first fallback with a free key", ctx do
+      %{northwind: northwind, storefront: storefront} = cooling_later!(ctx)
+
+      {{:ok, run}, _queued} = claim!(ctx)
+      fallback = "#{storefront.public_id}-1"
+
+      assert run.provider_connection_id == northwind.id
+      assert %{"1" => second} = run.session_settings
+
+      assert %{
+               "workflow" => "write-acceptance-checks",
+               "model_credential" => ^fallback,
+               "model_choice" => %{"model" => "claude-sonnet-5-5"}
+             } = second
+
+      assert names(stored_keys(run)) == ["#{northwind.public_id}-1", fallback]
+    end
+
+    test "starts the later session on its provider's choice and keys where every fallback's key is in cooldown too",
+         ctx do
+      %{northwind: northwind, checkout: checkout, storefront: storefront} =
+        cooling_later!(ctx)
+
+      key_state!(storefront, "key-1", until: in_seconds(3_600))
+
+      {{:ok, run}, _queued} = claim!(ctx)
+      cooling = "#{checkout.public_id}-1"
+
+      assert run.provider_connection_id == northwind.id
+      assert %{"1" => second} = run.session_settings
+
+      assert %{
+               "workflow" => "write-acceptance-checks",
+               "model_credential" => ^cooling,
+               "model_choice" => %{"model" => "claude-opus-5-5"}
+             } = second
+
+      assert names(stored_keys(run)) == ["#{northwind.public_id}-1", cooling]
     end
   end
 
@@ -479,6 +571,24 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
                 "Northwind keys", "write-acceptance-checks"}
     end
 
+    test "after a first session on another provider, ends the build session_key_missing where two later sessions use two APIs of one provider",
+         ctx do
+      second = second_api!()
+      northwind = provider!(ctx.scope, "Northwind keys")
+      checkout = provider!(ctx.scope, "Checkout keys")
+      workflows = ~w(plan-the-build write-acceptance-checks review-the-build)
+      # Session 1 starts on Northwind keys' key; sessions 2 and 3 run on Checkout keys.
+      choose!(ctx.scope, {:workspace, "plan-the-build"}, northwind)
+      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, checkout)
+      choose!(ctx.scope, {:workspace, "review-the-build"}, checkout)
+      assert {:ok, _version} = save(ctx.scope, workflows)
+
+      # Session 3 moves to a runtime of a second API of Checkout keys. The claim's guard
+      # refuses that too, so the build is called as the claim calls it after the guard.
+      choose!(ctx.scope, {:workspace, "review-the-build"}, checkout, %{runtime: second.name})
+      assert built(queued!(ctx)) == {:end, :session_key_missing}
+    end
+
     test "ends the run too_many_providers after the 7th workflow's choice is set", ctx do
       providers = six_providers!(ctx)
       assert {{:ok, _run}, _queued} = claim!(ctx)
@@ -502,6 +612,19 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
         )
 
       version
+    end
+
+    test "ends the build too_many_providers for 7 providers that the guard did not see",
+         ctx do
+      providers = providers!(ctx.scope, 7)
+
+      for {provider, workflow} <- Enum.zip(providers, steps(7)),
+          do: choose!(ctx.scope, {:workspace, workflow}, provider)
+
+      # Saved without the check of the model choices; the claim's guard would end the run
+      # first, so the build is called as the claim calls it after the guard.
+      harness_version!(ctx, steps(7))
+      assert built(queued!(ctx)) == {:end, :too_many_providers}
     end
 
     test "ends the run model_choice_missing, or too_many_providers, after a harness change",
@@ -818,6 +941,37 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert %{"session_id" => @session_id, "path" => @transcript} = run.resume
       assert Transcript.last(paused.id, 2) == %{session_id: @session_id, path: @transcript}
       assert %{"runtime" => "codex", "model" => "gpt-6-astra"} = run.run_settings
+    end
+
+    test "in a Codex session with model_key_switch resumes the Codex session once the report window has passed",
+         ctx do
+      northwind = provider!(ctx.scope, "Northwind keys")
+      storefront = provider!(ctx.scope, "Storefront keys", kind: "openai")
+      choose!(ctx.scope, {:workspace, "plan-the-build"}, northwind)
+      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, storefront)
+      assert {:ok, _version} = save(ctx.scope, ~w(plan-the-build write-acceptance-checks))
+
+      {paused, _dispatch_run, continuation} =
+        paused!(ctx,
+          session: 2,
+          reason: "model_key_switch",
+          runtimes: %{1 => "claude", 2 => "codex"}
+        )
+
+      assert paused.exit_reason == "model_key_switch"
+      assert paused.paused_session == 2
+      assert %DateTime{} = continuation.report_wait_until
+
+      # The report window has passed: a claim takes the continuation.
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^continuation.id),
+          set: [report_wait_until: DateTime.add(DateTime.utc_now(), -1, :second)]
+        )
+
+      assert {{:ok, run}, _queued} = claimed!(ctx, continuation)
+      assert run.provider_connection_id == storefront.id
+      assert %{"session_id" => @session_id, "path" => @transcript} = run.resume
+      assert %{"runtime" => "codex"} = run.run_settings
     end
 
     test "is continued on the paused session's provider, which the default runtime can use, though session 1's cannot",
