@@ -214,9 +214,9 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
   defp passed!(run), do: json!(run, "verdict", %{"verdict" => "passed"})
 
   # A work item at Build's gate with acceptance criteria v2, which Build's second run
-  # stored after the scope's person picked Request changes at Build's gate, with that
+  # stored after the person of `asker` picked Request changes at Build's gate, with that
   # request as its `decision`.
-  defp changed!(scope) do
+  defp changed!(scope, asker \\ nil) do
     work_item = scope |> taken_in_fixture() |> end_run!(understood_result())
     {:ok, _confirmed} = WorkItems.confirm(scope, work_item, 1)
 
@@ -236,7 +236,9 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
       end)
 
     assert %WorkItem{stage_id: @build, stage_state: :at_gate} = work_item
-    {:ok, _again} = Stages.request_changes(scope, work_item, @note, nil, expect_stage: @build)
+
+    {:ok, _again} =
+      Stages.request_changes(asker || scope, work_item, @note, nil, expect_stage: @build)
 
     decision =
       Repo.one!(
@@ -419,6 +421,52 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
     refute has_element?(view, "#{@card}-approve")
     refute has_element?(view, "#{@card}-ask-changes")
     refute has_element?(view, "#{@card}-changes")
+  end
+
+  test "a writer whose account is gone: a member's request",
+       %{conn: conn, scope: scope, sam: sam, alex: alex, alex_scope: alex_scope} do
+    work_item = changed!(scope, alex_scope)
+    {:ok, _deleted} = Apiary.Accounts.delete_user(alex)
+
+    conn = log_in_user(conn, sam)
+    {:ok, view, _html} = live(conn, page(scope, work_item.number, "/stages/#{@build}"))
+
+    mark = "Changed on a member's request"
+    assert_marks(view, mark)
+
+    assert text(view, "#{@list}-action") ==
+             "Check that these 3 changes to the acceptance criteria match a member's request, then pick Approve or Request changes."
+
+    assert_criteria(view, mark)
+  end
+
+  test "after a move back, the mark follows the output's check at the earlier gate",
+       %{conn: conn, scope: scope, sam: sam} do
+    work_item = changed!(scope)
+    {:ok, moved} = Stages.move(scope, work_item, @shape, nil, expect_stage: @build)
+    work_item = end_run(moved, fn run, _registered -> passed!(run) end)
+    assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = work_item
+
+    conn = log_in_user(conn, sam)
+    {:ok, view, _html} = live(conn, page(scope, work_item.number, "/stages/#{@shape}"))
+
+    mark = "Changed on your request"
+
+    # Shape's approval listed v1, so the line keeps today's approval marks after the
+    # change's mark, as they were before (`approval_mark/1`).
+    assert text(view, "#{@card}-output-acceptance-criteria") ==
+             "acceptance criteria v2 · Passed · #{mark} " <>
+               "Approved v1; v2 is newer · Changed after approval"
+
+    assert has_element?(view, "#{@card}-output-acceptance-criteria-changed.text-warning", mark)
+    refute has_element?(view, "#{@card}-recorded")
+
+    assert text(view, "#{@list}-action") ==
+             "Check that these 3 changes to the acceptance criteria match your request, then pick Approve or Request changes."
+
+    assert_criteria(view, mark)
+    assert has_element?(view, "#{@card}-approve-go", "Approve")
+    assert has_element?(view, "#{@card}-ask-changes", "Request changes")
   end
 
   test "after a person's approval lists the version, no mark and no criteria",

@@ -476,12 +476,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   "Changed on sam's request" for any other reader, with the part of the writer's email
   before "@", and "Changed on a member's request" where the writer's account is gone. The
   mark shows on the version's line of the gate card ("acceptance criteria v2 · Changed on
-  your request"), after an output's check ("acceptance criteria v2 · Passed · Changed on
-  your request"), and on the caption of the version's frame on the stage's tab ("Version 2
-  · Changed on your request"). For acceptance criteria that a person approved before, the
-  gate card compares each criterion by its id with that version and lists each changed,
-  added or removed one: its id with the mark, then "**Earlier:**" and "**New:**" with the
-  two texts, then "**Earlier check:**" and "**New check:**" where its check changed. An
+  your request"), after an output's check and before the approval marks that the line has
+  today ("acceptance criteria v2 · Passed · Changed on your request"), and on the caption
+  of the version's frame on the stage's tab ("Version 2 · Changed on your request"). For
+  acceptance criteria that a person approved before, the gate card compares each criterion
+  by its id with that version and lists each changed, added or removed one: its id with
+  the mark, then "**Earlier:**" and "**New:**" with the two texts, then "**Earlier
+  check:**" and "**New check:**" where its check changed. An
   added criterion shows "**Earlier:** none. This criterion is new." and its new check; a
   removed one shows "**New:** Removed. Reason: …" and no check line; a criterion whose
   check alone changed shows "**Text:**" and the two check lines. "AC-1 is unchanged." (or

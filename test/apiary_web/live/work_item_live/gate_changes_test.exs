@@ -3,6 +3,8 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesTest do
   # under a changed version (`GateChanges.compare/2`), and the mark for each reader.
   use ExUnit.Case, async: true
 
+  import Phoenix.LiveViewTest, only: [render_component: 2]
+
   alias ApiaryWeb.WorkItemLive.{GateChanges, VerifyTab}
 
   @ac1 %{"id" => "ac-1", "text" => "A member cancels a booking.", "check" => "Cancel one."}
@@ -179,6 +181,71 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesTest do
     assert GateChanges.action(:you, 3, [:form]) == nil
     assert GateChanges.action(:you, 3, [:approve]) == nil
     assert GateChanges.action(:you, 3, []) == nil
+  end
+
+  test "the block of a check that alone changed: the text once, then the two checks" do
+    earlier = %{"id" => "ac-5", "text" => "Up to 12 hours.", "check" => "Try 13."}
+    new = %{"id" => "ac-5", "text" => "Up to 12 hours.", "check" => "Try 11."}
+    {:ok, compared} = compare([@ac1, earlier], [@ac1, new])
+
+    html =
+      render_component(&GateChanges.changes/1,
+        id: "gate-criteria",
+        lead: GateChanges.action(:you, length(compared.changes), [:approve, :changes]),
+        lead_id: "gate-criteria-action",
+        changes: compared.changes,
+        unchanged: compared.unchanged,
+        mark: GateChanges.mark(:you)
+      )
+
+    doc = LazyHTML.from_fragment(html)
+
+    lines =
+      doc
+      |> LazyHTML.query("#gate-criteria-ac-5 p")
+      |> Enum.map(&(&1 |> LazyHTML.text() |> String.split() |> Enum.join(" ")))
+
+    assert lines == [
+             "AC-5 · Changed on your request",
+             "Text: Up to 12 hours.",
+             "Earlier check: Try 13.",
+             "New check: Try 11."
+           ]
+
+    assert doc |> LazyHTML.query("#gate-criteria-action") |> LazyHTML.text() ==
+             "Check that this change to the acceptance criteria matches your request, then pick Approve or Request changes."
+
+    assert doc |> LazyHTML.query("#gate-criteria-unchanged") |> LazyHTML.text() |> String.trim() ==
+             "AC-1 is unchanged."
+
+    assert doc |> LazyHTML.query("#gate-criteria-ac-5-earlier") |> Enum.to_list() == []
+    assert doc |> LazyHTML.query("#gate-criteria-ac-5-new") |> Enum.to_list() == []
+  end
+
+  test "two unchanged criteria: one line for both" do
+    two = %{"id" => "ac-2", "text" => "Two.", "check" => "Check two."}
+    five = %{@ac1 | "id" => "ac-5"}
+
+    {:ok, compared} =
+      compare([@ac1, two, five], [@ac1, %{two | "text" => "Two again."}, five])
+
+    assert compared.unchanged == ["ac-1", "ac-5"]
+
+    html =
+      render_component(&GateChanges.changes/1,
+        id: "gate-criteria",
+        changes: compared.changes,
+        unchanged: compared.unchanged,
+        mark: GateChanges.mark(:member)
+      )
+
+    doc = LazyHTML.from_fragment(html)
+
+    assert doc |> LazyHTML.query("#gate-criteria-unchanged") |> LazyHTML.text() |> String.trim() ==
+             "AC-1 and AC-5 are unchanged."
+
+    assert doc |> LazyHTML.query("#gate-criteria-ac-2 .text-warning") |> LazyHTML.text() ==
+             "Changed on a member's request"
   end
 
   test "the mark for the reader who asked, another reader, and an account that is gone" do
