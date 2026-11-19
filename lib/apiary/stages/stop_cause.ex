@@ -428,7 +428,7 @@ defmodule Apiary.Stages.StopCause do
   # again (`Apiary.Stages.shared_models/1`); once it is fixed, or the check finds the other
   # fault, the fix is to run the round again.
   defp lines(%DispatchRun{end_cause: cause} = run, _n, _ctx)
-       when cause in [:model_choice_missing, :too_many_providers] do
+       when cause in [:model_choice_missing, :too_many_providers, :session_key_missing] do
     {stage, detail} = shared_models(run)
     {shared_models_cause(cause, stage), shared_models_fix(cause, detail)}
   end
@@ -815,6 +815,10 @@ defmodule Apiary.Stages.StopCause do
     do:
       "The run did not start, because a workflow of #{stage} had no model, and that workflow's runtime could not use the provider that the run would start on."
 
+  defp shared_models_cause(:session_key_missing, stage),
+    do:
+      "The run did not start, because a workflow of #{stage} would run on a provider that has no key in the run, or on a second API of a provider that an earlier workflow uses."
+
   defp shared_models_cause(:too_many_providers, stage),
     do:
       "The run did not start, because the workflows of #{stage} used more than 6 model providers."
@@ -829,6 +833,20 @@ defmodule Apiary.Stages.StopCause do
   defp shared_models_fix(:too_many_providers, {:too_many_providers, count, providers}),
     do:
       "Use at most 6 model providers in one stage. Its workflows use #{count}: #{Enum.join(providers, ", ")}."
+
+  defp shared_models_fix(
+         :session_key_missing,
+         {:session_key_missing, :no_key, workflow, provider}
+       ),
+       do:
+         "Add a model key to #{provider}, or choose a model of another provider for workflow #{workflow}. #{provider} has no model key."
+
+  defp shared_models_fix(
+         :session_key_missing,
+         {:session_key_missing, :other_api, workflow, api, provider, earlier}
+       ),
+       do:
+         "Choose a model for workflow #{workflow} that uses the #{api} API of #{provider}, as workflow #{earlier} does, or a model of another provider. One run uses one API of each provider."
 
   defp shared_models_fix(_cause, _fixed_or_other), do: "Run the round again."
 

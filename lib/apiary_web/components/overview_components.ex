@@ -2372,6 +2372,12 @@ defmodule ApiaryWeb.OverviewComponents do
         "Run the round again. A workflow of the stage had no model, and that workflow's runtime could not use the provider that the run would start on."
       )
 
+  defp no_run_words(:session_key_missing, _choice, _item),
+    do:
+      gettext(
+        "Run the round again. A workflow of the stage would run on a provider that has no key in the run, or on a second API of a provider that an earlier workflow uses."
+      )
+
   defp no_run_words(:too_many_providers, _choice, _item),
     do:
       gettext(
