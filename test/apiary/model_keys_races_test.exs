@@ -210,7 +210,8 @@ defmodule Apiary.ModelKeysRacesTest do
       one = start(report(ctx.run_key, first))
       await_blocked(one.backend, holder)
 
-      # The second report waits behind the first one, which holds the row's queue.
+      # Both reports wait on the held row. After the holder commits, both lock the new row
+      # version again and either can win, so the test does not say which report marks.
       two = start(report(ctx.run_key, second))
       await_blocked(two.backend, one.backend)
 
@@ -219,7 +220,9 @@ defmodule Apiary.ModelKeysRacesTest do
 
       assert :ok = Task.await(one.task)
       assert :ok = Task.await(two.task)
-      assert [%Rejection{rejected_at: ^first}] = rejections(ctx.main)
+      # Exactly one report marks the copy and writes the rejection; the other leaves it.
+      assert [%Rejection{rejected_at: at}] = rejections(ctx.main)
+      assert at in [first, second]
       assert %Copy{marked_at: %DateTime{}} = copy(ctx.run_key)
     end
   end
