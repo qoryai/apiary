@@ -153,7 +153,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       outputs: outputs,
       escalation:
         scope
-        |> escalation(get(status, :escalation), runs, outputs, get(status, :missing_outputs))
+        |> escalation(get(status, :escalation), runs, outputs, get(status, :accept_needs))
         |> entry(stage),
       approvers: approvers(stage),
       # The gate's approvers from `Apiary.Stages.status/2`: `:members`, or account ids.
@@ -172,6 +172,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       switch: switch_tracks(row, state),
       missing_workflows: List.wrap(get(status, :waiting_workflow)),
       missing_outputs: List.wrap(get(status, :missing_outputs)),
+      # The missing required outputs that Accept as it is waits for.
+      accept_needs: List.wrap(get(status, :accept_needs)),
       confirm_gate: false,
       explore: false,
       at_explore: at_explore,
@@ -504,8 +506,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   defp escalation(_scope, nil, _runs, _outputs, _missing), do: nil
 
-  # `missing` is the required output types whose Exists check fails
-  # (`Apiary.Stages.missing_outputs/1`): with any, the stage has no result to accept.
+  # `missing` is the required output types that Accept as it is waits for
+  # (`accept_needs` of `Apiary.Stages.status/2`: the missing ones where the accept takes
+  # the stage to its gate): with any, the stage has no result to accept.
   defp escalation(scope, escalation, runs, outputs, missing) do
     cause = get(escalation, :cause)
     cause = if is_atom(cause) and not is_nil(cause), do: Atom.to_string(cause), else: cause
@@ -573,9 +576,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   defp points(_none), do: []
 
-  # Whether the stage has a result to accept as it is, where no required output is missing
-  # (`escalation/5`): a version of one of its outputs; for a stage with no outputs, a run
-  # that did not stop before its verdict; or a run of the stage that ended with no verdict
+  # Whether the stage has a result to accept as it is, where the accept waits for no
+  # required output (`escalation/5`): a version of one of its outputs; for a stage with
+  # no outputs, a run that did not stop before its verdict; or a run of the stage that ended with no verdict
   # (`no_verdict`, `Apiary.Stages.status/2`) where no output is required. The run of an escalation the migration placed has no stage, so the
   # page lists it nowhere (`Apiary.Stages.runs/1`) and that clause does not apply to it.
   defp result?(:run_stopped, outputs, true, %{}),
@@ -818,8 +821,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp checked({:request_changes, _note, _id}, %{confirm_gate: true}),
     do: {:error, :confirm_gate}
 
-  # Accept as it is only where the stage has a result and no required output is missing:
-  # the page offers it nowhere else.
+  # Accept as it is only where the stage has a result and the accept waits for no required
+  # output: the page offers it nowhere else.
   defp checked({:resolve, :accept, _note}, %{escalation: %{result: false}}),
     do: {:error, :invalid}
 

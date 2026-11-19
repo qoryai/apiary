@@ -649,6 +649,34 @@ defmodule Apiary.Stages.RunnerTest do
              ]
     end
 
+    test "at the limit with a required output missing at the last entry: Move back, no Accept" do
+      assert %{actions: [{:escalate, :return_limit, [point]}]} =
+               Runner.step(verify(), pos(1, nil, 1), changes(), %{
+                 earlier: @earlier,
+                 returns: 2,
+                 failed_checks: ["verification"]
+               })
+
+      assert point["text"] ==
+               "Pick Move back to return the work item to Build once more, or move this stage back."
+
+      # Before the last entry the accept starts the next entry, so the text keeps it.
+      seq = %{
+        stage([wf("verify-a-ticket", %{"return" => %{"stage" => @build_id}}), wf("report")])
+        | "name" => "Verify"
+      }
+
+      assert %{actions: [{:escalate, :return_limit, [point]}]} =
+               Runner.step(seq, pos(0, nil, 1), changes(), %{
+                 earlier: @earlier,
+                 returns: 2,
+                 failed_checks: ["verification"]
+               })
+
+      assert point["text"] ==
+               "Pick Move back to return the work item to Build once more, or pick Accept as it is."
+    end
+
     test "the limit is the key's setting" do
       key = %{"stage" => @build_id, "limit" => 1}
       facts = %{earlier: @earlier, returns: 1}
@@ -1719,6 +1747,41 @@ defmodule Apiary.Stages.RunnerTest do
                "action" => "run_again",
                "fix" => "Read the open finding, then pick Accept as it is or Run another round."
              }
+    end
+
+    test "the round limit's fix leaves out Accept as it is where the stage offers none" do
+      ended = {:run, {:verdict, :changes_requested, [again("The export has no title.")]}}
+      missing = %{failed_checks: ["explainer"]}
+
+      # The loop is the last entry: an accept would take the stage to its gate.
+      last = stage([loop([wf("review-changes")], 1)])
+
+      assert [{:escalate, :round_limit, [point]}] =
+               Runner.step(last, pos(0, 0, 1), ended, missing).actions
+
+      assert point["fix"] == "Read the open finding, then pick Run another round."
+
+      # A loop before another entry: the accept starts that entry.
+      before = stage([loop([wf("review-changes")], 1), wf("report")])
+
+      assert [{:escalate, :round_limit, [point]}] =
+               Runner.step(before, pos(0, 0, 1), ended, missing).actions
+
+      assert point["fix"] ==
+               "Read the open finding, then pick Accept as it is or Run another round."
+    end
+
+    test "accept_to_gate?/3 and accept_offered?/3 follow where an accept goes" do
+      seq = stage([wf("implement"), loop([wf("capture-demo")])])
+      missing = %{failed_checks: ["demo-video"]}
+
+      refute Runner.accept_to_gate?(seq, pos(0, nil, 1), %{})
+      assert Runner.accept_to_gate?(seq, pos(1, 0, 3), %{})
+      assert Runner.accept_to_gate?(seq, pos(2, nil, 3), %{})
+
+      assert Runner.accept_offered?(seq, pos(0, nil, 1), missing)
+      refute Runner.accept_offered?(seq, pos(1, 0, 3), missing)
+      assert Runner.accept_offered?(seq, pos(1, 0, 3), %{failed_checks: []})
     end
 
     test "with no open finding the point keeps its words" do

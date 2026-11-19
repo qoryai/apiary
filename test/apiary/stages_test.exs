@@ -2726,6 +2726,41 @@ defmodule Apiary.StagesTest do
       assert %WorkItem{stage_id: @explore, stage_state: :at_gate} = reload(work_item)
     end
 
+    test "Accept as it is before the last entry starts the next entry with a required output missing; at the last entry it is refused",
+         %{scope: scope} do
+      save!(scope, [
+        explore_stage(%{
+          "sequence" => [%{"workflow" => "explore-a-ticket"}, %{"workflow" => "triage-review"}],
+          "outputs" => [@proposal]
+        }),
+        stage(@shape, "Shape", [])
+      ])
+
+      # The first run stops with no proposal: Accept as it is goes on to triage-review.
+      work_item = take_in!(scope) |> end_run!(nil)
+      assert %WorkItem{stage_entry: 0} = work_item
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+      assert %{missing_outputs: ["proposal"], accept_needs: []} = Stages.status(work_item, scope)
+      assert Stages.starts(work_item, :accept) == {:run, "triage-review"}
+
+      assert {:ok, %WorkItem{stage_state: :running, stage_entry: 1}} =
+               Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore)
+
+      # The second run stops too: an accept would take the stage to its gate.
+      work_item = end_run!(work_item, nil)
+      assert %WorkItem{stage_entry: 1, stage_state: :escalated} = work_item
+
+      assert %{missing_outputs: ["proposal"], accept_needs: ["proposal"]} =
+               Stages.status(work_item, scope)
+
+      assert Stages.starts(work_item, :accept) == :none
+
+      assert Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore) ==
+               {:error, :invalid}
+
+      assert %Escalation{resolution: nil} = escalation(work_item)
+    end
+
     test "an optional output blocks neither Accept as it is nor Approve", %{scope: scope} do
       outputs_process!(scope, [@proposal, %{"type" => "explainer", "required" => false}])
 

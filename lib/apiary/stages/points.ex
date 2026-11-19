@@ -28,32 +28,24 @@ defmodule Apiary.Stages.Points do
   # stopped:", as in "The run stopped: a read-only run needs a wall".
   @lowered ~w(The A An)
 
-  # round_limit/3 is the point of a loop that ran `ran` of its `rounds` rounds, with
+  # round_limit/4 is the point of a loop that ran `ran` of its `rounds` rounds, with
   # `findings`, the text of each review finding still open, in the verdict's order. The
   # point's text has their number, then each text. Its `fix` is to read them and pick
-  # Accept as it is or Run another round. With no open finding, the point has the
-  # sentence alone and no `fix`.
+  # Accept as it is or Run another round, or, with `accept: false` in `opts` (the stage
+  # offers no Accept as it is, `Apiary.Stages.Runner.accept_offered?/3`), Run another
+  # round alone. With no open finding, the point has the sentence alone and no `fix`.
   @doc false
-  @spec round_limit(pos_integer, pos_integer, [String.t()]) :: [t]
-  def round_limit(ran, rounds, findings \\ [])
+  @spec round_limit(pos_integer, pos_integer, [String.t()], keyword) :: [t]
+  def round_limit(ran, rounds, findings \\ [], opts \\ [])
 
-  def round_limit(ran, rounds, [_ | _] = texts) do
+  def round_limit(ran, rounds, [_ | _] = texts, opts) do
     count = length(texts)
     sentence = default(fn -> open_findings(ran, rounds, count) end)
-
-    fix =
-      default(fn ->
-        ngettext(
-          "Read the open finding, then pick Accept as it is or Run another round.",
-          "Read the %{count} open findings, then pick Accept as it is or Run another round.",
-          count
-        )
-      end)
-
+    fix = default(fn -> findings_fix(count, Keyword.get(opts, :accept, true)) end)
     [Map.put(run_again(Enum.join([sentence | texts], " ")), "fix", fix)]
   end
 
-  def round_limit(ran, rounds, _findings) do
+  def round_limit(ran, rounds, _findings, _opts) do
     [
       run_again(
         default(fn ->
@@ -64,6 +56,22 @@ defmodule Apiary.Stages.Points do
       )
     ]
   end
+
+  defp findings_fix(count, true),
+    do:
+      ngettext(
+        "Read the open finding, then pick Accept as it is or Run another round.",
+        "Read the %{count} open findings, then pick Accept as it is or Run another round.",
+        count
+      )
+
+  defp findings_fix(count, false),
+    do:
+      ngettext(
+        "Read the open finding, then pick Run another round.",
+        "Read the %{count} open findings, then pick Run another round.",
+        count
+      )
 
   # The sentence of the rounds that ran with `count` open findings. Its count is the
   # findings', so the word for the rounds is chosen by `rounds` here.
@@ -103,22 +111,18 @@ defmodule Apiary.Stages.Points do
     end
   end
 
-  # return_limit/3 is the point of an entry whose run asked for changes after `returns`
+  # return_limit/4 is the point of an entry whose run asked for changes after `returns`
   # returns of the work item from the stage `stage` to the earlier stage `to`, the most its
   # return key allows (`Apiary.Stages.Runner`). The member's action comes first, in
   # `text`, and the count after it, in `fix`, which the page shows after the text in place
   # of "Run another round." (the user's ruling of 2026-11-16: the action, then the count
-  # of returns, then the findings, which are the verdict's points after this one).
+  # of returns, then the findings, which are the verdict's points after this one). The
+  # action ends with "or pick Accept as it is", or, with `accept: false` in `opts` (the
+  # stage offers no Accept as it is), "or move this stage back".
   @doc false
-  @spec return_limit(non_neg_integer, String.t(), String.t()) :: [t]
-  def return_limit(returns, stage, to) do
-    text =
-      default(fn ->
-        gettext(
-          "Pick Move back to return the work item to %{to} once more, or pick Accept as it is.",
-          to: to
-        )
-      end)
+  @spec return_limit(non_neg_integer, String.t(), String.t(), keyword) :: [t]
+  def return_limit(returns, stage, to, opts \\ []) do
+    text = default(fn -> return_action(to, Keyword.get(opts, :accept, true)) end)
 
     count =
       default(fn ->
@@ -133,6 +137,20 @@ defmodule Apiary.Stages.Points do
 
     [run_again(text) |> Map.put("fix", count)]
   end
+
+  defp return_action(to, true),
+    do:
+      gettext(
+        "Pick Move back to return the work item to %{to} once more, or pick Accept as it is.",
+        to: to
+      )
+
+  defp return_action(to, false),
+    do:
+      gettext(
+        "Pick Move back to return the work item to %{to} once more, or move this stage back.",
+        to: to
+      )
 
   # no_verdict/0 is the point of a run outside a loop that ended with no verdict
   # (`Apiary.Stages.Runner`).

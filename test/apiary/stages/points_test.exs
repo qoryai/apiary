@@ -55,6 +55,34 @@ defmodule Apiary.Stages.PointsTest do
            ]
   end
 
+  test "a round limit's fix offers Accept as it is unless the stage offers none" do
+    assert [
+             %{
+               "fix" =>
+                 "Read the 2 open findings, then pick Accept as it is or Run another round."
+             }
+           ] =
+             Points.round_limit(3, 3, ["A.", "B."])
+
+    assert [%{"fix" => "Read the 2 open findings, then pick Run another round."}] =
+             Points.round_limit(3, 3, ["A.", "B."], accept: false)
+
+    assert [%{"fix" => "Read the open finding, then pick Run another round."}] =
+             Points.round_limit(3, 3, ["A."], accept: false)
+  end
+
+  test "a return limit's action offers Accept as it is unless the stage offers none" do
+    assert [%{"text" => accept}] = Points.return_limit(2, "Verify", "Build")
+
+    assert accept ==
+             "Pick Move back to return the work item to Build once more, or pick Accept as it is."
+
+    assert [%{"text" => back}] = Points.return_limit(2, "Verify", "Build", accept: false)
+
+    assert back ==
+             "Pick Move back to return the work item to Build once more, or move this stage back."
+  end
+
   test "failed checks are one point for each output type, with the type's words" do
     assert Points.check_failed(["spec", "acceptance-criteria"]) == [
              %{

@@ -7967,7 +7967,6 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id), set: [stage_entry: 0])
 
       stored!(work_item, "explainer", @build)
-      stored!(work_item, "demo-video", @build)
       escalate!(work_item, :escalate, "Blocked")
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
       before = spend_runs(work_item)
@@ -7991,6 +7990,50 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       view |> form("#spend-dialog-form") |> render_submit()
       assert %Escalation{resolution: :accept, note: "Good enough"} = escalation(work_item)
       assert spend_runs(work_item) == before + 1
+    end
+
+    test "Accept as it is with no demo video: offered at implement, where it starts capture-demo; absent and refused at the last entry",
+         %{conn: conn, scope: scope} do
+      # At implement, the first entry, Accept goes on to the loop, whose checks run later.
+      # The explainer is the stage's result; the demo video is missing.
+      work_item = at_build(scope, :escalated)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id), set: [stage_entry: 0])
+
+      stored!(work_item, "explainer", @build)
+      escalate!(work_item, :escalate, "Blocked")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      before = spend_runs(work_item)
+      assert has_element?(view, "#work-item-stage-escalation-accept")
+
+      view
+      |> form("#work-item-stage-escalation-form", %{"note" => ""})
+      |> render_submit(%{"how" => "accept"})
+
+      assert line(view, "#spend-dialog-line") ==
+               "Starts a run of capture-demo on #{machine(scope)}. The run uses model tokens."
+
+      view |> form("#spend-dialog-form") |> render_submit()
+      assert %Escalation{resolution: :accept} = escalation(work_item)
+      assert spend_runs(work_item) == before + 1
+
+      # At the loop, the last entry, Accept would take the stage to its gate.
+      at_end = at_build(scope, :escalated, round: 3)
+      stored!(at_end, "explainer", @build)
+      escalate!(at_end, :escalate, "Blocked")
+      {:ok, view, _html} = live(conn, page(scope, at_end.number))
+      refute has_element?(view, "#work-item-stage-escalation-accept")
+
+      render_hook(view, "stage_resolve", %{
+        "number" => "#{at_end.number}",
+        "seen" => @build,
+        "how" => "accept",
+        "note" => ""
+      })
+
+      assert %Escalation{resolution: nil} = escalation(at_end)
+      assert %WorkItem{stage_id: @build, stage_state: :escalated} = Repo.get!(WorkItem, at_end.id)
     end
 
     test "Check again: the dialog where the stage starts once the workflow is found; none where it waits for an input",
@@ -8255,7 +8298,6 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         Repo.update_all(from(w in WorkItem, where: w.id == ^accept.id), set: [stage_entry: 0])
 
       stored!(accept, "explainer", @build)
-      stored!(accept, "demo-video", @build)
       escalate!(accept, :escalate, "Blocked")
       {:ok, view, _html} = live(conn, page(scope, accept.number))
       before = spend_runs(accept)

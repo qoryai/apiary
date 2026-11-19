@@ -16596,6 +16596,11 @@ msgstr ""
 
 #: lib/apiary/stages/points.ex
 #, elixir-autogen, elixir-format
+msgid "Pick Move back to return the work item to %{to} once more, or move this stage back."
+msgstr ""
+
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
 msgid "Pick Move back to return the work item to %{to} once more, or pick Accept as it is."
 msgstr ""
 
@@ -17453,6 +17458,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Read the open finding, then pick Accept as it is or Run another round."
 msgid_plural "Read the %{count} open findings, then pick Accept as it is or Run another round."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
+msgid "Read the open finding, then pick Run another round."
+msgid_plural "Read the %{count} open findings, then pick Run another round."
 msgstr[0] ""
 msgstr[1] ""
 

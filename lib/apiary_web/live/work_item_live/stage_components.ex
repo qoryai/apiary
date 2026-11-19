@@ -646,11 +646,11 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   # The escalation in the rail: one line, "Waits for you: N points", which links to the
   # block "What the run needs from you" (`needs_block/1`), the run it came from, and Accept as
-  # it is (only with a result and no required output missing), Move back and Close; where
-  # the page offers a switch (`page.switch`, one track a button, "Switch to <track>"), only
-  # the switches and Close. Their form has the note field and Run
-  # another round in the block, which name it in their `form` attribute, so the note goes
-  # with every action.
+  # it is (only with a result, and with no required output missing where the accept takes
+  # the stage to its gate), Move back and Close; where the page offers a switch
+  # (`page.switch`, one track a button, "Switch to <track>"), only the switches and Close.
+  # Their form has the note field and Run another round in the block, which name it in
+  # their `form` attribute, so the note goes with every action.
   defp escalation_card(assigns) do
     assigns =
       assign(
@@ -659,7 +659,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         assigns.page.escalation ||
           %{
             cause: :escalate,
-            result: Map.get(assigns.page, :missing_outputs, []) == [],
+            result: Map.get(assigns.page, :accept_needs, []) == [],
             points: [],
             run: nil,
             harness_path: nil,
