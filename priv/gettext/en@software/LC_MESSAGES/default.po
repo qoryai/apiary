@@ -5080,11 +5080,6 @@ msgstr ""
 msgid "Add"
 msgstr ""
 
-#: lib/apiary_web/live/work_item_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Add %{outputs} before you approve this stage."
-msgstr ""
-
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
 msgid "Add %{provider} again in %{place}: its settings no longer fit this version of Qory Apiary."
@@ -13763,6 +13758,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Move one of the workflows to a separate stage in Workspace settings › Workflows, then run the round again."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Move this stage back, or give it a workflow that writes %{outputs}. Approve needs them."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/release.ex

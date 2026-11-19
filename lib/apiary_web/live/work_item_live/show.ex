@@ -1612,7 +1612,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   def refused(:not_earlier, flow), do: not_earlier(flow)
 
   def refused({:outputs_missing, types}, _flow) do
-    gettext("Add %{outputs} before you approve this stage.",
+    gettext(
+      "Move this stage back, or give it a workflow that writes %{outputs}. Approve needs them.",
       outputs: StageComponents.outputs_words(types)
     )
   end

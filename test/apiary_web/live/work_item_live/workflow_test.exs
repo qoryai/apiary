@@ -3738,7 +3738,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(
                view,
                "#work-item-stage-notice",
-               "Add acceptance criteria before you approve this stage."
+               "Move this stage back, or give it a workflow that writes acceptance criteria. " <>
+                 "Approve needs them."
              )
     end
   end
