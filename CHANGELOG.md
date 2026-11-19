@@ -1959,8 +1959,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   any other file, Markdown too, is `422` `invalid_artifact`. A criterion's id is once in
   the criteria. Qory Apiary reads no output's Markdown for data.
 - The standard artifact type `explainer` is now `walkthrough`, a document of one Markdown
-  file of up to 1 MiB. A run's push or a template that names `explainer` fails, as with
-  any type that is not standard.
+  file of up to 1 MiB. A run's push of `explainer`, or a template that lists `explainer`
+  by name alone, fails, as with any type that is not standard.
 - A work item has one set of acceptance criteria, under the name `main`. A run's push of
   `acceptance-criteria` under another name is `422` `invalid_artifact`, with `name` in
   `names` and a message that starts "Name the acceptance criteria main: a work item has
