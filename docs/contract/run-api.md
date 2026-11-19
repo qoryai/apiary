@@ -348,7 +348,9 @@ version cannot be pushed through the run API, whatever the type's size limit:
 - `name`: optional, the same form, `main` by default. Several artifacts of one type
   have different names, such as screenshots of two screens. `questions` and
   `review-comments` take only `main`: another name is `400` `invalid_request`, with
-  `name` in `names`.
+  `name` in `names`. `acceptance-criteria` takes only `main` too, because a work item has
+  one set of acceptance criteria: another name is `422` `invalid_artifact`, with `name` in
+  `names`, after the base64 check and before the format check.
 - `note`: optional, at most 4000 code points, with no control character but a tab or a
   line break, no format character but U+200C and U+200D, and no line or paragraph
   separator.
@@ -385,9 +387,11 @@ Checks, in order, after the checks of every request:
 4. Files larger together than the type's size limit, which bounds all files of one
    version: `422` `too_large`.
 5. A content that is not strict base64: `400` `invalid_request`.
-6. Files that do not match the type's format: `422` `invalid_artifact`, with the file
-   in `names`, such as `files[0]`, or `files` for a video type's version without a video
-   file and a `proposal` version without exactly one Markdown file. A version of the type
+6. A version of `acceptance-criteria` under a name other than `main` is `422`
+   `invalid_artifact`, with `name` in `names`, before its files are checked. Files that
+   do not match the type's format: `422` `invalid_artifact`, with the file in `names`,
+   such as `files[0]`, or `files` for a video type's version without a video file and a
+   `proposal` version without exactly one Markdown file. A version of the type
    `verdict` is checked against the type's JSON Schema, so its `verdict` is `passed`,
    `changes-requested` or `escalate`. A JSON file of a standard type, such as `questions`,
    `review-comments` or `verdict`, has each key once in each object: a key that comes
@@ -912,7 +916,7 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 | `422` | `type_not_withdrawable` | `type`, `message` | A withdrawal of `questions`, `review-comments`, `verdict` or `proposal`, of a name of a type with `withdrawable: false`, of a name of the type in `submit.type` of the run's process version or the work item's, or of a name whose newest version a member approved at a gate |
 | `422` | `withdrawal_with_files` | `type`, `message` | A withdrawal with one file or more |
 | `422` | `unknown_decision` | `message` | A push's `decision` is not the id of a person's note on the run's work item |
-| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, a verdict's `answer` point is about a question that is not open, or a verdict's `track.id` is a track the gate of the run's stage does not offer (`names` is `["track"]`) |
+| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, a verdict's `answer` point is about a question that is not open, a verdict's `track.id` is a track the gate of the run's stage does not offer (`names` is `["track"]`), or a version of `acceptance-criteria` has a name other than `main` (`names` is `["name"]`) |
 | `503` | `unavailable` | | The request could not be completed, such as a newest version of `questions` or `review-comments` that cannot be read; try again |
 
 The messages:
@@ -1022,6 +1026,10 @@ The messages:
     of Shape offers no track." A stage the process version does not have reads "the run's
     stage" as its name. The check is the same for `POST verdict` and for `POST artifacts` with the type
     `verdict`.
+  - For a version of `acceptance-criteria` under a name other than `main`, `names` is
+    `["name"]`, and the message starts "Name the acceptance criteria main: a work item
+    has one set of acceptance criteria, and this push has the name" and ends with the
+    pushed name, such as "… this push has the name other."
   - For a version of `questions` or `review-comments` that changes what members wrote,
     one message per rule, such as "Leave each answer in questions.json as the newest
     version of questions has it: members write the answers." or "Close each review

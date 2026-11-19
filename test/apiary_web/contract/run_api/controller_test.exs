@@ -1919,6 +1919,30 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
              }
     end
 
+    test "acceptance criteria under a name other than main: the whole line a run gets", ctx do
+      json = Jason.encode!(Apiary.StagesFixtures.criteria_document())
+      files = [{"acceptance-criteria.json", "application/json", json}]
+
+      conn =
+        write(ctx, "/artifacts", push_body("acceptance-criteria", files, %{"name" => "other"}))
+
+      assert json_response(conn, 422) == %{
+               "error" => "invalid_artifact",
+               "names" => ["name"],
+               "message" =>
+                 "Name the acceptance criteria main: a work item has one set of acceptance " <>
+                   "criteria, and this push has the name other."
+             }
+
+      assert RunApiStubs.pushed() == []
+
+      conn =
+        write(ctx, "/artifacts", push_body("acceptance-criteria", files, %{"name" => "main"}))
+
+      assert %{"artifact" => %{"type" => "acceptance-criteria", "name" => "main"}} =
+               json_response(conn, 201)
+    end
+
     test "a proposal takes 10 files and 5 MiB together, and no more", ctx do
       md = {"proposal.md", "text/markdown", "# Gift cards"}
       images = for n <- 1..10, do: {"#{n}.png", "image/png", @png}

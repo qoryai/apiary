@@ -8331,12 +8331,14 @@ defmodule Apiary.StagesTest do
     # Shape, where a person adds the acceptance criteria; Build, a loop with a gate none,
     # as the software process has it, which reads the criteria and makes the explainer;
     # and Verify, which reads both, with a person's gate. `last` is the last stage: `:build`,
-    # `:verify`, or `:release`, a stage after Verify that reads the criteria.
-    defp criteria_process!(scope, last \\ :verify) do
+    # `:verify`, or `:release`, a stage after Verify that reads the criteria. `type` is the
+    # type in place of the acceptance criteria, for a test of several names of one type:
+    # the acceptance criteria take the name `main` alone.
+    defp criteria_process!(scope, last \\ :verify, type \\ "acceptance-criteria") do
       stages = [
         explore_stage(),
         stage(@shape, "Shape", [], %{
-          "outputs" => [%{"type" => "acceptance-criteria", "required" => true}]
+          "outputs" => [%{"type" => type, "required" => true}]
         }),
         stage(
           @build,
@@ -8353,7 +8355,7 @@ defmodule Apiary.StagesTest do
             }
           ],
           %{
-            "inputs" => [%{"type" => "acceptance-criteria", "required" => true}],
+            "inputs" => [%{"type" => type, "required" => true}],
             "outputs" => [%{"type" => "explainer", "required" => true}],
             "gate" => %{"kind" => "none"}
           }
@@ -8363,14 +8365,14 @@ defmodule Apiary.StagesTest do
       verify =
         stage(@verify, "Verify", [%{"workflow" => "verify-a-ticket"}], %{
           "inputs" => [
-            %{"type" => "acceptance-criteria", "required" => true},
+            %{"type" => type, "required" => true},
             %{"type" => "explainer", "required" => true}
           ]
         })
 
       release =
         stage(@release, "Release", [%{"workflow" => "verify-a-ticket"}], %{
-          "inputs" => [%{"type" => "acceptance-criteria", "required" => true}]
+          "inputs" => [%{"type" => type, "required" => true}]
         })
 
       save!(
@@ -8412,18 +8414,15 @@ defmodule Apiary.StagesTest do
       end
     end
 
-    # The work item in Build after Shape's approval of the criteria a person added, and
-    # an escalation of Build's first round that a person answered with `note`: the work
-    # item, with Build's second round running, and the escalation.
-    defp asked_in_build!(scope, note) do
+    # The work item in Build after Shape's approval of the criteria a person added, as a
+    # version of `type`, and an escalation of Build's first round that a person answered
+    # with `note`: the work item, with Build's second round running, and the escalation.
+    defp asked_in_build!(scope, note, type \\ "acceptance-criteria") do
       work_item = take_in!(scope) |> end_run!(understood_result())
       {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
       work_item = reload(work_item)
 
-      {:ok, _version} =
-        Stages.add_version(scope, work_item, "acceptance-criteria", [
-          file_of("acceptance-criteria", "AC-1")
-        ])
+      {:ok, _version} = Stages.add_version(scope, work_item, type, [file_of(type, "AC-1")])
 
       {:ok, work_item} = Stages.approve(scope, reload(work_item), nil, expect_stage: @shape)
       assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
@@ -8721,18 +8720,20 @@ defmodule Apiary.StagesTest do
     test "a person's approval lists the change of each name of a type, and a later stage " <>
            "reads the same name as before it",
          %{scope: scope} do
-      criteria_process!(scope, :release)
+      # Decision records in place of the acceptance criteria, which take one name.
+      criteria_process!(scope, :release, "decision-record")
 
       {work_item, %Escalation{public_id: decision}} =
-        asked_in_build!(scope, "Add a scenario for the empty cart and one for the coupon.")
+        asked_in_build!(
+          scope,
+          "Add a scenario for the empty cart and one for the coupon.",
+          "decision-record"
+        )
 
       scenarios =
         both(
-          pushes_one("acceptance-criteria", "# Empty cart",
-            decision: decision,
-            name: "scenario-1"
-          ),
-          pushes_one("acceptance-criteria", "# Coupon", decision: decision, name: "scenario-2")
+          pushes_one("decision-record", "# Empty cart", decision: decision, name: "scenario-1"),
+          pushes_one("decision-record", "# Coupon", decision: decision, name: "scenario-2")
         )
 
       work_item =
@@ -8755,7 +8756,7 @@ defmodule Apiary.StagesTest do
       second_id = second.public_id
       assert first.public_id != second_id
 
-      assert [%{type: "acceptance-criteria", version: %{id: ^second_id}}, _explainer] =
+      assert [%{type: "decision-record", version: %{id: ^second_id}}, _explainer] =
                Stages.inputs(work_item)
 
       {:ok, work_item} = Stages.approve(scope, work_item, nil, expect_stage: @verify)
@@ -8765,7 +8766,7 @@ defmodule Apiary.StagesTest do
       # After it, Release reads the same version through Verify's approval.
       assert %WorkItem{stage_id: @release} = work_item
 
-      assert [%{type: "acceptance-criteria", version: %{id: ^second_id}}] =
+      assert [%{type: "decision-record", version: %{id: ^second_id}}] =
                Stages.inputs(work_item)
     end
 

@@ -441,6 +441,9 @@ defmodule ApiaryWeb.ArtifactLive.New do
       {:invalid, :name} ->
         assign_form(socket, params, name: {name_rule(), []})
 
+      {:invalid, {:criteria_name, name}} ->
+        assign_form(socket, params, name: {criteria_name_rule(name), []})
+
       {:invalid, :note} ->
         assign_form(socket, params, note: {note_rule(), []})
 
@@ -700,6 +703,13 @@ defmodule ApiaryWeb.ArtifactLive.New do
     do:
       gettext(
         "Use lowercase letters and digits, in groups joined by single hyphens, at most 64 characters."
+      )
+
+  defp criteria_name_rule(name),
+    do:
+      gettext(
+        "Name the acceptance criteria main: a work item has one set of acceptance criteria, and this push has the name %{name}.",
+        name: name
       )
 
   defp note_rule,

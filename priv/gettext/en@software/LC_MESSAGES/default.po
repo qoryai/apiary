@@ -14006,6 +14006,11 @@ msgstr ""
 msgid "Name of the key"
 msgstr ""
 
+#: lib/apiary_web/live/artifact_live/new.ex
+#, elixir-autogen, elixir-format
+msgid "Name the acceptance criteria main: a work item has one set of acceptance criteria, and this push has the name %{name}."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Name the release of a program: its description is fetched, and you add it from there."

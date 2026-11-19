@@ -87,7 +87,8 @@ defmodule Apiary.Artifacts do
   #   3. the options: `{:invalid, :name | :stage_id | :note | :decision}`, the last for a
   #      decision that is not text; the questions and the
   #      review comments take only the name `main`, the one Qory Apiary reads, else
-  #      `{:invalid, :name}`;
+  #      `{:invalid, :name}`; the acceptance criteria take only `main` too, else
+  #      `{:invalid, {:criteria_name, name}}`;
   #   4. the files: none, `{:invalid, :no_files}`; more than the type's most,
   #      `{:too_many_files, max_files}`; an entry of the wrong shape, a filename
   #      `Apiary.Artifacts.Filename` refuses, or a filename twice,
@@ -734,6 +735,7 @@ defmodule Apiary.Artifacts do
          :ok <- person_type(writer, work_item, type),
          {:ok, fields} <- fields(opts),
          :ok <- member_name(type, fields),
+         :ok <- criteria_name(type, fields),
          {:ok, files} <- files(type, files),
          checked = checked_type(writer, type, files),
          {:ok, staged} <- stage_all(checked, files),
@@ -1082,6 +1084,14 @@ defmodule Apiary.Artifacts do
     do: if(name == "main", do: :ok, else: {:error, {:invalid, :name}})
 
   defp member_name(%Type{}, _fields), do: :ok
+
+  # A work item has one set of acceptance criteria, under the name `main`: the work
+  # item's page shows that name alone as its criteria, so a push under another name
+  # fails.
+  defp criteria_name(%Type{name: "acceptance-criteria"}, %{name: name}) when name != "main",
+    do: {:error, {:invalid, {:criteria_name, name}}}
+
+  defp criteria_name(%Type{}, _fields), do: :ok
 
   defp stage_id?(nil), do: true
   defp stage_id?(id) when is_binary(id), do: Regex.match?(@stage_id, id)
