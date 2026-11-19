@@ -987,10 +987,11 @@ the paused run's place in the queue, its `continues_id` the paused run. After an
 once 60 seconds have passed after the exit (`dispatch_runs.report_wait_until`), the time
 in which Qory Apiary still records the run's model keys report, so the report is recorded
 before the claim orders the keys; the claim takes it earlier when that report marked a
-key in `unauthorized`, and it then starts on the next key. The end of a paused run queues no continuation for
-a prebuild, for a work item no longer in Explore, at another take in or placed at another
-stage, when the work item's stage does not run, such as one that waits for a person, or
-while another run of the take in has not ended. The paused run keeps
+key in `unauthorized` since the window opened, and it then starts on the next key. A mark
+from an earlier pause of the run does not count. The end of a paused run queues no
+continuation for a prebuild, for a work item no longer in Explore, at another take in or
+placed at another stage, when the work item's stage does not run, such as one that waits
+for a person, or while another run of the take in has not ended. The paused run keeps
 `paused_until`, the earliest end of a cooldown among the keys of the provider of the
 session that paused (`Apiary.Runs.Run.session_provider_ids/2`), when every one of them is
 in cooldown then. The session that paused is the one whose `dev.qory.session.exited` is

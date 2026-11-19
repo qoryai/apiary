@@ -3028,7 +3028,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   another key of the run is usable, is Paused, where it read as failed. The run that
   continues it resumes the session that paused, once 60 seconds have passed after the
   exit, so that the run's model keys report is recorded first, or at once when that
-  report lists a key in `unauthorized`: the continuation then starts on the next key. A
+  report marked a key in `unauthorized`: the continuation then starts on the next key. A
   paused run waits for the
   keys of the provider of the session that paused, and its Paused line shows that
   provider.
@@ -3292,6 +3292,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   drops the column.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
+- `model_key_rejections` (20261118160200): a new table, one row for each model key whose
+  provider returned 401 to a run's request, by the value's row id, with the time of the
+  401, the value's `value_set_at` when the row was written, and the organisation. A row
+  goes with its value. Nothing exists to fill. Rolling back drops the table.
 - `model_key_logins` (20261118140000): a new table with a row for each model key whose
   provider's API has `oauth_refresh`, by the value's row id, with the account, the time the
   access token expires (empty for a token whose `exp` cannot be read), the sign-in's state,
@@ -3332,6 +3336,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `model_choices` has. The migration deletes every fallback first and moves no data. The
   migration is short. Rolling back adds the dropped columns back empty and drops
   `runtime` and `tiers`.
+- `runs` (20261118160000, 20261118160100): the check on `provider_api` takes `paths`,
+  which the later migration 20261118162200 drops with the column. The check is added
+  `NOT VALID` and validated by the second migration. It changes no row.
 - `run_model_keys` (20261119100000, 20261119100100): the check on `api` takes `paths`,
   1 to 32 paths that each start with `/`, as the check of `runs.provider_api` did before
   the column was dropped. The check is added `NOT VALID` and validated by the second
