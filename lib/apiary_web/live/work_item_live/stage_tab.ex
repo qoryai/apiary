@@ -550,9 +550,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   with_inputs/2 is `outputs`, the output frames (`frames/1` or `verify_frames/2`), then
   `inputs`, the input frames (`input_frames/2`), folded, but for an input of a type that an
   output frame already shows: the Scenarios frame shows both the films and the pictures
-  (`ApiaryWeb.WorkItemLive.VerifyTab.media/0`). A Verify gate where the stage started no
-  run can have output frames too, as `newest/3` reads the take in's versions of any stage.
-  With no output frame, it is `inputs` as they are.
+  (`ApiaryWeb.WorkItemLive.VerifyTab.media/0`). With no output frame, it is `inputs` as
+  they are.
   """
   @spec with_inputs([map], [map]) :: [map]
   def with_inputs([], inputs), do: inputs
