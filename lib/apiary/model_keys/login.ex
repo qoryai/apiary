@@ -318,9 +318,11 @@ defmodule Apiary.ModelKeys.Login do
   defp checked(id), do: if(account_id?(id), do: {:ok, id}, else: :error)
 
   # The `email` claim of the ID token, the only part of it that is kept: text of 3 to 254
-  # characters with one `@` between other characters, and no space or control character.
-  # Nil for an ID token without one, so the key's identity line has its account instead.
-  @email ~r/\A[^\s@[:cntrl:]]+@[^\s@[:cntrl:]]+\z/u
+  # characters with one `@` between other characters, and no space, control character or
+  # format character (Unicode category `Cf`: a bidirectional override such as U+202E, a
+  # zero-width space U+200B, an isolate U+2066), which would change how the line reads on a
+  # page. Nil for an ID token without one, so the key's identity line has its account instead.
+  @email ~r/\A[^\s@[:cntrl:]\p{Cf}]+@[^\s@[:cntrl:]\p{Cf}]+\z/u
 
   defp email(id_token) do
     case claimed(id_token, "/email") do
