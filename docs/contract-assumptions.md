@@ -368,8 +368,8 @@ workspace's (Workspace settings › Model), and the organisation's default. With
 `run_settings` has `runtime` alone, the catalogue's default, and the run uses the gateway's
 key. Each later session of a run of a stage with `shared_run: true` gets its workflow's
 runtime and model in the next-session answer's `model_choice`, which always has `runtime`,
-and, for a session on a provider other than that of the run's start key,
-`model_credential`, the key the session starts on (`docs/contract/run-api.md`). A pool claims a run only with the feature `factory` on (`dispatch.claim`), and
+and, for a session on a provider other than that of the run's default model provider
+credential, `model_credential`, the key the session starts on (`docs/contract/run-api.md`). A pool claims a run only with the feature `factory` on (`dispatch.claim`), and
 `factory` needs `secrets`. The code that builds `run_settings` runs with either feature off
 too: with `factory` or `secrets` off, it builds the choice's `runtime`, `model`, `effort`,
 `provider_models` and `tiers` and no key, and checks neither the chosen key nor the
@@ -900,10 +900,10 @@ to a model provider gets the provider's keys at its claim
 `credentials` of a run configuration hold them, the registry's credential, the work and
 push credentials, and the harness links. A run of a stage with `shared_run: true` also
 gets the keys of each provider its later sessions run on, one provider per session. The
-claim picks at most 6 keys in this order: the start key's provider's keys, at most 6 less
-the number of other providers; then one key of each other provider, in session order;
-then the other providers' remaining keys; `credentials` lists them provider by provider,
-the start key's provider first. A run whose first session runs on the machine's local
+claim picks at most 6 keys in this order: the keys of the provider of the default model
+provider credential, at most 6 less the number of other providers; then one key of each
+other provider, in session order; then the other providers' remaining keys;
+`credentials` lists them provider by provider, that provider first. A run whose first session runs on the machine's local
 model provider credential, as its workflow resolves to no model choice, gets no key. The
 run keeps its keys in `run_model_keys`, one row per key. Each key is an API credential
 named `<provider's public id>-<n>`, `n` from 1 for each provider, with its provider's
