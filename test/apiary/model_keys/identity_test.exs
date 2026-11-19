@@ -69,6 +69,11 @@ defmodule Apiary.ModelKeys.IdentityTest do
         assert Value.hint(prefix <> tail) == nil
       end
 
+      # A separator at the end is trimmed with the whitespace: it is tested inside the tail.
+      for char <- ["\u2028", "\u2029"], tail <- [char <> "abc", "a" <> char <> "bc"] do
+        assert Value.hint(prefix <> tail) == nil
+      end
+
       # The character is before the last 4: the hint is the 4 characters after it.
       assert Value.hint(prefix <> "\u202E" <> "abcd") == "abcd"
       assert Value.hint(prefix <> "abcd") == "abcd"

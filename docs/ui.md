@@ -458,11 +458,11 @@ replaces the navigation it is in.
   section's actions and **Edit** at the right of each row, its label "Edit key" and the
   key's identity line, and anyone else neither. A key has no name that a person gives: a
   row shows its identity line (`Apiary.ModelKeys.Identity`), the provider's name and, after
-  a middle dot, for an API key of at least 12 characters the last 4 characters of the key (none when
-  they hold a control or format character, such as U+202E),
-  "Northwind Claude · …9c2e", for a sign-in the email of the account, or, where the
-  sign-in has none, "account …" and the last 4 characters of the account ID, and the
-  provider's name alone for any other key.
+  a middle dot, for an API key of at least 12 characters the last 4 characters of the key
+  (none when they hold a control character, a format character such as U+202E, or a line
+  or paragraph separator), "Northwind Claude · …9c2e", for a sign-in the email of the
+  account, or, where the sign-in has none, "account …" and the last 4 characters of the
+  account ID, and the provider's name alone for any other key.
 - **Add key** (`…/model-providers/:provider_id/keys/new`) and **Edit key**
   (`…/keys/:key_id/edit`, the row id of the key's value; a value ID is not found),
   `ApiaryWeb.ProviderLive.Key`, are pages (A form is a page, below), the breadcrumb ending

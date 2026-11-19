@@ -19,8 +19,8 @@ defmodule Apiary.Secrets do
   values without their ciphertext. Nothing logs a value, and an audit entry names a
   secret and a value id, never a value. A model provider's API key also has a **hint**,
   the last 4 characters of a value of at least 12 characters (none when they hold a
-  control or format character), kept beside the ciphertext
-  so that a page and an audit entry can tell one key from another
+  control character, a format character or a line or paragraph separator), kept beside
+  the ciphertext so that a page and an audit entry can tell one key from another
   (`Apiary.Secrets.Value.hint/1`, `Apiary.ModelKeys.Identity`).
 
   ## At rest
