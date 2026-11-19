@@ -500,6 +500,8 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       assert work.digest == Render.digest(document)
     end
 
+    # The registry credential is in the run's credentials only where `registry` is on.
+    @tag needs: [:factory, :registry]
     test "a write run is given push-1 after work-1, with the branch and the same hosts", ctx do
       %{document: document, work_item: work_item} = work_run!(ctx.scope, "enforce", :write)
       decoded = Jason.decode!(document)
@@ -545,6 +547,8 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
       assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
     end
 
+    # The registry credential is in the run's credentials only where `registry` is on.
+    @tag needs: [:factory, :registry]
     test "a write run with 6 model keys has 9 credentials, and its documents are composed",
          ctx do
       keys = for n <- 1..6, do: %{value_id: "k#{n}", value: "sk-ant-fixture-key-#{n}-0123456789"}
