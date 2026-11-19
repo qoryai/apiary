@@ -264,10 +264,10 @@ defmodule Apiary.Harnesses.Reader do
   end
 
   @doc """
-  workflow_plan/2 is the artifact type a stack's `workflows` name as the plan of the
-  workflow `name`, `workflows.<name>.plan`: the value where it is a string of an artifact
-  type's form (lowercase letters and digits in groups joined by single hyphens, at most 64
-  bytes), and nil for any other value and where the key or the workflow is absent.
+  workflow_plan/2 is `workflows.<name>.plan`, the artifact type of the plan of the
+  workflow `name`: the value where it is a string of an artifact type's form (lowercase
+  letters and digits in groups joined by single hyphens, at most 64 bytes), and nil for any
+  other value and where the key or the workflow is absent.
   """
   @spec workflow_plan(map, String.t()) :: String.t() | nil
   def workflow_plan(workflows, name) when is_map(workflows) and is_binary(name) do

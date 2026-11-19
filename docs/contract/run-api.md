@@ -648,7 +648,7 @@ is not of the form below. A stored text is cut to its first 200 characters.
   - `base`: `{commit, commit_url}`, the commit the run started at.
   - `commits`: `[{commit, step, commit_url}]`, the run's commits in the order it made
     them, the last the head. `step` is `deliverable:<id>`, the id of a row in the Id column
-    of the build plan's Deliverables table, or `fix:<finding id>`; an entry whose `commit`
+    of the plan's Deliverables table, or `fix:<finding id>`; an entry whose `commit`
     is not a full hex id is left out. The head is marked on the last entry whose `commit`
     is the repository's `commit`; where no entry is, none is marked and the list is shown as
     read. A page lists at most 100 entries of a repository: the first 100, or the first 99
@@ -660,9 +660,11 @@ where an earlier submission of the work item, among the newest 50 versions, ends
 commit in the same repository. Where a version that is not listed (older than those, or
 written by a run a member cancelled) may end at it, the line shows the commit alone.
 
-The text of a change comes from the Change column of the first 200 rows of the build plan
-(`build-plan`, the file `build-plan.md`) that was newest when the version was stored. A plan
-over 256 KiB gives no change texts, and a stored submission over 1 MiB lists no repository.
+The text of a change comes from the Change column of the first 200 rows of the plan's
+Deliverables table. The plan is the artifact named `main` of the run's plan type, which the
+run's stack entry sets in `workflows.<workflow>.plan`, in the version that was newest when
+the version was stored. A run with no plan type shows no change text. A plan over 256 KiB
+shows no change texts, and a stored submission over 1 MiB lists no repository.
 
 ## POST verdict
 

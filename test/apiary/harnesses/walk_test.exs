@@ -944,15 +944,54 @@ defmodule Apiary.Harnesses.WalkTest do
       assert {:ok, %{origin: :file, plan_type: "file-plan"}} = Walk.run(ctx.input)
     end
 
-    test "is nil for a setting without extends, whose workflows take no plan", ctx do
+    test "a setting without extends sets no plan type: its workflows allow only access and time_limit",
+         ctx do
       serve([ctx.run], covered: covering(ctx), files: @base_files)
 
       setting(
         ctx.scope,
-        "modules:\n  - source: {git: \"#{@harness}\", ref: v1, module: web}\n"
+        "modules:\n  - source: {git: \"#{@harness}\", ref: v1, module: web}\n" <>
+          "workflows:\n  explore: {access: write}\n"
       )
 
-      assert {:ok, %{origin: :setting, plan_type: nil}} = Walk.run(ctx.input)
+      assert {:ok, %{origin: :setting, access_level: :write, plan_type: nil}} =
+               Walk.run(ctx.input)
+    end
+
+    test "is nil for a base with no link that is not public, whose stack is not read", ctx do
+      setting(
+        ctx.scope,
+        "extends: {git: \"#{@public}\", ref: \"#{@commit}\", stack: web}\n"
+      )
+
+      serve([ctx.run],
+        covered: covering(ctx),
+        files: declaring("  explore: {plan: custom-plan}\n")
+      )
+
+      assert {:ok, %{origin: :setting, harness_links: [], plan_type: nil}} =
+               Walk.run(ctx.input)
+    end
+
+    test "is the plan of the stack of a public base, read from its host", ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: main, stack: web}\n")
+
+      lint = "https://public.example.org/qory/lint"
+
+      public!(%{
+        @public => %{
+          "harness.yaml" => "exports:\n  stacks: [web]\n",
+          "stacks/web/qory-stack.yaml" =>
+            "modules:\n  - source: {git: \"#{lint}\", ref: main}\n" <>
+              "workflows:\n  explore: {plan: public-plan}\n"
+        },
+        lint => %{"harness.yaml" => "name: lint\n"}
+      })
+
+      serve([ctx.run], covered: covering(ctx))
+
+      assert {:ok, %{origin: :setting, harness_links: [], plan_type: "public-plan"}} =
+               Walk.run(ctx.input)
     end
 
     test "the job writes it on the run's row, nil where the stack sets none", ctx do

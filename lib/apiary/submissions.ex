@@ -24,7 +24,7 @@ defmodule Apiary.Submissions do
   # The text of a change comes from the Deliverables table of the work item's plan, the
   # artifact `main` of the plan type that the version's run recorded
   # (`run_harnesses.plan_type`, the `plan` of its workflow in the stack file). A run with
-  # no plan type, or one whose plan has no such table, gives no text: no other type is
+  # no plan type, or one whose plan has no such table, shows no text: no other type is
   # read instead.
   @moduledoc false
 
@@ -47,7 +47,7 @@ defmodule Apiary.Submissions do
   # The commits listed for one repository: the first ones and the head.
   @max_commits 100
   @max_repositories 20
-  # The most of a stored submission and of a build plan that is read.
+  # The most of a stored submission and of a plan that is read.
   @max_json_bytes 1_048_576
   @max_plan_bytes 262_144
   @max_plan_rows 200
@@ -134,8 +134,6 @@ defmodule Apiary.Submissions do
     included = MapSet.new(listed, & &1.public_id)
     ends = run_ends(listed)
     approved = approved(work_item, listed)
-    plans = plans(artifacts)
-    plan_types = plan_types(listed)
     state = {cache, %{}}
 
     {wanted, others} =
@@ -145,6 +143,11 @@ defmodule Apiary.Submissions do
     needs_others? = Enum.any?(wanted_reads, fn {_id, read} -> based?(read) end)
     {other_reads, state} = if needs_others?, do: read_all(others, state), else: {[], state}
     reads = Map.new(wanted_reads ++ other_reads)
+
+    # The plans are read only for the versions with a `deliverable:` step to word.
+    texted = Enum.filter(listed, &changes?(Map.get(reads, &1.public_id)))
+    plan_types = plan_types(texted)
+    plans = plans(artifacts, Map.values(plan_types))
 
     {rows, _heads, state} =
       listed
@@ -395,12 +398,24 @@ defmodule Apiary.Submissions do
 
   ## The plan's changes
 
-  # The versions of each plan of the work item that count, oldest first, by the plan's
-  # type: the artifacts named `main`.
-  defp plans(artifacts) do
-    for %{name: "main", type: type, versions: versions} <- artifacts, into: %{} do
+  # The versions of the plans of the work item that count, oldest first, by the plan's
+  # type: the artifacts named `main` of the types in `types`.
+  defp plans(artifacts, types) do
+    for %{name: "main", type: type, versions: versions} <- artifacts,
+        type in types,
+        into: %{} do
       {type, versions |> counted() |> Enum.reverse()}
     end
+  end
+
+  # Whether a read version has a commit with a `deliverable:` step whose text is not yet
+  # set.
+  defp changes?(nil), do: false
+
+  defp changes?(%{repositories: repositories}) do
+    Enum.any?(repositories, fn repository ->
+      Enum.any?(repository.commits, &match?(%{step: {:change, _id, nil}}, &1))
+    end)
   end
 
   # The plan type each run of `versions` recorded (`run_harnesses.plan_type`), by the
@@ -477,7 +492,7 @@ defmodule Apiary.Submissions do
   defp read(stream), do: {:ok, stream |> Enum.to_list() |> IO.iodata_to_binary()}
 
   @doc """
-  The text of each change of a build plan, by the id of its deliverable: the cells Id and
+  The text of each change of a plan, by the id of its deliverable: the cells Id and
   Change of the first 200 rows of the table under `## Deliverables`, each text of at most
   200 characters. A row with another id form, or with no change text, is left out.
   """

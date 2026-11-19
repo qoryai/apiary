@@ -70,6 +70,7 @@ defmodule Apiary.SubmissionsTest do
       work_item: work_item,
       first: first,
       second: second,
+      first_run: first_run,
       first_number: first_run.number,
       second_number: second_run.number
     }
@@ -385,7 +386,7 @@ defmodule Apiary.SubmissionsTest do
       text
     end
 
-    test "a custom document type with a Deliverables table gives the texts", ctx do
+    test "a custom document type with a Deliverables table shows the texts", ctx do
       release_plan_type!(ctx)
       plan_type!(ctx.first, "release-plan")
       plan!(ctx, ctx.first, @plan, "release-plan")
@@ -394,7 +395,7 @@ defmodule Apiary.SubmissionsTest do
       assert first_change(ctx) == "Show the dates at checkout"
     end
 
-    test "the plan of another type does not give the texts", ctx do
+    test "the plan of another type shows no texts", ctx do
       release_plan_type!(ctx)
       plan_type!(ctx.first, "release-plan")
       plan!(ctx, ctx.first)
@@ -403,7 +404,7 @@ defmodule Apiary.SubmissionsTest do
       assert first_change(ctx) == nil
     end
 
-    test "a type with no Deliverables table gives no text and the commits stay", ctx do
+    test "a type with no Deliverables table shows no text and the commits stay", ctx do
       release_plan_type!(ctx)
       plan_type!(ctx.first, "release-plan")
       plan!(ctx, ctx.first, "## Summary\n\nDates at checkout.\n", "release-plan")
@@ -420,7 +421,7 @@ defmodule Apiary.SubmissionsTest do
                repository_of(row).commits
     end
 
-    test "a nil plan type gives no text, though a build-plan exists", ctx do
+    test "a nil plan type shows no text, though a build-plan exists", ctx do
       plan_type!(ctx.first, nil)
       plan!(ctx, ctx.first)
       store!(ctx, ctx.first, submission())
@@ -428,7 +429,7 @@ defmodule Apiary.SubmissionsTest do
       assert first_change(ctx) == nil
     end
 
-    test "a run with no walk gives no text, though a build-plan exists", ctx do
+    test "a run with no walk shows no text, though a build-plan exists", ctx do
       %DispatchRun{id: id} = ctx.first
       {1, _rows} = Repo.delete_all(from h in RunHarness, where: h.dispatch_run_id == ^id)
       plan!(ctx, ctx.first)
@@ -437,8 +438,17 @@ defmodule Apiary.SubmissionsTest do
       assert first_change(ctx) == nil
     end
 
-    test "build-plan as the plan type gives the texts", ctx do
+    test "build-plan as the plan type shows its texts, not those of another type", ctx do
+      release_plan_type!(ctx)
       plan_type!(ctx.first, "build-plan")
+
+      plan!(
+        ctx,
+        ctx.first,
+        "## Deliverables\n\n| Id | Change |\n|---|---|\n| d-2 | Ship the dates |\n",
+        "release-plan"
+      )
+
       plan!(ctx, ctx.first)
       store!(ctx, ctx.first, submission())
 
@@ -466,6 +476,38 @@ defmodule Apiary.SubmissionsTest do
                repository_of(newest).commits
 
       assert [%{step: {:change, "d-2", "Ship the dates"}} | _] = repository_of(oldest).commits
+    end
+  end
+
+  describe "for_run/4, the run page's rows" do
+    defp outputs_of(version),
+      do: [%{name: "main", type: "submission", public_id: version.public_id}]
+
+    defp run_change(ctx, version) do
+      run = Repo.reload!(ctx.first_run)
+
+      assert {%{rows: rows}, _cache} =
+               Submissions.for_run(ctx.scope, run, outputs_of(version), %{})
+
+      assert %{repositories: [%{commits: [%{step: {:change, "d-2", text}} | _]}]} =
+               rows[version.public_id]
+
+      text
+    end
+
+    test "a run with a plan type shows the change texts of its plan", ctx do
+      plan!(ctx, ctx.first)
+      version = store!(ctx, ctx.first, submission())
+
+      assert run_change(ctx, version) == "Show the dates at checkout"
+    end
+
+    test "a run with no plan type shows no change text, though a build-plan exists", ctx do
+      plan_type!(ctx.first, nil)
+      plan!(ctx, ctx.first)
+      version = store!(ctx, ctx.first, submission())
+
+      assert run_change(ctx, version) == nil
     end
   end
 
