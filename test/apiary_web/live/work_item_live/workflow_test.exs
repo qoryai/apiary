@@ -4463,7 +4463,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     # A work item escalated by real runs, with the gates of Build and Verify listing only
     # the account `approver`: `:return_limit` after three changes-requested verdicts at
     # Verify, whose return to Build allows 2; `:round_limit` after a changes-requested
-    # verdict with one finding in each of the 2 rounds of Build's loop.
+    # verdict with one finding in each of the 2 rounds of Build's loop; `:check_failed`
+    # after a passed run of Build that stored no version of its required demo video.
     defp by_runs!(scope, cause, approver) do
       gate = %{"kind" => "person", "approvers" => %{"members" => [approver]}}
       none = %{"kind" => "none"}
@@ -4477,6 +4478,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
           :round_limit ->
             loop = %{"rounds" => 2, "body" => [%{"workflow" => "implement"}]}
             %{"sequence" => [%{"loop" => loop}], "gate" => gate}
+
+          :check_failed ->
+            %{
+              "sequence" => [%{"workflow" => "implement"}],
+              "outputs" => [%{"type" => "demo-video", "required" => true}],
+              "gate" => gate
+            }
         end
 
       verify = %{
@@ -4554,6 +4562,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
             work_item = end_run!(work_item, changes.(finding))
             assert %WorkItem{stage_id: @build, stage_state: :running, stage_round: 2} = work_item
             end_run!(work_item, changes.(finding))
+
+          :check_failed ->
+            assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+            end_run!(work_item, passed())
         end
 
       assert %WorkItem{stage_state: :escalated} = work_item
@@ -5577,10 +5589,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       name = ApiaryWeb.People.short(listed.user.email)
       reader = log_in_user(build_conn(), member_fixture(scope, :member).user)
 
-      work_item =
-        at_build(scope, :escalated, round: 3, approvers: %{"members" => [listed.user.id]})
-
-      escalate!(work_item, :check_failed, Apiary.Stages.Points.check_failed(["demo-video"]))
+      # Build's run passes with no demo video, so its Exists check fails at the end of
+      # the sequence.
+      work_item = by_runs!(scope, :check_failed, listed.user.id)
+      assert %Escalation{cause: :check_failed} = escalation(work_item)
       {:ok, view, _html} = live(reader, page(scope, work_item.number))
 
       assert texts(view, "#work-item-needs-points li") == [
