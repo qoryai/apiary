@@ -333,7 +333,7 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
         })
 
       {:ok, _choice} =
-        Apiary.ModelChoices.put_choice(scope, :workspace, %{
+        Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
           provider: provider.public_id,
           runtime: "codex",
           model: "gpt-6-sol"
@@ -417,7 +417,7 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
       key = run_key!(scope, value)
 
       {:ok, _choice} =
-        Apiary.ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+        Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{provider: provider.public_id})
 
       {_work_item, queued} = queue!(scope)
 

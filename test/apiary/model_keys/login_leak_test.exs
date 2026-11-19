@@ -97,7 +97,10 @@ defmodule Apiary.ModelKeys.LoginLeakTest do
                  Waiting.reason(waiting)
 
         assert_enqueued(worker: LoginRefreshJob)
-        assert %{success: 1} = Oban.drain_queue(queue: :default, with_safety: false)
+        # The queue also holds the jobs of the workspace's set up; the refresh is one of them.
+        assert %{failure: 0, discard: 0, cancelled: 0} =
+                 Oban.drain_queue(queue: :default, with_safety: false)
+
         assert {:ok, %{registered: _run}} = walked_claim(ctx.key, Dispatches.now(), @body)
         waiting
       end)
