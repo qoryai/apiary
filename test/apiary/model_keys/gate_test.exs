@@ -3,7 +3,9 @@ defmodule Apiary.ModelKeys.GateTest do
   # `Apiary.ModelKeys.reveal_for_sealing/4`. The test reads the source of `lib/`: no module
   # but the gate calls `Login.access_token/3`, the one function that returns a sign-in's
   # token, no module outside `Login` calls `Login.tokens/2`, which returns both tokens,
-  # and the secrets request calls the gate and reveals nothing itself.
+  # and the secrets request calls the gate and reveals nothing itself. The reveal of a
+  # secret by its public id (`Apiary.Secrets.reveal_for_sealing/3`) has no caller, and
+  # refuses the secret of a provider whose keys are sign-ins (`secrets/login_secret_test`).
   use ExUnit.Case, async: true
 
   @lib Path.expand("../../../lib", __DIR__)
@@ -46,6 +48,16 @@ defmodule Apiary.ModelKeys.GateTest do
 
   test "no module outside Login calls Login.tokens/2" do
     assert files_with(~r/Login\.tokens\b/) == []
+  end
+
+  test "no module calls Secrets.reveal_for_sealing/3, which refuses a sign-in's secret" do
+    assert files_with(~r/Secrets\.reveal_for_sealing\(/) == []
+
+    assert files_with(~r/\breveal_for_sealing\(/) == [
+             "apiary/model_keys.ex",
+             "apiary/runs/secrets_request.ex",
+             "apiary/secrets.ex"
+           ]
   end
 
   test "tokens/2 is not documented" do

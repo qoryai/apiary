@@ -1036,7 +1036,9 @@ defmodule Apiary.Secrets do
   organisation's a workspace's.
 
   `{:ok, plaintext}`; `{:error, :not_found}` for a secret or a value the place does not
-  have at its level; `{:error, :unavailable}` when the value cannot be decrypted: the
+  have at its level; `{:error, :login}` for the secret of a model provider whose keys are
+  sign-ins, whose documents have a refresh token (`Apiary.ModelKeys.reveal_for_sealing/4`
+  seals their access token alone); `{:error, :unavailable}` when the value cannot be decrypted: the
   data key was wrapped under a key the instance does not hold, or the row is not the one
   that was written (moved to another secret, workspace, organisation or value id, or
   changed), with a line in the log that names the secret and the value id, never the
@@ -1051,7 +1053,7 @@ defmodule Apiary.Secrets do
   error.
   """
   @spec reveal_for_sealing(%Workspace{} | %Organisation{}, String.t(), String.t() | nil) ::
-          {:ok, binary} | {:error, Access.reason() | :unavailable}
+          {:ok, binary} | {:error, Access.reason() | :unavailable | :login}
   def reveal_for_sealing(
         %Workspace{id: workspace_id, organisation_id: organisation_id},
         secret_id,
@@ -1355,11 +1357,27 @@ defmodule Apiary.Secrets do
 
     case Repo.one(query) do
       {%Value{} = row, data_key} ->
-        decrypt_for_sealing(row, data_key, organisation_id, workspace_id, secret_id)
+        # The secret of a model provider whose keys are sign-ins is not sealed whole: its
+        # document has the refresh token (`ModelKeys.reveal_for_sealing/4` seals the access
+        # token alone).
+        if login_secret?(row.secret_id),
+          do: {:error, :login},
+          else: decrypt_for_sealing(row, data_key, organisation_id, workspace_id, secret_id)
 
       nil ->
         {:error, :not_found}
     end
+  end
+
+  # Whether a model provider whose keys are sign-ins (`Apiary.ModelKeys.Login.provider?/1`)
+  # links the secret.
+  defp login_secret?(secret_id) do
+    Repo.all(
+      from c in Connection,
+        where: c.secret_id == ^secret_id and not is_nil(c.provider_kind),
+        select: c.provider_kind
+    )
+    |> Enum.any?(&Login.provider?/1)
   end
 
   # The plaintext of `row`, under the associated data of its value id as the row has it.
