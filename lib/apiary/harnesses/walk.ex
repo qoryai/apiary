@@ -149,6 +149,13 @@ defmodule Apiary.Harnesses.Walk do
   #   * recorded: the access level of the stack row with the run's workflow
   #     (`Apiary.Stacks.recorded_access/3`). Nil lowers nothing.
   #
+  # ## The plan type
+  #
+  # `workflows.<workflow>.plan` of the same stack file, read beside the declared level
+  # (`Apiary.Harnesses.Reader.workflow_plan/2`): the artifact type of the run's plan, nil
+  # for none, for an invalid value and for a section whose base is not read. The
+  # Submissions list takes the text of each change from the plan of that type.
+  #
   # ## Limits
   #
   # At most 60 seconds, 24 calls to adapters and 24 requests to public repositories'
@@ -242,6 +249,7 @@ defmodule Apiary.Harnesses.Walk do
           required(:stack_id) => Ecto.UUID.t() | nil,
           required(:owner_organisation_id) => Ecto.UUID.t() | nil,
           required(:harness_hidden) => boolean,
+          required(:plan_type) => String.t() | nil,
           required(:pins) => [map],
           required(:harness_links) => [map]
         }
@@ -323,6 +331,7 @@ defmodule Apiary.Harnesses.Walk do
       label: nil,
       workflow: workflow,
       declared: :read,
+      plan_type: nil,
       pins: %{},
       links: %{}
     })
@@ -374,6 +383,7 @@ defmodule Apiary.Harnesses.Walk do
 
     Map.merge(fields, %{
       harness_hidden: state.hidden,
+      plan_type: state.plan_type,
       pins:
         state.pins
         |> Enum.sort()
@@ -573,7 +583,9 @@ defmodule Apiary.Harnesses.Walk do
           remote(base, :base, target)
 
         :error ->
-          put(:declared, Reader.workflow_access(section_workflows(section), get(:workflow)))
+          workflows = section_workflows(section)
+          put(:declared, Reader.workflow_access(workflows, get(:workflow)))
+          put(:plan_type, Reader.workflow_plan(workflows, get(:workflow)))
           []
       end
 
@@ -1026,6 +1038,7 @@ defmodule Apiary.Harnesses.Walk do
     case Reader.stack(content) do
       {:ok, %{modules: modules, workflows: workflows}} ->
         put(:declared, Reader.workflow_access(workflows, get(:workflow)))
+        put(:plan_type, Reader.workflow_plan(workflows, get(:workflow)))
         modules
 
       {:error, reason} ->

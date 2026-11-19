@@ -1870,6 +1870,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Changed
 
 <!-- feature: workflow_model -->
+- The Submissions list reads the text of each change from the plan type that the stack
+  entry of the run's workflow sets (`plan`, under `workflows` in `qory-stack.yaml`), and
+  no longer from the type `build-plan`. A run whose stack entry sets none, or whose plan
+  has no Deliverables table, shows no change text. The walk records the type in the new
+  column `run_harnesses.plan_type`, which the migration adds.
 - On the tab of a stage with `shared_run: true`, each run of the stage is a fold in the
   runs fold: "Attempt 3 (Run 3) · 4 workflows · round 2 of 3 · passed · 2 minutes ago", or
   "round 1" for a run with no loop. Inside it, one row for each session in the order it

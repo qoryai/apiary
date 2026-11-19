@@ -113,7 +113,7 @@ defmodule Apiary.Harnesses.ReaderTest do
     end
   end
 
-  describe "stack/1 and workflow_access/2" do
+  describe "stack/1, workflow_access/2 and workflow_plan/2" do
     @modules "modules:\n  - source: {path: core}\n"
 
     test "reads the workflows as written, an empty map for none or for another value" do
@@ -146,6 +146,42 @@ defmodule Apiary.Harnesses.ReaderTest do
           do: assert(Reader.workflow_access(workflows, name) == :read, name)
 
       assert Reader.workflow_access(%{}, "explore") == :read
+    end
+
+    test "workflow_plan/2 is the plan type of a workflow, nil for none or an invalid value" do
+      workflows = %{
+        "explore" => %{"plan" => "build-plan"},
+        "verify" => %{"plan" => "plan9", "access" => "write"},
+        "review" => %{"plan" => "a-b-c-1"},
+        "fix" => %{"time_limit" => "45m"},
+        "upper" => %{"plan" => "Build-Plan"},
+        "underscore" => %{"plan" => "build_plan"},
+        "leading" => %{"plan" => "-plan"},
+        "trailing" => %{"plan" => "plan-"},
+        "double" => %{"plan" => "build--plan"},
+        "blank" => %{"plan" => ""},
+        "newline" => %{"plan" => "plan\n"},
+        "long" => %{"plan" => String.duplicate("a", 65)},
+        "number" => %{"plan" => 7},
+        "list" => %{"plan" => ["build-plan"]},
+        "null" => %{"plan" => nil},
+        "text" => "build-plan"
+      }
+
+      assert Reader.workflow_plan(workflows, "explore") == "build-plan"
+      assert Reader.workflow_plan(workflows, "verify") == "plan9"
+      assert Reader.workflow_plan(workflows, "review") == "a-b-c-1"
+
+      for name <-
+            ~w(fix upper underscore leading trailing double blank newline long number list null text absent),
+          do: assert(Reader.workflow_plan(workflows, name) == nil, name)
+
+      assert Reader.workflow_plan(%{}, "explore") == nil
+    end
+
+    test "workflow_plan/2 takes a type of 64 bytes" do
+      type = String.duplicate("a", 64)
+      assert Reader.workflow_plan(%{"explore" => %{"plan" => type}}, "explore") == type
     end
 
     test "workflow_levels/1 is the level of each listed workflow, by name" do

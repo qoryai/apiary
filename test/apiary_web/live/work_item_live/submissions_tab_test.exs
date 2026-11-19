@@ -249,6 +249,16 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
     %{dispatch_run: first, run: first_run} = shape_run!(work_item)
     %{dispatch_run: second, run: second_run} = shape_run!(work_item)
 
+    # Both runs record the plan type their workflow's stack entry sets.
+    for run <- [first, second] do
+      Repo.insert!(%Apiary.Harnesses.RunHarness{
+        dispatch_run_id: run.id,
+        state: :resolved,
+        origin: :none,
+        plan_type: "build-plan"
+      })
+    end
+
     push!(first, work_item, "build-plan", "build-plan.md", "text/markdown", @plan)
     one = submission!(first, work_item, repository())
 

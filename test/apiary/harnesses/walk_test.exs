@@ -878,6 +878,111 @@ defmodule Apiary.Harnesses.WalkTest do
     end
   end
 
+  describe "the plan type" do
+    # The plan type of a walk whose choice's document applies, with the base's stack
+    # declaring `declared` for `explore`.
+    defp plan_type(ctx, declared) do
+      setting(ctx.scope, @setting)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: declaring(declared)
+      )
+
+      assert {:ok, %{origin: :setting, plan_type: type}} = Walk.run(ctx.input)
+      type
+    end
+
+    test "is the plan of the run's workflow in the base's stack", ctx do
+      assert plan_type(ctx, "  explore: {plan: custom-plan, access: write}\n") == "custom-plan"
+      assert plan_type(ctx, "  explore: {plan: build-plan}\n") == "build-plan"
+    end
+
+    test "is nil where the stack entry has no plan, or the workflow or the workflows are absent",
+         ctx do
+      for declared <- [nil, "  explore: {access: write}\n", "  review: {plan: custom-plan}\n"] do
+        assert plan_type(ctx, declared) == nil, inspect(declared)
+      end
+    end
+
+    test "is nil for an invalid value", ctx do
+      for value <- ["Custom-Plan", "custom_plan", "-custom", "custom--plan", "custom plan", "[a]"] do
+        assert plan_type(ctx, "  explore: {plan: \"#{value}\"}\n") == nil, value
+      end
+
+      too_long = String.duplicate("a", 65)
+      assert plan_type(ctx, "  explore: {plan: #{too_long}}\n") == nil
+    end
+
+    test "is the plan of the base's stack for a target's file with extends, not the file's workflows",
+         ctx do
+      recording(ctx, "explore", nil)
+      section = @file_section <> "  workflows:\n    explore: {plan: file-plan}\n"
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files:
+          "  explore: {plan: base-plan}\n"
+          |> declaring()
+          |> Map.put({"R_app", "harness.yaml"}, section)
+      )
+
+      assert {:ok, %{origin: :file, plan_type: "base-plan"}} = Walk.run(ctx.input)
+    end
+
+    test "is the plan of the workflows of a target's file that lists modules without extends",
+         ctx do
+      section =
+        "harness:\n  modules:\n    - source: {git: \"#{@tools}\", ref: v2}\n" <>
+          "  workflows:\n    explore: {plan: file-plan}\n"
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: Map.put(@base_files, {"R_app", "harness.yaml"}, section)
+      )
+
+      assert {:ok, %{origin: :file, plan_type: "file-plan"}} = Walk.run(ctx.input)
+    end
+
+    test "is nil for a setting without extends, whose workflows take no plan", ctx do
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+
+      setting(
+        ctx.scope,
+        "modules:\n  - source: {git: \"#{@harness}\", ref: v1, module: web}\n"
+      )
+
+      assert {:ok, %{origin: :setting, plan_type: nil}} = Walk.run(ctx.input)
+    end
+
+    test "the job writes it on the run's row, nil where the stack sets none", ctx do
+      setting(ctx.scope, @setting)
+      run = queued(ctx)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: declaring("  explore-a-ticket: {plan: custom-plan}\n")
+      )
+
+      assert :ok = job(run)
+
+      assert %RunHarness{state: :resolved, plan_type: "custom-plan"} =
+               Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+
+      other = queued(ctx)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: declaring("  explore-a-ticket: {plan: \"Not A Type\"}\n")
+      )
+
+      assert :ok = job(other)
+
+      assert %RunHarness{state: :resolved, plan_type: nil} =
+               Repo.get_by!(RunHarness, dispatch_run_id: other.id)
+    end
+  end
+
   ## The sources
 
   describe "the sources" do
