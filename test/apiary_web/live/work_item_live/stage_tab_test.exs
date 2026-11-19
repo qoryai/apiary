@@ -6054,6 +6054,88 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       refute has_element?(view, "#work-item-record")
     end
 
+    # The process of `screens!/1` with the keys `attrs` set on Verify.
+    defp verify_process!(scope, attrs) do
+      document = Processes.current(scope.workspace).document
+
+      stages =
+        Enum.map(document["stages"], fn
+          %{"id" => @verify} = stage -> Map.merge(stage, attrs)
+          stage -> stage
+        end)
+
+      {:ok, _version} = Processes.save(scope, scope.workspace, %{document | "stages" => stages})
+    end
+
+    test "Run another round and the comment: none at a gate with an output frame and no entry on the track",
+         %{conn: conn, scope: scope} do
+      screens!(scope)
+      verify_process!(scope, %{"outputs" => [%{"type" => "test-features", "required" => false}]})
+      work_item = scope |> taken_in_fixture() |> end_run!(proposing("fast-track"))
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+
+      # Verify runs on Standard only, so a version made at Verify is the output of no run of
+      # the track's: Build's run writes it in Verify's name.
+      work_item
+      |> reload()
+      |> end_run!(fn run, _registered ->
+        push!(run, work_item, "test-features", "## The report text")
+
+        {:ok, _version} =
+          Artifacts.push(
+            {:run, run},
+            reload(work_item),
+            "test-features",
+            [%{filename: "test-features.md", content_type: "text/markdown", binary: "## Verify"}],
+            stage_id: @verify
+          )
+
+        passed!(run)
+      end)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      assert :sys.get_state(view.pid).socket.assigns.output_frames
+      assert has_element?(view, "#work-item-tab-output-test-features-fold")
+      assert has_element?(view, "#work-item-stage-gate-approve-go")
+      refute has_element?(view, "#work-item-tab-gate")
+      refute has_element?(view, "#work-item-tab-gate-comment")
+      refute has_element?(view, "#work-item-tab-gate-send")
+      refute render(view) =~ "Run another round"
+      refute render(view) =~ "Comment on the stage&#39;s outputs"
+    end
+
+    test "Run another round and the comment: none at a gate with an entry on the track and no output frame",
+         %{conn: conn, scope: scope} do
+      screens!(scope)
+
+      verify_process!(scope, %{
+        "sequence" => [%{"workflow" => "shape-a-ticket"}],
+        "outputs" => []
+      })
+
+      work_item = scope |> taken_in_fixture() |> end_run!(proposing("fast-track"))
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
+
+      work_item
+      |> reload()
+      |> end_run!(fn run, _registered ->
+        push!(run, work_item, "test-features", "## The report text")
+        passed!(run)
+      end)
+      |> reload()
+      |> end_run!(fn run, _registered -> passed!(run) end)
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      refute :sys.get_state(view.pid).socket.assigns.output_frames
+      assert has_element?(view, "#work-item-stage-gate-approve-go")
+      refute has_element?(view, "#work-item-tab-gate-comment")
+      refute has_element?(view, "#work-item-tab-gate-send")
+      refute render(view) =~ "Run another round"
+      refute render(view) =~ "Comment on the stage&#39;s outputs"
+    end
+
     test "the stage's tab keeps the comment and Run another round at a gate whose stage has an output frame and an entry on the track" do
       html =
         render_component(&ApiaryWeb.WorkItemComponents.stage_tab/1,

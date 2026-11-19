@@ -382,8 +382,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   One component takes a run and lists its versions, so another page can show them.
 - A `diff` code block in a run's Markdown shows as a diff box with the file and the count of
   changed lines, on every page that renders a run's Markdown. In the block "What the run
-  needs from you" and in the frames of a stage's tab, the headings of the run's report
-  show as small bold lines.
+  needs from you" and in the text of the frames of a stage's tab, the headings of the
+  run's report show as small bold lines. The tab's question context, review comments and
+  option proposals keep their headings.
 - After a person moves a work item to an earlier stage, `inputs` in `GET work-item` also
   lists, for each output of the stage the work item left, the newest version made in that
   stage from the time the work item last entered it to the time it left, with
@@ -469,8 +470,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   with a `verification` output keeps the frames of the Verify tab, which show only the
   versions that the take in's runs wrote. In a stage that started no run, the input frames
   follow the output frames, folded; with no output frame, the first input frame is open.
-  An input version has the caption "Version <n> · from <stage>, Attempt <a> (Run <r>)",
-  or "Version <n> · from <stage>, Attempt <a>" when the run has no registered number.
+  An input version that a run made has the caption "Version <n> · from <stage>, Attempt <a>
+  (Run <r>)", or "Version <n> · from <stage>, Attempt <a>" when the run has no registered
+  number; another input version has "Version <n>".
   When another input remains, the version of the harness's submission type
   (`submit.type`) has no frame in this tab; it stays in the stage's artifacts. Where it is
   the only input, it has the frame. On the stage card, each output's version at the gate
@@ -505,27 +507,28 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The gate of a later stage for a work item on a track shows "Track" and the track's name on
   one row, and offers no choice. For a stage of a work item on a track that started no run,
   the card reads "Read the inputs below, then approve." (in a software workspace, "Read the
-  build report below, then approve.") and leaves out the list of
-  outputs, and the stage's tab shows the newest version of each of the stage's inputs. A work
-  item on no track keeps both as before.
+  build report below, then approve.") and leaves out the list of outputs, and the stage's tab
+  shows the newest version of each of the stage's inputs. A work item on no track keeps both
+  as before.
 - A gate card that every member may decide has no line about who approves; for a stage that
   lists its approvers it reads "Only the members this stage lists can approve."
 - On the current stage's tab, at the gate of any stage after Explore, **Run another round**
-  shows only where the stage has a workflow entry that runs on the work item's track (a
-  condition on the track, "Runs on <track> only", holds an entry back); a work item on no
-  track keeps **Run another round**. **Comment on the stage's outputs**, which that button
-  sends, shows only with it and where the tab has an output frame. Where the tab has no
-  output frame, **Run another round** shows only while a review comment is open or the
-  gate has a decision a reader may change; a refused move's error shows in any case. The
-  runs fold shows where the stage has a run, a skipped entry that the table does not list,
-  or an artifact. The table of entries stays.
-- A table in the frames of a stage's tab, a run's report among them, spans the width of its
-  frame. A table with columns too wide for the frame scrolls sideways in the frame, and
-  its words stay whole. Tables in Markdown on other pages keep their width.
-- A link in a run's Markdown to a page of this Qory Apiary shows as a plain link in the same
-  tab, with no icon for a link out. A page of this Qory Apiary is a path that starts with
-  one `/`, or an `http` or `https` address of this instance's host and port, with no user
-  name or password. A path with a character outside letters, digits and
+  shows only where the stage has a workflow entry that runs on the work item's track (an
+  entry whose condition on the track, "Runs on <track> only", is not met does not run); a
+  work item on no track keeps **Run another round**. **Comment on the stage's outputs**,
+  which that button sends, shows only with it and where the tab has an output frame. Where
+  the tab has no output frame, **Run another round** shows only while a review comment is
+  open or the gate has a decision a reader may change; a refused move's error shows in any
+  case. The runs fold shows where the stage has a run, a skipped entry that the table does
+  not list, or an artifact. The table of entries stays.
+- A table in the text of a frame of a stage's tab, a run's report among them, spans the
+  width of its frame. A table with columns too wide for the frame scrolls sideways in the
+  frame, and its words stay whole. Tables in Markdown on other pages, and in the tab's
+  question context, review comments and option proposals, keep their width.
+- A link in a run's Markdown to a page of this Qory Apiary shows as a plain link in the
+  same tab, with no icon for a link out. A page of this Qory Apiary is a path that starts
+  with one `/`, or an `http` or `https` address of this instance's host and port, with no
+  user name or password. A path with a character outside letters, digits and
   `-._~!$&()*+,;=:@%/?#`, with an encoded `/` or `\`, or with a `.` or `..` segment stays
   text, as do other relative links and `javascript:` and `data:` links. Links to other
   sites keep the icon and open in a new tab.

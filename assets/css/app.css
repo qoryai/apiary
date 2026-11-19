@@ -13558,29 +13558,31 @@
   .q-art-cols .q-ticket-formatted table::-webkit-scrollbar-track {
     background-color: var(--color-base-200);
   }
-  /* A table in the frames of a stage's tab (`.q-xp-stage`, `stage_tab/1`) spans the frame,
-     as the approved picture's `table.q-tbl-full` does, where `.q-xp-md` sizes a table to
-     its content. The table stays a table (`.q-xp-md table` keeps its words whole), so a
-     table with columns too wide for the frame grows past the frame's width, and the
-     text of the frame (`.q-ticket-formatted`) scrolls sideways, with the scrollbar of the
-     rules above. The frame's width stays its own, as `.q-art-cols .q-ticket-formatted`
-     does. Other pages keep the rules above. */
-  .q-xp-stage .q-ticket-formatted {
+  /* A table in the text of a frame of a stage's tab (`.q-xp-stage`, `stage_tab/1`; the
+     frame's body is `.q-xp-prop`) spans the frame, as the approved picture's
+     `table.q-tbl-full` does, where `.q-xp-md` sizes a table to its content. The table
+     stays a table (`.q-xp-md table` keeps its words whole), so a table with columns too
+     wide for the frame grows past the frame's width, and the text of the frame
+     (`.q-ticket-formatted`) scrolls sideways, with the scrollbar of the rules above. The
+     text is as wide as the frame (`contain: inline-size`), as `.q-art-cols
+     .q-ticket-formatted` is. Other pages, and the question context, review comments and
+     option proposals of the tab, keep the rules above. */
+  .q-xp-stage .q-xp-prop .q-ticket-formatted {
     overflow-x: auto;
     contain: inline-size;
     scrollbar-color: auto;
   }
-  .q-xp-stage .q-ticket-formatted::-webkit-scrollbar {
+  .q-xp-stage .q-xp-prop .q-ticket-formatted::-webkit-scrollbar {
     height: 8px;
   }
-  .q-xp-stage .q-ticket-formatted::-webkit-scrollbar-thumb {
+  .q-xp-stage .q-xp-prop .q-ticket-formatted::-webkit-scrollbar-thumb {
     border-radius: 4px;
     background-color: var(--q-faint);
   }
-  .q-xp-stage .q-ticket-formatted::-webkit-scrollbar-track {
+  .q-xp-stage .q-xp-prop .q-ticket-formatted::-webkit-scrollbar-track {
     background-color: var(--color-base-200);
   }
-  .q-xp-stage .q-ticket-formatted table {
+  .q-xp-stage .q-xp-prop .q-ticket-formatted table {
     display: table;
     width: 100%;
     contain: none;
@@ -14409,17 +14411,18 @@
     font-size: 0.8125rem;
   }
   /* The headings of a run's report are small bold lines, as `.q-xp-sub`, in two places:
-     inside the block "What the run needs from you" and inside the frames of a stage's
-     tab (`.q-xp-stage`, `stage_tab/1`). Other pages show them as `.q-ticket-formatted`
-     does. */
-  :is(.q-xp-needs-outputs, .q-xp-stage) .q-ticket-formatted :where(h3, h4, h5, h6) {
+     inside the block "What the run needs from you" and inside the body of a frame of a
+     stage's tab (`.q-xp-stage .q-xp-prop`, `stage_tab/1`). Other pages, and the question
+     context, review comments and option proposals of the tab, show them as
+     `.q-ticket-formatted` does. */
+  :is(.q-xp-needs-outputs, .q-xp-stage .q-xp-prop) .q-ticket-formatted :where(h3, h4, h5, h6) {
     margin: 14px 0 6px;
     font-size: 0.8125rem;
     font-weight: 600;
   }
   /* A stage tab's frame header shows the report's title, so the first heading there is a
      heading like the others, with no space above it (the picture's `.q-xp-sub:first-child`). */
-  .q-xp-stage .q-ticket-formatted > :where(h3, h4, h5, h6):first-child {
+  .q-xp-stage .q-xp-prop .q-ticket-formatted > :where(h3, h4, h5, h6):first-child {
     margin-top: 0;
   }
   /* Values of the approved picture of the block "What the run needs from you": the

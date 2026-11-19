@@ -106,7 +106,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # the stage's notes above the tabs (`ApiaryWeb.WorkItemLive.StageComponents`). At a stage
   # after Explore the runs and the artifacts are in one record block at the foot of the
   # Ticket tab and the Thread, closed when the page opens (`foot/3`), and of a stage's tab,
-  # with that stage's only (`ApiaryWeb.WorkItemLive.StageTab.record?/2`). At Explore the
+  # with that stage's only (`ApiaryWeb.WorkItemLive.StageTab.record?/3`). At Explore the
   # runs and the artifacts are in the history fold, and the block above the tabs shows
   # only while a note of a gate decision, an escalation or a check exists. A work item at
   # Explore's stage whose status is none of Explore's, moved back or ended, has the

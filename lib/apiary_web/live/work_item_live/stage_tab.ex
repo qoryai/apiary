@@ -80,7 +80,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   # folded?/4 is whether a tab's runs fold lists every run of `flow` (`flow.runs`, the
   # stage runs of the take in), with `run`, the take in's latest run, and `earlier_runs`
   # and `artifacts` as `view/3` reads them. Explore's tab lists each of Explore's runs; a
-  # later stage's tab lists that stage's runs where it has the record block (`record?/2`).
+  # later stage's tab lists that stage's runs where it has the record block (`record?/3`).
   # A run whose stage has no tab is in no fold. True with no run.
   @spec folded?(map, map | nil, [map], [map]) :: boolean
   def folded?(flow, run, earlier_runs, artifacts) do
