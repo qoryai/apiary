@@ -223,6 +223,62 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
     columns_up!()
   end
 
+  test "down of the column drop fills the columns from the start key's provider's rows, with times in UTC",
+       ctx do
+    reset = in_seconds(7_200)
+    key_state!(ctx.provider, "main", resets_at: reset)
+    run = claimed!(ctx, "acme/shop#8")
+    [%{api: api} | _rest] = stored_keys(run)
+
+    # A key row of a second provider, as a later session's key of a shared run.
+    {:ok, other} =
+      Connections.create_provider(ctx.scope, %{
+        provider: "anthropic",
+        name: "Checkout keys",
+        keys: [%{value_id: "main", value: "sk-ant-migration-other"}]
+      })
+
+    other_value =
+      Repo.one!(from v in Value, where: v.secret_id == ^other.secret_id and v.value_id == "main")
+
+    {1, _rows} =
+      Repo.insert_all(Apiary.Runs.ModelKey, [
+        %{
+          run_id: run.id,
+          position: 3,
+          name: "#{other.public_id}-1",
+          secret_value_id: other_value.id,
+          connection_id: other.id,
+          secret_id: other.secret_id,
+          chain: "organisation",
+          api: api,
+          pause_for_s: 60,
+          resets_at: reset
+        }
+      ])
+
+    # A session time zone other than UTC changes no time the columns get.
+    Repo.query!("SET LOCAL TIME ZONE 'Pacific/Auckland'")
+    columns_down!()
+
+    %{rows: [[connection_id, secret_id, chain]]} =
+      Repo.query!(
+        "SELECT provider_connection_id, provider_secret_id, provider_chain FROM runs " <>
+          "WHERE id = $1",
+        [Ecto.UUID.dump!(run.id)]
+      )
+
+    assert {Ecto.UUID.cast!(connection_id), Ecto.UUID.cast!(secret_id), chain} ==
+             {ctx.provider.id, ctx.provider.secret_id, "organisation"}
+
+    keys = model_keys(run.id)
+    p = ctx.provider.public_id
+    assert Enum.map(keys, & &1["name"]) == ["#{p}-1", "#{p}-2"]
+    assert %{"resets_at" => resets_at} = Enum.find(keys, &(&1["id"] == value(ctx, "main").id))
+    assert resets_at == DateTime.to_iso8601(reset)
+    columns_up!()
+  end
+
   test "the list is at most 6 keys, each with a row id and a credential name", ctx do
     run = claimed!(ctx, "acme/shop#3")
     columns_down!()
