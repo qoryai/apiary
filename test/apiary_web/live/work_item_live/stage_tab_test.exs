@@ -1556,6 +1556,28 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert made_by(view, work_item, "spec", "second") == "Run #{n} · round 2"
     end
 
+    test "a version before the loop of a looped stage has no round, before and after the loop starts",
+         %{conn: conn, scope: scope} do
+      {work_item, run, registered} = shared_build!(scope, looped(), @outputs)
+      n = registered.number
+
+      # plan-the-build still runs: no session is in the loop yet.
+      push!(run, work_item, "spec", "## The plan")
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+      assert made_by(view, work_item, "spec", "main") == "Run #{n}"
+
+      :ok = verdict!(run, "passed")
+      {:session, %{workflow: "write-acceptance-checks"}} = report!(run, 1)
+      :ok = verdict!(run, "passed")
+      {:session, %{workflow: "implement-changes"}} = report!(run, 2)
+      push!(run, work_item, "test-features", "## Round 1")
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+      assert made_by(view, work_item, "spec", "main") == "Run #{n}"
+      assert made_by(view, work_item, "test-features", "main") == "Run #{n} · round 1"
+    end
+
     test "the row of an output that has no Markdown has the round of its session", %{
       conn: conn,
       scope: scope

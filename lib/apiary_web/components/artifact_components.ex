@@ -281,8 +281,8 @@ defmodule ApiaryWeb.ArtifactComponents do
   true, such as "Run 14 · round 2" or "Run 14". For a run of a stage with `shared_run: true`
   the round is that of the loop session that wrote the version: the newest of the run's
   sessions written before the version, which `Apiary.Artifacts.with_sessions/1` reads. A
-  run with no session in a loop is round 1; a version outside the loop of a run that has
-  one has no round. "A run" where no run is registered or read. The Explore tab passes
+  run whose stage has no loop in its sequence is round 1; a version outside the loop of one
+  that has a loop has no round. "A run" where no run is registered or read. The Explore tab passes
   `round` false: inside a work item, its runs count by attempt. A version of a run a member
   cancelled has its round, whatever `round`, and "cancelled, not counted" after them: "Run
   14 · round 2 · cancelled, not counted".
@@ -308,8 +308,8 @@ defmodule ApiaryWeb.ArtifactComponents do
   defp run_writer(%Version{writer: :run}, _round), do: run_words(nil, nil)
 
   # The round of a run's version: with `shared_run: true`, that of the newest session
-  # written before it, if that session is in a loop; 1 where no session of the run is;
-  # else none. Any other run has the round of its run of the queue.
+  # written before it, if that session is in a loop; none where the stage's sequence has a
+  # loop (`loop`) and the version is outside it; else 1. Any other run has the round of its run of the queue.
   defp version_round(%Version{run: %{sessions: [_ | _] = sessions}} = version) do
     session =
       sessions
@@ -318,7 +318,7 @@ defmodule ApiaryWeb.ArtifactComponents do
 
     cond do
       session && is_integer(session.loop_entry) -> session.round
-      Enum.any?(sessions, &is_integer(&1.loop_entry)) -> nil
+      version.run.loop == true -> nil
       true -> 1
     end
   end

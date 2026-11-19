@@ -167,6 +167,9 @@ defmodule Apiary.Dispatches.DispatchRun do
     # start. No changeset casts them.
     belongs_to :process_version, Apiary.Processes.Version
     field :stage_id, :string
+    # Whether the stage's sequence in the run's process version has a loop; nil until
+    # `Apiary.Artifacts.with_sessions/1` reads it. Not stored.
+    field :loop, :boolean, virtual: true
     field :round, :integer
     field :stage_entry, :integer
     field :loop_entry, :integer
