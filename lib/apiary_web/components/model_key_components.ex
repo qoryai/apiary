@@ -714,6 +714,9 @@ defmodule ApiaryWeb.ModelKeyComponents do
           time: Format.time(@device.expires_at)
         )}
       </p>
+      <p id={"#{@id}-only-yours"} class="text-muted">
+        {gettext("Approve only a code you started yourself.")}
+      </p>
       <div class="flex items-center gap-3">
         <span class="loading loading-spinner loading-xs text-faint" aria-hidden="true" />
         <span id={"#{@id}-waiting"}>

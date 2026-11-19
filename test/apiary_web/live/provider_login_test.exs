@@ -173,6 +173,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
       assert text(lv, "#key-sign-in-code") == "7QKD-M4TPX"
       assert has_element?(lv, "#key-sign-in-copy", "Copy")
       assert text(lv, "#key-sign-in-until") =~ ~r/\AThe code works until \d{1,2}:\d{2}.*\.\z/
+      assert text(lv, "#key-sign-in-only-yours") == "Approve only a code you started yourself."
 
       assert text(lv, "#key-sign-in-waiting") ==
                "Waiting for you to approve the sign-in on OpenAI's page."
@@ -914,7 +915,6 @@ defmodule ApiaryWeb.ProviderLoginTest do
       end
     end
 
-    test "has no button while the description has no device sign-in", ctx do
     test "stores nothing for a key that was deleted and added again during the sign-in", ctx do
       %{conn: conn, scope: scope} = ctx
       Stub.put(tokens: login_tokens(tag: "stale"), hold: true)
@@ -952,6 +952,7 @@ defmodule ApiaryWeb.ProviderLoginTest do
       refute render(lv) =~ "is saved."
     end
 
+    test "has no button while the description has no device sign-in", ctx do
       %{conn: conn, scope: scope} = ctx
       provider = subscription!(scope)
       needs_sign_in!(provider, "main")

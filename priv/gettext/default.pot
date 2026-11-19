@@ -6216,6 +6216,11 @@ msgid_plural "Approve leaves %{count} comments unread."
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Approve only a code you started yourself."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Approve the proposal, or add a comment and run another round."
