@@ -419,7 +419,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
   defp error(errors, kind), do: Enum.find(errors, &(&1.error == kind))
 
   @missing "Choose a model for workflow write-acceptance-checks. Without one it runs on Claude Code, and this stage's runs can start on Storefront keys, which Claude Code cannot use."
-  @no_key "Add a model key to Checkout keys, or choose a model of another provider for workflow write-acceptance-checks. Checkout keys has no model key."
+  @no_key "Add a model provider credential to Checkout keys, or choose a model of another provider for workflow write-acceptance-checks. Checkout keys has no model provider credential."
   @machine "Choose a model for workflow plan-the-build, or remove the model choices of the later workflows. Without a model, plan-the-build runs on the machine's local model provider credential, so later workflows get no model provider credential."
   @other_api "Choose a model for workflow write-acceptance-checks that uses the Anthropic Messages API of Northwind keys, as workflow plan-the-build does, or a model of another provider. One run uses one API of each provider."
 
@@ -736,7 +736,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       do: ExploreView.explore(work_item(queued), DateTime.utc_now()).run.shared_models
 
     @missing_cause "The run did not start, because a workflow of Build had no model, and that workflow's runtime could not use the provider that the run would start on."
-    @key_cause "The run did not start, because a workflow of Build would run on a provider that has no key in the run, or on a second API of a provider that an earlier workflow uses."
+    @key_cause "The run did not start, because a workflow of Build would run on a provider that has no model provider credential in the run, or on a second API of a provider that an earlier workflow uses."
     @too_many_cause "The run did not start, because the workflows of Build used more than 6 model providers."
 
     test "of model_choice_missing show the fix with its values while that fault remains, else the round again",

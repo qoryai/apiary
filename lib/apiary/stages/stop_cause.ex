@@ -817,7 +817,7 @@ defmodule Apiary.Stages.StopCause do
 
   defp shared_models_cause(:session_key_missing, stage),
     do:
-      "The run did not start, because a workflow of #{stage} would run on a provider that has no key in the run, or on a second API of a provider that an earlier workflow uses."
+      "The run did not start, because a workflow of #{stage} would run on a provider that has no model provider credential in the run, or on a second API of a provider that an earlier workflow uses."
 
   defp shared_models_cause(:too_many_providers, stage),
     do:
@@ -843,7 +843,7 @@ defmodule Apiary.Stages.StopCause do
          {:session_key_missing, :no_key, workflow, provider}
        ),
        do:
-         "Add a model key to #{provider}, or choose a model of another provider for workflow #{workflow}. #{provider} has no model key."
+         "Add a model provider credential to #{provider}, or choose a model of another provider for workflow #{workflow}. #{provider} has no model provider credential."
 
   defp shared_models_fix(
          :session_key_missing,

@@ -683,7 +683,7 @@ defmodule ApiaryWeb.StagesLive.Words do
       ),
       do:
         gettext(
-          "Add a model key to %{provider}, or choose a model of another provider for workflow %{workflow}. %{provider} has no model key.",
+          "Add a model provider credential to %{provider}, or choose a model of another provider for workflow %{workflow}. %{provider} has no model provider credential.",
           workflow: workflow,
           provider: provider
         )

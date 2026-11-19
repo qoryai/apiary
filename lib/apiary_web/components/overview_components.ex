@@ -2375,13 +2375,13 @@ defmodule ApiaryWeb.OverviewComponents do
   defp no_run_words(:session_key_missing, _choice, _item),
     do:
       gettext(
-        "Run the round again. A workflow of the stage would run on a provider that has no key in the run, or on a second API of a provider that an earlier workflow uses."
+        "Run the round again. A workflow of the stage would run on a provider that has no model provider credential in the run, or on a second API of a provider that an earlier workflow uses."
       )
 
   defp no_run_words(:too_many_providers, _choice, _item),
     do:
       gettext(
-        "Run the round again. The workflows of the stage used more than 6 model providers, and one run takes keys of at most 6."
+        "Run the round again. The workflows of the stage used more than 6 model providers, and one run takes model provider credentials of at most 6."
       )
 
   defp no_run_words(_cause, _choice, _item),

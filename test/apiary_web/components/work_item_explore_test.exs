@@ -2999,7 +2999,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         "Run the round again. A workflow of the stage had no model, and that workflow's runtime could not use the provider that the run would start on."
 
       too_many_again =
-        "Run the round again. The workflows of the stage used more than 6 model providers, and one run takes keys of at most 6."
+        "Run the round again. The workflows of the stage used more than 6 model providers, and one run takes model provider credentials of at most 6."
 
       for {cause, detail, body} <- [
             {:model_choice_missing, missing,
@@ -3041,13 +3041,13 @@ defmodule ApiaryWeb.WorkItemExploreTest do
          "Northwind keys", "plan-the-build"}
 
       again =
-        "Run the round again. A workflow of the stage would run on a provider that has no key in the run, or on a second API of a provider that an earlier workflow uses."
+        "Run the round again. A workflow of the stage would run on a provider that has no model provider credential in the run, or on a second API of a provider that an earlier workflow uses."
 
       for {detail, body} <- [
             {machine,
              "Choose a model for workflow plan-the-build, or remove the model choices of the later workflows. Without a model, plan-the-build runs on the machine's local model provider credential, so later workflows get no model provider credential."},
             {no_key,
-             "Add a model key to Checkout keys, or choose a model of another provider for workflow write-acceptance-checks. Checkout keys has no model key."},
+             "Add a model provider credential to Checkout keys, or choose a model of another provider for workflow write-acceptance-checks. Checkout keys has no model provider credential."},
             {other_api,
              "Choose a model for workflow write-acceptance-checks that uses the Anthropic Messages API of Northwind keys, as workflow plan-the-build does, or a model of another provider. One run uses one API of each provider."},
             {nil, again},

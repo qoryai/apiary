@@ -7377,13 +7377,13 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp unstarted_words(:session_key_missing),
     do:
       gettext(
-        "Run the round again. A workflow of the stage would run on a provider that has no key in the run, or on a second API of a provider that an earlier workflow uses."
+        "Run the round again. A workflow of the stage would run on a provider that has no model provider credential in the run, or on a second API of a provider that an earlier workflow uses."
       )
 
   defp unstarted_words(:too_many_providers),
     do:
       gettext(
-        "Run the round again. The workflows of the stage used more than 6 model providers, and one run takes keys of at most 6."
+        "Run the round again. The workflows of the stage used more than 6 model providers, and one run takes model provider credentials of at most 6."
       )
 
   defp unstarted_words(:build_failed),
