@@ -68,9 +68,10 @@ defmodule Apiary.ModelKeys do
   A model key of a run: `name`, the credential's name in the run's run configuration;
   `run_id`, the run's row id; `secret_value_id`, the value's row id; `organisation_id`, the
   value's organisation; `copy_set_at`, when the value the run has was set (`run_keys/1`),
-  nil when unknown; and `copy_kept`, true when `copy_set_at` is the `value_set_at` of a copy of the key for the
-  run (`Apiary.ModelKeys.Copy`), which a secrets request kept (`keep_copies/2`) or
-  migration 20261111220000 wrote for a run that was pending or running at the upgrade;
+  nil when unknown; and `copy_kept`, true when `copy_set_at` is the `value_set_at` of a copy
+  of the key for the run (`Apiary.ModelKeys.Copy`), which a secrets request kept
+  (`keep_copies/2`) or migration 20261111220000 wrote for a run that was pending or running
+  at the upgrade;
   false when it is the time the run's row was written; and `copy_login_at`, for a sign-in,
   the time of its sign-in or last refresh when the request read the token it sealed for
   the run (`Apiary.ModelKeys.Copy`), nil when the key is no sign-in or the copy has none;
@@ -1111,9 +1112,9 @@ defmodule Apiary.ModelKeys do
   and so does the same run once a request has sealed a new value of the key for it. An
   entry that is left out is no error: the report is answered as one whose entries all
   marked. A refresh never changes the row; a new sign-in ends the state, as a new value of
-  any key does. An entry that is older than the key's row keeps the row. The rows are written in the order of the keys' row
-  ids, after the values' rows are locked `FOR SHARE`, as `record/3` does, so a new value
-  and this write take turns. Returns `:ok`.
+  any key does. An entry that is older than the key's row keeps the row. The rows are
+  written in the order of the keys' row ids, after the values' rows are locked `FOR SHARE`,
+  as `record/3` does, so a new value and this write take turns. Returns `:ok`.
   """
   @spec reject(
           [run_key],

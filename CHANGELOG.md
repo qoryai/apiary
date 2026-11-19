@@ -1875,8 +1875,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   identity line: for an API key, the provider's name and the last 4 characters of the key,
   “Northwind Claude · …9c2e”, or the provider's name alone when the key has fewer than 12
   characters, when its last 4 characters hold a control character, a format character or a
-  line or paragraph separator, or when it was saved before this change; for an OpenAI sign-in, the provider's name and
-  the email of the ChatGPT account, “Northwind OpenAI · dana@example.com”, or, when the
+  line or paragraph separator, or when it was saved before this change; for an OpenAI
+  sign-in, the provider's name and the email of the ChatGPT account, “Northwind OpenAI · dana@example.com”, or, when the
   sign-in has no email, the name and “account …” with the last 4 characters of the account
   ID. The line shows on the provider's page, as the title of **Edit key** (“Edit key” stays
   in the breadcrumb), in “%{identity} is added.” and “%{identity} is saved.”, on Workspace
