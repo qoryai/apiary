@@ -910,7 +910,7 @@ for each other and never on each other at once:
    and then deletes its state rows, waits for the report or comes before it: the report
    then leaves out a key whose value is not the one the run has, a `value_set_at` other
    than the run's copy. The report's `unauthorized` list is written the same way
-   (`Apiary.ModelKeys.reject/4`): it takes the rows of the keys in `secret_values` `FOR
+   (`Apiary.ModelKeys.reject/3`): it takes the rows of the keys in `secret_values` `FOR
    SHARE`, by id, then reads the sign-in rows of those keys, then writes
    `model_key_rejections` with the `value_set_at` it read, so a new value, which deletes
    the rejection rows with the state rows, waits for it or comes before it, a rejection
