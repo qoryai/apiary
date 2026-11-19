@@ -58,7 +58,7 @@ defmodule Apiary.Dispatches.RunApiPathsMigrationTest do
     work_item = work_item_fixture(scope)
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
     %{registered: run} = dispatched!(key)
-    assert :ok = Ecto.Migrator.down(Repo, @columns_version, @columns_migration, @options)
+    assert :ok = Apiary.OneProviderColumns.back!()
 
     %{run_id: run.id}
   end
@@ -85,6 +85,9 @@ defmodule Apiary.Dispatches.RunApiPathsMigrationTest do
     error in Postgrex.Error -> error.postgres[:constraint] || error.postgres.code
   end
 
+  defp columns_up!,
+    do: assert(:ok = Ecto.Migrator.up(Repo, @columns_version, @columns_migration, @options))
+
   defp api_of(run_id) do
     %{rows: [[api]]} =
       Repo.query!("SELECT provider_api FROM runs WHERE id = $1", [Ecto.UUID.dump!(run_id)])
@@ -104,6 +107,7 @@ defmodule Apiary.Dispatches.RunApiPathsMigrationTest do
     assert :ok = Ecto.Migrator.up(Repo, @version, @migration, @options)
     assert set(run_id, with_paths) == :ok
     assert api_of(run_id) == with_paths
+    columns_up!()
   end
 
   test "the paths are 1 to 32 strings that start with a slash", %{run_id: run_id} do
