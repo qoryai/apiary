@@ -37,13 +37,14 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.{Access, Artifacts, Features, Organisations, Processes, Repo, Stages, WorkItems}
+  alias Apiary.{Access, Accounts, Artifacts, Features, Organisations, Processes, Repo, Stages}
+  alias Apiary.WorkItems
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.Pause
   alias Apiary.Runs.{Cancel, Run}
   alias Apiary.Stages.{Approvers, Points, Runner}
   alias Apiary.WorkItems.WorkItem
-  alias ApiaryWeb.SourceComponents
+  alias ApiaryWeb.{People, SourceComponents}
   alias ApiaryWeb.WorkItemLive.{StageComponents, View}
 
   @states Apiary.Processes.Version.stage_states()
@@ -123,6 +124,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     switch = switch_tracks(row, state)
     earlier = if(at, do: Enum.take(all, at), else: [])
     can_decide = Access.can?(scope, :"gate.approve", row)
+    changes = changes(scope, row, artifacts)
 
     %{
       version: get(get(status, :version), :number) || get(version, :number),
@@ -177,6 +179,13 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       gate_approvers: get(get(status, :gate) || %{}, :approvers) || :members,
       gate_kind: gate_kind,
       approvable: get(get(status, :gate) || %{}, :approvable?) == true,
+      # Each version that a person's change made and no person's approval lists yet, by
+      # its public id (`changes/3`); the page fills a changed acceptance criteria's
+      # `criteria`.
+      changes: changes,
+      # Who decides at the gate, for a reader who may not, where a version is changed
+      # (`gate_approver_line/6`); nil otherwise.
+      gate_approver_line: gate_approver_line(scope, stage, state, gate_kind, can_decide, changes),
       index: for(artifact <- index, not Artifacts.withdrawn?(artifact), do: indexed(artifact)),
       # The newest submission; the work item page fills `drafts` from its document
       # (`Apiary.Submissions.repositories/1`), which it reads once per version.
@@ -205,10 +214,26 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # (`ApiaryWeb.WorkItemLive.StageComponents.approver_line/3`): the sentence that takes the
   # place of the action in the points (`worded/2`), in any state that keeps the
   # escalation, such as waiting for answers. nil with no escalation or for a reader who
-  # may decide. The page reads the members only for a stage that lists approvers.
+  # may decide.
   defp approver_line(_scope, _stage, nil, _can_decide), do: nil
 
-  defp approver_line(scope, stage, _escalation, false) do
+  defp approver_line(scope, stage, _escalation, false), do: who_decides(scope, stage)
+
+  defp approver_line(_scope, _stage, _escalation, true), do: nil
+
+  # Who decides at the gate of `stage` (`StageComponents.approver_line/3`), for a reader
+  # who may not, at a gate that takes a decision, while a version is changed: the line
+  # takes the place of the line of what to do above a changed version's acceptance
+  # criteria. nil otherwise.
+  defp gate_approver_line(scope, stage, :at_gate, gate_kind, false, changes)
+       when gate_kind != "none" and changes != %{},
+       do: who_decides(scope, stage)
+
+  defp gate_approver_line(_scope, _stage, _state, _gate_kind, _can_decide, _changes), do: nil
+
+  # The sentence of who decides on `stage`. The page reads the members only for a stage
+  # that lists approvers.
+  defp who_decides(scope, stage) do
     approvers = approvers(stage)
 
     members =
@@ -220,7 +245,39 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     StageComponents.approver_line(stage.name, approvers, members)
   end
 
-  defp approver_line(_scope, _stage, _escalation, true), do: nil
+  # The versions of `artifacts` that a person's change made and no person's approval
+  # lists yet (`Apiary.Stages.unapproved_changes/2`), each with `whose`, who asked for it,
+  # for the reader of `scope`, as the type `whose` of
+  # `ApiaryWeb.WorkItemLive.GateChanges` has it: `:you` where the reader wrote the note,
+  # else `{:name, name}`, the writer's short name, or `:member` where the writer's account
+  # is gone.
+  defp changes(scope, row, artifacts) do
+    case Stages.unapproved_changes(row, artifacts) do
+      changes when changes == %{} ->
+        %{}
+
+      changes ->
+        reader = scope.user.id
+
+        names =
+          for user <- Accounts.list_users_by_id(Enum.map(Map.values(changes), & &1.by)),
+              user.id != reader,
+              is_nil(user.deleted_at),
+              into: %{},
+              do: {user.id, People.short(People.email(user))}
+
+        Map.new(changes, fn {id, change} ->
+          whose =
+            cond do
+              change.by == reader -> :you
+              is_binary(names[change.by]) -> {:name, names[change.by]}
+              true -> :member
+            end
+
+          {id, Map.put(change, :whose, whose)}
+        end)
+    end
+  end
 
   defp switch_tracks(row, :escalated),
     do: Stages.switch_tracks(row)

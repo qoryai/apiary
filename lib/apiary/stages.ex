@@ -45,7 +45,8 @@ defmodule Apiary.Stages do
   # which contains the change the person asked for. Every later
   # run reads that version in place of the approved one (`read_version/6`), and the next
   # approval by a person at a gate lists it (`approve/4`). A gate `none` lists no version
-  # with a `decision`.
+  # with a `decision`. The work item page marks the version until an approval lists it
+  # or a later version of its artifact (`unapproved_changes/2`).
   #
   # ## After the last stage
   #
@@ -5312,6 +5313,68 @@ defmodule Apiary.Stages do
 
   # The public ids of the versions that the approvals `approvals_by_version/1` returns list.
   defp listed(approvals), do: MapSet.new(Map.keys(approvals))
+
+  @doc false
+  # unapproved_changes/2 is each version of `artifacts`, the work item's
+  # (`Artifacts.list/1`), that is a person's change (`changes/2`, by the approvals that
+  # `listed/1` reads, as for the version that later runs read), by its public id, as
+  # `%{type:, name:, version:, by:, earlier:}`. `by` is the account id of the person who
+  # wrote the note that asked for the version (`Apiary.Stages.Notes.writers/2`), nil for
+  # none. `earlier` is the version of the same artifact, below this one, that was approved
+  # before the change (`approved_before/4`), nil for none. The work item page marks each
+  # such version until an approval lists it or a later version of its artifact. A gate
+  # `none` lists no version with a `decision`, so the mark stays through it.
+  @spec unapproved_changes(WorkItem.t(), [map]) :: %{String.t() => map}
+  def unapproved_changes(%WorkItem{} = work_item, artifacts) do
+    if Enum.any?(artifacts, fn a -> Enum.any?(a.versions, &is_binary(&1.decision_id)) end) do
+      approvals = approvals_by_version(work_item)
+      listed = listed(approvals)
+      by_person = person_listed(approvals)
+
+      found =
+        for artifact <- artifacts,
+            version <- changes(artifact, listed),
+            do: {artifact, version}
+
+      writers = Notes.writers(work_item.id, Enum.map(found, &elem(&1, 1).decision_id))
+
+      Map.new(found, fn {artifact, version} ->
+        {version.public_id,
+         %{
+           type: artifact.type,
+           name: artifact.name,
+           version: version,
+           by: Map.get(writers, version.decision_id),
+           earlier: approved_before(artifact, version, by_person, listed)
+         }}
+      end)
+    else
+      %{}
+    end
+  end
+
+  # The public ids of the versions that a person's approval (`person_approval?/1`) of
+  # `approvals` (`approvals_by_version/1`) lists: the versions a person approved.
+  defp person_listed(approvals) do
+    for {public_id, list} <- approvals,
+        Enum.any?(list, &person_approval?/1),
+        into: MapSet.new(),
+        do: public_id
+  end
+
+  # The text approved before `version`: the highest-numbered version of `artifact` below it
+  # that a person's approval lists (`by_person`, `person_listed/1`), else the highest below
+  # it that any approval lists (`listed`, `listed/1`), a gate `none`'s included; nil for
+  # none.
+  defp approved_before(artifact, version, by_person, listed) do
+    highest_below(artifact, version, by_person) || highest_below(artifact, version, listed)
+  end
+
+  defp highest_below(artifact, version, ids) do
+    artifact.versions
+    |> Enum.filter(&(&1.number < version.number and MapSet.member?(ids, &1.public_id)))
+    |> Enum.max_by(& &1.number, fn -> nil end)
+  end
 
   # The input types of the conditions of `stage` that count: each whose version the stage
   # reads has a file of more than 0 bytes (`Runner.condition_inputs/1`).
