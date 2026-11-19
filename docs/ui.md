@@ -1329,9 +1329,10 @@ address under `/machines`, with what followed `/nodes` and the query.
   carries `--via` and the gateway's URL before the server's address (`qory access-key
   enrol --via https://edge.example.com https://apiary.example.com` and the code), the
   description reads "The command connects build-01 by itself, through the gateway
-  edge-01: it makes the machine's key there, saves it, and writes Qory Apiary's address
-  and public key and the gateway's address into the Forager file. The secret never leaves
-  the machine.", and a line under the command reads "If edge-01's certificate is signed
+  edge-01: it makes the machine's access key there, saves it, and writes Qory Apiary's
+  address and public key and the gateway's address into the Forager file. The secret
+  never leaves the machine.", and a line under the command reads "If edge-01's
+  certificate is signed
   by a private certificate authority, add --via-ca-file and that authority's PEM file."
   (`NodeComponents.via_ca_line/1`). An address in the command with a character a shell
   acts on is single-quoted (`NodeComponents.shell_word/1`). For a machine or pool that has or had a key, the command carries
@@ -2167,8 +2168,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   was queued, then Request a machine, Start the machine, Prepare the machine, Agent
   session 1 and Remove the machine as grey rings with no time. A muted line under Queue
   the run shows why the run waits, the first reason that applies (`Apiary.Runs.Waiting`),
-  and is read again when the queue changes, a slot frees, a build ends or a machine's key
-  changes:
+  and is read again when the queue changes, a slot frees, a build ends or a machine's
+  access key changes:
   1. "Waiting until Qory Apiary reads the harness." while its harness walk is not done.
   2. "Waiting: no pool can take the run" while no pool that serves the workspace is ready.
   3. "Waiting for a machine: no pool offers a machine that fits UI tests, large

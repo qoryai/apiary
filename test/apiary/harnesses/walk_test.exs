@@ -505,7 +505,7 @@ defmodule Apiary.Harnesses.WalkTest do
       assert reads == [:read]
     end
 
-    test "a file with machine keys alone, or whose section has neither extends nor modules, takes the document",
+    test "a file with machine harness settings alone, or whose section has neither extends nor modules, takes the document",
          ctx do
       setting(ctx.scope, @setting)
 

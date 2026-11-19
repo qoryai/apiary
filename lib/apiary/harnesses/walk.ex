@@ -43,8 +43,8 @@ defmodule Apiary.Harnesses.Walk do
   # that read returned, which is the run's `target_version`. Both found fail `invalid`.
   # A file whose harness section has `extends`, or has no `extends` and lists modules,
   # applies, origin `:file`. Any other case, a file with no harness section, one with the
-  # machine's keys alone, one whose section has neither `extends` nor modules, or no
-  # file, takes the next step of the order. A target no collection has, or a domain
+  # machine harness settings alone, one whose section has neither `extends` nor modules,
+  # or no file, takes the next step of the order. A target no collection has, or a domain
   # without harness files, is not read and has no `target_version`.
   #
   # ## The choice's document

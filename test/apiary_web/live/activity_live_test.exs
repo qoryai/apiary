@@ -573,7 +573,7 @@ defmodule ApiaryWeb.ActivityLiveTest do
       [gateway_made] =
         entries(scope, %{action: "node.create"}) |> Enum.filter(&(&1.subject_id == gateway.id))
 
-      [_machine_key, key_added] = entries(scope, %{action: "access_key.add"})
+      [_first_key, key_added] = entries(scope, %{action: "access_key.add"})
       [revoked] = entries(scope, %{action: "access_key.revoke"})
       [changed] = entries(scope, %{action: "node.edit"})
       [deleted] = entries(scope, %{action: "node.delete"})

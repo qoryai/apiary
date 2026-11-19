@@ -87,9 +87,9 @@ defmodule Apiary.Harnesses.Reader do
   # and carriage return, DEL, and C1.
   @control ~r/[\x{00}-\x{08}\x{0B}\x{0C}\x{0E}-\x{1F}\x{7F}-\x{9F}]/u
 
-  # The machine's keys of a harness section (qory contracts/harness/v1/config.schema.json):
-  # a section with these alone is not a document.
-  @machine_keys ~w(runtime model effort tiers force update home links launch)
+  # The machine harness settings of a harness section (qory
+  # contracts/harness/v1/config.schema.json): a section with these alone is not a document.
+  @machine_harness_settings ~w(runtime model effort tiers force update home links launch)
 
   @constr_options [
     detailed_constr: true,
@@ -168,10 +168,6 @@ defmodule Apiary.Harnesses.Reader do
   @spec max_depth() :: pos_integer
   def max_depth, do: @max_depth
 
-  @doc "The machine's keys of a harness section: a section with these alone is no document."
-  @spec machine_keys() :: [String.t()]
-  def machine_keys, do: @machine_keys
-
   @doc false
   # control_character?/1 is whether `text` has a control character no file may contain.
   @spec control_character?(String.t()) :: boolean
@@ -179,8 +175,8 @@ defmodule Apiary.Harnesses.Reader do
 
   @doc """
   harness/1 is the harness section of a `qory.yaml` or `harness.yaml`: `{:ok, section}`,
-  `:none` for a file with no `harness` section or one with the machine's keys alone, or
-  `{:error, reason}`.
+  `:none` for a file with no `harness` section or one with machine harness settings
+  alone, or `{:error, reason}`.
   """
   @spec harness(binary) :: {:ok, map} | :none | {:error, reason}
   def harness(bytes) when is_binary(bytes) do
@@ -195,7 +191,7 @@ defmodule Apiary.Harnesses.Reader do
   defp section(nil), do: :none
 
   defp section(%{} = section) do
-    if Enum.all?(Map.keys(section), &(&1 in @machine_keys)),
+    if Enum.all?(Map.keys(section), &(&1 in @machine_harness_settings)),
       do: :none,
       else: {:ok, section}
   end

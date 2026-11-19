@@ -47,8 +47,7 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
     :ok
   end
 
-  defp columns_down!,
-    do: assert(:ok = Ecto.Migrator.down(Repo, @columns_version, @columns_migration, @options))
+  defp columns_down!, do: assert(:ok = Apiary.OneProviderColumns.back!())
 
   defp columns_up!,
     do: assert(:ok = Ecto.Migrator.up(Repo, @columns_version, @columns_migration, @options))
@@ -223,7 +222,7 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
     columns_up!()
   end
 
-  test "down of the column drop fills the columns from the start key's provider's rows, with times in UTC",
+  test "down of the column drop fills the columns from the default model provider credential's provider's rows, with times in UTC",
        ctx do
     reset = in_seconds(7_200)
     key_state!(ctx.provider, "main", resets_at: reset)

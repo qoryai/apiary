@@ -71,7 +71,7 @@ defmodule Apiary.Dispatches.RunSettingsMigrationTest do
     rows_up!()
   end
 
-  defp rows_down!, do: :ok = Ecto.Migrator.down(Repo, @rows_version, @rows_migration, @options)
+  defp rows_down!, do: :ok = Apiary.OneProviderColumns.back!()
   defp rows_up!, do: Ecto.Migrator.up(Repo, @rows_version, @rows_migration, @options)
 
   setup do

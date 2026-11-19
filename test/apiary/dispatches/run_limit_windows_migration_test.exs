@@ -53,7 +53,7 @@ defmodule Apiary.Dispatches.RunLimitWindowsMigrationTest do
     work_item = work_item_fixture(scope)
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
     %{registered: run} = dispatched!(key)
-    assert :ok = Ecto.Migrator.down(Repo, @columns_version, @columns_migration, @options)
+    assert :ok = Apiary.OneProviderColumns.back!()
 
     %{run_id: run.id}
   end

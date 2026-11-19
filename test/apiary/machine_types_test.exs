@@ -810,7 +810,7 @@ defmodule Apiary.MachineTypesTest do
       assert newest.author_id == scope.user.id
       assert newest.document == MachineTypes.rekey(typed.document, "browser", "ui-tests")
 
-      assert %Entry{details: %{"machine_key" => %{"from" => "browser", "to" => "ui-tests"}}} =
+      assert %Entry{details: %{"machine_type" => %{"from" => "browser", "to" => "ui-tests"}}} =
                Repo.one(
                  from e in Entry,
                    where: e.action == "workspace_type.edit",
@@ -833,10 +833,13 @@ defmodule Apiary.MachineTypesTest do
 
       assert [
                %{"change" => "save_trial"},
-               %{"change" => "save", "machine_key" => %{"from" => "browser", "to" => "ui-tests"}},
+               %{
+                 "change" => "save",
+                 "machine_type" => %{"from" => "browser", "to" => "ui-tests"}
+               },
                %{
                  "change" => "save_trial",
-                 "machine_key" => %{"from" => "browser", "to" => "ui-tests"}
+                 "machine_type" => %{"from" => "browser", "to" => "ui-tests"}
                }
              ] = Enum.map(saves, & &1.details)
     end
@@ -1111,7 +1114,7 @@ defmodule Apiary.MachineTypesTest do
       refute MachineTypes.get("ui-tests")
       assert Repo.all(from v in Processes.Version, order_by: v.id) == versions
       assert TypeTemplates.newest("qory.software").id == typed.id
-      refute Repo.exists?(from e in Entry, where: not is_nil(e.details["machine_key"]))
+      refute Repo.exists?(from e in Entry, where: not is_nil(e.details["machine_type"]))
     end
 
     test "rekey/3 changes the key in the document's machine and every entry's" do

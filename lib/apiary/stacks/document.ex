@@ -15,8 +15,8 @@ defmodule Apiary.Stacks.Document do
   #      reductions of the budget, the work of one 50 ms interval between two reads of
   #      the reductions, or whose read runs past the reader's backstop of 10 seconds,
   #      may get a different answer there than at the save.
-  #   2. A key the run contract's harness section does not take, such as a machine key
-  #      (`runtime`, `model`) or `git`, `env`, `worktree`, `exports` or `target`.
+  #   2. A key the run contract's harness section does not take, such as a machine
+  #      harness setting (`runtime`, `model`) or `git`, `env`, `worktree`, `exports` or `target`.
   #   3. The kind of document: one with `extends` has no `workflows`, and one without
   #      `extends` has `modules`. The run contract's schema refuses both too, in words
   #      that name neither key.

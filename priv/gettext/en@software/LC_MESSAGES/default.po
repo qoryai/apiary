@@ -15846,7 +15846,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "Only owners and admins add a machine's keys."
+msgid "Only owners and admins add a machine's access keys."
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -15958,7 +15958,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "Only owners and admins manage a machine's keys."
+msgid "Only owners and admins manage a machine's access keys."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -17759,6 +17759,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Reload the page. Your access or the work item changed, so nothing was sent."
+msgstr ""
+
+#: lib/apiary_web/live/node_live/access_key.ex
+#, elixir-autogen, elixir-format
+msgid "Reload the page: this machine's access keys changed, and that access key or code is gone."
 msgstr ""
 
 #: lib/apiary_web/controllers/artifact_mockup_controller.ex
@@ -21170,11 +21175,6 @@ msgstr ""
 msgid "That is no longer there to delete."
 msgstr ""
 
-#: lib/apiary_web/live/node_live/access_key.ex
-#, elixir-autogen, elixir-format
-msgid "That key or code is gone: this machine's keys changed meanwhile."
-msgstr ""
-
 #: lib/apiary_web/live/user_live/confirmation.ex
 #, elixir-autogen, elixir-format
 msgid "That link has expired"
@@ -21557,12 +21557,12 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "The command connects %{name} by itself, through the Qory Gateway: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine."
+msgid "The command connects %{name} by itself, through the Qory Gateway: it makes the machine's access key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "The command connects %{name} by itself, through the gateway %{gateway}: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine."
+msgid "The command connects %{name} by itself, through the gateway %{gateway}: it makes the machine's access key there, saves it, and writes Qory Apiary's address and public key and the gateway's address into the Forager file. The secret never leaves the machine."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex
@@ -21572,7 +21572,7 @@ msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
-msgid "The command connects %{name} by itself: it makes the machine's key there, saves it, and writes Qory Apiary's address and public key into the Forager file. The secret never leaves the machine."
+msgid "The command connects %{name} by itself: it makes the machine's access key there, saves it, and writes Qory Apiary's address and public key into the Forager file. The secret never leaves the machine."
 msgstr ""
 
 #: lib/apiary_web/live/adapter_live/access_key.ex

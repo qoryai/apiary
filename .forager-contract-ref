@@ -77,9 +77,9 @@
 # registry returned 401, 403 or 429, or could not be reached; and a gateway's report of the
 # states of a run's model keys, a signed POST to `<run.url>/<run_id>/model-keys`, one entry
 # per key and limit window, and its answer, the newest state of each key and window from
-# every gateway, under the run's credential names; and `chosen` and `cooldown_until` on an
-# API credential, the key the model choice names and the end of a key's cooldown at the
-# claim, which the start key never has in the future; and a run that pauses at its
+# every gateway, under the run's credential names; and `cooldown_until` on an API
+# credential, the end of a key's cooldown at the claim, which the default model provider
+# credential never has in the future; and a run that pauses at its
 # model keys' limit, `model_key_limit` on `dev.qory.session.exited` and
 # `dev.qory.run.exited` with the state `paused` and no other state, and `paused` with
 # `model_key_limit` alone and never on a step's exit, the chunks of a
@@ -111,12 +111,18 @@
 # `line`; and `group` of an API credential, its provider's id, each group a key group the
 # gateway rotates, cools and stops apart from the others, at most 6 API credentials across
 # every group, and `group` of a `credential_hosts` entry of `link-run-answer`, with
-# `format`.
+# `format`; and `default_model_provider_credential_name`, the name of the default model
+# provider credential, in a run configuration and in `link-run-answer`, and
+# `model_provider_credential_name` in a link join request and its answer; an API
+# credential with no member for the key of the model choice; a model key in a machine's
+# Forager file, a local model provider credential; and the `dev.qory.runtime.result` of
+# a Codex launch, with its outcome and tokens, and `agent` of the `codex` runtime's
+# `model` and `effort` in runtimes.json.
 #
 # The lines after the commit are the files copied byte for byte from that commit, each a
 # path from this directory: a schema under priv/contract/, a fixture of fixtures/<path>
 # under test/fixtures/forager-contract/<path>.
-eec113d70fd9e00d35951d9cf2d3d71c0a13328d
+5e9ca86dacd775039cd8fea6e26dc4c7c7fa3247
 priv/contract/api-format.schema.json
 priv/contract/events/runtime.text.schema.json
 priv/contract/events/runtime.result.schema.json
@@ -168,11 +174,8 @@ test/fixtures/forager-contract/invalid/model-keys-report-unknown-status.json
 test/fixtures/forager-contract/invalid/model-keys-report-utilization-over-100.json
 test/fixtures/forager-contract/invalid/model-keys-report-window-upper-case.json
 test/fixtures/forager-contract/run-configuration/model-keys-cooling.json
-test/fixtures/forager-contract/invalid/run-configuration-beyond-schema-model-keys-start-cooling.json
-test/fixtures/forager-contract/invalid/run-configuration-beyond-schema-model-keys-two-chosen.json
-test/fixtures/forager-contract/invalid/run-configuration-credentials-api-chosen-false.json
+test/fixtures/forager-contract/invalid/run-configuration-beyond-schema-model-keys-default-cooling.json
 test/fixtures/forager-contract/invalid/run-configuration-credentials-api-cooldown-until-not-a-time.json
-test/fixtures/forager-contract/invalid/run-configuration-credentials-host-chosen.json
 priv/contract/events/session.transcript.schema.json
 test/fixtures/forager-contract/link/link-batch-exited-model-key-limit.json
 test/fixtures/forager-contract/link/link-batch-session-exited-model-key-limit.json

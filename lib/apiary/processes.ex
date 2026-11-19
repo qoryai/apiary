@@ -1874,13 +1874,13 @@ defmodule Apiary.Processes do
   ## A machine type's key changed
 
   @doc """
-  machine_key_versions/1 is each workspace's current and trial version whose document
+  machine_type_versions/1 is each workspace's current and trial version whose document
   uses the machine type key `key`, in its `machine` or in a workflow entry's
   (`Apiary.MachineTypes.uses_key?/2`), in a workspace not marked for deletion, by
   workspace name and number.
   """
-  @spec machine_key_versions(String.t()) :: [Version.t()]
-  def machine_key_versions(key) when is_binary(key) do
+  @spec machine_type_versions(String.t()) :: [Version.t()]
+  def machine_type_versions(key) when is_binary(key) do
     Repo.all(
       from v in Version,
         join: w in Workspace,
@@ -1893,7 +1893,7 @@ defmodule Apiary.Processes do
   end
 
   @doc """
-  rekey_machine/3 saves, for each version of `machine_key_versions/1` for `from`, a new
+  rekey_machine/3 saves, for each version of `machine_type_versions/1` for `from`, a new
   version whose document has the key `to` in each place that had `from`, authored by the
   scope's person, the instance admin who changed the key: current where the version was
   current, which becomes past, and a trial where it was a trial, which is dropped. The
@@ -1905,14 +1905,14 @@ defmodule Apiary.Processes do
   saved from the harness at a commit (`save_harness/5`), so its trial made current
   copies the template's stack and turns Keep the process at the latest on, as the trial
   before it would have. Each new version has an entry `save` or `save_trial` in its
-  workspace's trail, with `machine_key`, the key before and after.
+  workspace's trail, with `machine_type`, the key before and after.
   Called by `Apiary.MachineTypes.update/3`, in its transaction, which checks
   `machine_type.rekey`. `{:ok, count}`, the number of versions saved.
   """
   @spec rekey_machine(Scope.t(), String.t(), String.t()) :: {:ok, non_neg_integer}
   def rekey_machine(%Scope{} = scope, from, to) when is_binary(from) and is_binary(to) do
     saved =
-      for %Version{} = old <- machine_key_versions(from) do
+      for %Version{} = old <- machine_type_versions(from) do
         workspace = old.workspace
         trial? = old.status == :trial
 
@@ -1956,7 +1956,7 @@ defmodule Apiary.Processes do
         {:ok, _entry} =
           record(in_workspace, workspace, version, if(trial?, do: "save_trial", else: "save"), %{
             based_on: old.number,
-            machine_key: %{from: from, to: to}
+            machine_type: %{from: from, to: to}
           })
       end
 

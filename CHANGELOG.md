@@ -1934,6 +1934,23 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- Each value once called "machine key" or "start key" is renamed for what it is. The key
+  that `qory access-key enrol` makes is a machine's access key; a setting of the harness
+  section of a machine's `qory.yaml`, such as `runtime` or `model`, is a machine harness
+  setting; a type such as `browser` is a machine type; and a model provider credential
+  in a machine's `forager.yaml` is a local model provider credential. The Access key tab
+  shows "Only owners and admins add a machine's access keys.", "Only owners and admins
+  manage a machine's access keys." and "Reload the page: this machine's access keys
+  changed, and that access key or code is gone."
+<!-- feature: factory, secrets -->
+- The run configuration's `model_credential` is now
+  `default_model_provider_credential_name`, the default model provider credential, as in
+  Forager's contract (`contracts/forager/v1`), which Qory Apiary copies at the commit that
+  renames it; an API credential there has no `chosen`.
+- The same copy of Forager's contract adds the `runtime.result` event of a Codex launch,
+  and `agent` under the `codex` runtime's `model` and its `effort` in `runtimes.json`,
+  which Qory Apiary keeps with the runtime's `model` and does not read.
+<!-- /feature -->
 <!-- feature: factory -->
 - The claim builds an Explore run's `run_settings`, a stage's runs among them, with the
   feature `factory` or `secrets` off too: the choice's runtime and model, no model key,
@@ -1961,13 +1978,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   no key and the keys of its later steps are all in cooldown, the claim leaves the run
   waiting for those steps' providers. A run takes the keys of each provider its sessions
   run on, each kept as a row of `run_model_keys`. The claim picks at most 6 keys in this
-  order: the start key's provider's keys, then one key of each other provider, then the
-  rest; `credentials` lists them provider by provider, the start key's provider first.
-  Each key's entry in the run configuration has `group`, its provider's public id, so
-  the gateway rotates each provider's keys apart from the others. For a session on a key
-  of a provider other than the start key's, the answer has `model_credential`, the key
-  that session starts on; without it, the session joins the group of the run's start
-  key.
+  order: the default model provider credential's provider's keys, then one key of each
+  other provider, then the rest; `credentials` lists them provider by provider, the
+  default model provider credential's provider first. Each key's entry in the run
+  configuration has `group`, its provider's public id, so the gateway rotates each
+  provider's keys apart from the others. For a session on a key of a provider other than
+  the default model provider credential's, the answer has
+  `model_provider_credential_name`, the key that session starts on; without it, the
+  session joins the group of the run's default model provider credential.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - **Accept as it is** and **Approve** need every required output. Where an accept takes
@@ -3115,7 +3133,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   stays. No run's keys are copied, so a run claimed before the upgrade and still running
   has no key rows: its run configuration no longer has its model keys, and its gateway's
   secrets request is refused `410` `run_configuration_superseded`. Rolled back, the
-  columns come back, filled from the key rows of each run's start key's provider.
+  columns come back, filled from the key rows of each run's default model provider
+  credential's provider.
+- `run_model_keys` (20261119161000): the column `start` is renamed `default_credential`,
+  and its index `run_model_keys_start_index` is renamed
+  `run_model_keys_default_credential_index`. It changes no row.
 - `dispatch_runs` (20261118162300): a nullable column `report_wait_until`, the end of the
   report window of a run that continues a run paused with `model_key_switch`. It changes
   no row.
