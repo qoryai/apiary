@@ -1972,7 +1972,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `run.machine.key`. A harness document without `extends` may set `plan` and `tier` on a
   workflow, as in `qory-stack.yaml`, and a workflow with `plan` has `access: write`. The
   save of a document whose workflow sets `time_limit` fails. The copies of the
-  integrations run and diagnostics contracts are at the commit that makes these changes.
+  integrations run and diagnostics contracts are at the commits that make these changes;
+  the run contract there allows a session time limit of 1 to 1440 minutes, and Qory
+  Apiary still saves a time limit of 15 minutes or more.
 <!-- feature: factory, secrets -->
 - The run configuration's `model_credential` is now
   `default_model_provider_credential_name`, the default model provider credential, as in
