@@ -1871,7 +1871,11 @@ defmodule Apiary.Artifacts do
     Repo.all(
       from v in versions_query(),
         where: v.artifact_id == ^id,
-        preload: [:user, run: [run: ^runs_query()], files: ^files_query()]
+        preload: [
+          :user,
+          run: [run: ^runs_query()],
+          files: ^files_query()
+        ]
     )
   end
 
@@ -1886,7 +1890,12 @@ defmodule Apiary.Artifacts do
             a.name == ^name,
         order_by: [desc: v.number],
         limit: 1,
-        preload: [:user, run: [run: ^runs_query()], artifact: a, files: ^files_query()]
+        preload: [
+          :user,
+          run: [run: ^runs_query()],
+          artifact: a,
+          files: ^files_query()
+        ]
     )
   end
 
@@ -1899,7 +1908,12 @@ defmodule Apiary.Artifacts do
     Repo.one!(
       from v in Version,
         where: v.public_id == ^id,
-        preload: [:artifact, :user, run: [run: ^runs_query()], files: ^files_query()]
+        preload: [
+          :artifact,
+          :user,
+          run: [run: ^runs_query()],
+          files: ^files_query()
+        ]
     )
   end
 
@@ -1918,6 +1932,82 @@ defmodule Apiary.Artifacts do
             :dispatch_run_id,
             :cancel_requested_at,
             :cancel_requested_by_id
+          ])
+      )
+
+  # with_sessions/1 reads the sessions of each version's run, and whether its stage's
+  # sequence has a loop (`loop`, nil where the run's process version or stage is not
+  # found), into a version, a list of versions, or a list of artifacts with their
+  # versions, as `list/1` returns them. Only `ApiaryWeb.ArtifactComponents.writer/2`
+  # needs them, for the round.
+  @doc false
+  @spec with_sessions(Version.t() | [Version.t() | Artifact.t()]) ::
+          Version.t() | [Version.t() | Artifact.t()]
+  def with_sessions([%Artifact{} | _rest] = artifacts) do
+    artifacts = Repo.preload(artifacts, versions: [run: [sessions: sessions_query()]])
+    loops = artifacts |> Enum.flat_map(& &1.versions) |> loops()
+    Enum.map(artifacts, &%{&1 | versions: Enum.map(&1.versions, fn v -> with_loop(v, loops) end)})
+  end
+
+  def with_sessions(versions) do
+    versions = Repo.preload(versions, run: [sessions: sessions_query()])
+    loops = versions |> List.wrap() |> loops()
+
+    if is_list(versions),
+      do: Enum.map(versions, &with_loop(&1, loops)),
+      else: with_loop(versions, loops)
+  end
+
+  defp with_loop(%{run: %DispatchRun{} = run} = version, loops),
+    do: %{version | run: %{run | loop: loops[{run.process_version_id, run.stage_id}]}}
+
+  defp with_loop(version, _loops), do: version
+
+  # Whether the stage has a loop in its sequence, by process version id and stage id, for
+  # each run of `versions` that has sessions.
+  defp loops(versions) do
+    keys =
+      for %{run: %DispatchRun{sessions: [_ | _]} = run} <- versions,
+          is_binary(run.process_version_id),
+          uniq: true,
+          do: {run.process_version_id, run.stage_id}
+
+    stage_loops(keys)
+  end
+
+  defp stage_loops([]), do: %{}
+
+  defp stage_loops(keys) do
+    documents =
+      Repo.all(
+        from v in ProcessVersion,
+          where: v.id in ^Enum.map(keys, &elem(&1, 0)),
+          select: {v.id, v.document}
+      )
+      |> Map.new()
+
+    # A stage the document does not have is left out: its `loop` stays nil, unknown.
+    for {version_id, stage_id} = key <- keys,
+        stage = Apiary.Processes.stage(documents[version_id], stage_id),
+        into: %{},
+        do: {key, Apiary.Stages.Runner.first_loop(stage) != nil}
+  end
+
+  # The sessions of a run of a stage with `shared_run: true`: their place and when each
+  # was written, in the order they ran.
+  defp sessions_query,
+    do:
+      from(s in Apiary.Stages.Session,
+        order_by: s.sequence,
+        select:
+          struct(s, [
+            :id,
+            :dispatch_run_id,
+            :sequence,
+            :round,
+            :stage_entry,
+            :loop_entry,
+            :inserted_at
           ])
       )
 

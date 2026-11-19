@@ -116,6 +116,10 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   #   * `questions_version`, `review_comments`, `artifacts` and `index`, each of the stage;
   #   * `wrote`: the versions the stage's runs wrote, for the summary of its runs
   #     (`wrote/3`), [] for no stage;
+  #   * `recorded`: the demo video and picture versions each of `runs` wrote (`recorded/2`);
+  #   * `sessions`: %{}, for the caller to set to the sessions of the runs that
+  #     `Apiary.Stages.shared_sequences/1` selects (`Apiary.Stages.run_sessions/1`);
+  #   * `sequences`: %{}, for the caller to set to those runs' stage sequences;
   #   * `foot`: on Explore's tab at a later stage, the record block of Explore's runs.
   #
   # On the Ticket tab, the Questions tab and the Thread, `review_comments` are the current
@@ -138,6 +142,9 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       artifacts: read.artifacts,
       index: [],
       wrote: [],
+      recorded: %{},
+      sessions: %{},
+      sequences: %{},
       foot: nil
     }
   end
@@ -171,6 +178,9 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       artifacts: read.artifacts,
       index: [],
       wrote: [],
+      recorded: %{},
+      sessions: %{},
+      sequences: %{},
       foot: nil
     }
   end
@@ -196,8 +206,32 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       artifacts: artifacts,
       index: index(flow.index, artifacts),
       wrote: wrote(stage, runs, read.artifacts),
+      recorded: recorded(runs, read.artifacts),
+      sessions: %{},
+      sequences: %{},
       foot: if(explore? and not flow.at_explore, do: %{runs: runs, latest: nil, pieces: nil})
     }
+  end
+
+  # The demo videos and pictures each of `runs` wrote (`VerifyTab.media/0`), by the run's
+  # public id: its versions of each type that are not withdrawn, oldest first, as
+  # `%{kind:, at:, count:}`, `count` 1 for a video and the number of files for a picture.
+  defp recorded(runs, artifacts) do
+    ids = for %{id: id} when is_binary(id) <- runs, into: MapSet.new(), do: id
+
+    for %{type: type} = artifact <- artifacts,
+        type in VerifyTab.media(),
+        version <- artifact.versions,
+        not version.withdrawn,
+        id = run_id(version),
+        MapSet.member?(ids, id) do
+      {kind, count} =
+        if type == "screenshot", do: {:pictures, length(version.files)}, else: {:videos, 1}
+
+      {id, %{kind: kind, at: version.inserted_at, count: count}}
+    end
+    |> Enum.group_by(&elem(&1, 0), &elem(&1, 1))
+    |> Map.new(fn {id, items} -> {id, Enum.sort_by(items, & &1.at, DateTime)} end)
   end
 
   # The newest version of each of the stage's output types, of the artifact named `main`,
