@@ -58,8 +58,8 @@ defmodule Apiary.Runs.SecretsRequest do
   #     `secret.seal` on the run, for a request that names the model key: a gateway that
   #     may no longer serve the run's workspace;
   #  8. `{:error, :credential_unavailable}`, a key Qory may not seal for the gateway (the
-  #     checks of a provider apply to a request that names one of its keys, and run for
-  #     each provider of the named keys; one failure refuses the whole request): the
+  #     checks of a provider apply to a request that lists one of its keys, and run for
+  #     each provider of the listed keys; one failure refuses the whole request): the
   #     provider's row, its secret or a named key fails its integrity check or is gone, or
   #     the key is no longer a value of the secret of the provider its row has, so a key
   #     under another provider's name reveals nothing; the provider's secret or chain

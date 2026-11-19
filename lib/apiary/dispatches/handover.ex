@@ -1538,9 +1538,9 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   # The run's model keys as the claim formed them (`Apiary.Dispatches.RunSettings.build/2`),
-  # one `run_model_keys` row each, after the run's row, which the claim holds
+  # one `run_model_keys` row each, after the run's row, which the claim has locked
   # `FOR UPDATE`. Their foreign keys take the provider and secret rows `FOR KEY SHARE`,
-  # which `Apiary.Dispatches.RunSettings.hold/1` already holds `FOR SHARE`, so the insert
+  # which `Apiary.Dispatches.RunSettings.hold/1` has already locked `FOR SHARE`, so the insert
   # waits for no lock that a provider's deletion takes first (`Apiary.Connections`). None
   # for a run with no key.
   defp insert_keys!(%Run{id: run_id}, %{keys: [_ | _] = keys}) do

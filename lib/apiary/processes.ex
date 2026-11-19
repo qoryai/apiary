@@ -550,7 +550,7 @@ defmodule Apiary.Processes do
   # cannot be read, is no fault here: the claim ends such a run `provider_gone`.
   #
   # The check of a fallback's runtime against the start provider goes here once a
-  # fallback has a runtime of its own; until then a fallback runs on its choice's
+  # fallback has a runtime set apart from its choice's; until then a fallback runs on its choice's
   # runtime, and only the providers count.
   defp missing_choice(workflows, choices, start_ids, models) do
     runtime = Apiary.ModelChoices.default_runtime()

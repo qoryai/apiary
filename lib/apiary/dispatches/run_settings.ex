@@ -83,7 +83,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # A run of a stage with `shared_run: true` also takes the keys of each provider its later
   # sessions run on, one provider per session (`with_sessions/3`). The run gets at most 6
   # keys across its providers (`merge/3`): the start key's provider's keys, picked in the
-  # order of `Apiary.ModelKeys.Order`, the key the choice names first while it is not in
+  # order of `Apiary.ModelKeys.Order`, the key the choice is set to first while it is not in
   # cooldown, the first of that order the start key, never one in cooldown; at least one
   # key of each other provider; then the rest. Each provider's keys are kept in the order
   # the run configuration sends them (`Apiary.ModelKeys.Order.sent/2`), the start key
@@ -485,7 +485,7 @@ defmodule Apiary.Dispatches.RunSettings do
   #     at any level. The session then uses the default model of that runtime.
   #
   # A session whose choice's provider is gone ends the claim `provider_gone`, as the run's
-  # does: the choice names a provider that was removed, or its provider is not there,
+  # does: the choice is set to a provider that was removed, or its provider is not there,
   # fails its integrity code, or `form/6` ends `provider_gone` for it. A settings check of
   # the session's provider that ran out of time or crashed is `{:unchecked, provider}`,
   # which leaves the run waiting as for the run's provider.
@@ -746,8 +746,8 @@ defmodule Apiary.Dispatches.RunSettings do
   end
 
   # The keys of `provider` a run gets at `now` (`Apiary.ModelKeys.Order.order/2`), with
-  # the provider and the API of `formed`. Only the choice of the run's start key names a
-  # key (`chosen`).
+  # the provider and the API of `formed`. Only the choice of the run's start key is set to
+  # a key (`chosen`).
   defp group(provider, formed, now, named \\ nil) do
     %{
       provider: provider,
@@ -787,7 +787,7 @@ defmodule Apiary.Dispatches.RunSettings do
   end
 
   # The settings `built` with the group of the run's start key, `provider`'s keys at
-  # `now` in their order (`Apiary.ModelKeys.Order.order/2`), the key the choice names,
+  # `now` in their order (`Apiary.ModelKeys.Order.order/2`), the key the choice is set to,
   # `named`, first while it is free; or nil where every key is in cooldown. `merge/3`
   # takes the run's keys from the group.
   defp keyed(built, %Connection{} = provider, named, now) do
