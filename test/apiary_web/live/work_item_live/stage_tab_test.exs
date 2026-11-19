@@ -1254,6 +1254,36 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
       assert implement =~ ~r/^implement-changes · round 2 · running · started /
     end
+
+    test "takes the round limit from the run's process version, not the current one", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, run, registered} = shared_build!(scope, looped())
+      :ok = to_round_2!(run)
+
+      # A later version of the process gives the loop 5 rounds, and the work item is placed
+      # in it: the run claimed under the first version keeps its limit of 3.
+      [plan, checks, %{"loop" => loop}] = looped()
+
+      second =
+        process!(scope, @scenarios_out, %{
+          "sequence" => [plan, checks, %{"loop" => %{loop | "rounds" => 5}}],
+          "shared_run" => true
+        })
+
+      {1, nil} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [process_version_id: second.id]
+        )
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+      assert [line | _rows] = fold_rows(view)
+
+      assert line =~
+               ~r/^Attempt 3 \(Run #{registered.number}\) · 4 workflows · round 2 of 3 · running · /
+    end
   end
 
   describe "a skip inside a shared run (A-12)" do

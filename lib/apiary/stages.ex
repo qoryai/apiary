@@ -2849,14 +2849,24 @@ defmodule Apiary.Stages do
   end
 
   # shared_run_ids/1 is those of the registered runs `ids` (their public ids, `rn_…`)
-  # whose stage has `shared_run: true` in the run's process version, in the order of `ids`.
+  # whose stage has `shared_run: true` in the run's process version, in the order of `ids`
+  # (`shared_sequences/1`).
+  @doc false
+  @spec shared_run_ids([String.t()]) :: [String.t()]
+  def shared_run_ids(ids) do
+    sequences = shared_sequences(ids)
+    Enum.filter(ids, &Map.has_key?(sequences, &1))
+  end
+
+  # shared_sequences/1 is, by public id, the sequence of the stage of each of the
+  # registered runs `ids` whose stage has `shared_run: true` in the run's process version.
   # The stage is read from the version's document by the run's `process_version_id` and
   # `stage_id`, so a later change of the work item's process changes nothing for a run.
   @doc false
-  @spec shared_run_ids([String.t()]) :: [String.t()]
-  def shared_run_ids([]), do: []
+  @spec shared_sequences([String.t()]) :: %{String.t() => list}
+  def shared_sequences([]), do: %{}
 
-  def shared_run_ids(ids) when is_list(ids) do
+  def shared_sequences(ids) when is_list(ids) do
     rows =
       Repo.all(
         from d in DispatchRun,
@@ -2878,12 +2888,11 @@ defmodule Apiary.Stages do
           )
           |> Map.new()
 
-    shared =
-      for {id, version_id, stage_id} <- rows,
-          Processes.shared_run?(Processes.stage(documents[version_id], stage_id)),
-          do: id
-
-    Enum.filter(ids, &(&1 in shared))
+    for {id, version_id, stage_id} <- rows,
+        stage = Processes.stage(documents[version_id], stage_id),
+        Processes.shared_run?(stage),
+        into: %{},
+        do: {id, stage["sequence"] || []}
   end
 
   defp unreported(%Session{state: nil, dispatch_run_id: id}, versions, seen) do

@@ -2568,6 +2568,11 @@ defmodule ApiaryWeb.WorkItemComponents do
     doc:
       "the sessions of each of `runs` of a stage with `shared_run: true`, by the run's public id (`Apiary.Stages.run_sessions/1`)"
 
+  attr :sequences, :map,
+    default: %{},
+    doc:
+      "by the public id of each of `runs` with `sessions`, its stage's sequence in its process version (`Apiary.Stages.shared_sequences/1`)"
+
   attr :recorded, :map,
     default: %{},
     doc:
@@ -2857,6 +2862,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         skips={@skips}
         outside={@entries == []}
         sessions={@sessions}
+        sequences={@sequences}
         sequence={@stage[:sequence] || []}
         recorded={@recorded}
         latest={@run}
@@ -6251,6 +6257,11 @@ defmodule ApiaryWeb.WorkItemComponents do
     default: [],
     doc: "the stage's sequence, for the round limit of a loop (`Apiary.Stages.Runner.rounds/2`)"
 
+  attr :sequences, :map,
+    default: %{},
+    doc:
+      "by a run's public id, its stage's sequence in its process version, in place of `sequence` for that run's round limit"
+
   attr :recorded, :map,
     default: %{},
     doc:
@@ -6318,7 +6329,7 @@ defmodule ApiaryWeb.WorkItemComponents do
               rows={elem(kind, 1)}
               open={run == @latest}
               stage_run={@verdicts[run[:attempt]]}
-              sequence={@sequence}
+              sequence={Map.get(@sequences, run[:id], @sequence)}
               recorded={Map.get(@recorded, run[:id], [])}
               now={@now}
             />

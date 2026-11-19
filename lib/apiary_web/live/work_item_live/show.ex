@@ -453,6 +453,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             runs={@view.runs}
             skips={@view.skips}
             sessions={@view.sessions}
+            sequences={@view.sequences}
             recorded={@view.recorded}
             passed_over={@view.passed_over}
             proposal_version={@view.proposal_version}
@@ -2412,26 +2413,35 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         artifacts: assigns.artifacts
       })
 
+    {sessions, sequences} = sessions_of(view)
+
     view = %{
       view
       | passed_over: passed_over_by(socket, view.passed_over),
-        sessions: sessions_of(view)
+        sessions: sessions,
+        sequences: sequences
     }
 
     socket |> assign(:view, view) |> framed()
   end
 
   # The sessions of the stage tab's runs whose stage has `shared_run: true` in the run's
-  # process version (`Apiary.Stages.shared_run_ids/1`, `Apiary.Stages.run_sessions/1`);
-  # none on another tab.
+  # process version, and that stage's sequence there, each by the run's public id
+  # (`Apiary.Stages.shared_sequences/1`, `Apiary.Stages.run_sessions/1`); none on another
+  # tab.
   defp sessions_of(%{stage: %{}, runs: runs}) do
     case for(%{id: id} when is_binary(id) <- runs, do: id) do
-      [] -> %{}
-      ids -> ids |> Stages.shared_run_ids() |> Stages.run_sessions()
+      [] ->
+        {%{}, %{}}
+
+      ids ->
+        sequences = Stages.shared_sequences(ids)
+        shared = Enum.filter(ids, &Map.has_key?(sequences, &1))
+        {Stages.run_sessions(shared), sequences}
     end
   end
 
-  defp sessions_of(_view), do: %{}
+  defp sessions_of(_view), do: {%{}, %{}}
 
   # The person of the approval that put the work item on the track that passed the stage over
   # (`Apiary.Stages.stage_skips/1`), as the components show a person, Former member for one

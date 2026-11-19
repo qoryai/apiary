@@ -119,7 +119,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   #     (`wrote/3`), [] for no stage;
   #   * `recorded`: the demo video and picture versions each of `runs` wrote (`recorded/2`);
   #   * `sessions`: %{}, for the caller to set to the sessions of the runs that
-  #     `Apiary.Stages.shared_run_ids/1` selects (`Apiary.Stages.run_sessions/1`);
+  #     `Apiary.Stages.shared_sequences/1` selects (`Apiary.Stages.run_sessions/1`);
+  #   * `sequences`: %{}, for the caller to set to those runs' stage sequences;
   #   * `foot`: on Explore's tab at a later stage, the record block of Explore's runs.
   #
   # On the Ticket tab, the Questions tab and the Thread, `review_comments` are the current
@@ -144,6 +145,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       wrote: [],
       recorded: %{},
       sessions: %{},
+      sequences: %{},
       foot: nil
     }
   end
@@ -179,6 +181,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       wrote: [],
       recorded: %{},
       sessions: %{},
+      sequences: %{},
       foot: nil
     }
   end
@@ -206,6 +209,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
       wrote: wrote(stage, runs, read.artifacts),
       recorded: recorded(runs, read.artifacts),
       sessions: %{},
+      sequences: %{},
       foot: if(explore? and not flow.at_explore, do: %{runs: runs, latest: nil, pieces: nil})
     }
   end
