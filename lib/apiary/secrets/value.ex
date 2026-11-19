@@ -85,8 +85,10 @@ defmodule Apiary.Secrets.Value do
   @doc """
   The hint of a key's value: its last 4 characters, for a value of at least 12 characters
   once the whitespace at its ends is trimmed, counted as characters and not bytes (`é` is
-  one); nil for a shorter value, for text that is not UTF-8 and for a value whose last 4
-  characters have more than 16 code points. The hint is a part of the secret: only a model
+  one); nil for a shorter value, for text that is not UTF-8, for a value whose last 4
+  characters have more than 16 code points and for a value whose last 4 characters have
+  a control character or a format character (Unicode category `Cf`, such as U+202E, which
+  reorders the text next to it: the identity line shows the hint). The hint is a part of the secret: only a model
   provider's key that is not a sign-in has one (`Apiary.Secrets`).
   """
   @spec hint(term) :: String.t() | nil
@@ -95,7 +97,8 @@ defmodule Apiary.Secrets.Value do
          trimmed = String.trim(value),
          true <- String.length(trimmed) >= @hint_min,
          hint = trimmed |> String.graphemes() |> Enum.take(-@hint_length) |> Enum.join(),
-         true <- length(String.codepoints(hint)) <= @hint_max do
+         true <- length(String.codepoints(hint)) <= @hint_max,
+         false <- String.match?(hint, ~r/[[:cntrl:]\p{Cf}]/u) do
       hint
     else
       _none -> nil

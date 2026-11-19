@@ -564,7 +564,8 @@ stay known to such a gateway, and are accepted:
 A model provider's keys are values of its secret (`Apiary.ModelKeys`), and their pages
 need the features `factory` and `secrets`. Every member reads a provider's page with its
 keys and their states (`connection.read`). A key shows as its identity line, which for a
-pasted API key has its last 4 characters and for a sign-in has the email of the ChatGPT
+pasted API key has its last 4 characters (none when they hold a control or format
+character) and for a sign-in has the email of the ChatGPT
 account, so members see those, never the key or a token. Adding a key, changing its value, its Resets,
 its Pause for and its Use up to, and deleting it, are `provider.write`,
 owners' and admins', checked at the organisation: **Add key** and **Edit key** on the

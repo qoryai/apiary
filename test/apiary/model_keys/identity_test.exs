@@ -61,6 +61,19 @@ defmodule Apiary.ModelKeys.IdentityTest do
       assert Value.hint(String.duplicate("a", 11) <> "e" <> String.duplicate("́", 30)) == nil
     end
 
+    test "is nil when the last 4 characters have a control or a format character" do
+      prefix = "sk-ant-0123456789-"
+
+      for char <- ["\u202E", "\u200B", "\u2066", "\u00AD", "\u0007", "\u0000", "\u007F"],
+          tail <- [char <> "abc", "a" <> char <> "bc", "abc" <> char] do
+        assert Value.hint(prefix <> tail) == nil
+      end
+
+      # The character is before the last 4: the hint is the 4 characters after it.
+      assert Value.hint(prefix <> "\u202E" <> "abcd") == "abcd"
+      assert Value.hint(prefix <> "abcd") == "abcd"
+    end
+
     test "does not appear in inspect or JSON" do
       value = %Value{value_id: "key-1", hint: "9c2e"}
       refute inspect(value) =~ "9c2e"
