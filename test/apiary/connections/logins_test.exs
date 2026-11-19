@@ -8,6 +8,7 @@ defmodule Apiary.Connections.LoginsTest do
   # or an error.
   use Apiary.DataCase, async: true
 
+  import Apiary.DebugLog, only: [refute_secrets: 2]
   import Apiary.ModelKeysFixtures
   import Apiary.OrganisationsFixtures
   import ExUnit.CaptureLog
@@ -103,8 +104,7 @@ defmodule Apiary.Connections.LoginsTest do
       assert document |> Jason.decode!() |> Map.keys() |> Enum.sort() ==
                ~w(access_token refresh_token version)
 
-      refute document =~ tokens.id_token
-      refute document =~ tokens.account_id
+      refute_secrets(document, [tokens.id_token, tokens.account_id])
     end
 
     test "refuses a text that is no sign-in, and creates nothing", %{scope: scope} do
