@@ -452,10 +452,10 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
 
     mark = "Changed on your request"
 
-    # Shape's approval listed v1, so the line keeps today's approval marks after the
-    # change's mark, as they were before (`approval_mark/1`).
+    # Shape's approval listed v1, so today's approval marks follow the change's mark,
+    # each part after " · " (`approval_mark/1`).
     assert text(view, "#{@card}-output-acceptance-criteria") ==
-             "acceptance criteria v2 · Passed · #{mark} " <>
+             "acceptance criteria v2 · Passed · #{mark} · " <>
                "Approved v1; v2 is newer · Changed after approval"
 
     assert has_element?(view, "#{@card}-output-acceptance-criteria-changed.text-warning", mark)

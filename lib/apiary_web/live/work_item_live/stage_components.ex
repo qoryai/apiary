@@ -469,7 +469,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             {version_words(output.type, output.name, output.version)}
           </span>
           · <span id={"#{@id}-check-#{frame_key(output)}"}>{check_words(output)}</span>
-          <span :if={@changed[output[:version_id]]} phx-no-format> · <span id={"#{@id}-output-#{frame_key(output)}-changed"} class="text-warning">{@changed[output.version_id]}</span></span>
+          <span :if={@changed[output[:version_id]]} phx-no-format> · <span id={"#{@id}-output-#{frame_key(output)}-changed"} class="text-warning">{@changed[output.version_id]}</span><%= if approval_shown?(@marks[{output.type, output.name}]) do %> · <% end %></span>
           <.approval_mark
             id={"#{@id}-mark-#{frame_key(output)}"}
             mark={@marks[{output.type, output.name}]}
@@ -1274,6 +1274,13 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     </span>
     """
   end
+
+  # Whether `approval_mark/1` shows anything for `mark`. An output's line then has " · "
+  # after the change's mark, so " · " separates every part of the line.
+  defp approval_shown?(%{} = mark),
+    do: !!(mark.approved && mark.newer) or !!mark.changed_after_approval
+
+  defp approval_shown?(_mark), do: false
 
   ## The board
 
