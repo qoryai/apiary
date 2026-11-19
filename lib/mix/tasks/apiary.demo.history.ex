@@ -400,8 +400,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   ## Nodes and keys
 
-  # Every machine's access key, by label, on a node of the same name: the workspace's own node
-  # and key when it has them, the key not revoked, new ones otherwise. A machine of
+  # Every machine's access key, by label, on a node of the same name: the workspace's node
+  # and key, when it has them, the key not revoked, new ones otherwise. A machine of
   # several hosts is a node pool. The idle node's key is made and never posted with. A key
   # is added by its public key, as Generate a key adds one made in a browser
   # (`arrived_by: :browser`); its private half is thrown away, since nothing here signs a

@@ -365,8 +365,8 @@ contract requires (`documents.schema.json`); a prebuild's have none. `runtime` a
 (`Apiary.ModelChoices.Resolution`): a locked choice of the workspace, the workflow's choice
 at the run's target, the target's choice, the workflow's choice at the workspace, the
 workspace's (Workspace settings › Model), and the organisation's default. With no choice,
-`run_settings` has `runtime` alone, the catalogue's default, and the run uses the gateway's
-key. Each later session of a run of a stage with `shared_run: true` gets its workflow's
+`run_settings` has `runtime` alone, the catalogue's default, and the run uses the machine's
+local model provider credential. Each later session of a run of a stage with `shared_run: true` gets its workflow's
 runtime and model in the next-session answer's `model_choice`, which always has `runtime`,
 and, for a session on a provider other than that of the run's default model provider
 credential, `model_credential`, the key the session starts on (`docs/contract/run-api.md`). A pool claims a run only with the feature `factory` on (`dispatch.claim`), and

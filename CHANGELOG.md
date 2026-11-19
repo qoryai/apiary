@@ -1904,13 +1904,16 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   that `qory access-key enrol` makes is a machine's access key; a setting of the harness
   section of a machine's `qory.yaml`, such as `runtime` or `model`, is a machine harness
   setting; a type such as `browser` is a machine type; and a model provider credential
-  in a machine's `forager.yaml` is a local model provider credential. The run
-  configuration's `model_credential` is now `default_model_provider_credential_name`,
-  the default model provider credential, as in Forager's run contract, which Qory Apiary
-  copies at the version that renames it; an API credential there has no `chosen`. The
-  Access key tab shows "Only owners and admins manage a machine's access keys." and
-  "Reload the page: this machine's access keys changed, and that access key or code is
-  gone."
+  in a machine's `forager.yaml` is a local model provider credential. The Access key tab
+  shows "Only owners and admins add a machine's access keys.", "Only owners and admins
+  manage a machine's access keys." and "Reload the page: this machine's access keys
+  changed, and that access key or code is gone."
+<!-- feature: factory, secrets -->
+- The run configuration's `model_credential` is now
+  `default_model_provider_credential_name`, the default model provider credential, as in
+  Forager's run contract, which Qory Apiary copies at the version that renames it; an API
+  credential there has no `chosen`.
+<!-- /feature -->
 <!-- feature: factory -->
 - The claim builds an Explore run's `run_settings`, a stage's runs among them, with the
   feature `factory` or `secrets` off too: the choice's runtime and model, no model key,

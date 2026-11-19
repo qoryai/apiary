@@ -275,7 +275,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert {:ok, _version} = save(ctx.scope, workflows)
       # plan-the-build has no model choice at any level: session 1 runs on the default
       # runtime with the local model provider credential, so the run gets no key. The
-      # choice is made after the save, which refuses it.
+      # choice is made after the save, since the save returns an error for it.
       choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, northwind)
 
       # `claim!/1` checks that the ended claim stored no key row.

@@ -168,13 +168,6 @@ defmodule Apiary.Harnesses.Reader do
   @spec max_depth() :: pos_integer
   def max_depth, do: @max_depth
 
-  @doc """
-  The machine harness settings of a harness section: a section with these alone is no
-  document.
-  """
-  @spec machine_harness_settings() :: [String.t()]
-  def machine_harness_settings, do: @machine_harness_settings
-
   @doc false
   # control_character?/1 is whether `text` has a control character no file may contain.
   @spec control_character?(String.t()) :: boolean

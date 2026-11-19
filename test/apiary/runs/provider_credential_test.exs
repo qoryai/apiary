@@ -142,7 +142,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", document) == :ok
     end
 
-    test "every run of the provider names its default model provider credential by the provider and its place",
+    test "the default model provider credential of every run of the provider is <provider id>-<place>",
          ctx do
       run = Repo.preload(ctx.run, :model_keys)
       {:ok, credential} = ProviderCredential.for_run(run)
