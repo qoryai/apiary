@@ -528,7 +528,7 @@ defmodule Apiary.Runs.Run do
   of the run's run of the queue, and the run that continues it waits for them. A run
   whose session 1 runs on the machine's key has no start key's provider, so session 1
   runs on none. Reads the run's key rows, unless `model_keys` is loaded, and its
-  sessions, unless given as `sessions` (`Apiary.Stages.run_sessions/1`).
+  sessions, unless given as `sessions`, as Apiary.Stages.run_sessions/1 reads them.
   """
   @spec session_provider_ids(t() | map(), pos_integer() | nil, list | nil) :: [Ecto.UUID.t()]
   def session_provider_ids(run, session, sessions \\ nil)
