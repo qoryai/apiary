@@ -1021,8 +1021,9 @@ defmodule Apiary.ModelKeys.Login do
           l.state == "signed_in" and not is_nil(c.provider_kind) and
             is_nil(o.deletion_marked_at) and
             coalesce(l.refreshed_at, l.signed_in_at) < ^oldest and
-            (is_nil(l.retry_at) or l.retry_at < fragment("clock_timestamp()")) and
-            (is_nil(l.lease_until) or l.lease_until < fragment("clock_timestamp()")),
+            (is_nil(l.retry_at) or l.retry_at < fragment("timezone('utc', clock_timestamp())")) and
+            (is_nil(l.lease_until) or
+               l.lease_until < fragment("timezone('utc', clock_timestamp())")),
         where: ^after_cursor(cursor),
         where: ^up_to(until),
         order_by: [asc: coalesce(l.refreshed_at, l.signed_in_at), asc: l.secret_value_id],
@@ -1321,13 +1322,17 @@ defmodule Apiary.ModelKeys.Login do
             l.secret_value_id in subquery(
               from v in Value, where: v.id == ^id and v.secret_id == ^secret_id, select: v.id
             ) and l.state == "signed_in" and
-              (is_nil(l.lease_until) or l.lease_until < fragment("clock_timestamp()")) and
-              (is_nil(l.retry_at) or l.retry_at < fragment("clock_timestamp()")),
+              (is_nil(l.lease_until) or
+                 l.lease_until < fragment("timezone('utc', clock_timestamp())")) and
+              (is_nil(l.retry_at) or l.retry_at < fragment("timezone('utc', clock_timestamp())")),
           update: [
             set: [
               lease_id: ^lease_id,
               lease_until:
-                fragment("clock_timestamp() + ? * interval '1 second'", ^lease_seconds())
+                fragment(
+                  "timezone('utc', clock_timestamp()) + ? * interval '1 second'",
+                  ^lease_seconds()
+                )
             ]
           ],
           select: l
