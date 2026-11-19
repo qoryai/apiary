@@ -143,7 +143,9 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       assert {:ok, :none} = claim(ctx)
       waiting = waiting!(queued, provider)
 
-      assert {:sign_in, public_id, "main"} = Waiting.reason(waiting)
+      assert {:sign_in, public_id, %{id: _id, identity: "OpenAI subscription · dana@example.com"}} =
+               Waiting.reason(waiting)
+
       assert public_id == provider.public_id
       assert requests() == []
       assert ModelKeys.first_to_leave([provider.id], DateTime.utc_now()) == nil
@@ -236,7 +238,9 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       continuation =
         Repo.get_by!(DispatchRun, work_item_id: dispatch_run.work_item_id, attempt: 2)
 
-      assert {:sign_in, public_id, "main"} = Waiting.reason(continuation)
+      assert {:sign_in, public_id, %{id: _id, identity: "OpenAI subscription · dana@example.com"}} =
+               Waiting.reason(continuation)
+
       assert public_id == provider.public_id
       assert requests() == []
 
@@ -278,7 +282,10 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       queued = queued!(ctx)
 
       assert {:ok, :none} = claim(ctx)
-      assert {:refreshing, _public_id, "main"} = Waiting.reason(waiting!(queued, provider))
+
+      assert {:refreshing, _public_id,
+              %{id: _id, identity: "OpenAI subscription · dana@example.com"}} =
+               Waiting.reason(waiting!(queued, provider))
 
       assert %{success: 1} = Oban.drain_queue(queue: :default, with_safety: false)
       assert [%{"refresh_reason" => "proactive_expiry"}] = requests()
@@ -290,7 +297,10 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       # with the sign-in line, and the next claim sends nothing.
       assert {:ok, :none} = claim(ctx)
       waiting = waiting!(queued, provider)
-      assert {:sign_in, public_id, "main"} = Waiting.reason(waiting)
+
+      assert {:sign_in, public_id, %{id: _id, identity: "OpenAI subscription · dana@example.com"}} =
+               Waiting.reason(waiting)
+
       assert public_id == provider.public_id
       assert requests() == []
       refute_enqueued(worker: LoginRefreshJob)
@@ -327,7 +337,10 @@ defmodule Apiary.Dispatches.LoginClaimTest do
 
       assert {:ok, :none} = claim(ctx)
       waiting = waiting!(queued, provider)
-      assert {:refreshing, _public_id, "main"} = Waiting.reason(waiting)
+
+      assert {:refreshing, _public_id,
+              %{id: _id, identity: "OpenAI subscription · dana@example.com"}} =
+               Waiting.reason(waiting)
 
       # The claim made no call: the job does.
       assert requests() == []
@@ -374,7 +387,10 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       assert {:ok, :none} = claim(ctx)
       waiting = waiting!(queued, provider)
 
-      assert {:refreshing, _public_id, "main"} = Waiting.reason(waiting)
+      assert {:refreshing, _public_id,
+              %{id: _id, identity: "OpenAI subscription · dana@example.com"}} =
+               Waiting.reason(waiting)
+
       assert requests() == []
     end
   end
@@ -397,7 +413,10 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       assert {:ok, :none} = claim(ctx)
       waiting = waiting!(queued, provider)
 
-      assert {:restart, _public_id, "main"} = Waiting.reason(waiting)
+      assert {:restart, _public_id,
+              %{id: _id, identity: "OpenAI subscription · dana@example.com"}} =
+               Waiting.reason(waiting)
+
       refute_enqueued(worker: LoginRefreshJob)
       assert requests() == []
     end
