@@ -1981,9 +1981,10 @@ defmodule Apiary.Artifacts do
       )
 
   # with_sessions/1 reads the sessions of each version's run, and whether its stage's
-  # sequence has a loop (`loop`), into a version, a list of versions, or a list of
-  # artifacts with their versions, as `list/1` returns them. Only
-  # `ApiaryWeb.ArtifactComponents.writer/2` needs them, for the round.
+  # sequence has a loop (`loop`, nil where the run's process version or stage is not
+  # found), into a version, a list of versions, or a list of artifacts with their
+  # versions, as `list/1` returns them. Only `ApiaryWeb.ArtifactComponents.writer/2`
+  # needs them, for the round.
   @doc false
   @spec with_sessions(Version.t() | [Version.t() | Artifact.t()]) ::
           Version.t() | [Version.t() | Artifact.t()]
@@ -2030,10 +2031,11 @@ defmodule Apiary.Artifacts do
       )
       |> Map.new()
 
-    Map.new(keys, fn {version_id, stage_id} = key ->
-      stage = Enum.find(documents[version_id]["stages"] || [], &(&1["id"] == stage_id))
-      {key, stage != nil and Apiary.Stages.Runner.first_loop(stage) != nil}
-    end)
+    # A stage the document does not have is left out: its `loop` stays nil, unknown.
+    for {version_id, stage_id} = key <- keys,
+        stage = Apiary.Processes.stage(documents[version_id], stage_id),
+        into: %{},
+        do: {key, Apiary.Stages.Runner.first_loop(stage) != nil}
   end
 
   # The sessions of a run of a stage with `shared_run: true`: their place and when each

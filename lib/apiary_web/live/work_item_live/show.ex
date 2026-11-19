@@ -2421,12 +2421,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     socket |> assign(:view, view) |> framed()
   end
 
-  # The sessions of the stage tab's runs of a stage with `shared_run: true`
-  # (`Apiary.Stages.run_sessions/1`); none on another tab.
-  defp sessions_of(%{stage: %{shared_run: true}, runs: runs}) do
+  # The sessions of the stage tab's runs whose stage has `shared_run: true` in the run's
+  # process version (`Apiary.Stages.shared_run_ids/1`, `Apiary.Stages.run_sessions/1`);
+  # none on another tab.
+  defp sessions_of(%{stage: %{}, runs: runs}) do
     case for(%{id: id} when is_binary(id) <- runs, do: id) do
       [] -> %{}
-      ids -> Stages.run_sessions(ids)
+      ids -> ids |> Stages.shared_run_ids() |> Stages.run_sessions()
     end
   end
 

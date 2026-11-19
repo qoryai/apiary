@@ -2773,7 +2773,7 @@ defmodule Apiary.Stages do
   # `rn_…`) that ran as one run of a stage with `shared_run: true` (`Apiary.Stages.Session`),
   # in the order they ran, by the run's public id; a run with no session has no entry. Each
   # is `%{sequence:, workflow:, round:, stage_entry:, loop_entry:, state:, verdict:,
-  # started_at:, ended_at:}`:
+  # started_at:, ended_at:, stamped_from:, stamped_to:}`:
   #
   #   * `state` is the end the run reported for the session ("succeeded", "failed" or
   #     "cancelled"), nil for a session no report ended: the one the run is in, or was in
@@ -2784,7 +2784,13 @@ defmodule Apiary.Stages do
   #     newest, where it is newer than the one the session before read; else nil;
   #   * `started_at` and `ended_at` are those of the session's `Apiary.Runs.SessionRecord`;
   #     with no record, or none of that time, when the row was written and, for a session a
-  #     report ended, when the report was recorded. `ended_at` is nil for no end.
+  #     report ended, when the report was recorded. `ended_at` is nil for no end. They come
+  #     from the machine's clock, for display;
+  #   * `stamped_from` and `stamped_to` are Qory Apiary's clock: when the row was written,
+  #     and for a session a report ended, when the report was recorded (the row's
+  #     `updated_at`); `stamped_to` is nil for a session no report ended. A version or a
+  #     skip, which Qory Apiary also stamps, is compared with these, never with
+  #     `started_at` and `ended_at`.
   @doc false
   @spec run_sessions([String.t()]) :: %{String.t() => [map]}
   def run_sessions(ids) when is_list(ids) do
@@ -2839,6 +2845,41 @@ defmodule Apiary.Stages do
     end)
   end
 
+  # shared_run_ids/1 is those of the registered runs `ids` (their public ids, `rn_…`)
+  # whose stage has `shared_run: true` in the run's process version, in the order of `ids`.
+  # The stage is read from the version's document by the run's `process_version_id` and
+  # `stage_id`, so a later change of the work item's process changes nothing for a run.
+  @doc false
+  @spec shared_run_ids([String.t()]) :: [String.t()]
+  def shared_run_ids([]), do: []
+
+  def shared_run_ids(ids) when is_list(ids) do
+    rows =
+      Repo.all(
+        from d in DispatchRun,
+          join: r in subquery(Run.registered()),
+          on: r.dispatch_run_id == d.id,
+          where: r.public_id in ^ids,
+          where: not is_nil(d.process_version_id) and not is_nil(d.stage_id),
+          select: {r.public_id, d.process_version_id, d.stage_id}
+      )
+
+    documents =
+      Repo.all(
+        from v in Processes.Version,
+          where: v.id in ^(rows |> Enum.map(&elem(&1, 1)) |> Enum.uniq()),
+          select: {v.id, v.document}
+      )
+      |> Map.new()
+
+    shared =
+      for {id, version_id, stage_id} <- rows,
+          Processes.shared_run?(Processes.stage(documents[version_id], stage_id)),
+          do: id
+
+    Enum.filter(ids, &(&1 in shared))
+  end
+
   defp unreported(%Session{state: nil, dispatch_run_id: id}, versions, seen) do
     newest =
       for({{^id, number}, _version} <- versions, do: number) |> Enum.max(fn -> nil end)
@@ -2860,7 +2901,9 @@ defmodule Apiary.Stages do
       state: session.state,
       verdict: verdict,
       started_at: (record && record.started_at) || session.inserted_at,
-      ended_at: if(ended?, do: (record && record.ended_at) || session.updated_at)
+      ended_at: if(ended?, do: (record && record.ended_at) || session.updated_at),
+      stamped_from: session.inserted_at,
+      stamped_to: if(ended?, do: session.updated_at)
     }
   end
 

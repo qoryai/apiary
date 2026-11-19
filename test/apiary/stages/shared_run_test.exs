@@ -806,12 +806,41 @@ defmodule Apiary.Stages.SharedRunTest do
       assert %{workflow: "plan-the-build", round: 1, loop_entry: nil, state: "succeeded"} = one
       assert %{verdict: :passed, started_at: ^started, ended_at: ^ended} = one
 
+      # Qory Apiary's clock stamped the rows: the machine's times are for display only.
+      assert %DateTime{} = one.stamped_from
+      assert %DateTime{} = one.stamped_to
+      refute one.stamped_from == started
+      refute one.stamped_to == ended
+      assert DateTime.compare(one.stamped_from, one.stamped_to) != :gt
+      assert DateTime.compare(one.stamped_to, two.stamped_from) != :gt
+
       assert %{workflow: "implement-changes", round: 1, loop_entry: 0, verdict: nil} = two
       assert %DateTime{} = two.ended_at
       assert %{workflow: "review-changes", round: 1, loop_entry: 1, verdict: :failed} = three
 
       assert %{workflow: "implement-changes", round: 2, state: nil, ended_at: nil} = four
+      assert %{stamped_to: nil, stamped_from: %DateTime{}} = four
       assert %{verdict: nil, started_at: %DateTime{}} = four
+    end
+  end
+
+  describe "the runs of a shared stage (shared_run_ids/1)" do
+    test "are those whose stage has shared_run in the run's process version", %{scope: scope} do
+      save!(scope, [build(workflows(~w(plan-the-build review-changes)))])
+
+      {_work_item, run} = taken_in!(scope)
+      registered = registered!(scope, run)
+      id = registered.public_id
+
+      assert Stages.shared_run_ids([]) == []
+      assert Stages.shared_run_ids(["rn_none"]) == []
+      assert Stages.shared_run_ids([id, "rn_none"]) == [id]
+
+      # A process version that has no such stage, or no version, makes a run no shared run.
+      for changes <- [[stage_id: "st_zzzzzzzzzz"], [process_version_id: nil]] do
+        {1, nil} = Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id), set: changes)
+        assert Stages.shared_run_ids([id]) == []
+      end
     end
   end
 

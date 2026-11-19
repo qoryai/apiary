@@ -247,8 +247,9 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
   # A work item whose Build passes and is approved into Verify, which runs `sequence` as one
   # shared run, claimed (`claimed!/1`). With `track`, Explore's gate offers that track and
-  # the confirm picks it.
-  defp shared_verify!(scope, sequence, track \\ nil) do
+  # the confirm picks it. `take_in` takes the work item in: a ticket of the Backlog, or a
+  # test work item.
+  defp shared_verify!(scope, sequence, track \\ nil, take_in \\ &taken_in_fixture/1) do
     :ok = scenarios_type!(scope)
 
     process!(
@@ -259,7 +260,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       if(track, do: %{"tracks" => [track]}, else: %{})
     )
 
-    work_item = scope |> taken_in_fixture() |> end_run!(understood_result())
+    work_item = scope |> take_in.() |> end_run!(understood_result())
 
     {:ok, _confirmed} =
       WorkItems.confirm(scope, work_item, 1, if(track, do: [track: track], else: []))
@@ -1453,6 +1454,39 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert has_element?(view, "#work-item-record-#{latest.number}-s", ~r/(?<!\d)2 workflows/)
     end
 
+    test "an entry passed over after a machine's end of the run, on a clock 0.3 s behind, is a row in the run",
+         %{conn: conn, scope: scope} do
+      {work_item, run, registered} =
+        shared_verify!(scope, [
+          %{"workflow" => "verify-a-ticket"},
+          %{"workflow" => "capture-demos", "when" => @demos}
+        ])
+
+      :ok = verdict!(run, "passed")
+      assert report!(run, 1) == :end
+      :ok = exited!(run, registered)
+
+      # The machine's clock runs 0.3 s behind Qory Apiary's: it stamps the run's exit
+      # before the skip, which Qory Apiary stamped while it stepped on session 1's end.
+      [skip] = Stages.skips(reload(work_item))
+      exit_at = DateTime.add(skip.inserted_at, -300, :millisecond)
+
+      {1, nil} =
+        Repo.update_all(from(r in Apiary.Runs.Run, where: r.id == ^registered.id),
+          set: [started_at: DateTime.add(exit_at, -5, :second), exited_at: exit_at]
+        )
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @verify))
+
+      refute has_element?(view, "#work-item-record-fold > .q-xp-inner > .q-xp-runrow")
+
+      assert [verify, "capture-demos / No demo scenarios: capture-demos did not run."] =
+               run_rows(view, registered.number)
+
+      assert verify =~ ~r/^verify-a-ticket · passed · \S/
+      assert has_element?(view, "#work-item-record-#{registered.number}-s", "2 workflows")
+    end
+
     test "inside a loop, the row has its round", %{conn: conn, scope: scope} do
       :ok = scenarios_type!(scope)
 
@@ -1625,6 +1659,29 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       # Shape's run is no shared run: its version keeps the round of its run.
       {:ok, view, _html} = live(conn, stage(scope, work_item.number, @shape))
       assert made_by(view, work_item, "spec", "main") =~ ~r/^Run \d+ · round 1$/
+    end
+
+    test "a version of a run whose stage the process version does not give has no round", %{
+      conn: conn,
+      scope: scope
+    } do
+      {work_item, run, registered} =
+        shared_build!(scope, [%{"workflow" => "plan-the-build"}], @outputs)
+
+      push!(run, work_item, "test-features", "## The plan")
+
+      for changes <- [[process_version_id: nil], [stage_id: "st_zzzzzzzzzz"]] do
+        {1, nil} = Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id), set: changes)
+
+        {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+        assert made_by(view, work_item, "test-features", "main") == "Run #{registered.number}"
+
+        {1, nil} =
+          Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
+            set: [process_version_id: run.process_version_id, stage_id: run.stage_id]
+          )
+      end
     end
   end
 
@@ -1858,6 +1915,96 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert untimed(capture_1) == "capture-demos · round 1 · recorded 1 demo video"
       assert untimed(capture_2) == "capture-demos · round 2 · recorded 3 pictures"
     end
+
+    # A session record of the machine: the times its clock stamped for session `number`.
+    defp machine_times!(run, registered, number, started_at, ended_at) do
+      Repo.insert!(%Apiary.Runs.SessionRecord{
+        organisation_id: run.organisation_id,
+        workspace_id: run.workspace_id,
+        run_id: registered.id,
+        dispatch_run_id: run.id,
+        work_item_id: run.work_item_id,
+        session_number: number,
+        started_at: started_at,
+        ended_at: ended_at
+      })
+    end
+
+    # When Qory Apiary wrote the version of `type` named `name` of the work item.
+    defp written_at(work_item, type, name) do
+      artifact =
+        Enum.find(Artifacts.list(reload(work_item)), &(&1.type == type and &1.name == name))
+
+      assert [version] = artifact.versions
+      version.inserted_at
+    end
+
+    test "counts a version written 0.1 to 0.5 s past a machine's end or before its start", %{
+      conn: conn,
+      scope: scope
+    } do
+      capture_sequence!(scope, [
+        %{"workflow" => "plan-the-build"},
+        %{
+          "loop" => %{
+            "rounds" => 3,
+            "body" => [
+              %{"workflow" => "implement-changes"},
+              %{"workflow" => "capture-demos"},
+              %{"workflow" => "review-changes"}
+            ]
+          }
+        }
+      ])
+
+      {work_item, run, registered} = in_build!(scope)
+
+      :ok = verdict!(run, "passed")
+      {:session, %{workflow: "implement-changes"}} = report!(run, 1)
+      {:session, %{workflow: "capture-demos"}} = report!(run, 2)
+      :ok = media!(run, work_item, "demo-video", "round-1-video")
+      {:session, %{workflow: "review-changes"}} = report!(run, 3)
+      :ok = verdict!(run, "changes-requested")
+      {:session, %{workflow: "implement-changes"}} = report!(run, 4)
+      {:session, %{workflow: "capture-demos"}} = report!(run, 5)
+      :ok = media!(run, work_item, "screenshot", "round-2-picture", 2)
+      :ok = media!(run, work_item, "screenshot", "round-2-other", 1)
+      {:session, %{workflow: "review-changes"}} = report!(run, 6)
+      :ok = verdict!(run, "passed")
+      assert report!(run, 7) == :end
+      :ok = exited!(run, registered)
+
+      # Round 1: the machine's clock runs behind, and stamps the end of capture-demos 0.1 s
+      # before the video was written. Round 2: it runs ahead, and stamps its start 0.5 s
+      # after the first picture was written.
+      video = written_at(work_item, "demo-video", "round-1-video")
+      picture = written_at(work_item, "screenshot", "round-2-picture")
+      other = written_at(work_item, "screenshot", "round-2-other")
+
+      machine_times!(
+        run,
+        registered,
+        3,
+        DateTime.add(video, -5, :second),
+        DateTime.add(video, -100, :millisecond)
+      )
+
+      machine_times!(
+        run,
+        registered,
+        6,
+        DateTime.add(picture, 500, :millisecond),
+        DateTime.add(other, 5, :second)
+      )
+
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+      assert [_plan, _implement_1, capture_1, _review_1, _implement_2, capture_2, _review_2] =
+               run_rows(view, registered.number)
+
+      assert untimed(capture_1) == "capture-demos · round 1 · recorded 1 demo video"
+      assert untimed(capture_2) == "capture-demos · round 2 · recorded 3 pictures"
+    end
   end
 
   describe "a row of the runs fold" do
@@ -2032,7 +2179,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                ~r/^Attempt 3 \(Run #{registered.number}\) · 4 workflows · round 2 of 3 · Failed · /
 
       refute line =~ "did not pass"
-      assert List.last(rows) =~ ~r/^implement-changes · round 2 · Failed · /
+      assert List.last(rows) =~ ~r/^implement-changes · round 2 · failed · /
     end
 
     test "a shared run with no loop reads its round, and a session row no round", %{
@@ -2100,7 +2247,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
 
       assert [line, plan] = fold_rows(view)
-      assert untimed(plan) == "plan-the-build · Failed"
+      assert untimed(plan) == "plan-the-build · failed"
       assert line =~ ~r/^Attempt 3 \(Run #{registered.number}\) · 1 workflow · round 1 · /
     end
 
@@ -2117,32 +2264,43 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
 
       assert [_line, plan] = fold_rows(view)
-      assert untimed(plan) == "plan-the-build · Cancelled"
+      assert untimed(plan) == "plan-the-build · cancelled"
     end
 
     test "the run's line keeps the run's verdict where its newest session reported none", %{
       conn: conn,
       scope: scope
     } do
+      # A test work item's run with no verdict goes on (`facts.test`): capture-demos, the
+      # last session, stores none, and the run reaches Verify's gate.
+      take_in = fn scope ->
+        {:ok, test_item} = WorkItems.take_in_test(scope, "A line to test")
+        reload(test_item)
+      end
+
       {work_item, run, registered} =
-        shared_verify!(scope, [
-          %{"workflow" => "verify-a-ticket"},
-          %{"workflow" => "capture-demos"}
-        ])
+        shared_verify!(
+          scope,
+          [%{"workflow" => "verify-a-ticket"}, %{"workflow" => "capture-demos"}],
+          nil,
+          take_in
+        )
+
+      assert %WorkItem{test: true} = work_item
 
       :ok = verdict!(run, "passed")
       {:session, %{workflow: "capture-demos"}} = report!(run, 1)
-      :ok = verdict!(run, "passed")
       assert report!(run, 2) == :end
       :ok = exited!(run, registered)
 
-      # Set by hand: the runner escalates a run whose last session has no verdict, so no
-      # flow writes this row. The report of capture-demos has no verdict version to read.
-      {1, nil} =
-        Repo.update_all(
-          from(s in Stages.Session, where: s.dispatch_run_id == ^run.id and s.sequence == 2),
-          set: [verdict_number: nil]
-        )
+      # The step on session 2's end read no newer verdict: the row has session 1's number.
+      assert %Stages.Session{verdict_number: number} =
+               Repo.get_by!(Stages.Session, dispatch_run_id: run.id, sequence: 1)
+
+      assert is_integer(number)
+
+      assert %Stages.Session{state: "succeeded", verdict_number: ^number} =
+               Repo.get_by!(Stages.Session, dispatch_run_id: run.id, sequence: 2)
 
       assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = reload(work_item)
 

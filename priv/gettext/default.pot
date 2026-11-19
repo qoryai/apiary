@@ -26433,6 +26433,7 @@ msgstr ""
 msgid "by rule"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "cancelled"
@@ -26687,6 +26688,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "extends is not a source"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "failed"
 msgstr ""
 
 #: lib/apiary_web/components/run_page_components.ex

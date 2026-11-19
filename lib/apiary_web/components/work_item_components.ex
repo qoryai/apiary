@@ -6398,17 +6398,18 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   # The skips inside a run with `sessions`, by its public id: one passed over after the
   # run's start and before its end, if it ended, else one whose next run it is; and the
-  # other skips, oldest first.
+  # other skips, oldest first. Qory Apiary's clock stamps a skip, so the run's window is
+  # that of its sessions' rows (`session_window/2`), not the machine's times.
   defp skips_inside(runs, skips, sessions) do
     windows =
-      for %{id: id, started_at: %DateTime{} = from} = run <- runs,
-          match?([_ | _], Map.get(sessions, id)),
-          do: {id, from, run[:ended_at]}
+      for %{id: id} = run <- runs,
+          [_ | _] = held <- [Map.get(sessions, id)],
+          do: {id, session_window(run, held)}
 
     Enum.reduce(Enum.reverse(skips), {%{}, []}, fn skip, {inside, outside} ->
       held =
         case Enum.find(windows, &in_window?(skip[:inserted_at], &1)) do
-          {id, _from, _to} -> id
+          {id, _window} -> id
           nil -> next_shared(runs, skip, sessions)
         end
 
@@ -6416,6 +6417,22 @@ defmodule ApiaryWeb.WorkItemComponents do
         do: {Map.update(inside, held, [skip], &[skip | &1]), outside},
         else: {inside, [skip | outside]}
     end)
+  end
+
+  # The window of a run with `held`, its sessions, on Qory Apiary's clock: from when its
+  # first session's row was written to when its last was recorded as ended. For a run
+  # that has not ended, there is no end; for a last session no report ended, the end is
+  # when its row was written. nil where the run has no stamp.
+  defp session_window(run, held) do
+    last = List.last(held)
+
+    case hd(held) do
+      %{stamped_from: %DateTime{} = from} ->
+        {from, if(run[:ended_at], do: last[:stamped_to] || last[:stamped_from])}
+
+      _none ->
+        nil
+    end
   end
 
   # The public id of the first run after the skip's `after_attempt`, where it has
@@ -6429,7 +6446,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     end
   end
 
-  defp in_window?(%DateTime{} = at, {_id, from, to}),
+  defp in_window?(%DateTime{} = at, {_id, {from, to}}),
     do: DateTime.compare(at, from) != :lt and (is_nil(to) or DateTime.compare(at, to) != :gt)
 
   defp in_window?(_at, _window), do: false
@@ -6588,7 +6605,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     said =
       cond do
         not is_nil(session.state) ->
-          ended_parts(session, run, session.ended_at, recorded, now)
+          ended_parts(session, session.ended_at, recorded, now)
 
         run[:cancelling] == true ->
           [cancelling_word(%{run: run})]
@@ -6605,25 +6622,25 @@ defmodule ApiaryWeb.WorkItemComponents do
           ]
 
         run[:state] in @stopped ->
-          [run_state_word(run), run[:ended_at] && ended_ago(run.ended_at, now)]
+          [stopped_word(run), run[:ended_at] && ended_ago(run.ended_at, now)]
 
         true ->
-          ended_parts(session, run, run[:ended_at], recorded, now)
+          ended_parts(session, run[:ended_at], recorded, now)
       end
 
     Enum.reject([{:b, session.workflow}, round | said], &is_nil/1)
   end
 
-  # A session that reported failed or cancelled with no verdict reads that state, in the
-  # word of a run's state (`ApiaryWeb.RunComponents.state_label/1`).
-  defp ended_parts(session, run, ended_at, recorded, now) do
+  # A session that reported failed or cancelled with no verdict reads that state, in lower
+  # case as the verdict words beside it (`session_state_word/1`).
+  defp ended_parts(session, ended_at, recorded, now) do
     words =
       cond do
         is_nil(session.verdict) and session.state in ["failed", "cancelled"] ->
-          RunComponents.state_label(session.state)
+          session_state_word(session.state)
 
         session.workflow == @capture ->
-          recorded_words(recorded_in(session, run, recorded)) || session_verdict(session)
+          recorded_words(recorded_in(session, recorded)) || session_verdict(session)
 
         true ->
           session_verdict(session)
@@ -6633,18 +6650,28 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   # The demo videos and pictures among `recorded`, the run's media versions, written
-  # between the session's start and its end, or its run's end for a session no report
-  # ended: `%{videos:, pictures:}`, a video version counting 1 and a picture each file.
-  defp recorded_in(session, run, recorded) do
-    to = session.ended_at || run[:ended_at]
-
+  # between the session's start and its end: `%{videos:, pictures:}`, a video version
+  # counting 1 and a picture each file. Qory Apiary's clock stamps a version, so the bounds
+  # are the session row's (`stamped_from`, `stamped_to`), not the machine's times; a
+  # session no report ended has no end, as the newest session of its run.
+  defp recorded_in(session, recorded) do
     for %{kind: kind, at: at, count: count} <- recorded,
-        DateTime.compare(at, session.started_at) != :lt,
-        is_nil(to) or DateTime.compare(at, to) != :gt,
+        DateTime.compare(at, session.stamped_from) != :lt,
+        is_nil(session.stamped_to) or DateTime.compare(at, session.stamped_to) != :gt,
         reduce: %{videos: 0, pictures: 0} do
       counts -> Map.update!(counts, kind, &(&1 + count))
     end
   end
+
+  # A session row reads failed and cancelled in lower case, as passed beside them; any
+  # other state of the run it ran in keeps the word of the run's line (`run_state_word/1`).
+  defp stopped_word(%{state: state}) when state in [:failed, :cancelled],
+    do: session_state_word(Atom.to_string(state))
+
+  defp stopped_word(run), do: run_state_word(run)
+
+  defp session_state_word("failed"), do: gettext("failed")
+  defp session_state_word("cancelled"), do: gettext("cancelled")
 
   defp session_verdict(session),
     do:
@@ -6659,7 +6686,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp session_shows(%{verdict: :failed}), do: :failed
   defp session_shows(_session), do: :no_verdict
 
-  # What a session of capture-demos recorded (`recorded_in/3`): its demo videos and
+  # What a session of capture-demos recorded (`recorded_in/2`): its demo videos and
   # pictures, each left out at 0; nil for none.
   defp recorded_words(recorded) do
     videos = Map.get(recorded, :videos, 0)
