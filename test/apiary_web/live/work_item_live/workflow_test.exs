@@ -2888,6 +2888,29 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert has_element?(view, "#work-item-stage-gate-ask-changes")
     end
 
+    test "no card has Add a version: not the gate card, its outputs or the artifacts", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_shape_gate(scope, ["acceptance-criteria", "explainer"])
+      stored!(work_item, "acceptance-criteria", @shape)
+
+      for tab <- ["", "/ticket"] do
+        {:ok, view, html} = live(conn, page(scope, work_item.number) <> tab)
+
+        refute html =~ "Add a version"
+        refute has_element?(view, "a[href*='/artifacts/new']")
+        refute has_element?(view, "[id^='work-item-stage-gate-add-']")
+        refute has_element?(view, "[id$='-list-add']")
+      end
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+      assert has_element?(view, "#work-item-stage-gate-outputs")
+      assert has_element?(view, "#work-item-stage-gate-input-explainer")
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/ticket")
+      assert has_element?(view, "#work-item-artifact-list", "acceptance-criteria v1")
+    end
+
     test "a member the gate does not list sees the line and has no Approve", %{
       conn: conn,
       scope: scope
