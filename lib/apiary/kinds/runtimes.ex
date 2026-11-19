@@ -83,6 +83,13 @@ defmodule Apiary.Kinds.Runtimes do
     def list, do: @runtimes
   end
 
+  @doc """
+  several?/0 is whether the catalogue has more than one runtime: a model choice names its
+  runtime only then, and with one it names none.
+  """
+  @spec several?() :: boolean
+  def several?, do: match?([_, _ | _], list())
+
   @doc "fetch/1 is the runtime named `name`: `{:ok, runtime}`, or `:error`."
   @spec fetch(term) :: {:ok, Runtime.t()} | :error
   def fetch(name) do

@@ -448,6 +448,68 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert render(view) =~ "The features text"
     end
 
+    test "an About line's link to a criterion opens the folded criteria at its row", %{
+      conn: conn,
+      scope: scope
+    } do
+      process!(scope, %{
+        "outputs" => [
+          %{"type" => "spec", "required" => true},
+          %{"type" => "acceptance-criteria", "required" => false}
+        ]
+      })
+
+      about = %{"type" => "acceptance-criteria", "name" => "main", "item" => "ac-3"}
+      work_item = at_shape!(scope)
+
+      work_item =
+        work_item
+        |> end_run!(fn run, registered ->
+          push!(run, work_item, "spec", "## The spec text")
+
+          {:ok, _criteria} =
+            Stages.Artifacts.push_json(
+              {:run, run},
+              reload(work_item),
+              "acceptance-criteria",
+              Apiary.StagesFixtures.criteria_document(),
+              stage_id: run.stage_id
+            )
+
+          push_result!(
+            run,
+            registered,
+            questions_result([
+              %{"question" => "Which basket?", "options" => [], "about" => about}
+            ])
+          )
+        end)
+        |> reload()
+
+      # The criteria are the second output: folded, and not read.
+      {:ok, view, _html} = live(conn, stage(scope, work_item.number))
+      refute has_element?(view, "#work-item-tab-output-acceptance-criteria-fold[open]")
+      refute has_element?(view, "#work-item-tab-output-acceptance-criteria-parts-ac-3")
+
+      path =
+        stage(scope, work_item.number) <>
+          "?open=acceptance-criteria#work-item-tab-output-acceptance-criteria-parts-ac-3"
+
+      {:ok, view, _html} = live(conn, questions(scope, work_item.number))
+
+      assert has_element?(
+               view,
+               ~s|#work-item-questions-question-1-about a[href="#{path}"]|,
+               "acceptance criteria"
+             )
+
+      # Followed, the link opens the criteria, so the row it points at is on the page.
+      {:ok, view, _html} = live(conn, path |> String.split("#") |> hd())
+      assert has_element?(view, "#work-item-tab-output-acceptance-criteria-fold[open]")
+      assert has_element?(view, "#work-item-tab-output-acceptance-criteria-parts-ac-3", "AC-3")
+      assert has_element?(view, "#work-item-tab-output-spec-fold[open]")
+    end
+
     test "a folded output's version is not read until it opens", %{conn: conn, scope: scope} do
       work_item = at_gate!(scope)
 

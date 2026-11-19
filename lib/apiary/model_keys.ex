@@ -379,14 +379,13 @@ defmodule Apiary.ModelKeys do
   ## Keys at a claim
 
   @typedoc """
-  A key of a provider at a claim (`claim_keys/3`), as `Apiary.ModelKeys.Order` reads it,
+  A key of a provider at a claim (`claim_keys/2`), as `Apiary.ModelKeys.Order` reads it,
   with what a run configuration writes of it.
   """
   @type claim_key :: %{
           id: Ecto.UUID.t(),
           value_id: String.t(),
           inserted_at: DateTime.t(),
-          named: boolean,
           default: boolean,
           resets_at: DateTime.t() | nil,
           schedule_resets_at: DateTime.t() | nil,
@@ -398,8 +397,7 @@ defmodule Apiary.ModelKeys do
 
   @doc """
   The keys of `provider`, the values of its secret, at `now`, for a claim: each with its
-  row id and value id; whether it is the key `named_value_id`, which a model choice
-  names (nil for none), and whether it is the provider's default key; `resets_at`, the
+  row id and value id; whether it is the provider's default key; `resets_at`, the
   earliest reset after `now` across its windows, from the providers' responses;
   `schedule_resets_at`, the next reset of its weekly schedule (`next_reset/2`);
   `known_reset`, its known reset, the first of those two that it has; `cooldown_until`,
@@ -412,8 +410,8 @@ defmodule Apiary.ModelKeys do
   provider without limit windows (`limit_windows/1`). In no order: the order is
   `Apiary.ModelKeys.Order.order/2`. Three reads, none locked.
   """
-  @spec claim_keys(Connection.t(), String.t() | nil, DateTime.t()) :: [claim_key]
-  def claim_keys(%Connection{secret_id: secret_id} = provider, named_value_id, %DateTime{} = now)
+  @spec claim_keys(Connection.t(), DateTime.t()) :: [claim_key]
+  def claim_keys(%Connection{secret_id: secret_id} = provider, %DateTime{} = now)
       when is_binary(secret_id) do
     values =
       Repo.all(
@@ -444,7 +442,6 @@ defmodule Apiary.ModelKeys do
       resets_at = earliest_reset(key_states, now)
 
       Map.merge(value, %{
-        named: is_binary(named_value_id) and value.value_id == named_value_id,
         default: is_binary(value.value_id) and value.value_id == provider.default_value_id,
         resets_at: resets_at,
         schedule_resets_at: schedule,
@@ -456,7 +453,7 @@ defmodule Apiary.ModelKeys do
     end
   end
 
-  def claim_keys(%Connection{}, _named_value_id, _now), do: []
+  def claim_keys(%Connection{}, _now), do: []
 
   ## The claim's filter
 

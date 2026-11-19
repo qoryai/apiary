@@ -483,6 +483,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
                  "context" => context,
                  "options" => [],
                  "state" => "open",
+                 "about" => %{"work_item" => true},
                  "asked" => %{"run" => 1, "at" => "2026-11-05T10:00:00Z"}
                }
              ]

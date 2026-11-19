@@ -1381,10 +1381,14 @@ defmodule Apiary.Connections do
 
   The keys are stored as a secret that the provider links. The provider keeps no models:
   `provider_models/1` reads them from its description.
+  A provider whose description lists no models, such as LiteLLM, is refused on
+  `provider_kind` unless the feature `model_proxies` is on (`Providers.offered?/1`), as
+  the pages leave it out of their lists; `update_provider/3` does not check it.
+
   `{:ok, provider}`, loaded as `get_provider/2` loads it, or `{:error, refusal}`: a
-  changeset of the provider whose errors are on `name`, `applies_to`, `settings` or
-  `default_value_id`, a changeset of the keys' secret whose errors are on `values`, or a
-  refusal of the settings.
+  changeset of the provider whose errors are on `name`, `applies_to`, `provider_kind`,
+  `settings` or `default_value_id`, a changeset of the keys' secret whose errors are on
+  `values`, or a refusal of the settings.
   """
   @spec create_provider(Scope.t(), map, :organisation | :workspace) ::
           {:ok, Connection.t()} | {:error, refusal}
@@ -1399,6 +1403,7 @@ defmodule Apiary.Connections do
            {:ok, provider} <- fetch_provider(attrs["provider"]),
            new = new_provider(scope, organisation, provider),
            changeset = new |> change() |> attrs_changeset(new, attrs),
+           :ok <- offered(changeset, provider),
            {:ok, changeset} <- provider_settings(changeset, provider, attrs),
            :ok <- valid(changeset),
            {:ok, workspace_ids} <-
@@ -1451,6 +1456,26 @@ defmodule Apiary.Connections do
   defp placed_reach(:workspace, [_one]), do: :ok
   defp placed_reach(:workspace, _ids), do: {:error, :workspace_not_found}
   defp placed_reach(:organisation, _ids), do: :ok
+
+  # A provider whose description lists no models, such as LiteLLM, is added only with the
+  # feature `model_proxies` on (`Providers.offered?/1`), as the pages offer it; else the
+  # refusal on `provider_kind`. A provider of that kind already added stays, and its
+  # edits are not checked.
+  defp offered(changeset, %Provider{} = provider) do
+    if Providers.offered?(provider),
+      do: :ok,
+      else:
+        {:error,
+         add_error(
+           changeset,
+           :provider_kind,
+           dgettext_noop(
+             "errors",
+             "Turn on the feature Model proxies to add %{provider}: it lists no models."
+           ),
+           provider: provider.title
+         )}
+  end
 
   defp fetch_provider(name) do
     case Providers.fetch(name) do
@@ -1733,7 +1758,10 @@ defmodule Apiary.Connections do
       # the row `FOR SHARE` until it commits (`Apiary.Dispatches.RunSettings`), so a run
       # it registers is read here, and a claim that comes after reads the provider as
       # deleted.
+      # A workflow's choice whose workspace no longer keeps the workflow goes with the
+      # provider (`ModelChoices.delete_leftovers_using/2`).
       with :ok <- not_used(ModelChoices.places_using(current), live_runs(current)),
+           :ok <- ModelChoices.delete_leftovers_using(scope, current),
            {:ok, deleted} <- delete_with_keys(scope, current),
            {:ok, _entry} <-
              Audit.record(Repo, scope, :"provider.write", deleted, %{
@@ -2073,20 +2101,6 @@ defmodule Apiary.Connections do
                    Map.put(change, :details, details)
                  ),
                do: {:ok, current}
-
-        {:error, {:in_use, [%{kind: :model_choice, value_id: value_id} | _rest] = uses}} ->
-          {:error,
-           current
-           |> change()
-           |> add_error(
-             :value_id,
-             dgettext_noop(
-               "errors",
-               "Change the model choices that use the key %{value} first: %{places}."
-             ),
-             value: value_id,
-             places: ModelChoices.listed_words(Enum.map(uses, & &1.name))
-           )}
 
         {:error, {:in_use, [%{kind: :model_provider} | _uses]}} ->
           {:error,

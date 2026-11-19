@@ -46,6 +46,7 @@ process:
       gate: {kind: person, approvers: members}
 artifact_types:
   - name: acceptance-criteria
+  - name: verification
   - name: mockup
   - name: screenshot
   - name: demo-video

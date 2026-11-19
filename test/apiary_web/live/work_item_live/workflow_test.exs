@@ -527,6 +527,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     })
   end
 
+  defp sample("acceptance-criteria"),
+    do:
+      Apiary.StagesFixtures.json_file(
+        "acceptance-criteria",
+        Apiary.StagesFixtures.criteria_document()
+      )
+
   defp sample(type) do
     %{filename: "#{type}.md", content_type: "text/markdown", binary: "# #{type}"}
   end

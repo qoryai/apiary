@@ -378,7 +378,8 @@ defmodule Apiary.DeletionTest do
       {:ok, kept} = Apiary.Connections.create_provider(scope, attrs, :workspace)
       {:ok, shared} = Apiary.Connections.create_provider(scope, attrs)
 
-      {:ok, _} = Apiary.ModelChoices.put_choice(inside, :workspace, %{provider: gone.public_id})
+      {:ok, _} =
+        Apiary.ModelChoicesFixtures.put_choice(inside, :workspace, %{provider: gone.public_id})
 
       # The settings and a state of each provider's key, which go with the key.
       for provider <- [gone, kept] do

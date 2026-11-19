@@ -256,8 +256,8 @@ defmodule Apiary.WorkflowEndToEndTest do
     body =
       push_body(
         "acceptance-criteria",
-        "criteria.md",
-        "# Acceptance criteria\n\n- A gift card pays part of an order.\n"
+        "acceptance-criteria.json",
+        Apiary.StagesFixtures.criteria_document()
       )
 
     assert %{"artifact" => %{"type" => "acceptance-criteria", "version" => %{"number" => 1}}} =

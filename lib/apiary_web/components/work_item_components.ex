@@ -2533,7 +2533,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   @doc """
   The tab of a stage that runs a workflow, other than Explore's (`explore_tab/1`), top to
   bottom: while a run is queued or runs, its line and what it does next; the review comments
-  below 1007 px; one frame for each of `outputs`; the run's decisions, in the Decisions
+  below 1007 px; one frame for each of `outputs`; the frame Accepted findings, open, where
+  `findings` has an accept (`accepted_findings_frame/1`); the run's decisions, in the Decisions
   frame, unless a question is open; on the current stage's tab at its gate (`round_gate`),
   the gate's Run another round, with the comment, for a reader who may change the
   decisions (`can_change`) or send it (`can_send`); Confirm where the stage has a
@@ -2588,6 +2589,12 @@ defmodule ApiaryWeb.WorkItemComponents do
       "the work item's track and the gate that chose it (`ApiaryWeb.WorkItemLive.StageTab.track_line/1`); nil for none"
 
   attr :outputs, :list, default: []
+
+  attr :findings, :list,
+    default: [],
+    doc:
+      "the findings accepted at an earlier stage's round limit, on Verify's tab where no " <>
+        "verification frame shows them: `%{stage:, member:, at:, findings:}` each"
 
   attr :wrote, :list,
     default: [],
@@ -2794,6 +2801,11 @@ defmodule ApiaryWeb.WorkItemComponents do
           {suite_words(@suite)}
         </p>
       <% end %>
+      <.accepted_findings_frame
+        :if={@findings != []}
+        id={"#{@id}-accepted-findings"}
+        findings={@findings}
+      />
       <.decisions_frame
         :if={@decisions_frame != []}
         id={"#{@id}-decisions"}
@@ -3215,6 +3227,85 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   attr :id, :string, required: true
+  attr :findings, :list, required: true, doc: "`%{stage:, member:, at:, findings:}` each"
+
+  # The frame Accepted findings, on Verify's tab where no verification frame shows them:
+  # the markup of an output frame, open, with the first accept's line in the caption's
+  # place and its findings in the body; each later accept's line and findings follow in the
+  # body, as in the verification frame's section (`ApiaryWeb.WorkItemLive.VerifyTab`).
+  defp accepted_findings_frame(assigns) do
+    [first | rest] = assigns.findings
+    assigns = assign(assigns, first: first, rest: Enum.with_index(rest, 1))
+
+    ~H"""
+    <section id={@id} class="q-xp-frame" aria-labelledby={"#{@id}-h"}>
+      <details
+        id={"#{@id}-fold"}
+        class="q-xp-frame-fold"
+        open
+        phx-mounted={JS.ignore_attributes(["open"])}
+      >
+        <summary id={"#{@id}-s"}>
+          <div class="q-xp-frame-h">
+            <.icon name="hero-chevron-right-micro" class="q-xp-chev q-xp-frame-i size-4" />
+            <h2 id={"#{@id}-h"} class="q-xp-frame-t">{gettext("Accepted findings")}</h2>
+          </div>
+          <p id={"#{@id}-by"} class="q-xp-cap">
+            <.icon name="hero-information-circle-micro" class="q-xp-cap-i size-3.5" />
+            <span>{accepted_line(@first)}</span>
+          </p>
+        </summary>
+        <div class="q-xp-body">
+          <.findings_list
+            :if={@first.findings != []}
+            id={"#{@id}-list"}
+            item={@id}
+            findings={@first.findings}
+          />
+          <%= for {accepted, k} <- @rest do %>
+            <p id={"#{@id}-#{k}-by"} class="my-2 text-[12.5px]/5 text-muted">
+              {accepted_line(accepted)}
+            </p>
+            <.findings_list
+              :if={accepted.findings != []}
+              id={"#{@id}-#{k}-list"}
+              item={"#{@id}-#{k}"}
+              findings={accepted.findings}
+            />
+          <% end %>
+        </div>
+      </details>
+    </section>
+    """
+  end
+
+  attr :id, :string, required: true
+  attr :item, :string, required: true, doc: "the id before `-N` of each finding's item"
+  attr :findings, :list, required: true
+
+  defp findings_list(assigns) do
+    ~H"""
+    <ul id={@id} class="grid gap-2 text-[13px]/5">
+      <li
+        :for={{finding, i} <- Enum.with_index(@findings)}
+        id={"#{@item}-#{i}"}
+        class="grid gap-0.5 border-b border-base-300 pb-2 last:border-b-0"
+      >
+        <span>{finding}</span>
+      </li>
+    </ul>
+    """
+  end
+
+  defp accepted_line(accepted),
+    do:
+      gettext("Accepted as it is in %{stage} by %{member}, %{when}.",
+        stage: accepted.stage,
+        member: accepted.member,
+        when: Format.datetime(accepted.at)
+      )
+
+  attr :id, :string, required: true
   attr :number, :integer, required: true
 
   attr :output, :map,
@@ -3223,10 +3314,11 @@ defmodule ApiaryWeb.WorkItemComponents do
       "`:type`, `:name`, `:version`, `:open`, `:read` and `:approval`, the " <>
         "approval it shows, nil for none (`ApiaryWeb.WorkItemLive.StageTab.approved/3`); " <>
         "`:kind`, `:scenarios` for the Scenarios frame, `:verification` for a verification " <>
-        "the page read as its parts, whose body is the slot's; `:row` for a frame with its " <>
-        "artifact rows and no text; `:caption`, the words after the icon in place of the " <>
-        "version's, nil for those; and `:accepted`, the member who accepted the stage's " <>
-        "escalation as it is, shown above a text"
+        "the page read as its parts and `:criteria` for acceptance criteria read as their " <>
+        "table, whose body is the slot's; `:row` for a frame with its artifact rows and no " <>
+        "text; `:caption`, the words after the icon in place of the version's, nil for those; " <>
+        "and `:accepted`, the member who accepted the stage's escalation as it is, shown " <>
+        "above a text"
 
   slot :inner_block, doc: "the output's artifact row, for a version with no Markdown"
 
@@ -3252,7 +3344,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         sources: sources,
         count: count,
         heading: output_heading(assigns.output),
-        parts?: assigns.output[:kind] in [:verification, :scenarios],
+        parts?: assigns.output[:kind] in [:verification, :scenarios, :criteria],
         approval: assigns.output[:approval]
       )
 
@@ -5265,7 +5357,8 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :now, :any, required: true
 
   # A closed question, folded to one line: its number and question, and its answer or
-  # Withdrawn; open, its context and its answer with who gave it and when.
+  # Withdrawn; open, its context and its answer with who gave it and when, the wording
+  # that the option chosen proposes as a quote under the answer.
   defp closed_question(assigns) do
     answer = assigns.question.answer
 
@@ -5285,8 +5378,9 @@ defmodule ApiaryWeb.WorkItemComponents do
       </summary>
       <div class="q-xp-inner">
         <.asked_line question={@question} />
+        <.question_about id={"#{@id}-about"} question={@question} />
         <.run_text value={@question} key={:context} />
-        <.given_answer :if={@answer} id={"#{@id}-answer"} answer={@answer} now={@now} />
+        <.given_answer :if={@answer} id={"#{@id}-answer"} answer={@answer} now={@now} proposal />
       </div>
     </details>
     """
@@ -5318,19 +5412,60 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp asked_words(_question), do: nil
 
   attr :id, :string, required: true
+  attr :question, :map, required: true
+
+  # "About acceptance criteria, AC-4": what the question is about (`about_line`), under
+  # its asked line, in the same small type, the output linked to where it is shown, then,
+  # for a criterion, its text in the newest acceptance criteria as a quote. Nothing for a
+  # question with no `about`.
+  defp question_about(assigns) do
+    ~H"""
+    <%= if line = @question[:about_line] do %>
+      <p id={@id} class="q-xp-cm-m">
+        <span class="q-xp-it q-xp-by"><.rich text={about_words(line)} /></span>
+      </p>
+      <div :if={line.quote} id={"#{@id}-quote"} class="q-ticket-formatted q-xp-md">
+        <blockquote><p phx-no-format>{line.quote}</p></blockquote>
+      </div>
+    <% end %>
+    """
+  end
+
+  defp about_words(%{words: words, path: path, item: item}) do
+    output = if path, do: {:link, path, words, "q-link"}, else: words
+
+    if item,
+      do: rich_gettext("About %{output}, %{item}", output: output, item: item),
+      else: rich_gettext("About %{output}", output: output)
+  end
+
+  attr :id, :string, required: true
   attr :answer, :map, required: true
   attr :now, :any, required: true
   attr :earlier, :boolean, default: false
 
-  # An answer: the option chosen, and the note under it, then who answered and when; an
-  # earlier answer muted, under Earlier answer. The pieces of the Earlier answer line
-  # have no white space between them, so the margins of the "·" alone set its gaps.
+  attr :proposal, :boolean,
+    default: false,
+    doc: "whether the wording that the option chosen proposes, where it has one, shows as a quote"
+
+  # An answer: the option chosen, and the note under it, then, with `proposal`, the
+  # wording the run proposed in that option as a quote (a member's edited wording is in
+  # the note), then who answered and when; an earlier answer muted, under Earlier answer.
+  # The pieces of the Earlier answer line have no white space between them, so the margins
+  # of the "·" alone set its gaps.
   # The <wbr> between them is the line's break point, and the CSS rule for the "·"
   # covers the piece after the <wbr>. A `q-xp-by` piece wider than the column wraps.
   defp given_answer(assigns) do
     ~H"""
     <p :if={@earlier} id={"#{@id}-who"} class="q-xp-cm-m" phx-no-format><span class="q-xp-it">{gettext("Earlier answer")}</span><wbr /><span class="q-xp-it q-xp-by"><.rich text={answered_words(@answer, @now)} /></span></p>
     <div id={@id} class={["q-xp-ans", @earlier && "q-xp-ans-old"]} phx-no-format><span :if={@answer.option} class="block">{@answer.option}<.recommended_mark :if={@answer[:recommended]} class="ms-1.5" /></span><span :if={@answer.note}>{@answer.note}</span></div>
+    <div
+      :if={@proposal and is_binary(@answer[:proposal])}
+      id={"#{@id}-proposal"}
+      class="q-ticket-formatted q-xp-md"
+    >
+      <blockquote><p phx-no-format>{@answer.proposal}</p></blockquote>
+    </div>
     <p :if={!@earlier} id={"#{@id}-who"} class="q-xp-cm-m">
       <span class="q-xp-it q-xp-by"><.rich text={answered_words(@answer, @now)} /></span>
     </p>
@@ -5420,6 +5555,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         </p>
         <p id={@q_id} class="q-xp-qt"><b phx-no-format>{@question.text}</b></p>
         <.asked_line question={@question} />
+        <.question_about id={"#{@anchor}-question-#{@n}-about"} question={@question} />
         <.run_text value={@question} key={:context} />
         <.given_answer
           :if={@earlier}
@@ -5431,7 +5567,7 @@ defmodule ApiaryWeb.WorkItemComponents do
         <%= if @read do %>
           <ul :if={@question.options != []} class="q-xp-opts">
             <li :for={option <- @question.options} class="q-xp-opt">
-              <.option_words option={option} />
+              <.option_words option={option} proposal />
             </li>
           </ul>
         <% else %>
@@ -5531,18 +5667,18 @@ defmodule ApiaryWeb.WorkItemComponents do
   end
 
   @doc false
-  # change_option/1 is the option of a question about a criterion (`criterion`, such as
-  # `ac-4`) with the criterion's new wording that the run proposes (`proposal`):
-  # `%{place:, criterion:, label:, proposal:}`, its place from 1, the criterion in upper
-  # case ("AC-4"), "Change AC-4:", which Qory Apiary builds from `criterion` and not from
-  # the option's title, and that wording. Nil for a question with no criterion or no
-  # option with a proposal; with several, the first.
+  # change_option/1 is the option of a question about an item of an output
+  # (`about.item`, such as `ac-4`) with the item's new wording that the run proposes
+  # (`proposal`): `%{place:, criterion:, label:, proposal:}`, its place from 1, the item in
+  # upper case ("AC-4"), "Change AC-4:", which Qory Apiary builds from `about.item` and not
+  # from the option's title, and that wording. Nil for a question with no `about.item` or
+  # no option with a proposal; with several, the first.
   @spec change_option(map) ::
           %{place: pos_integer, criterion: String.t(), label: String.t(), proposal: String.t()}
           | nil
-  def change_option(%{criterion: criterion, options: options})
-      when is_binary(criterion) and is_list(options) do
-    criterion = String.upcase(criterion)
+  def change_option(%{about: %{"item" => item}, options: options})
+      when is_binary(item) and is_list(options) do
+    criterion = String.upcase(item)
     label = gettext("Change %{criterion}:", criterion: criterion)
 
     options
@@ -5560,15 +5696,23 @@ defmodule ApiaryWeb.WorkItemComponents do
 
   attr :option, :map, required: true
 
+  attr :proposal, :boolean,
+    default: false,
+    doc: "whether the option's `proposal`, where it has one, shows as a quote"
+
   # An option the run wrote: its title, the mark of the option the run recommends on a line
   # of its own, and its explanation under them, both plain text. The mark is inside the
-  # card's label, so a screen reader reads it in the radio button's name.
+  # card's label, so a screen reader reads it in the radio button's name. With `proposal`,
+  # as text, the new wording the option proposes follows as a quote.
   defp option_words(assigns) do
     ~H"""
     <span class="q-xp-opt-w">
       <b class="q-xp-opt-t" phx-no-format>{@option.title}</b>
       <.recommended_mark :if={@option[:recommended]} class="justify-self-start" />
       <span class="q-xp-opt-e" phx-no-format>{@option.explanation}</span>
+      <div :if={@proposal and is_binary(@option[:proposal])} class="q-ticket-formatted q-xp-md">
+        <blockquote><p phx-no-format>{@option.proposal}</p></blockquote>
+      </div>
     </span>
     """
   end

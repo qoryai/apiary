@@ -34,8 +34,10 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      `Apiary.Artifacts.push/5` returns, the files that do not match the type's format
   #      among it, `422` `invalid_artifact`; a run's version of `questions` or
   #      `review-comments` that changes what members wrote, `422` `invalid_artifact` with
-  #      the rule it breaks; a `decision` that is not the id of a person's note on the
-  #      work item (`Apiary.Stages.Notes`), `422` `unknown_decision`; and a version of
+  #      the rule it breaks; a version of `acceptance-criteria` under a name other than
+  #      `main`, `422` `invalid_artifact` with `name` in `names`, before its file is
+  #      checked; a `decision` that is not the id of a person's note on the work item
+  #      (`Apiary.Stages.Notes`), `422` `unknown_decision`; and a version of
   #      `questions` or `review-comments` whose file is over the size limit as stored,
   #      with each number that is an integer in value written as an integer (`1e3` as
   #      `1000`), `422` `too_large`;
@@ -598,6 +600,15 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   defp refused({:unknown_decision, _decision}, _push), do: {:error, :unknown_decision}
 
+  # A version of the acceptance criteria under a name other than `main`: `422`
+  # `invalid_artifact` for `name`, whose form `Apiary.Artifacts.push/5` checked first.
+  defp refused({:invalid, {:criteria_name, name}}, _push) when is_binary(name),
+    do:
+      {:error,
+       {:invalid_artifact, "name",
+        "Name the acceptance criteria main: a work item has one set of acceptance " <>
+          "criteria, and this push has the name #{name}."}}
+
   defp refused({:invalid, :no_files}, _push), do: {:error, :invalid_request, "files"}
 
   # A verdict whose `track` the gate of the version's stage does not offer: `422`
@@ -734,7 +745,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
           "to this run's number."
 
       :answered_changed ->
-        "Leave question, context, options and criterion of each answered question in " <>
+        "Leave question, context, options and about of each answered question in " <>
           "#{filename} as the newest version of questions has them, set or absent."
 
       :new_not_open ->
@@ -758,7 +769,7 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
       :decided_changed ->
         "Leave question and options of each question with a decision in #{filename} " <>
-          "as the newest version of questions has them, and its context and criterion " <>
+          "as the newest version of questions has them, and its context and about " <>
           "while it stays decided or answered: to change them, withdraw the question and " <>
           "add a new one."
 
@@ -770,6 +781,14 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       :decision_run ->
         "Set decision.run of each question in #{filename} to the question's asked.run: " <>
           "only the run that asked a question records a decision on it."
+
+      {:about, id, type, name} ->
+        "Set about of question #{id} in #{filename} to an output of this work item, " <>
+          "or to {\"work_item\": true}: the work item has no #{type} named #{name}."
+
+      {:about_item, id, type, name, item} ->
+        "Set about.item of question #{id} in #{filename} to a criterion id of " <>
+          "#{type} named #{name}: no version of it has #{item}."
     end
   end
 

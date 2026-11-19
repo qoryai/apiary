@@ -82,6 +82,7 @@ defmodule Apiary.AccessApproversTest do
           %{"title" => "Postgres", "explanation" => "The database of the storefront."}
         ],
         "state" => "decided",
+        "about" => %{"work_item" => true},
         "asked" => %{"run" => number, "at" => at},
         "decision" => %{
           "option" => "Redis",
@@ -383,6 +384,7 @@ defmodule Apiary.AccessApproversTest do
           %{"title" => "Postgres", "explanation" => "The database of the storefront."}
         ],
         "state" => "decided",
+        "about" => %{"work_item" => true},
         "asked" => %{"run" => number, "at" => at},
         "decision" => %{
           "option" => "Redis",

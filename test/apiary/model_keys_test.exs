@@ -60,7 +60,7 @@ defmodule Apiary.ModelKeysTest do
 
   # The key `value_id` of the provider of `ctx` as a claim at `at` reads it.
   defp claim_key(ctx, value_id, at) do
-    ctx.provider |> ModelKeys.claim_keys(nil, at) |> Enum.find(&(&1.value_id == value_id))
+    ctx.provider |> ModelKeys.claim_keys(at) |> Enum.find(&(&1.value_id == value_id))
   end
 
   defp states(%Value{id: id}),
@@ -360,7 +360,8 @@ defmodule Apiary.ModelKeysTest do
       ) == true
     end
 
-    test "have their resets, schedule, cooldown, Pause for and whether they are named", ctx do
+    test "have their resets, schedule, cooldown, Pause for and whether they are the default",
+         ctx do
       now = ~U[2026-11-10 12:00:00.000000Z]
       main = ctx.values["main"]
       spare = ctx.values["spare"]
@@ -382,11 +383,10 @@ defmodule Apiary.ModelKeysTest do
           pause_seconds: 120
         })
 
-      keys = ctx.provider |> ModelKeys.claim_keys("spare", now) |> Map.new(&{&1.value_id, &1})
+      keys = ctx.provider |> ModelKeys.claim_keys(now) |> Map.new(&{&1.value_id, &1})
 
       assert %{
                id: main_id,
-               named: false,
                default: true,
                resets_at: ~U[2026-11-10 14:00:00.000000Z],
                schedule_resets_at: nil,
@@ -396,9 +396,9 @@ defmodule Apiary.ModelKeysTest do
              } = keys["main"]
 
       assert main_id == main.id
+      refute Map.has_key?(keys["main"], :named)
 
       assert %{
-               named: true,
                default: false,
                resets_at: ~U[2026-11-10 13:00:00.000000Z],
                schedule_resets_at: ~U[2026-11-16 09:00:00.000000Z],
@@ -729,7 +729,7 @@ defmodule Apiary.ModelKeysTest do
       assert Order.cooling?(claim_key(ctx, "main", before), before)
       assert ModelKeys.cooldown_counts([provider], before) == %{provider.id => 2}
       assert ModelKeys.cooling_until([provider.id], before) == until
-      refute ModelKeys.claim_keys(provider, nil, before) |> Order.start(before)
+      refute ModelKeys.claim_keys(provider, before) |> Order.start(before)
 
       assert {:cooldown, _words, _source} =
                ApiaryWeb.ModelKeyComponents.state(states.(before), before)
@@ -738,7 +738,7 @@ defmodule Apiary.ModelKeysTest do
       refute Order.cooling?(claim_key(ctx, "main", until), until)
       assert ModelKeys.cooldown_counts([provider], until) == %{provider.id => 0}
       assert ModelKeys.cooling_until([provider.id], until) == nil
-      assert ModelKeys.claim_keys(provider, nil, until) |> Order.start(until)
+      assert ModelKeys.claim_keys(provider, until) |> Order.start(until)
       assert {:available, _segments} = ApiaryWeb.ModelKeyComponents.state(states.(until), until)
     end
 
@@ -770,7 +770,7 @@ defmodule Apiary.ModelKeysTest do
       assert counts == %{provider.id => 1, other.id => 1}
 
       for p <- [provider, other] do
-        cooling = p |> ModelKeys.claim_keys(nil, at) |> Enum.count(&Order.cooling?(&1, at))
+        cooling = p |> ModelKeys.claim_keys(at) |> Enum.count(&Order.cooling?(&1, at))
         assert counts[p.id] == cooling
       end
 

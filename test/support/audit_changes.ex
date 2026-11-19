@@ -16,6 +16,7 @@ defmodule Apiary.AuditChanges do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures, only: [work_item_fixture: 1]
   import Ecto.Query
+  import ExUnit.Assertions, only: [assert: 1]
 
   alias Apiary.{
     Access,
@@ -1093,7 +1094,10 @@ defmodule Apiary.AuditChanges do
     before = entries()
 
     {:ok, choice} =
-      Apiary.ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+      Apiary.ModelChoices.put_choice(scope, :workspace, %{
+        provider: provider.public_id,
+        tiers: Apiary.ModelChoicesFixtures.every_tier(provider)
+      })
 
     %{scope: scope, subject: {"model_choice", choice.id}, before: before, secret: value}
   end
@@ -1782,6 +1786,16 @@ defmodule Apiary.AuditChanges do
     rule
   end
 
+  defp prepare(:"model_choice.write", %{scope: scope}) do
+    {:ok, provider} =
+      Apiary.Connections.create_provider(scope, %{
+        provider: "anthropic",
+        keys: [%{value_id: "main", value: "sk-audit-refused-key"}]
+      })
+
+    provider
+  end
+
   defp prepare(_action, _ctx), do: nil
 
   defp attempt(:"organisation.rename", scope, _),
@@ -1936,8 +1950,18 @@ defmodule Apiary.AuditChanges do
   defp attempt(:"runtime.write", scope, _),
     do: Apiary.Connections.create_runtime(scope, %{runtime: "claude"})
 
-  defp attempt(:"model_choice.write", scope, _),
-    do: Apiary.ModelChoices.put_choice(scope, :workspace, %{tiers: %{"light" => "model-1"}})
+  # A choice the save takes from an owner, so that only the access check returns the error,
+  # never the choice's checks.
+  defp attempt(:"model_choice.write", scope, provider) do
+    result =
+      Apiary.ModelChoices.put_choice(scope, :workspace, %{
+        provider: provider.public_id,
+        tiers: Apiary.ModelChoicesFixtures.every_tier(provider)
+      })
+
+    assert match?({:error, reason} when is_atom(reason), result)
+    result
+  end
 
   defp attempt(:"gate.approve", scope, work_item),
     do: Apiary.Stages.approve(scope, work_item, nil, expect_stage: work_item.stage_id)

@@ -11,7 +11,6 @@ defmodule Apiary.ModelKeys.OrderTest do
   defp key(id, added, opts \\ []) do
     %{
       id: id,
-      named: Keyword.get(opts, :named, false),
       default: Keyword.get(opts, :default, false),
       inserted_at: DateTime.add(~U[2026-11-01 09:00:00.000000Z], added),
       known_reset: Keyword.get(opts, :reset),
@@ -22,34 +21,19 @@ defmodule Apiary.ModelKeys.OrderTest do
   defp at(seconds), do: DateTime.add(@now, seconds)
   defp ids(keys), do: Enum.map(keys, & &1.id)
 
-  test "the keys are sent in tie order: the named key while free, then the free, then the cooling" do
+  test "the keys are sent in tie order: the free, then the cooling" do
     keys = [
       key("late", 1, reset: at(7200)),
       key("cooling-default", 2, default: true, until: at(600)),
       key("cooling", 0, until: at(60)),
       key("free", 3),
-      key("named", 4, named: true, reset: at(3600))
+      key("soon", 4, reset: at(3600))
     ]
 
     picked = Order.order(keys, @now)
-    assert ids(picked) == ~w(named free late cooling cooling-default)
-    assert Order.start(picked, @now).id == "named"
-    assert ids(Order.sent(picked, @now)) == ~w(named late free cooling-default cooling)
-
-    # A named key in cooldown goes with the keys in cooldown, in tie order.
-    named = [key("named", 0, named: true, until: at(60)), key("default", 5, default: true)]
-    assert ids(Order.sent(Order.order(named, @now), @now)) == ~w(default named)
-  end
-
-  test "the named key goes first while it is not in cooldown" do
-    keys = [
-      key("a", 1, default: true),
-      key("b", 2),
-      key("c", 3, named: true, reset: at(3600))
-    ]
-
-    assert ids(Order.order(keys, @now)) == ~w(c a b)
-    assert Order.start(Order.order(keys, @now), @now).id == "c"
+    assert ids(picked) == ~w(free soon late cooling cooling-default)
+    assert Order.start(picked, @now).id == "free"
+    assert ids(Order.sent(picked, @now)) == ~w(late free soon cooling-default cooling)
   end
 
   test "a key with no known reset, or one at or before now, goes before a known reset" do
@@ -96,18 +80,6 @@ defmodule Apiary.ModelKeys.OrderTest do
              ~w(ended free cool-early-default cool-early-b cool-late)
   end
 
-  test "a named key in cooldown takes its place among the keys in cooldown" do
-    keys = [
-      key("named", 1, named: true, until: at(3600)),
-      key("cool", 2, until: at(60)),
-      key("free", 3)
-    ]
-
-    ordered = Order.order(keys, @now)
-    assert ids(ordered) == ~w(free cool named)
-    assert Enum.find(ordered, & &1.named).id == "named"
-  end
-
   test "a run gets at most 6 keys, the free ones first; the rest serve later runs" do
     free = for n <- 1..4, do: key("free-#{n}", n)
     cooling = for n <- 1..4, do: key("cool-#{n}", n, until: at(n * 60))
@@ -122,7 +94,7 @@ defmodule Apiary.ModelKeys.OrderTest do
   end
 
   test "the start key is the first free key, never a key in cooldown" do
-    keys = [key("cool", 1, named: true, until: at(60)), key("free", 2)]
+    keys = [key("cool", 1, default: true, until: at(60)), key("free", 2)]
     assert Order.start(Order.order(keys, @now), @now).id == "free"
 
     all_cooling = [key("a", 1, until: at(60)), key("b", 2, until: at(120))]

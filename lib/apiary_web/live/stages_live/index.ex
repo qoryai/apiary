@@ -40,6 +40,14 @@ defmodule ApiaryWeb.StagesLive.Index do
   # default, 180 minutes. Whoever `time_limit.edit` refuses sees the field disabled; where
   # the edition has a sentence for them (`c:ApiaryWeb.Edition.operator_sentence/2`), it
   # shows under the field.
+  #
+  # With the features `factory` and `secrets`, each workflow's fold also has its model
+  # choice after the time limit (`ApiaryWeb.StagesLive.ModelPart`): Provider, "Use
+  # workspace default" or a model provider, and with a provider the three tiers and
+  # **Save model choice**, which
+  # writes the workflow's choice at once, under `model_choice.write`, and makes no version.
+  # "Use workspace default" saved removes the workflow's choice. Whoever
+  # `model_choice.write` refuses sees the fields disabled and no button.
   @moduledoc false
 
   use ApiaryWeb, :live_view
@@ -51,7 +59,7 @@ defmodule ApiaryWeb.StagesLive.Index do
   alias Apiary.Stacks.Sources
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.{MachineTypeWords, People, SettingsComponents}
-  alias ApiaryWeb.StagesLive.{Canvas, Editor, Inspector, Words}
+  alias ApiaryWeb.StagesLive.{Canvas, Editor, Inspector, ModelPart, Words}
 
   @edits Editor.events()
 
@@ -101,7 +109,10 @@ defmodule ApiaryWeb.StagesLive.Index do
         time_limits: saved_limits(scope),
         time_limit_rows: %{},
         time_limit_editable: Apiary.Access.can?(scope, :"time_limit.edit", workspace),
-        time_limit_note: ApiaryWeb.Edition.operator_sentence(:"time_limit.edit", scope)
+        time_limit_note: ApiaryWeb.Edition.operator_sentence(:"time_limit.edit", scope),
+        model: ModelPart.load(scope),
+        model_rows: %{},
+        model_editable: Apiary.Access.can?(scope, :"model_choice.write", workspace)
       )
       |> load(current)
       |> load_work_items()
@@ -324,6 +335,55 @@ defmodule ApiaryWeb.StagesLive.Index do
     end
   end
 
+  # A change of a workflow's model part: the Provider and the tiers, kept for its row.
+  def handle_event("model_change", %{"model" => %{} = params}, socket) do
+    with %{} = model <- socket.assigns.model,
+         true <- known_row?(socket.assigns, params) do
+      state = model_state(socket.assigns, params)
+      {:noreply, put_model_row(socket, params["row"], ModelPart.change(model, state, params))}
+    else
+      _unknown -> {:noreply, socket}
+    end
+  end
+
+  # Save model choice: the row's key and tiers as the workflow's choice, or, for "Use
+  # workspace default", no choice. It writes the model choices alone, never the process. A
+  # row the selected stage does not show, or a workflow the saved process does not have,
+  # saves nothing (`saveable?/2`).
+  def handle_event("model_save", %{"model" => %{} = params}, socket) do
+    %{current_scope: scope, model: model} = socket.assigns
+
+    with true <- model_editable?(socket.assigns) || :refused,
+         true <- saveable?(socket.assigns, params) || :not_saveable,
+         state = model_state(socket.assigns, params),
+         :ok <- ModelPart.save(scope, model, state, params) do
+      {:noreply, saved_model(socket, params)}
+    else
+      :not_saveable ->
+        {:noreply, socket}
+
+      {:refused, state} ->
+        {:noreply, put_model_row(socket, params["row"], state)}
+
+      # The features or the workspace went away while the page was open.
+      {:error, :not_found} ->
+        {:noreply, assign(socket, model: ModelPart.load(scope), model_rows: %{})}
+
+      _forbidden ->
+        {:noreply,
+         socket
+         |> assign(model_editable: false)
+         |> put_flash(
+           :error,
+           ApiaryWeb.Access.who_may(
+             scope,
+             :"model_choice.write",
+             gettext("Only owners and admins change this.")
+           )
+         )}
+    end
+  end
+
   def handle_event(_event, _params, %{assigns: %{may: false}} = socket) do
     {:noreply, put_flash(socket, :error, Words.refusal(:forbidden, nil))}
   end
@@ -467,11 +527,18 @@ defmodule ApiaryWeb.StagesLive.Index do
   ## Time limits
 
   # The workspace's time limits by workflow, the limits of its targets left out; nil
-  # where time limits are not shown (`Apiary.TimeLimits.list_limits/1`).
+  # where time limits are not shown (`Apiary.TimeLimits.list_limits/1`). Only the limits
+  # the workspace keeps (`Apiary.Processes.kept_workflows/1`): a leftover's workflow that
+  # a draft adds again starts with none, as the save deletes the leftover.
   defp saved_limits(scope) do
     case TimeLimits.list_limits(scope) do
       {:ok, limits} ->
-        for %{target_id: nil} = limit <- limits, into: %{}, do: {limit.workflow, limit.minutes}
+        kept = Processes.kept_workflows(scope.workspace)
+
+        for %{target_id: nil} = limit <- limits,
+            MapSet.member?(kept, limit.workflow),
+            into: %{},
+            do: {limit.workflow, limit.minutes}
 
       {:error, :not_found} ->
         nil
@@ -573,6 +640,47 @@ defmodule ApiaryWeb.StagesLive.Index do
         {:error, reason}
     end
   end
+
+  ## Model choices
+
+  defp model_editable?(assigns), do: assigns.model != nil and assigns.model_editable
+
+  defp model_state(assigns, params),
+    do: ModelPart.state(assigns.model, assigns.model_rows, params["row"], params["workflow"])
+
+  defp put_model_row(socket, row, state),
+    do: update(socket, :model_rows, &Map.put(&1, row, state))
+
+  # After a save: the choices read again, every row of the workflow at its saved state,
+  # and the saved row marked as just saved. No model part where the choices are no longer
+  # shown.
+  defp saved_model(socket, params) do
+    case ModelPart.load(socket.assigns.current_scope) do
+      nil ->
+        assign(socket, model: nil, model_rows: %{})
+
+      model ->
+        workflow = params["workflow"]
+
+        rows =
+          socket.assigns.model_rows
+          |> Map.reject(fn {_row, state} -> state.workflow == workflow end)
+          |> Map.put(params["row"], %{ModelPart.saved(model, workflow) | done: true})
+
+        assign(socket, model: model, model_rows: rows)
+    end
+  end
+
+  # What the inspector shows of the workflows' model choices, nil where they are not shown.
+  defp model(%{model: nil}), do: nil
+
+  defp model(assigns),
+    do:
+      Map.merge(assigns.model, %{
+        rows: assigns.model_rows,
+        editable: model_editable?(assigns),
+        workflows: assigns.time_limit_workflows
+      })
 
   # What the inspector shows of the time limits (`ApiaryWeb.StagesLive.Inspector`), nil
   # where they are not shown.
@@ -857,6 +965,7 @@ defmodule ApiaryWeb.StagesLive.Index do
                 marks={marks(assigns)}
                 read_failed={@declared_error && Words.read_failed(@declared_error, @snapshot)}
                 time_limit={time_limit(assigns)}
+                model={model(assigns)}
               />
             </div>
           </div>

@@ -57,6 +57,7 @@ defmodule ApiaryPro.Features do
     :path_rules,
     :factory,
     :registry,
+    :model_proxies,
     :workflow_model,
     :feature_visibility
   ]

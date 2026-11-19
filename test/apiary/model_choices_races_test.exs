@@ -15,7 +15,7 @@ defmodule Apiary.ModelChoicesRacesTest do
   import Apiary.ConnectionsFixtures, only: [target!: 2]
   import Apiary.Races
 
-  alias Apiary.{Connections, ModelChoices, Repo}
+  alias Apiary.{Connections, ModelChoicesFixtures, Repo}
   alias Apiary.Connections.Connection
   alias Apiary.ModelChoices.ModelChoice
 
@@ -56,7 +56,9 @@ defmodule Apiary.ModelChoicesRacesTest do
         place = place(unquote(place), ctx)
 
         {first, first_pid} =
-          hold(fn -> ModelChoices.put_choice(ctx.scope, place, choice(ctx.provider)) end)
+          hold(fn ->
+            ModelChoicesFixtures.put_choice(ctx.scope, place, choice(ctx.provider))
+          end)
 
         assert {:ok, %ModelChoice{}} = first.result
 
@@ -76,7 +78,11 @@ defmodule Apiary.ModelChoicesRacesTest do
         {first, first_pid} = hold(fn -> Connections.delete_provider(ctx.scope, ctx.provider) end)
         assert {:ok, %Connection{}} = first.result
 
-        second = start(fn -> ModelChoices.put_choice(ctx.scope, place, choice(ctx.provider)) end)
+        second =
+          start(fn ->
+            ModelChoicesFixtures.put_choice(ctx.scope, place, choice(ctx.provider))
+          end)
+
         await_blocked(second.backend, first_pid)
         commit(first)
 
@@ -101,11 +107,16 @@ defmodule Apiary.ModelChoicesRacesTest do
     end
 
     defp with_fallback(ctx),
-      do: Map.put(choice(ctx.provider), :fallbacks, [%{provider: ctx.fallback.public_id}])
+      do:
+        Map.put(choice(ctx.provider), :fallbacks, [
+          ModelChoicesFixtures.fallback_attrs(ctx.fallback)
+        ])
 
     test "the choice saved first: the deletion waits, and is refused", ctx do
       {first, first_pid} =
-        hold(fn -> ModelChoices.put_choice(ctx.scope, :workspace, with_fallback(ctx)) end)
+        hold(fn ->
+          ModelChoicesFixtures.put_choice(ctx.scope, :workspace, with_fallback(ctx))
+        end)
 
       assert {:ok, %ModelChoice{}} = first.result
 
@@ -122,13 +133,19 @@ defmodule Apiary.ModelChoicesRacesTest do
       assert {:ok, %Connection{}} = first.result
 
       second =
-        start(fn -> ModelChoices.put_choice(ctx.scope, :workspace, with_fallback(ctx)) end)
+        start(fn ->
+          ModelChoicesFixtures.put_choice(ctx.scope, :workspace, with_fallback(ctx))
+        end)
 
       await_blocked(second.backend, first_pid)
       commit(first)
 
-      assert {:error, %Ecto.Changeset{errors: [fallbacks: {"is invalid", opts}]}} =
+      assert {:error, %Ecto.Changeset{errors: [fallbacks: {refusal, opts}]}} =
                Task.await(second.task)
+
+      assert refusal ==
+               "Choose another provider for this fallback: its provider no longer exists in " <>
+                 "this organisation."
 
       assert {opts[:fallback], opts[:field]} == {0, :provider}
       refute provider_there?(ctx.fallback)

@@ -342,7 +342,9 @@ version cannot be pushed through the run API, whatever the type's size limit:
 - `name`: optional, the same form, `main` by default. Several artifacts of one type
   have different names, such as screenshots of two screens. `questions` and
   `review-comments` take only `main`: another name is `400` `invalid_request`, with
-  `name` in `names`.
+  `name` in `names`. `acceptance-criteria` takes only `main` too, because a work item has
+  one set of acceptance criteria: another name is `422` `invalid_artifact`, with `name` in
+  `names`, after the base64 check and before the format check.
 - `note`: optional, at most 4000 code points, with no control character but a tab or a
   line break, no format character but U+200C and U+200D, and no line or paragraph
   separator.
@@ -379,24 +381,36 @@ Checks, in order, after the checks of every request:
 4. Files larger together than the type's size limit, which bounds all files of one
    version: `422` `too_large`.
 5. A content that is not strict base64: `400` `invalid_request`.
-6. Files that do not match the type's format: `422` `invalid_artifact`, with the file
-   in `names`, such as `files[0]`, or `files` for a video type's version without a video
-   file and a `proposal` version without exactly one Markdown file. A version of the type
+6. A version of `acceptance-criteria` under a name other than `main` is `422`
+   `invalid_artifact`, with `name` in `names`, before its files are checked. Files that
+   do not match the type's format: `422` `invalid_artifact`, with the file in `names`,
+   such as `files[0]`, or `files` for a video type's version without a video file and a
+   `proposal` version without exactly one Markdown file. A version of the type
    `verdict` is checked against the type's JSON Schema, so its `verdict` is `passed`,
    `changes-requested` or `escalate`. A JSON file of a standard type, such as `questions`,
    `review-comments` or `verdict`, has each key once in each object: a key that comes
    twice is refused at the object's place, such as "at #/questions/0, the object has the
    key state twice", before the schema check. A question in `questions` has 0 to 4
    `options`, and at most one option has `recommended` true: a fifth option is refused
-   as "at #/questions/0/options, value should have at most 4 items, got 5". A question
-   may have a `criterion`, the id of the acceptance criterion it is about: `ac-` and a
-   number from 1 to 9999 with no leading zero, such as `ac-3`. Qory Apiary stores it as
-   the run pushed it. Another value, such as `AC-3`, is refused at
-   `#/questions/0/criterion`. An option of a question with a `criterion` may have a
-   `proposal`, the new wording of that criterion that the run proposes, 1 to 2,000
-   characters with line breaks allowed; the page shows it in a field that a member may
-   edit before answering. For a `proposal` on a question with no `criterion`, the push
-   fails with `422` `invalid_artifact`.
+   as "at #/questions/0/options, value should have at most 4 items, got 5". Each
+   question has an `about`, what it is about: `{"work_item": true}` for the work item
+   itself, or one output of the work item, `{"type": …, "name": …}`, with an `item`, 1 to
+   32 characters on one line, where the question is about one entry of that output. For
+   the type `acceptance-criteria`, the `item` is a criterion id: `ac-` and a number from
+   1 to 9999 with no leading zero, such as `ac-3`; another value, such as `AC-3`, is
+   refused as "at #/questions/0/about/item, value does not conform to pattern
+   /^ac-[1-9][0-9]{0,3}\z/". Qory Apiary stores `about` as the run pushed
+   it. An option of a question whose `about` has an `item` may have a `proposal`, the
+   new wording of that entry that the run proposes, 1 to 2,000 characters with line
+   breaks allowed; the page shows it in a field that a member may edit before answering.
+   For a `proposal` on a question whose `about` has no `item`, the push fails with `422`
+   `invalid_artifact`. A version of `acceptance-criteria` or `verification` is one JSON
+   file, checked against qory's acceptance criteria or verification format
+   (`contracts/harness/v1/acceptance-criteria.schema.json` and
+   `verification.schema.json`, copied to `priv/schemas/artifacts/`); Qory Apiary reads
+   no Markdown of either type. A criterion whose id an earlier criterion has is refused
+   at its id, the fix first: "at #/criteria/2/id, give criterion 3 an id that no earlier
+   criterion has: ac-1 is taken".
 
    A version of `proposal` has at most 10 files and 5 MiB (5242880 bytes) together:
 
@@ -526,12 +540,20 @@ Checks, in order, after the checks of every request:
    `asked` and `follows` of each question, keeps the questions of the newest version
    first, in the same order, and adds new questions after them, adds no `answer` and
    changes none, keeps each `history`, keeps `question`, `context`, `options` and
-   `criterion` of each question that stays `answered`, set or absent, each option's
+   `about` of each question that stays `answered`, set or absent, each option's
    `recommended` included, moves the answer of a question it reopens unchanged to the
    end of its `history` with `reopened.run` set to its `run.number`, and adds each
    question with `asked.run` set to its `run.number` and with `follows`, if any, set to
    ids of questions before it in the version; an absent `follows` and an empty one are
-   the same. The run may add, change or drop the `criterion` of an open question.
+   the same. The run may change the `about` of an open question.
+
+   The `about` of each question that the version adds, or whose `about` it changes, is
+   the work item, or an output of the work item: an artifact of that `type` and `name`
+   whose newest version is not a withdrawal. Its `item`, for the type
+   `acceptance-criteria`, is the id of a criterion in any version of that artifact, a
+   criterion that a later version removes or leaves out included. Qory Apiary checks no
+   `item` of another type. A question that keeps its
+   `about` is not checked again.
 
    The `decision` rules:
 
@@ -547,7 +569,7 @@ Checks, in order, after the checks of every request:
      to none of them.
    - The run keeps `question` and `options` of each question that has a `decision`, in
      every state, each option's `recommended` included, and its `context` and
-     `criterion` while it stays `decided` or `answered`.
+     `about` while it stays `decided` or `answered`.
 
    In `review-comments`, the run keeps every review comment and every earlier reply
    unchanged, adds no review comment, and adds at most one reply to an open review
@@ -886,7 +908,7 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 | `422` | `type_not_withdrawable` | `type`, `message` | A withdrawal of `questions`, `review-comments`, `verdict` or `proposal`, of a name of a type with `withdrawable: false`, of a name of the type in `submit.type` of the run's process version or the work item's, or of a name whose newest version a member approved at a gate |
 | `422` | `withdrawal_with_files` | `type`, `message` | A withdrawal with one file or more |
 | `422` | `unknown_decision` | `message` | A push's `decision` is not the id of a person's note on the run's work item |
-| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, a verdict's `answer` point is about a question that is not open, or a verdict's `track.id` is a track the gate of the run's stage does not offer (`names` is `["track"]`) |
+| `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, a verdict's `answer` point is about a question that is not open, a verdict's `track.id` is a track the gate of the run's stage does not offer (`names` is `["track"]`), or a version of `acceptance-criteria` has a name other than `main` (`names` is `["name"]`) |
 | `503` | `unavailable` | | The request could not be completed, such as a newest version of `questions` or `review-comments` that cannot be read; try again |
 
 The messages:
@@ -994,6 +1016,10 @@ The messages:
     of Shape offers no track." A stage the process version does not have reads "the run's
     stage" as its name. The check is the same for `POST verdict` and for `POST artifacts` with the type
     `verdict`.
+  - For a version of `acceptance-criteria` under a name other than `main`, `names` is
+    `["name"]`, and the message starts "Name the acceptance criteria main: a work item
+    has one set of acceptance criteria, and this push has the name" and ends with the
+    pushed name, such as "… this push has the name other."
   - For a version of `questions` or `review-comments` that changes what members wrote,
     one message per rule, such as "Leave each answer in questions.json as the newest
     version of questions has it: members write the answers." or "Close each review
@@ -1017,5 +1043,13 @@ The messages:
     - The question or options of a question with a decision changed, or its context
       while it stays decided or answered: "Leave question and options of each question
       with a decision in questions.json as the newest version of questions has them, and
-      its context while it stays decided or answered: to change them, withdraw the
-      question and add a new one."
+      its context and about while it stays decided or answered: to change them,
+      withdraw the question and add a new one."
+  - For a version of `questions` whose `about` points at an output or an item that the
+    work item does not have, the fix first:
+    - No such output: "Set about of question q4 in questions.json to an output of this
+      work item, or to {"work_item": true}: the work item has no screenshot named
+      scenario-2."
+    - No such criterion in any version of the acceptance criteria, a removed one
+      counting: "Set about.item of question q4 in questions.json to a criterion id of
+      acceptance-criteria named main: no version of it has ac-9."
