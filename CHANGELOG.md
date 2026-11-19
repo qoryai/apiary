@@ -199,7 +199,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   time that the key's page shows, and a request that seals a new value of the key for the
   run lets the run mark that value. The report is answered the same way when an entry is
   ignored. A run's gateway can mark any key sent to its run, and a key belongs to the whole
-  organisation (or the provider), so one run marks the key for every run that uses it.
+  organisation (or the provider), so one run marks the key for every run that uses it. The
+  run that continues a run after such a 401 starts on the next key of the provider.
 <!-- /feature -->
 <!-- feature: factory -->
 - A work item has a **Questions** tab, before **Thread**, once an agent has asked a
@@ -2916,7 +2917,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A Codex run that Forager ends `paused` with `model_key_switch`, as its key is out while
   another key of the run is usable, is Paused, where it read as failed. The run that
   continues it resumes the session that paused, once 60 seconds have passed after the
-  exit, so that the run's model keys report is recorded first. A paused run waits for the
+  exit, so that the run's model keys report is recorded first, or at once when that
+  report lists a key in `unauthorized`: the continuation then starts on the next key. A
+  paused run waits for the
   keys of the provider of the session that paused, and its Paused line shows that
   provider.
 <!-- /feature -->

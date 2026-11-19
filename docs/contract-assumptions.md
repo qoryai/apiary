@@ -983,7 +983,8 @@ the paused run's place in the queue, its `continues_id` the paused run. After an
 `paused` with `model_key_switch`, which has no key, a claim takes the continuation only
 once 60 seconds have passed after the exit (`dispatch_runs.report_wait_until`), the time
 in which Qory Apiary still records the run's model keys report, so the report is recorded
-before the claim orders the keys. The end of a paused run queues no continuation for
+before the claim orders the keys; the claim takes it earlier when that report marked a
+key in `unauthorized`, and it then starts on the next key. The end of a paused run queues no continuation for
 a prebuild, for a work item no longer in Explore, at another take in or placed at another
 stage, when the work item's stage does not run, such as one that waits for a person, or
 while another run of the take in has not ended. The paused run keeps

@@ -527,9 +527,10 @@ defmodule Apiary.ModelKeys do
         decrypt: Keyword.get(opts, :decrypt, true)
       )
 
-    # A key that needs a new value, after a provider refused it, is to be left out here,
-    # so that `Apiary.ModelKeys.Order` never picks it and the next key becomes the start
-    # key. That state does not exist yet; the filter of `values` goes here once it does.
+    # A key that needs a new value, after a provider refused it (`rejected`), is returned
+    # with `blocked: :new_key`, not left out: the run's page and the key's page say why. A
+    # claim drops each `blocked` key (`Apiary.Dispatches.RunSettings`) before
+    # `Apiary.ModelKeys.Order` picks, so a continuation after a 401 starts on the next key.
     for value <- values do
       key_states = Map.get(states, value.id, [])
       setting = Map.get(settings, value.id)
