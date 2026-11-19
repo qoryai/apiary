@@ -221,9 +221,19 @@ msgstr ""
 msgid "Remove the part before @ from the address. Enter the key among the provider's keys instead."
 msgstr ""
 
+#: lib/apiary/stacks/document.ex
+#, elixir-autogen, elixir-format
+msgid "Remove time_limit from workflow %{workflow}: a harness document takes no time limit for a workflow."
+msgstr ""
+
 #: lib/apiary/variables.ex
 #, elixir-autogen, elixir-format
 msgid "Remove variables at any level until each target has at most %{limit}. A run takes at most %{limit} variables, and this change would raise a target's variables above %{limit}."
+msgstr ""
+
+#: lib/apiary/stacks/document.ex
+#, elixir-autogen, elixir-format
+msgid "Set access: write on workflow %{workflow}, or remove its plan: only a workflow with access: write takes a plan."
 msgstr ""
 
 #: lib/apiary/kinds/endpoint.ex

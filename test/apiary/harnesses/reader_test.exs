@@ -134,7 +134,7 @@ defmodule Apiary.Harnesses.ReaderTest do
         "explore" => %{"access" => "write"},
         "verify" => %{"access" => "write-no-push"},
         "review" => %{"access" => "read"},
-        "fix" => %{"time_limit" => "45m"},
+        "fix" => %{"tier" => "thinking"},
         "plan" => %{"access" => "admin"},
         "test" => "write"
       }
@@ -153,7 +153,7 @@ defmodule Apiary.Harnesses.ReaderTest do
         "explore" => %{"access" => "write"},
         "verify" => %{"access" => "write-no-push"},
         "review" => %{"access" => "read"},
-        "fix" => %{"time_limit" => "45m"}
+        "fix" => %{"tier" => "thinking"}
       }
 
       assert Reader.workflow_levels(workflows) ==

@@ -106,31 +106,35 @@ defmodule Apiary.Dispatches.WireTest do
     "reason" => "The job could not start."
   }
   # The vendored contracts are at different integrations commits. The provisioner contract
-  # is at 55a22cb8, which adds the access value write-no-push to the run documents. That
-  # commit comes after 0506879f, which binds a group role to a list of agents. The run
-  # contract is at 283f8809, which adds the next-session request and its answer,
-  # time_limit_minutes, shared_run and full_suite to the documents of a run of a stage,
-  # the tier balanced in place of fast, the outcome of a run with its end codes, a later
-  # session's runtime, run_settings on every explore run, and
+  # is at 8d859a1d, after 6fed8c73, which describes a machine's dispatch as dispatch_id in
+  # place of key, and after 55a22cb8, which adds the access value write-no-push to the run
+  # documents. The run contract is at 8d859a1d, which allows time_limit_minutes from 1 to 1440. That commit
+  # comes after 6fed8c73, which adds the refusals of the next-session request, and plan
+  # and tier in place of time_limit on a workflow of a stack that a harness section
+  # defines, and after 283f8809, which adds the next-session request and
+  # its answer, time_limit_minutes, shared_run and full_suite to the documents of a run
+  # of a stage, the tier balanced in place of fast, the outcome of a run with its end
+  # codes, a later session's runtime, run_settings on every explore run, and
   # model_provider_credential_name in place of model_credential in the next-session
-  # answer. The diagnostics contract is at the same commit, whose fixture of an
-  # upper-case machine type is run-machine-type-upper-case.json.
+  # answer. The diagnostics contract is at 6fed8c73, at which a run's machine has `type`
+  # in place of `key`.
   # The integration contract is at 805a7bdb, which adds `vendor`, and `runtimes`,
   # `paths` and `oauth_refresh` of an API, to the description of a model provider.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
-          {"provisioner/v1", "55a22cb87e724df3008e511a7de84e1c710ac913"},
-          {"run/v1", "283f8809541f4198cc5519f4ae5d9ffbedf7cde2"},
+          {"provisioner/v1", "8d859a1d5bd0693bd647e0543d29aa8651230c3f"},
+          {"run/v1", "8d859a1d5bd0693bd647e0543d29aa8651230c3f"},
           {"integration/v1", "805a7bdb09a16441b8275857e9b50cdfe8227e2d"},
           {"explore/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
-          {"diagnostics/v1", "283f8809541f4198cc5519f4ae5d9ffbedf7cde2"}
+          {"diagnostics/v1", "6fed8c73033f4fd2be5e59a160ab9774e329cc5b"}
         ] do
       assert File.read!(Path.join([@vendored, dir, ".contract-ref"])) == ref <> "\n", dir
     end
   end
 
   # The run contract's schemas, each with a fixture directory of its name.
-  @run_schemas ~w(documents next-session-request next-session-answer outcome)
+  @run_schemas ~w(documents next-session-request next-session-answer next-session-refusal
+                  outcome)
 
   # A run fixture's schema is its directory's name under `fixtures/`, or, under
   # `invalid/`, the run schema its file name starts with.
@@ -139,12 +143,13 @@ defmodule Apiary.Dispatches.WireTest do
     fixtures = Path.join(@vendored, "run/v1/fixtures")
     count = &(fixtures |> Path.join(&1) |> Path.wildcard() |> length())
 
-    assert count.("documents/*.json") == 32
+    assert count.("documents/*.json") == 33
     assert count.("next-session-request/*.json") == 6
-    assert count.("next-session-answer/*.json") == 5
+    assert count.("next-session-answer/*.json") == 7
+    assert count.("next-session-refusal/*.json") == 9
     assert count.("outcome/*.json") == 23
-    assert count.("invalid/*.json") == 187
-    assert count.("**/*.json") == 32 + 6 + 5 + 23 + 187
+    assert count.("invalid/*.json") == 193
+    assert count.("**/*.json") == 33 + 6 + 7 + 9 + 23 + 193
 
     for path <- Path.wildcard(Path.join(fixtures, "**/*.json")) do
       relative = Path.relative_to(path, fixtures)

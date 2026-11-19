@@ -167,12 +167,12 @@
           "pattern": "^ng_[0-9a-hjkmnp-tv-z]{16}$"
         },
         "machine": {
-          "description": "The machine type that the run used, one of the machine types of the instance: its key and its display name, with at least one member; absent when Qory Apiary has no record of the machine type.",
+          "description": "The machine type that the run used, one of the machine types of the instance: type and name, with at least one member; absent when Qory Apiary has no record of the machine type.",
           "type": "object",
           "minProperties": 1,
           "properties": {
-            "key": {
-              "description": "The key of the machine type that the run used, such as standard: a lower-case letter, then lower-case letters, digits and hyphens, 1 to 64 characters in all; absent when Qory Apiary has no key for the machine type. When the run has a dispatch and its claim answer, https://qory.dev/contracts/provisioner/v1/claim-answer.schema.json, has machine, key is the same value.",
+            "type": {
+              "description": "The machine type that the run used, such as standard: a lower-case letter, then lower-case letters, digits and hyphens, 1 to 64 characters in all; absent when Qory Apiary has no value for it. When the run has a dispatch and its claim answer, https://qory.dev/contracts/provisioner/v1/claim-answer.schema.json, has machine, type is the same value.",
               "type": "string",
               "pattern": "^[a-z][a-z0-9-]{0,63}$"
             },

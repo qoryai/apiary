@@ -30,8 +30,7 @@
       ],
       "workflows": {
         "hello": {
-          "access": "write",
-          "time_limit": "45m"
+          "access": "write"
         },
         "waaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa": {}
       }
