@@ -125,7 +125,7 @@ defmodule ApiaryWeb.AdapterLive.ShowTest do
   end
 
   defp listed({title, :target}),
-    do: %{listed(title) | target: %{system: "code.example.com", path: title}}
+    do: %{listed(title) | target: %{collection: title, system: "code.example.com", path: title}}
 
   defp listed(title),
     do: %{ref: title, url: "https://forge.example.com/" <> title, title: title, target: nil}

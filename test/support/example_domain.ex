@@ -3,8 +3,8 @@ defmodule Apiary.Lingo.Domain.Example do
   A domain for the tests only, registered beside the software domain in `config/test.exs`:
   its target is named by the `account` label in the system the `platform` label names. It
   has no catalogue, so its locales fall back to the language's. A work item needs no
-  target. A target it has is a host name (`Apiary.Lingo.Domain.host?/1`) and a path of 1
-  to 200 characters that can be a label. A run gets no run variables, no environment is
+  target. A target it has may have no address; an address it has is a host name
+  (`Apiary.Lingo.Domain.host?/1`) and a path of 1 to 200 characters that can be a label. A run gets no run variables, no environment is
   prebuilt, and no target has a harness file. Its workspace type is `qory.example`
   (`definition/0`).
   """
@@ -46,6 +46,8 @@ defmodule Apiary.Lingo.Domain.Example do
   def target_required?, do: false
 
   @impl true
+  def check_target(%{system: nil, path: nil}), do: :ok
+
   def check_target(%{system: system, path: path}) do
     if Domain.host?(system) and is_binary(Target.label(path)) and String.length(path) <= 200,
       do: :ok,

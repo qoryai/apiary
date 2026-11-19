@@ -300,9 +300,9 @@ defmodule Apiary.NodesFixtures do
   A live collection (`Apiary.Adapters.Collection`) of a connection of the scope's
   organisation to a fresh adapter, written as it stands, as nothing in the product does:
   no listing, no feed entry, nothing queued. Linked to the scope's workspace, its target
-  `code.example.com` and `acme/` and its ref, its `environment_ref` `env-1`, unless
-  `attrs` sets `:workspace_id`, `:external_ref`, `:target_system`, `:target_path` or
-  `:environment_ref` (nil for none).
+  `code.example.com` and `acme/` and its ref, of its collection ref, its `environment_ref`
+  `env-1`, unless `attrs` sets `:workspace_id`, `:external_ref`, `:target_system`,
+  `:target_path`, `:target_collection_external_ref` or `:environment_ref` (nil for none).
   """
   def collection_fixture(scope, attrs \\ %{}) do
     attrs = Map.new(attrs)
@@ -319,6 +319,10 @@ defmodule Apiary.NodesFixtures do
       external_ref: ref,
       url: "https://code.example.com/acme/" <> ref,
       title: ref,
+      target_collection_external_ref:
+        Map.get_lazy(attrs, :target_collection_external_ref, fn ->
+          if Map.get(attrs, :target_system, "code.example.com"), do: ref
+        end),
       target_system: Map.get(attrs, :target_system, "code.example.com"),
       target_path: Map.get(attrs, :target_path, "acme/" <> ref),
       environment_ref: Map.get(attrs, :environment_ref, "env-1"),

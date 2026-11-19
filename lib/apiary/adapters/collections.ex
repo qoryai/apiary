@@ -259,6 +259,7 @@ defmodule Apiary.Adapters.Collections do
     :workspace_id,
     :backlog,
     :items,
+    :target_collection_external_ref,
     :target_system,
     :target_path,
     :environment_ref,
@@ -651,6 +652,7 @@ defmodule Apiary.Adapters.Collections do
           external_ref: collection.ref,
           url: collection.url,
           title: collection.title,
+          target_collection_external_ref: collection.target && collection.target.collection,
           target_system: collection.target && collection.target.system,
           target_path: collection.target && collection.target.path,
           # The wire always says (`Apiary.Adapters.Wire.listing/1`); said nothing of, a
@@ -681,6 +683,7 @@ defmodule Apiary.Adapters.Collections do
           set: [
             url: fragment("EXCLUDED.url"),
             title: fragment("EXCLUDED.title"),
+            target_collection_external_ref: fragment("EXCLUDED.target_collection_external_ref"),
             target_system: fragment("EXCLUDED.target_system"),
             target_path: fragment("EXCLUDED.target_path"),
             items: fragment("EXCLUDED.items"),
@@ -787,13 +790,19 @@ defmodule Apiary.Adapters.Collections do
         where: c.external_ref in ^refs and not is_nil(c.workspace_id),
         select:
           {c.external_ref,
-           %{listed: {c.workspace_id, c.target_system, c.target_path}, items: c.items}}
+           %{
+             listed:
+               {c.workspace_id, c.target_collection_external_ref, c.target_system, c.target_path},
+             items: c.items
+           }}
     )
     |> Map.new()
   end
 
   defp listed(%Collection{} = collection),
-    do: {collection.workspace_id, collection.target_system, collection.target_path}
+    do:
+      {collection.workspace_id, collection.target_collection_external_ref,
+       collection.target_system, collection.target_path}
 
   # The workspaces of the organisation `organisation_id` among `ids`, by id, each held
   # `FOR SHARE` in order of id, while it is not marked for deletion nor claimed by a purge,
@@ -817,7 +826,7 @@ defmodule Apiary.Adapters.Collections do
 
   # The targets of the collections `put` that `new_target?` picks, each in its workspace
   # among `workspaces`, as an assign makes them (`insert_targets/3`): by workspace id,
-  # then by system and path.
+  # then by adapter and collection ref.
   defp insert_listed_targets(organisation_id, workspaces, put, new_target?) do
     put
     |> Enum.filter(&(Map.has_key?(workspaces, &1.workspace_id) and new_target?.(&1)))

@@ -42,19 +42,30 @@ defmodule Apiary.Lingo.Domain do
   # against yet.
   @compile {:no_warn_undefined, Map.values(@domains)}
 
-  @typedoc "A target as a run's labels name it: its system and its path in that system."
-  @type target :: %{system: String.t(), path: String.t()}
+  @typedoc "An address as a run's labels name it: its system and its path in that system."
+  @type address :: %{system: String.t(), path: String.t()}
+
+  @typedoc """
+  A target: one of an adapter's collections, by the adapter and the adapter's ref of it,
+  and its address, `system` and `path`, both nil for a place with no address.
+  """
+  @type target :: %{
+          adapter_id: Ecto.UUID.t(),
+          collection_external_ref: String.t(),
+          system: String.t() | nil,
+          path: String.t() | nil
+        }
 
   @typedoc "Run variables: each variable's name, with its value."
   @type variables :: %{required(String.t()) => String.t()}
 
   @doc """
-  The target a run's labels name, by the domain's labelling rule:
+  The address of the target a run's labels name, by the domain's labelling rule:
   `{:ok, %{system:, path:}}`, or `:none` when the labels name none, or name one that
   cannot be a target's (`Apiary.Runs.Target.label/1`). `labels` is untrusted: any map, of
   any values.
   """
-  @callback target(labels :: map) :: {:ok, target} | :none
+  @callback target(labels :: map) :: {:ok, address} | :none
 
   @doc """
   The labels that name a target by the domain's labelling rule, the system's first and
@@ -116,19 +127,21 @@ defmodule Apiary.Lingo.Domain do
   @callback target_required?() :: boolean
 
   @doc """
-  Whether a target, its system and its path, keeps the domain's rules: `:ok`, or
+  Whether a target, its address or its lack of one, keeps the domain's rules: `:ok`, or
   `{:error, :target_invalid}`. Take in asks it of a ticket's target before a work item
   is made of it.
   """
   @callback check_target(target) :: :ok | {:error, :target_invalid}
 
   @doc """
-  The run variables of a run whose target is `target`, with `picked` the further paths in
-  its system that the run also reads, in order: `{:ok, variables}`, `{:ok, nil}` for a
-  domain that gives a run none, or `{:error, reason}` for a target or a list that breaks
-  the domain's rules. A claim asks it again of the target of the run it registers.
+  The run variables of a run whose target has the address `address`, with `picked` the
+  further paths in its system that the run also reads, in order: `{:ok, variables}`,
+  `{:ok, nil}` for a domain that gives a run none, or `{:error, reason}` for an address
+  or a list that breaks the domain's rules. A claim asks it again of the target of the
+  run it registers. A run whose target has no address gets none
+  (`run_variables/3`).
   """
-  @callback run_variables(target, picked :: [String.t()]) ::
+  @callback run_variables(address, picked :: [String.t()]) ::
               {:ok, variables | nil} | {:error, atom}
 
   @doc """
@@ -213,8 +226,11 @@ defmodule Apiary.Lingo.Domain do
   @spec for_type(String.t()) :: module | nil
   def for_type(key), do: Enum.find(choices(), &(definition(&1).key == key))
 
-  @doc "The target a run's labels name in the workspace: `target/1` of the workspace's domain."
-  @spec target(%Workspace{} | nil, term) :: {:ok, target} | :none
+  @doc """
+  The address of the target a run's labels name in the workspace: `target/1` of the
+  workspace's domain.
+  """
+  @spec target(%Workspace{} | nil, term) :: {:ok, address} | :none
   def target(workspace, %{} = labels), do: for_workspace(workspace).target(labels)
   def target(_workspace, _labels), do: :none
 
@@ -242,15 +258,14 @@ defmodule Apiary.Lingo.Domain do
   Whether a work item of the workspace may have `target`, a target or nil for none:
   `:ok`; `{:error, :no_target}` for none where the workspace's domain needs one
   (`c:target_required?/0`); or `{:error, :target_invalid}` for a target that breaks its
-  domain's rules (`c:check_target/1`).
+  domain's rules (`c:check_target/1`), with or without an address.
   """
   @spec check_target(%Workspace{} | nil, target | nil) ::
           :ok | {:error, :no_target | :target_invalid}
   def check_target(workspace, nil), do: check_no_target(for_workspace(workspace))
 
-  def check_target(workspace, %{system: system, path: path} = target)
-      when is_binary(system) and is_binary(path),
-      do: for_workspace(workspace).check_target(target)
+  def check_target(workspace, %{collection_external_ref: ref} = target) when is_binary(ref),
+    do: for_workspace(workspace).check_target(target)
 
   # The `else` branch runs for a domain that needs no target, such as the tests' example
   # domain. The helper takes any domain module: through `for_workspace/1`, with Software

@@ -106,13 +106,18 @@ defmodule Apiary.WorkItems.TakeInRacesTest do
 
     :ok =
       Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [
-        %{system: collection.target_system, path: collection.target_path}
+        %{
+          adapter_id: collection.adapter_id,
+          collection_external_ref: collection.target_collection_external_ref,
+          system: collection.target_system,
+          path: collection.target_path
+        }
       ])
 
     Repo.get_by!(Target,
       workspace_id: ctx.scope.workspace.id,
-      system: collection.target_system,
-      path: collection.target_path
+      adapter_id: collection.adapter_id,
+      collection_external_ref: collection.target_collection_external_ref
     )
   end
 

@@ -1700,7 +1700,7 @@ defmodule Apiary.AuditChanges do
             url: "https://tracker.acme.example/SHOP",
             title: "acme/shop",
             grant_ref: listing_grant(connection),
-            target: %{system: "code.example.com", path: "acme/shop"}
+            target: %{collection: "SHOP", system: "code.example.com", path: "acme/shop"}
           }
         ],
         listing: %{id: "first", part: 1, started_at: DateTime.utc_now(:second), complete: true}
