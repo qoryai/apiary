@@ -24,6 +24,9 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
 
   @day 86_400
 
+  # The wait of `token/2` for a refresh, in milliseconds.
+  @wait_ms 30_000
+
   setup do
     %{scope: scope} = sign_up_fixture()
     %{scope: scope}
@@ -51,12 +54,12 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
     tokens
   end
 
-  # The caller waits up to 60 seconds for a refresh unless a test says otherwise: with the
+  # The caller waits up to 30 seconds for a refresh unless a test says otherwise: with the
   # default of 10 seconds, a loaded machine returns the old token at the deadline while the
   # refresh still runs, and the test reads the login's row before the outcome is written.
   defp token(provider, opts \\ []) do
     id = value(provider, Keyword.get(opts, :key, "main")).id
-    opts = opts |> Keyword.put_new(:trigger, {:run, "run-1"}) |> Keyword.put_new(:wait, 60_000)
+    opts = opts |> Keyword.put_new(:trigger, {:run, "run-1"}) |> Keyword.put_new(:wait, @wait_ms)
     Login.access_token(plain(provider), id, Keyword.delete(opts, :key))
   end
 
@@ -148,6 +151,16 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
 
   defp secrets_of(tokens),
     do: [tokens.access_token, tokens.refresh_token, tokens.id_token]
+
+  # What a call that fails without a log line means: no line of the sign-in refresh (they
+  # all start with "model key sign-in") and no token anywhere in the captured log. Other
+  # lines, such as the warning of a public git request that runs in the background, are
+  # no concern of the call.
+  defp assert_no_refresh_log(log, tokens) do
+    lines = log |> String.split("\n", trim: true) |> Enum.filter(&(&1 =~ "model key sign-in"))
+    assert lines == []
+    for secret <- secrets_of(tokens), do: refute(log =~ secret)
+  end
 
   describe "when no refresh is due" do
     test "returns the stored access token and its expiry with no call", %{scope: scope} do
@@ -409,7 +422,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
         end
 
       assert [{:ok, access, expires_at}, {:ok, access_too, expires_at_too}] =
-               Task.await_many(calls, 20_000)
+               Task.await_many(calls, @wait_ms + 10_000)
 
       assert access == fresh["access_token"]
       assert {access_too, expires_at_too} == {access, expires_at}
@@ -486,7 +499,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       calls =
         for _caller <- 1..2, do: Task.async(fn -> token(provider, poll: 20) end)
 
-      assert [{:ok, first, _}, {:ok, second, _}] = Task.await_many(calls, 20_000)
+      assert [{:ok, first, _}, {:ok, second, _}] = Task.await_many(calls, @wait_ms + 10_000)
       assert {first, second} == {tokens.access_token, tokens.access_token}
       assert_received :request
       refute_received :request
@@ -625,7 +638,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
 
         log = capture_log(fn -> send(self(), {:result, token(provider)}) end)
         assert_received {:result, {:error, :sign_in_needed}}
-        assert log == ""
+        assert_no_refresh_log(log, tokens)
 
         cause = unquote(cause)
 
@@ -680,7 +693,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
 
         log = capture_log(fn -> send(self(), {:result, token(provider)}) end)
         assert_received {:result, {:error, :sign_in_needed}}
-        assert log == ""
+        assert_no_refresh_log(log, tokens)
 
         assert %Login{
                  state: "sign_in_needed",
@@ -1213,7 +1226,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
         log = capture_log(fn -> send(self(), {:result, token(provider)}) end)
         assert_received {:result, {:ok, access, _at}}
         assert access == tokens.access_token
-        assert log == ""
+        assert_no_refresh_log(log, tokens)
 
         cause = unquote(cause)
         assert %Login{state: "signed_in", failures: 1, lease_id: nil} = login = row(provider)
@@ -1290,7 +1303,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
         log = capture_log(fn -> send(self(), {:result, token(provider)}) end)
         assert_received {:result, {:ok, access, _at}}
         assert access == tokens.access_token
-        assert log == ""
+        assert_no_refresh_log(log, tokens)
 
         expected = if reason == :timeout, do: "timeout", else: "network"
         assert [%Entry{details: %{"cause" => ^expected}}] = trail(provider)
@@ -1315,8 +1328,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
 
       log = capture_log(fn -> send(self(), {:result, token(provider)}) end)
       assert_received {:result, {:ok, _access, _at}}
-      for secret <- secrets_of(tokens), do: refute(log =~ secret)
-      assert log == ""
+      assert_no_refresh_log(log, tokens)
       assert [%Entry{details: %{"cause" => "network"}}] = trail(provider)
     end
   end
