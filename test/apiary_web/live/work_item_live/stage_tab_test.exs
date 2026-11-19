@@ -813,7 +813,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
   end
 
   describe "the input frames beside a Scenarios frame" do
-    # The frames of a Verify gate as `StageTab.verify_frames/2` and `input_frames/2` make
+    # The frames of a Verify gate as `StageTab.verify_frames/2` and `input_frames/2` return
     # them: a film and pictures are one Scenarios frame, and Verify's inputs are a film,
     # pictures and an explainer.
     test "fold every film and picture into the Scenarios frame" do

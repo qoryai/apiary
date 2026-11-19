@@ -774,15 +774,18 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
       assert has_element?(view, "#artifact-history-#{newer.public_id}")
     end
 
-    test "is open to a member", ctx do
+    test "is open to the owner and a member, with no Add a version", ctx do
       version = pushed!(ctx, "explainer", [{"plan.md", "# First"}])
       %{user: member} = member_fixture(ctx.scope, :member)
 
-      {:ok, view, html} = live(log_in_user(build_conn(), member), page(ctx, version))
-      assert has_element?(view, "#artifact-header")
-      refute html =~ "Add a version"
-      refute has_element?(view, "#artifact-add")
-      refute has_element?(view, "a[href*='/artifacts/new']")
+      # Neither the owner nor a member has Add a version.
+      for conn <- [ctx.conn, log_in_user(build_conn(), member)] do
+        {:ok, view, html} = live(conn, page(ctx, version))
+        assert has_element?(view, "#artifact-header")
+        refute html =~ "Add a version"
+        refute has_element?(view, "#artifact-add")
+        refute has_element?(view, "a[href*='/artifacts/new']")
+      end
     end
 
     test "has no page that adds a version: the address of the old form is not found", ctx do
@@ -791,6 +794,10 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
           "/artifacts/new?type=mockup"
 
       assert status(ctx.conn, path) == 404
+
+      # A version of the same work item has a page.
+      assert status(ctx.conn, page(ctx, pushed!(ctx, "explainer", [{"plan.md", "# First"}]))) ==
+               200
     end
 
     test "the page's two columns use the class with the 1007 px breakpoint", ctx do
