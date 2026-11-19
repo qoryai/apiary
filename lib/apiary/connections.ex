@@ -131,7 +131,7 @@ defmodule Apiary.Connections do
   }
 
   alias Apiary.Accounts.Scope
-  alias Apiary.ModelKeys.Login
+  alias Apiary.ModelKeys.{Identity, Login}
 
   alias Apiary.Connections.{
     Connection,
@@ -1408,16 +1408,17 @@ defmodule Apiary.Connections do
              workspace_ids(organisation.id, connection_reach_ids(changeset, attrs)),
            :ok <- placed_reach(place, workspace_ids),
            {:ok, keys, logins} <-
-             login_keys(provider, attrs["keys"] |> in_order() |> trim_keys()),
+             login_keys(provider, attrs["keys"] |> in_order() |> trim_keys() |> name_keys()),
            {:ok, secret} <-
              Secrets.create_provider_keys(
                scope,
                %{name: keys_name(new), values: keys},
-               place
+               place,
+               hint: not Login.provider?(provider.name)
              ),
            :ok <- put_logins(secret.id, logins),
            {:ok, changeset} <-
-             default_key(changeset, provider, secret, attrs["default_key"] || first_key(attrs)),
+             default_key(changeset, provider, secret, attrs["default_key"] || first_key(keys)),
            {:ok, inserted} <- insert_sealed(changeset),
            :ok <- insert_workspaces(inserted, workspace_ids),
            {:ok, _entry} <-
@@ -1512,11 +1513,34 @@ defmodule Apiary.Connections do
 
   defp in_order(_keys), do: []
 
-  defp first_key(attrs) do
-    case attrs["keys"] |> in_order() |> List.first() do
-      %{} = key -> Value.normalise_value_id(key["value_id"] || key[:value_id])
+  defp first_key(keys) do
+    case List.first(keys) do
+      %{} = key -> Value.normalise_value_id(key["value_id"])
       _none -> nil
     end
+  end
+
+  # Each key that has no value id gets the next `key-<n>` (`Apiary.Secrets.Value.next_key_id/1`),
+  # after the value ids the other keys have: Apiary names a model provider's key, and no
+  # page shows the name.
+  defp name_keys(keys) do
+    taken = for %{} = key <- keys, id = Value.normalise_value_id(key["value_id"]), do: id
+
+    {keys, _taken} =
+      Enum.map_reduce(keys, taken, fn
+        %{} = key, taken ->
+          if Value.normalise_value_id(key["value_id"]) do
+            {key, taken}
+          else
+            id = Value.next_key_id(taken)
+            {Map.put(key, "value_id", id), [id | taken]}
+          end
+
+        other, taken ->
+          {other, taken}
+      end)
+
+    keys
   end
 
   # `value_id`, a value id of the keys' secret, as the provider's default key; else the
@@ -1853,13 +1877,26 @@ defmodule Apiary.Connections do
     do:
       write_keys(scope, provider, fn scope, secret, current ->
         attrs = trim_value(stringify(attrs))
-        value_id = Value.normalise_value_id(attrs["value_id"])
+
+        value_id =
+          Value.normalise_value_id(attrs["value_id"]) ||
+            Value.next_key_id(Enum.map(current.secret.values, & &1.value_id))
+
+        attrs = Map.put(attrs, "value_id", value_id)
 
         with {:ok, attrs, login} <- login_attrs(current, attrs),
              {:ok, _secret} <- Secrets.add_value(scope, secret, attrs, provider: current),
              {:ok, _setting} <- put_key_setting(current, value_id, settings),
              :ok <- put_login(current, value_id, login),
-             do: {:ok, %{after: %{value_id: value_id}, details: %{value_id: value_id}}}
+             do:
+               {:ok,
+                %{
+                  after: %{value_id: value_id},
+                  details: %{
+                    value_id: value_id,
+                    identity: Identity.for_value_id(current, value_id)
+                  }
+                }}
       end)
 
   @doc """
@@ -1895,7 +1932,15 @@ defmodule Apiary.Connections do
           fn scope, secret, current ->
             with :ok <- set_key(scope, secret, current, value_id, trim_key(value)),
                  {:ok, _setting} <- put_key_setting(current, value_id, settings),
-                 do: {:ok, %{details: %{value_id: value_id, value_set: true}}}
+                 do:
+                   {:ok,
+                    %{
+                      details: %{
+                        value_id: value_id,
+                        identity: Identity.for_value_id(current, value_id),
+                        value_set: true
+                      }
+                    }}
           end
         )
 
@@ -1936,6 +1981,10 @@ defmodule Apiary.Connections do
            {:ok, renamed} <- rename_key(scope, secret, current, value_id, new_value_id),
            {:ok, _setting} <- write_setting(changeset) do
         set = if new_value, do: %{value_set: true}, else: %{}
+        shown = (renamed && new_value_id) || value_id
+
+        details =
+          Map.merge(set, %{value_id: shown, identity: Identity.for_value_id(current, shown)})
 
         cond do
           renamed ->
@@ -1943,11 +1992,11 @@ defmodule Apiary.Connections do
              %{
                before: %{value_id: value_id},
                after: %{value_id: new_value_id},
-               details: Map.put(set, :value_id, new_value_id)
+               details: details
              }}
 
           new_value || changeset.changes != %{} ->
-            {:ok, %{details: Map.put(set, :value_id, value_id)}}
+            {:ok, %{details: details}}
 
           true ->
             {:ok, :unchanged}
@@ -2092,6 +2141,7 @@ defmodule Apiary.Connections do
   # A rename of the key `value_id` to `new_value_id`: `{:ok, true}` once renamed,
   # `{:ok, false}` for the same value id.
   defp rename_key(_scope, _secret, _current, value_id, value_id), do: {:ok, false}
+  defp rename_key(_scope, _secret, _current, _value_id, nil), do: {:ok, false}
 
   defp rename_key(scope, secret, current, value_id, new_value_id) do
     with {:ok, _secret} <-
@@ -2155,8 +2205,16 @@ defmodule Apiary.Connections do
   def delete_provider_key(%Scope{} = scope, %Connection{} = provider, value_id),
     do:
       write_keys(scope, provider, fn scope, secret, current ->
+        # Read before the key goes: the entry has the line the key had.
+        identity = Identity.for_value_id(current, value_id)
+
         with {:ok, _secret} <- Secrets.delete_value(scope, secret, value_id, provider: current),
-             do: {:ok, %{before: %{value_id: value_id}, details: %{value_id: value_id}}}
+             do:
+               {:ok,
+                %{
+                  before: %{value_id: value_id},
+                  details: %{value_id: value_id, identity: identity}
+                }}
       end)
 
   # A write to a provider's keys, under the provider's locks: `fun` of the scope, the
@@ -2193,6 +2251,8 @@ defmodule Apiary.Connections do
                do: {:ok, current}
 
         {:error, {:in_use, [%{kind: :model_choice, value_id: value_id} | _rest] = uses}} ->
+          identity = Identity.for_value_id(current, value_id)
+
           {:error,
            current
            |> change()
@@ -2202,7 +2262,7 @@ defmodule Apiary.Connections do
                "errors",
                "Change the model choices that use the key %{value} first: %{places}."
              ),
-             value: value_id,
+             value: identity,
              places: ModelChoices.listed_words(Enum.map(uses, & &1.name))
            )}
 
@@ -2217,7 +2277,7 @@ defmodule Apiary.Connections do
                "Choose another default key for %{provider} first: %{value} is its default key."
              ),
              provider: current.name,
-             value: current.default_value_id
+             value: Identity.for_value_id(current, current.default_value_id)
            )}
 
         {:error, reason} ->
