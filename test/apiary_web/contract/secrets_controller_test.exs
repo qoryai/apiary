@@ -134,7 +134,8 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
     end
 
     test "is answered only the keys it names, of the run's keys" do
-      # A run of another organisation, with two keys: the choice's, then the default.
+      # A run of another organisation, with two keys: the provider's default key, spare,
+      # then main.
       %{scope: scope} = sign_up_fixture()
       {:ok, _rule} = Policy.allow(scope, nil, %{host: "git.example"})
 
@@ -144,7 +145,9 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
             %{value_id: "main", value: model_key()},
             %{value_id: "spare", value: "sk-ant-spare-0123456789"}
           ],
-          choice: %{key: "spare"}
+          before_claim: fn provider ->
+            {:ok, _provider} = Apiary.Connections.put_default_key(scope, provider, "spare")
+          end
         )
 
       p = ctx.provider.public_id

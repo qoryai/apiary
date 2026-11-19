@@ -49,27 +49,39 @@ defmodule Apiary.Dispatches.RunSettings do
   #     (`Apiary.Kinds.Providers.api/2`);
   #   * `provider_gone`: the endpoint of that API is a setting whose address
   #     `Apiary.Kinds.Endpoint` refuses;
-  #   * `key_gone`: the chosen key is no longer one of the provider's keys;
-  #   * `model_gone`: no model resolves, for a choice with no model of a provider whose
-  #     description lists none; or the chosen effort value is no longer among both the
-  #     model's effort values in the description and the runtime's, which a model the
-  #     description no longer lists has none of. A model the description does not list
-  #     ends no run by itself.
+  #   * `key_gone`: the provider has no key;
+  #   * `model_gone`: no model resolves: the choice maps a `thinking` tier whose entry
+  #     does not go with its provider (`Apiary.ModelChoices.Resolution`), or it maps
+  #     none and has no model and a provider whose description lists none; or the run's
+  #     effort value is no longer among both the model's effort values in the
+  #     description and the runtime's, which a model the description no longer lists has
+  #     none of. A choice's `model` that the description does not list ends no run by
+  #     itself.
   #
   # Then the keys, at the claim's clock (`build/2`). The run takes the provider's keys
-  # where one of them is not in cooldown (`Apiary.ModelKeys`). Else it takes the first of
-  # the choice's fallbacks, in their order, that forms as the choice's provider does
-  # above, with the fallback's model and effort and the tiers that go with its provider
-  # (`Apiary.ModelChoices.Resolution.fallback/3`), and that has a key not in cooldown; a
-  # fallback that does not form is passed over and ends nothing. A run takes the keys of
-  # one provider alone. With none, `build/2` returns `{:cooling, built, ids}`: the claim
-  # checks what can end the run first, then leaves it waiting with `ids` as the providers
-  # it waits for (`Apiary.Dispatches.Handover`): the choice's provider, each fallback
-  # that formed, and each fallback whose settings check ran out of time or crashed.
+  # where one of them is not in cooldown (`Apiary.ModelKeys`). Else it walks the later
+  # steps in order and takes the first that forms as the choice's provider does above
+  # and has a key not in cooldown:
   #
-  # The run gets at most 6 keys, picked in the order of `Apiary.ModelKeys.Order`, the key
-  # the choice names first while it is not in cooldown; the first of that order is the
-  # start key, never one in cooldown. They are kept in the order the run configuration
+  #   1. under a workflow's override, the default step, with its runtime and its tiers
+  #      (`Apiary.ModelChoices.Resolution`);
+  #   2. the fallbacks, in their order: the default step's under an override, else the
+  #      choice's; each with the fallback's runtime and tiers
+  #      (`Apiary.ModelChoices.Resolution.fallback/3`). A fallback's runtime is the run's
+  #      `runtime`, and its provider's API for that runtime the run's `provider_api`.
+  #
+  # A step whose provider's keys were already found in cooldown is passed over: its keys
+  # are the same, so the skip only saves work and changes no result. A step that does not
+  # form is passed over and ends nothing. A run takes
+  # the keys of one provider alone. With none, `build/2` returns `{:cooling, built,
+  # ids}`: the claim checks what can end the run first, then leaves it waiting with `ids`
+  # as the providers it waits for (`Apiary.Dispatches.Handover`): the choice's provider,
+  # each later step's provider that formed, and each whose settings check ran out of time
+  # or crashed. The queue keeps the same providers in the same order for the claim's
+  # filter (`model_providers/1`).
+  #
+  # The run gets at most 6 keys of the provider, picked in the order of
+  # `Apiary.ModelKeys.Order`; the first of that order is the start key, never one in cooldown. They are kept in the order the run configuration
   # sends them (`Apiary.ModelKeys.Order.sent/2`), the start key marked.
   #
   # A deny rule of the security policy is not asked: it never blocks a host of an
@@ -77,10 +89,11 @@ defmodule Apiary.Dispatches.RunSettings do
   #
   # ## What it writes
   #
-  # `run_settings`, in the schema's order: `runtime`, `model`, `effort` when the choice has
-  # one, `provider_models` and `tiers`, a tier left out when no choice maps it to a model
-  # that goes with the provider (`Apiary.ModelChoices.Resolution`). The documents have no
-  # key, no secret and no id of a key, and neither has the stored copy.
+  # `run_settings`, in the schema's order: `runtime`, `model` and `effort`, the `thinking`
+  # tier's where the choice has one, `effort` left out where there is none,
+  # `provider_models` and `tiers`, a tier left out when the choice does not map it to a
+  # model that goes with the provider (`Apiary.ModelChoices.Resolution`). The documents
+  # have no key, no secret and no id of a key, and neither has the stored copy.
   #
   # `hold/1` also reads the time limits: `time_limit`, the minutes the time limits of the
   # run's workspace and target come to for the run's workflow
@@ -104,7 +117,8 @@ defmodule Apiary.Dispatches.RunSettings do
   # `provider_models` is the description's models (`Apiary.Connections.provider_models/1`),
   # in its order, each with the effort values that both it and the runtime have, then the
   # chosen model and each tier's model that the description does not list, each once,
-  # with no effort, in the order `model`, `light`, `balanced`, `thinking`. A description has
+  # with no effort, `model` first and then the tiers in the order of
+  # `Apiary.ModelChoices.Resolution.tiers/0`. A description has
   # at most 200 models (`Apiary.Kinds.Provider.load!/1`), so the list stays within the
   # schema's 256.
   #
@@ -214,6 +228,55 @@ defmodule Apiary.Dispatches.RunSettings do
 
   def choice_in_effect(%DispatchRun{}), do: nil
 
+  # model_providers/1 is the row ids of the model providers a claim of the run of the
+  # queue `dispatch_run` would try if it ran now, read without a lock, each once, in the
+  # order the claim tries them: the provider of the choice in effect, the default step's
+  # under a workflow's override, then the fallbacks of the choice they follow
+  # (`Apiary.ModelChoices.Resolution.walk/1`); none for a run of another step. As in the
+  # resolution, a default step whose provider is gone is left out with its fallbacks, and
+  # so is a fallback whose provider is gone (`providers/1`).
+  @doc false
+  @spec model_providers(DispatchRun.t()) :: [Ecto.UUID.t()]
+  def model_providers(
+        %DispatchRun{step: @step, workspace_id: workspace_id, work_item_id: id} = dispatch_run
+      ) do
+    workspace = Repo.get!(Workspace, workspace_id)
+    target = target(workspace, id)
+    input = ModelChoices.choices_for(workspace, target, workflow(dispatch_run, workspace, target))
+    {choices, with_fallbacks} = Resolution.walk(input)
+
+    fallbacks =
+      case with_fallbacks do
+        nil ->
+          []
+
+        choice ->
+          choice
+          |> Repo.preload(:fallbacks)
+          |> Map.fetch!(:fallbacks)
+          |> Enum.sort_by(& &1.position)
+      end
+
+    present =
+      present_providers(
+        workspace.organisation_id,
+        Enum.map(Enum.drop(choices, 1), & &1.connection_id) ++
+          Enum.map(fallbacks, & &1.connection_id)
+      )
+
+    {choices, fallbacks} =
+      case choices do
+        [in_effect, %{connection_id: id}] when not is_map_key(present, id) -> {[in_effect], []}
+        _present -> {choices, Enum.filter(fallbacks, &is_map_key(present, &1.connection_id))}
+      end
+
+    (Enum.map(choices, & &1.connection_id) ++ Enum.map(fallbacks, & &1.connection_id))
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  end
+
+  def model_providers(%DispatchRun{}), do: []
+
   # time_limit_minutes/2 is the minutes the time limits of the workspace and the target of
   # the run of the queue `dispatch_run` come to for `workflow`, the default for no limit,
   # read without a lock, as `hold/1` reads them.
@@ -310,9 +373,10 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # build/2 is the run settings of what `hold/1` held, for a claim at `now`: `{:ok, nil}`
   # for a run with none, `{:ok, built}`, `{:end, cause}`, `{:cooling, built, ids}` where
-  # every key of the choice's provider and of each usable fallback is in cooldown, with
-  # the choice's settings without keys and those providers' row ids, the choice's first,
-  # and those of the fallbacks whose settings check ran out of time or crashed,
+  # every key of the choice's provider and of each usable later step (the default step
+  # and the fallbacks) is in cooldown, with the choice's settings without keys and those
+  # providers' row ids, the choice's first, and those of the later steps whose settings
+  # check ran out of time or crashed,
   # `:unstable` where the choices changed while `hold/1` read them, `{:unchecked,
   # provider}` where the check of the settings of `provider`, the chosen one, ran out of
   # time or crashed (`Apiary.Connections.provider/1`), or `:unavailable` where the run
@@ -361,7 +425,7 @@ defmodule Apiary.Dispatches.RunSettings do
                keys(
                  built,
                  provider,
-                 {input, resolution, providers, described, runtime},
+                 {input, resolution, providers, described},
                  held,
                  now
                ),
@@ -370,12 +434,12 @@ defmodule Apiary.Dispatches.RunSettings do
   end
 
   # The settings `built` of the choice's provider with its keys, else those of the first
-  # fallback with a key not in cooldown, else `{:cooling, built, provider_ids}`: the
-  # choice's settings without keys, and the choice's provider first, then the fallbacks
-  # of `fallback/6`'s `{:cooling, ids}`.
-  defp keys(built, provider, {input, resolution, providers, described, runtime}, held, now) do
-    with nil <- keyed(built, provider, named_value_id(input), now) do
-      case fallback(input, resolution, {providers, described}, runtime, held.workspace.id, now) do
+  # later step with a key not in cooldown (`fall_back/6`), else `{:cooling, built,
+  # provider_ids}`: the choice's settings without keys, and the choice's provider first,
+  # then the providers of `fall_back/6`'s `{:cooling, ids}`.
+  defp keys(built, provider, {input, resolution, providers, described}, held, now) do
+    with nil <- keyed(built, provider, now) do
+      case fall_back(input, resolution, {providers, described}, provider, held.workspace.id, now) do
         {:ok, _built} = fallen ->
           fallen
 
@@ -385,22 +449,14 @@ defmodule Apiary.Dispatches.RunSettings do
     end
   end
 
-  # The key the choice in effect names, nil for none: the key that goes first.
-  defp named_value_id(input) do
-    case Resolution.in_effect(input) do
-      {_level, %{value_id: value_id}} -> value_id
-      nil -> nil
-    end
-  end
-
   # The settings `built` with the run's keys of `provider` at `now`, or nil where every
   # key is in cooldown: the keys a run gets and its start key by their order
   # (`Apiary.ModelKeys.Order.order/2`), kept in the order the run configuration sends
   # them (`Apiary.ModelKeys.Order.sent/2`). Each key is a credential named by the
   # provider's public id and the key's place in that order, from 1: `<public id>-1`,
   # `<public id>-2` and on; the start key is marked `start`.
-  defp keyed(built, %Connection{} = provider, named, now) do
-    keys = provider |> ModelKeys.claim_keys(named, now) |> Order.order(now)
+  defp keyed(built, %Connection{} = provider, now) do
+    keys = provider |> ModelKeys.claim_keys(now) |> Order.order(now)
 
     if start = Order.start(keys, now) do
       stored =
@@ -417,8 +473,7 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # A key as the run keeps it and its run configuration writes it: its row id, its name,
   # `start` on the start key, its Pause for, and, where it has them, its known reset from
-  # the providers' responses, the next reset of its schedule, whether the choice is set to
-  # it, the end of its cooldown while it is in cooldown at `now`, a window at its Use up
+  # the providers' responses, the next reset of its schedule, the end of its cooldown while it is in cooldown at `now`, a window at its Use up
   # to percentage included, and that percentage. The limit windows are not on the key:
   # the run keeps them once, in `provider_api` (`with_windows/2`). Times are in whole
   # seconds, rounded up.
@@ -430,7 +485,6 @@ defmodule Apiary.Dispatches.RunSettings do
       {"pause_for_s", key.pause_seconds},
       {"resets_at", time(key.resets_at)},
       {"schedule_resets_at", time(key.schedule_resets_at)},
-      {"chosen", if(key.named, do: true)},
       {"cooldown_until", if(Order.cooling?(key, now), do: time(key.cooldown_until))},
       {"use_up_to_percent", key.use_up_to_percent}
     ]
@@ -446,36 +500,56 @@ defmodule Apiary.Dispatches.RunSettings do
     DateTime.to_iso8601(whole)
   end
 
-  # The first of the choice's fallbacks, in their order, that forms and has a key not in
-  # cooldown at `now`, with its model and effort: `{:ok, built}`, or `{:cooling, ids}`
-  # for none. `ids` are the fallbacks that formed, each with every key in cooldown, and
-  # those whose settings check ran out of time or crashed, which a later claim checks
-  # again. A fallback that does not form for a cause that ends a run on the choice's
-  # provider is passed over and left out of `ids`.
-  defp fallback(
-         input,
-         %Resolution{fallbacks: fallbacks} = resolution,
-         {providers, described},
-         runtime,
-         ws,
-         now
-       ) do
-    Enum.reduce_while(fallbacks, {:cooling, []}, fn %{connection_id: id} = fallback,
-                                                    {:cooling, ids} ->
-      provider = Map.fetch!(providers, id)
-      fallen = Resolution.fallback(input, resolution, fallback)
+  # The first later step, in order, that forms and has a key not in cooldown at `now`:
+  # the default step under a workflow's override, then the fallbacks, each with its
+  # runtime and tiers (`Apiary.ModelChoices.Resolution.fallback/3`). `{:ok, built}`, or `{:cooling, ids}`
+  # for none. A step whose provider's keys were already found in cooldown, `provider`'s
+  # first, is passed over. `ids` are the providers of the steps that formed, each with
+  # every key in cooldown, and of those whose settings check ran out of time or crashed,
+  # which a later claim checks again. A step that does not form for a cause that ends a
+  # run on the choice's provider is passed over and left out of `ids`.
+  defp fall_back(input, %Resolution{} = resolution, {providers, described}, provider, ws, now) do
+    steps =
+      case resolution.default do
+        nil ->
+          for fallback <- resolution.fallbacks,
+              do: Resolution.fallback(input, resolution, fallback)
 
-      with true <- Connections.intact?(provider),
-           {:ok, built} <- form(fallen, provider, described[id], runtime, ws) do
-        case keyed(built, provider, nil, now) do
-          {:ok, _built} = keyed -> {:halt, keyed}
-          nil -> {:cont, {:cooling, ids ++ [provider.id]}}
-        end
-      else
-        {:unchecked, _provider} -> {:cont, {:cooling, ids ++ [provider.id]}}
-        _not_formed -> {:cont, {:cooling, ids}}
+        %Resolution{} = default ->
+          [default] ++
+            for fallback <- default.fallbacks,
+                do: Resolution.fallback(input, default, fallback)
       end
+
+    steps
+    |> Enum.reduce_while({:cooling, [], [provider.id]}, fn step, acc ->
+      step(step, {providers, described}, ws, now, acc)
     end)
+    |> case do
+      {:ok, _built} = keyed -> keyed
+      {:cooling, ids, _cooled} -> {:cooling, ids}
+    end
+  end
+
+  # One step of `fall_back/6`: `{:halt, {:ok, built}}` for a step with a free key, else
+  # the providers waited for and those whose keys are all in cooldown (`cooled`).
+  defp step(%Resolution{connection_id: id} = step, {providers, described}, ws, now, acc) do
+    {:cooling, ids, cooled} = acc
+    provider = Map.fetch!(providers, id)
+
+    with false <- id in cooled,
+         true <- Connections.intact?(provider),
+         {:ok, runtime} <- runtime(step),
+         {:ok, built} <- form(step, provider, described[id], runtime, ws) do
+      case keyed(built, provider, now) do
+        {:ok, _built} = keyed -> {:halt, keyed}
+        nil -> {:cont, {:cooling, ids ++ [id], cooled ++ [id]}}
+      end
+    else
+      true -> {:cont, acc}
+      {:unchecked, _provider} -> {:cont, {:cooling, ids ++ [id], cooled}}
+      _not_formed -> {:cont, acc}
+    end
   end
 
   # The providers the choices name, and their fallbacks', each once.
@@ -485,6 +559,20 @@ defmodule Apiary.Dispatches.RunSettings do
         is_binary(id),
         uniq: true,
         do: id
+  end
+
+  # The row ids among `ids` of the organisation's model providers that are there, the
+  # rows `providers/1` reads, as a map of each to true.
+  defp present_providers(_organisation_id, []), do: %{}
+
+  defp present_providers(organisation_id, ids) do
+    from(c in Connection,
+      where: c.id in ^Enum.reject(ids, &is_nil/1) and c.organisation_id == ^organisation_id,
+      where: not is_nil(c.provider_kind) and c.chain == "organisation",
+      select: {c.id, true}
+    )
+    |> Repo.all()
+    |> Map.new()
   end
 
   # The providers the choices and their fallbacks name, as they are now: with the
@@ -501,7 +589,7 @@ defmodule Apiary.Dispatches.RunSettings do
         where: not is_nil(c.provider_kind) and c.chain == "organisation",
         preload: [
           workspaces: [],
-          secret: [values: ^from(v in Value, select: struct(v, [:id, :value_id]))]
+          secret: [values: ^from(v in Value, select: struct(v, [:id]))]
         ]
       )
       |> Repo.all()
@@ -565,7 +653,7 @@ defmodule Apiary.Dispatches.RunSettings do
          :ok <- applies(provider, workspace_id),
          {:ok, api} <- api(description, runtime),
          {:ok, endpoint} <- endpoint(api, provider),
-         :ok <- key(provider, resolution.value_id),
+         :ok <- key(provider),
          models = Connections.provider_models(description),
          :ok <- model(models, resolution, runtime) do
       api = with_windows(%{api | "endpoint" => endpoint}, description)
@@ -614,11 +702,9 @@ defmodule Apiary.Dispatches.RunSettings do
     end
   end
 
-  defp key(%Connection{secret: %Secret{values: values}}, value_id) when is_binary(value_id) do
-    if Enum.any?(values, &(&1.value_id == value_id)), do: :ok, else: {:end, :key_gone}
-  end
-
-  defp key(%Connection{}, _value_id), do: {:end, :key_gone}
+  # A provider with a key: a run takes its keys.
+  defp key(%Connection{secret: %Secret{values: [_ | _]}}), do: :ok
+  defp key(%Connection{}), do: {:end, :key_gone}
 
   # A chosen model, with no effort or one of its offered effort values.
   defp model(_models, %Resolution{model_id: nil}, _runtime), do: {:end, :model_gone}

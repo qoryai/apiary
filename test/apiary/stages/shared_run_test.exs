@@ -572,8 +572,9 @@ defmodule Apiary.Stages.SharedRunTest do
     # The registered run of `run`, which ran a session for each of `ran`, each with a
     # transcript chunk unless it is one of `silent`, and paused at its model keys' limit in
     # the last of them; then its run of the queue ended and continued, as
-    # `Apiary.Dispatches.RunEnd` does. The registered run and the continuation.
-    defp paused_in!(scope, run, ran, silent \\ []) do
+    # `Apiary.Dispatches.RunEnd` does. Each session started on its runtime in `runtimes`,
+    # by session number, else on `claude`. The registered run and the continuation.
+    defp paused_in!(scope, run, ran, silent \\ [], runtimes \\ %{}) do
       registered =
         Apiary.RunEventsFixtures.run_fixture(scope, %{
           dispatch_run_id: run.id,
@@ -603,8 +604,15 @@ defmodule Apiary.Stages.SharedRunTest do
           {10 + session, "session.exited", data}
         end
 
+      # The runtime of the last session is the paused run's (`runs.runtime`).
+      starts =
+        for session <- ran do
+          data = %{"session" => session, "runtime" => Map.get(runtimes, session, "claude")}
+          {session, "session.started", Apiary.RunEventsFixtures.session_started_data(data)}
+        end
+
       exited = %{"state" => "paused", "reason" => "model_key_limit", "exit_code" => 143}
-      Apiary.RunEventsFixtures.events_fixture(registered, chunks ++ exits)
+      Apiary.RunEventsFixtures.events_fixture(registered, starts ++ chunks ++ exits)
       Apiary.RunEventsFixtures.event_fixture(registered, 20, "run.exited", exited)
       assert {:ok, %Run{state: "paused"}} = Apiary.Runs.Projector.project(registered)
 
@@ -628,22 +636,50 @@ defmodule Apiary.Stages.SharedRunTest do
       :ok = verdict!(run, "passed")
       assert {:session, %{session: 2, workflow: "write-acceptance-checks"}} = report(run, 1)
 
-      {paused, continuation} = paused_in!(scope, run, [1, 2])
+      # Session 1 ran on Claude Code, and session 2 on Codex.
+      {paused, continuation} =
+        paused_in!(scope, run, [1, 2], [], %{1 => "claude", 2 => "codex"})
+
       assert paused.paused_session == 2
+      assert paused.runtime == "codex"
       assert %{session_id: "a1b2c3d4"} = Apiary.Runs.Transcript.last(paused.id)
 
-      # The continuation starts at session 2's entry, and resumes session 2's transcript.
+      # The continuation starts at session 2's entry, and resumes session 2's transcript on
+      # session 2's runtime alone.
       assert %DispatchRun{workflow: "write-acceptance-checks", stage_entry: 1} = continuation
 
       assert %{"session_id" => "e5f6a7b8", "path" => path} =
-               Apiary.Runs.Transcript.resume_at_claim(continuation)
+               Apiary.Runs.Transcript.resume_at_claim(continuation, "codex")
 
       assert path == transcript_path(2)
+      assert Apiary.Runs.Transcript.resume_at_claim(continuation, "claude") == nil
 
       walk!(continuation, :read)
 
       assert [%Session{sequence: 1, workflow: "write-acceptance-checks"}] =
                continuation |> claim!() |> sessions()
+    end
+
+    test "in its second session on Claude Code after a first on Codex resumes on Claude Code alone",
+         %{scope: scope} do
+      save!(scope, [
+        build(workflows(~w(plan-the-build write-acceptance-checks implement-changes)))
+      ])
+
+      {_work_item, run} = taken_in!(scope)
+      :ok = verdict!(run, "passed")
+      assert {:session, %{session: 2}} = report(run, 1)
+
+      {paused, continuation} =
+        paused_in!(scope, run, [1, 2], [], %{1 => "codex", 2 => "claude"})
+
+      assert paused.runtime == "claude"
+
+      assert %{"session_id" => "e5f6a7b8", "path" => path} =
+               Apiary.Runs.Transcript.resume_at_claim(continuation, "claude")
+
+      assert path == transcript_path(2)
+      assert Apiary.Runs.Transcript.resume_at_claim(continuation, "codex") == nil
     end
 
     test "in a second session that wrote no transcript starts that session afresh", %{
@@ -663,8 +699,39 @@ defmodule Apiary.Stages.SharedRunTest do
       # Session 1's transcript is there, but the continuation resumes no session: it runs
       # session 2's workflow in a new session.
       assert Apiary.Runs.Transcript.last(paused.id) != nil
-      assert Apiary.Runs.Transcript.resume_at_claim(continuation) == nil
+      assert Apiary.Runs.Transcript.resume_at_claim(continuation, "claude") == nil
       assert %DispatchRun{workflow: "write-acceptance-checks", stage_entry: 1} = continuation
+    end
+
+    test "in its second session, claimed through the handover, stores the resume of that session",
+         %{scope: scope} do
+      save!(scope, [
+        build(workflows(~w(plan-the-build write-acceptance-checks implement-changes)))
+      ])
+
+      {_work_item, run} = taken_in!(scope)
+      :ok = verdict!(run, "passed")
+      assert {:session, %{session: 2}} = report(run, 1)
+
+      {paused, continuation} = paused_in!(scope, run, [1, 2])
+      assert paused.runtime == "claude"
+      walk!(continuation, :read)
+
+      # The claim forms the run settings of session 2's workflow, which has no model
+      # choice: the catalogue's runtime, the runtime session 2 ran on.
+      pool = Apiary.NodesFixtures.pool_fixture(scope)
+      %{access_key: key} = Apiary.AccessKeysFixtures.enrolled_key_fixture(scope, pool)
+
+      %{dispatch_run: claimed, run: registered} =
+        Apiary.DispatchedRunsFixtures.handed_over(scope, key, continuation, %{})
+
+      assert %DispatchRun{workflow: "write-acceptance-checks", stage_entry: 1} = claimed
+      assert registered.run_settings["runtime"] == paused.runtime
+
+      assert %{"run_id" => run_id, "session_id" => "e5f6a7b8", "path" => path} =
+               registered.resume
+
+      assert {run_id, path} == {paused.node_run_id, transcript_path(2)}
     end
   end
 

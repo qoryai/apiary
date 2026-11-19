@@ -12,7 +12,16 @@ defmodule Apiary.WorkspaceSetupTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Edition, EditionStubs, ModelChoices, Repo, WorkItems, WorkspaceSetup}
+  alias Apiary.{
+    Connections,
+    Edition,
+    EditionStubs,
+    ModelChoicesFixtures,
+    Repo,
+    WorkItems,
+    WorkspaceSetup
+  }
+
   alias Apiary.Adapters.{Collection, Connection}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Nodes.Node
@@ -340,11 +349,17 @@ defmodule Apiary.WorkspaceSetupTest do
 
       # The organisation's default is no choice of the workspace.
       {:ok, _} =
-        ModelChoices.put_choice(ctx.scope, :organisation, %{provider: provider.public_id})
+        ModelChoicesFixtures.put_choice(ctx.scope, :organisation, %{
+          provider: provider.public_id
+        })
 
       refute WorkspaceSetup.model_key?(ctx.workspace)
 
-      {:ok, _} = ModelChoices.put_choice(ctx.scope, :workspace, %{provider: provider.public_id})
+      {:ok, _} =
+        ModelChoicesFixtures.put_choice(ctx.scope, :workspace, %{
+          provider: provider.public_id
+        })
+
       assert Edition.model_key_ready?(ctx.workspace)
 
       # Another workspace has no choice.
@@ -553,11 +568,15 @@ defmodule Apiary.WorkspaceSetupTest do
       refute done?.(main)
 
       # The organisation's default (level 6) is no choice of the workspace.
-      {:ok, _} = ModelChoices.put_choice(scope, :organisation, %{provider: provider.public_id})
+      {:ok, _} =
+        ModelChoicesFixtures.put_choice(scope, :organisation, %{
+          provider: provider.public_id
+        })
+
       refute done?.(main)
 
       {:ok, _} =
-        ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id, key: "main"})
+        ModelChoicesFixtures.put_choice(scope, :workspace, %{provider: provider.public_id})
 
       assert done?.(main)
       assert WorkspaceSetup.model_key?(main)

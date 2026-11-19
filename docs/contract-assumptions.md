@@ -888,8 +888,7 @@ push credentials, and the harness links.
 Each key is an API credential named `<provider's public id>-<n>`, from 1, with the
 provider's `format`, `endpoint` and `auth`, so the keys form one key group with the start
 key (the Forager contract, Several model keys). The claim orders the provider's keys at
-its clock: the key chosen in the model choice, while it is out of cooldown; then the keys
-with no known reset, or one already passed; then the keys by their known reset, the
+its clock: the keys with no known reset, or one already passed; then the keys by their known reset, the
 closest minute first; then the keys in cooldown, the earliest `cooldown_until` first. Ties
 go in tie order: the default key first, then the other keys by when each was added. A
 key's known reset is the earliest `resets_at` that a gateway reported, else the next reset
@@ -901,12 +900,12 @@ after the claim's clock (`Apiary.ModelKeys.cooldown/4`). The limit windows are
 description, vendored with the catalogue: `five_hour` and `seven_day` for the Claude
 subscription, none for an API key. The first key of that order is the start key,
 `model_credential`, never a key in cooldown. `credentials` lists the keys in the order the
-contract has the server send them: the chosen key while it is out of cooldown, then the
-other keys out of cooldown in tie order, then the keys in cooldown in tie order. Each
+contract has the server send them: the keys out of cooldown in tie order, then the keys in cooldown in tie order. Each
 entry has `pause_for_s`, the key's Pause for, else 60 for an API key and 3600 for a
 subscription, written into the run once: by its claim, or, for a run claimed before runs
 kept several keys, by the upgrade (20261111100000). Where the claim had them, an entry
-also has `resets_at`, `schedule_resets_at`, `cooldown_until` and `chosen`. A key's
+also has `resets_at`, `schedule_resets_at` and `cooldown_until`; no entry has `chosen`,
+since a model choice chooses a provider, not one of its keys. A key's
 `cooldown_until` is the latest end of its cooldown: a window's `cooldown_until`, or the
 `resets_at` of a limit window at the key's Use up to percentage. A key with a Use up to
 percentage, of a provider with limit windows, also has `use_up_to_percent` and
@@ -917,7 +916,9 @@ entry has both or neither: in a run claimed before runs kept the windows, no key
 either member. The entries are fixed for the run: a later state reaches the gateway in the
 answer to its model keys report (The model keys report, below). Where every key of the
 provider is in cooldown, the claim takes the first of the choice's fallbacks, in their
-order, with a key out of cooldown, and the fallback's model and effort. Where every key of
+order, with a key out of cooldown, and the fallback's runtime and tiers: the run's
+`runtime` is the fallback's, and its `provider_api` the API of the fallback's provider for
+that runtime. Where every key of
 the provider and of each fallback is in cooldown, the claim registers nothing and the run
 of the queue waits again, its `dispatch_runs.model_provider_ids` set to those providers;
 no claim takes a run of the queue while every key of each of its providers is in cooldown
@@ -943,7 +944,7 @@ in cooldown then. The session that paused is the one whose `dev.qory.session.exi
 `paused` with `model_key_limit`, or `cancelled` with `model_key_limit` from a gateway of
 the earlier contract, which the projection folds into the run (`runs.paused_session`);
 Forager pauses only the last session of a run. The claim of the
-continuation stores its `resume` (`Apiary.Runs.Transcript.resume_at_claim/1`): the paused
+continuation stores its `resume` (`Apiary.Runs.Transcript.resume_at_claim/2`): the paused
 run's id, and `session_id` and `path` of the last `dev.qory.session.transcript` by
 sequence of the session that paused, whatever chunks of other sessions arrived after it.
 If the session that paused sent no chunk, the continuation has no `resume` and starts a
@@ -955,8 +956,14 @@ them, and of a chain of more than 256 runs only the newest 256 are listed. The r
 stores it once, so every run configuration of the run has the same `resume`, however
 the chain changes later. A continuation registered before `resume` was stored, or of a
 paused run whose transcript is absent or cannot be restored, has none, and its session
-starts a new session. A continuation registered before `runs` was stored has a `resume`
-without `runs`.
+starts a new session. So does a continuation whose run settings have another `runtime`
+than the session that paused, as one that takes a fallback on another runtime, because a
+runtime cannot resume another runtime's transcript. That session's runtime is the
+paused run's `runs.runtime`, the `runtime` of its last `dev.qory.session.started` that
+is not bare, as Forager pauses only the last session; a paused run with no such event has
+none, and its continuation starts a new session too. A new session continues from the
+commits the paused run pushed (`Apiary.Runs.PushedCommit.for_run/2`). A continuation
+registered before `runs` was stored has a `resume` without `runs`.
 
 **Through a gateway.** A registration whose node's choice resolves to a gateway is
 answered with no run configuration: a signed `200`, `application/json`,

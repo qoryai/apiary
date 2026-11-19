@@ -3195,7 +3195,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     # default), of `ctx`'s work item, take in and stage unless `:same_item` is false, then
     # of another work item of that scope, ended Paused, with the transcript chunks
     # `chunks`, each `{sequence, offset, bytes}`. `ctx`'s run becomes its second attempt,
-    # with the `resume` its claim stores (`Apiary.Runs.Transcript.resume_at_claim/1`).
+    # with the `resume` its claim stores (`Apiary.Runs.Transcript.resume_at_claim/2`).
     defp paused!(ctx, chunks, opts \\ []) do
       scope = Keyword.get(opts, :scope, ctx.scope)
 

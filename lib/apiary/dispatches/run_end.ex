@@ -950,7 +950,8 @@ defmodule Apiary.Dispatches.RunEnd do
   # The run of the queue ended with `cause`, and `detail` kept on it, its live dispatch
   # with the cause, a stale one not yet ended `run_ended`, and the slot freed once where
   # no machine is left (`Apiary.Dispatches.Slots`). Its workspace's queue changed,
-  # whether or not the slot was freed.
+  # whether or not the slot was freed. Its end may leave its workflow's overrides unused
+  # (`Apiary.Processes.delete_leftovers_after_runs/1`).
   # A cause of a handover that cannot form a run (`Apiary.Dispatches.Handover.unformed/0`)
   # comes with the outcome `error` on a run that is not a prebuild, as at the claim.
   defp end_locked(%DispatchRun{id: id, workspace_id: workspace_id} = run, cause, now, detail) do
@@ -960,6 +961,8 @@ defmodule Apiary.Dispatches.RunEnd do
           [state: :ended, end_cause: cause, end_detail: detail, updated_at: now] ++
             unformed_outcome(run, cause)
       )
+
+    :ok = Apiary.Processes.delete_leftovers_after_runs([id])
 
     {_count, _rows} =
       Repo.update_all(

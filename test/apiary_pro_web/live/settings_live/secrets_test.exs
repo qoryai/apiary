@@ -616,7 +616,8 @@ defmodule ApiaryProWeb.SettingsLive.SecretsTest do
       assert {:ok, [_secret]} = Secrets.list_organisation_secrets(ctx.scope)
     end
 
-    @tag with_features: Features.all() -- [:organisation_variables, :factory, :workflow_model]
+    @tag with_features:
+           Features.closed(Features.all() -- [:organisation_variables, :factory, :workflow_model])
     test "without the feature and without the model keys the page is not found, and nothing leads to it",
          ctx do
       assert_error_sent :not_found, fn -> get(ctx.conn, list_path(ctx.scope)) end

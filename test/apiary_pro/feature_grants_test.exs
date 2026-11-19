@@ -330,10 +330,10 @@ defmodule ApiaryPro.FeatureGrantsTest do
              )
 
       # A new operator is granted what the instance has, the organisation's variables
-      # among it, and is shown `secrets`, `path_rules`, `factory`, `registry` and
-      # `workflow_model`, which no grant names.
+      # among it, and is shown `secrets`, `path_rules`, `factory`, `registry`,
+      # `model_proxies` and `workflow_model`, which no grant names.
       assert ApiaryPro.Features.of(operator_fixture().organisation) -- @built ==
-               [:secrets, :path_rules, :factory, :registry, :workflow_model]
+               [:secrets, :path_rules, :factory, :registry, :model_proxies, :workflow_model]
     end
   end
 

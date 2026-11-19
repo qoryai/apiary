@@ -828,6 +828,7 @@ defmodule Apiary.WorkItems.Moves do
     with {:ok, work_item} <- held |> Ecto.Changeset.change(changes) |> Repo.update(),
          :ok <- event(work_item, :undone, scope, now, %{"take_in" => work_item.take_in}),
          {:ok, _seq} <- feed_if(tell_undone?, work_item, "undone"),
+         :ok <- WorkItems.delete_leftovers_later([held, work_item]),
          {:ok, _entry} <-
            Audit.record(Repo, scope, :"work_item.undo", work_item, %{
              before: %{state: :exploring},

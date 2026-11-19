@@ -175,7 +175,7 @@ defmodule Apiary.Runs.Run do
     field :registration_variables, :map
 
     # The `resume` member of the run configuration of a run of the queue that continues a
-    # paused run (`Apiary.Runs.Transcript.resume_at_claim/1`): `"run_id"`, the paused
+    # paused run (`Apiary.Runs.Transcript.resume_at_claim/2`): `"run_id"`, the paused
     # run's id, `"session_id"` and `"path"` of its transcript, and `"runs"`, the paused
     # runs it continues, oldest first (absent for a run claimed before `"runs"` was
     # kept). Written once with the registration and never changed, so every run
