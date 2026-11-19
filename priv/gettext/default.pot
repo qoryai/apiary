@@ -1137,6 +1137,17 @@ msgstr ""
 msgid "%{hours} h %{minutes} m"
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/key.ex
+#, elixir-autogen, elixir-format
+msgid "%{identity} is added."
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/key.ex
+#: lib/apiary_web/live/provider_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{identity} is saved."
+msgstr ""
+
 #: lib/apiary_web/components/submission_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{id} · %{change}"
@@ -1593,7 +1604,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/gateways.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/provider_live/index.ex
-#: lib/apiary_web/live/provider_live/key.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is added."
 msgstr ""
@@ -1672,8 +1682,6 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/node_live/show.ex
-#: lib/apiary_web/live/provider_live/key.ex
-#: lib/apiary_web/live/provider_live/show.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is saved."
@@ -9594,7 +9602,7 @@ msgstr ""
 
 #: lib/apiary_web/live/provider_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Edit key %{name}"
+msgid "Edit key %{identity}"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -13257,7 +13265,6 @@ msgstr ""
 msgid "Lowercase letters and digits joined by hyphens, such as demo-findings. It cannot change later."
 msgstr ""
 
-#: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Lowercase letters, digits, ., _ and -."
@@ -13951,7 +13958,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/gateways.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/node_live/show.ex
-#: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/stages_live/inspector.ex
@@ -17270,6 +17276,16 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Qory Apiary could not refresh the sign-in of %{identity}: %{reason} (%{code}). It tries again at %{time}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not refresh the sign-in of %{identity}: the refresh address in the description of %{provider} is not on the allowed list (bad_endpoint). Ask the author of that description to correct it"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Qory Apiary could not refresh the sign-in of the key %{key} of %{provider}: %{reason} (%{code}). It tries again at %{time}"
 msgstr ""
 
@@ -17390,6 +17406,11 @@ msgstr ""
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary received nothing from the run for 10 minutes, so it marked the run lost and freed its slot. The run may still be running; only its exit changes this record now."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary refreshed the sign-in of %{identity}"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -20376,12 +20397,22 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Sign in again on %{identity}: Qory Apiary could not refresh its sign-in, because %{reason} (%{code})"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Sign in again on the key %{key} of %{provider}: Qory Apiary could not refresh its sign-in, because %{reason} (%{code})"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Sign in again, then copy again. Your session ended."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Sign in to ChatGPT again for %{identity}: Qory Apiary could not refresh the sign-in, because OpenAI returned no account id (%{code})"
 msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
@@ -24698,7 +24729,7 @@ msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
-msgid "Waiting for a model key: enter a new value for %{key}."
+msgid "Waiting for a model key: enter a new value for %{identity}."
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
@@ -24713,17 +24744,17 @@ msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
-msgid "Waiting for a model key: refreshing the ChatGPT sign-in of %{key}."
+msgid "Waiting for a model key: refreshing the ChatGPT sign-in of %{identity}."
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
-msgid "Waiting for a model key: sign in to ChatGPT again on the page of %{key}."
+msgid "Waiting for a model key: sign in to ChatGPT again for %{identity}."
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
-msgid "Waiting for a model key: the server is restarting; the ChatGPT sign-in of %{key} refreshes after it starts."
+msgid "Waiting for a model key: the server is restarting; the ChatGPT sign-in of %{identity} refreshes after it starts."
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
