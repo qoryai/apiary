@@ -13,7 +13,8 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
   # So does `@run_credentials`, whose table has a foreign key to `adapter_connections`,
   # and `@grant_account` and `@grant_rule`, whose foreign keys from `source_collections`
   # and `grant_rules` rest on `adapter_grants`, which `@grants` drops, and `@declined`, whose
-  # check `@again` drops.
+  # check `@again` drops. `@records` runs down first, as its foreign key to `work_items`
+  # rests on the index `@again` drops, and stays down.
   # The migrations change `nodes`, `access_keys` and `access_key_enrolment_codes` under
   # every other test, so this is not async.
   use Apiary.DataCase, async: false
@@ -76,6 +77,12 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
   @declined {20_261_103_090_000, Apiary.Repo.Migrations.CloseEveryDeclinedWorkItem,
              "close_every_declined_work_item"}
 
+  # The later migration that keeps a record of each session of a run. Its foreign key to a
+  # work item rests on the index of `work_items` on `id`, `organisation_id`, which `@again`
+  # drops: down first, up last.
+  @records {20_261_118_161_000, Apiary.Repo.Migrations.KeepARecordOfEachSessionOfARun,
+            "keep_a_record_of_each_session_of_a_run"}
+
   @tables ~w(nodes access_keys access_key_enrolment_codes node_instances)
   @checks ~w(access_keys_place_check access_key_enrolment_codes_place_check
              access_keys_node_fkey access_keys_enrolment_code_fkey
@@ -104,7 +111,8 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
           @run_credentials,
           @grant_account,
           @grant_rule,
-          @declined
+          @declined,
+          @records
         ],
         not Code.ensure_loaded?(migration) do
       Application.app_dir(:apiary, "priv/repo/migrations")
@@ -124,6 +132,7 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
     do: assert(:ok = Ecto.Migrator.up(Repo, version, migration, @options))
 
   defp down_all! do
+    down!(@records)
     down!(@declined)
     down!(@grant_rule)
     down!(@grant_account)
@@ -234,6 +243,7 @@ defmodule Apiary.Nodes.AdapterMigrationsTest do
   test "rolled back, the adapter's kind refuses to go while an adapter row is there" do
     adapter_fixture()
 
+    down!(@records)
     down!(@declined)
     down!(@grant_rule)
     down!(@grant_account)

@@ -24,8 +24,13 @@ defmodule Apiary.ModelChoices.MigrationTest do
     {20_261_110_153_000, Apiary.Repo.Migrations.KeepTheFallbacksOfAModelChoice,
      "keep_the_fallbacks_of_a_model_choice"},
     {20_261_118_120_000, Apiary.Repo.Migrations.NameTheModelTierBalanced,
-     "name_the_model_tier_balanced"}
+     "name_the_model_tier_balanced"},
+    {20_261_118_163_000, Apiary.Repo.Migrations.ChooseAProviderAndARuntimePerFallback,
+     "choose_a_provider_and_a_runtime_per_fallback"}
   ]
+
+  @balanced 20_261_118_120_000
+  @per_fallback 20_261_118_163_000
 
   @options [log: false, migration_lock: false]
 
@@ -47,6 +52,23 @@ defmodule Apiary.ModelChoices.MigrationTest do
       )
 
     rows |> List.flatten() |> Enum.sort()
+  end
+
+  # The migration of `version` in `@migrations`.
+  defp migration(version) do
+    {^version, migration, _name} = List.keyfind(@migrations, version, 0)
+    migration
+  end
+
+  # The columns of `table`, each with whether it takes NULL.
+  defp columns(table) do
+    %{rows: rows} =
+      Repo.query!(
+        "SELECT column_name, is_nullable = 'YES' FROM information_schema.columns WHERE table_name = $1",
+        [table]
+      )
+
+    Map.new(rows, fn [name, nullable] -> {name, nullable} end)
   end
 
   defp function? do
@@ -142,17 +164,6 @@ defmodule Apiary.ModelChoices.MigrationTest do
       assert choice(ctx, %{chain: "client", workflow: "x"}) == "model_choices_chain_check"
     end
 
-    test "a value id, at its bounds", ctx do
-      assert for_workflow(ctx, "a", %{value_id: "a" <> String.duplicate("b", 63)}) == :ok
-
-      assert for_workflow(ctx, "b", %{value_id: "a" <> String.duplicate("b", 64)}) ==
-               "model_choices_value_id_format"
-
-      assert for_workflow(ctx, "c", %{value_id: "Main"}) == "model_choices_value_id_format"
-      assert for_workflow(ctx, "d", %{value_id: "-a"}) == "model_choices_value_id_format"
-      assert for_workflow(ctx, "e", %{value_id: ""}) == "model_choices_value_id_format"
-    end
-
     test "a model id, at its bounds", ctx do
       assert for_workflow(ctx, "a", %{model_id: "a" <> String.duplicate("/", 199)}) == :ok
 
@@ -225,7 +236,8 @@ defmodule Apiary.ModelChoices.MigrationTest do
     end
 
     test "the tier fast is renamed balanced: a choice with fast is deleted", ctx do
-      {version, migration, _name} = List.last(@migrations)
+      version = @balanced
+      migration = migration(version)
       ids = %{fast: Ecto.UUID.generate(), balanced: Ecto.UUID.generate()}
       kept = Ecto.UUID.generate()
 
@@ -242,7 +254,9 @@ defmodule Apiary.ModelChoices.MigrationTest do
         organisation_id: ctx.organisation_id,
         model_choice_id: ids.fast,
         position: 0,
-        connection_id: ctx.provider.id
+        connection_id: ctx.provider.id,
+        runtime: "claude",
+        tiers: %{"fast" => "m", "light" => "m"}
       }
 
       assert write(Fallback, fallback) == :ok
@@ -266,11 +280,8 @@ defmodule Apiary.ModelChoices.MigrationTest do
       no_provider = %{connection_id: nil}
       tiers = %{"light" => "m"}
 
-      # A key or a model needs a provider; a row needs a provider or a tier map.
+      # A model needs a provider; a row needs a provider or a tier map.
       assert for_workflow(ctx, "a", Map.merge(no_provider, %{tiers: tiers})) == :ok
-
-      assert for_workflow(ctx, "b", Map.merge(no_provider, %{value_id: "k", tiers: tiers})) ==
-               "model_choices_shape_check"
 
       assert for_workflow(ctx, "c", Map.merge(no_provider, %{model_id: "m", tiers: tiers})) ==
                "model_choices_shape_check"
@@ -329,7 +340,7 @@ defmodule Apiary.ModelChoices.MigrationTest do
       assert {_count, _} = Repo.delete_all(Connections.Connection)
     end
 
-    test "a fallback: its position, model and effort, once per position and provider", ctx do
+    test "a fallback: its position, runtime and tiers, once per position and provider", ctx do
       id = Ecto.UUID.generate()
       assert choice(ctx, %{id: id}) == :ok
 
@@ -339,24 +350,25 @@ defmodule Apiary.ModelChoices.MigrationTest do
           keys: [%{value_id: "main", value: "y"}]
         })
 
-      row = fn attrs ->
-        write(
-          Fallback,
-          Map.merge(
-            %{
-              organisation_id: ctx.organisation_id,
-              model_choice_id: id,
-              position: 0,
-              connection_id: other.id
-            },
-            attrs
-          )
-        )
-      end
+      tiers = %{
+        "light" => "m",
+        "balanced" => %{"model" => "m", "effort" => "high"},
+        "thinking" => "m"
+      }
 
+      fallback = %{
+        organisation_id: ctx.organisation_id,
+        model_choice_id: id,
+        position: 0,
+        connection_id: other.id,
+        runtime: "claude",
+        tiers: tiers
+      }
+
+      row = fn attrs -> write(Fallback, Map.merge(fallback, attrs)) end
       first = %{position: 1, connection_id: ctx.provider.id}
 
-      assert row.(%{model_id: "m", effort: "high"}) == :ok
+      assert row.(%{}) == :ok
       assert row.(%{position: 1}) == "model_choice_fallbacks_model_choice_id_connection_id_index"
 
       assert row.(%{connection_id: ctx.provider.id}) ==
@@ -364,13 +376,23 @@ defmodule Apiary.ModelChoices.MigrationTest do
 
       assert row.(%{first | position: -1}) == "model_choice_fallbacks_position_check"
 
-      assert row.(Map.put(first, :model_id, "a b")) == "model_choice_fallbacks_model_id_format"
+      for runtime <- ["a" <> String.duplicate("b", 64), "Claude", "1a", "-a", "a b", ""] do
+        assert row.(Map.put(first, :runtime, runtime)) == "model_choice_fallbacks_runtime_format",
+               inspect(runtime)
+      end
 
-      assert row.(Map.merge(first, %{model_id: "m", effort: "High"})) ==
-               "model_choice_fallbacks_effort_format"
+      for bad <- [%{}, %{"fast" => "m"}, %{"light" => "m n"}, %{"light" => %{"effort" => "high"}}] do
+        assert row.(Map.put(first, :tiers, bad)) == "model_choice_fallbacks_tiers_check",
+               inspect(bad)
+      end
 
-      assert row.(Map.put(first, :effort, "high")) == "model_choice_fallbacks_shape_check"
-      assert row.(first) == :ok
+      # Both are needed.
+      assert row.(Map.put(first, :runtime, nil)) == :not_null_violation
+      assert row.(Map.put(first, :tiers, nil)) == :not_null_violation
+      assert %{"runtime" => false, "tiers" => false} = columns("model_choice_fallbacks")
+
+      # The runtime at its longest.
+      assert row.(Map.put(first, :runtime, "a" <> String.duplicate("_", 63))) == :ok
     end
 
     test "a fallback reaches a provider and a choice of its organisation alone", ctx do
@@ -385,7 +407,13 @@ defmodule Apiary.ModelChoices.MigrationTest do
           keys: [%{value_id: "main", value: "y"}]
         })
 
-      row = %{organisation_id: ctx.organisation_id, model_choice_id: id, position: 0}
+      row = %{
+        organisation_id: ctx.organisation_id,
+        model_choice_id: id,
+        position: 0,
+        runtime: "claude",
+        tiers: %{"light" => "m"}
+      }
 
       assert write(Fallback, Map.put(row, :connection_id, foreign.id)) ==
                "model_choice_fallbacks_connection_id_fkey"
@@ -407,7 +435,9 @@ defmodule Apiary.ModelChoices.MigrationTest do
         organisation_id: ctx.organisation_id,
         model_choice_id: id,
         position: 0,
-        connection_id: ctx.provider.id
+        connection_id: ctx.provider.id,
+        runtime: "claude",
+        tiers: %{"light" => "m"}
       }
 
       assert write(Fallback, fallback) == :ok
@@ -419,6 +449,84 @@ defmodule Apiary.ModelChoices.MigrationTest do
       Repo.delete_all(ModelChoice)
       assert Repo.aggregate(Fallback, :count) == 0
       assert {_count, _} = Repo.delete_all(Connections.Connection)
+    end
+
+    test "a choice keeps no key, and up deletes the stored fallbacks", ctx do
+      migration = migration(@per_fallback)
+      id = Ecto.UUID.generate()
+
+      # Rolled back, a choice has a key again, and a fallback a model and an effort.
+      assert :ok = Ecto.Migrator.down(Repo, @per_fallback, migration, @options)
+      assert Map.has_key?(columns("model_choices"), "value_id")
+      refute Map.has_key?(columns("model_choice_fallbacks"), "runtime")
+
+      Repo.query!(
+        """
+        INSERT INTO model_choices
+          (id, organisation_id, workspace_id, connection_id, value_id, chain, locked,
+           inserted_at, updated_at)
+        VALUES ($1, $2, $3, $4, 'main', 'organisation', false, now(), now())
+        """,
+        [
+          Ecto.UUID.dump!(id),
+          Ecto.UUID.dump!(ctx.organisation_id),
+          Ecto.UUID.dump!(ctx.workspace_id),
+          Ecto.UUID.dump!(ctx.provider.id)
+        ]
+      )
+
+      {:ok, other} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "deepseek",
+          keys: [%{value_id: "main", value: "y"}]
+        })
+
+      Repo.query!(
+        """
+        INSERT INTO model_choice_fallbacks
+          (id, organisation_id, model_choice_id, position, connection_id, model_id, effort,
+           inserted_at, updated_at)
+        VALUES ($1, $2, $3, 0, $4, 'm', 'high', now(), now())
+        """,
+        [
+          Ecto.UUID.dump!(Ecto.UUID.generate()),
+          Ecto.UUID.dump!(ctx.organisation_id),
+          Ecto.UUID.dump!(id),
+          Ecto.UUID.dump!(other.id)
+        ]
+      )
+
+      # Up, the choice stays without its key, and the fallback, with no runtime and no
+      # tiers to keep, is deleted.
+      assert :ok = Ecto.Migrator.up(Repo, @per_fallback, migration, @options)
+      assert %ModelChoice{connection_id: provider_id} = Repo.get(ModelChoice, id)
+      assert provider_id == ctx.provider.id
+      assert Repo.aggregate(Fallback, :count) == 0
+
+      refute Map.has_key?(columns("model_choices"), "value_id")
+      fallback_columns = columns("model_choice_fallbacks")
+      assert %{"runtime" => false, "tiers" => false} = fallback_columns
+      refute Map.has_key?(fallback_columns, "model_id")
+      refute Map.has_key?(fallback_columns, "effort")
+
+      # A model still needs a provider.
+      assert for_workflow(ctx, "a", %{connection_id: nil, model_id: "m", tiers: %{"light" => "m"}}) ==
+               "model_choices_shape_check"
+
+      # Down and up again, with a fallback of the new form in place.
+      assert write(Fallback, %{
+               organisation_id: ctx.organisation_id,
+               model_choice_id: id,
+               position: 0,
+               connection_id: other.id,
+               runtime: "claude",
+               tiers: %{"light" => "m"}
+             }) == :ok
+
+      assert :ok = Ecto.Migrator.down(Repo, @per_fallback, migration, @options)
+      assert :ok = Ecto.Migrator.up(Repo, @per_fallback, migration, @options)
+      assert Repo.aggregate(Fallback, :count) == 0
+      assert Repo.get(ModelChoice, id)
     end
 
     test "a choice of a target of another workspace is refused", ctx do

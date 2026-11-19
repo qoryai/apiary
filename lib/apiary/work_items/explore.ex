@@ -513,30 +513,33 @@ defmodule Apiary.WorkItems.Explore do
   end
 
   # proposal/2 is version `number` of the work item `id`'s proposal named `main`, as a page
-  # shows it (`document/3`).
+  # shows it (`document/4`).
   @doc false
   @spec proposal(Ecto.UUID.t(), pos_integer | nil) ::
           %{text: String.t(), version_id: String.t(), images: [String.t()]} | nil
   def proposal(id, number), do: document(id, "proposal", number)
 
-  # document/3 is version `number` of the work item `id`'s artifact of `type` named `main`,
+  # document/4 is version `number` of the work item `id`'s artifact of `type` named `name`,
   # as a page shows it: `text`, the Markdown of its `text/markdown` file; `version_id`, the
   # version's public id (`av_…`); and `images`, the filenames of its image files, in
   # filename order. The version's `sources.json` is in none of them. Nil for no such
   # version, a version with no Markdown file, or one that cannot be read as UTF-8 text.
   @doc false
-  @spec document(Ecto.UUID.t(), String.t(), pos_integer | nil) ::
+  @spec document(Ecto.UUID.t(), String.t(), pos_integer | nil, String.t()) ::
           %{text: String.t(), version_id: String.t(), images: [String.t()]} | nil
-  def document(_id, _type, nil), do: nil
+  def document(id, type, number, name \\ "main")
 
-  def document(id, type, number) when is_binary(type) and is_integer(number) do
+  def document(_id, _type, nil, _name), do: nil
+
+  def document(id, type, number, name)
+      when is_binary(type) and is_integer(number) and is_binary(name) do
     version =
       Repo.one(
         from v in Version,
           join: a in Artifact,
           on: a.id == v.artifact_id,
           where:
-            a.work_item_id == ^id and a.type == ^type and a.name == "main" and
+            a.work_item_id == ^id and a.type == ^type and a.name == ^name and
               v.number == ^number,
           preload: [files: ^from(f in ArtifactFile, order_by: f.filename)]
       )

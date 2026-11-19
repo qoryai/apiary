@@ -6,8 +6,10 @@ defmodule Apiary.ModelKeys.Report do
 
   `parse/3` reads the body, as the contract's `model-keys-report.schema.json` has it:
   `version`, 1; `run_id`, the run id of the path; `time`, an RFC 3339 time in UTC to the
-  whole second, `2026-11-10T12:00:05Z`; `session`, optional, an integer of 1 or more, which
-  is checked and not stored or used; and `keys`, at most 66, each item a key's state in
+  whole second, `2026-11-10T12:00:05Z`; `session`, optional, an integer of 1 or more, the
+  number of the session the key states were observed in, which the key windows of that
+  session's record take when it is at most 2,147,483,647 (`Apiary.Runs.Sessions`), and
+  which is read as absent beyond that; and `keys`, at most 66, each item a key's state in
   one window (`credential`, `window`, `status`, `resets_at`, `utilization`,
   `cooldown_until`, `source` and `observed_at`), with `cooldown_until` when the status is
   `rejected` and without it otherwise. A `resets_at` or a `cooldown_until` more than
@@ -41,12 +43,15 @@ defmodule Apiary.ModelKeys.Report do
        run, when it became lost for good, as the lost-run check ended it for its silence
        (`silenced_at`) or at its backstop (`backstop_at`). The gateway sends its last
        report within 10 seconds of the run's end;
-    4. else the states are recorded (`Apiary.ModelKeys.record/3`), through the run's keys
+    4. else the states are recorded (`Apiary.ModelKeys.record/4`), through the run's keys
        alone (`Apiary.ModelKeys.run_keys/1`): an item of a credential the run does not
        have, and an item of a window outside the contract's list
        (`Apiary.ModelKeys.State.windows/0`), is left out, and the report is taken all the
        same. `{:ok, body}`, the answer `{"version":1,"keys":[…]}` with the
        newest state of each key of the run and window, under the run's credential names.
+       A report with a `session` also counts the utilization of its items into that
+       session's key windows, in step 4 and in the last of step 3, and a report with none
+       leaves every session's windows as they are.
 
   No key value is read or written here, and a log line has no part of the body.
   """
@@ -78,7 +83,7 @@ defmodule Apiary.ModelKeys.Report do
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
 
   @typedoc "A report as `parse/3` read it."
-  @type t :: %{time: DateTime.t(), keys: [map]}
+  @type t :: %{time: DateTime.t(), keys: [map], session: pos_integer | nil}
 
   @doc "The most seconds a report's `time` may be from the server's clock."
   @spec max_skew_seconds() :: pos_integer
@@ -103,7 +108,7 @@ defmodule Apiary.ModelKeys.Report do
          :ok <- check(session?(fields), "session"),
          {:ok, time} <- time(fields["time"], "time"),
          {:ok, keys} <- keys(fields["keys"], now) do
-      {:ok, %{time: time, keys: keys}}
+      {:ok, %{time: time, keys: keys, session: session(fields["session"])}}
     end
   end
 
@@ -113,9 +118,14 @@ defmodule Apiary.ModelKeys.Report do
     do: abs(DateTime.diff(time, now, :microsecond)) <= @max_skew_seconds * 1_000_000
 
   # `session`, the number of the session open when the gateway made the report, is
-  # optional: an integer of 1 or more. It is checked and not read.
+  # optional: an integer of 1 or more.
   defp session?(%{"session" => session}), do: is_integer(session) and session >= 1
   defp session?(_fields), do: true
+
+  # The session the key windows take: the number as far as the column holds it, else none,
+  # as for a report with no `session`.
+  defp session(number) when is_integer(number) and number in 1..2_147_483_647, do: number
+  defp session(_number), do: nil
 
   defp decode(raw_body) do
     case Jason.decode(raw_body, objects: :ordered_objects) do
@@ -233,11 +243,18 @@ defmodule Apiary.ModelKeys.Report do
       cond do
         Sender.live?(run, now) ->
           keys = ModelKeys.run_keys(run, features)
-          :ok = ModelKeys.record(keys, report.keys, now)
+          :ok = ModelKeys.record(keys, report.keys, now, session(run, report))
           {:ok, body(ModelKeys.run_states(keys, now))}
 
         just_ended?(run, now) ->
-          :ok = ModelKeys.record(ModelKeys.run_keys(run, features), report.keys, now)
+          :ok =
+            ModelKeys.record(
+              ModelKeys.run_keys(run, features),
+              report.keys,
+              now,
+              session(run, report)
+            )
+
           {:error, :gone}
 
         true ->
@@ -249,6 +266,11 @@ defmodule Apiary.ModelKeys.Report do
       Logger.error("a model keys report could not be taken: #{inspect(exception.__struct__)}")
       {:error, :unavailable}
   end
+
+  # The session a report names, for the key windows of its record: nil for a report with no
+  # `session`, which changes no session's record.
+  defp session(_run, %{session: nil}), do: nil
+  defp session(run, %{session: number}), do: {run, number}
 
   @doc """
   recorded/3 is the names of the features a report for the run `run_id` from

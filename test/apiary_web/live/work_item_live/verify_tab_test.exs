@@ -19,7 +19,6 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
   alias Apiary.Stages.Escalation
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.ArtifactComponents
-  alias ApiaryWeb.ArtifactLive.Markdown
   alias ApiaryWeb.WorkItemLive.VerifyTab
   alias ApiaryWeb.WorkflowFake
 
@@ -35,40 +34,37 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
   @mp4 <<0, 0, 0, 24, "ftypisom", 0, 0, 2, 0, "isomiso2">>
   @png <<0x89, "PNG", 0x0D, 0x0A, 0x1A, 0x0A, 0, 0, 0, 13, "IHDR">>
 
-  @ac1 ~s|AC-1, "After a reload, the total still includes the voucher"|
-  @ac2 ~s|AC-2, "On a phone, the voucher line fits the payment step"|
-  @ac3 ~s|AC-3, "An expired voucher leaves the total unchanged"|
+  @ac1 "After a reload, the total still includes the voucher."
+  @ac2 "On a phone, the voucher line fits the payment step."
+  @ac3 "An expired voucher leaves the total unchanged."
   @check "Check that the voucher line fits in the pictures of scenario 2, because the run could not measure the line on a phone screen."
 
-  @verification """
-  ## Summary
+  @criteria %{
+    "summary" => "The checkout takes a voucher.",
+    "criteria" => [
+      %{"id" => "ac-1", "text" => @ac1, "check" => "Demo: Reload the payment step"},
+      %{"id" => "ac-2", "text" => @ac2, "check" => "Demo: Pay on a phone"},
+      %{"id" => "ac-3", "text" => @ac3, "check" => "Tests"}
+    ]
+  }
 
-  Commit: #{@commit}. Two criteria are met.
-
-  ## Matrix
-
-  | Criterion | State | Evidence |
-  |---|---|---|
-  | #{@ac1} | Met | Film: demo-video scenario-1 v1, step 2 passed. |
-  | #{@ac2} | Needs a person | #{@check} |
-  | #{@ac3} | Not met | Locked check `tests/voucher.test.ts` failed: 2 of 3 tests passed. |
-
-  ## Lowered
-
-  - None.
-
-  ## Not verified
-
-  - #{@ac2}: #{@check}
-
-  ## Accepted findings
-
-  - None.
-
-  ## Model families
-
-  Build: claude. Verify: deepseek.
-  """
+  @verification %{
+    "target_version" => @commit,
+    "matrix" => [
+      %{
+        "criterion" => "ac-1",
+        "state" => "met",
+        "evidence" => "Film: demo-video scenario-1 v1, step 2 passed."
+      },
+      %{
+        "criterion" => "ac-3",
+        "state" => "not_met",
+        "evidence" => "Locked check `tests/voucher.test.ts` failed: 2 of 3 tests passed."
+      }
+    ],
+    "not_verified" => [%{"criterion" => "ac-2", "reason" => @check}],
+    "model_families" => ["claude", "deepseek"]
+  }
 
   setup_all do
     previous = WorkflowFake.install()
@@ -80,7 +76,6 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
 
   setup %{scope: scope} do
     for {name, view} <- [
-          {"verification", "document"},
           {"demo-evidence", "file"},
           {"demo-script", "file"}
         ] do
@@ -88,11 +83,16 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
         Artifacts.create_type(scope, scope.workspace, %{"name" => name, "base_view" => view})
     end
 
+    save_process!(scope, ~w(verification demo-video screenshot demo-evidence explainer))
+    :ok
+  end
+
+  # The process Explore, Shape, then Verify, whose outputs are `outputs`, none required.
+  defp save_process!(scope, outputs) do
     [explore | _rest] = Processes.default_document("software")["stages"]
     gate = %{"kind" => "person", "approvers" => "members"}
-    output = &%{"type" => &1, "required" => false}
 
-    {:ok, _version} =
+    {:ok, version} =
       Processes.save(scope, scope.workspace, %{
         "schema" => "qory.process/v1",
         "stages" => [
@@ -102,17 +102,13 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
             "id" => @verify,
             "name" => "Verify",
             "sequence" => [%{"workflow" => "verify-a-ticket"}],
-            "outputs" =>
-              Enum.map(
-                ~w(verification demo-video screenshot demo-evidence explainer),
-                output
-              ),
+            "outputs" => Enum.map(outputs, &%{"type" => &1, "required" => false}),
             "gate" => gate
           }
         ]
       })
 
-    :ok
+    version
   end
 
   # A work item at Verify's gate, whose run of Verify pushed what `push` pushes, with the
@@ -205,8 +201,16 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
     media
   end
 
-  defp verification!(run, work_item, text \\ @verification),
-    do: push!(run, work_item, "verification", "main", [{"verification.md", text}])
+  # The run's acceptance criteria `@criteria`, then its verification `document`.
+  defp verification!(run, work_item, document \\ @verification) do
+    push!(run, work_item, "acceptance-criteria", "main", [
+      {"acceptance-criteria.json", Jason.encode!(@criteria)}
+    ])
+
+    push!(run, work_item, "verification", "main", [
+      {"verification.json", Jason.encode!(document)}
+    ])
+  end
 
   # A run of the queue at Verify for `work_item`, of the take in `take_in`, after its
   # newest run.
@@ -253,23 +257,19 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
     version
   end
 
-  # A matrix of `rows`, each `{criterion, state, evidence}`, with the commit `@commit`.
+  # A verification of `@commit` whose matrix is `rows`, each `{criterion, state,
+  # evidence}`, with nothing not verified.
   defp matrix(rows) do
-    """
-    ## Summary
-
-    Commit: #{@commit}.
-
-    ## Matrix
-
-    | Criterion | State | Evidence |
-    |---|---|---|
-    #{Enum.map_join(rows, "\n", fn {criterion, state, evidence} -> "| #{criterion} | #{state} | #{evidence} |" end)}
-
-    ## Model families
-
-    Build: claude.
-    """
+    %{
+      "target_version" => @commit,
+      "matrix" =>
+        for(
+          {criterion, state, evidence} <- rows,
+          do: %{"criterion" => criterion, "state" => state, "evidence" => evidence}
+        ),
+      "not_verified" => [],
+      "model_families" => ["claude"]
+    }
   end
 
   defp ids(view, selector) do
@@ -317,27 +317,35 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       assert has_element?(
                view,
                "#work-item-tab-output-verification-s",
-               "Version 1 · Model families: Build claude · Verify deepseek"
+               "Version 1 · Model families: claude · deepseek"
              )
 
+      # Each row: the criterion's id in upper case and its text from the newest acceptance
+      # criteria, then, on a phone, the evidence.
       assert texts(view, "#{parts}-matrix tr td:first-child") == [
-               "#{@ac1} Film: demo-video scenario-1 v1, step 2 passed.",
-               "#{@ac2} #{@check}",
-               "#{@ac3} Locked check tests/voucher.test.ts failed: 2 of 3 tests passed."
+               "AC-1 #{@ac1} Film: demo-video scenario-1 v1, step 2 passed.",
+               "AC-3 #{@ac3} Locked check `tests/voucher.test.ts` failed: 2 of 3 tests passed."
              ]
 
-      assert texts(view, "#{parts}-matrix tr td:nth-child(2)") ==
-               ["Met", "Needs a person", "Not met"]
+      assert texts(view, "#{parts}-matrix tr td:first-child > span.font-medium") ==
+               ["AC-1", "AC-3"]
 
-      assert has_element?(view, "#{parts}-matrix-1 td.q-from-sm", @check)
+      assert texts(view, "#{parts}-matrix tr td:nth-child(2)") == ["Met", "Not met"]
+
+      assert has_element?(
+               view,
+               "#{parts}-matrix-1 td.q-from-sm",
+               "Locked check `tests/voucher.test.ts` failed"
+             )
+
       assert has_element?(view, "#{parts}-matrix-0 .badge.bg-success-soft", "Met")
-      # A criterion is Met or Not met; another state the run wrote shows as it is, with no
-      # colour.
-      assert has_element?(view, "#{parts}-matrix-1 .badge", "Needs a person")
-      refute has_element?(view, "#{parts}-matrix-1 .badge.bg-primary-soft")
-      assert has_element?(view, "#{parts}-matrix-2 .badge.bg-error-soft", "Not met")
+      assert has_element?(view, "#{parts}-matrix-1 .badge.bg-error-soft", "Not met")
 
-      assert texts(view, "#{parts}-not-verified li span") == [@ac2, @check]
+      assert texts(view, "#{parts}-not-verified li > span") == ["AC-2 #{@ac2}", @check]
+
+      # The verified version of the target is not shown.
+      refute render(view) =~ @commit
+      refute has_element?(view, "#{parts}-accepted-findings")
 
       assert has_element?(
                view,
@@ -374,7 +382,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
 
       assert has_element?(
                view,
-               "#work-item-tab-output-verification-parts-matrix-2 .badge",
+               "#work-item-tab-output-verification-parts-matrix-1 .badge",
                "Not met"
              )
 
@@ -404,18 +412,21 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       refute has_element?(view, "#work-item-tab-output-verification-parts-accepted")
     end
 
-    test "a verification with no matrix is shown as its Markdown", %{conn: conn, scope: scope} do
+    test "a criterion with no row in the newest acceptance criteria shows its id alone",
+         %{conn: conn, scope: scope} do
       work_item =
-        at_verify_gate!(scope, &verification!(&1, &2, "## Summary\n\nThe check passed.\n"))
+        at_verify_gate!(
+          scope,
+          &verification!(&1, &2, matrix([{"ac-9", "met", "The test passed."}]))
+        )
 
       view = tab(conn, scope, work_item)
 
-      assert has_element?(view, "#work-item-tab-output-verification", "The check passed.")
-      refute has_element?(view, "#work-item-tab-output-verification-parts")
+      assert texts(view, "#work-item-tab-output-verification-parts-matrix tr td:first-child") ==
+               ["AC-9 The test passed."]
     end
   end
 
-  @ac2_text "AC-2 Demo: on a phone, the voucher line fits the payment step."
   @proposal_ac2 "AC-2 Demo: on a phone, the voucher line wraps to two lines in the payment step."
 
   # The question of verify-a-ticket about a criterion that cannot be met: its criterion, its
@@ -423,7 +434,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
   # first with the criterion's new wording (`proposal`).
   @ac_question %{
     "question" => "AC-2 can't be met as written",
-    "criterion" => "ac-2",
+    "about" => %{"type" => "acceptance-criteria", "name" => "main", "item" => "ac-2"},
     "context" =>
       "**Why:** The payment step is 320 px wide on a phone.\n\n**Checked:** The pictures of scenario 2.",
     "options" => [
@@ -448,9 +459,8 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
         run,
         work_item,
         matrix([
-          {"AC-1 Tests: after a reload, the total still includes the voucher.", "Met",
-           "`tests/total.test.ts` passed."},
-          {@ac2_text, "Not met", "The voucher line needs 360 px."}
+          {"ac-1", "met", "`tests/total.test.ts` passed."},
+          {"ac-2", "not_met", "The voucher line needs 360 px."}
         ])
       )
 
@@ -497,7 +507,9 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
         question = "##{prefix}-question-1"
         field = "#{prefix}-open-answer-1-1"
 
-        refute has_element?(view, "#{question} blockquote")
+        # The proposal is in the field, not in a quote: the one quote is the criterion's
+        # text under the About line.
+        assert texts(view, "#{question} blockquote") == [@ac2]
         assert has_element?(view, "#{question} strong", "Why:")
         assert has_element?(view, "#{question} strong", "Checked:")
 
@@ -544,6 +556,31 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
                answer_of(work_item, "q1")
     end
 
+    test "an answered question shows the chosen option's proposal as a quote in read mode", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = waiting_at_verify!(scope)
+      view = tab(conn, scope, work_item)
+
+      send_answers(view, work_item, %{"q1" => %{"option" => "1", "wording" => "AC-2 Tests: new."}})
+
+      confirm_spend(view)
+
+      # The next run runs: the page is in read mode, and the answered question is closed.
+      # The quote is the run's wording; the member's wording is in the answer's note.
+      view = questions_page(conn, scope, work_item)
+      answer = "#work-item-questions-question-1-answer"
+
+      assert texts(view, "#{answer} > span") == [
+               "Change AC-2 Recommended by the agent",
+               "Change AC-2: AC-2 Tests: new."
+             ]
+
+      assert texts(view, "#{answer}-proposal blockquote") == [@proposal_ac2]
+      assert texts(view, "#work-item-questions-question-1 blockquote") == [@ac2, @proposal_ac2]
+    end
+
     test "an option with no proposal has no field, whatever its title", %{
       conn: conn,
       scope: scope
@@ -568,11 +605,16 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       assert has_element?(view, "#{question} .q-xp-opt-e", @proposal_ac2)
     end
 
-    test "a question with no criterion has no quote and no field", %{conn: conn, scope: scope} do
+    test "a question about the work item has no quote and no field", %{
+      conn: conn,
+      scope: scope
+    } do
       options = Enum.map(@ac_question["options"], &Map.delete(&1, "proposal"))
 
       question =
-        @ac_question |> Map.delete("criterion") |> Map.put("options", options)
+        @ac_question
+        |> Map.put("about", %{"work_item" => true})
+        |> Map.put("options", options)
 
       work_item = waiting_at_verify!(scope, [question])
       view = tab(conn, scope, work_item)
@@ -756,7 +798,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       assert has_element?(view, "#work-item-questions-open-answer-1-1-wording", edited)
     end
 
-    test "the matrix has no link to a question, and Open questions follows the outputs", %{
+    test "the matrix row of a criterion with an open question links to it, under the outputs", %{
       conn: conn,
       scope: scope
     } do
@@ -769,10 +811,53 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       assert at.("work-item-tab-output-verification") < at.("work-item-tab-questions-open")
       assert at.("work-item-tab-questions-open") < at.("work-item-record")
 
-      assert texts(view, "#work-item-tab-output-verification-parts-matrix-1 td:nth-child(2)") ==
-               ["Not met"]
+      matrix = "#work-item-tab-output-verification-parts-matrix"
 
-      refute has_element?(view, "#work-item-tab-output-verification-parts-matrix a")
+      assert texts(view, "#{matrix}-1 td:nth-child(2)") == ["Not met Answer question 1."]
+
+      # The link leads to question 1 in the Open questions frame of Verify's tab, the tab
+      # of the stage the questions wait at.
+      path =
+        ~p"/#{scope.organisation}/#{scope.workspace}/work/#{work_item.number}/stages/#{@verify}"
+
+      assert has_element?(
+               view,
+               ~s|#{matrix}-1-answer[href="#{path}#work-item-tab-questions-question-1"]|,
+               "Answer question 1."
+             )
+
+      assert has_element?(view, "#work-item-tab-questions-question-1")
+
+      # AC-1 has no open question: its row has no link.
+      refute has_element?(view, "#{matrix}-0 a")
+    end
+
+    test "a question about AC-2 shows AC-2's text from the newest criteria as a quote", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = waiting_at_verify!(scope)
+
+      for {view, prefix} <- [
+            {tab(conn, scope, work_item), "work-item-tab-questions"},
+            {questions_page(conn, scope, work_item), "work-item-questions"}
+          ] do
+        about = "##{prefix}-question-1-about"
+
+        assert texts(view, about) == ["About acceptance criteria, AC-2"]
+
+        # Verify made the criteria, and its tab shows its outputs other than the
+        # verification as rows, with no table: the words link to the criteria's page.
+        [criteria] = for a <- Artifacts.list(work_item), a.type == "acceptance-criteria", do: a
+        [version] = criteria.versions
+
+        path =
+          ~p"/#{scope.organisation}/#{scope.workspace}/work/#{work_item.number}/artifacts/#{version.public_id}"
+
+        assert has_element?(view, ~s|#{about} a[href="#{path}"]|, "acceptance criteria")
+
+        assert texts(view, "#{about}-quote blockquote") == [@ac2]
+      end
     end
   end
 
@@ -931,8 +1016,8 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       view = tab(conn, scope, work_item)
 
       assert texts(view, "#work-item-tab-scenarios h3") == ["Scenario 1: Title of scenario-1"]
-      refute has_element?(view, "#work-item-stage-gate-output-demo-video-scenario-2")
-      assert has_element?(view, "#work-item-stage-gate-output-demo-video-scenario-1")
+      refute has_element?(view, "#work-item-stage-gate-output-demo-video--scenario-2--")
+      assert has_element?(view, "#work-item-stage-gate-output-demo-video--scenario-1--")
 
       view |> form("#work-item-stage-gate-approve") |> render_submit()
 
@@ -1026,11 +1111,18 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       {[%{key: "scenario-1", title: "Title of scenario-1"}], reads} =
         VerifyTab.queue(work_item, artifacts, @verify, work_item.take_in, %{})
 
-      assert [{:json, json_id}, {:verification, 1}] = reads |> Map.keys() |> Enum.sort()
+      [evidence] =
+        for %{type: "demo-evidence"} = artifact <- artifacts, do: hd(artifact.versions)
+
+      [verification] =
+        for %{type: "verification"} = artifact <- artifacts, do: hd(artifact.versions)
+
+      assert reads |> Map.keys() |> Enum.sort() ==
+               Enum.sort([{:json, evidence.public_id}, {:json, verification.public_id}])
 
       # A value in `reads` that the store does not hold is what the call shows, so it read
       # nothing for that version.
-      kept = Map.update!(reads, {:json, json_id}, &Map.put(&1, "title", "Kept"))
+      kept = Map.update!(reads, {:json, evidence.public_id}, &Map.put(&1, "title", "Kept"))
 
       assert {[%{key: "scenario-1", title: "Kept"}], ^kept} =
                VerifyTab.queue(work_item, artifacts, @verify, work_item.take_in, kept)
@@ -1047,6 +1139,301 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
 
       assert VerifyTab.queue(work_item, artifacts, @shape, work_item.take_in) == []
       assert VerifyTab.queue(work_item, artifacts, @verify, work_item.take_in + 1) == []
+    end
+  end
+
+  describe "the findings accepted at an earlier stage's round limit" do
+    @build "st_6ns22c4pav"
+
+    @findings ["The total skips the voucher.", "The receipt shows no voucher line."]
+
+    # A work item whose Build reached its round limit with the open findings `findings`,
+    # 2 by default, which a member accepted as they are: Verify's run is queued, and has
+    # pushed nothing.
+    defp accepted_at_build!(scope, findings \\ @findings) do
+      [explore | _rest] = Processes.default_document("software")["stages"]
+      gate = %{"kind" => "person", "approvers" => "members"}
+      review = %{"loop" => %{"rounds" => 1, "body" => [%{"workflow" => "review-changes"}]}}
+
+      {:ok, _version} =
+        Processes.save(scope, scope.workspace, %{
+          "schema" => "qory.process/v1",
+          "stages" => [
+            explore,
+            %{
+              "id" => @build,
+              "name" => "Build",
+              "sequence" => [review],
+              "outputs" => [],
+              "gate" => %{"kind" => "none"}
+            },
+            %{
+              "id" => @verify,
+              "name" => "Verify",
+              "sequence" => [%{"workflow" => "verify-a-ticket"}],
+              "outputs" => [
+                %{"type" => "verification", "required" => false},
+                %{"type" => "explainer", "required" => false}
+              ],
+              "gate" => gate
+            }
+          ]
+        })
+
+      points = for text <- findings, do: %{"text" => text, "action" => "run_again"}
+      verdict = %{"verdict" => "changes-requested"}
+      verdict = if points == [], do: verdict, else: Map.put(verdict, "points", points)
+
+      {:ok, work_item} = WorkItems.take_in(scope, backlog_ticket_fixture(scope).public_id)
+      work_item = Repo.get!(WorkItem, work_item.id) |> end_run!(understood_result())
+      {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
+
+      work_item =
+        WorkItem
+        |> Repo.get!(work_item.id)
+        |> end_run!(fn run, _registered ->
+          {:ok, _version} =
+            Stages.Artifacts.push_json(
+              {:run, run},
+              Repo.get!(WorkItem, run.work_item_id),
+              "verdict",
+              verdict,
+              stage_id: run.stage_id
+            )
+        end)
+
+      assert %WorkItem{stage_id: @build, stage_state: :escalated} = work_item
+
+      {:ok, _work_item} =
+        Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @build)
+
+      Repo.get!(WorkItem, work_item.id)
+    end
+
+    # Verify's run ends with what `push` pushes, and passes.
+    defp verify_passes!(work_item, push) do
+      end_run!(work_item, fn run, _registered ->
+        push.(run, Repo.get!(WorkItem, run.work_item_id))
+
+        {:ok, _version} =
+          Stages.Artifacts.push_json(
+            {:run, run},
+            Repo.get!(WorkItem, run.work_item_id),
+            "verdict",
+            %{"verdict" => "passed"},
+            stage_id: run.stage_id
+          )
+      end)
+    end
+
+    defp accepted_line(scope),
+      do:
+        ~r/\AAccepted as it is in Build by #{Regex.escape(ApiaryWeb.People.short(scope.user.email))}, .+\.\z/
+
+    test "while Verify's run has pushed no verification, the accepted findings are a frame, open",
+         %{conn: conn, scope: scope} do
+      work_item = accepted_at_build!(scope)
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
+
+      view = tab(conn, scope, work_item)
+      frame = "#work-item-tab-accepted-findings"
+
+      assert has_element?(view, "#{frame}-fold[open]")
+      assert texts(view, "#{frame}-h") == ["Accepted findings"]
+      assert has_element?(view, "#{frame}-by.q-xp-cap .hero-information-circle-micro")
+      assert [by] = texts(view, "#{frame}-by")
+      assert by =~ accepted_line(scope)
+      assert texts(view, "#{frame}-list li") == @findings
+      assert texts(view, "#{frame}-0") == [hd(@findings)]
+      refute has_element?(view, "#work-item-tab-output-verification")
+
+      # With no output frame, it follows the run line and the running block, and comes
+      # before the record of runs.
+      html = render(view)
+      at = &(:binary.match(html, ~s|id="#{&1}"|) |> elem(0))
+      assert at.("work-item-tab-run") < at.("work-item-tab-accepted-findings")
+      assert at.("work-item-tab-wait") < at.("work-item-tab-accepted-findings")
+    end
+
+    test "where the workspace hides verification, the frame follows the last output frame",
+         %{conn: conn, scope: scope} do
+      work_item = accepted_at_build!(scope)
+
+      # The workspace hides the standard type, as one made from a template that does not
+      # list it: Verify's run cannot push a verification.
+      {1, _rows} =
+        Repo.update_all(
+          from(w in Apiary.Organisations.Workspace, where: w.id == ^scope.workspace.id),
+          set: [shown_standard_types: Apiary.Artifacts.Type.standard_names() -- ["verification"]]
+        )
+
+      work_item =
+        work_item
+        |> verify_passes!(fn run, work_item ->
+          push!(run, work_item, "explainer", "main", [{"explainer.md", "# What changed"}])
+        end)
+
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+
+      view = tab(conn, scope, work_item)
+      html = render(view)
+      at = &(:binary.match(html, ~s|id="#{&1}"|) |> elem(0))
+
+      assert texts(view, "#work-item-tab-accepted-findings-list li") == @findings
+      assert at.("work-item-tab-output-explainer") < at.("work-item-tab-accepted-findings")
+      assert at.("work-item-tab-accepted-findings") < at.("work-item-record")
+    end
+
+    test "an accept with no findings shows no frame, heading or line", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = accepted_at_build!(scope, [])
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
+
+      view = tab(conn, scope, work_item)
+      refute has_element?(view, "#work-item-tab-accepted-findings")
+      refute render(view) =~ "Accepted as it is in"
+
+      work_item = verify_passes!(work_item, &verification!/2)
+      view = tab(conn, scope, work_item)
+      assert has_element?(view, "#work-item-tab-output-verification-parts-not-verified")
+      refute has_element?(view, "#work-item-tab-output-verification-parts-accepted-findings")
+      refute render(view) =~ "Accepted as it is in"
+    end
+
+    test "with no accepted findings, Verify's tab has no frame for them", %{
+      conn: conn,
+      scope: scope
+    } do
+      work_item = at_verify_gate!(scope, fn _run, _work_item -> :ok end)
+      view = tab(conn, scope, work_item)
+
+      refute has_element?(view, "#work-item-tab-output-verification")
+      refute has_element?(view, "#work-item-tab-accepted-findings")
+    end
+
+    test "after a member accepts at Build's round limit with 2 open findings, Verify lists them",
+         %{conn: conn, scope: scope} do
+      findings = @findings
+      work_item = scope |> accepted_at_build!() |> verify_passes!(&verification!/2)
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+
+      view = tab(conn, scope, work_item)
+      section = "#work-item-tab-output-verification-parts-accepted-findings"
+
+      assert texts(view, "#{section}-h") == ["Accepted findings"]
+
+      assert [by] = texts(view, "#{section}-0-by")
+      assert by =~ accepted_line(scope)
+
+      # The verification frame shows them, so the separate frame is absent.
+      refute has_element?(view, "#work-item-tab-accepted-findings")
+
+      assert texts(view, "#{section}-0 li") == findings
+
+      # The section follows Not verified.
+      html = render(view)
+      at = &(:binary.match(html, ~s|id="#{&1}"|) |> elem(0))
+
+      assert at.("work-item-tab-output-verification-parts-not-verified") <
+               at.(String.trim_leading(section, "#"))
+
+      refute has_element?(view, "#{section}-1-by")
+    end
+
+    test "two accepts in one take in each have their line and list, in the order of the accepts",
+         %{conn: conn, scope: scope} do
+      later = ["The voucher field takes a used code.", "The total rounds the voucher down."]
+      work_item = accepted_at_build!(scope)
+      first = Repo.one!(from e in Escalation, where: e.work_item_id == ^work_item.id)
+      verify = newest_run(work_item)
+
+      # A second Build run asks for other changes and a member accepts them too; Verify's
+      # run comes after it.
+      run =
+        %DispatchRun{organisation_id: verify.organisation_id, workspace_id: verify.workspace_id}
+        |> DispatchRun.queue_changeset(%{
+          work_item_id: work_item.id,
+          step: Repo.get!(DispatchRun, first.run_id).step,
+          take_in: verify.take_in,
+          attempt: verify.attempt + 1,
+          of: verify.attempt + 1,
+          queued_at: DateTime.utc_now()
+        })
+        |> Ecto.Changeset.put_change(:stage_id, @build)
+        |> Repo.insert!()
+
+      points = for text <- later, do: %{"text" => text, "action" => "run_again"}
+
+      {:ok, _version} =
+        Stages.Artifacts.push_json(
+          {:run, run},
+          work_item,
+          "verdict",
+          %{"verdict" => "changes-requested", "points" => points},
+          stage_id: @build
+        )
+
+      now = DateTime.utc_now()
+
+      Repo.insert!(%Escalation{
+        organisation_id: first.organisation_id,
+        workspace_id: first.workspace_id,
+        work_item_id: first.work_item_id,
+        process_version_id: first.process_version_id,
+        run_id: run.id,
+        stage_id: @build,
+        round: 1,
+        cause: :round_limit,
+        points: [],
+        resolution: :accept,
+        resolved_by_id: scope.user.id,
+        resolved_at: now,
+        inserted_at: now
+      })
+
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^verify.id),
+          set: [attempt: verify.attempt + 2, of: verify.attempt + 2]
+        )
+
+      # While Verify's run has pushed no verification: the separate frame.
+      view = tab(conn, scope, work_item)
+      frame = "work-item-tab-accepted-findings"
+
+      assert [by] = texts(view, "##{frame}-by")
+      assert by =~ accepted_line(scope)
+      assert [by] = texts(view, "##{frame}-1-by")
+      assert by =~ accepted_line(scope)
+      assert texts(view, "##{frame}-list li") == @findings
+      assert texts(view, "##{frame}-1-list li") == later
+
+      html = render(view)
+      at = &(:binary.match(html, ~s|id="#{&1}"|) |> elem(0))
+      ids = for id <- ["by", "list", "1-by", "1-list"], do: "#{frame}-#{id}"
+      assert Enum.map(ids, at) == Enum.sort(Enum.map(ids, at))
+
+      # After the verification: the section in the verification frame.
+      work_item = verify_passes!(work_item, &verification!/2)
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+
+      view = tab(conn, scope, work_item)
+      section = "work-item-tab-output-verification-parts-accepted-findings"
+      refute has_element?(view, "##{frame}")
+
+      for k <- [0, 1] do
+        assert [by] = texts(view, "##{section}-#{k}-by")
+        assert by =~ accepted_line(scope)
+      end
+
+      assert texts(view, "##{section}-0 li") == @findings
+      assert texts(view, "##{section}-1 li") == later
+
+      html = render(view)
+      at = &(:binary.match(html, ~s|id="#{&1}"|) |> elem(0))
+      ids = for id <- ["0-by", "0", "1-by", "1"], do: "#{section}-#{id}"
+      assert Enum.map(ids, at) == Enum.sort(Enum.map(ids, at))
     end
   end
 
@@ -1100,72 +1487,40 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
     end
   end
 
-  describe "verification/1" do
-    test "a text over the byte limit or not UTF-8 has no parts" do
-      assert %{commit: @commit} = VerifyTab.verification(@verification)
-      assert VerifyTab.verification(String.duplicate("a", Markdown.max_bytes() + 1)) == nil
-      assert VerifyTab.verification(@verification <> <<0xFF, 0xFE>>) == nil
-    end
+  describe "verification/1 and criteria/1" do
+    test "read the JSON documents; a value of another shape is nil" do
+      assert VerifyTab.verification(@verification) == %{
+               commit: @commit,
+               rows: [
+                 %{
+                   criterion: "ac-1",
+                   state: :met,
+                   evidence: "Film: demo-video scenario-1 v1, step 2 passed."
+                 },
+                 %{
+                   criterion: "ac-3",
+                   state: :not_met,
+                   evidence: "Locked check `tests/voucher.test.ts` failed: 2 of 3 tests passed."
+                 }
+               ],
+               not_verified: [%{criterion: "ac-2", reason: @check}],
+               families: ["claude", "deepseek"]
+             }
 
-    test "a text whose tables could pass the cell bound is refused before it is parsed" do
-      # 1,001 cells a line on 101 lines: past the bound, in under 4 KB.
-      text =
-        @verification <> "\n|" <> String.duplicate("|", 1_000) <> String.duplicate("\n|", 100)
+      assert %{summary: "The checkout takes a voucher.", criteria: [first | _rest]} =
+               VerifyTab.criteria(@criteria)
 
-      assert byte_size(text) < Markdown.max_bytes()
-      refute Markdown.formattable?(text)
-      assert VerifyTab.verification(text) == nil
-    end
+      assert first == %{
+               id: "ac-1",
+               text: @ac1,
+               check: "Demo: Reload the payment step",
+               removed: nil
+             }
 
-    test "a header with a fourth column is no matrix" do
-      text = """
-      ## Matrix
-
-      | Criterion | State | Evidence | Notes |
-      |---|---|---|---|
-      | #{@ac1} | Met | Tests passed. | None. |
-      """
-
-      assert VerifyTab.verification(text) == nil
-    end
-
-    test "a row with too few cells has empty ones; a row with too many keeps three" do
-      text = """
-      ## Matrix
-
-      | Criterion | State | Evidence |
-      |---|---|---|
-      | #{@ac1} | Met |
-      | #{@ac2} | Not met | The test failed. | An extra cell. |
-      """
-
-      assert %{rows: rows, commit: nil} = VerifyTab.verification(text)
-
-      assert rows == [
-               %{criterion: @ac1, state: :met, evidence: ""},
-               %{criterion: @ac2, state: :not_met, evidence: "The test failed."}
-             ]
-    end
-
-    test "raw HTML in a cell is kept as its text" do
-      text = matrix([{@ac1, "Met", "<script>alert(1)</script> <img src=x onerror=alert(2)>"}])
-
-      assert %{rows: [%{evidence: evidence}]} = VerifyTab.verification(text)
-      assert evidence == "<script>alert(1)</script> <img src=x onerror=alert(2)>"
-    end
-
-    test "a model's name with a dot stays whole" do
-      text = matrix([]) <> "\nVerify: gpt-5.1.\n"
-      assert %{families: ["Build claude", "Verify gpt-5.1"]} = VerifyTab.verification(text)
-
-      text =
-        String.replace(
-          @verification,
-          "Build: claude. Verify: deepseek.",
-          "Build: claude-4.5. Verify: gpt-5.1."
-        )
-
-      assert %{families: ["Build claude-4.5", "Verify gpt-5.1"]} = VerifyTab.verification(text)
+      for value <- ["## Matrix\n\n| Criterion | State |", nil, %{"matrix" => "x"}, []] do
+        assert VerifyTab.verification(value) == nil, inspect(value)
+        assert VerifyTab.criteria(value) == nil, inspect(value)
+      end
     end
   end
 
@@ -1263,15 +1618,15 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
 
       assert ids(view, "#work-item-stage-gate-outputs li") ==
                Enum.map(
-                 ~w(verification demo-video-scenario-1 screenshot-scenario-2
-                    demo-video-scenario-10 demo-evidence-scenario-1 demo-evidence-scenario-2
-                    demo-evidence-scenario-10 explainer),
+                 ~w(verification demo-video--scenario-1-- screenshot--scenario-2--
+                    demo-video--scenario-10-- demo-evidence--scenario-1--
+                    demo-evidence--scenario-2-- demo-evidence--scenario-10-- explainer),
                  &"work-item-stage-gate-output-#{&1}"
                )
 
       assert has_element?(
                view,
-               "#work-item-stage-gate-output-screenshot-scenario-2",
+               "#work-item-stage-gate-output-screenshot--scenario-2--",
                "screenshot scenario-2 v1"
              )
     end
@@ -1285,11 +1640,10 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
 
       text =
         matrix([
-          {@ac1, "Met", "Demo video: scenario 1"},
-          {@ac2, "Needs a person", check},
-          {@ac3, "Met", "Pictures: scenario 7"},
-          {~s|AC-4, "Raw HTML stays text"|, "Met",
-           "<script>alert(1)</script> <img src=x onerror=alert(2)>"}
+          {"ac-1", "met", "Demo video: scenario 1"},
+          {"ac-2", "not_met", check},
+          {"ac-3", "met", "Pictures: scenario 7"},
+          {"ac-4", "met", "<script>alert(1)</script> <img src=x onerror=alert(2)>"}
         ])
 
       work_item =
@@ -1377,22 +1731,6 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
   end
 
   describe "the scenarios read" do
-    test "with no Commit line, the evidence of every commit shows", %{conn: conn, scope: scope} do
-      work_item =
-        at_verify_gate!(scope, fn run, work_item ->
-          verification!(run, work_item, String.replace(@verification, "Commit: #{@commit}. ", ""))
-          scenario!(run, work_item, 1, :film)
-          scenario!(run, work_item, 2, :film, @older)
-        end)
-
-      view = tab(conn, scope, work_item)
-
-      assert texts(view, "#work-item-tab-scenarios h3") == [
-               "Scenario 1: Title of scenario-1",
-               "Scenario 2: Title of scenario-2"
-             ]
-    end
-
     test "a cancelled run's verification does not change the verified commit",
          %{conn: conn, scope: scope} do
       work_item =
@@ -1402,7 +1740,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
         end)
 
       run = verify_run!(work_item, work_item.take_in)
-      verification!(run, work_item, String.replace(@verification, @commit, @older))
+      verification!(run, work_item, %{@verification | "target_version" => @older})
       cancel!(scope, run)
 
       view = tab(conn, scope, work_item)
@@ -1531,36 +1869,27 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
     end
   end
 
-  describe "a verification shown as its Markdown" do
-    test "after a member accepted the escalation: who, above the text",
-         %{conn: conn, scope: scope} do
-      work_item =
-        at_verify_gate!(scope, &verification!(&1, &2, "## Summary\n\nThe check passed.\n"))
+  test "the questions have a row frame, in the order of the stage's outputs",
+       %{conn: conn, scope: scope} do
+    save_process!(scope, ~w(verification questions explainer))
 
-      Repo.insert!(%Escalation{
-        organisation_id: work_item.organisation_id,
-        workspace_id: work_item.workspace_id,
-        work_item_id: work_item.id,
-        stage_id: @verify,
-        process_version_id: work_item.process_version_id,
-        round: 1,
-        cause: :run_stopped,
-        resolution: :accept,
-        resolved_by_id: scope.user.id,
-        resolved_at: DateTime.add(DateTime.utc_now(), 1, :second),
-        inserted_at: DateTime.utc_now()
-      })
+    work_item =
+      at_verify_gate!(scope, fn run, work_item ->
+        verification!(run, work_item)
+        explainer!(run, work_item)
 
-      view = tab(conn, scope, work_item)
-      name = ApiaryWeb.People.short(scope.user.email)
+        push!(run, work_item, "questions", "main", [
+          {"questions.json", Jason.encode!(%{"questions" => []})}
+        ])
+      end)
 
-      assert has_element?(
-               view,
-               "#work-item-tab-output-verification-accepted",
-               "Accepted as it is by #{name}"
-             )
+    assert Enum.any?(Artifacts.list(work_item), &(&1.type == "questions"))
+    view = tab(conn, scope, work_item)
 
-      assert has_element?(view, "#work-item-tab-output-verification", "The check passed.")
-    end
+    assert ids(view, "section.q-xp-frame") == [
+             "work-item-tab-output-verification",
+             "work-item-tab-output-questions",
+             "work-item-tab-output-explainer"
+           ]
   end
 end

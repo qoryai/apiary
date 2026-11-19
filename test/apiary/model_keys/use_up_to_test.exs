@@ -184,7 +184,7 @@ defmodule Apiary.ModelKeys.UseUpToTest do
       state!(main, "five_hour", utilization: 92, resets_at: reset)
       state!(ctx.values["spare"], "five_hour", utilization: 92, resets_at: reset)
 
-      keys = ctx.subscription |> ModelKeys.claim_keys(nil, now) |> Map.new(&{&1.value_id, &1})
+      keys = ctx.subscription |> ModelKeys.claim_keys(now) |> Map.new(&{&1.value_id, &1})
       assert %{use_up_to_percent: 90, cooldown_until: until, resets_at: resets_at} = keys["main"]
       assert DateTime.compare(until, reset) == :eq
       assert DateTime.compare(resets_at, reset) == :eq
@@ -202,7 +202,7 @@ defmodule Apiary.ModelKeys.UseUpToTest do
       state!(api_main, "five_hour", utilization: 50, resets_at: reset)
 
       assert [%{use_up_to_percent: nil, cooldown_until: nil}] =
-               ModelKeys.claim_keys(ctx.api, nil, now)
+               ModelKeys.claim_keys(ctx.api, now)
 
       assert ModelKeys.use_up_to_percents(ctx.api) == %{}
       assert ModelKeys.use_up_to_percents(ctx.subscription) == %{main.id => 90}

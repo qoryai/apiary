@@ -108,6 +108,27 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       :ok
     end
 
+    # The Qory harness of the tests, with Shape's workflow `shape-a-ticket` declared in the
+    # software stack as the harness declares it, served and read as `main`'s newest commit.
+    defp serve_shape_workflow!() do
+      files =
+        Map.update!(
+          Apiary.QoryHarnessFixture.files(),
+          "stacks/software/qory-stack.yaml",
+          fn stack ->
+            String.replace(
+              stack,
+              "  explore-a-ticket: {access: read}\n",
+              "  explore-a-ticket: {access: read}\n  shape-a-ticket: {access: read}\n"
+            )
+          end
+        )
+
+      repository = Apiary.QoryHarnessFixture.serve!(files)
+      assert {:ok, commit} = Apiary.Harnesses.Qory.read({:branch, "main"})
+      assert commit == repository.commit
+    end
+
     test "stops on a fill that ended between the set-up and the workspace" do
       {:ok, _set_up} =
         Apiary.Setup.set_up(
@@ -121,7 +142,21 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       assert error.message =~ "The preview's fill did not finish."
     end
 
+    test "stops with the fix when the harness declares no shape-a-ticket" do
+      repository = Apiary.QoryHarnessFixture.serve!(Apiary.QoryHarnessFixture.files())
+      assert {:ok, commit} = Apiary.Harnesses.Qory.read({:branch, "main"})
+      assert commit == repository.commit
+
+      error = assert_raise Mix.Error, fn -> Workflow.run([]) end
+
+      assert error.message ==
+               "Set QORY_HARNESS_URL to a harness that declares shape-a-ticket, then fill a " <>
+                 "new database.\nWeb shop's harness declares no shape-a-ticket, the workflow " <>
+                 "of Shape. Drop this database and create it again before the next fill."
+    end
+
     test "fills an empty instance: people, versions with a trial, and work items in each state" do
+      serve_shape_workflow!()
       Workflow.run([])
 
       acme = Repo.one!(from o in Organisation, where: is_nil(o.deletion_marked_at))
@@ -129,6 +164,9 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
 
       workspace = Repo.get_by!(Workspace, organisation_id: acme.id, name: "Web shop")
       assert workspace.domain == "software"
+
+      # The recorded read is the served harness's: Shape's workflow is declared.
+      assert Processes.declared_workflows(workspace) == ["explore-a-ticket", "shape-a-ticket"]
 
       # Dana owns Acme, Ana is an admin and Max a member, each with the password the
       # moduledoc gives.
@@ -147,7 +185,6 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
       end
 
       dana = scope("dana@example.com")
-      max = scope("max@example.com")
 
       # Versions 1 to 3, the third current, and a trial: the first made with the workspace,
       # the others saved by Dana; each differs from the one before.
@@ -168,7 +205,7 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
              )
 
       assert :outputs_changed in kinds.(Processes.diff(v2, v3))
-      assert :outputs_changed in kinds.(Processes.diff(v3, trial))
+      assert kinds.(Processes.diff(v3, trial)) == MapSet.new([:description_changed])
 
       items =
         Repo.all(from w in WorkItem, where: w.workspace_id == ^workspace.id)
@@ -268,23 +305,23 @@ defmodule Mix.Tasks.Apiary.Demo.WorkflowTest do
                  select: r.reason
              ) == "workflow_not_in_harness"
 
-      # Max added acceptance criteria with a Mermaid diagram and a mockup in Shape.
+      # Shape's run made acceptance criteria and a mockup.
       added = items["Show delivery dates on the product page"]
       assert at.(added.title) == {"Shape", "at_gate"}
       shape_id = stage_id(v3, "Shape")
 
       for type <- ["acceptance-criteria", "mockup"] do
         version = Artifacts.newest(added, type)
-        assert to_string(version.writer) == "person"
-        assert version.user_id == max.user.id
+        assert to_string(version.writer) == "run"
         assert version.stage_id == shape_id
+        assert %DispatchRun{stage_id: ^shape_id} = Repo.get!(DispatchRun, version.run_id)
         assert Artifacts.exists?(added, shape_id, type)
       end
 
       assert Enum.map(Artifacts.list(added), & &1.type) |> Enum.sort() ==
                ["acceptance-criteria", "mockup", "proposal", "verdict"]
 
-      # Shape approved by Dana with Max's criteria: Build has its input and waits at its
+      # Shape approved by Dana with its run's criteria: Build has its input and waits at its
       # gate.
       approved = items["Remove the old promotion banner"]
       assert at.(approved.title) == {"Build", "at_gate"}

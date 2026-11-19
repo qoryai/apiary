@@ -59,9 +59,7 @@ defmodule Apiary.Stages.Runner do
   #     rounds that ran and one point for each failed check. A stage with workflows and no
   #     loop escalates, `check_failed`, with the points of the failed checks.
   #   * A stage with no workflow is worked by people (§ 4): with a required output
-  #     missing, it waits at its gate, a gate `none` too, and escalates nothing. A version
-  #     a person adds in the stage (`:version_added`) runs the checks again: once every
-  #     required output passes, a gate `none` passes on and a person gate keeps waiting.
+  #     missing, it waits at its gate, a gate `none` too, and escalates nothing.
   #   * Request changes runs the sequence again from its first loop, round 1, or from its
   #     start when it has no loop; with a note, it is feedback (below). At the gate of a
   #     stage with an entry that has a return key, it returns the work item to that key's
@@ -165,7 +163,6 @@ defmodule Apiary.Stages.Runner do
           | :request_changes
           | {:accept, cause}
           | {:another_round, cause}
-          | :version_added
 
   @typedoc """
   What the caller read: the stage's required input types with no version
@@ -346,14 +343,6 @@ defmodule Apiary.Stages.Runner do
       entry_at(stage, next) == nil -> gate(stage, %{next | loop_entry: nil})
       true -> start(stage, next, facts)
     end
-  end
-
-  # A person added a version at the gate of a stage with no workflow: the checks run
-  # again. At the gate of a stage with workflows, a version changes nothing.
-  def step(stage, position, :version_added, facts) do
-    if people?(stage),
-      do: finish(stage, %{position | entry: length(sequence(stage)), loop_entry: nil}, facts),
-      else: %{state: :at_gate, position: position, actions: []}
   end
 
   def step(stage, position, {:another_round, cause} = event, facts) do

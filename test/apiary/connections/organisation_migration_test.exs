@@ -23,6 +23,8 @@ defmodule Apiary.Connections.OrganisationMigrationTest do
   # fallbacks, whose keys depend on the tables this one makes: down before it, and up
   # after it.
   @later [
+    {20_261_118_163_000, Apiary.Repo.Migrations.ChooseAProviderAndARuntimePerFallback,
+     "choose_a_provider_and_a_runtime_per_fallback"},
     {20_261_110_153_000, Apiary.Repo.Migrations.KeepTheFallbacksOfAModelChoice,
      "keep_the_fallbacks_of_a_model_choice"},
     {20_261_026_140_000, Apiary.Repo.Migrations.KeepNoModelListForAProvider,

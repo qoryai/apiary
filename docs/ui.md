@@ -244,7 +244,7 @@ place:
   input confirms the spend. Focus stays in the dialog; Cancel, Escape and a click outside
   close it, change nothing and keep what was typed on the page, and focus goes back to
   the button that opened it. An act that starts a run only in some states (Confirm,
-  Approve, Request changes, Accept as it is, Move back, Check again, Add version) opens
+  Approve, Request changes, Accept as it is, Move back, Check again) opens
   the dialog only where it starts one, and acts at once otherwise.
 
 - **A form is a page** of its section at a separate path, never a dialog over a list:
@@ -496,28 +496,41 @@ replaces the navigation it is in.
   as Add key does. Change value with New value empty, or of only spaces, tabs or newlines,
   saves the settings and keeps the key's value. Another secret's value is saved as typed,
   its last newline included.
-- **Workspace settings › Model** (`/settings/model`, `ApiaryWeb.ModelChoiceLive`) has the
-  part Fallbacks (`#model-fallbacks`) under Runtime, Model and Effort: the line "When
+- **Workspace settings › Model** (`/settings/model`, `ApiaryWeb.ModelChoiceLive`) has
+  Provider, each model provider by its name, whose keys runs take. A provider that works
+  with no runtime shows under Provider "<Provider> works with no runtime in this version
+  of Qory Apiary. Pick another provider.", and Save writes nothing while it shows. The part
+  Fallbacks (`#model-fallbacks`) is under Provider, the tiers and Runtime: the line "When
   every key of Northwind Claude is in cooldown, runs use these, in order, from the next
   run.", then one row for each fallback, in order, from the second on with a rule above
-  it. A row is a group named by its place, "Fallback 2", with Provider, Model, Another
-  model and Effort as the choice has them, then Move up, Move down and Remove, each
-  labelled with the place ("Move fallback 2 up"). Add fallback adds a row of the first
-  provider left: one that applies to the workspace, serves the chosen runtime, and is
-  neither the chosen provider nor in a row. A new row's model, and a row's model after
-  its provider changes, is the chosen model where the provider has a model of that id,
-  else the provider's first. With no provider left, the part shows "Add another model
-  provider that serves Claude Code in Organisation settings › Model providers, then add
-  it here as a fallback.", the place a link. Save writes the rows with the choice, and an
-  error shows under its row's field, such as "Choose another provider: Northwind Claude
-  is chosen already." A save that sends no rows, as the set-up's Model step saves, keeps
-  the rows but one of the chosen provider, which it drops. A save that changes the chosen
-  provider to the provider of a row drops that row. A provider whose saved settings no
-  longer fit the catalogue entry of its kind in the running release serves nothing, and
-  the page shows "Add Northwind Claude again in Organisation settings › Model providers:
-  its settings no longer fit this version of Qory Apiary." A provider whose settings check
-  ran out of time or crashed serves nothing on that read, with no line, and the next read
-  checks it again.
+  it. A row is a group named by its place, "Fallback 2", with Provider, Model and effort
+  per tier (`ApiaryWeb.ModelTiers.tiers/1`, as the default models have it) and Runtime
+  (`ApiaryWeb.ModelTiers.runtime_part/1`, the runtimes the row's provider works with),
+  then Move up, Move down and Remove, each labelled with the place ("Move fallback 2
+  up"). A row's Provider lists every provider that applies to the workspace, also one that
+  works with no runtime, but the chosen provider and those of the other rows. A row whose
+  provider works with no runtime shows "<Provider> works with no runtime in this version
+  of Qory Apiary. Pick another provider." under its Provider, and Save is disabled while
+  it shows. Add fallback adds a row of the first provider left that works with a runtime,
+  else of the first provider left. A new row, and a row whose provider changes, has no
+  models and starts on the chosen runtime where its provider works with it, else on the
+  first runtime that does; a change of a row's Runtime keeps its models, and an effort
+  that runtime does not accept goes back to "Not set". With no provider left, the part
+  shows "Add another model provider in Organisation settings › Model providers, then add
+  it here as a fallback.", the place a link. Save is enabled once every tier of the
+  default models and of each row has a model and each row's provider works with a runtime.
+  Save writes the rows with the choice, and an error shows under its row's field, such as
+  "Choose another provider: Northwind Claude is chosen already." A save that sends no
+  rows, as the set-up's Model step saves, keeps the rows but one of the chosen provider,
+  which it drops. Where the set-up's save is refused for a kept row, the step shows one
+  line under its form (`#set-up-model-fallback-refused`), "Change a fallback in Workspace
+  settings › Model. Choose another provider: Northwind Claude is not used in this
+  workspace.", the place a link to this page. A save that changes the chosen provider to
+  the provider of a row drops that row. A provider whose saved settings no longer fit the
+  catalogue entry of its kind in the running release serves nothing, and the page shows
+  "Add Northwind Claude again in Organisation settings › Model providers: its settings no
+  longer fit this version of Qory Apiary." A provider whose settings check ran out of time
+  or crashed serves nothing on that read, with no line, and the next read checks it again.
 
 A workspace's and an organisation's settings keep the scope's sidebar, its Workspace
 settings or Organisation settings the current entry, marked as the parent, and are one

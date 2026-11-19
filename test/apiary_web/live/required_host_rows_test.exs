@@ -12,7 +12,7 @@ defmodule ApiaryWeb.RequiredHostRowsTest do
   import Apiary.DescriptionFixtures, only: [tracker_description: 1]
   import Apiary.RunListFixtures
 
-  alias Apiary.{Connections, ModelChoices, Policy}
+  alias Apiary.{Connections, ModelChoicesFixtures, Policy}
   alias ApiaryWeb.RunComponents
 
   setup :register_and_log_in_user
@@ -42,7 +42,9 @@ defmodule ApiaryWeb.RequiredHostRowsTest do
         keys: [%{value_id: "main", value: "sk-example-model-key-0123456789"}]
       })
 
-    {:ok, _choice} = ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+    {:ok, _choice} =
+      ModelChoicesFixtures.put_choice(scope, :workspace, %{provider: provider.public_id})
+
     :ok
   end
 

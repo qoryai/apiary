@@ -46,9 +46,9 @@ msgstr ""
 msgid "Another key of %{provider} has this name."
 msgstr ""
 
-#: lib/apiary/connections.ex
+#: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
-msgid "Change the model choices that use the key %{value} first: %{places}."
+msgid "Choose a model for each tier: %{tier} has none."
 msgstr ""
 
 #: lib/apiary/organisations/slug.ex
@@ -103,13 +103,25 @@ msgid "Choose another provider for %{runtime}. %{runtime} has no environment var
 msgstr ""
 
 #: lib/apiary/model_choices.ex
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another provider for this fallback: its provider no longer exists in this organisation."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Choose another provider: %{provider} is chosen already."
 msgstr ""
 
 #: lib/apiary/model_choices.ex
+#: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
 msgid "Choose another provider: %{provider} is not used in this workspace."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Choose models of %{provider}: %{model} is not one of its models."
 msgstr ""
 
 #: lib/apiary/model_choices.ex
@@ -118,7 +130,6 @@ msgid "Choose one of %{model}'s effort values: %{values}."
 msgstr ""
 
 #: lib/apiary/connections.ex
-#: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Choose one of %{provider}'s keys: %{value} is not one of them."
 msgstr ""
@@ -223,6 +234,11 @@ msgstr ""
 msgid "Remove the %{character} and everything after it. The address takes a path, but no query or fragment."
 msgstr ""
 
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Remove the fallbacks: a workflow's model choice uses the workspace's fallbacks."
+msgstr ""
+
 #: lib/apiary/kinds/endpoint.ex
 #, elixir-autogen, elixir-format
 msgid "Remove the part before @ from the address. Enter the key among the provider's keys instead."
@@ -252,6 +268,11 @@ msgstr ""
 #: lib/apiary/targets.ex
 #, elixir-autogen, elixir-format
 msgid "Together with %{target}, these come to %{bytes} characters; the most is 256."
+msgstr ""
+
+#: lib/apiary/connections.ex
+#, elixir-autogen, elixir-format
+msgid "Turn on the feature Model proxies to add %{provider}: it lists no models."
 msgstr ""
 
 #: lib/apiary/model_choices.ex

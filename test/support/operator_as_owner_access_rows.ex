@@ -248,7 +248,7 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
       {:"work_item.comment", yes: @in_operated},
       {:"work_item.comment_delete", yes: @own_admins},
       {:"gate.approve", yes: @in_operated},
-      {:"artifact.write", yes: @in_operated},
+      {:"artifact.write", yes: []},
       {:"target.set_further_repositories", yes: @own_admins},
       {:"target.rebuild_environment", yes: @in_operated},
       # The harness documents saved in Main: the organisation's owners and admins save

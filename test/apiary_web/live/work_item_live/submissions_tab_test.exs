@@ -26,6 +26,7 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
   @moduletag :tmp_dir
 
   @shape "st_p9w5cvh311"
+  @build "st_6ns22c4pav"
   @head String.duplicate("a1", 20)
   @base String.duplicate("9f", 20)
   @change String.duplicate("4c", 20)
@@ -89,7 +90,16 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
   end
 
   # The default process with Shape running a workflow and outputting the submission type.
-  defp process!(scope, submit) do
+  # `opts`: `outputs`, more output types of Shape; `gate`, Shape's gate kind, "person" by
+  # default; `build_inputs`, the input types of Build, the stage after Shape; `required`,
+  # whether Shape requires the submission type, false by default; `person_saved`, true for a
+  # process version that a person saved after the one with the harness record, so its
+  # `template` is nil and `Processes.harness_template/1` reads the version it is based on.
+  defp process!(scope, submit, opts \\ []) do
+    more_outputs = Keyword.get(opts, :outputs, [])
+    gate = Keyword.get(opts, :gate, "person")
+    build_inputs = Keyword.get(opts, :build_inputs, [])
+    required = Keyword.get(opts, :required, false)
     document = Processes.default_document("software")
 
     stages =
@@ -97,9 +107,22 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
         %{"id" => @shape} = stage ->
           Map.merge(stage, %{
             "sequence" => [%{"workflow" => "shape-a-ticket"}],
-            "outputs" => [%{"type" => "submission", "required" => false}],
-            "gate" => %{"kind" => "person", "approvers" => "members"}
+            "outputs" =>
+              [%{"type" => "submission", "required" => required}] ++
+                for(type <- more_outputs, do: %{"type" => type, "required" => false}),
+            "gate" =>
+              if(gate == "none",
+                do: %{"kind" => "none"},
+                else: %{"kind" => "person", "approvers" => "members"}
+              )
           })
+
+        %{"id" => @build} = stage when build_inputs != [] ->
+          Map.put(
+            stage,
+            "inputs",
+            for(type <- build_inputs, do: %{"type" => type, "required" => false})
+          )
 
         stage ->
           stage
@@ -114,7 +137,22 @@ defmodule ApiaryWeb.WorkItemLive.SubmissionsTabTest do
         set: [template: template]
       )
 
-    version
+    if Keyword.get(opts, :person_saved, false) do
+      renamed =
+        Enum.map(stages, fn
+          %{"id" => @build} = stage -> %{stage | "name" => "Build it"}
+          stage -> stage
+        end)
+
+      {:ok, saved} =
+        Processes.save(scope, scope.workspace, %{document | "stages" => renamed},
+          based_on: version
+        )
+
+      saved
+    else
+      version
+    end
   end
 
   defp at_shape!(scope) do

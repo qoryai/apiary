@@ -22,7 +22,10 @@ defmodule Apiary.ModelChoicesWithoutFeaturesTest do
       })
 
     {:ok, _} =
-      ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id, locked: true})
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
+        provider: provider.public_id,
+        locked: true
+      })
 
     Application.put_env(:apiary, :features, features)
     on_exit(fn -> Application.put_env(:apiary, :features, previous) end)
@@ -48,7 +51,7 @@ defmodule Apiary.ModelChoicesWithoutFeaturesTest do
             target,
             {target, "hello"}
           ] do
-        assert ModelChoices.put_choice(scope, place, attrs) == {:error, :not_found}
+        assert Apiary.ModelChoicesFixtures.put_choice(scope, place, attrs) == {:error, :not_found}
         assert ModelChoices.delete_choice(scope, place) == {:error, :not_found}
         assert ModelChoices.lock_choice(scope, place) == {:error, :not_found}
         assert ModelChoices.unlock_choice(scope, place) == {:error, :not_found}

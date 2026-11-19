@@ -10,7 +10,7 @@ defmodule Apiary.Connections.ProviderEntryChangeTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, Repo}
+  alias Apiary.{Connections, Dispatches, ModelChoicesFixtures, Repo}
   alias Apiary.Connections.Connection
   alias Apiary.Kinds.{Coded, Providers}
   alias Apiary.Runs.{ProviderCredential, Run}
@@ -86,7 +86,9 @@ defmodule Apiary.Connections.ProviderEntryChangeTest do
 
     test "gives a run its run configuration, with the release's limit windows", ctx do
       pid = from_old_entry!(ctx.provider).public_id
-      {:ok, _choice} = ModelChoices.put_choice(ctx.scope, :workspace, %{provider: pid})
+
+      {:ok, _choice} =
+        ModelChoicesFixtures.put_choice(ctx.scope, :workspace, %{provider: pid})
 
       assert {:ok, %{registered: run}} = handover!(ctx)
       run = Repo.get!(Run, run.id)
@@ -101,7 +103,10 @@ defmodule Apiary.Connections.ProviderEntryChangeTest do
   describe "a provider whose saved settings no longer fit the entry" do
     test "is refused when read, edited and given to a run", ctx do
       pid = ctx.provider.public_id
-      {:ok, _choice} = ModelChoices.put_choice(ctx.scope, :workspace, %{provider: pid})
+
+      {:ok, _choice} =
+        ModelChoicesFixtures.put_choice(ctx.scope, :workspace, %{provider: pid})
+
       assert {:ok, %{registered: run}} = handover!(ctx)
       run = Repo.get!(Run, run.id)
 

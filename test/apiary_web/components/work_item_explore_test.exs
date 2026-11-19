@@ -2342,6 +2342,70 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       assert text(html, "#work-item-questions-open-h") == "Open questions"
     end
 
+    test "in read mode, an option's proposal is a quote under its explanation" do
+      proposal = "AC-4 Demo: the delivery step reloads and shows the new dates."
+
+      question =
+        q(4, %{
+          about: %{"type" => "acceptance-criteria", "name" => "main", "item" => "ac-4"},
+          options: [
+            %{
+              title: "Change AC-4",
+              explanation: "The criterion takes the wording below.",
+              recommended: true,
+              proposal: proposal
+            },
+            %{title: "Withdraw AC-4", explanation: "AC-4 stays, marked withdrawn."}
+          ]
+        })
+
+      html = questions_tab(questions: [question], form: false)
+      option = "#work-item-questions-question-4 .q-xp-opt"
+
+      assert texts(html, "#{option}:first-child .q-xp-opt-w > *") == [
+               "Change AC-4",
+               "Recommended by the agent",
+               "The criterion takes the wording below.",
+               proposal
+             ]
+
+      assert text(html, "#{option}:first-child blockquote") == proposal
+      assert count(html, "#{option} blockquote") == 1
+
+      # With the form, the proposal is the wording in the field of Change AC-4:, with no
+      # quote.
+      html = questions_tab(questions: [question], form: true)
+      assert count(html, "#work-item-questions-question-4 blockquote") == 0
+      assert text(html, "#work-item-questions-question-4 textarea") == proposal
+    end
+
+    test "the About line: the output linked with its item, then the criterion's text quoted" do
+      line = %{
+        words: "acceptance criteria",
+        path: "/acme/main/work/41/stages/st_shape#ac-4",
+        item: "AC-4",
+        quote: "When the shopper changes the postcode, the dates change."
+      }
+
+      html = questions_tab(questions: [q(4, %{about_line: line})], form: false)
+      about = "#work-item-questions-question-4-about"
+
+      assert text(html, about) == "About acceptance criteria, AC-4"
+      assert attr(html, "#{about} a", "href") == [line.path]
+      assert text(html, "#{about} a") == "acceptance criteria"
+      assert text(html, "#{about}-quote blockquote") == line.quote
+
+      ticket = %{words: "the ticket", path: "/acme/main/work/41", item: nil, quote: nil}
+      html = questions_tab(questions: [q(4, %{about_line: ticket})], form: false)
+
+      assert text(html, about) == "About the ticket"
+      assert count(html, "#{about}-quote") == 0
+
+      # A question with no about line has none.
+      html = questions_tab(questions: [q(4)], form: false)
+      assert count(html, about) == 0
+    end
+
     test "a hostile question: no script, no javascript: link, no image; mermaid is code text" do
       context = """
       Which <script>alert(1)</script> one?

@@ -182,9 +182,9 @@ defmodule Apiary.Runs.WaitingTest do
       })
 
     {:ok, _choice} =
-      Apiary.ModelChoices.put_choice(scope, :workspace, %{
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
         provider: main.public_id,
-        fallbacks: [%{provider: fallback.public_id}]
+        fallbacks: [Apiary.ModelChoicesFixtures.fallback_attrs(fallback)]
       })
 
     run = queue!(scope)

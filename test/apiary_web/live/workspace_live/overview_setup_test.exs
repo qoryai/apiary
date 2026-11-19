@@ -13,7 +13,7 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Connections, ModelChoices, Repo, WorkItems}
+  alias Apiary.{Connections, ModelChoicesFixtures, Repo, WorkItems}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Nodes.Node
   alias Apiary.Runs.Run
@@ -152,7 +152,8 @@ defmodule ApiaryWeb.WorkspaceLive.OverviewSetupTest do
         keys: [%{value_id: "main", value: "sk-overview-1"}]
       })
 
-    {:ok, _choice} = ModelChoices.put_choice(scope, :workspace, %{provider: provider.public_id})
+    {:ok, _choice} =
+      ModelChoicesFixtures.put_choice(scope, :workspace, %{provider: provider.public_id})
   end
 
   describe "a workspace in set-up" do

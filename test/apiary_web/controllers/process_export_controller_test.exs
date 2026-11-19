@@ -89,7 +89,8 @@ defmodule ApiaryWeb.ProcessExportControllerTest do
   end
 
   describe "with factory off" do
-    @describetag with_features: Apiary.Features.all() -- [:factory, :workflow_model]
+    @describetag with_features:
+                   Apiary.Features.closed(Apiary.Features.all() -- [:factory, :workflow_model])
 
     test "the route is not found", %{conn: conn, scope: scope} do
       assert status(conn, path(scope)) == 404

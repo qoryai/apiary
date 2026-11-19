@@ -7,8 +7,10 @@ defmodule Apiary.Kinds.Providers do
   `Apiary.Kinds.Provider.load!/1` when the application is compiled, so a description that
   fails stops the compile; a provider is added by a release.
 
-  `serve/2` checks whether a provider can serve a runtime of `Apiary.Kinds.Runtimes`, and
-  `api/2` picks the API of the provider that a run of that runtime uses.
+  `serve/2` checks whether a provider can serve a runtime of `Apiary.Kinds.Runtimes`,
+  `runtimes/1` is every runtime a provider serves, and `api/2` picks the API of the provider that a run of that runtime uses. `offered/0` is
+  the providers a person may choose where a provider is offered: those whose description
+  lists no models only with the feature `model_proxies` (`offered?/1`).
 
   `ref/0` is the integrations commit the descriptions were vendored from, which a provider
   connection records with the description's digest. It is read from
@@ -58,6 +60,22 @@ defmodule Apiary.Kinds.Providers do
   @spec list() :: [Provider.t()]
   def list, do: @providers
 
+  @doc """
+  offered?/1 is whether a person may choose `provider` where a provider is offered: the
+  add form of Settings › Model providers, the set-up's Model step, and the Model page. A
+  provider whose description lists models is offered on every instance; one that lists
+  none, such as LiteLLM, only while the feature `model_proxies` is on
+  (`Apiary.Features`). The providers already added, the model choices that use them, and
+  what runs resolve are not checked.
+  """
+  @spec offered?(Provider.t()) :: boolean
+  def offered?(%Provider{models: [_ | _]}), do: true
+  def offered?(%Provider{}), do: Apiary.Features.on?(:model_proxies)
+
+  @doc "offered/0 is the providers of `list/0` that `offered?/1` is true for, in its order."
+  @spec offered() :: [Provider.t()]
+  def offered, do: Enum.filter(@providers, &offered?/1)
+
   @doc "fetch/1 is the provider named `name`: `{:ok, provider}`, or `:error`."
   @spec fetch(term) :: {:ok, Provider.t()} | :error
   def fetch(name) do
@@ -92,6 +110,14 @@ defmodule Apiary.Kinds.Providers do
   @spec serves?(Provider.t(), Runtime.t()) :: boolean
   def serves?(%Provider{} = provider, %Runtime{} = runtime),
     do: serve(provider, runtime) == :ok
+
+  @doc """
+  runtimes/1 is the runtimes of the catalogue (`Apiary.Kinds.Runtimes.list/0`) that
+  `provider` serves (`serves?/2`), in the catalogue's order: the runtimes a model choice
+  of the provider may name. A key of the provider adds no condition.
+  """
+  @spec runtimes(Provider.t()) :: [Runtime.t()]
+  def runtimes(%Provider{} = provider), do: Enum.filter(Runtimes.list(), &serves?(provider, &1))
 
   @doc """
   api/2 is the API of `provider` that a run of `runtime` uses: the first in the
