@@ -29,10 +29,9 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
       `shape-a-ticket` and an optional acceptance-criteria output, makes it a required
       input of Build, and adds to Build a loop of the workflows `capture-demo` and
       `fix-demo-findings`, which the harness does not declare; version 3 removes that
-      loop again, and adds an optional mockup output to Shape and an optional screenshot
-      output to Verify.
-    * A read of Web shop's harness is recorded, which lists `explore-a-ticket` and
-      `shape-a-ticket`, and not Build's loop.
+      loop again, and adds an optional mockup output to Shape.
+    * A read of Web shop's harness is recorded: the workflows the harness declares, among
+      them `explore-a-ticket` and `shape-a-ticket`, and not Build's loop.
     * The adapter **Tracker** is made and connected for Acme, with the repository
       `acme/web-shop` in Web shop and its tickets; Dana and Max take ten of them in.
       With `workflow_model` on, a take in enters Explore.
@@ -69,8 +68,8 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
         `explore-a-ticket`, so qory closed the run failed with the reason
         `workflow_not_in_harness`, which the run's page and the work item show with
         the workflow and that file.
-    * Last, Dana saves a trial version (Explore with an optional acceptance-criteria
-      output) and assigns the first work item to it.
+    * Last, Dana saves a trial version (Explore with a description) and assigns the first
+      work item to it.
 
   Running it again on the instance it filled adds nothing. The trial version, the fill's
   last step, marks a fill that finished; an Acme without it is a fill that stopped half
@@ -126,6 +125,8 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
   # The workflow of Shape from version 2, which the software stack of the Qory harness
   # declares.
   @shape_workflow "shape-a-ticket"
+  # The description of Explore in the trial version, the trial's one change.
+  @trial_description "Read the ticket and the code, ask what is unclear, then propose a change."
   # Dana's review comment on the first version of a proposal.
   @comment "Also check the total when a customer changes the basket after the reload."
 
@@ -322,17 +323,10 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     versions!(dana_scope)
 
     # A stage waits for a workflow only against a recorded read of the harness: with none,
-    # its run starts. The read lists Shape's workflow as the harness of the software stack
-    # declares it, also on a harness commit older than that workflow.
+    # its run starts.
     workspace = dana_scope.workspace
     chosen = Apiary.Stacks.Sources.chosen(workspace)
-
-    declared =
-      chosen
-      |> Processes.qory_workflow_levels(workspace)
-      |> Map.put_new(@shape_workflow, :read)
-
-    :ok = Processes.record_declared(workspace, declared)
+    :ok = Processes.record_declared(workspace, Processes.qory_workflow_levels(chosen, workspace))
 
     Shell.info(
       "Process versions 1 to 3: version 1 from the workspace's creation, 2 and 3 saved by Dana"
@@ -498,7 +492,6 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
         "Shape",
         &Map.update!(&1, "outputs", fn outputs -> outputs ++ [optional("mockup")] end)
       )
-      |> update_stage("Verify", &Map.put(&1, "outputs", [optional("screenshot")]))
 
     [v1, v2, v3]
   end
@@ -508,10 +501,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
     workspace
     |> documents()
     |> List.last()
-    |> update_stage(
-      "Explore",
-      &Map.update!(&1, "outputs", fn outputs -> outputs ++ [optional("acceptance-criteria")] end)
-    )
+    |> update_stage("Explore", &Map.put(&1, "description", @trial_description))
   end
 
   defp optional(type), do: %{"type" => type, "required" => false}
