@@ -1964,6 +1964,24 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   Workspace settings › Workflows." where it lists no workspace member. For that member,
   the point of a missing output reads "The run stored no acceptance criteria." followed
   by that sentence.
+- Where an accept of an escalation starts the stage's next entry, the escalation card's
+  button reads "Start %{workflow}" in place of **Accept as it is**, such as **Start
+  capture-demo**. Its dialog's title reads "Start %{workflow}?" in place of "Accept as it
+  is?", and the dialog's button "Start %{workflow}"; the line "Starts a run of
+  capture-demo on a machine." is as before. %{workflow} is the `name` of the entry whose
+  run the accept starts, else its workflow, read from the stage's `sequence` in the
+  process version when the page is drawn, after loops and `when`/`unless` conditions: for
+  a loop, its first workflow; a later entry whose condition is not met is passed over.
+  Qory Apiary's code and texts contain no workflow name. Where the accept takes the stage
+  to its gate, the button reads **Accept as it is**, as before, while every required
+  output has a version. Where the button reads Start, the round limit's fix reads "Read
+  the open finding, then pick Start %{workflow} or Run another round." or "Read the
+  %{count} open findings, then pick Start %{workflow} or Run another round.", and the
+  return limit's point "Pick Move back to return the work item to %{to} once more, or
+  pick Start %{workflow}." The Accepted findings frame ("Accepted as it is in Build by
+  …") and the activity log line are as before. A round limit's point stored before this
+  change has no count of its open findings: where the button reads Start, its fix reads
+  "Read the 2 open findings, then pick Run another round."
 - On the tab of a stage with `shared_run: true`, each run of the stage is a fold in the
   runs fold: "Attempt 3 (Run 3) · 4 workflows · round 2 of 3 · passed · 2 minutes ago", or
   "round 1" for a run with no loop. Inside it, one row for each session in the order it
