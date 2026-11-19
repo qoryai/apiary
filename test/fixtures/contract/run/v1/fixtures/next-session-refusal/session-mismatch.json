@@ -1,0 +1,5 @@
+{
+  "error": "session_mismatch",
+  "message": "Send the number of the session that ended last. A later session of this run ended already.",
+  "from": "apiary"
+}

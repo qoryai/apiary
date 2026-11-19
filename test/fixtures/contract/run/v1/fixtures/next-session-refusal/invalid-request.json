@@ -1,0 +1,8 @@
+{
+  "error": "invalid_request",
+  "names": [
+    "session"
+  ],
+  "message": "Send session, state and reason as the run contract's next-session request has them.",
+  "from": "apiary"
+}

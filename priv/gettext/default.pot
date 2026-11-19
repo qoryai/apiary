@@ -1157,6 +1157,13 @@ msgstr ""
 msgid "%{identity} is saved."
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "%{ids} is unchanged."
+msgid_plural "%{ids} are unchanged."
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/submission_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{id} · %{change}"
@@ -1306,6 +1313,7 @@ msgstr ""
 
 #: lib/apiary_web/components/source_components.ex
 #: lib/apiary_web/live/adapter_live/show.ex
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{list} and %{last}"
@@ -6179,6 +6187,7 @@ msgid "Applies to"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
 #: lib/apiary_web/live/work_item_live/show.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
@@ -7275,6 +7284,21 @@ msgstr ""
 msgid "Changed in version %{version}"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Changed on %{name}'s request"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Changed on a member's request"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Changed on your request"
+msgstr ""
+
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
 msgid "Changed the configuration of Qory Apiary"
@@ -7470,6 +7494,48 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Check that %{adapter} is running. It has a key in use, but it has not sent the address where it is set up; this step updates once it has."
 msgstr ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Check that this change to the acceptance criteria matches %{name}'s request, then pick %{approve} or %{changes}."
+msgid_plural "Check that these %{count} changes to the acceptance criteria match %{name}'s request, then pick %{approve} or %{changes}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Check that this change to the acceptance criteria matches %{name}'s request. If it does not, pick %{changes}."
+msgid_plural "Check that these %{count} changes to the acceptance criteria match %{name}'s request. If they do not, pick %{changes}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Check that this change to the acceptance criteria matches a member's request, then pick %{approve} or %{changes}."
+msgid_plural "Check that these %{count} changes to the acceptance criteria match a member's request, then pick %{approve} or %{changes}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Check that this change to the acceptance criteria matches a member's request. If it does not, pick %{changes}."
+msgid_plural "Check that these %{count} changes to the acceptance criteria match a member's request. If they do not, pick %{changes}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Check that this change to the acceptance criteria matches your request, then pick %{approve} or %{changes}."
+msgid_plural "Check that these %{count} changes to the acceptance criteria match your request, then pick %{approve} or %{changes}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Check that this change to the acceptance criteria matches your request. If it does not, pick %{changes}."
+msgid_plural "Check that these %{count} changes to the acceptance criteria match your request. If they do not, pick %{changes}."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -9566,6 +9632,11 @@ msgstr ""
 msgid "Earlier answer"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Earlier check:"
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Earlier stage"
@@ -9574,6 +9645,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Earlier take ins"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Earlier:"
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -14113,6 +14189,11 @@ msgstr ""
 msgid "New activity"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "New check:"
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
@@ -14222,6 +14303,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/workspace_types.ex
 #, elixir-autogen, elixir-format
 msgid "New workspaces of this type start with this default. Add machine types in %{place}."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "New:"
 msgstr ""
 
 #: lib/apiary_web/live/activity_live.ex
@@ -18288,6 +18374,11 @@ msgstr ""
 msgid "Removed the stage %{name}."
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Removed. Reason: %{reason}"
+msgstr ""
+
 #: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_page_components.ex
@@ -18457,6 +18548,7 @@ msgstr ""
 msgid "Request a machine"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
 #: lib/apiary_web/live/work_item_live/show.ex
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
@@ -21324,6 +21416,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Text size"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Text:"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
@@ -27415,6 +27512,11 @@ msgstr ""
 #: lib/apiary_web/components/run_components.ex
 #, elixir-autogen, elixir-format
 msgid "none, so no path is allowed"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "none. This criterion is new."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapters.ex

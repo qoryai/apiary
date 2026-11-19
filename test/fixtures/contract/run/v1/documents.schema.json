@@ -467,9 +467,9 @@
       }
     },
     "time_limit_minutes": {
-      "description": "The time limit of one session, in minutes, from 15 to 1440. In the run documents, it is the limit of session 1, present only when the control plane sets one, and the machine sets it as that session's time limit. The limit of each later session is the time_limit_minutes of the answer to the next-session call.",
+      "description": "The time limit of one session, in minutes, from 1 to 1440. In the run documents, it is the limit of session 1, present only when the control plane sets one, and the machine sets it as that session's time limit. The limit of each later session is the time_limit_minutes of the answer to the next-session call.",
       "type": "integer",
-      "minimum": 15,
+      "minimum": 1,
       "maximum": 1440
     },
     "shared_run": {
@@ -576,9 +576,24 @@
       }
     },
     "harness_workflow": {
-      "description": "The settings of one workflow of a stack that a harness section defines: access and time_limit, both optional.",
+      "description": "The settings of one workflow of a stack that a harness section defines: access, plan and tier, each optional, with the keys and values of workflows in qory-stack.yaml. A workflow with plan has access write.",
       "type": "object",
       "additionalProperties": false,
+      "if": {
+        "required": [
+          "plan"
+        ]
+      },
+      "then": {
+        "required": [
+          "access"
+        ],
+        "properties": {
+          "access": {
+            "const": "write"
+          }
+        }
+      },
       "properties": {
         "access": {
           "description": "The access level the workflow declares for what a run of it works on: read, write-no-push or write, as described under access in the run documents. Left out, it is read.",
@@ -589,13 +604,20 @@
             "write"
           ]
         },
-        "time_limit": {
-          "description": "How long a run of the workflow may run, counted from the run's open, as a duration above zero in the form of a Go duration, such as 7h, 45m or 1h30m. The time_limit_minutes of the run documents, when the control plane sets it, applies instead.",
+        "plan": {
+          "description": "The artifact type whose launch version sets what a run of the workflow may push, such as build-plan: lower-case letters and digits in groups joined by single hyphens, 1 to 64 characters. Left out, the workflow has no plan. Only a workflow with access write has one.",
           "type": "string",
-          "pattern": "^([0-9]+(\\.[0-9]+)?(ns|us|ms|s|m|h))+$",
-          "not": {
-            "pattern": "^([0.]+(ns|us|ms|s|m|h))+$"
-          }
+          "maxLength": 64,
+          "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+        },
+        "tier": {
+          "description": "The tier of the model and effort of the main session of a run of the workflow: light, balanced or thinking. The control plane resolves the model and effort from the tier. Left out, the workflow has no tier.",
+          "type": "string",
+          "enum": [
+            "light",
+            "balanced",
+            "thinking"
+          ]
         }
       }
     },

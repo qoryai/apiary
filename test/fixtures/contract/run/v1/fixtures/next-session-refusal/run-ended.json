@@ -1,0 +1,5 @@
+{
+  "error": "run_ended",
+  "message": "Close the run. It ended, so it starts no more sessions.",
+  "from": "apiary"
+}

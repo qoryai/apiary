@@ -45,7 +45,8 @@ defmodule Apiary.Stages do
   # which contains the change the person asked for. Every later
   # run reads that version in place of the approved one (`read_version/6`), and the next
   # approval by a person at a gate lists it (`approve/4`). A gate `none` lists no version
-  # with a `decision`.
+  # with a `decision`. The work item page marks the version until an approval lists it
+  # or a later version of its artifact (`unapproved_changes/2`).
   #
   # ## After the last stage
   #
@@ -706,6 +707,46 @@ defmodule Apiary.Stages do
 
   def next_session(_run, _report), do: {:error, :invalid_request}
 
+  # next_session_check/1 runs the checks of the run of a next-session request of `run`, a
+  # run of the queue (or its id), which come before its body is read, in the run
+  # contract's order: `{:error, :not_found}` for an unknown run, a run of Explore, a run of
+  # a stage without `shared_run`, and a run that no claim of a shared stage registered;
+  # then `{:error, :run_ended}` or `{:error, :run_cancelled}` for a run that ended or that
+  # a member cancelled; then `{:error, :run_ended, newest}` for a run whose stage no
+  # longer runs it or whose last step returned `:end`. `newest` is the number of the newest
+  # session the run reported, nil for none: a report of that session is a repeat, for
+  # which next_session/2 returns the stored result, so that a lost answer does not end the
+  # run another way. Else `:ok`. It reads without the work item's lock, and next_session/2
+  # checks all of it again under the lock.
+  @doc false
+  @spec next_session_check(DispatchRun.t() | Ecto.UUID.t()) ::
+          :ok
+          | {:error, :not_found | :run_ended | :run_cancelled}
+          | {:error, :run_ended, pos_integer | nil}
+  def next_session_check(%DispatchRun{id: id}), do: next_session_check(id)
+
+  def next_session_check(id) when is_binary(id) do
+    with {:ok, run} <- shared_run(id),
+         {:ok, _settings} <- session_settings(run),
+         [_ | _] = sessions <- sessions(run),
+         :ok <- run_live(run) do
+      work_item = Repo.get!(WorkItem, run.work_item_id)
+
+      with %Session{} = pending <- Enum.find(sessions, &is_nil(&1.forager_session)),
+           {:ok, _version, _stage} <- session_stage(work_item, run),
+           {:ok, _pending} <- pending_session(pending, work_item) do
+        :ok
+      else
+        _ended ->
+          newest = newest_reported(sessions)
+          {:error, :run_ended, newest && newest.forager_session}
+      end
+    else
+      [] -> {:error, :not_found}
+      {:error, _reason} = refused -> refused
+    end
+  end
+
   defp session_step(id, number, state, reason) do
     :ok = MachineTypes.hold()
 
@@ -888,10 +929,7 @@ defmodule Apiary.Stages do
   # the session the run is in, the first with no report recorded yet. A run with no
   # session recorded is one that no claim of a shared stage registered.
   defp reported(sessions, number) do
-    newest =
-      sessions
-      |> Enum.filter(& &1.forager_session)
-      |> Enum.max_by(& &1.forager_session, fn -> nil end)
+    newest = newest_reported(sessions)
 
     cond do
       newest && number == newest.forager_session ->
@@ -909,6 +947,13 @@ defmodule Apiary.Stages do
           pending -> {:step, pending}
         end
     end
+  end
+
+  # The newest session of `sessions` that the run reported, nil for none.
+  defp newest_reported(sessions) do
+    sessions
+    |> Enum.filter(& &1.forager_session)
+    |> Enum.max_by(& &1.forager_session, fn -> nil end)
   end
 
   # The work item's stage, while the run is the newest of that stage, the stage runs, and
@@ -5312,6 +5357,68 @@ defmodule Apiary.Stages do
 
   # The public ids of the versions that the approvals `approvals_by_version/1` returns list.
   defp listed(approvals), do: MapSet.new(Map.keys(approvals))
+
+  @doc false
+  # unapproved_changes/2 is each version of `artifacts`, the work item's
+  # (`Artifacts.list/1`), that is a person's change (`changes/2`, by the approvals that
+  # `listed/1` reads, as for the version that later runs read), by its public id, as
+  # `%{type:, name:, version:, by:, earlier:}`. `by` is the account id of the person who
+  # wrote the note that asked for the version (`Apiary.Stages.Notes.writers/2`), nil for
+  # none. `earlier` is the version of the same artifact, below this one, that was approved
+  # before the change (`approved_before/4`), nil for none. The work item page marks each
+  # such version until an approval lists it or a later version of its artifact. A gate
+  # `none` lists no version with a `decision`, so the mark stays through it.
+  @spec unapproved_changes(WorkItem.t(), [map]) :: %{String.t() => map}
+  def unapproved_changes(%WorkItem{} = work_item, artifacts) do
+    if Enum.any?(artifacts, fn a -> Enum.any?(a.versions, &is_binary(&1.decision_id)) end) do
+      approvals = approvals_by_version(work_item)
+      listed = listed(approvals)
+      by_person = person_listed(approvals)
+
+      found =
+        for artifact <- artifacts,
+            version <- changes(artifact, listed),
+            do: {artifact, version}
+
+      writers = Notes.writers(work_item.id, Enum.map(found, &elem(&1, 1).decision_id))
+
+      Map.new(found, fn {artifact, version} ->
+        {version.public_id,
+         %{
+           type: artifact.type,
+           name: artifact.name,
+           version: version,
+           by: Map.get(writers, version.decision_id),
+           earlier: approved_before(artifact, version, by_person, listed)
+         }}
+      end)
+    else
+      %{}
+    end
+  end
+
+  # The public ids of the versions that a person's approval (`person_approval?/1`) of
+  # `approvals` (`approvals_by_version/1`) lists: the versions a person approved.
+  defp person_listed(approvals) do
+    for {public_id, list} <- approvals,
+        Enum.any?(list, &person_approval?/1),
+        into: MapSet.new(),
+        do: public_id
+  end
+
+  # The text approved before `version`: the highest-numbered version of `artifact` below it
+  # that a person's approval lists (`by_person`, `person_listed/1`), else the highest below
+  # it that any approval lists (`listed`, `listed/1`), a gate `none`'s included; nil for
+  # none.
+  defp approved_before(artifact, version, by_person, listed) do
+    highest_below(artifact, version, by_person) || highest_below(artifact, version, listed)
+  end
+
+  defp highest_below(artifact, version, ids) do
+    artifact.versions
+    |> Enum.filter(&(&1.number < version.number and MapSet.member?(ids, &1.public_id)))
+    |> Enum.max_by(& &1.number, fn -> nil end)
+  end
 
   # The input types of the conditions of `stage` that count: each whose version the stage
   # reads has a file of more than 0 bytes (`Runner.condition_inputs/1`).

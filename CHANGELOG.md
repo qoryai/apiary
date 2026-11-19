@@ -605,6 +605,32 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   links to that version's page, and the gate also links every further version that an
   approval would record. In `GET artifacts`, each version has `decision` and
   `decision_at`, the time of that note.
+- The work item page marks a version that a run stored with a `decision` until a person's
+  approval lists it: "Changed on your request" for the person who wrote the note, "Changed
+  on sam's request" for any other reader, with the part of the writer's email before "@",
+  and "Changed on a member's request" where the writer's account is gone. The mark shows on
+  the version's line of the gate card ("acceptance criteria v2 · Changed on your request"),
+  after an output's check ("acceptance criteria v2 · Passed · Changed on your request",
+  then " · " and the approval marks the line shows, such as "Approved v1; v2 is newer"),
+  and on the caption of the version's frame on the stage's tab ("Version 2 · Changed on
+  your request"). For acceptance criteria approved before, the gate card compares each
+  criterion by its id with the version that a person approved, else with the one that a
+  gate `none`'s approval lists, and lists each changed, added or removed one: its id with
+  the mark, then "**Earlier:**" and "**New:**" with the two texts, then "**Earlier
+  check:**" and "**New check:**" where its check changed. An added criterion shows
+  "**Earlier:** none. This criterion is new." and its new check; a removed one shows
+  "**New:** Removed. Reason: …" and no check line; a criterion whose check alone changed
+  shows "**Text:**" and the two check lines. "AC-1 is unchanged." (or "AC-1 and AC-5 are
+  unchanged.") follows the list. Above the list, a reader who may approve sees "Check that
+  these 3 changes to the acceptance criteria match your request, then pick **Approve** or
+  **Request changes**." ("Check that this change to the acceptance criteria matches your
+  request, …" for one), or, where the card shows only **Request changes**, "Check that
+  these 3 changes to the acceptance criteria match your request. If they do not, pick
+  **Request changes**." The line contains only controls that the card shows, and does not
+  show while the form of Request changes is open. A reader who may not approve sees who
+  decides, such as "An approver of Build decides: sam and alex.", in place of that line and
+  of "Only the members this stage lists can approve." A changed version of any other type
+  shows the mark only.
 - Explore's gate lists the tracks it offers above Approve, each with its description, in the
   gate's order, under "Track to run after you approve". The track that the stage's runs
   proposed is selected and has the badge "Proposed by <stage>" and, where the run gave a
@@ -994,14 +1020,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   report, its first failed removal and the removal.
 - **Copy diagnostics**, in the menu of a run's page, copies the run's diagnostics as
   JSON, for owners, admins and members who may read the run's log. The diagnostics
-  contain the run with its machine type's key and name, its queue entry and claim, how
-  its machine was prepared, its latest 5,000 events at most, the output that belongs to
-  no step, its last 1 MiB, the output of each step, and the secrets found printed in the
-  run, at most 8 MiB in all. Only an instance admin's copy contains the machine logs. A
-  copy contains no key, no run code and no variable value, only the variables' names.
-  Text is copied as Qory Apiary stored it, so a secret a run printed is in the copy.
-  When the copy fails, the menu shows the fix first, such as “Sign in again, then copy
-  again. Your session ended.”
+  contain the run with its machine type and that type's name, its queue entry and
+  claim, how its machine was prepared, its latest 5,000 events at most, the output that
+  belongs to no step, its last 1 MiB, the output of each step, and the secrets found
+  printed in the run, at most 8 MiB in all. Only an instance admin's copy contains the
+  machine logs. A copy contains no key, no run code and no variable value, only the
+  variables' names. Text is copied as Qory Apiary stored it, so a secret a run printed is
+  in the copy. When the copy fails, the menu shows the fix first, such as “Sign in again,
+  then copy again. Your session ended.”
 - Instance settings › **Diagnostics keys**, for instance admins, lists the diagnostics
   keys. With a diagnostics key, a computer lists the runs on this instance, with their
   organisation, workspace and work item title, and reads the diagnostics of any of them,
@@ -2068,6 +2094,22 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   shows "Only owners and admins add a machine's access keys.", "Only owners and admins
   manage a machine's access keys." and "Reload the page: this machine's access keys
   changed, and that access key or code is gone."
+- In a run's diagnostics, the machine type is `run.machine.type`, in place of
+  `run.machine.key`. A harness document without `extends` may set `plan` and `tier` on a
+  workflow, as in `qory-stack.yaml`, and a workflow with `plan` has `access: write`. The
+  save of a document whose workflow sets `time_limit` fails. The copies of the
+  integrations run and diagnostics contracts are at the commits that make these changes;
+  the run contract there allows a session time limit of 1 to 1440 minutes, and Qory
+  Apiary still saves a time limit of 15 minutes or more. A save whose workflow sets
+  `plan` without `access: write`, or sets `time_limit`, fails with a message that starts
+  with the fix and contains the workflow's name.
+<!-- feature: workflow_model -->
+- Qory Apiary checks a next-session request in the order of the run contract's refusals.
+  A run of Explore gets `404` `not_found`, and a run whose stage no longer runs it gets
+  `409` `run_ended`, before Qory Apiary reads the body. A repeat of the newest session
+  still gets its stored answer. `names` contains an unknown member at any length of its
+  name. Without `workflow_model`, the request gets `404` `not_found` as JSON.
+<!-- /feature -->
 <!-- feature: factory, secrets -->
 - The run configuration's `model_credential` is now
   `default_model_provider_credential_name`, the default model provider credential, as in

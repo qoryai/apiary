@@ -12,7 +12,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   # and signs every answer to a verified request. Then, in order:
   #
   #   1. where the instance does not have `workflow_model`, `404` with the error page,
-  #      signed: the same body and type as a path the router does not know;
+  #      signed: the same body and type as a path the router does not know; for a
+  #      next-session request, `404` `not_found`;
   #   2. a run whose gateway is not the key's (`ApiaryWeb.Contract.RunApi.Run`) is `404`
   #      `not_found`, and so is, for a file, a version id or a filename the run's
   #      work item does not have: another run's version, another work item's and an
@@ -260,19 +261,23 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   # The next-session request of a run of a stage whose workflows run as sessions of one
   # run, sent after each session that did not pause (`Apiary.Stages.next_session/2`):
   # `200` with the next session, `{"next": "session", ...}` without the members that are
-  # nil, or `{"next": "end"}`, at most 1 MiB. A run that has ended, or that a member
-  # cancelled, is `409` `run_ended`; then a body over 4 KiB `413` `payload_too_large`;
-  # then a body outside the run contract's request `400` `invalid_request`; then what the
-  # step returns: a run without such a stage `404` `not_found`, a session older than the
-  # newest the run reported `409` `session_mismatch`, a store that cannot read the
-  # verdict or the questions `503` `unavailable`. Inputs that cannot be formed end the
-  # run with the cause `ticket_gone` or `inputs_invalid`, as at a claim
-  # (`Apiary.Dispatches.RunEnd.unformed/2`), and are `409` `run_ended`. An error writes
-  # nothing but that end. A repeat for the same session returns the same body.
+  # nil, or `{"next": "end"}`, at most 1 MiB. The refusals follow the run contract's
+  # `next-session-refusal.schema.json`, the run's checks before the request's
+  # (`Apiary.Stages.next_session_check/1`): a run of Explore or of a stage without
+  # `shared_run` is `404` `not_found`; a run that has ended, that a member cancelled, whose
+  # stage no longer runs it, or whose last step returned the end is `409` `run_ended`;
+  # then a body over 4 KiB `413` `payload_too_large`; then a body outside the run
+  # contract's request `400` `invalid_request`; then what the step returns: a session
+  # older than the newest the run reported `409` `session_mismatch`, a store that cannot
+  # read the verdict or the questions `503` `unavailable`. A repeat for the same session
+  # returns the same body, also where the stage no longer runs the run or its last step
+  # returned the end. The step forms the inputs, so their `409` comes after the request's
+  # checks. Inputs that the step cannot form end the run with the cause `ticket_gone` or
+  # `inputs_invalid`, as at a claim (`Apiary.Dispatches.RunEnd.unformed/2`), and are `409`
+  # `run_ended`. An error writes nothing but that end.
   def next_session(conn, %{"run_id" => run_id}) do
     with {:ok, run} <- run(conn, run_id),
-         :ok <- live(run),
-         {:ok, report} <- Body.next_session(conn.assigns.raw_body),
+         {:ok, report} <- session_report(run, conn.assigns.raw_body),
          {:ok, next} <- stepped(run, Apiary.Stages.next_session(run.dispatch_run, report)) do
       answer(conn, 200, Wire.next_session(next))
     else
@@ -295,6 +300,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
             "Send the number of the session that ended last. A later session of this run ended already."
         )
 
+      # Stages.next_session/2 returns this for a report of another form; Body.next_session/1
+      # returns `{:error, :invalid_request, member}` for such a body first.
       {:error, :invalid_request} ->
         error(conn, 400, "invalid_request", names: ["body"], message: @next_session_body)
 
@@ -306,6 +313,27 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     end
   rescue
     exception -> unavailable(conn, exception)
+  end
+
+  # The report a next-session request sends, after the run's checks: a `404` of the run
+  # first, then a run that ended or that a member cancelled, then a stage that no longer
+  # runs the run or whose last step returned the end, where only a valid repeat of the
+  # newest reported session passes on, to get its stored answer; then the body.
+  defp session_report(run, raw_body) do
+    case Apiary.Stages.next_session_check(run.dispatch_run) do
+      {:error, :not_found} = not_found ->
+        not_found
+
+      checked ->
+        with :ok <- live(run) do
+          case {checked, Body.next_session(raw_body)} do
+            {:ok, read} -> read
+            {{:error, :run_ended, newest}, {:ok, %{session: newest}} = repeat} -> repeat
+            {{:error, :run_ended, _newest}, _read} -> {:error, :run_ended}
+            {{:error, _reason} = refused, _read} -> refused
+          end
+        end
+    end
   end
 
   # The step's result; inputs that cannot be formed end the run first.
@@ -373,7 +401,9 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   # Where the run did not keep `workflow_model` when it was claimed, whatever the instance
   # has now, or, for a run that kept no features, where the instance does not have it
   # (`ApiaryWeb.Contract.RunFeatures`), the answer a verified request to a route of a
-  # feature that is off gets (`ApiaryWeb.Features`): the error page's `404`, signed.
+  # feature that is off gets (`ApiaryWeb.Features`): the error page's `404`, signed. A
+  # next-session request gets `404` `not_found` instead, as the run contract's
+  # next-session refusal has it.
   defp workflow_model(conn, _opts) do
     on? =
       case ApiaryWeb.Contract.RunFeatures.recorded(conn) do
@@ -381,13 +411,18 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
         recorded -> Apiary.Features.on?(Boundary.route_feature(), recorded)
       end
 
-    if on? do
-      conn
-    else
-      conn
-      |> put_resp_content_type("text/html")
-      |> send_resp(404, ApiaryWeb.ErrorHTML.render("404.html", %{}))
-      |> halt()
+    cond do
+      on? ->
+        conn
+
+      action_name(conn) == :next_session ->
+        conn |> error(404, "not_found") |> halt()
+
+      true ->
+        conn
+        |> put_resp_content_type("text/html")
+        |> send_resp(404, ApiaryWeb.ErrorHTML.render("404.html", %{}))
+        |> halt()
     end
   end
 

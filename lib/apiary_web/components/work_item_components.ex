@@ -3360,7 +3360,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   attr :output, :map,
     required: true,
     doc:
-      "`:type`, `:name`, `:version`, `:open`, `:read` and `:approval`, the " <>
+      "`:type`, `:name`, `:version`, `:open`, `:read`; `:changed`, the mark that the " <>
+        "caption shows last when a person's change made the version " <>
+        "(`ApiaryWeb.WorkItemLive.GateChanges.mark/1`), nil for none; `:approval`, the " <>
         "approval it shows, nil for none (`ApiaryWeb.WorkItemLive.StageTab.approved/3`); " <>
         "`:kind`, `:scenarios` for the Scenarios frame, `:verification` for a verification " <>
         "the page read as its parts and `:criteria` for acceptance criteria read as their " <>
@@ -3429,6 +3431,10 @@ defmodule ApiaryWeb.WorkItemComponents do
             <span :if={@output[:caption]}>{@output.caption}</span>
             <span :if={!@output[:caption] and !@output[:source]} phx-no-format>{gettext("Version %{version}", version: Format.number(@output.version))}</span>
             <span :if={@output[:source]} id={"#{@id}-source"}>{source_words(@output)}</span>
+            <span :if={@output[:changed]} phx-no-format> · </span>
+            <span :if={@output[:changed]} id={"#{@id}-changed"} class="text-warning">
+              {@output.changed}
+            </span>
           </p>
         </summary>
         <p
