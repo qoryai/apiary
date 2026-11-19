@@ -51,9 +51,12 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
     tokens
   end
 
+  # The caller waits up to 60 seconds for a refresh unless a test says otherwise: with the
+  # default of 10 seconds, a loaded machine returns the old token at the deadline while the
+  # refresh still runs, and the test reads the login's row before the outcome is written.
   defp token(provider, opts \\ []) do
     id = value(provider, Keyword.get(opts, :key, "main")).id
-    opts = Keyword.put_new(opts, :trigger, {:run, "run-1"})
+    opts = opts |> Keyword.put_new(:trigger, {:run, "run-1"}) |> Keyword.put_new(:wait, 60_000)
     Login.access_token(plain(provider), id, Keyword.delete(opts, :key))
   end
 
@@ -972,10 +975,7 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
         {provider, _tokens} = subscription!(scope, expires_in: 60)
         stub!({unquote(status), unquote(Macro.escape(body))})
 
-        # The caller waits for the refresh to end and its outcome to be written: with the
-        # default wait of 10 seconds a loaded machine returns the old token at the
-        # deadline, while the refresh still runs, and the row is read before its outcome.
-        result = token(provider, wait: 60_000)
+        result = token(provider)
 
         assert %Login{state: state, sign_in_cause: cause, last_failure: failed_at} = row(provider)
 
