@@ -85,20 +85,21 @@ defmodule Apiary.Dispatches.RunSettings do
   # A step whose provider's keys were already found in cooldown is passed over: its keys
   # are the same, so the skip only saves work and changes no result. A step that does not
   # form is passed over and ends nothing. That step's provider's keys are the group of
-  # the run's start key. With none, `build/2` returns `{:cooling, built,
-  # ids}`: the claim checks what can end the run first, then leaves it waiting with `ids`
-  # as the providers it waits for (`Apiary.Dispatches.Handover`): the choice's provider,
-  # each later step's provider that formed, and each whose settings check ran out of time
-  # or crashed. The queue keeps the same providers in the same order for the claim's
-  # filter (`model_providers/1`).
+  # the run's default model provider credential. With none, `build/2` returns `{:cooling,
+  # built, ids}`: the claim checks what can end the run first, then leaves it waiting
+  # with `ids` as the providers it waits for (`Apiary.Dispatches.Handover`): the choice's
+  # provider, each later step's provider that formed, and each whose settings check ran
+  # out of time or crashed. The queue keeps the same providers in the same order for the
+  # claim's filter (`model_providers/1`).
   #
   # A run of a stage with `shared_run: true` also takes the keys of each provider its later
   # sessions run on, one provider per session (`with_sessions/3`). The run gets at most 6
-  # keys across its providers (`merge/3`): the start key's provider's keys, picked in the
-  # order of `Apiary.ModelKeys.Order`, the first of that order the start key, never one in
-  # cooldown; at least one key of each other provider; then the rest. Each provider's keys
-  # are kept in the order the run configuration sends them (`Apiary.ModelKeys.Order.sent/2`),
-  # the start key marked.
+  # keys across its providers (`merge/3`): the default model provider credential's
+  # provider's keys, picked in the order of `Apiary.ModelKeys.Order`, the first of that
+  # order the default model provider credential, never one in cooldown; at least one key
+  # of each other provider; then the rest. Each provider's keys are kept in the order the
+  # run configuration sends them (`Apiary.ModelKeys.Order.sent/2`), the default model
+  # provider credential marked.
   #
   # A deny rule of the security policy is not asked: it never blocks a host of an
   # integration.
@@ -122,15 +123,16 @@ defmodule Apiary.Dispatches.RunSettings do
   # of each workflow of that stage (`Apiary.Stages.shared_workflows/1`), which the claim
   # keeps on the run (`Apiary.Stages.claim_sessions!/3`). The process document has no
   # time limit. The workflows and the limits are read without a lock. Beside it, the run
-  # keeps the start key's provider's row id (`provider_connection_id`) and its keys
-  # (`run_model_keys`, `Apiary.Runs.ModelKey`: each key's place, its row id, its
-  # credential name `<provider's public id>-<place from 1>`, the place counted per
-  # provider, `start` on the start key, its provider's row id, keys' secret's row id and
-  # chain, the API its sessions use, with its `format`, its `endpoint` with a setting
-  # resolved to its address, its `auth`, and, when the description lists them, its
-  # `key_prefixes` and its limit windows as `use_up_to_windows`, and what its run
-  # configuration entry has of it), for the reads that follow the claim. The run settings
-  # take at most 64 KiB encoded; a claim with more fails.
+  # keeps the default model provider credential's provider's row id
+  # (`provider_connection_id`) and its keys (`run_model_keys`, `Apiary.Runs.ModelKey`:
+  # each key's place, its row id, its credential name `<provider's public id>-<place from
+  # 1>`, the place counted per provider, `start` on the default model provider
+  # credential, its provider's row id, keys' secret's row id and chain, the API its
+  # sessions use, with its `format`, its `endpoint` with a setting resolved to its
+  # address, its `auth`, and, when the description lists them, its `key_prefixes` and its
+  # limit windows as `use_up_to_windows`, and what its run configuration entry has of
+  # it), for the reads that follow the claim. The run settings take at most 64 KiB
+  # encoded; a claim with more fails.
   #
   # `provider_models` is the description's models (`Apiary.Connections.provider_models/1`),
   # in its order, each with the effort values that both it and the runtime have, then the
@@ -527,32 +529,35 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # The model and the key of each later session of a shared run, by its workflow, as
   # `sessions` beside `built`, which the claim keeps on the run
-  # (`Apiary.Stages.claim_sessions!/3`), and the run's keys, as `keys`, with the start
-  # key's provider as `columns` (`merged/4`). `start` is the group of the run's start key
-  # (`keys/5`): its provider, the API its sessions use, and its keys in their order; nil
-  # for a run with no key. The workflows are walked in session order
-  # (`Apiary.Stages.shared_workflows/1`). Each entry has `model_choice`, which always has
-  # `runtime`, the runtime the session runs on, and, for a session on a provider other
-  # than the start key's, `model_credential`, the name of that provider's first free key
+  # (`Apiary.Stages.claim_sessions!/3`), and the run's keys, as `keys`, with the default
+  # model provider credential's provider as `columns` (`merged/4`). `start` is the group
+  # of the run's default model provider credential (`keys/5`): its provider, the API its
+  # sessions use, and its keys in their order; nil for a run with no key. The workflows
+  # are walked in session order (`Apiary.Stages.shared_workflows/1`). Each entry has
+  # `model_choice`, which always has `runtime`, the runtime the session runs on, and, for
+  # a session on a provider other than the default model provider credential's,
+  # `model_credential`, the name of that provider's first free key
   # (`Apiary.ModelKeys.Order.start/2`), else its first key: the session starts on that
-  # key's group. A session with no `model_credential` joins the group of the run's start
-  # key.
+  # key's group. A session with no `model_credential` joins the group of the run's
+  # default model provider credential.
   #
   # `model_choice` is, for the choices of the workflow (`session_choice/4`):
   #   * the `runtime`, `model`, `effort`, `provider_models` and `tiers` of the choice on
   #     its provider, where that provider has a free key; else on its first fallback
   #     that forms and has a free key (`Apiary.ModelChoices.Resolution.fallback/3`); else
-  #     on its provider, whose keys are all in cooldown. A choice on the start key's
-  #     provider whose runtime uses the start key's API (`format`, `endpoint` and `auth`)
-  #     joins the start key's group;
+  #     on its provider, whose keys are all in cooldown. A choice on the default model
+  #     provider credential's provider whose runtime uses the default model provider
+  #     credential's API (`format`, `endpoint` and `auth`) joins the default model
+  #     provider credential's group;
   #   * the run's `run_settings`, where that choice's runtime or model is no longer valid
   #     (`form/6`), or its runtime is no longer in the catalogue;
   #   * `runtime` alone, the runtime of the choice, where the run gets no key (`keyed`
   #     false); or the catalogue's default runtime
   #     (`Apiary.ModelChoices.default_runtime/0`), where the choices resolve to no choice
-  #     at any level: the session joins the group of the run's start key, or, in a run
-  #     with no start key, runs on the machine's local model provider credential. The
-  #     session then uses the default model of that runtime.
+  #     at any level: the session joins the group of the run's default model provider
+  #     credential, or, in a run with no default model provider credential, runs on the
+  #     machine's local model provider credential. The session then uses the default
+  #     model of that runtime.
   #
   # A session whose choice's provider is gone ends the claim `provider_gone`, as the run's
   # does: the choice is set to a provider that was removed, or its provider is not there,
@@ -616,11 +621,11 @@ defmodule Apiary.Dispatches.RunSettings do
   defp waiting({:cooling, choice, ids}), do: {:ok, choice, nil, ids}
   defp waiting(other), do: other
 
-  # Whether the run's providers, the start key's and those of its later sessions' groups,
-  # are at most `Apiary.ModelKeys.Order.max_keys/0`, so each gets a key (`merge/3`). The
-  # claim's guard checks the stage's choices before `hold/1` reads them
-  # (`Apiary.Stages.shared_models/1`); a choice saved in between can add a provider, and
-  # the claim then ends the run `too_many_providers`, as the guard would.
+  # Whether the run's providers, the default model provider credential's and those of its
+  # later sessions' groups, are at most `Apiary.ModelKeys.Order.max_keys/0`, so each gets
+  # a key (`merge/3`). The claim's guard checks the stage's choices before `hold/1` reads
+  # them (`Apiary.Stages.shared_models/1`); a choice saved in between can add a provider,
+  # and the claim then ends the run `too_many_providers`, as the guard would.
   defp fits?(start, groups) do
     start_ids = if start, do: [start.provider.id], else: []
     ids = Enum.uniq(start_ids ++ Enum.map(groups, & &1.provider.id))
@@ -648,8 +653,9 @@ defmodule Apiary.Dispatches.RunSettings do
     do: Map.take(api, ~w(format endpoint auth)) == Map.take(other, ~w(format endpoint auth))
 
   # The run's keys, at most `Apiary.ModelKeys.Order.max_keys/0`, as `keys` (`merge/3`),
-  # `columns` with the start key's provider, and each session's entry with the name of
-  # its group's start key as `model_credential`. A run with no start key keeps no key.
+  # `columns` with the default model provider credential's provider, and each session's
+  # entry with the name of its group's default model provider credential as
+  # `model_credential`. A run with no default model provider credential keeps no key.
   defp merged(built, nil, {chosen, _groups}, _now) do
     sessions = Map.new(chosen, fn {workflow, choice, _group} -> {workflow, entry(choice)} end)
     built |> Map.put(:keys, []) |> Map.put(:sessions, sessions)
@@ -673,19 +679,20 @@ defmodule Apiary.Dispatches.RunSettings do
   defp entry(choice, nil), do: %{"model_choice" => choice}
   defp entry(choice, name), do: %{"model_choice" => choice, "model_credential" => name}
 
-  # merge/3 is the keys a run gets from the group of its start key, `start`, and the
-  # groups of its later sessions' other providers, `groups`, in session order, at `now`,
-  # each group's keys in their order (`Apiary.ModelKeys.Order.order/2`): the start key's
+  # merge/3 is the keys a run gets from the group of its default model provider
+  # credential, `start`, and the groups of its later sessions' other providers, `groups`,
+  # in session order, at `now`, each group's keys in their order
+  # (`Apiary.ModelKeys.Order.order/2`): the default model provider credential's
   # provider's keys, at most 6 less the number of other providers, so at least 1; then
   # the first key of each other provider; then the other providers' remaining keys,
   # provider by provider in session order, until the run has 6. `{keys, credentials}`:
-  # each key as the run keeps it (`stored_key/5`), the start key's provider's first, then
-  # each other provider's, each provider's keys in the order the run configuration sends
-  # them (`Apiary.ModelKeys.Order.sent/2`) and named `<provider's public id>-<place>`,
-  # the place counted per provider from 1; and the name of each other provider's first
-  # free key (`Apiary.ModelKeys.Order.start/2`), else its first, by provider id. The
-  # claim's guard keeps the providers of a run's stage at 6 or fewer
-  # (`Apiary.Stages.shared_models/1`), so every provider gets a key.
+  # each key as the run keeps it (`stored_key/5`), the default model provider
+  # credential's provider's first, then each other provider's, each provider's keys in
+  # the order the run configuration sends them (`Apiary.ModelKeys.Order.sent/2`) and
+  # named `<provider's public id>-<place>`, the place counted per provider from 1; and
+  # the name of each other provider's first free key (`Apiary.ModelKeys.Order.start/2`),
+  # else its first, by provider id. The claim's guard keeps the providers of a run's
+  # stage at 6 or fewer (`Apiary.Stages.shared_models/1`), so every provider gets a key.
   @doc false
   @spec merge(map, [map], DateTime.t()) :: {[map], %{Ecto.UUID.t() => String.t()}}
   def merge(start, groups, %DateTime{} = now) do
@@ -737,8 +744,8 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # What the choices `input` of a later session's workflow come to (`with_sessions/3`):
   # `{:ok, model_choice, group}`, `group` the session's provider's group where it is not
-  # the start key's, else nil; `{:end, :provider_gone}`; `{:end, :session_key_missing}`;
-  # or `{:unchecked, provider}`.
+  # the default model provider credential's, else nil; `{:end, :provider_gone}`; `{:end,
+  # :session_key_missing}`; or `{:unchecked, provider}`.
   defp session_choice(input, built, start, context) do
     input = Map.put(input, :providers, context.resolved)
 
@@ -757,12 +764,12 @@ defmodule Apiary.Dispatches.RunSettings do
     end
   end
 
-  # A run with no start key keeps no key, once the session's provider is checked for
-  # `provider_gone`. Without the features under which a run is given keys (`keyed`
-  # false), the session gets `runtime` alone. Else the run's first session runs on the
-  # machine's local model provider credential, so a later session on a model provider
-  # would have no key in the run, whether its provider has keys or not: the claim ends
-  # the run `session_key_missing`.
+  # A run with no default model provider credential keeps no key, once the session's
+  # provider is checked for `provider_gone`. Without the features under which a run is
+  # given keys (`keyed` false), the session gets `runtime` alone. Else the run's first
+  # session runs on the machine's local model provider credential, so a later session on
+  # a model provider would have no key in the run, whether its provider has keys or not:
+  # the claim ends the run `session_key_missing`.
   defp session_on(_input, resolution, runtime, built, nil, context) do
     provider = Map.fetch!(context.providers, resolution.connection_id)
 
@@ -835,8 +842,9 @@ defmodule Apiary.Dispatches.RunSettings do
   defp session_result({:end, _cause}, built), do: {:ok, built.stored, nil}
   defp session_result(other, _built), do: other
 
-  # A choice on the start key's provider joins the start key's group where its runtime
-  # uses the same API; else the claim ends `session_key_missing`.
+  # A choice on the default model provider credential's provider joins the default model
+  # provider credential's group where its runtime uses the same API; else the claim ends
+  # `session_key_missing`.
   defp on_start(formed, start) do
     if same_api?(formed.columns.provider_api, start.api),
       do: {:ok, formed.stored, nil},
@@ -844,10 +852,10 @@ defmodule Apiary.Dispatches.RunSettings do
   end
 
   # The first later step of `resolution` (`later_steps/2`), in order, that forms and has a
-  # free key at the claim, or that is the start key's provider with the same API:
-  # `{:ok, choice, group}`, or nil for none. Each step forms on its runtime and tiers. A
-  # step that does not form, or whose settings check ran out of time or crashed, is passed
-  # over.
+  # free key at the claim, or that is the default model provider credential's provider
+  # with the same API: `{:ok, choice, group}`, or nil for none. Each step forms on its
+  # runtime and tiers. A step that does not form, or whose settings check ran out of time
+  # or crashed, is passed over.
   defp on_fallback(input, %Resolution{} = resolution, start, ctx) do
     input
     |> later_steps(resolution)
@@ -875,9 +883,9 @@ defmodule Apiary.Dispatches.RunSettings do
   end
 
   # The later steps of `resolution` (`later_steps/2`) that form, on a provider other than
-  # the start key's, with keys that are all in cooldown at the claim, as `on_fallback/4`
-  # found no free one: `{:cooling, choice, ids}`, the first such step's choice and those
-  # steps' providers in order, each once; nil for none.
+  # the default model provider credential's, with keys that are all in cooldown at the
+  # claim, as `on_fallback/4` found no free one: `{:cooling, choice, ids}`, the first
+  # such step's choice and those steps' providers in order, each once; nil for none.
   defp cooling_steps(input, %Resolution{} = resolution, start, ctx) do
     input
     |> later_steps(resolution)
@@ -967,9 +975,9 @@ defmodule Apiary.Dispatches.RunSettings do
     end
   end
 
-  # The settings `built` with the group of the run's start key, `provider`'s keys at
-  # `now` in their order (`Apiary.ModelKeys.Order.order/2`); or nil where every key is in
-  # cooldown. `merge/3` takes the run's keys from the group.
+  # The settings `built` with the group of the run's default model provider credential,
+  # `provider`'s keys at `now` in their order (`Apiary.ModelKeys.Order.order/2`); or nil
+  # where every key is in cooldown. `merge/3` takes the run's keys from the group.
   defp keyed(built, %Connection{} = provider, now) do
     group = group(provider, built, now)
     if Order.start(group.keys, now), do: {:ok, built, group}
@@ -977,10 +985,11 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # A key as the run keeps it (`Apiary.Runs.ModelKey`) and its run configuration writes
   # it: its place, its name, its row id, its provider, its keys' secret, its chain and the
-  # API its group uses; `start` on the start key, its Pause for, and, where it has them,
-  # its known reset from the providers' responses, the next reset of its schedule,
-  # the end of its cooldown while it is in cooldown at `now`, a window at its Use up to
-  # percentage included, and that percentage. Times are in whole seconds, rounded up.
+  # API its group uses; `start` on the default model provider credential, its Pause for,
+  # and, where it has them, its known reset from the providers' responses, the next reset
+  # of its schedule, the end of its cooldown while it is in cooldown at `now`, a window
+  # at its Use up to percentage included, and that percentage. Times are in whole
+  # seconds, rounded up.
   defp stored_key(group, key, {position, name}, start?, now) do
     %{
       position: position,

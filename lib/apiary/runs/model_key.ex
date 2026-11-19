@@ -7,17 +7,17 @@ defmodule Apiary.Runs.ModelKey do
 
   `position` is the key's place in the run configuration's `credentials`, from 1; `name`
   its credential name, `<provider's public id>-<place>`, the place counted per provider;
-  `start` is true on the run's start key, the run configuration's `model_credential`.
-  `secret_value_id` is the key's row id (`secret_values.id`), which a rename of the value
-  id leaves as it is. `connection_id` and `secret_id` are the key's provider and that
-  provider's keys' secret, each nil should its row be deleted, and `chain` the provider's
-  chain. `api` is the provider's API that the key's sessions use: `format`, `endpoint`
-  with a setting resolved to its address, `auth`, and, when the description lists them,
-  `key_prefixes` and the limit windows as `use_up_to_windows`. The rest is what the claim
-  wrote for the run configuration: the key's Pause for (`pause_for_s`), and, where the
-  claim had them, `resets_at`, `schedule_resets_at`, `cooldown_until` and
-  `use_up_to_percent`. No row has a key value. The key's row id, the secret's id and the
-  API are left out of the struct's inspection.
+  `start` is true on the run's default model provider credential, the run configuration's
+  `model_credential`. `secret_value_id` is the key's row id (`secret_values.id`), which a
+  rename of the value id leaves as it is. `connection_id` and `secret_id` are the key's
+  provider and that provider's keys' secret, each nil should its row be deleted, and
+  `chain` the provider's chain. `api` is the provider's API that the key's sessions use:
+  `format`, `endpoint` with a setting resolved to its address, `auth`, and, when the
+  description lists them, `key_prefixes` and the limit windows as `use_up_to_windows`.
+  The rest is what the claim wrote for the run configuration: the key's Pause for
+  (`pause_for_s`), and, where the claim had them, `resets_at`, `schedule_resets_at`,
+  `cooldown_until` and `use_up_to_percent`. No row has a key value. The key's row id, the
+  secret's id and the API are left out of the struct's inspection.
   """
   use Ecto.Schema
 

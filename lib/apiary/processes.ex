@@ -528,11 +528,11 @@ defmodule Apiary.Processes do
   provider}}` for the first workflow with no model choice (`:none`) whose runtime, the
   catalogue's default (Apiary.ModelChoices.default_runtime/0, its title as `runtime`),
   cannot use one of `start_ids` (`Apiary.Kinds.Providers.api/2`), with that provider's
-  name: such a session joins the start key's group and cannot use the machine's local
-  model provider credential. Else, where a run is given its providers' keys
-  (Apiary.Runs.ProviderCredential.applies?/0), `{:error, {:session_key_missing, kind,
-  ...}}` for the first workflow whose session would have no model provider credential in
-  the run (`session_key_missing/3`):
+  name: such a session joins the default model provider credential's group and cannot use
+  the machine's local model provider credential. Else, where a run is given its
+  providers' keys (Apiary.Runs.ProviderCredential.applies?/0), `{:error,
+  {:session_key_missing, kind, ...}}` for the first workflow whose session would have no
+  model provider credential in the run (`session_key_missing/3`):
 
     * `{:session_key_missing, :machine, first}` where `first`, the first workflow, has
       no model choice (`:none`) and a later workflow's choice is on a provider: the run's

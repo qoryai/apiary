@@ -192,13 +192,14 @@ defmodule Apiary.Runs.Run do
 
     # The run settings Qory wrote for a run of a workspace's queue when it registered it
     # (`Apiary.Dispatches.RunSettings`), as its documents have them, with no key, and the
-    # model provider of the run's start key (`provider_connection_id`). The keys the claim
-    # stored for the run, at most 6, of one or more providers, are its `model_keys`, rows
-    # of `run_model_keys` (`Apiary.Runs.ModelKey`) in the order of the run configuration's
-    # `credentials`. Written once with the registration and never changed; nil for every
-    # other run, and for an explore run with `factory` or `secrets` off. The provider is
-    # nil where no provider was chosen, and becomes nil should its row be deleted. Not
-    # folded: a rebuild keeps them.
+    # model provider of the run's default model provider credential
+    # (`provider_connection_id`). The keys the claim stored for the run, at most 6, of
+    # one or more providers, are its `model_keys`, rows of `run_model_keys`
+    # (`Apiary.Runs.ModelKey`) in the order of the run configuration's `credentials`.
+    # Written once with the registration and never changed; nil for every other run, and
+    # for an explore run with `factory` or `secrets` off. The provider is nil where no
+    # provider was chosen, and becomes nil should its row be deleted. Not folded: a
+    # rebuild keeps them.
     field :run_settings, :map
     belongs_to :provider_connection, Apiary.Connections.Connection
     has_many :model_keys, Apiary.Runs.ModelKey, preload_order: [asc: :position]
@@ -518,17 +519,18 @@ defmodule Apiary.Runs.Run do
 
   @doc """
   The ids of the model providers whose keys the session number `session` of `run` runs
-  on. Session 1 runs on the provider of the run's start key (`provider_connection_id`). A
-  later session runs on the provider of the run's key whose name is that session's
-  `model_credential` in `session_settings`, else on the start key's provider. For a nil
-  `session`, not known, every provider of the run's keys (`Apiary.Runs.ModelKey`). None
-  for a run with no key. The end of a paused run, with `session` the session that paused
-  (`paused_session`), keeps the earliest end of a cooldown among the keys of these
-  providers alone as `dispatch_runs.paused_until` of the run's run of the queue, and the
-  run that continues it waits for them. A run whose session 1 runs on the machine's local
-  model provider credential has no start key's provider, so session 1 runs on none. Reads
-  the run's key rows, unless `model_keys` is loaded, and its sessions, unless given as
-  `sessions`, as Apiary.Stages.run_sessions/1 reads them.
+  on. Session 1 runs on the provider of the run's default model provider credential
+  (`provider_connection_id`). A later session runs on the provider of the run's key whose
+  name is that session's `model_credential` in `session_settings`, else on the default
+  model provider credential's provider. For a nil `session`, not known, every provider of
+  the run's keys (`Apiary.Runs.ModelKey`). None for a run with no key. The end of a
+  paused run, with `session` the session that paused (`paused_session`), keeps the
+  earliest end of a cooldown among the keys of these providers alone as
+  `dispatch_runs.paused_until` of the run's run of the queue, and the run that continues
+  it waits for them. A run whose session 1 runs on the machine's local model provider
+  credential has no default model provider credential's provider, so session 1 runs on
+  none. Reads the run's key rows, unless `model_keys` is loaded, and its sessions, unless
+  given as `sessions`, as Apiary.Stages.run_sessions/1 reads them.
   """
   @spec session_provider_ids(t() | map(), pos_integer() | nil, list | nil) :: [Ecto.UUID.t()]
   def session_provider_ids(run, session, sessions \\ nil)

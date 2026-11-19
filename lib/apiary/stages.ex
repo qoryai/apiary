@@ -421,8 +421,8 @@ defmodule Apiary.Stages do
   #     model in `models` as the claim formed them
   #     (`Apiary.Dispatches.RunSettings.build/2`, `sessions`), present for every entry of
   #     a claimed run, and `model_credential`, the key the session starts on, for a
-  #     session on a provider other than the start key's; without it, the session joins
-  #     the group of the run's start key.
+  #     session on a provider other than the default model provider credential's; without
+  #     it, the session joins the group of the run's default model provider credential.
   #     `next_session/2` reads these, so a change to the time limits or the model choices
   #     after the claim changes nothing for the run;
   #   * its first session (`Apiary.Stages.Session`), sequence 1, at the run's position,
@@ -643,7 +643,8 @@ defmodule Apiary.Stages do
   # `Apiary.Dispatches.Inputs.explore/4`), and `model_choice` and `model_credential`, the
   # runtime and model of the entry's workflow and the credential the session joins with,
   # as the claim kept them (`claim_sessions!/3`); each nil where the claim kept none. With
-  # no `model_credential`, the session joins with the group of the run's start key.
+  # no `model_credential`, the session joins with the group of the run's default model
+  # provider credential.
   #
   # The step is recorded with its result, and a repeat for the same `session` returns
   # that result and steps nothing. Errors, with nothing written:
@@ -790,9 +791,9 @@ defmodule Apiary.Stages do
   # run of a stage with `shared_run: true`, kept for its session number `session`
   # (`claim_sessions!/3`): the key whose group that session starts on. The session is the
   # one a report numbered `session` ended, else the open session (`open_session/1`), the
-  # one a run that paused was in. Nil for a session of the start key's group, and for a
-  # run with no session settings. `sessions`, the run's sessions as `run_sessions/1` reads
-  # them, is read here where it is nil.
+  # one a run that paused was in. Nil for a session of the default model provider
+  # credential's group, and for a run with no session settings. `sessions`, the run's
+  # sessions as `run_sessions/1` reads them, is read here where it is nil.
   @doc false
   @spec session_credential(map, pos_integer, [Session.t()] | nil) :: String.t() | nil
   def session_credential(run, session, sessions \\ nil)
