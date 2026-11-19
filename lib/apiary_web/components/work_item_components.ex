@@ -6575,7 +6575,7 @@ defmodule ApiaryWeb.WorkItemComponents do
           stage_run
       end
 
-    [attempt | rest] = run_parts(attempt_words(run), run, stage_run, now)
+    [attempt | rest] = run_parts(attempt_words(run), run, stage_run, now, &stopped_word/1)
     [attempt, count | List.wrap(round)] ++ rest
   end
 
@@ -6663,16 +6663,20 @@ defmodule ApiaryWeb.WorkItemComponents do
     end
   end
 
-  # A session row reads failed and cancelled in lower case, as the verdict words beside
-  # them; any other state of the run it ran in keeps the word of the run's line
-  # (`run_state_word/1`).
-  defp stopped_word(%{state: state}) when state in [:failed, :cancelled],
+  # A shared run's line and its session rows read the state of a run that stopped in lower
+  # case, as the verdict words beside it; a run that reached its time limit, and any other
+  # state, keep the word of the top line (`run_state_word/1`).
+  defp stopped_word(%{place: :time_limit} = run), do: run_state_word(run)
+
+  defp stopped_word(%{state: state}) when state in @stopped,
     do: session_state_word(Atom.to_string(state))
 
   defp stopped_word(run), do: run_state_word(run)
 
   defp session_state_word("failed"), do: gettext("failed")
   defp session_state_word("cancelled"), do: gettext("cancelled")
+  defp session_state_word("lost"), do: gettext("lost")
+  defp session_state_word("paused"), do: gettext("paused")
 
   defp session_verdict(session),
     do:
@@ -6914,7 +6918,11 @@ defmodule ApiaryWeb.WorkItemComponents do
   # A run with no stage run has what it wrote, or its state, in place of the three. In a
   # fold's summary, a click on `place`'s link opens the run's page, and a click beside it
   # opens the fold (`open_fold`).
-  defp run_parts(place, run, %{} = stage_run, now) do
+  # `state_word` draws the state of a run that stopped: the top line's word by default, the
+  # lower-case word on the line of a shared run (`stopped_word/1`).
+  defp run_parts(place, run, stage_run, now, state_word \\ &run_state_word/1)
+
+  defp run_parts(place, run, %{} = stage_run, now, state_word) do
     stage_run =
       if stage_run.shows == :running and run[:state] in [nil, :pending],
         do: %{stage_run | shows: :queued},
@@ -6931,7 +6939,7 @@ defmodule ApiaryWeb.WorkItemComponents do
 
         stage_run.shows in [:running, :no_verdict] and
             run[:state] in [:failed, :lost, :cancelled, :paused] ->
-          List.replace_at(parts, -1, run_state_word(run))
+          List.replace_at(parts, -1, state_word.(run))
 
         true ->
           parts
@@ -6947,7 +6955,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     [{:b, place} | parts] ++ if(time, do: [time], else: [])
   end
 
-  defp run_parts(place, run, nil, now) do
+  defp run_parts(place, run, nil, now, state_word) do
     attempt = {:b, place}
 
     cancelling = run[:cancelling] == true
@@ -6983,7 +6991,7 @@ defmodule ApiaryWeb.WorkItemComponents do
                 said ++ [PauseWords.line(run.paused, run[:paused_path])]
 
               said == [] or run.state in [:failed, :lost, :cancelled, :paused] ->
-                said ++ [run_state_word(run)]
+                said ++ [state_word.(run)]
 
               true ->
                 said

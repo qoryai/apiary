@@ -2371,10 +2371,35 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert [line | rows] = fold_rows(view)
 
       assert line =~
-               ~r/^Attempt 3 \(Run #{registered.number}\) · 4 workflows · round 2 of 3 · Failed · /
+               ~r/^Attempt 3 \(Run #{registered.number}\) · 4 workflows · round 2 of 3 · failed · /
 
       refute line =~ "did not pass"
       assert List.last(rows) =~ ~r/^implement-changes · round 2 · failed · /
+    end
+
+    for state <- ["lost", "cancelled", "paused"] do
+      test "a shared run #{state} in round 2 reads #{state} in lower case", %{
+        conn: conn,
+        scope: scope
+      } do
+        state = unquote(state)
+        {work_item, run, registered} = shared_build!(scope, looped())
+        :ok = to_round_2!(run)
+
+        registered
+        |> Ecto.Changeset.change(state: state, exited_at: DateTime.utc_now())
+        |> Repo.update!()
+
+        {:ok, view, _html} = live(conn, stage(scope, work_item.number, @build))
+
+        assert [line | rows] = fold_rows(view)
+
+        # The run's state is set by hand with no end, so the lines have no time.
+        assert line ==
+                 "Attempt 3 (Run #{registered.number}) · 4 workflows · round 2 of 3 · #{state}"
+
+        assert List.last(rows) == "implement-changes · round 2 · #{state}"
+      end
     end
 
     test "a shared run with no loop reads its round, and a session row no round", %{
