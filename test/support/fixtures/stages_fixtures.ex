@@ -135,36 +135,51 @@ defmodule Apiary.StagesFixtures do
   end
 
   @doc """
-  A version of `type` with `files`, pushed by the newest run of the queue of the work item
-  at the stage `opts[:stage_id]` (else the work item's stage), for a test that needs a
-  version where no run of that stage is live. A run that ended is set back to handed over
-  for the push and to ended after it, so the work item has no other run. No step of the
-  stage runner follows. The `{:ok, version}` or the refusal of `Apiary.Artifacts.push/5`.
+  A live run of the queue at the stage `stage_id` (nil for the work item's stage): the
+  work item's newest run when it is at that stage and has not ended, else a new waiting
+  run there, with the next attempt. For a test whose stage runs no workflow, so that a
+  run pushes the stage's versions; no step of the stage runner follows the insert.
   """
-  def run_version(%WorkItem{} = work_item, type, files, opts \\ []) do
+  def live_stage_run!(%WorkItem{} = work_item, stage_id \\ nil) do
     work_item = Repo.get!(WorkItem, work_item.id)
-    run = newest_run(work_item) || raise "#{work_item.public_id} has no run of the queue"
-    opts = Keyword.put_new(opts, :stage_id, work_item.stage_id)
+    stage_id = stage_id || work_item.stage_id
 
-    # A run of the queue has an end cause and a result outcome only once it ended.
-    set = fn changes ->
-      Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id), set: changes)
-    end
+    case newest_run(work_item) do
+      %DispatchRun{stage_id: ^stage_id, state: state} = run when state != :ended ->
+        run
 
-    if run.state == :ended,
-      do: set.(state: :handed_over, end_cause: nil, result_outcome: nil)
+      newest ->
+        attempt = if newest, do: newest.attempt + 1, else: 1
 
-    try do
-      Apiary.Artifacts.push({:run, run}, work_item, type, files, opts)
-    after
-      if run.state == :ended,
-        do: set.(state: :ended, end_cause: run.end_cause, result_outcome: run.result_outcome)
+        %DispatchRun{
+          organisation_id: work_item.organisation_id,
+          workspace_id: work_item.workspace_id
+        }
+        |> DispatchRun.queue_changeset(%{
+          work_item_id: work_item.id,
+          step: if(newest, do: newest.step, else: "build"),
+          take_in: work_item.take_in || 1,
+          attempt: attempt,
+          of: attempt,
+          queued_at: DateTime.utc_now()
+        })
+        |> Ecto.Changeset.change(stage_id: stage_id)
+        |> Repo.insert!()
     end
   end
 
-  @doc "`run_version/4`, returning the version, raising on a refusal."
-  def run_version!(%WorkItem{} = work_item, type, files, opts \\ []) do
-    {:ok, version} = run_version(work_item, type, files, opts)
+  @doc """
+  A version of `type` with `files` that a live run at the stage `stage_id` (nil for the
+  work item's stage) pushes (`live_stage_run!/2`), raising on a refusal of
+  `Apiary.Artifacts.push/5`.
+  """
+  def stage_version!(%WorkItem{} = work_item, type, files, stage_id \\ nil) do
+    run = live_stage_run!(work_item, stage_id)
+    work_item = Repo.get!(WorkItem, work_item.id)
+
+    {:ok, version} =
+      Apiary.Artifacts.push({:run, run}, work_item, type, files, stage_id: run.stage_id)
+
     version
   end
 

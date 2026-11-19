@@ -652,7 +652,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
     @svg ~s(<svg xmlns="http://www.w3.org/2000/svg"><rect width="1" height="1"/></svg>)
 
     test "is its Markdown file's text, its id and its images, never sources.json", ctx do
-      # The run's end kept version 1; the run stores version 2 (`run_version/4`).
+      # The run's end kept version 1; a later run of Explore stores version 2.
       explore_run_fixture(ctx.work_item, result: understood_result())
 
       files = [
@@ -662,7 +662,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
         %{filename: "sources.json", content_type: "application/json", binary: ~s({"sources":[]})}
       ]
 
-      {:ok, version} = Apiary.StagesFixtures.run_version(ctx.work_item, "proposal", files)
+      version = Apiary.StagesFixtures.stage_version!(ctx.work_item, "proposal", files)
 
       assert version.number == 2
       version_id = version.public_id

@@ -339,6 +339,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
   # newest.
   defp stage_run!(work_item, stage_id, take_in \\ nil) do
     newest = newest_run(work_item)
+    attempt = if take_in, do: 1, else: newest.attempt + 1
 
     %DispatchRun{
       organisation_id: work_item.organisation_id,
@@ -348,8 +349,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       work_item_id: work_item.id,
       step: newest.step,
       take_in: take_in || newest.take_in,
-      attempt: if(take_in, do: 1, else: newest.attempt + 1),
-      of: newest.of,
+      attempt: attempt,
+      of: max(newest.of, attempt),
       queued_at: DateTime.utc_now()
     })
     |> Ecto.Changeset.change(stage_id: stage_id, workflow: "capture-demo", round: 1)
@@ -484,27 +485,15 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       )
   end
 
-  # A version of `type` that the work item's newest run stores at `stage_id`, as a fixture
-  # where that stage has no live run (`Apiary.StagesFixtures.run_version!/4`).
-  defp stored!(work_item, type, stage_id) do
-    work_item |> with_run!() |> run_version!(type, [sample(type)], stage_id: stage_id)
-  end
+  # A version of `type` that a live run at `stage_id` pushes
+  # (`Apiary.StagesFixtures.stage_version!/4`).
+  defp stored!(work_item, type, stage_id),
+    do: stage_version!(work_item, type, [sample(type)], stage_id)
 
-  # The work item, with a run of Build that ended where the work item has no run, as a
-  # work item that `place!/4` put at Build has none.
-  defp with_run!(work_item) do
-    if is_nil(newest_run(work_item)) do
-      work_item
-      |> build_run!()
-      |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended)
-      |> Repo.update!()
-    end
+  defp push!(actor, work_item, type, stage_id, name \\ "main") do
+    {:ok, version} =
+      Artifacts.push(actor, work_item, type, [sample(type)], stage_id: stage_id, name: name)
 
-    work_item
-  end
-
-  defp push!(actor, work_item, type, stage_id) do
-    {:ok, version} = Artifacts.push(actor, work_item, type, [sample(type)], stage_id: stage_id)
     version
   end
 
@@ -2620,10 +2609,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       [main, ten, two] =
         for name <- ["main", "scenario-10", "scenario-2"] do
-          run_version!(with_run!(work_item), "demo-video", [sample("demo-video")],
-            stage_id: @build,
-            name: name
-          )
+          push!({:run, live_stage_run!(work_item, @build)}, work_item, "demo-video", @build, name)
         end
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
@@ -2698,7 +2684,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
           ]
         })
 
-      run_version!(with_run!(work_item), "submission", [submission], stage_id: @build)
+      stage_version!(work_item, "submission", [submission], @build)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
@@ -6397,8 +6383,11 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       conn: conn,
       scope: scope
     } do
-      {work_item, run} = shape_with_run!(scope)
-      stored!(work_item, "acceptance-criteria", @shape)
+      # Shape's run pushes the acceptance criteria, then ends.
+      work_item = shape_gate_on!(scope, ["acceptance-criteria", "explainer"])
+      dispatch_run = stage_run!(work_item, @shape)
+      push!({:run, dispatch_run}, work_item, "acceptance-criteria", @shape)
+      {run, _dispatch_run} = settled_run!(work_item, dispatch_run, "completed")
       href = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
 
       for tab <- @foot_tabs do
@@ -6480,16 +6469,17 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         assert summary(view) == ["2 runs"]
       end
 
+      # A second run of Shape pushes the versions.
       stored!(work_item, "explainer", @shape)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
-      assert summary(view) == ["2 runs", "explainer v1"]
+      assert summary(view) == ["3 runs", "explainer v1"]
 
       stored!(work_item, "acceptance-criteria", @shape)
       stored!(work_item, "explainer", @shape)
 
       for tab <- @foot_tabs do
         {:ok, view, _html} = live(conn, page(scope, work_item.number) <> tab)
-        assert summary(view) == ["2 runs", "acceptance criteria v1", "explainer v2"]
+        assert summary(view) == ["3 runs", "acceptance criteria v1", "explainer v2"]
       end
     end
 
@@ -6780,21 +6770,23 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     test "the page's live updates refresh the block with no reload", %{conn: conn, scope: scope} do
       {work_item, _run} = shape_with_run!(scope)
+      # A second run of Shape, live, which pushes the explainer below.
+      live_stage_run!(work_item, @shape)
       {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/ticket")
 
-      assert summary(view) == ["2 runs"]
+      assert summary(view) == ["3 runs"]
       refute has_element?(view, "#work-item-artifact-list", "explainer v1")
 
       # `{:artifact_pushed, …}`
       stored!(work_item, "explainer", @shape)
-      assert summary(view) == ["2 runs", "explainer v1"]
+      assert summary(view) == ["3 runs", "explainer v1"]
       assert has_element?(view, "#work-item-artifact-list", "explainer v1")
 
       # `{:work_items_changed, ids}`
       stage_run!(work_item, @shape)
       send(view.pid, {:work_items_changed, [work_item.public_id]})
-      assert summary(view) == ["3 runs", "explainer v1"]
-      assert line(view, "#work-item-details-runs") =~ "3 runs"
+      assert summary(view) == ["4 runs", "explainer v1"]
+      assert line(view, "#work-item-details-runs") =~ "4 runs"
 
       # `{:stage_changed, id}`: Build's outputs, none of which has a version.
       {1, _} =
@@ -6809,7 +6801,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       )
 
       assert has_element?(view, ~s|#work-item-head-stages-#{@build}[aria-current="step"]|)
-      assert summary(view) == ["3 runs"]
+      assert summary(view) == ["4 runs"]
       # The same element, whose `open` the page leaves as the reader set it.
       assert found(view, "#work-item-record-fold[phx-mounted]") == 1
     end
