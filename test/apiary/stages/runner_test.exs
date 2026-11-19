@@ -1689,7 +1689,8 @@ defmodule Apiary.Stages.RunnerTest do
                       "Read the 2 open findings, then pick Accept as it is or Run another round.",
                     "without_accept" => %{
                       "fix" => "Read the 2 open findings, then pick Run another round."
-                    }
+                    },
+                    "open_findings" => 2
                   }
                 ]}
              ]
@@ -1725,7 +1726,8 @@ defmodule Apiary.Stages.RunnerTest do
                "fix" => "Read the open finding, then pick Accept as it is or Run another round.",
                "without_accept" => %{
                  "fix" => "Read the open finding, then pick Run another round."
-               }
+               },
+               "open_findings" => 1
              }
     end
 
@@ -1735,6 +1737,19 @@ defmodule Apiary.Stages.RunnerTest do
       refute Runner.accept_to_gate?(seq, pos(0, nil, 1), %{})
       assert Runner.accept_to_gate?(seq, pos(1, 0, 3), %{})
       assert Runner.accept_to_gate?(seq, pos(2, nil, 3), %{})
+    end
+
+    test "entry_name/2 is the entry's name, else its workflow" do
+      seq =
+        stage([
+          wf("plan", %{"name" => "Plan the build"}),
+          loop([wf("implement"), wf("review", %{"name" => "Review the change"})])
+        ])
+
+      assert Runner.entry_name(seq, pos(0, nil, 1)) == "Plan the build"
+      assert Runner.entry_name(seq, pos(1, 0, 1)) == "implement"
+      assert Runner.entry_name(seq, pos(1, 1, 1)) == "Review the change"
+      assert Runner.entry_name(seq, pos(2, nil, 1)) == nil
     end
 
     test "with no open finding the point keeps its words" do

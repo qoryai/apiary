@@ -79,6 +79,22 @@ defmodule Apiary.Stages.PointsTest do
     refute Map.has_key?(point, "without_accept")
   end
 
+  test "a round limit's point has the count of its open findings, and no workflow name" do
+    assert [%{"open_findings" => 2} = point] = Points.round_limit(3, 3, ["A.", "B."])
+    refute inspect(point) =~ "Start"
+    assert [%{"open_findings" => 1}] = Points.round_limit(3, 3, ["A."])
+    assert [point] = Points.round_limit(3, 3)
+    refute Map.has_key?(point, "open_findings")
+  end
+
+  test "start_fix/2 picks Start and the entry in place of Accept as it is" do
+    assert Points.start_fix(1, "Acceptance test run") ==
+             "Read the open finding, then pick Start Acceptance test run or Run another round."
+
+    assert Points.start_fix(2, "verify-a-ticket") ==
+             "Read the 2 open findings, then pick Start verify-a-ticket or Run another round."
+  end
+
   test "a return limit's point stores the action with Accept as it is, and its stage" do
     assert [%{"text" => text, "return_stage" => "Build"} = point] =
              Points.return_limit(2, "Verify", "Build")
@@ -92,6 +108,9 @@ defmodule Apiary.Stages.PointsTest do
   test "return_action/2 has the words of the controls the card shows" do
     assert Points.return_action("Build", :accept) ==
              "Pick Move back to return the work item to Build once more, or pick Accept as it is."
+
+    assert Points.return_action("Shape", {:start, "implement-the-change"}) ==
+             "Pick Move back to return the work item to Shape once more, or pick Start implement-the-change."
 
     assert Points.return_action("Build", :move_back) ==
              "Pick Move back to return the work item to Build once more."
