@@ -148,7 +148,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
 
   # A film or pictures of the scenario `name` that `run` pushes, as one file `filename`:
   # the first bytes of an MP4 film or a PNG picture.
-  defp media!(run, work_item, type, name, filename) do
+  defp pushed_media!(run, work_item, type, name, filename) do
     binary =
       if type == "demo-video",
         do: <<0, 0, 0, 24, "ftypisom", 0, 0, 2, 0, "isomiso2">>,
@@ -5644,8 +5644,8 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
         work_item
         |> reload()
         |> end_run!(fn run, _registered ->
-          media!(run, work_item, "demo-video", "scenario-1", "scenario-1.mp4")
-          media!(run, work_item, "screenshot", "scenario-2", "scenario-2-step-1.png")
+          pushed_media!(run, work_item, "demo-video", "scenario-1", "scenario-1.mp4")
+          pushed_media!(run, work_item, "screenshot", "scenario-2", "scenario-2-step-1.png")
           passed!(run)
         end)
 
