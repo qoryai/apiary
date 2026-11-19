@@ -160,6 +160,12 @@ defmodule Apiary.Artifacts.Type do
 
   def name?(_name), do: false
 
+  # words/1 is a type's name in a sentence, with spaces for its hyphens: "acceptance
+  # criteria" for `acceptance-criteria`.
+  @doc false
+  @spec words(String.t()) :: String.t()
+  def words(name) when is_binary(name), do: String.replace(name, "-", " ")
+
   # default_size_limit/1 and max_size_limit/1 are the size limit a custom type of
   # `base_view` gets when the form sets none, and the most it may have.
   @doc false
