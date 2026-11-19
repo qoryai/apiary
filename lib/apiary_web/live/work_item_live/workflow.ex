@@ -37,7 +37,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.{Access, Artifacts, Features, Processes, Repo, Stages, WorkItems}
+  alias Apiary.{Access, Artifacts, Features, Organisations, Processes, Repo, Stages, WorkItems}
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.Pause
   alias Apiary.Runs.{Cancel, Run}
@@ -122,6 +122,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
     switch = switch_tracks(row, state)
     earlier = if(at, do: Enum.take(all, at), else: [])
+    can_decide = Access.can?(scope, :"gate.approve", row)
 
     %{
       version: get(get(status, :version), :number) || get(version, :number),
@@ -162,7 +163,12 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
           runs,
           outputs,
           get(status, :accept_needs),
-          {switch, earlier}
+          %{
+            switch: switch,
+            earlier: earlier,
+            can_decide: can_decide,
+            approver_line: approver_line(scope, stage, state, can_decide)
+          }
         )
         |> entry(stage),
       approvers: approvers(stage),
@@ -190,9 +196,27 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       explore_id: explore_id,
       tabs: [],
       ended: false,
-      can_decide: Access.can?(scope, :"gate.approve", row)
+      can_decide: can_decide
     }
   end
+
+  # Who decides the escalation of `stage`, for a reader who may not
+  # (`ApiaryWeb.WorkItemLive.StageComponents.approver_line/3`): the sentence that takes the
+  # place of the action in the points (`worded/2`). nil where the stage is not escalated
+  # or the reader may decide. Only a stage that lists approvers reads the members.
+  defp approver_line(scope, stage, :escalated, false) do
+    approvers = approvers(stage)
+
+    members =
+      case approvers do
+        {:listed, [_ | _]} -> Organisations.list_workspace_members(scope)
+        _members_or_none -> []
+      end
+
+    StageComponents.approver_line(stage.name, approvers, members)
+  end
+
+  defp approver_line(_scope, _stage, _state, _can_decide), do: nil
 
   defp switch_tracks(row, :escalated),
     do: Stages.switch_tracks(row)
@@ -519,10 +543,12 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # `missing` is the missing required output types that Accept as it is requires
   # (`accept_needs` of `Apiary.Stages.status/2`: the missing ones where the accept takes
   # the stage to its gate): with any, the stage has no result to accept. `accept` is
-  # whether the card shows Accept as it is (`accept?/2`). `switch` and `earlier` are the
-  # page's tracks to switch to and earlier stages; the points' words follow the controls
-  # they show (`points/2`).
-  defp escalation(scope, escalation, runs, outputs, missing, {switch, earlier}) do
+  # whether the card shows Accept as it is (`accept?/2`). `controls` has `switch` and
+  # `earlier`, the page's tracks to switch to and earlier stages, `can_decide` and
+  # `approver_line` (`approver_line/4`); the points' words follow the controls the card
+  # shows (`points/2`).
+  defp escalation(scope, escalation, runs, outputs, missing, controls) do
+    %{switch: switch} = controls
     cause = get(escalation, :cause)
     cause = if is_atom(cause) and not is_nil(cause), do: Atom.to_string(cause), else: cause
     cause = Map.get(@causes, cause, :escalate)
@@ -538,8 +564,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     %{
       cause: cause,
       accept: accept,
-      points:
-        points(get(escalation, :points), %{accept: accept, switch: switch, earlier: earlier}),
+      points: points(get(escalation, :points), Map.put(controls, :accept, accept)),
       round: get(escalation, :round),
       run: run,
       # The id of the run in the queue (`Apiary.Dispatches.DispatchRun`) that the versions
@@ -637,13 +662,19 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   # `controls` (`%{accept:, switch:, earlier:}`): a return limit's point has the action
   # for them (`return_action/2`), or, where the card shows neither a switch nor Move back,
   # only its count of returns, with no action sentence; another point keeps its words,
-  # with its `without_accept` fields where the card shows no Accept as it is.
+  # with its `without_accept` fields where the card shows no Accept as it is. For a reader
+  # who may not decide (`can_decide` false; true where `controls` has none), the sentence
+  # `approver_line` takes the place of a return limit's action and of a round limit's fix.
   @doc false
   @spec worded(map, map) :: map
   def worded(point, controls) do
+    decides = Map.get(controls, :can_decide, true)
+
     case get(point, :return_stage) do
-      to when is_binary(to) -> return_worded(point, return_action(to, controls))
-      _other -> without_accept(point, controls.accept)
+      to when is_binary(to) and decides -> return_worded(point, return_action(to, controls))
+      to when is_binary(to) -> return_worded(point, controls.approver_line)
+      _other when decides -> without_accept(point, controls.accept)
+      _other -> undecided(point, controls.approver_line)
     end
   end
 
@@ -663,6 +694,15 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   end
 
   defp without_accept(point, _accept), do: point
+
+  # A round limit's point with open findings (`without_accept`, `Apiary.Stages.Points`),
+  # for a reader who may not decide: who decides in place of its fix.
+  defp undecided(point, line) do
+    case get(point, :without_accept) do
+      %{} -> point |> Map.put("fix", line) |> Map.delete("without_accept")
+      _none -> point
+    end
+  end
 
   # Whether the stage has a result to accept as it is, where the check of the accept
   # requires no missing output (`escalation/6`): a version of one of its outputs; for a
@@ -711,15 +751,20 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     }
   end
 
-  # Who approves the stage's gate: any member, or the members it lists.
-  defp approvers(%{gate: gate}) do
+  @doc """
+  approvers/1 is who approves the gate of `stage`, a stage of the page (`page/2`):
+  `:members` where it lists no approvers, so any member with `gate.approve` may, else
+  `{:listed, ids}`, the account ids it lists, in its order.
+  """
+  @spec approvers(map) :: :members | {:listed, [String.t()]}
+  def approvers(%{gate: gate}) do
     case get(gate, :approvers) do
       %{} = listed -> {:listed, get(listed, :members) || []}
       _members -> :members
     end
   end
 
-  defp approvers(_stage), do: :members
+  def approvers(_stage), do: :members
 
   ## The list's rows
 

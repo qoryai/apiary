@@ -4504,6 +4504,11 @@ msgstr ""
 msgid "A member approves the proposal"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "A member who may approve %{stage} decides."
+msgstr ""
+
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "A model provider's key lets runs in %{organisation} call a model."
@@ -5953,6 +5958,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "An allow rule on this target still holds here."
 msgstr "An allow rule on this repository still holds here."
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "An approver of %{stage} decides: %{approvers}."
+msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
@@ -14954,6 +14964,11 @@ msgstr ""
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
 msgid "Nobody can open these organisations and their access keys do not work. Until the day each is purged, you can cancel its deletion, which brings everything back."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/stage_components.ex
+#, elixir-autogen, elixir-format
+msgid "Nobody may approve %{stage}. Ask an admin to list its approvers in Workspace settings › %{workflows}."
 msgstr ""
 
 #: lib/apiary_web/live/member_live/workspace.ex

@@ -4456,6 +4456,19 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     # A work item escalated at Verify's return limit (choice 10): Verify's entry returns to
     # Shape, at most 2 times, and its last run asked for changes with one finding. With
     # `fields`, Verify also has them, such as a later entry in `sequence` or its `outputs`.
+    # A workspace membership as `Apiary.Organisations.list_workspace_members/1` returns it,
+    # with the fields `approver_line/3` reads.
+    defp approver_member(id, email), do: %{user: %Apiary.Accounts.User{id: id, email: email}}
+
+    defp refute_decision_controls(view) do
+      refute render(view) =~ "Pick "
+      refute render(view) =~ "Run another round"
+      refute has_element?(view, "#work-item-stage-escalation-accept")
+      refute has_element?(view, "#work-item-stage-escalation-move")
+      refute has_element?(view, "#work-item-stage-escalation-another")
+      refute has_element?(view, "[id^='work-item-stage-escalation-switch']")
+    end
+
     defp at_return_limit(scope, fields \\ %{}) do
       sequence = [%{"workflow" => "verify-a-ticket", "return" => %{"stage" => @shape}}]
 
@@ -4466,7 +4479,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
               do:
                 stage
                 |> Map.put("sequence", sequence ++ Map.get(fields, "later", []))
-                |> Map.merge(Map.delete(fields, "later")),
+                |> Map.merge(Map.drop(fields, ["later", "findings"])),
               else: stage
           end
         end)
@@ -4480,7 +4493,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         work_item,
         :return_limit,
         Apiary.Stages.Points.return_limit(2, "Verify", "Shape") ++
-          ["Criterion 2 is not met: the export has no PDF."]
+          Map.get(fields, "findings", ["Criterion 2 is not met: the export has no PDF."])
       )
 
       work_item
@@ -5311,6 +5324,125 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
                  switch: tracks,
                  earlier: [%{id: @build}]
                })
+    end
+
+    test "approver_line/3: the listed members by name, in the list's order" do
+      members = [
+        approver_member("u-ben", "ben@example.com"),
+        approver_member("u-ann", "ann@example.com")
+      ]
+
+      assert ApiaryWeb.WorkItemLive.StageComponents.approver_line(
+               "Verify",
+               {:listed, ["u-ann", "u-ben"]},
+               members
+             ) ==
+               "An approver of Verify decides: ann and ben."
+    end
+
+    test "approver_line/3 leaves out a listed id that is no member's" do
+      members = [
+        approver_member("u-ann", "ann@example.com"),
+        approver_member("u-ben", "ben@example.com")
+      ]
+
+      assert ApiaryWeb.WorkItemLive.StageComponents.approver_line(
+               "Verify",
+               {:listed, ["u-ann", "u-gone", "u-ben"]},
+               members
+             ) ==
+               "An approver of Verify decides: ann and ben."
+    end
+
+    test "approver_line/3 for a stage that lists no approvers" do
+      assert ApiaryWeb.WorkItemLive.StageComponents.approver_line("Verify", :members, []) ==
+               "A member who may approve Verify decides."
+    end
+
+    test "approver_line/3 for an empty list, and for a list of no members" do
+      nobody =
+        "Nobody may approve Verify. Ask an admin to list its approvers in Workspace " <>
+          "settings › Workflows."
+
+      members = [approver_member("u-ann", "ann@example.com")]
+
+      assert ApiaryWeb.WorkItemLive.StageComponents.approver_line(
+               "Verify",
+               {:listed, []},
+               members
+             ) == nobody
+
+      assert ApiaryWeb.WorkItemLive.StageComponents.approver_line(
+               "Verify",
+               {:listed, ["u-gone", "u-left"]},
+               members
+             ) == nobody
+    end
+
+    test "worded/2 puts who decides in place of the action, for a reader who may not decide" do
+      [point] = Apiary.Stages.Points.return_limit(2, "Verify", "Build")
+      line = "An approver of Verify decides: ann."
+
+      controls = %{
+        accept: true,
+        switch: [],
+        earlier: [%{id: @build}],
+        can_decide: false,
+        approver_line: line
+      }
+
+      assert %{
+               "text" => ^line,
+               "fix" =>
+                 "Verify's run asked for changes again after 2 returns to Build, the most " <>
+                   "that Verify allows."
+             } = ApiaryWeb.WorkItemLive.Workflow.worded(point, controls)
+
+      [findings] = Apiary.Stages.Points.round_limit(3, 3, ["The export has no title."])
+
+      assert %{
+               "text" =>
+                 "3 of 3 rounds ran, and 1 review finding is still open. The export has no title.",
+               "fix" => ^line
+             } = ApiaryWeb.WorkItemLive.Workflow.worded(findings, controls)
+    end
+
+    test "a reader who may not decide sees who decides, with no Pick, no Run another round and no buttons",
+         %{scope: scope} do
+      listed = member_fixture(scope, :member)
+      gate = %{"kind" => "person", "approvers" => %{"members" => [listed.user.id]}}
+      name = ApiaryWeb.People.short(listed.user.email)
+      reader = log_in_user(build_conn(), member_fixture(scope, :member).user)
+
+      # A return limit: who decides, then the count of returns.
+      work_item = at_return_limit(scope, %{"gate" => gate, "findings" => []})
+      {:ok, view, _html} = live(reader, page(scope, work_item.number))
+
+      assert texts(view, "#work-item-needs-points li") == [
+               "An approver of Verify decides: #{name}. Verify's run asked for changes again " <>
+                 "after 2 returns to Shape, the most that Verify allows."
+             ]
+
+      refute_decision_controls(view)
+
+      # A round limit with an open finding: who decides, in place of the fix.
+      work_item =
+        at_build(scope, :escalated, round: 3, loop_entry: 1, approvers: gate["approvers"])
+
+      escalate!(
+        work_item,
+        :round_limit,
+        Apiary.Stages.Points.round_limit(3, 3, ["The export has no title."])
+      )
+
+      {:ok, view, _html} = live(reader, page(scope, work_item.number))
+
+      assert texts(view, "#work-item-needs-points li") == [
+               "3 of 3 rounds ran, and 1 review finding is still open. The export has no " <>
+                 "title. An approver of Build decides: #{name}."
+             ]
+
+      refute_decision_controls(view)
     end
 
     test "a return limit's point uses the switch button's words, where the card shows a switch",

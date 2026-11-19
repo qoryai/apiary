@@ -24,7 +24,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   use ApiaryWeb, :html
 
-  alias ApiaryWeb.PauseWords
+  alias ApiaryWeb.{PauseWords, People, SettingsComponents}
   alias ApiaryWeb.WorkItemComponents
   alias ApiaryWeb.WorkItemLive.Workflow
 
@@ -1276,6 +1276,37 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   @doc "Artifact types in a sentence, each with \"the\": \"the acceptance criteria and the mockup\"."
   def outputs_words(types),
     do: types |> Enum.map(&gettext("the %{type}", type: type_words(&1))) |> words_list()
+
+  @doc """
+  approver_line/3 is the sentence that says who decides on the stage named `stage`, for a
+  reader who may not: `approvers` as `ApiaryWeb.WorkItemLive.Workflow.approvers/1` returns
+  them, and `members`, the workspace's memberships, each with its `user`, as
+  `Apiary.Organisations.list_workspace_members/1` returns them. The names of the listed
+  members follow the list's order; a listed id that is no member's is left out. With no
+  member left, or none listed, the sentence says that nobody may approve the stage.
+  """
+  @spec approver_line(String.t(), :members | {:listed, [String.t()]}, [map]) :: String.t()
+  def approver_line(stage, :members, _members),
+    do: gettext("A member who may approve %{stage} decides.", stage: stage)
+
+  def approver_line(stage, {:listed, ids}, members) do
+    names = Map.new(members, &{&1.user.id, People.short(People.email(&1.user))})
+
+    case for(id <- Enum.uniq(ids), Map.has_key?(names, id), do: names[id]) do
+      [] ->
+        gettext(
+          "Nobody may approve %{stage}. Ask an admin to list its approvers in Workspace settings › %{workflows}.",
+          stage: stage,
+          workflows: SettingsComponents.workflows_label()
+        )
+
+      listed ->
+        gettext("An approver of %{stage} decides: %{approvers}.",
+          stage: stage,
+          approvers: words_list(listed)
+        )
+    end
+  end
 
   defp words_list([]), do: ""
   defp words_list([one]), do: one
