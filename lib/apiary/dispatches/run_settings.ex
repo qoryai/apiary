@@ -126,13 +126,13 @@ defmodule Apiary.Dispatches.RunSettings do
   # keeps the row id of the provider of the default model provider credential
   # (`provider_connection_id`) and its keys (`run_model_keys`, `Apiary.Runs.ModelKey`:
   # each key's place, its row id, its credential name `<provider's public id>-<place from
-  # 1>`, the place counted per provider, `start` on the default model provider
-  # credential, its provider's row id, keys' secret's row id and chain, the API its
-  # sessions use, with its `format`, its `endpoint` with a setting resolved to its
+  # 1>`, the place counted per provider, `default_credential` on the default model
+  # provider credential, its provider's row id, keys' secret's row id and chain, the API
+  # its sessions use, with its `format`, its `endpoint` with a setting resolved to its
   # address, its `auth`, and, when the description lists them, its `key_prefixes` and its
-  # limit windows as `use_up_to_windows`, and what its run configuration entry has of
-  # it), for the reads that follow the claim. The run settings take at most 64 KiB
-  # encoded; a claim with more fails.
+  # limit windows as `use_up_to_windows`, and what its run configuration entry has of it),
+  # for the reads that follow the claim. The run settings take at most 64 KiB encoded; a
+  # claim with more fails.
   #
   # `provider_models` is the description's models (`Apiary.Connections.provider_models/1`),
   # in its order, each with the effort values that both it and the runtime have, then the
@@ -994,16 +994,16 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # A key as the run keeps it (`Apiary.Runs.ModelKey`) and its run configuration writes
   # it: its place, its name, its row id, its provider, its keys' secret, its chain and the
-  # API its group uses; `start` on the default model provider credential, its Pause for,
-  # and, where it has them, its known reset from the providers' responses, the next reset
-  # of its schedule, the end of its cooldown while it is in cooldown at `now`, a window
-  # at its Use up to percentage included, and that percentage. Times are in whole
+  # API its group uses; `default_credential` on the default model provider credential, its
+  # Pause for, and, where it has them, its known reset from the providers' responses, the
+  # next reset of its schedule, the end of its cooldown while it is in cooldown at `now`,
+  # a window at its Use up to percentage included, and that percentage. Times are in whole
   # seconds, rounded up.
   defp stored_key(group, key, {position, name}, default?, now) do
     %{
       position: position,
       name: name,
-      start: default?,
+      default_credential: default?,
       secret_value_id: key.id,
       connection_id: group.provider.id,
       secret_id: group.provider.secret_id,

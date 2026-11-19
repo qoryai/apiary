@@ -610,7 +610,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
           secret_value_id: value.id,
           position: 2,
           name: "#{checkout.public_id}-1",
-          start: false
+          default_credential: false
         }
       ])
 
@@ -694,7 +694,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
           secret_value_id: value.id,
           position: 3,
           name: second,
-          start: false
+          default_credential: false
         }
       ])
 

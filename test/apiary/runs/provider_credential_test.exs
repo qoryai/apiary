@@ -344,7 +344,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
       key = %ModelKey{
         position: 1,
         name: "model-1",
-        start: true,
+        default_credential: true,
         secret_value_id: Ecto.UUID.generate(),
         connection_id: litellm.id,
         secret_id: litellm.secret_id,

@@ -328,7 +328,7 @@ defmodule Apiary.ModelKeys.UseUpToTest do
         %{
           secret_value_id: main,
           name: "k-1",
-          start: true,
+          default_credential: true,
           pause_for_s: 3600,
           use_up_to_percent: 90
         },
@@ -377,7 +377,7 @@ defmodule Apiary.ModelKeys.UseUpToTest do
             provider: ctx.subscription,
             secret_value_id: Ecto.UUID.generate(),
             name: name.(n),
-            start: n == 1,
+            default_credential: n == 1,
             pause_for_s: 604_800,
             resets_at: time,
             schedule_resets_at: time,
@@ -394,8 +394,11 @@ defmodule Apiary.ModelKeys.UseUpToTest do
       run_keys!(run, keys, api: api)
       stored = stored_keys(run)
 
-      assert Enum.map(stored, &Map.take(&1, [:name, :start, :api])) ==
-               for(k <- keys, do: %{name: k.name, start: k.start, api: api})
+      assert Enum.map(stored, &Map.take(&1, [:name, :default_credential, :api])) ==
+               for(
+                 k <- keys,
+                 do: %{name: k.name, default_credential: k.default_credential, api: api}
+               )
 
       assert Enum.all?(
                stored,

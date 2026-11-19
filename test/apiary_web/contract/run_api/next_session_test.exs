@@ -661,8 +661,8 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
       # The run keeps the keys of both providers, the default model provider credential's
       # provider's first.
-      assert [%ModelKey{start: true} = start | rest] = stored_keys(ctx.gateway_run)
-      assert start.connection_id == ctx.provider.id
+      assert [%ModelKey{default_credential: true} = default | rest] = stored_keys(ctx.gateway_run)
+      assert default.connection_id == ctx.provider.id
       assert Enum.map(rest, &{&1.connection_id, &1.name}) == [{other.id, "#{other.public_id}-1"}]
     end
 

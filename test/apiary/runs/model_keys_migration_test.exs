@@ -47,8 +47,7 @@ defmodule Apiary.Runs.ModelKeysMigrationTest do
     :ok
   end
 
-  defp columns_down!,
-    do: assert(:ok = Ecto.Migrator.down(Repo, @columns_version, @columns_migration, @options))
+  defp columns_down!, do: assert(:ok = Apiary.OneProviderColumns.back!())
 
   defp columns_up!,
     do: assert(:ok = Ecto.Migrator.up(Repo, @columns_version, @columns_migration, @options))

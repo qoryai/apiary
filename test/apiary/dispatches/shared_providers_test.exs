@@ -195,8 +195,18 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       refute Map.has_key?(third, "model_provider_credential_name")
 
       assert [
-               %ModelKey{position: 1, start: true, connection_id: start_id, secret_id: secret},
-               %ModelKey{position: 2, start: false, connection_id: other_id, secret_id: theirs}
+               %ModelKey{
+                 position: 1,
+                 default_credential: true,
+                 connection_id: start_id,
+                 secret_id: secret
+               },
+               %ModelKey{
+                 position: 2,
+                 default_credential: false,
+                 connection_id: other_id,
+                 secret_id: theirs
+               }
              ] = keys = stored_keys(run)
 
       assert names(keys) == [start, other]
@@ -1080,7 +1090,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       start = "#{storefront.public_id}-1"
 
       assert run.provider_connection_id == storefront.id
-      assert [%ModelKey{name: ^start, start: true} | _rest] = stored_keys(run)
+      assert [%ModelKey{name: ^start, default_credential: true} | _rest] = stored_keys(run)
       assert {:ok, %{name: ^start}} = ProviderCredential.for_run(run)
       assert %{"session_id" => @session_id, "path" => @transcript} = run.resume
       assert Transcript.last(paused.id, 2) == %{session_id: @session_id, path: @transcript}

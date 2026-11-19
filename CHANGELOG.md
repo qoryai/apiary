@@ -3043,6 +3043,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   secrets request is refused `410` `run_configuration_superseded`. Rolled back, the
   columns come back, filled from the key rows of each run's default model provider
   credential's provider.
+- `run_model_keys` (20261119161000): the column `start` is renamed `default_credential`,
+  and its index `run_model_keys_start_index` is renamed
+  `run_model_keys_default_credential_index`. It changes no row.
 - `dispatch_runs` (20261118162300): a nullable column `report_wait_until`, the end of the
   report window of a run that continues a run paused with `model_key_switch`. It changes
   no row.

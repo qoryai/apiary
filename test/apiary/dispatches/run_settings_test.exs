@@ -126,7 +126,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
     do:
       Map.merge(
         %{
-          start: false,
+          default_credential: false,
           resets_at: nil,
           schedule_resets_at: nil,
           cooldown_until: nil,
@@ -141,7 +141,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
     do:
       Map.take(
         key,
-        ~w(secret_value_id name start pause_for_s resets_at schedule_resets_at cooldown_until
+        ~w(secret_value_id name default_credential pause_for_s resets_at schedule_resets_at cooldown_until
            use_up_to_percent)a
       )
 
@@ -469,7 +469,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                key(
                  secret_value_id: value!(ctx.provider, "spare").id,
                  name: "#{pid}-2",
-                 start: true,
+                 default_credential: true,
                  pause_for_s: 300
                )
              ]
@@ -516,7 +516,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
                key(
                  secret_value_id: value!(ctx.provider, "spare").id,
                  name: "#{pid}-1",
-                 start: true,
+                 default_credential: true,
                  pause_for_s: 60
                )
 
@@ -664,7 +664,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert run.run_settings["runtime"] == bearer.name
 
       # The API of the run's keys is the fallback provider's, on the fallback's runtime.
-      assert [%ModelKey{start: true, api: api} | _rest] = stored_keys(run)
+      assert [%ModelKey{default_credential: true, api: api} | _rest] = stored_keys(run)
       assert api["format"] in Runtimes.formats(bearer)
       assert api["auth"] == %{"scheme" => "bearer"}
       assert api["endpoint"] == "https://openrouter.ai/api"

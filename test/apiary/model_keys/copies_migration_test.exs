@@ -177,7 +177,7 @@ defmodule Apiary.ModelKeys.CopiesMigrationTest do
 
     assert report(running, main) == []
 
-    down!(@columns)
+    :ok = Apiary.OneProviderColumns.back!()
     down!(@live_copies)
     up!(@live_copies)
     assert report(running, main) == ["allowed"]

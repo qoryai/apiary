@@ -18,10 +18,10 @@ defmodule Apiary.Runs.ProviderCredential do
   # has `use_up_to_windows`, its provider's limit windows, which the claim wrote into the
   # row's API from the catalogue's entry; a row whose API has no windows has neither
   # member, as the contract requires both or none. The default model provider credential,
-  # `default_model_provider_credential_name`, is the key the run keeps with `start`, else
-  # its first. An entry has no key value, no secret id and no value id: the gateway
-  # fetches the values with the secrets request (`Apiary.Runs.SecretsRequest`), which
-  # reveals a key by its row id.
+  # `default_model_provider_credential_name`, is the key the run keeps with
+  # `default_credential`, else its first. An entry has no key value, no secret id and no
+  # value id: the gateway fetches the values with the secrets request
+  # (`Apiary.Runs.SecretsRequest`), which reveals a key by its row id.
   #
   # The hosts are, for each provider of the run's keys, the description's
   # `egress_hosts`, in its order; each host once across the providers. An entry
@@ -255,9 +255,9 @@ defmodule Apiary.Runs.ProviderCredential do
 
     with {:ok, read} <- read do
       providers = Map.new(read, fn {provider, _hosts} -> {provider.id, provider} end)
-      # Every run with key rows has a start row: a claim stores keys only for a run whose
-      # first session has a default model provider credential.
-      %ModelKey{name: start} = Enum.find(rows, & &1.start)
+      # Every run with key rows has a row with `default_credential`: a claim stores keys
+      # only for a run whose first session has a default model provider credential.
+      %ModelKey{name: default_name} = Enum.find(rows, & &1.default_credential)
 
       keys =
         for row <- rows do
@@ -274,7 +274,7 @@ defmodule Apiary.Runs.ProviderCredential do
 
       {:ok,
        %{
-         name: start,
+         name: default_name,
          keys: keys,
          hosts: read |> Enum.flat_map(&elem(&1, 1)) |> Enum.uniq(),
          providers: Enum.map(read, &elem(&1, 0))
