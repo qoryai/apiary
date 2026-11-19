@@ -435,8 +435,9 @@ defmodule Apiary.WorkItemsFixtures do
   for `understood_result/1`, its `message` as a version of the work item's proposal; for
   `questions_result/1`, its questions added, open, to the newest questions, each with the
   id `q<n>` and asked by the run. A question of more than one line keeps its first line
-  as the question and the whole as its context. A question given as a map with a
-  `"criterion"` keeps it, and one with a `"context"` keeps that context.
+  as the question and the whole as its context. A question given as a map with an
+  `"about"` keeps it, else it is about the work item, and one with a `"context"` keeps
+  that context.
   """
   def push_output!(%DispatchRun{} = dispatch_run, %Run{} = run, %{"verdict" => verdict} = result) do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
@@ -501,6 +502,7 @@ defmodule Apiary.WorkItemsFixtures do
           "question" => decision["question"],
           "options" => decision["options"],
           "state" => "decided",
+          "about" => %{"work_item" => true},
           "asked" => %{"run" => run.number, "at" => at},
           "decision" => %{
             "option" => decision["option"],
@@ -525,6 +527,7 @@ defmodule Apiary.WorkItemsFixtures do
       "question" => text |> String.trim() |> String.split("\n") |> hd(),
       "options" => question["options"] || [],
       "state" => "open",
+      "about" => question["about"] || %{"work_item" => true},
       "asked" => asked
     }
 
@@ -535,7 +538,7 @@ defmodule Apiary.WorkItemsFixtures do
         true -> entry
       end
 
-    if question["criterion"], do: Map.put(entry, "criterion", question["criterion"]), else: entry
+    entry
   end
 
   @doc """

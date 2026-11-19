@@ -266,9 +266,9 @@ defmodule Apiary.WorkflowEndToEndTest do
     {:ok, criteria} =
       Stages.add_version(scope, work_item, "acceptance-criteria", [
         %{
-          filename: "criteria.md",
-          content_type: "text/markdown",
-          binary: "# Acceptance criteria\n\n- A gift card pays part of an order.\n"
+          filename: "acceptance-criteria.json",
+          content_type: "application/json",
+          binary: Jason.encode!(Apiary.StagesFixtures.criteria_document())
         }
       ])
 

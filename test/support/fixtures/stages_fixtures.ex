@@ -12,6 +12,61 @@ defmodule Apiary.StagesFixtures do
   alias Apiary.Runs.Run
   alias Apiary.WorkItems.WorkItem
 
+  @doc """
+  An acceptance criteria document in the format of `acceptance-criteria.schema.json`:
+  criteria `ac-1` to `ac-3`, `ac-2` removed, with the words of `overrides` merged in.
+  """
+  def criteria_document(overrides \\ %{}) do
+    Map.merge(
+      %{
+        "summary" => "The checkout takes a gift card.",
+        "criteria" => [
+          %{"id" => "ac-1", "text" => "The checkout takes a gift card code.", "check" => "Tests"},
+          %{
+            "id" => "ac-2",
+            "text" => "A gift card pays for delivery too.",
+            "check" => "Tests",
+            "removed" => %{"reason" => "Delivery is outside this work item."}
+          },
+          %{
+            "id" => "ac-3",
+            "text" => "The basket shows what the gift card leaves to pay.",
+            "check" => "Demo: Pay with a gift card"
+          }
+        ]
+      },
+      overrides
+    )
+  end
+
+  @doc "A verification document in the format of `verification.schema.json`."
+  def verification_document(overrides \\ %{}) do
+    Map.merge(
+      %{
+        "target_version" => String.duplicate("a1", 20),
+        "matrix" => [
+          %{"criterion" => "ac-1", "state" => "met", "evidence" => "gift_card_test.exs passed."},
+          %{"criterion" => "ac-3", "state" => "not_met", "evidence" => "The total stays."}
+        ],
+        "not_verified" => [],
+        "model_families" => ["claude"]
+      },
+      overrides
+    )
+  end
+
+  @doc """
+  The one file of a version of `type` with `document` as JSON, as `Apiary.Artifacts.push/5`
+  takes it: `acceptance-criteria.json` for the acceptance criteria and
+  `verification.json` for the verification, else `<type>.json`.
+  """
+  def json_file(type, document),
+    do: %{
+      filename: "#{type}.json",
+      content_type: "application/json",
+      binary: Jason.encode!(document)
+    }
+
   @doc "A ticket of the scope's Backlog taken in: the work item as it is after the take in."
   def taken_in_fixture(%Scope{} = scope) do
     ticket = Apiary.WorkItemsFixtures.backlog_ticket_fixture(scope)
@@ -34,6 +89,7 @@ defmodule Apiary.StagesFixtures do
       "question" => "Which basket #{System.unique_integer([:positive])}?",
       "options" => [],
       "state" => "open",
+      "about" => %{"work_item" => true},
       "asked" => %{"run" => asked_run, "at" => "2026-11-04T10:00:00Z"}
     }
 

@@ -9,11 +9,11 @@ defmodule Apiary.Artifacts do
   #
   # `types(workspace)` is the standard types the workspace shows and the workspace's custom
   # types, and `type(workspace, name)` one of them, nil for a name neither has and for a
-  # hidden standard type (`Apiary.Artifacts.Type`). `all_types(workspace)` is the ten
+  # hidden standard type (`Apiary.Artifacts.Type`). `all_types(workspace)` is the eleven
   # standard types, each with `shown` set, and the custom types, for the settings page.
   #
   # A workspace's `shown_standard_types` is the list of the standard types it shows, nil
-  # for all ten; an always-on type (`Type.always_on/0`) is shown whatever the list
+  # for all eleven; an always-on type (`Type.always_on/0`) is shown whatever the list
   # contains. `types/1` and `all_types/1` read the list from the database by the
   # workspace's id, and `type/2` reads it the same way for a standard type that can be
   # hidden and for no other name: a caller's struct can have the field unset, or be older
@@ -1470,8 +1470,11 @@ defmodule Apiary.Artifacts do
          {:ok, question_ids} <- question_ids(module, artifact) do
       with {:ok, text} <- File.read(file.staged.path),
            %{} = document <- module.decode(text) do
-        case check_run(module, newest, document, number || 0, question_ids) do
-          :ok -> :ok
+        with :ok <- check_run(module, newest, document, number || 0, question_ids),
+             :ok <- abouts_kept(module, artifact, newest, document) do
+          :ok
+        else
+          {:error, :store_unavailable} = error -> error
           {:error, reason} -> {:error, {:invalid, {:kept, 0, reason}}}
         end
       else
@@ -1481,6 +1484,114 @@ defmodule Apiary.Artifacts do
   end
 
   defp members_kept(_writer, _artifact, _stored), do: :ok
+
+  # The `about` of each question that a run's version of the questions adds, or whose
+  # `about` it changes (`Apiary.Explore.Questions.abouts/2`), points at an output of the
+  # work item: an artifact of its `type` and `name` whose newest version that no cancelled
+  # run wrote is no withdrawal, else `{:error, {:about, id, type, name}}`. An `item` of the
+  # acceptance criteria is the id of a criterion in some version of them that no cancelled
+  # run wrote, a criterion removed or dropped later too, else
+  # `{:error, {:about_item, id, type, name, item}}`; an item of another type is not
+  # checked, because Qory Apiary does not read the entries of other outputs. The abouts
+  # are checked in the questions' order, and each output is read once per push: its
+  # versions in one query, and, for an item, the file of each of its versions once
+  # (`output_read/3`). A file that cannot be read is `{:error, :store_unavailable}`.
+  defp abouts_kept(Questions, artifact, newest, document) do
+    newest
+    |> Questions.abouts(document)
+    |> Enum.reduce_while({:ok, %{}}, fn {id, about}, {:ok, outputs} ->
+      case about_kept(artifact.work_item_id, id, about, outputs) do
+        {:ok, outputs} -> {:cont, {:ok, outputs}}
+        refused -> {:halt, refused}
+      end
+    end)
+    |> case do
+      {:ok, _outputs} -> :ok
+      refused -> refused
+    end
+  end
+
+  defp abouts_kept(_module, _artifact, _newest, _document), do: :ok
+
+  defp about_kept(_work_item_id, _id, %{"work_item" => true}, outputs), do: {:ok, outputs}
+
+  defp about_kept(work_item_id, id, %{"type" => type, "name" => name} = about, outputs) do
+    item = if type == "acceptance-criteria", do: about["item"]
+
+    with {:ok, output, outputs} <- output_read(outputs, {work_item_id, type, name}, item) do
+      cond do
+        output.versions == [] or hd(output.versions).withdrawn ->
+          {:error, {:about, id, type, name}}
+
+        is_nil(item) or MapSet.member?(output.items, item) ->
+          {:ok, outputs}
+
+        true ->
+          {:error, {:about_item, id, type, name, item}}
+      end
+    end
+  end
+
+  # The output `{work_item_id, type, name}` as `outputs` read it in this push, else read
+  # now: `%{versions:, items:}`, its versions that no cancelled run wrote, newest first,
+  # (`output_versions/1`), and, where an `item` asks for them, the ids of the criteria in
+  # any of those versions, nil until then. Returns the output and `outputs` with it.
+  defp output_read(outputs, key, item) do
+    output = Map.get_lazy(outputs, key, fn -> %{versions: output_versions(key), items: nil} end)
+
+    case output do
+      %{items: nil, versions: versions} when is_binary(item) ->
+        with {:ok, items} <- criterion_ids(versions) do
+          output = %{output | items: items}
+          {:ok, output, Map.put(outputs, key, output)}
+        end
+
+      output ->
+        {:ok, output, Map.put(outputs, key, output)}
+    end
+  end
+
+  # Every version of the acceptance criteria, whose items are read; the newest alone of
+  # any other output.
+  defp output_versions({work_item_id, type, name}) do
+    query =
+      from v in Version,
+        as: :version,
+        join: a in assoc(v, :artifact),
+        where: a.work_item_id == ^work_item_id and a.type == ^type and a.name == ^name,
+        where: not exists(Apiary.Runs.Run.cancelled_dispatch_run(:version, :run_id)),
+        order_by: [desc: v.number],
+        preload: [files: ^files_query()]
+
+    if type == "acceptance-criteria",
+      do: Repo.all(query),
+      else: Repo.all(from v in query, limit: 1)
+  end
+
+  # The ids of the criteria in each version of the acceptance criteria that is no
+  # withdrawal, each version's file read once. A push with a criterion item reads every
+  # criteria version's file once.
+  defp criterion_ids(versions) do
+    Enum.reduce_while(versions, {:ok, MapSet.new()}, fn
+      %Version{withdrawn: true}, acc ->
+        {:cont, acc}
+
+      version, {:ok, ids} ->
+        case Apiary.Stages.Artifacts.stored_json(version) do
+          {:ok, %{"criteria" => criteria}} when is_list(criteria) ->
+            {:cont, {:ok, Enum.reduce(criteria, ids, &criterion_id/2)}}
+
+          {:ok, _none} ->
+            {:cont, {:ok, ids}}
+
+          {:error, :store_unavailable} = error ->
+            {:halt, error}
+        end
+    end)
+  end
+
+  defp criterion_id(%{"id" => id}, ids) when is_binary(id), do: MapSet.put(ids, id)
+  defp criterion_id(_criterion, ids), do: ids
 
   # A verdict, checked under the work item's lock: its `track`, where it has one, is a track
   # that the gate of the stage the version is made in offers (`track_offered/3`); and the

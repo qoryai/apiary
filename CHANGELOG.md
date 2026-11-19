@@ -1791,6 +1791,36 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+<!-- feature: workflow_model -->
+- `acceptance-criteria` and `verification` are structured types: a version is one JSON
+  file that matches `acceptance-criteria.schema.json` or `verification.schema.json`, and
+  any other file, Markdown too, is `422` `invalid_artifact`. A criterion's id is once in
+  the criteria. Qory Apiary reads no output's Markdown for data.
+- A question has `about` in place of `criterion`: `{"work_item": true}`, or the type and
+  name of an output of the work item, with an `item` such as `ac-4`. A pushed question
+  whose `about` points at an output the work item lacks, or at a criterion that no version
+  of the acceptance criteria has, is `422` `invalid_artifact` with the fix first. Each
+  question shows an About line under its asked line: "About the ticket", "About
+  screenshot scenario-1", or "About acceptance criteria, AC-4" with the criterion's text
+  as a quote. The field of a proposed wording is labelled from `about.item`, such as
+  **Change AC-4:**.
+- Acceptance criteria show as a table: the summary, then **Id**, **Criterion** and
+  **Check**, the ids in upper case. A removed criterion is struck through, with the badge
+  **Removed** and its reason.
+- The Verify matrix shows each criterion's id and its text from the newest acceptance
+  criteria, as **Met** or **Not met**, and no verified commit. The caption is "Model
+  families: …". A row whose criterion has an open question links to it: "Answer question
+  4.".
+- While a run runs, an option's proposed wording shows as a quote under its explanation.
+  An answered question shows the proposed wording of the option chosen as a quote under
+  the answer.
+- Under **Not verified**, **Accepted findings** lists the findings that a member accepted
+  as they are at an earlier stage's round limit in this take in: "Accepted as it is in
+  Build by dana, 18 Nov 2026, 10:42.", then each finding. Where Verify's tab shows no
+  verification frame, such as while its run has pushed none, the findings show in a
+  separate frame, **Accepted findings**, open, after the stage's outputs, with that line
+  as its caption.
+<!-- /feature -->
 - A run's cost, the **Cost** on the run page that every spend total reads, is the sum, over
   the run's sessions, of the `cost_usd` of each session's last result line. It was the sum of
   all the result lines. A Claude Code launch with a subagent in the background writes up to

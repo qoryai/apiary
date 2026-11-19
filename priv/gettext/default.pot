@@ -4812,6 +4812,16 @@ msgstr ""
 msgid "About"
 msgstr ""
 
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "About %{output}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "About %{output}, %{item}"
+msgstr ""
+
 #: lib/apiary_web/live/setup_live.ex
 #: lib/apiary_web/live/user_live/registration.ex
 #, elixir-autogen, elixir-format
@@ -4916,6 +4926,18 @@ msgstr ""
 #: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "Accepted as it is by %{member}"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Accepted as it is in %{stage} by %{member}, %{when}."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Accepted findings"
 msgstr ""
 
 #: lib/apiary_web/components/adapter_components.ex
@@ -6086,6 +6108,7 @@ msgid "Answer"
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "Answer %{question}."
 msgstr ""
@@ -7416,6 +7439,11 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
 msgid "Changing the key breaks every file that uses %{key}."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Check"
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
@@ -11599,6 +11627,7 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/node_live/show.ex
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "Id"
 msgstr ""
@@ -18033,6 +18062,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Remove variables in the workspace or its organisation, then start the run again. The run's variables take more than %{limit}."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
+#, elixir-autogen, elixir-format
+msgid "Removed"
 msgstr ""
 
 #: lib/apiary_web/live/policy_live/common.ex
@@ -27353,6 +27387,7 @@ msgid "qory run on a machine"
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
+#: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "question %{number}"
 msgstr ""
@@ -27566,6 +27601,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "a table in a text"
 msgid "text"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "the %{item}"
 msgstr ""
 
 #: lib/apiary/artifacts/template_types.ex

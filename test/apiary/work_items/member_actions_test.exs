@@ -559,6 +559,7 @@ defmodule Apiary.WorkItems.MemberActionsTest do
         "question" => "Which store keeps the baskets?",
         "options" => @options,
         "state" => state,
+        "about" => %{"work_item" => true},
         "asked" => %{"run" => number, "at" => at},
         "decision" => %{
           "option" => "Redis",

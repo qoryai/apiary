@@ -136,14 +136,17 @@ defmodule Apiary.Artifacts.Format do
   @standard_limits [nodes: 65_536, string: 131_072, depth: 16]
 
   # The lists and members of a standard type whose schema leaves its lists unbounded,
-  # which `Apiary.Kinds.Bounds.file!/2` cannot read: the questions and the review comments
-  # formats, copied from qory, bound a document by its size, 1 MiB. Their lists are
-  # bounded here by the values in all, and their objects by the most members one has, a
-  # question's 11 and a review comment's 7.
+  # which `Apiary.Kinds.Bounds.file!/2` cannot read: the questions, the review comments,
+  # the acceptance criteria and the verification formats, copied from qory, bound a
+  # document by its size, 1 MiB. Their lists are bounded here by the values in all, and
+  # their objects by the most members one has, a question's 11, a review comment's 7, a
+  # criterion's 4 and the verification's 4.
   @unbounded_lists %{
     "questions" => [list: 65_536, members: 11],
     "review-comments" => [list: 65_536, members: 7],
-    "proposal-sources" => [list: 65_536, members: 6]
+    "proposal-sources" => [list: 65_536, members: 6],
+    "acceptance-criteria" => [list: 65_536, members: 4],
+    "verification" => [list: 65_536, members: 4]
   }
 
   # A proposal's images by their extension, in lower case.
@@ -947,11 +950,23 @@ defmodule Apiary.Artifacts.Format do
   # answers, and the earlier answers in a question's `history`, choose an `option` among
   # the question's titles, or none.
   defp once("questions", %{"questions" => questions}) do
-    with :ok <- once(questions, "questions", "question"), do: titled(questions)
+    with :ok <- once(questions, "questions", &earlier(&1, &2, "question")), do: titled(questions)
   end
 
   defp once("review-comments", %{"review_comments" => comments}),
-    do: once(comments, "review_comments", "review comment")
+    do: once(comments, "review_comments", &earlier(&1, &2, "review comment"))
+
+  # A criterion's id is once in the criteria: a second is refused at its place, the fix
+  # first, with the criterion counted from 1.
+  defp once("acceptance-criteria", %{"criteria" => criteria}),
+    do:
+      once(
+        criteria,
+        "criteria",
+        fn id, index ->
+          "give criterion #{index + 1} an id that no earlier criterion has: #{id} is taken"
+        end
+      )
 
   defp once(_name, _document), do: :ok
 
@@ -983,19 +998,16 @@ defmodule Apiary.Artifacts.Format do
     end)
   end
 
-  defp once(entries, key, word) do
+  # The first entry whose `id` an earlier entry has, refused at its place with
+  # `refusal`'s words for its id and its index.
+  defp once(entries, key, refusal) do
     entries
     |> Enum.with_index()
     |> Enum.reduce_while(MapSet.new(), fn {%{"id" => id}, index}, seen ->
       if MapSet.member?(seen, id),
         do:
           {:halt,
-           {:error,
-            {:schema,
-             SchemaError.detail(
-               "#/#{key}/#{index}/id",
-               "the id #{id} is the id of an earlier #{word}"
-             )}}},
+           {:error, {:schema, SchemaError.detail("#/#{key}/#{index}/id", refusal.(id, index))}}},
         else: {:cont, MapSet.put(seen, id)}
     end)
     |> case do
@@ -1003,6 +1015,8 @@ defmodule Apiary.Artifacts.Format do
       _seen -> :ok
     end
   end
+
+  defp earlier(id, _index, word), do: "the id #{id} is the id of an earlier #{word}"
 
   # Why a document was refused before JSV found a failing place in it, at its root.
   defp refused(:limits),

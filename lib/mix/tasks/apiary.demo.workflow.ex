@@ -54,9 +54,8 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
         and writing her own for the other, and the second run's wait for answers;
       * TypeError in the address form after autofill: a run that exited failed with no
         proposal, escalated as a run that stopped;
-      * Show delivery dates on the product page: Shape at its gate, with an
-        acceptance-criteria document (Markdown with a Mermaid diagram) and a mockup
-        image that Max added;
+      * Show delivery dates on the product page: Shape at its gate, with acceptance
+        criteria and a mockup image that Max added;
       * Remove the old promotion banner: acceptance criteria that Max added in Shape,
         then Shape approved by Dana, Build at its gate;
       * Record a demo of the new checkout: on version 2, acceptance criteria that Max
@@ -808,8 +807,8 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
     push!(ctx.max, work_item, "acceptance-criteria", ctx.stages["Shape"], [
       %{
-        filename: "acceptance-criteria.md",
-        content_type: "text/markdown",
+        filename: "acceptance-criteria.json",
+        content_type: "application/json",
         binary: delivery_dates_criteria()
       }
     ])
@@ -826,8 +825,8 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
     push!(ctx.max, work_item, "acceptance-criteria", ctx.stages["Shape"], [
       %{
-        filename: "acceptance-criteria.md",
-        content_type: "text/markdown",
+        filename: "acceptance-criteria.json",
+        content_type: "application/json",
         binary: banner_criteria()
       }
     ])
@@ -848,8 +847,8 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
     push!(ctx.max, work_item, "acceptance-criteria", ctx.stages["Shape"], [
       %{
-        filename: "acceptance-criteria.md",
-        content_type: "text/markdown",
+        filename: "acceptance-criteria.json",
+        content_type: "application/json",
         binary: demo_criteria()
       }
     ])
@@ -993,6 +992,7 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
         Map.merge(question, %{
           "id" => "q#{n}",
           "state" => "open",
+          "about" => %{"work_item" => true},
           "asked" => %{"run" => run.number, "at" => time(now)}
         })
       end)
@@ -1287,49 +1287,43 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
   ## The artifacts that Max adds
 
+  # The acceptance criteria of a work item, in the format of
+  # `acceptance-criteria.schema.json`: `summary`, then each criterion `{text, check}`, with
+  # the ids ac-1, ac-2 and on in their order.
+  defp criteria_json(summary, criteria) do
+    Jason.encode!(%{
+      "summary" => summary,
+      "criteria" =>
+        for(
+          {{text, check}, i} <- Enum.with_index(criteria, 1),
+          do: %{"id" => "ac-#{i}", "text" => text, "check" => check}
+        )
+    })
+  end
+
   defp delivery_dates_criteria do
-    """
-    # Delivery dates on the product page
-
-    ## Acceptance criteria
-
-    1. The product page shows a delivery date for the postcode the customer entered.
-    2. Without a postcode, the page shows the earliest date for the customer's country.
-    3. When the warehouse has no date, the page shows "Delivery date on request".
-
-    ## Flow
-
-    ```mermaid
-    flowchart LR
-      A[Product page] --> B{Postcode known?}
-      B -- yes --> C[Read the date from the warehouse]
-      B -- no --> D[Earliest date for the country]
-      C --> E[Show the date]
-      D --> E
-    ```
-    """
+    criteria_json("The product page shows when the order arrives.", [
+      {"The product page shows a delivery date for the postcode the customer entered.",
+       "Demo: Enter a postcode on the product page"},
+      {"Without a postcode, the page shows the earliest date for the customer's country.",
+       "Demo: Open the product page with no postcode"},
+      {~s|When the warehouse has no date, the page shows "Delivery date on request".|, "Tests"}
+    ])
   end
 
   defp demo_criteria do
-    """
-    # Record a demo of the new checkout
-
-    ## Acceptance criteria
-
-    1. The video shows the address, delivery and payment steps in that order.
-    2. The video is at most two minutes long.
-    """
+    criteria_json("A video records the new checkout.", [
+      {"The video shows the address, delivery and payment steps in that order.",
+       "Watch the video"},
+      {"The video is at most two minutes long.", "Watch the video"}
+    ])
   end
 
   defp banner_criteria do
-    """
-    # Remove the old promotion banner
-
-    ## Acceptance criteria
-
-    1. No page of the web shop shows the autumn promotion banner.
-    2. The banner's styles and images are no longer shipped.
-    """
+    criteria_json("The autumn promotion banner is gone.", [
+      {"No page of the web shop shows the autumn promotion banner.", "Demo: Open the home page"},
+      {"The banner's styles and images are no longer shipped.", "Tests"}
+    ])
   end
 
   # A mockup of the product page, 240 by 160 pixels, as a PNG made here: a header, a

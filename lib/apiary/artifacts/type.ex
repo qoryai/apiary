@@ -1,7 +1,7 @@
 defmodule Apiary.Artifacts.Type do
   # An artifact type: what a version of an artifact must be, and how a page shows it.
   #
-  # A type is standard, one of the ten Qory Apiary ships (`standard/0`), or custom, a row
+  # A type is standard, one of the eleven Qory Apiary ships (`standard/0`), or custom, a row
   # of a workspace's `artifact_types`. Both are this struct; `standard` is true for the
   # first, and a standard type has no row, so no id, public id, organisation or
   # workspace. `view` is the dedicated view of a standard structured type (`:questions`
@@ -72,7 +72,7 @@ defmodule Apiary.Artifacts.Type do
 
   # The standard types: name, base view, size limit, most files, and the dedicated view.
   @standard [
-    {"acceptance-criteria", :document, @mib, 1, nil},
+    {"acceptance-criteria", :structured, @mib, 1, nil},
     {"explainer", :document, @mib, 1, nil},
     {"decision-record", :document, @mib, 1, nil},
     {"mockup", :image, 10 * @mib, 10, nil},
@@ -81,7 +81,8 @@ defmodule Apiary.Artifacts.Type do
     {"proposal", :document, 5 * @mib, 10, nil},
     {"questions", :structured, @mib, 1, :questions},
     {"review-comments", :structured, @mib, 1, nil},
-    {"verdict", :structured, 64 * 1024, 1, :verdict}
+    {"verdict", :structured, 64 * 1024, 1, :verdict},
+    {"verification", :structured, @mib, 1, nil}
   ]
 
   # The standard types no workspace can hide: Core's stage runner and Explore write and

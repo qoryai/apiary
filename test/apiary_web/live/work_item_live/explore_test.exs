@@ -2696,6 +2696,7 @@ defmodule ApiaryWeb.WorkItemLive.ExploreTest do
             "question" => text,
             "options" => [],
             "state" => "open",
+            "about" => %{"work_item" => true},
             "asked" => %{"run" => run.number, "at" => at},
             "follows" => follows
           }
