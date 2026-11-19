@@ -3032,6 +3032,45 @@ defmodule ApiaryWeb.WorkItemExploreTest do
       end
     end
 
+    test "a run of a shared stage whose session would have no key in the run shows the fix while that fault remains" do
+      no_key = {:session_key_missing, :no_key, "write-acceptance-checks", "Checkout keys"}
+
+      other_api =
+        {:session_key_missing, :other_api, "write-acceptance-checks", "Anthropic Messages",
+         "Northwind keys", "plan-the-build"}
+
+      again =
+        "Run the round again. A workflow of the stage would run on a provider that has no key in the run, or on a second API of a provider that an earlier workflow uses."
+
+      for {detail, body} <- [
+            {no_key,
+             "Add a model key to Checkout keys, or choose a model of another provider for workflow write-acceptance-checks. Checkout keys has no model key."},
+            {other_api,
+             "Choose a model for workflow write-acceptance-checks that uses the Anthropic Messages API of Northwind keys, as workflow plan-the-build does, or a model of another provider. One run uses one API of each provider."},
+            {nil, again},
+            {{:too_many_providers, 7, for(n <- 1..7, do: "Northwind #{n}")}, again}
+          ] do
+        r =
+          run(%{
+            id: nil,
+            path: nil,
+            state: :failed,
+            outcome: :error,
+            end_cause: :session_key_missing,
+            shared_models: detail,
+            proposal: nil,
+            started_at: nil,
+            ended_at: ago(3600),
+            duration: nil
+          })
+
+        html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+
+        assert texts(html, "#work-item-explore-none p") == ["The run did not start.", body],
+               inspect(detail)
+      end
+    end
+
     test "a run of a shared stage that ended after a session says after which, with the fix" do
       for {cause, fix} <- [
             {:ticket_gone,

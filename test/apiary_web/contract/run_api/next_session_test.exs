@@ -678,7 +678,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       assert answer_valid?(body)
     end
 
-    test "is the workflow's runtime alone where that runtime uses another API of the run's provider",
+    test "ends the claim session_key_missing where the workflow's runtime uses another API of the run's provider",
          ctx do
       release = ModelChoices.default_runtime()
       second = %{release | name: release.name <> "-second", title: release.title <> " second"}
@@ -704,16 +704,32 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
       :ok = Providers.put_test_list(providers)
 
+      # Saved while both workflows run on the release's runtime, then the second
+      # workflow's runtime changes: the session would have no key in the run.
+      stages = [build_stage(~w(plan-the-build write-acceptance-checks))]
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => stages}
+      {:ok, _version} = Processes.save(ctx.scope, ctx.scope.workspace, document)
+
       :ok =
         choose!(ctx, {:workspace, "write-acceptance-checks"}, %{
           runtime: second.name,
           model: "claude-sonnet-5-5"
         })
 
-      body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
+      work_item = taken_in_fixture(ctx.scope)
+      run = Repo.one!(from r in DispatchRun, where: r.work_item_id == ^work_item.id)
 
-      assert body["model_choice"] == %{"runtime" => second.name}
-      refute Map.has_key?(body, "model_credential")
+      # The claim's guard ends the run first; the build ends it too, where the choice
+      # changed after the guard.
+      assert {:error,
+              %{
+                detail:
+                  {:session_key_missing, :other_api, "write-acceptance-checks", _api, _provider,
+                   "plan-the-build"}
+              }} =
+               Stages.shared_models(run)
+
+      assert run |> RunSettings.hold() |> RunSettings.build() == {:end, :session_key_missing}
     end
 
     test "is the run's run_settings where the workflow's runtime is no longer in the catalogue",

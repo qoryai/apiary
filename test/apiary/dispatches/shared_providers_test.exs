@@ -17,7 +17,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Connections, Dispatches, ModelChoices, Processes}
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Pause}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Pause, RunSettings}
   alias Apiary.Runs.{ModelKey, Projector, ProviderCredential, Run, Transcript}
   alias Apiary.Stages.StopCause
   alias Apiary.WorkItems.{ExploreView, WorkItem}
@@ -127,6 +127,44 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       )
 
   defp names(keys), do: Enum.map(keys, & &1.name)
+
+  # `provider` with every key deleted, as no page of Qory Apiary deletes a provider's last
+  # key.
+  defp no_keys!(provider) do
+    Repo.delete_all(from v in Apiary.Secrets.Value, where: v.secret_id == ^provider.secret_id)
+    provider
+  end
+
+  # The catalogue in this process with a second runtime, a copy of the release's under
+  # another name, which uses a second API of the Anthropic provider, with another auth;
+  # the second runtime.
+  defp second_api! do
+    release = ModelChoices.default_runtime()
+    second = %{release | name: release.name <> "-second", title: release.title <> " second"}
+    :ok = Apiary.Kinds.Runtimes.put_test_list([release, second])
+
+    providers =
+      for provider <- Apiary.Kinds.Providers.list() do
+        if provider.name == "anthropic" do
+          [api] = provider.apis
+
+          other =
+            api |> Map.put("runtimes", [second.name]) |> Map.put("auth", %{"scheme" => "bearer"})
+
+          %{provider | apis: [Map.put(api, "runtimes", [release.name]), other]}
+        else
+          provider
+        end
+      end
+
+    :ok = Apiary.Kinds.Providers.put_test_list(providers)
+    second
+  end
+
+  # What a claim of `queued` builds once the guard of the stage's choices has passed, as
+  # `Apiary.Dispatches.Handover` calls it: a choice changed between the guard and the
+  # build.
+  defp built(queued), do: queued |> RunSettings.hold() |> RunSettings.build()
 
   describe "a claim of a stage whose workflows use two providers" do
     test "gives each session the key of its provider, and the run the keys of both", ctx do
@@ -270,6 +308,8 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
   defp error(errors, kind), do: Enum.find(errors, &(&1.error == kind))
 
   @missing "Choose a model for workflow write-acceptance-checks. Without one it runs on Claude Code, and this stage's runs can start on Storefront keys, which Claude Code cannot use."
+  @no_key "Add a model key to Checkout keys, or choose a model of another provider for workflow write-acceptance-checks. Checkout keys has no model key."
+  @other_api "Choose a model for workflow write-acceptance-checks that uses the Anthropic Messages API of Northwind keys, as workflow plan-the-build does, or a model of another provider. One run uses one API of each provider."
 
   defp too_many(names),
     do:
@@ -311,6 +351,51 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert {:error, errors} = save(ctx.scope, workflows)
       assert %{path: "#/stages/0"} = refused = error(errors, :model_choice_missing)
       assert Words.refusal(refused, document(workflows)) == @missing
+    end
+
+    test "fails where a later workflow's provider has no model key, and passes where a later step of its choice has one",
+         ctx do
+      northwind = provider!(ctx.scope, "Northwind keys")
+      checkout = provider!(ctx.scope, "Checkout keys")
+      choose!(ctx.scope, {:workspace, "plan-the-build"}, northwind)
+      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, checkout)
+      no_keys!(checkout)
+      workflows = ~w(plan-the-build write-acceptance-checks)
+
+      assert {:error, errors} = save(ctx.scope, workflows)
+      assert %{path: "#/stages/0"} = refused = error(errors, :session_key_missing)
+
+      assert refused.detail ==
+               {:session_key_missing, :no_key, "write-acceptance-checks", "Checkout keys"}
+
+      assert Words.refusal(refused, document(workflows)) == @no_key
+
+      # The workspace's choice, on Northwind keys, is the default step that the workflow's
+      # choice walks after its provider: a later step with a key.
+      choose!(ctx.scope, :workspace, northwind)
+      assert {:ok, _version} = save(ctx.scope, workflows)
+    end
+
+    test "fails where a workflow's runtime uses another API of the provider an earlier workflow uses",
+         ctx do
+      second = second_api!()
+      northwind = provider!(ctx.scope, "Northwind keys")
+      choose!(ctx.scope, {:workspace, "plan-the-build"}, northwind)
+
+      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, northwind, %{
+        runtime: second.name
+      })
+
+      workflows = ~w(plan-the-build write-acceptance-checks)
+
+      assert {:error, errors} = save(ctx.scope, workflows)
+      assert %{path: "#/stages/0"} = refused = error(errors, :session_key_missing)
+
+      assert refused.detail ==
+               {:session_key_missing, :other_api, "write-acceptance-checks", "Anthropic Messages",
+                "Northwind keys", "plan-the-build"}
+
+      assert Words.refusal(refused, document(workflows)) == @other_api
     end
 
     test "fails where the workflows use 7 providers", ctx do
@@ -376,6 +461,59 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert {{:ended, :model_choice_missing}, _queued} = claim!(ctx)
     end
 
+    test "ends the run session_key_missing after the keys of a later workflow's provider are deleted",
+         ctx do
+      northwind = provider!(ctx.scope, "Northwind keys")
+      checkout = provider!(ctx.scope, "Checkout keys")
+      choose!(ctx.scope, {:workspace, "plan-the-build"}, northwind)
+      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, checkout)
+      assert {:ok, _version} = save(ctx.scope, ~w(plan-the-build write-acceptance-checks))
+
+      no_keys!(checkout)
+      assert {{:ended, :session_key_missing}, _queued} = claim!(ctx)
+    end
+
+    test "ends the run session_key_missing after a workflow's runtime moves to another API of the start key's provider",
+         ctx do
+      second = second_api!()
+      northwind = provider!(ctx.scope, "Northwind keys")
+      choose!(ctx.scope, {:workspace, "plan-the-build"}, northwind)
+      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, northwind)
+      assert {:ok, _version} = save(ctx.scope, ~w(plan-the-build write-acceptance-checks))
+
+      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, northwind, %{
+        runtime: second.name
+      })
+
+      assert {{:ended, :session_key_missing}, _queued} = claim!(ctx)
+
+      # The build ends it too, where the choice changed after the guard.
+      assert built(queued!(ctx)) == {:end, :session_key_missing}
+    end
+
+    test "after a first session on the machine's key, ends the run session_key_missing where two later sessions use two APIs of one provider",
+         ctx do
+      second = second_api!()
+      northwind = provider!(ctx.scope, "Northwind keys")
+      workflows = ~w(plan-the-build write-acceptance-checks review-the-build)
+      # plan-the-build has no model choice at any level: session 1 runs on the machine's
+      # key, and the run has no start key.
+      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, northwind)
+      choose!(ctx.scope, {:workspace, "review-the-build"}, northwind)
+      assert {:ok, _version} = save(ctx.scope, workflows)
+
+      choose!(ctx.scope, {:workspace, "review-the-build"}, northwind, %{runtime: second.name})
+      assert {{:ended, :session_key_missing}, _queued} = claim!(ctx)
+      assert built(queued!(ctx)) == {:end, :session_key_missing}
+
+      # The save finds the same fault, against the first workflow on that provider.
+      assert {:error, errors} = save(ctx.scope, workflows)
+
+      assert error(errors, :session_key_missing).detail ==
+               {:session_key_missing, :other_api, "review-the-build", "Anthropic Messages",
+                "Northwind keys", "write-acceptance-checks"}
+    end
+
     test "ends the run too_many_providers after the 7th workflow's choice is set", ctx do
       providers = six_providers!(ctx)
       assert {{:ok, _run}, _queued} = claim!(ctx)
@@ -427,6 +565,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       do: ExploreView.explore(work_item(queued), DateTime.utc_now()).run.shared_models
 
     @missing_cause "The run did not start, because a workflow of Build had no model, and that workflow's runtime could not use the provider that the run would start on."
+    @key_cause "The run did not start, because a workflow of Build would run on a provider that has no key in the run, or on a second API of a provider that an earlier workflow uses."
     @too_many_cause "The run did not start, because the workflows of Build used more than 6 model providers."
 
     test "of model_choice_missing show the fix with its values while that fault remains, else the round again",
@@ -463,6 +602,64 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
 
       names = Enum.map([storefront, northwind | others], & &1.name)
       assert view_models(queued) == {:too_many_providers, 7, names}
+    end
+
+    test "of session_key_missing for a provider with no key show the fix with its values while that fault remains, else the round again",
+         ctx do
+      northwind = provider!(ctx.scope, "Northwind keys")
+      checkout = provider!(ctx.scope, "Checkout keys")
+      choose!(ctx.scope, {:workspace, "plan-the-build"}, northwind)
+      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, checkout)
+      assert {:ok, _version} = save(ctx.scope, ~w(plan-the-build write-acceptance-checks))
+      no_keys!(checkout)
+
+      {{:ended, :session_key_missing}, queued} = claim!(ctx)
+
+      assert line(queued) == @key_cause <> "\n" <> @no_key
+
+      assert view_models(queued) ==
+               {:session_key_missing, :no_key, "write-acceptance-checks", "Checkout keys"}
+
+      # The stop line's fix is the save's refusal.
+      refusal = %{error: :session_key_missing, detail: view_models(queued)}
+      assert Words.refusal(refusal, nil) == @no_key
+
+      # The fault fixed: the cause's line, and the round again.
+      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, northwind)
+      assert line(queued) == @key_cause <> "\nRun the round again."
+      assert view_models(queued) == nil
+    end
+
+    test "of session_key_missing for a second API show the fix with its values while that fault remains, else the round again",
+         ctx do
+      second = second_api!()
+      northwind = provider!(ctx.scope, "Northwind keys")
+      choose!(ctx.scope, {:workspace, "plan-the-build"}, northwind)
+      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, northwind)
+      assert {:ok, _version} = save(ctx.scope, ~w(plan-the-build write-acceptance-checks))
+
+      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, northwind, %{
+        runtime: second.name
+      })
+
+      {{:ended, :session_key_missing}, queued} = claim!(ctx)
+
+      assert line(queued) == @key_cause <> "\n" <> @other_api
+
+      assert view_models(queued) ==
+               {:session_key_missing, :other_api, "write-acceptance-checks", "Anthropic Messages",
+                "Northwind keys", "plan-the-build"}
+
+      refusal = %{error: :session_key_missing, detail: view_models(queued)}
+      assert Words.refusal(refusal, nil) == @other_api
+
+      # The fault fixed: the cause's line, and the round again.
+      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, northwind, %{
+        runtime: ModelChoices.default_runtime().name
+      })
+
+      assert line(queued) == @key_cause <> "\nRun the round again."
+      assert view_models(queued) == nil
     end
 
     test "of too_many_providers show the fix with its values while that fault remains, else the round again",

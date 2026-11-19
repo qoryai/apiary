@@ -315,7 +315,7 @@ defmodule Apiary.Dispatches.SchemaTest do
                      "'runtime_unserved', 'key_gone', 'model_gone', 'secrets_not_allowed', " <>
                      "'build_failed', 'harness_unresolved', 'target_access_gone', " <>
                      "'write_without_work_item', 'shared_access_differs', " <>
-                     "'model_choice_missing', 'too_many_providers') " <>
+                     "'model_choice_missing', 'too_many_providers', 'session_key_missing') " <>
                      "THEN 'error' END",
                    [Atom.to_string(cause)]
                  )
