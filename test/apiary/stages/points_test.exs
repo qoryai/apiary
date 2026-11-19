@@ -79,14 +79,25 @@ defmodule Apiary.Stages.PointsTest do
     refute Map.has_key?(point, "without_accept")
   end
 
-  test "a return limit's point has its action without Accept as it is" do
-    assert [%{"text" => accept, "without_accept" => %{"text" => back}}] =
+  test "a return limit's point stores the action with Accept as it is, and its stage" do
+    assert [%{"text" => text, "return_stage" => "Build"} = point] =
              Points.return_limit(2, "Verify", "Build")
 
-    assert accept ==
+    assert text ==
              "Pick Move back to return the work item to Build once more, or pick Accept as it is."
 
-    assert back == "Pick Move back to return the work item to Build once more."
+    refute Map.has_key?(point, "without_accept")
+  end
+
+  test "return_action/2 names the controls the card shows" do
+    assert Points.return_action("Build", :accept) ==
+             "Pick Move back to return the work item to Build once more, or pick Accept as it is."
+
+    assert Points.return_action("Build", :move_back) ==
+             "Pick Move back to return the work item to Build once more."
+
+    assert Points.return_action("Build", {:switch, "Switch to Standard"}) ==
+             "Pick Switch to Standard."
   end
 
   test "failed checks are one point for each output type, with the type's words" do

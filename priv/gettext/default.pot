@@ -16605,12 +16605,22 @@ msgstr ""
 
 #: lib/apiary/stages/points.ex
 #, elixir-autogen, elixir-format
+msgid "Pick %{switches}."
+msgstr ""
+
+#: lib/apiary/stages/points.ex
+#, elixir-autogen, elixir-format
 msgid "Pick Move back to return the work item to %{to} once more, or pick Accept as it is."
 msgstr ""
 
 #: lib/apiary/stages/points.ex
 #, elixir-autogen, elixir-format
 msgid "Pick Move back to return the work item to %{to} once more."
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Pick Request changes to write %{outputs}. Approve needs them."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
@@ -18632,11 +18642,6 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Run another round to apply your change."
-msgstr ""
-
-#: lib/apiary_web/live/work_item_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Run another round to write %{outputs}, or move this stage back. Approve needs them."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex

@@ -14,13 +14,15 @@ defmodule Apiary.Stages.Points do
   # `round_limit` point with open findings is its sentence followed by the text of each
   # finding, up to the verdict's 20 points, so it is longer than one sentence. A point of
   # a failed check opens with its action, "Run another round:", and has `action_in_text`
-  # set to true, so the page adds no action sentence after it. A point with the words
-  # "pick Accept as it is" has `without_accept`, the fields that replace them where the
-  # card shows no Accept as it is. The page reads
+  # set to true, so the page adds no action sentence after it. A round limit's point with
+  # the words "pick Accept as it is" has `without_accept`, the fields that replace them
+  # where the card shows no Accept as it is. The page reads
   # `ApiaryWeb.WorkItemLive.Workflow.accept?/2` when it shows the point, not when the
   # stage escalates: a member who assigns the work item to another process version
   # (`Apiary.Processes.assign/3`) while it is escalated changes which outputs are
-  # required.
+  # required. The point of a return limit has `return_stage`, the name of the stage the
+  # return goes to: the page writes its action from the controls the card shows
+  # (`return_action/2`).
   @moduledoc false
 
   use Gettext, backend: ApiaryWeb.Gettext
@@ -126,8 +128,8 @@ defmodule Apiary.Stages.Points do
   # `text`, and the count after it, in `fix`, which the page shows after the text in place
   # of "Run another round." (the user's ruling of 2026-11-16: the action, then the count
   # of returns, then the findings, which are the verdict's points after this one). The
-  # action ends with "or pick Accept as it is"; its `without_accept` text ends after
-  # "once more".
+  # stored action is `return_action(to, :accept)`, and `return_stage` is `to`, so the page
+  # can write the action for the controls the card shows.
   @doc false
   @spec return_limit(non_neg_integer, String.t(), String.t()) :: [t]
   def return_limit(returns, stage, to) do
@@ -142,26 +144,30 @@ defmodule Apiary.Stages.Points do
         )
       end)
 
-    default(fn -> return_action(to, true) end)
+    default(fn -> return_action(to, :accept) end)
     |> run_again()
     |> Map.put("fix", count)
-    |> Map.put("without_accept", %{"text" => default(fn -> return_action(to, false) end)})
+    |> Map.put("return_stage", to)
     |> List.wrap()
   end
 
-  defp return_action(to, true),
+  # return_action/2 is the member's action at a return limit to the stage `to`, for the
+  # controls the escalation card shows: Move back and Accept as it is (`:accept`), Move
+  # back alone (`:move_back`), or the switch buttons, whose labels `labels` lists in one
+  # string (`{:switch, labels}`), in the calling process's locale.
+  @doc false
+  @spec return_action(String.t(), :accept | :move_back | {:switch, String.t()}) :: String.t()
+  def return_action(to, :accept),
     do:
       gettext(
         "Pick Move back to return the work item to %{to} once more, or pick Accept as it is.",
         to: to
       )
 
-  defp return_action(to, false),
-    do:
-      gettext(
-        "Pick Move back to return the work item to %{to} once more.",
-        to: to
-      )
+  def return_action(to, :move_back),
+    do: gettext("Pick Move back to return the work item to %{to} once more.", to: to)
+
+  def return_action(_to, {:switch, labels}), do: gettext("Pick %{switches}.", switches: labels)
 
   # no_verdict/0 is the point of a run outside a loop that ended with no verdict
   # (`Apiary.Stages.Runner`).

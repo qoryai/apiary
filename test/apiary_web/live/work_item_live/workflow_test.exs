@@ -3023,12 +3023,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert decisions(work_item, :approve) |> Enum.filter(&(&1.stage_id == @shape)) == []
 
-      assert has_element?(
-               view,
-               "#work-item-stage-notice",
-               "Run another round to write acceptance criteria, or move this stage back. " <>
-                 "Approve needs them."
-             )
+      assert line(view, "#work-item-stage-notice") ==
+               "Pick Request changes to write acceptance criteria. Approve needs them."
+
+      # The gate card shows the control the notice names, and no Move back.
+      assert has_element?(view, "#work-item-stage-gate-ask-changes", "Request changes")
+      refute has_element?(view, "[id$='-move']")
     end
 
     test "at a gate none: the line, and no Approve", %{
@@ -4414,6 +4414,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       assert has_element?(view, "#work-item-stage-waits", "Waits for you: 2 points")
       assert has_element?(view, "#work-item-stage-escalation-move", "Move back")
+      assert has_element?(view, "#work-item-stage-escalation-accept", "Accept as it is")
     end
 
     test "at the return limit before a later entry, with no output version: no Accept as it is, and the action leaves it out",
@@ -4428,6 +4429,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       # An accept here would start capture-demos, but the stage has no result to accept.
       refute has_element?(view, "#work-item-stage-escalation-accept")
+      assert has_element?(view, "#work-item-stage-escalation-move", "Move back")
 
       assert hd(texts(view, "#work-item-needs-points li")) ==
                "Pick Move back to return the work item to Shape once more. Verify's run " <>
@@ -5193,6 +5195,36 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-stage-escalation-accept")
       refute has_element?(view, "#work-item-stage-escalation-stage")
       refute has_element?(view, "#work-item-stage-escalation-move")
+    end
+
+    test "a return limit's point names the switch button, where the card shows a switch",
+         %{conn: conn, scope: scope} do
+      work_item = on_track!(scope, "fast-track")
+
+      {1, _rows} =
+        Repo.update_all(
+          from(e in Escalation, where: e.work_item_id == ^work_item.id and is_nil(e.resolved_at)),
+          set: [
+            cause: :return_limit,
+            points: Apiary.Stages.Points.return_limit(2, "Build", "Shape")
+          ]
+        )
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert texts(view, "#work-item-needs-points li") == [
+               "Pick Switch to Standard. Build's run asked for changes again after 2 returns " <>
+                 "to Shape, the most that Build allows."
+             ]
+
+      assert has_element?(
+               view,
+               "#work-item-stage-escalation-switch-standard",
+               "Switch to Standard"
+             )
+
+      refute has_element?(view, "#work-item-stage-escalation-move")
+      refute has_element?(view, "#work-item-stage-escalation-accept")
     end
 
     test "Standard: today's card, with Accept, the stage list and Move back, and no switch",

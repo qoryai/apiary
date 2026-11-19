@@ -703,7 +703,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
               name="switch"
               value={track.id}
             >
-              {gettext("Switch to %{track}", track: track.name)}
+              {switch_label(track)}
             </.button>
           </div>
           <p
@@ -725,7 +725,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             {gettext("Accept as it is")}
           </.button>
         </div>
-        <div :if={@switch == [] and @page.earlier != []} class="q-wi-acts flex-wrap">
+        <div :if={Workflow.move_back?(@switch, @page.earlier)} class="q-wi-acts flex-wrap">
           <label for={"#{@id}-stage"} class="sr-only">{gettext("Earlier stage")}</label>
           <select id={"#{@id}-stage"} name="stage">
             <option
@@ -752,6 +752,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     </div>
     """
   end
+
+  # switch_label/1 is the label of the button that switches to `track`; a return limit's
+  # point names the button by it (`ApiaryWeb.WorkItemLive.Workflow`).
+  @doc false
+  @spec switch_label(map) :: String.t()
+  def switch_label(track), do: gettext("Switch to %{track}", track: track.name)
 
   # What a switch runs: the stage it starts, with the run's outputs, then the stages after
   # it that run on the track.

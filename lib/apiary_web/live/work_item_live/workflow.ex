@@ -41,8 +41,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.Pause
   alias Apiary.Runs.{Cancel, Run}
-  alias Apiary.Stages.{Approvers, Runner}
+  alias Apiary.Stages.{Approvers, Points, Runner}
   alias Apiary.WorkItems.WorkItem
+  alias ApiaryWeb.SourceComponents
   alias ApiaryWeb.WorkItemLive.{StageComponents, View}
 
   @states Apiary.Processes.Version.stage_states()
@@ -120,6 +121,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
         do: Stages.proposed_track_with_reason(row, artifacts)
 
     switch = switch_tracks(row, state)
+    earlier = if(at, do: Enum.take(all, at), else: [])
 
     %{
       version: get(get(status, :version), :number) || get(version, :number),
@@ -155,7 +157,13 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       outputs: outputs,
       escalation:
         scope
-        |> escalation(get(status, :escalation), runs, outputs, get(status, :accept_needs), switch)
+        |> escalation(
+          get(status, :escalation),
+          runs,
+          outputs,
+          get(status, :accept_needs),
+          {switch, earlier}
+        )
         |> entry(stage),
       approvers: approvers(stage),
       # The gate's approvers from `Apiary.Stages.status/2`: `:members`, or account ids.
@@ -167,7 +175,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       # (`Apiary.Submissions.repositories/1`), which it reads once per version.
       submission: submission(version, index),
       drafts: [],
-      earlier: if(at, do: Enum.take(all, at), else: []),
+      earlier: earlier,
       # The tracks an escalation offers a switch to (`Apiary.Stages.switch_tracks/1`), each
       # with its `id`, `name`, `gate`, `first` and `later`; with any, the card shows no
       # Accept as it is and no Move back.
@@ -506,14 +514,15 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp named_output(named),
     do: %{name: get(named, :name), version: get(named, :number), version_id: get(named, :id)}
 
-  defp escalation(_scope, nil, _runs, _outputs, _missing, _switch), do: nil
+  defp escalation(_scope, nil, _runs, _outputs, _missing, _controls), do: nil
 
   # `missing` is the missing required output types that Accept as it is requires
   # (`accept_needs` of `Apiary.Stages.status/2`: the missing ones where the accept takes
   # the stage to its gate): with any, the stage has no result to accept. `accept` is
-  # whether the card shows Accept as it is (`accept?/2`), and the points' words follow
-  # it (`points/2`).
-  defp escalation(scope, escalation, runs, outputs, missing, switch) do
+  # whether the card shows Accept as it is (`accept?/2`). `switch` and `earlier` are the
+  # page's tracks to switch to and earlier stages; the points' words follow the controls
+  # they show (`points/2`).
+  defp escalation(scope, escalation, runs, outputs, missing, {switch, earlier}) do
     cause = get(escalation, :cause)
     cause = if is_atom(cause) and not is_nil(cause), do: Atom.to_string(cause), else: cause
     cause = Map.get(@causes, cause, :escalate)
@@ -529,7 +538,8 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     %{
       cause: cause,
       accept: accept,
-      points: points(get(escalation, :points), accept),
+      points:
+        points(get(escalation, :points), %{accept: accept, switch: switch, earlier: earlier}),
       round: get(escalation, :round),
       run: run,
       # The id of the run in the queue (`Apiary.Dispatches.DispatchRun`) that the versions
@@ -568,15 +578,39 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   @spec accept?(boolean, list) :: boolean
   def accept?(result, switch), do: result == true and switch == []
 
+  # move_back?/2 is whether the escalation card shows Move back: where it shows no switch
+  # (`switch`) and the stage has an earlier stage (`earlier`).
+  @doc false
+  @spec move_back?(list, list) :: boolean
+  def move_back?(switch, earlier), do: switch == [] and earlier != []
+
+  # The action of a return limit's point to the stage `to` (`Apiary.Stages.Points`), for
+  # the controls the card shows: the switch buttons by their labels, else Move back with
+  # Accept as it is where the card shows both, else Move back alone. nil where the card
+  # shows neither a switch nor Move back.
+  defp return_action(to, %{switch: [_ | _] = switch}) do
+    labels = switch |> Enum.map(&StageComponents.switch_label/1) |> SourceComponents.joined(:or)
+    Points.return_action(to, {:switch, labels})
+  end
+
+  defp return_action(to, %{accept: accept, switch: switch, earlier: earlier}) do
+    cond do
+      not move_back?(switch, earlier) -> nil
+      accept -> Points.return_action(to, :accept)
+      true -> Points.return_action(to, :move_back)
+    end
+  end
+
   # An escalation's points as the block "What the run needs from you" shows them: each
   # with its text, its action (`:answer` or `:run_again`) and, for `:answer`, the id of
   # its question; a `:run_again` point with `in_text` true where its text opens with its
-  # action (`Apiary.Stages.Points.check_failed/1`). Where the card shows no Accept as it
-  # is (`accept` false), a point's `without_accept` fields replace those that pick it
+  # action (`Apiary.Stages.Points.check_failed/1`). A return limit's point has the action
+  # for the card's controls (`controls`, `return_action/2`); where the card shows no
+  # Accept as it is, another point's `without_accept` fields replace those that pick it
   # (`Apiary.Stages.Points`). A point without text is left out.
-  defp points(points, accept) when is_list(points) do
+  defp points(points, controls) when is_list(points) do
     for %{} = point <- points,
-        point = worded(point, accept),
+        point = worded(point, controls),
         text = get(point, :text),
         is_binary(text) and text != "" do
       case get(point, :action) do
@@ -595,16 +629,25 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     end
   end
 
-  defp points(_none, _accept), do: []
+  defp points(_none, _controls), do: []
 
-  defp worded(point, false) do
+  defp worded(point, controls) do
+    with to when is_binary(to) <- get(point, :return_stage),
+         text when is_binary(text) <- return_action(to, controls) do
+      Map.put(point, "text", text)
+    else
+      _stored -> without_accept(point, controls.accept)
+    end
+  end
+
+  defp without_accept(point, false) do
     case get(point, :without_accept) do
       %{} = words -> Map.merge(point, Map.take(words, ["text", "fix"]))
       _none -> point
     end
   end
 
-  defp worded(point, _accept), do: point
+  defp without_accept(point, _accept), do: point
 
   # Whether the stage has a result to accept as it is, where the check of the accept
   # requires no missing output (`escalation/6`): a version of one of its outputs; for a

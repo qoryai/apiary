@@ -644,9 +644,7 @@ defmodule Apiary.Stages.RunnerTest do
                  "action" => "run_again",
                  "fix" =>
                    "Verify's run asked for changes again after 2 returns to Build, the most that Verify allows.",
-                 "without_accept" => %{
-                   "text" => "Pick Move back to return the work item to Build once more."
-                 }
+                 "return_stage" => "Build"
                }
                | findings
              ]
