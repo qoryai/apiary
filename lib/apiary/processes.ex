@@ -109,9 +109,11 @@ defmodule Apiary.Processes do
   session, and starts on the provider of its first workflow's model choice. Given the
   workspace's model choices (`validate/3`, `workspace_models/2`), a save also fails when
   the stage's workflows, with their fallbacks, use more than 6 providers
-  (`:too_many_providers`), or when a workflow has no model choice and the runtime it then
+  (`:too_many_providers`), when a workflow has no model choice and the runtime it then
   runs on cannot use a provider that the stage's runs can start on
-  (`:model_choice_missing`), as `shared_models/3` checks.
+  (`:model_choice_missing`), or when a workflow's session would have no key in the run:
+  its provider has no model key, or its runtime uses another API of a provider that an
+  earlier workflow uses (`:session_key_missing`), as `shared_models/3` checks.
 
   ## Export
 
@@ -179,8 +181,9 @@ defmodule Apiary.Processes do
   `{:access, workflow, level, other}` in place of `:access` where the harness's level for
   `workflow` lowers its entry's, `other` the level the other entry runs with
   (`shared_access/2`);
-  `:too_many_providers` and `:model_choice_missing` for a stage with `shared_run: true`
-  whose model choices do not fit one run, with the detail of `shared_models/3`;
+  `:too_many_providers`, `:model_choice_missing` and `:session_key_missing` for a stage
+  with `shared_run: true` whose model choices do not fit one run, with the detail of
+  `shared_models/3`;
   `:unchanged` for a save of the document of the version it starts from.
   """
   @type error :: %{path: String.t(), error: atom, detail: term}
@@ -524,17 +527,34 @@ defmodule Apiary.Processes do
   first workflow with no model choice (`:none`) whose runtime, the catalogue's default
   (Apiary.ModelChoices.default_runtime/0, its title as `runtime`), cannot use one of
   `start_ids` (`Apiary.Kinds.Providers.api/2`), with that provider's name: such a session
-  joins the start key's group and cannot use the machine's key. Else `:ok`. The
-  providers are checked first: with more than 6, no claim can give each session a key,
-  whatever the choices. The save checks it (`validate/3`), and the claim checks it again
-  (Apiary.Stages.shared_models/1), as a choice, a provider or the harness can change
-  after the save.
+  joins the start key's group and cannot use the machine's key. Else, where a run is
+  given its providers' keys (Apiary.Runs.ProviderCredential.applies?/0),
+  `{:error, {:session_key_missing, kind, ...}}` for the first workflow whose session
+  would have no key in the run (`session_key_missing/3`):
+
+    * `{:session_key_missing, :no_key, workflow, provider}` for a workflow after the
+      first whose choice's provider has no model key, and no provider of its later steps
+      (`choice_providers/1`) has one either;
+    * `{:session_key_missing, :other_api, workflow, api, provider, earlier}` for a
+      workflow whose choice is on the provider of an earlier workflow's choice, `earlier`,
+      the first workflow included, while the runtimes of the two choices use different
+      APIs of that provider (`format`, `endpoint` and `auth` of
+      `Apiary.Kinds.Providers.api/2`): one run keeps one API of each provider. `api` is
+      the title of the format of `earlier`'s API (`api_title/1`).
+
+  A workflow with no model choice (`:none`) runs on the machine's key and is never such a
+  fault. Else `:ok`. The providers are checked first: with more than 6, no claim can give
+  each session a key, whatever the choices. The save checks it (`validate/3`), and the
+  claim checks it again (Apiary.Stages.shared_models/1), as a choice, a provider, its
+  keys or the harness can change after the save.
   """
   @spec shared_models(map, map, [Ecto.UUID.t()] | nil) ::
           :ok
           | {:error,
              {:too_many_providers, pos_integer, [String.t()]}
-             | {:model_choice_missing, String.t(), String.t(), String.t()}}
+             | {:model_choice_missing, String.t(), String.t(), String.t()}
+             | {:session_key_missing, :no_key, String.t(), String.t()}
+             | {:session_key_missing, :other_api, String.t(), String.t(), String.t(), String.t()}}
   def shared_models(stage, %{} = models, start_ids \\ nil) when is_map(stage) do
     workflows =
       stage |> shared_entries("#") |> Enum.map(&elem(&1, 0)["workflow"]) |> Enum.uniq()
@@ -555,6 +575,11 @@ defmodule Apiary.Processes do
         {:error, {:too_many_providers, length(used), Enum.map(used, &provider_name(models, &1))}}
 
       fault = missing_choice(workflows, choices, start_ids, models) ->
+        {:error, fault}
+
+      fault =
+          Apiary.Runs.ProviderCredential.applies?() &&
+            session_key_missing(workflows, choices, models) ->
         {:error, fault}
 
       true ->
@@ -604,6 +629,96 @@ defmodule Apiary.Processes do
       end
     end)
   end
+
+  # The first workflow whose session would have no key in the run: one after the first
+  # whose providers have no model key (`:no_key`), else one on the provider of an earlier
+  # workflow's choice with another API of it (`:other_api`), in workflow order. A provider
+  # that is gone, or whose description cannot be read, is no fault here: the claim ends
+  # such a run `provider_gone`. A runtime that is no longer in the catalogue, or that its
+  # provider no longer serves, is none either: the claim gives such a session the run's
+  # `run_settings`.
+  defp session_key_missing(workflows, choices, models) do
+    providers = Map.get(models, :providers, %{})
+
+    workflows
+    |> Enum.with_index()
+    |> Enum.reduce_while(%{}, fn {workflow, index}, used ->
+      choice = Map.fetch!(choices, workflow)
+
+      case {no_key(index, choice, providers), choice_api(choice, providers)} do
+        {%{name: name}, _api} ->
+          {:halt, {:fault, {:session_key_missing, :no_key, workflow, name}}}
+
+        {nil, {id, api}} ->
+          case Map.get(used, id) do
+            nil ->
+              {:cont, Map.put(used, id, {workflow, api})}
+
+            {earlier, earlier_api} ->
+              if same_api?(api, earlier_api),
+                do: {:cont, used},
+                else:
+                  {:halt,
+                   {:fault,
+                    {:session_key_missing, :other_api, workflow, api_title(earlier_api),
+                     providers[id].name, earlier}}}
+          end
+
+        {nil, nil} ->
+          {:cont, used}
+      end
+    end)
+    |> case do
+      {:fault, fault} -> fault
+      _used -> nil
+    end
+  end
+
+  # The choice's provider, for a workflow after the first, where it is there and has no
+  # model key, and no provider of the choice's later steps that is there has one; else
+  # nil. The first workflow's session is the run's: its claim ends `key_gone`.
+  defp no_key(0, _choice, _providers), do: nil
+
+  defp no_key(_index, {:ok, %{connection_id: id}} = choice, providers) do
+    with %{keyed: false} = provider <- Map.get(providers, id),
+         false <- Enum.any?(choice_providers(choice), &match?(%{keyed: true}, providers[&1])) do
+      provider
+    else
+      _keyed_or_gone -> nil
+    end
+  end
+
+  defp no_key(_index, _none_or_gone, _providers), do: nil
+
+  # The choice's provider and the API of it that the choice's runtime uses
+  # (`Apiary.Kinds.Providers.api/2`); nil for no choice, or where the provider, its
+  # description, the runtime or that API is not there.
+  defp choice_api({:ok, %{connection_id: id, runtime: name}}, providers) do
+    with %{description: {:ok, description}} <- Map.get(providers, id),
+         {:ok, runtime} <- Apiary.ModelChoices.runtime(name),
+         {:ok, api} <- Apiary.Kinds.Providers.api(description, runtime) do
+      {id, api}
+    else
+      _none -> nil
+    end
+  end
+
+  defp choice_api(_none_or_gone, _providers), do: nil
+
+  # Whether two APIs of a provider are one API for a run's keys, as the claim compares
+  # them (`Apiary.Dispatches.RunSettings`).
+  defp same_api?(api, other),
+    do: Map.take(api, ~w(format endpoint auth)) == Map.take(other, ~w(format endpoint auth))
+
+  @doc false
+  # api_title/1 is the title of the format of `api`, an API of a provider's description,
+  # as a refusal shows it; the format itself for a format with no title here.
+  @spec api_title(map) :: String.t()
+  def api_title(%{"format" => "anthropic-messages"}), do: "Anthropic Messages"
+  def api_title(%{"format" => "openai-responses"}), do: "OpenAI Responses"
+  def api_title(%{"format" => "openai-chat"}), do: "OpenAI Chat Completions"
+  def api_title(%{"format" => "gemini"}), do: "Gemini"
+  def api_title(%{"format" => format}), do: format
 
   defp provider_name(models, id) do
     case Map.get(Map.get(models, :providers, %{}), id) do

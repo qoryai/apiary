@@ -666,6 +666,36 @@ defmodule ApiaryWeb.StagesLive.Words do
           provider: provider
         )
 
+  # A stage with `shared_run: true` whose workflow's session would have no key in the
+  # run (`Apiary.Processes.shared_models/3`): its provider has no model key, or its
+  # runtime uses another API of the provider that an earlier workflow uses.
+  def refusal(
+        %{error: :session_key_missing, detail: {_kind, :no_key, workflow, provider}},
+        _doc
+      ),
+      do:
+        gettext(
+          "Add a model key to %{provider}, or choose a model of another provider for workflow %{workflow}. %{provider} has no model key.",
+          workflow: workflow,
+          provider: provider
+        )
+
+  def refusal(
+        %{
+          error: :session_key_missing,
+          detail: {_kind, :other_api, workflow, api, provider, earlier}
+        },
+        _doc
+      ),
+      do:
+        gettext(
+          "Choose a model for workflow %{workflow} that uses the %{api} API of %{provider}, as workflow %{earlier} does, or a model of another provider. One run uses one API of each provider.",
+          workflow: workflow,
+          api: api,
+          provider: provider,
+          earlier: earlier
+        )
+
   # A stage with `shared_run: true` whose workflows use more than 6 model providers.
   def refusal(%{error: :too_many_providers, detail: {_kind, count, providers}}, _doc),
     do:

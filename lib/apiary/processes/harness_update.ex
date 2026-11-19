@@ -557,7 +557,7 @@ defmodule Apiary.Processes.HarnessUpdate do
         Enum.filter(
           errors,
           &(match?(%{error: :shared_run_differs, detail: {:access, _, _, _}}, &1) or
-              &1.error in [:model_choice_missing, :too_many_providers])
+              &1.error in [:model_choice_missing, :too_many_providers, :session_key_missing])
         )
 
       {:error, _reason} ->

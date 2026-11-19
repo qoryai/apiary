@@ -559,8 +559,9 @@ defmodule Apiary.Stages do
   # workflow's choice, or, for a run that continues a paused run, the provider of the
   # session that paused (`Apiary.Runs.Run.session_provider_ids/2`). `:ok` for any other
   # run; `{:error, %{stage: name, detail: detail}}` for a run whose choices do not fit,
-  # which the claim ends `too_many_providers` or `model_choice_missing`
-  # (`Apiary.Dispatches.Handover`), and which the lines of such a run read again.
+  # which the claim ends `too_many_providers`, `model_choice_missing` or
+  # `session_key_missing` (`Apiary.Dispatches.Handover`), and which the lines of such a
+  # run read again.
   @doc false
   @spec shared_models(DispatchRun.t()) ::
           :ok
@@ -570,6 +571,9 @@ defmodule Apiary.Stages do
                detail:
                  {:too_many_providers, pos_integer, [String.t()]}
                  | {:model_choice_missing, String.t(), String.t(), String.t()}
+                 | {:session_key_missing, :no_key, String.t(), String.t()}
+                 | {:session_key_missing, :other_api, String.t(), String.t(), String.t(),
+                    String.t()}
              }}
   def shared_models(%DispatchRun{} = run) do
     with %{} = stage <- shared_stage(run),

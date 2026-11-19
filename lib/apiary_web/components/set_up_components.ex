@@ -1346,7 +1346,10 @@ defmodule ApiaryWeb.SetUpComponents do
         |> Phoenix.LiveView.push_navigate(to: ~p"/#{organisation}/workspaces/new")
 
       {:error, errors} when is_list(errors) ->
-        case Enum.find(errors, &(&1.error in [:model_choice_missing, :too_many_providers])) do
+        case Enum.find(
+               errors,
+               &(&1.error in [:model_choice_missing, :too_many_providers, :session_key_missing])
+             ) do
           # The fault is in the organisation's default model choice, not in the
           # template: its line alone.
           %{} = error ->

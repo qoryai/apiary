@@ -131,6 +131,7 @@ defmodule Apiary.ModelChoices do
   alias Apiary.ModelChoices.{Fallback, ModelChoice, Resolution}
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Target
+  alias Apiary.Secrets.Value
   alias ApiaryWeb.Format
 
   # A workflow's name.
@@ -300,9 +301,10 @@ defmodule Apiary.ModelChoices do
   # `shared_run: true` of `workspace`, at `target` (nil for none: the workspace's levels
   # 4 to 6), as `Apiary.Processes.shared_models/3` takes them: `choices`, each workflow's
   # resolution by its name (`Apiary.ModelChoices.Resolution.resolve/1`), and `providers`,
-  # the `name` and the catalogue `description` (`Apiary.Connections.provider/1`) of each
-  # provider those choices and their fallbacks use, by row id, and of `start_ids`, the
-  # providers a continuation starts on. Read without a lock.
+  # the `name`, the catalogue `description` (`Apiary.Connections.provider/1`) and
+  # `keyed`, whether it has a model key, of each provider those choices and their
+  # fallbacks use, by row id, and of `start_ids`, the providers a continuation starts on.
+  # Read without a lock.
   @spec shared_models(Workspace.t(), Target.t() | nil, [String.t()], [Ecto.UUID.t()]) :: map
   def shared_models(%Workspace{} = workspace, target, workflows, start_ids \\ [])
       when is_list(workflows) and is_list(start_ids) do
@@ -351,11 +353,34 @@ defmodule Apiary.ModelChoices do
     %{choices: %{}, default: Resolution.resolve(input), providers: described_providers(rows)}
   end
 
-  # Each provider's name and catalogue description, by row id.
+  # Each provider's name, catalogue description and whether it has a model key
+  # (`keyed`), by row id.
   defp described_providers(rows) do
-    rows
-    |> Enum.uniq_by(& &1.id)
-    |> Map.new(&{&1.id, %{name: &1.name, description: Connections.provider(&1)}})
+    rows = Enum.uniq_by(rows, & &1.id)
+    keyed = keyed_secrets(rows)
+
+    Map.new(rows, fn row ->
+      {row.id,
+       %{
+         name: row.name,
+         description: Connections.provider(row),
+         keyed: MapSet.member?(keyed, row.secret_id)
+       }}
+    end)
+  end
+
+  # The ids of the secrets of `rows` that have at least one value: a provider's keys are
+  # the values of its secret.
+  defp keyed_secrets(rows) do
+    case rows |> Enum.map(& &1.secret_id) |> Enum.filter(&is_binary/1) do
+      [] ->
+        MapSet.new()
+
+      ids ->
+        from(v in Value, where: v.secret_id in ^ids, distinct: true, select: v.secret_id)
+        |> Repo.all()
+        |> MapSet.new()
+    end
   end
 
   @doc false
