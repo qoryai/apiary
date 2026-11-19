@@ -1696,7 +1696,7 @@ defmodule Apiary.Dispatches do
   # then starts on the next key at once, as the claim skips a key in that state.
   #
   # shortcut: the rejection condition is written in SQL again, as in
-  # `Apiary.ModelKeys.claimable/1`, and a sign-in key that the report lists while its
+  # `Apiary.ModelKeys.claimable/2`, and a sign-in key that the report lists while its
   # renewal is pending is not marked, so the wait for it runs the 60 seconds; replace the
   # copies with one shared fragment when a third place needs the condition.
   defp report_waited(now) do
