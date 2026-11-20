@@ -648,11 +648,11 @@ defmodule ApiaryProWeb.SettingsLive.ProviderKeysTest do
                live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
     end
 
-    test "has no button while the description has no device sign-in", ctx do
+    test "has the button from the oauth_device of the vendored description", ctx do
       %{conn: conn, scope: scope, login_secret: secret} = ctx
 
       {:ok, lv, _html} = live(conn, change_path(scope, secret, "main"))
-      refute has_element?(lv, "#secret-sign-in-start")
+      assert has_element?(lv, "#secret-sign-in-start")
     end
 
     test "shows its value line by the email of the sign-in", ctx do
