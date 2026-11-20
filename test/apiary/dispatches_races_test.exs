@@ -1284,7 +1284,7 @@ defmodule Apiary.DispatchesRacesTest do
     # Another claim of `pool` by `key`, held open: it holds the pool's row, and, in the
     # same transaction, the lease of `leases` lapses again at `lapsed_until`. A claim
     # that starts now reads the lease as live, then waits at the pool's row. The pool has
-    # one slot, which the live lease holds, so the other claim takes no run.
+    # one slot, which the live lease takes up, so the other claim takes no run.
     defp hold_other_claim(key, leases, lapsed_until) do
       {other, other_backend} =
         hold(fn -> Dispatches.claim(key, Dispatches.now()) end)
@@ -1331,7 +1331,8 @@ defmodule Apiary.DispatchesRacesTest do
           for round <- 1..3, reduce: [] do
             raised ->
               # A fresh pool each round, so the take finds the lapsed prebuild first, of
-              # one slot, which the lapsed prebuild's dispatch holds until it lapses.
+              # one slot, which the lapsed prebuild's dispatch takes up until its lease
+              # lapses.
               # `lapsed`, the lower id, has a claimed prebuild of `env-1`, its
               # collection's ref, whose lease has not lapsed yet; `due` has a run held
               # for its build.

@@ -164,13 +164,13 @@ defmodule Apiary.Adapters.Collections do
   #   3. the collections, `FOR NO KEY UPDATE`: by id for an assign, a choice, a switch
   #      and an unlink, read again once held, so a collection's switch finds out there
   #      whether its collection is still in the workspace it holds; for a listing's part,
-  #      the live ones of its connection that it names, by ref, then, when it completes
-  #      the listing, those of its connection it ends (`complete/3`), and no collection
-  #      of another connection. A part makes the others it names with an insert that
-  #      leaves a ref live under another connection as it is and never locks its row
-  #      (`ON CONFLICT DO NOTHING`); that insert only waits for a change writing the row
-  #      to end, and it runs before the part writes the collections it contains
-  #      (`put_collections/6`). A change that holds collections by id holds their
+  #      the live ones of its connection whose refs the part contains, by ref, then, when
+  #      it completes the listing, those of its connection it ends (`complete/3`), and no
+  #      collection of another connection. A part makes the other collections in its list
+  #      with an insert that leaves a ref live under another connection as it is and never
+  #      locks its row (`ON CONFLICT DO NOTHING`); that insert only waits for a change
+  #      writing the row to end, and it runs before the part writes the collections it
+  #      contains (`put_collections/6`). A change that holds collections by id holds their
   #      connections first, so it holds none of a connection's collections while a part
   #      of that connection runs. A ref live under another connection moves after the
   #      part commits (`move_here/5`): first its collection ends in a separate
@@ -605,7 +605,7 @@ defmodule Apiary.Adapters.Collections do
   # (`ON CONFLICT DO NOTHING`): a ref live under another connection, however recently it
   # became live, while it is live at the insert, is left with that connection in this
   # transaction (`elsewhere`, which `move_here/5` moves once the part commits, unless a
-  # listing newer than the part named it there, three rounds at most), and its row is
+  # listing newer than the part listed it there, three rounds at most), and its row is
   # never locked; the insert only waits for a change that is writing that row to end. The
   # collections held are updated after the insert, so while it runs they are held but not
   # yet written, and the insert of a part of another connection that meets one of them
@@ -1070,7 +1070,8 @@ defmodule Apiary.Adapters.Collections do
   # entry, as for a listing's part that changes a collection's `items`. A work item
   # already taken in from one of them goes on, as when its Backlog is turned off.
   # `{:ok, changed}`, the collections whose link changed, for `broadcast_relinked/1` once
-  # the start commits; `{:ok, []}` when `items` did not change, which holds nothing more.
+  # the start commits; `{:ok, []}` when `items` did not change, and the start locks
+  # nothing more.
   #
   # Every live collection is held, not only those it changes, so that no change of a
   # collection's link reads the adapter's `items` while the start is writing it: an
@@ -2063,8 +2064,9 @@ defmodule Apiary.Adapters.Collections do
   # `unlinked` entry, as `set_backlog/3` does. The entry of `collection.set_backlog`, in
   # the trail of the collection's workspace, is about the collection, with `backlog`, the
   # new state, the count, 1, the collection's title as it is then (`name`) and the
-  # connection's public id (`connection_id`), so the entry names it whatever becomes of
-  # it later. After the commit, the collection is broadcast.
+  # connection's public id (`connection_id`), so the entry still has the collection's
+  # title and connection after the collection changes or ends. After the commit, the
+  # collection is broadcast.
   @spec set_collection_backlog(Scope.t(), Connection.t(), Ecto.UUID.t(), boolean) ::
           {:ok, 0 | 1} | {:error, :ended | Access.reason()}
   def set_collection_backlog(%Scope{} = scope, %Connection{} = connection, collection_id, on)
