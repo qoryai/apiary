@@ -29,14 +29,15 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
   defp fixture(path), do: @fixtures |> Path.join(path) |> File.read!() |> Jason.decode!()
 
   # The fixtures that match `pattern`, each by its path under the fixtures, in order.
-  # The submission fixtures (the `submission` and `submitted` entries of the feed, their failure
-  # reports (also `changes-failed-comment-*`) and their refusals, integrations b5ae1a43) are not built here, so they are left out.
+  # Apiary does not build submissions, so the accepted fixtures of the submission entries
+  # and of their failure reports (`submission-*` under `changes/` and `changes-failed/`)
+  # are left out. Every refused fixture under `invalid/` stays.
   defp fixtures(pattern) do
     @fixtures
     |> Path.join(pattern)
     |> Path.wildcard()
     |> Enum.map(&Path.relative_to(&1, @fixtures))
-    |> Enum.reject(&(&1 =~ ~r/submission|submitted|changes-failed-comment-/))
+    |> Enum.reject(&(&1 =~ ~r{\A(changes|changes-failed)/submission-}))
     |> Enum.sort()
   end
 
@@ -98,16 +99,17 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
       # `Apiary.Adapters.Feed.append/2` takes (its test refuses each entry).
       refute Map.has_key?(fixture("invalid/changes-without-revision.json"), "revision")
 
-      # Every refused answer but that one, and but the failure reports, which are no
+      # Every refused answer but that one, and but the failure reports and the submitted
+      # reports (`changes-submitted-*`, a report Apiary does not build), which are no
       # answer.
       paths =
         Enum.reject(
           fixtures("invalid/changes-*.json"),
-          &(String.starts_with?(&1, "invalid/changes-failed-") or
+          &(String.starts_with?(&1, ["invalid/changes-failed-", "invalid/changes-submitted-"]) or
               &1 == "invalid/changes-without-revision.json")
         )
 
-      assert length(paths) == 19
+      assert length(paths) == 42
       assert "invalid/changes-comment-author-name-unicode-spaces.json" in paths
 
       for path <- paths, change <- fixture(path)["changes"] do
