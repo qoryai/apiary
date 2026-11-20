@@ -106,6 +106,9 @@ defmodule Apiary.ModelKeys.IdentityTest do
       assert Value.key_number("key-1000000000") == nil
       assert Value.key_number("key-") == nil
       assert Value.key_number("key-3b") == nil
+      assert Value.key_number("key--5") == nil
+      assert Value.key_number("key-+5") == nil
+      assert Value.key_number("key- 5") == nil
       assert Value.key_number(nil) == nil
     end
   end

@@ -55,15 +55,12 @@ defmodule Apiary.Secrets.Value do
   @hint_max 16
 
   @doc """
-  The number `n` of a value id `key-<n>`, 1 to 9 digits (so it fits `secrets.last_key_number`);
-  nil for a value id of another form.
+  The number `n` of a value id `key-<n>`, 1 to 9 digits only, with no sign (so it fits
+  `secrets.last_key_number`); nil for a value id of another form.
   """
   @spec key_number(String.t() | nil) :: non_neg_integer | nil
   def key_number("key-" <> digits) when byte_size(digits) in 1..9 do
-    case Integer.parse(digits) do
-      {number, ""} -> number
-      _other -> nil
-    end
+    if digits =~ ~r/\A[0-9]+\z/, do: String.to_integer(digits)
   end
 
   def key_number(_value_id), do: nil
