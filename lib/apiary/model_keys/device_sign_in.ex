@@ -342,7 +342,8 @@ defmodule Apiary.ModelKeys.DeviceSignIn do
 
     # put_test_device/2 gives the keys of the provider `kind` the `oauth_device` `device`
     # in this process and in the processes it starts, such as a LiveView of a test, until
-    # the process ends: the vendored description has none yet. `nil` takes it away.
+    # the process ends, in place of the `oauth_device` of the vendored description. `nil`
+    # leaves that one.
     @doc false
     @spec put_test_device(String.t(), map | nil) :: :ok
     def put_test_device(kind, device) when is_binary(kind) do

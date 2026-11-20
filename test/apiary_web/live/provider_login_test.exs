@@ -135,12 +135,12 @@ defmodule ApiaryWeb.ProviderLoginTest do
       refute has_element?(lv, "#key-sign-in")
     end
 
-    test "has no button while the description has no device sign-in, and refuses a save", ctx do
+    test "has the button from the vendored description, and refuses a save before it", ctx do
       %{conn: conn, scope: scope} = ctx
       provider = subscription!(scope)
       {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
 
-      refute has_element?(lv, "#key-sign-in-start")
+      assert has_element?(lv, "#key-sign-in-start")
       refute has_element?(lv, "#key-form input[type=password]")
 
       lv |> form("#key-form") |> render_submit()
@@ -953,14 +953,14 @@ defmodule ApiaryWeb.ProviderLoginTest do
       refute render(lv) =~ "is saved."
     end
 
-    test "has no button while the description has no device sign-in", ctx do
+    test "has the button from the oauth_device of the vendored description", ctx do
       %{conn: conn, scope: scope} = ctx
       provider = subscription!(scope)
       needs_sign_in!(provider, "main")
       {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
 
       assert has_element?(lv, "##{key_dom(provider, "main")}-login", "Needs a new sign-in")
-      refute has_element?(lv, "##{key_dom(provider, "main")}-sign-in")
+      assert has_element?(lv, "##{key_dom(provider, "main")}-sign-in")
     end
 
     test "signs in from the row and stores the sign-in at once", ctx do

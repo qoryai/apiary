@@ -1,8 +1,8 @@
 defmodule Apiary.DeviceSignInStub do
   @moduledoc """
   The provider's side of a device sign-in in a test (`Apiary.ModelKeys.DeviceSignIn`): the
-  addresses of an `oauth_device` on a test host, which the vendored description of the
-  OpenAI subscription does not have yet, and a `Req.Test` stub of
+  addresses of an `oauth_device` on a test host, in place of the one in the vendored
+  description of the OpenAI subscription, and a `Req.Test` stub of
   `Apiary.ModelKeys.LoginDevice` that sends the responses of the three calls as a script says. No call
   leaves the machine.
   """

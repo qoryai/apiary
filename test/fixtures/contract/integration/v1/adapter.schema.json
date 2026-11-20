@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/integration/v1/adapter.schema.json",
+  "title": "Adapter start-up",
+  "description": "The body of the signed POST /v1/adapter, application/json, that an adapter sends each time it starts, and again once it is set up at its source: where a person is sent to connect the source, where an instance admin is sent to set the adapter up at its source while it is not, where the control plane calls the adapter, how often the adapter pulls changes from the source, and the description its program prints. On success the control plane answers a signed 204 with no body. It is signed with the adapter's access key as definitions.schema.json describes. The control plane refuses a time more than 300 seconds from its clock, either way, or a request whose signature it has already seen, with an unsigned 401; definitions.schema.json has the replay rule. A member this schema does not define is refused, invalid_request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "time", "connect_url", "sync", "description"],
+  "properties": {
+    "version": {
+      "description": "The document format. The control plane refuses a version it does not read.",
+      "const": 1
+    },
+    "time": {
+      "description": "When the adapter built the body, RFC 3339 in UTC with whole seconds. The control plane refuses a time more than 300 seconds from its clock, either way, with an unsigned 401.",
+      "$ref": "definitions.schema.json#/$defs/time"
+    },
+    "connect_url": {
+      "description": "Where the control plane sends a person to connect the source, with the connect pass appended as the query parameter state (connect-pass.schema.json). The URL is opaque to the control plane.",
+      "$ref": "definitions.schema.json#/$defs/url"
+    },
+    "setup_url": {
+      "description": "Where the control plane sends an instance admin to set the adapter up at its source, the browser form of the setup step, with the setup pass appended as the query parameter state (setup-pass.schema.json). It has no fragment and no query parameter named state, written plainly or percent-encoded. The adapter declares it only while it is not set up at its source, and sends its start-up body again, without it, as soon as it is. The control plane takes it from the latest start-up: absent, there is no setup step to show.",
+      "allOf": [
+        {"$ref": "definitions.schema.json#/$defs/url"},
+        {"not": {"pattern": "#"}},
+        {"not": {"pattern": "^[^?#]*\\?(?:[^&#]*&)*(?:s|%73)(?:t|%74)(?:a|%61)(?:t|%74)(?:e|%65)(?:[=&#]|$)"}}
+      ]
+    },
+    "call_url": {
+      "description": "The base address at which the control plane calls the adapter (definitions.schema.json): an https URL with no query and no fragment, whose path ends with /. The control plane sends each call as a POST to call_url followed by the call's path, as given in the call's schema. The adapter declares it when it serves calls. The control plane takes it from the latest start-up: absent, the control plane makes no call to the adapter.",
+      "allOf": [
+        {"$ref": "definitions.schema.json#/$defs/url"},
+        {"pattern": "^[^?#]*/$"}
+      ]
+    },
+    "sync": {
+      "description": "How often the adapter pulls changes from the source by default, and the shortest interval it allows. minimum_interval is at most default_interval; the schema cannot express that, and the control plane refuses a sync that breaks it, invalid_request. A person may change the interval in the control plane, and the control plane appends a sync entry to the change feed (changes.schema.json).",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["default_interval", "minimum_interval", "sends_changes"],
+      "properties": {
+        "default_interval": {
+          "description": "The interval the adapter pulls at unless a person sets another, in seconds, from 60 to 86400.",
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 86400
+        },
+        "minimum_interval": {
+          "description": "The shortest interval the adapter allows, in seconds, from 60 to 86400, at most default_interval.",
+          "type": "integer",
+          "minimum": 60,
+          "maximum": 86400
+        },
+        "sends_changes": {
+          "description": "true when the adapter sends the source's changes as they happen and pulls only to catch anything missed; false when it learns of changes only by pulling.",
+          "type": "boolean"
+        }
+      }
+    },
+    "description": {
+      "description": "What the adapter's program prints for <program> describe (description.schema.json), the whole document, the settings schema included. The control plane records the source role's item_noun, items and collection_noun from the latest start-up. A description without a source role leaves them at their defaults, which also apply before the adapter's first start-up: ticket and tickets, a source that reports items, and the control plane's word for a collection. A description that breaks any rule of description.schema.json, those no schema can express included, is refused, invalid_request, and a body without description is refused as a body without any other required member is. The description's limits apply to its value as it is in the body, and its numbers follow description.schema.json, not the integer rule of definitions.schema.json. The control plane matches nothing in it against the adapter, which it knows only by its access key.",
+      "$ref": "description.schema.json"
+    }
+  }
+}

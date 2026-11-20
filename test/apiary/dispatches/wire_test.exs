@@ -118,13 +118,14 @@ defmodule Apiary.Dispatches.WireTest do
   # model_provider_credential_name in place of model_credential in the next-session
   # answer. The diagnostics contract is at 6fed8c73, at which a run's machine has `type`
   # in place of `key`.
-  # The integration contract is at 805a7bdb, which adds `vendor`, and `runtimes`,
-  # `paths` and `oauth_refresh` of an API, to the description of a model provider.
+  # The integration contract is at b5ae1a43, which adds `oauth_device` of an API to the
+  # description of a model provider, `submissions` to the source role, and the submission
+  # entry of the change feed with its reply and its failure report.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "8d859a1d5bd0693bd647e0543d29aa8651230c3f"},
           {"run/v1", "8d859a1d5bd0693bd647e0543d29aa8651230c3f"},
-          {"integration/v1", "805a7bdb09a16441b8275857e9b50cdfe8227e2d"},
+          {"integration/v1", "b5ae1a43582ee58a490f17edb0fce2e4c19a6c6d"},
           {"explore/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
           {"diagnostics/v1", "6fed8c73033f4fd2be5e59a160ab9774e329cc5b"}
         ] do

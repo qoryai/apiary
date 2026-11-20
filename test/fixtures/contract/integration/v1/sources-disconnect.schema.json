@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/integration/v1/sources-disconnect.schema.json",
+  "title": "Source disconnect",
+  "description": "The body of the signed POST /v1/sources/disconnect, application/json: the adapter no longer reaches one collection through one connection, because it is gone from the source or from what the source grants that connection. The request refers to the connection by connection_id, as a listing does (source-collections.schema.json), and to the collection by collection_ref. The collection's items are marked disconnected, not deleted, so a work item already made from one keeps its link. A grant the source suspends is not a disconnect: the adapter logs it and fetches again later. A connection the source no longer grants access is ended with connections-disconnect.schema.json, not collection by collection. The control plane decides rights first, in the order that refusal.schema.json lists: a request the access key may not make is answered 403 forbidden. A collection_ref that resolves to no live collection under connection_id is answered with the signed 204 and changes nothing: no item is marked and no change entry is written. That covers a ref no collection had, and one whose collection already ended by any path: an earlier sources/disconnect, a complete listing that left it out, the race rule, or its connection's end. It covers a ref live under another connection too, as after a listing of that connection contained it (source-collections.schema.json): that collection stays live under its connection. And it covers a connection_id that the control plane does not hold for this adapter, a pending one and one that ended, since none of them has a live collection. So a repeated or late disconnect is never an error, and the adapter treats that 204 as it treats any 204. A collection_ref of a live collection under connection_id whose connection is suspended is refused, 409 connection_suspended, and what the adapter does is described in definitions.schema.json. So this request is never refused 403 connection_unknown or 409 connection_ended. On success the control plane answers a signed 204 with no body. It is signed with the adapter's access key as definitions.schema.json describes. The control plane refuses a time more than 300 seconds from its clock, either way, or a request whose signature it has already seen, with an unsigned 401; definitions.schema.json has the replay rule. A member this schema does not define is refused, invalid_request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "time", "connection_id", "collection_ref"],
+  "properties": {
+    "version": {
+      "description": "The document format. The control plane refuses a version it does not read.",
+      "const": 1
+    },
+    "time": {
+      "description": "When the adapter built the body, RFC 3339 in UTC with whole seconds. The control plane refuses a time more than 300 seconds from its clock, either way, with an unsigned 401.",
+      "$ref": "definitions.schema.json#/$defs/time"
+    },
+    "connection_id": {
+      "description": "The connection the adapter no longer reaches the collection through, in the same form as in a listing (source-collections.schema.json).",
+      "$ref": "definitions.schema.json#/$defs/connection_id"
+    },
+    "collection_ref": {
+      "description": "The ref of the collection, as source-collections.schema.json listed it under connection_id.",
+      "$ref": "definitions.schema.json#/$defs/ref"
+    }
+  }
+}

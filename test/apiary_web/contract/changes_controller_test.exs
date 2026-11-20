@@ -29,11 +29,14 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
   defp fixture(path), do: @fixtures |> Path.join(path) |> File.read!() |> Jason.decode!()
 
   # The fixtures that match `pattern`, each by its path under the fixtures, in order.
+  # The submission fixtures (the `submission` and `submitted` entries of the feed, their failure
+  # reports (also `changes-failed-comment-*`) and their refusals, integrations b5ae1a43) are not built here, so they are left out.
   defp fixtures(pattern) do
     @fixtures
     |> Path.join(pattern)
     |> Path.wildcard()
     |> Enum.map(&Path.relative_to(&1, @fixtures))
+    |> Enum.reject(&(&1 =~ ~r/submission|submitted|changes-failed-comment-/))
     |> Enum.sort()
   end
 

@@ -4423,7 +4423,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
                "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
     end
 
-    test "has no button while the description has no device sign-in", %{conn: conn} do
+    test "has the button from the oauth_device of the vendored description", %{conn: conn} do
       %{user: user, organisation: organisation} = sign_up_fixture()
       {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
@@ -4431,7 +4431,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
       |> form("#set-up-model-form", model: %{provider: "openai-subscription"})
       |> render_change()
 
-      refute has_element?(lv, "#set-up-model-sign-in-start")
+      assert has_element?(lv, "#set-up-model-sign-in-start")
     end
 
     test "refuses the step before the sign-in, and adds the provider after it, with no token",

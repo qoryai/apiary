@@ -21,10 +21,14 @@ defmodule Apiary.ModelKeys.DeviceSignInTest do
   end
 
   describe "the catalogue" do
-    test "has no device sign-in for the vendored description, which has no oauth_device" do
-      refute DeviceSignIn.available?(@kind)
-      assert DeviceSignIn.description(@kind) == :error
-      assert DeviceSignIn.start(@kind, make_ref()) == {:error, :device_flow_unavailable}
+    test "reads the addresses from the oauth_device of the vendored description" do
+      assert DeviceSignIn.available?(@kind)
+      assert {:ok, description} = DeviceSignIn.description(@kind)
+
+      assert {:ok, provider} = Apiary.Kinds.Providers.fetch(@kind)
+      assert [%{"oauth_device" => device}] = provider.apis
+      assert description.device == device
+      assert description.device["verification_url"] == "https://auth.openai.com/codex/device"
     end
 
     test "has none for a provider whose keys are no sign-ins, whatever a test puts" do
