@@ -19,7 +19,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{AccessKeys, Dispatches, Repo}
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, Slots}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, Queued, Slots}
   alias Apiary.Nodes.Node
   alias Apiary.Runs.Run
   alias ApiaryWeb.Contract.{PoolClaimController, SignedRequest}
@@ -742,7 +742,8 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
 
       until_slots(ctx, 2)
 
-      # A run written untold, so the holders, polling past their hold, never see it.
+      # A run written untold, with the run record that a queue writes, so the holders,
+      # polling past their hold, never see it.
       run =
         %DispatchRun{
           organisation_id: ctx.scope.organisation.id,
@@ -757,6 +758,8 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
           queued_at: Dispatches.now()
         })
         |> Repo.insert!()
+
+      {:ok, _record} = Repo.transact(fn -> {:ok, Queued.insert!(run)} end)
 
       {took, third} = timed(fn -> claim(ctx, body(%{"wait_seconds" => 25}, 2)) end)
       assert took < 1_000
