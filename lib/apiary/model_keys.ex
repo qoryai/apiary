@@ -1362,6 +1362,27 @@ defmodule Apiary.ModelKeys do
   end
 
   @doc """
+  How many keys of each of `providers` need a new value (`never_ids/1`), in one query: a
+  map from each provider's row id to its count, 0 for a provider with none.
+  """
+  @spec new_key_counts([Connection.t()]) :: %{Ecto.UUID.t() => non_neg_integer}
+  def new_key_counts(providers) when is_list(providers) do
+    secret_ids = for %Connection{secret_id: id} <- providers, is_binary(id), do: id
+    ids = secret_ids |> never_ids() |> MapSet.to_list()
+
+    counts =
+      Repo.all(
+        from v in Value,
+          where: v.id in ^ids,
+          group_by: v.secret_id,
+          select: {v.secret_id, count(v.id)}
+      )
+      |> Map.new()
+
+    Map.new(providers, &{&1.id, Map.get(counts, &1.secret_id, 0)})
+  end
+
+  @doc """
   `state` as it reads at `now`: the utilization of a window whose `resets_at` has passed
   is absent.
   """

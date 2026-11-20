@@ -437,8 +437,10 @@ replaces the navigation it is in.
 - **Organisation settings › Model providers** (`/:org/settings/model-providers`,
   `ApiaryWeb.ProviderLive.Index`, with the features `factory` and `secrets`) lists the
   organisation's model providers. Its Keys column has how many keys each provider has
-  and how many of them are in cooldown, "3 keys, 1 in cooldown", or "3 keys" while none
-  is (`Apiary.ModelKeys.cooldown_counts/2`). A provider's page
+  and how many of them are in cooldown, "3 keys, 1 in cooldown", then how many need a new
+  key, "3 keys, 1 in cooldown, 1 needs a new key" or "3 keys, 2 need a new key"; a count of
+  0 is not shown, so a provider with neither reads "3 keys" (`Apiary.ModelKeys.cooldown_counts/2`,
+  `Apiary.ModelKeys.new_key_counts/1`). A provider's page
   (`…/model-providers/:provider_id`, `ApiaryWeb.ProviderLive.Show`) lists its keys, the
   default key first, then in the order they were added. Each row has the key's name in
   mono and its state on one line (`ApiaryWeb.ModelKeyComponents.state_line/1`), in the

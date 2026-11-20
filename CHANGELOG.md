@@ -3028,7 +3028,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: factory, secrets -->
 - The Keys column of **Organisation settings › Model providers** shows how many keys each
   provider has and how many of them are in cooldown, such as “3 keys, 1 in cooldown”, in
-  place of a number. A provider's page shows each key's state in place of a mask.
+  place of a number, and, after that, how many need a new key (the provider rejected the
+  key's value, or its sign-in needs a new one), such as “3 keys, 1 in cooldown, 1 needs a
+  new key” or “3 keys, 2 need a new key”. A count of 0 is not shown. A provider's page
+  shows each key's state in place of a mask.
 <!-- /feature -->
 - `observability` is always on: `QORY_FEATURES` no longer turns it off.
 - A feature that a later release adds starts at its default, even on an instance whose

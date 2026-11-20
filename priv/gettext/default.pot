@@ -2579,6 +2579,13 @@ msgid_plural "%{number} more to add"
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} needs a new key"
+msgid_plural "%{number} need a new key"
+msgstr[0] ""
+msgstr[1] ""
+
 #: lib/apiary_web/components/harness_update_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} new"

@@ -7,7 +7,7 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
   use ApiaryWeb.ConnCase, async: false
 
   import Apiary.DebugLog
-  import Apiary.ModelKeysFixtures, only: [run_key!: 2]
+  import Apiary.ModelKeysFixtures, only: [in_seconds: 1, key_state!: 3, run_key!: 2]
   import Phoenix.LiveViewTest
 
   alias Apiary.{Connections, ModelKeys, Repo}
@@ -95,6 +95,49 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
     assert has_element?(lv, "##{key_dom(provider, "spare")}-state")
     refute has_element?(lv, "##{key_dom(provider, "spare")}-new-key")
     refute html =~ "sk-ant-fixture"
+  end
+
+  describe "the list of providers counts the keys that need a new key" do
+    defp keys_line(lv, provider), do: text(lv, "#provider-#{provider.public_id}-keys")
+
+    test "after the keys, only when one does: needs for one key, need for more", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = provider!(scope)
+
+      {:ok, lv, _html} = live(conn, base(scope))
+      assert keys_line(lv, provider) == "2 keys"
+
+      reject!(scope, provider, "main", ~U[2026-11-18 09:12:00.000000Z])
+      {:ok, lv, _html} = live(conn, base(scope))
+      assert keys_line(lv, provider) == "2 keys, 1 needs a new key"
+
+      reject!(scope, provider, "spare", ~U[2026-11-18 09:12:00.000000Z])
+      {:ok, lv, _html} = live(conn, base(scope))
+      assert keys_line(lv, provider) == "2 keys, 2 need a new key"
+    end
+
+    test "after the count in cooldown, when a key is in cooldown", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = provider!(scope)
+      key_state!(provider, "spare", until: in_seconds(3_600))
+      reject!(scope, provider, "main", ~U[2026-11-18 09:12:00.000000Z])
+
+      {:ok, lv, _html} = live(conn, base(scope))
+
+      assert keys_line(lv, provider) == "2 keys, 1 in cooldown, 1 needs a new key"
+    end
+
+    test "not for a key whose new value was saved since", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = provider!(scope)
+      reject!(scope, provider, "main", ~U[2026-11-18 09:12:00.000000Z])
+
+      {:ok, _provider} =
+        Connections.set_provider_key(scope, provider, "main", "sk-ant-fixture-main-9876543210")
+
+      {:ok, lv, _html} = live(conn, base(scope))
+      assert keys_line(lv, provider) == "2 keys"
+    end
   end
 
   test "Edit key says what to enter, and a new value takes the state away",

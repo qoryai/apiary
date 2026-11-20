@@ -60,6 +60,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
        sections: SettingsComponents.sections(scope, :organisation),
        providers: providers,
        cooling: ModelKeys.cooldown_counts(providers, DateTime.utc_now()),
+       needing: ModelKeys.new_key_counts(providers),
        writes: writes,
        needs_workspace: needs_workspace?(scope),
        attempt: 0,
@@ -228,19 +229,27 @@ defmodule ApiaryWeb.ProviderLive.Index do
   defp keys(%{secret: %{values: values}}) when is_list(values), do: length(values)
   defp keys(_provider), do: 0
 
-  # "3 keys, 1 in cooldown"; without ", 1 in cooldown" when none is.
-  defp keys_words(count, 0),
-    do: ngettext("%{number} key", "%{number} keys", count, number: Format.number(count))
+  # "3 keys, 1 in cooldown, 1 needs a new key"; each part after the count of keys only
+  # when it is above 0.
+  defp keys_words(count, cooling, needing) do
+    parts = [
+      cooling > 0 &&
+        ngettext("%{number} in cooldown", "%{number} in cooldown", cooling,
+          number: Format.number(cooling)
+        ),
+      needing > 0 &&
+        ngettext("%{number} needs a new key", "%{number} need a new key", needing,
+          number: Format.number(needing)
+        )
+    ]
 
-  defp keys_words(count, cooling),
-    do:
-      gettext("%{keys}, %{cooling}",
-        keys: keys_words(count, 0),
-        cooling:
-          ngettext("%{number} in cooldown", "%{number} in cooldown", cooling,
-            number: Format.number(cooling)
-          )
-      )
+    parts
+    |> Enum.filter(& &1)
+    |> Enum.reduce(
+      ngettext("%{number} key", "%{number} keys", count, number: Format.number(count)),
+      fn part, words -> gettext("%{keys}, %{cooling}", keys: words, cooling: part) end
+    )
+  end
 
   # Who adds a model provider, to a person who may not.
   defp who_adds(scope) do
@@ -415,7 +424,11 @@ defmodule ApiaryWeb.ProviderLive.Index do
           </:col>
           <:col :let={provider} label={gettext("Keys")}>
             <span id={"provider-#{provider.public_id}-keys"} class="text-muted">
-              {keys_words(keys(provider), Map.get(@cooling, provider.id, 0))}
+              {keys_words(
+                keys(provider),
+                Map.get(@cooling, provider.id, 0),
+                Map.get(@needing, provider.id, 0)
+              )}
             </span>
           </:col>
         </.table>
