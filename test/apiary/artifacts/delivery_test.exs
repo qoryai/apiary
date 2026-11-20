@@ -79,15 +79,20 @@ defmodule Apiary.Artifacts.DeliveryTest do
       assert %{delivery: :failed, delivery_failure: :target_gone} = Repo.get!(Version, failed.id)
     end
 
-    test "refuse, in the database, a state, a failure or a reply that is none of theirs", %{
-      artifact: artifact
-    } do
+    test "refuse, in the database, a state, a failure, a detail or a reply that is none of theirs",
+         %{
+           artifact: artifact
+         } do
       version = version!(artifact, 1)
 
       for {column, value} <- [
             delivery: "queued",
             delivery_failure: "item_gone",
             delivery_failure: "Refused",
+            delivery_detail: "",
+            delivery_detail: String.duplicate("é", 1001),
+            delivery_detail: "Shorten it.\nThen try again.",
+            delivery_detail: "Shorten it.\u2028Then try again.",
             delivery_reply: "[]"
           ] do
         assert_raise Postgrex.Error, ~r/artifact_versions_#{column}_check/, fn ->
@@ -220,21 +225,62 @@ defmodule Apiary.Artifacts.DeliveryTest do
   end
 
   describe "record_invalid/2" do
-    defp validated(title) do
-      ChangeRequest.validate(%{
-        "kind" => "change_request",
-        "change_request_id" => "av_7k2m9q4v1x8z3c5d",
-        "change_kind" => "reply",
-        "target" => %{"collection" => "SUPPORT"},
-        "title" => title,
-        "text" => "",
-        "data" => %{}
-      })
+    defp validated(changes) do
+      ChangeRequest.validate(
+        Map.merge(
+          %{
+            "kind" => "change_request",
+            "change_request_id" => "av_7k2m9q4v1x8z3c5d",
+            "change_kind" => "reply",
+            "target" => %{"collection" => "SUPPORT"},
+            "title" => "Delivery dates",
+            "text" => "",
+            "data" => %{}
+          },
+          changes
+        )
+      )
     end
 
     defp invalid_result do
-      assert {:error, %{valid: false}} = result = validated("Delivery\u{200B}dates")
+      assert {:error, %{valid: false}} = result = validated(%{"title" => "Delivery\u{200B}dates"})
       result
+    end
+
+    # The detail that `record_invalid/2` stores for `result`.
+    defp detail(artifact, result) do
+      version = version!(artifact, System.unique_integer([:positive]))
+      assert {:ok, %Version{delivery_detail: detail}} = Delivery.record_invalid(version, result)
+      assert Repo.get!(Version, version.id).delivery_detail == detail
+      detail
+    end
+
+    test "stores the first member that failed as the detail", %{artifact: artifact} do
+      assert detail(artifact, invalid_result()) == "#/title"
+      assert detail(artifact, validated(%{"text" => "a" <> <<0>>})) == "#/text"
+
+      assert detail(artifact, validated(%{"data" => "branch"})) == "#/data"
+    end
+
+    test "stores the entry, #, when the failure is at the entry itself", %{artifact: artifact} do
+      assert {:error, %{valid: false}} =
+               result = ChangeRequest.validate(%{"kind" => "change_request"})
+
+      assert detail(artifact, result) == "#"
+    end
+
+    test "ends the detail before a member name that a line cannot have, and cuts it", %{
+      artifact: artifact
+    } do
+      summary = fn place ->
+        {:error, %{valid: false, count: 1, errors: [%{kind: :pattern, instanceLocation: place}]}}
+      end
+
+      assert detail(artifact, summary.("#/data/a\u{200B}b/c")) == "#/data"
+      assert detail(artifact, summary.("#/data/a\u{200D}b/c")) == "#/data/a\u{200D}b/c"
+
+      assert detail(artifact, summary.("#/data/" <> String.duplicate("é", 1200)))
+             |> String.length() == 1000
     end
 
     test "stores a failed delivery with the reason invalid, and sends no reply", %{
@@ -256,7 +302,7 @@ defmodule Apiary.Artifacts.DeliveryTest do
     test "changes nothing for a valid entry", %{artifact: artifact} do
       version = version!(artifact, 1)
 
-      assert Delivery.record_invalid(version, validated("Delivery dates")) == {:ok, version}
+      assert Delivery.record_invalid(version, validated(%{})) == {:ok, version}
       assert Repo.get!(Version, version.id).delivery == nil
     end
 

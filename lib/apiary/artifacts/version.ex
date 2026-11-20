@@ -17,8 +17,9 @@ defmodule Apiary.Artifacts.Version do
   # delivery of the version to an adapter stands (`Apiary.Artifacts.Delivery`): `delivery`
   # is `:sent`, `:delivered` or `:failed`, nil for a version with no delivery;
   # `delivery_reply` is the adapter's reply, nil until one is stored; `delivery_failure`
-  # is a reason in `delivery_failures/0`, nil until a failure is stored; `delivery_at` is
-  # when the last of them was stored, nil until one is.
+  # is a reason in `delivery_failures/0`, nil until a failure is stored; `delivery_detail`
+  # is what failed, 1 to 1000 characters on one line, nil for none; `delivery_at` is when the
+  # last of them was stored, nil until one is.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -46,6 +47,7 @@ defmodule Apiary.Artifacts.Version do
     field :delivery, Ecto.Enum, values: [:sent, :delivered, :failed]
     field :delivery_reply, :map
     field :delivery_failure, Ecto.Enum, values: @delivery_failures
+    field :delivery_detail, :string
     field :delivery_at, :utc_datetime_usec
     field :inserted_at, :utc_datetime_usec
 

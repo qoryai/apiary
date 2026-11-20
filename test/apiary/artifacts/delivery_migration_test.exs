@@ -15,7 +15,7 @@ defmodule Apiary.Artifacts.DeliveryMigrationTest do
              Apiary.Repo.Migrations.ValidateTheDeliveryChecksOfAnArtifactVersion,
              "validate_the_delivery_checks_of_an_artifact_version"}
   @options [log: false, migration_lock: false]
-  @columns ~w(delivery delivery_reply delivery_failure delivery_at)
+  @columns ~w(delivery delivery_reply delivery_failure delivery_detail delivery_at)
 
   setup_all do
     for {version, migration, name} <- [@add, @validate], not Code.ensure_loaded?(migration) do
@@ -60,6 +60,7 @@ defmodule Apiary.Artifacts.DeliveryMigrationTest do
 
     assert checks() == %{
              "artifact_versions_delivery_check" => true,
+             "artifact_versions_delivery_detail_check" => true,
              "artifact_versions_delivery_failure_check" => true,
              "artifact_versions_delivery_reply_check" => true
            }

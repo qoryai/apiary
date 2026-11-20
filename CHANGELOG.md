@@ -1968,12 +1968,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   characters, and a `data` that is not an object. A text with a `<!-- qory:start -->` line is valid. No code
   writes the entry, so no entry is checked.
 - A version stores where its delivery to an adapter stands: `delivery` (`sent`,
-  `delivered` or `failed`), the adapter's reply, the reason of a failure and the time.
+  `delivered` or `failed`), the adapter's reply, the reason of a failure, a detail of 1 to
+  1000 characters on one line, and the time.
   `previous_address/1` reads the address of the newest reply of the version's artifact,
   for the `previous.address` of the next entry. No code writes the columns yet.
 - `record_invalid/2` stores a failed delivery with the reason `invalid` on a version whose
-  entry failed `ChangeRequest.validate/1`, and sends nothing. A version that has a
-  delivery is left as it is. No code calls it yet.
+  entry failed `ChangeRequest.validate/1`, and sends nothing. The detail is the first
+  member of the entry that failed, such as `#/title`. A version that has a delivery is
+  left as it is. No code calls it yet.
 
 ### Changed
 
@@ -3756,10 +3758,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Three migrations add the saved features to the instance's settings (20261112120000,
   20261112140000) and the features each run started with (20261112120100).
 <!-- feature: workflow_model -->
-- `artifact_versions` (20261120140000 and 20261120140100): four nullable columns,
-  `delivery`, `delivery_reply`, `delivery_failure` and `delivery_at`, with no default,
-  which rewrite no row and are empty on every stored version. Three checks keep their
-  values; the first migration adds them without a scan, and the second validates them with
+- `artifact_versions` (20261120140000 and 20261120140100): five nullable columns,
+  `delivery`, `delivery_reply`, `delivery_failure`, `delivery_detail` and `delivery_at`,
+  with no default, which rewrite no row and are empty on every stored version. Four checks
+  keep their values; the first migration adds them without a scan, and the second validates them with
   a scan that does not block writes. Rolling back drops the columns and what they stored.
 <!-- /feature -->
 

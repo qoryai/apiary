@@ -15,6 +15,10 @@ defmodule Apiary.Artifacts.Delivery do
   alias Apiary.Artifacts.Version
   alias Apiary.Repo
 
+  # The character rule of a line (`description.schema.json`, `$defs.line`): no control
+  # character, no U+2028 or U+2029, no format character other than U+200C and U+200D.
+  @line ~r/\A(?:[^\p{Cc}\p{Cf}\x{2028}\x{2029}]|[\x{200C}\x{200D}])*\z/u
+
   @doc """
   previous_address/1 is the address of `version`'s previous delivery, the `address` of the
   adapter's newest reply for the same target and type, for the entry's `previous.address`:
@@ -44,30 +48,62 @@ defmodule Apiary.Artifacts.Delivery do
   record_invalid/2 stores that the entry for `version` failed Qory Apiary's check, so
   nothing is sent: `result` is what `Apiary.Adapters.ChangeRequest.validate/1` returned
   for the entry. For `{:error, summary}` it sets `delivery` to `:failed`,
-  `delivery_failure` to `:invalid` and `delivery_at` to the time, and returns the version
-  with them. For `:ok` it changes nothing and returns the version. A version that already
+  `delivery_failure` to `:invalid`, `delivery_detail` to the places that the check
+  refused and `delivery_at` to the time, and returns the version with them. For `:ok` it changes nothing and returns the version. A version that already
   has a `delivery` is left as it is and gets `{:error, :delivery_set}`, so a delivery that
   was sent, or a reply that was stored, is not overwritten. The run is not stopped: only
   the delivery fails.
 
-  The summary is not stored: the columns have no place for it.
+  `delivery_detail` is the `instanceLocation` of the first error of the summary that is
+  not the entry itself, a JSON Pointer after `#`, such as `#/title`, or `#` when every
+  error is at the entry, as for a missing member. It has the bounds of `detail` in
+  `changes-failed.schema.json`: a member name with a control character or a format
+  character (other than U+200C and U+200D) ends the pointer before it, and the pointer is
+  cut to 1000 characters.
   """
   @spec record_invalid(Version.t(), :ok | {:error, map}) ::
           {:ok, Version.t()} | {:error, :delivery_set}
   def record_invalid(%Version{} = version, :ok), do: {:ok, version}
 
-  def record_invalid(%Version{id: id} = version, {:error, %{valid: false}}) do
+  def record_invalid(%Version{id: id} = version, {:error, %{valid: false, errors: errors}}) do
     at = DateTime.utc_now()
+    detail = detail(errors)
 
     {count, _rows} =
       Repo.update_all(
         from(v in Version, where: v.id == ^id and is_nil(v.delivery)),
-        set: [delivery: :failed, delivery_failure: :invalid, delivery_at: at]
+        set: [
+          delivery: :failed,
+          delivery_failure: :invalid,
+          delivery_detail: detail,
+          delivery_at: at
+        ]
       )
 
     case count do
-      1 -> {:ok, %{version | delivery: :failed, delivery_failure: :invalid, delivery_at: at}}
-      0 -> {:error, :delivery_set}
+      1 ->
+        {:ok,
+         %{
+           version
+           | delivery: :failed,
+             delivery_failure: :invalid,
+             delivery_detail: detail,
+             delivery_at: at
+         }}
+
+      0 ->
+        {:error, :delivery_set}
     end
+  end
+
+  # The first place of the errors that is not the entry, as `delivery_detail` has it.
+  defp detail(errors) do
+    errors
+    |> Enum.map(& &1.instanceLocation)
+    |> Enum.find("#", &(&1 != "#"))
+    |> String.split("/")
+    |> Enum.take_while(&Regex.match?(@line, &1))
+    |> Enum.join("/")
+    |> String.slice(0, 1000)
   end
 end
