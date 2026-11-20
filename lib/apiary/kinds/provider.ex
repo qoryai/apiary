@@ -165,7 +165,7 @@ defmodule Apiary.Kinds.Provider do
   `oauth_device` and every default of an address setting of `provider` that the endpoint
   rule of `Apiary.Kinds.Endpoint` does not accept, each with the reason. `load!/1` calls it.
   It is public so that a test can check the addresses of a provider it builds in memory:
-  `load!/1` reads a file, and the vendored schema of a description has no `oauth_device`.
+  `load!/1` reads a file, so a test cannot make one with addresses that the rule refuses.
   """
   @spec addresses_refused(t) :: [{term, Endpoint.refusal()}]
   def addresses_refused(%__MODULE__{} = provider) do
