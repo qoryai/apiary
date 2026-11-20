@@ -113,7 +113,7 @@ defmodule Apiary.Environments.RebuildRacesTest do
   test "a part holds the collection, a Rebuild waits for it, then the part commits: neither deadlocks",
        ctx do
     connection = Repo.get!(Connection, ctx.collection.connection_id)
-    {key_scope, _public_key} = listing_key!(connection)
+    key_scope = listing_key!(connection)
 
     # A listing's part, held open once it wrote the collection's `environment_ref`: it
     # holds its connection `FOR UPDATE`, then the collection `FOR NO KEY UPDATE`, by ref
@@ -165,7 +165,7 @@ defmodule Apiary.Environments.RebuildRacesTest do
     end
 
     connection = Repo.get!(Connection, first.connection_id)
-    {key_scope, _public_key} = listing_key!(connection)
+    key_scope = listing_key!(connection)
     named = Repo.all(from c in Collection, where: c.id in ^[low, high])
 
     # A listing's part of both, held open once it wrote their `environment_ref`: it holds
@@ -178,8 +178,8 @@ defmodule Apiary.Environments.RebuildRacesTest do
     rebuild = start(fn -> Environments.rebuild(scope, ctx.target) end)
 
     # The Rebuild waits on the part. Had it held the lower id without the connection, it
-    # could hold `Z` while a part held `Y` and waited on `Z`, and one of the two would be
-    # refused (`deadlock_detected`).
+    # could hold `Z` while a part held `Y` and waited on `Z`, and Postgres would roll back
+    # one of the two transactions with `deadlock_detected`.
     await_waited(rebuild.backend, part_backend)
     assert statement(rebuild.backend) =~ ~s(FROM "adapter_connections")
     commit(part)

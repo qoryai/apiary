@@ -499,7 +499,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   # `change`, which holds the collections by id, `C` first, starts and waits. A change
   # that took `C` would wait on `B`, and once `B` is let go the two would wait on each
   # other in turn (`deadlock_detected`); it waits on the part's connection instead, and
-  # each answers. `B` is switched off first, so it is not linked and the disconnect takes
+  # both commit. `B` is switched off first, so it is not linked and the disconnect takes
   # no feed counter, which the change would wait on too. The disconnect ends `B`, so the
   # part makes a new `B`, in no workspace.
   defp through_the_middle(ctx, rows, change) do
@@ -902,8 +902,8 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     unlinked_before = unlinked_refs(ctx.adapter)
 
     # The move's first step waits on `Z`, held by a switch of `Z` on, which it is
-    # already; then the disconnect that names their connection waits on the same row,
-    # behind it.
+    # already; then the disconnect that has their connection's id waits on the same
+    # row, behind it.
     {held, held_pid} = hold(switch_one(theirs, z, true))
     assert held.result == {:ok, 0}
     listed = start(safely(listing(ctx, ["Z"], "mine", DateTime.add(@started, 60))))

@@ -174,10 +174,10 @@ defmodule Apiary.DispatchesRacesTest do
   # A listing's part that sets the `environment_ref` of `collections`, all of one
   # connection, to `ref` (`Apiary.Races.listing_part/4`), posted with a key enrolled on
   # the connection's adapter here: its result, or what it raised.
-  defp part(ctx, collections, ref) do
+  defp part(collections, ref) do
     [connection_id] = collections |> Enum.map(& &1.connection_id) |> Enum.uniq()
     connection = Repo.get!(Connection, connection_id)
-    {key_scope, _public_key} = listing_key!(connection)
+    key_scope = listing_key!(connection)
     rescued(listing_part(key_scope, connection, collections, ref))
   end
 
@@ -802,15 +802,24 @@ defmodule Apiary.DispatchesRacesTest do
       await_waited(sweep.backend, holder)
 
       # A Rebuild of the higher collection's target, in the same transaction, locks that
-      # record, which the sweep took no lock on before the lower one's.
-      assert continue(first, fn -> Apiary.Environments.rebuild(ctx.scope, high_target) end) ==
-               {:ok, 1}
+      # record, which the sweep took no lock on before the lower one's. The prebuild it
+      # queued ends in that transaction, so none waits for the higher collection when the
+      # sweep goes on.
+      assert continue(first, fn ->
+               {:ok, 1} = Apiary.Environments.rebuild(ctx.scope, high_target)
+
+               Repo.update_all(
+                 from(r in DispatchRun,
+                   where: r.source_collection_id == ^high.id and r.state == :waiting
+                 ),
+                 set: [state: :ended, end_cause: :superseded]
+               )
+             end) == {1, nil}
 
       commit(first)
 
       assert Task.await(sweep.task) == [ctx.scope.workspace.id]
 
-      # The Rebuilds' prebuilds wait, so every lapsed one ends superseded.
       superseded =
         Repo.all(
           from r in DispatchRun,
@@ -818,7 +827,14 @@ defmodule Apiary.DispatchesRacesTest do
             select: r.id
         )
 
-      assert length(superseded) == 502
+      assert length(superseded) == 501
+      assert lower in superseded
+      # One of the first batch waits again; the second batch finds it waiting.
+      assert [again] = [lower | highs] -- superseded
+      assert again in first_batch
+
+      assert %DispatchRun{state: :waiting, environment_ref: "env-1"} =
+               Repo.get!(DispatchRun, again)
 
       for collection <- [low, high],
           do: assert(waiting(collection, pool) == ["env-1"])
@@ -829,7 +845,7 @@ defmodule Apiary.DispatchesRacesTest do
                  where: not is_nil(d.stale_at) and not is_nil(d.slot_freed_at)
                ),
                :count
-             ) == 502
+             ) == 501
     end
 
     test "key changes of two collections, a Rebuild, sweeps, lapses and claims of held runs together: no error, one prebuild waits per ref at most",
@@ -853,8 +869,8 @@ defmodule Apiary.DispatchesRacesTest do
 
             answers =
               [
-                part: part(ctx, collections, "env-#{round}a"),
-                part: part(ctx, collections, dropped),
+                part: part(collections, "env-#{round}a"),
+                part: part(collections, dropped),
                 rebuild: rebuild(ctx, "acme/shop"),
                 sweep: rescued(fn -> Dispatches.sweep(Dispatches.now()) end),
                 lapsing_claim:
@@ -1086,7 +1102,7 @@ defmodule Apiary.DispatchesRacesTest do
             answers =
               [
                 claim: claim_answer(key),
-                part: part(ctx, [lapsed, due], changed)
+                part: part([lapsed, due], changed)
               ]
               |> Enum.map(fn {name, fun} -> fn -> {name, fun.()} end end)
               |> together()
@@ -1273,7 +1289,7 @@ defmodule Apiary.DispatchesRacesTest do
       {other, other_backend} =
         hold(fn -> Dispatches.claim(key, Dispatches.now()) end)
 
-      assert {:ok, _claimed} = other.result
+      assert other.result == {:ok, :none}
       continue(other, fn -> Repo.update_all(leases, set: [lease_until: lapsed_until]) end)
       {other, other_backend}
     end
@@ -1368,11 +1384,11 @@ defmodule Apiary.DispatchesRacesTest do
 
     # A held side of `name` that locks `collection` and writes it, as the claim's take
     # writes the collection's lapsed prebuild again.
-    defp holder(ctx, :part, collection), do: part(ctx, [collection], "env-1")
+    defp holder(:part, collection), do: part([collection], "env-1")
 
-    defp holder(_ctx, :disconnect, collection) do
+    defp holder(:disconnect, collection) do
       connection = Repo.get!(Connection, collection.connection_id)
-      {key_scope, _public_key} = listing_key!(connection)
+      key_scope = listing_key!(connection)
 
       fn ->
         Apiary.Adapters.Collections.disconnect(key_scope, %{
@@ -1407,16 +1423,18 @@ defmodule Apiary.DispatchesRacesTest do
 
           # The held side, open once it wrote the collection: a part holds it by ref
           # (`hold_live/2`), a disconnect by adapter, connection and ref (`lock_live/3`).
-          {held, _held_backend} = hold(holder(ctx, unquote(holder), lapsed))
+          {held, held_backend} = hold(holder(unquote(holder), lapsed))
           assert held.result == unquote(Macro.escape(held))
 
           # The claim's take writes the lapsed prebuild again, which locks the collection
-          # `FOR KEY SHARE` for its foreign key: the held side's lock lets it through.
+          # `FOR KEY SHARE` for its foreign key: the held side's lock lets it through, so
+          # the claim ends its transaction without waiting on the held side.
           commit(other)
-          answer = Task.yield(claim.task, 5_000)
+          refute_blocked(claim.backend, held_backend)
           commit(held)
 
-          assert match?({:ok, {:ok, %{}}}, answer), "round #{round}: #{inspect(answer)}"
+          answer = Task.await(claim.task, 15_000)
+          assert match?({:ok, %{}}, answer), "round #{round}: #{inspect(answer)}"
           assert prebuilds(lapsed) == [{:claimed, "env-1"}], "round #{round}"
         end
       end
@@ -1538,7 +1556,7 @@ defmodule Apiary.DispatchesRacesTest do
 
         [changed, claimed] =
           together([
-            part(ctx, [round.collection], "env-#{n}"),
+            part([round.collection], "env-#{n}"),
             fn -> Apiary.DispatchedRunsFixtures.walked_claim(key, Dispatches.now()) end
           ])
 
@@ -1662,7 +1680,7 @@ defmodule Apiary.DispatchesRacesTest do
                 sweep: sweep_answer(),
                 claim: claim_answer(key),
                 rebuild: rebuild(ctx, path),
-                part: part(ctx, [collection], "env-0")
+                part: part([collection], "env-0")
               ]
               |> Enum.take(sides(4))
               |> Enum.map(fn {name, fun} -> fn -> {name, fun.()} end end)

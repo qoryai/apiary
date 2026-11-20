@@ -185,30 +185,20 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
          ctx do
       handed = handed_over!(ctx)
       exited!(handed)
-      work_item_id = handed.dispatch_run.work_item_id
 
-      {first, first_pid} =
-        hold(fn ->
-          Repo.one!(from w in WorkItem, where: w.id == ^work_item_id, lock: "FOR UPDATE")
-        end)
+      # A release of the handed-over dispatch, held open: it holds the work item, then the
+      # run of the queue, and changes nothing, since the machine exists.
+      {first, first_pid} = hold(fn -> release(ctx, handed) end)
+      assert first.result == {:error, :machine_exists}
 
+      # The end waits at the work item, before the run of the queue.
       second = start(fn -> Projector.project(handed.run) end)
       await_blocked(second.backend, first_pid)
-
-      # Waiting on the work item, the end holds nothing of the run of the queue yet.
-      assert %DispatchRun{state: :handed_over} =
-               continue(first, fn ->
-                 Repo.one(
-                   from d in DispatchRun,
-                     where: d.id == ^handed.dispatch_run.id,
-                     lock: "FOR UPDATE NOWAIT"
-                 )
-               end)
-
+      assert statement(second.backend) =~ ~s(FROM "work_items")
       commit(first)
 
       assert {:ok, %Run{}} = Task.await(second.task)
-      ended_by_exit!(ctx, handed, [])
+      ended_by_exit!(ctx, handed, [{:error, :machine_exists}])
     end
 
     test "two releases and the exit's projection at once: one end, none deadlocks", ctx do
@@ -734,7 +724,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
     # `FOR UPDATE`, then the collection `FOR NO KEY UPDATE`, by ref, then writes it.
     defp part(%{collection: %Collection{} = collection}, ref) do
       connection = Repo.get!(Connection, collection.connection_id)
-      {key_scope, _public_key} = listing_key!(connection)
+      key_scope = listing_key!(connection)
       listing_part(key_scope, connection, [collection], ref)
     end
 
@@ -828,7 +818,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
 
         # The collection's ref moves on to `env-2`, so the record's build, of `env-1`, no
         # longer serves it: a run of its target waits, held for the pool's build, and a
-        # claim queues that build and makes its record, which exists already.
+        # claim queues that build and inserts its record, which is there.
         {1, _rows} = Repo.update_all(collection, set: [environment_ref: "env-2"])
         held = held!(ctx, handed)
 
