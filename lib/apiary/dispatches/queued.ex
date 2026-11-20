@@ -14,8 +14,10 @@ defmodule Apiary.Dispatches.Queued do
   # keeps its number and its id.
   #
   # `requeue!/2` writes a new record for each run of the queue that waits again and has
-  # none, after a failed start ended its record (`Apiary.Dispatches.Handover.fail_start/3`):
-  # the retry takes the next number, and its `inserted_at` is when it went back to waiting.
+  # none, after a failed start ended its record
+  # (`Apiary.Dispatches.Handover.fail_start/3`): the retry takes the next number, and its
+  # `inserted_at` is when it went back to waiting. A claim locks the counters of those
+  # runs earlier, in one pass with the counters of its builds (`requeued_workspaces/1`).
   #
   # `ended/2` ends the record of each run of the queue that ended before its handover:
   # `cancelled` when its work item was closed or undone, or a prebuild was superseded or

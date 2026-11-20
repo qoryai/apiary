@@ -21,7 +21,8 @@ defmodule Apiary.Runs.Number do
   # first insert of an environment record or a waiting prebuild, and takes the numbers
   # later in the same transaction: a claim and a Rebuild that queue a prebuild of one
   # collection and pool then wait on each other only at the counter (the lock order in
-  # `Apiary.Dispatches.Slots`).
+  # `Apiary.Dispatches.Slots`). A claim locks, in one pass by workspace, the counters of
+  # its builds and of the runs its free sets waiting again.
   #
   # A run on a node takes its number with `next/2`, which locks the node first. Every path
   # in this release's code then takes the node's row, then the counter, so none deadlocks

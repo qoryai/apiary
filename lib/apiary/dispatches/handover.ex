@@ -1521,8 +1521,10 @@ defmodule Apiary.Dispatches.Handover do
         |> Repo.update!()
 
       # A run queued by the previous release has no record. Its counter is not among those
-      # the claim locked in one pass in its free (`Apiary.Environments.make_records/3`),
-      # and can come after them in another order.
+      # the claim locked in one pass in its free (`Apiary.Environments.make_records/3`).
+      # shortcut: this counter comes after those, out of workspace order where its
+      # workspace sorts before one of theirs, so this claim and a sweep can wait on each
+      # other here (40P01); drop this branch once no run queued before this release waits.
       nil ->
         %Run{
           public_id: Run.new_public_id(),

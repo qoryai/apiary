@@ -136,10 +136,11 @@ defmodule Apiary.Dispatches do
   #      (`Apiary.Dispatches.Handover.gateway/1`);
   #   5. the slots due freed (`Apiary.Dispatches.Slots.free/3`), which, once it has
   #      locked the records of the lapsed prebuilds, their runs and their dispatches,
-  #      locks the run counters and inserts the missing environment records of the
-  #      collections held at 3 with no live prebuild of their ref for the pool
-  #      (`Apiary.Environments.make_records/3`), then a prebuild of
-  #      each collection held at 3 queued for the pool, where none is live yet
+  #      locks, in one pass by workspace, the run counters of the collections held at 3
+  #      and of the runs it sets waiting again, and inserts the missing environment
+  #      records of the collections held at 3 with no live prebuild of their ref for the
+  #      pool (`Apiary.Environments.make_records/3`), then a prebuild of each collection
+  #      held at 3 queued for the pool, where none is live yet
   #      (`Apiary.Environments.queue_builds/2`), then the pool's limit counted: its held
   #      slots and its live runs that were not dispatched; at the limit, `{:ok, :none}`;
   #   6. the oldest waiting run of the key's workspace, by `queued_at`, that the claim may
