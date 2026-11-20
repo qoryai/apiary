@@ -195,13 +195,15 @@ defmodule Apiary.DispatchesRacesTest do
   # answered, or what it raised.
   defp rebuild(collections, pools) do
     rescued(fn ->
-      Repo.transact(fn -> {:ok, collections |> hold_rebuild() |> queue_rebuild(pools)} end)
+      Repo.transact(fn -> {:ok, collections |> hold_rebuild(pools) |> queue_rebuild(pools)} end)
     end)
   end
 
   # The first half of `rebuild/2`, inside the caller's transaction: `collections` held
-  # `FOR SHARE` by id, then their records `FOR UPDATE`; the collections held.
-  defp hold_rebuild(collections) do
+  # `FOR SHARE` by id, then their records `FOR UPDATE`, then `pools` and the workspace's
+  # run counter (`Apiary.Runs.Number.hold/2`), as `Apiary.Environments.rebuild/2` takes
+  # them; the collections held.
+  defp hold_rebuild(collections, pools) do
     ids = collections |> Enum.map(& &1.id) |> Enum.sort()
 
     held =
@@ -216,6 +218,14 @@ defmodule Apiary.DispatchesRacesTest do
           select: e.id
       )
 
+    [%Collection{workspace_id: workspace_id, organisation_id: organisation_id} | _] = held
+
+    workspace = %Apiary.Organisations.Workspace{
+      id: workspace_id,
+      organisation_id: organisation_id
+    }
+
+    :ok = Apiary.Runs.Number.hold(workspace, Enum.map(pools, & &1.id))
     held
   end
 
@@ -993,7 +1003,7 @@ defmodule Apiary.DispatchesRacesTest do
               if rem(round, 2) == 1 do
                 # The Rebuild paused once it holds the records, the claim's free waiting
                 # for them, then the Rebuild's prebuilds queued, before it commits.
-                {rebuild, rebuild_backend} = hold(fn -> hold_rebuild(both) end)
+                {rebuild, rebuild_backend} = hold(fn -> hold_rebuild(both, [pool]) end)
                 claim = start(claim_answer(key))
                 await_blocked(claim.backend, rebuild_backend)
 
@@ -1062,12 +1072,12 @@ defmodule Apiary.DispatchesRacesTest do
                   # in the others, the claim and the Rebuild both insert it.
                   if kind == 1, do: :ok = record!(organisation_id, workspace_id, pool, y)
 
-                  # The Rebuild paused once it queued X, which takes the counter, and the
+                  # The Rebuild paused once it holds the counter and queued X, and the
                   # claim waiting for it; then the Rebuild queues Y and commits. Should the
                   # two wait on each other, Postgres aborts the claim, which waited longer.
                   {rebuild, rebuild_backend} =
                     hold(fn ->
-                      [first | rest] = hold_rebuild([x, y])
+                      [first | rest] = hold_rebuild([x, y], [pool])
                       _x = queue_rebuild([first], [pool])
                       rest
                     end)
@@ -1244,61 +1254,80 @@ defmodule Apiary.DispatchesRacesTest do
       assert raised == []
     end
 
-    test "and a Backlog switch of the pair while a lapse it missed after its collections locks the lower: no deadlock, both written",
+    test "and takes it again while a Backlog switch holds that collection: no deadlock, both written",
          ctx do
-      pool = pool_fixture(ctx.scope)
-      key = key!(ctx, pool)
       %{organisation: %{id: organisation_id}, workspace: %{id: workspace_id}} = ctx.scope
 
-      for round <- 1..3 do
-        # `lapsed`, the lower id, has a claimed prebuild of `env-1`, its collection's ref,
-        # whose lease has not lapsed yet; `due` has a run held for its build.
-        pair = lapsed_pair!(ctx, key, pool, "acme/missed-#{round}")
-        :ok = record!(organisation_id, workspace_id, pool, pair.lapsed)
+      raised =
+        for round <- 1..3, reduce: [] do
+          raised ->
+            # A fresh pool each round, so the take finds the lapsed prebuild first.
+            # `lapsed`, the lower id, has a claimed prebuild of `env-1`, its collection's
+            # ref, whose lease has not lapsed yet; `due` has a run held for its build.
+            pool = pool_fixture(ctx.scope)
+            key = key!(ctx, pool)
+            pair = lapsed_pair!(ctx, key, pool, "acme/missed-#{round}")
+            :ok = record!(organisation_id, workspace_id, pool, pair.lapsed)
 
-        leases =
-          from d in Dispatch,
-            join: r in DispatchRun,
-            on: r.id == d.dispatch_run_id,
-            where: r.source_collection_id == ^pair.lapsed.id
+            leases =
+              from d in Dispatch,
+                join: r in DispatchRun,
+                on: r.id == d.dispatch_run_id,
+                where: r.source_collection_id == ^pair.lapsed.id
 
-        lapsed_until = Repo.one!(from d in leases, select: max(d.lease_until))
-        future = Dispatches.lease_until(Dispatches.now())
-        {_count, _rows} = Repo.update_all(leases, set: [lease_until: future])
+            lapsed_until = Repo.one!(from d in leases, select: max(d.lease_until))
+            future = Dispatches.lease_until(Dispatches.now())
+            {1, _rows} = Repo.update_all(leases, set: [lease_until: future])
 
-        # Another claim of the pool, which holds its row, lets the lease lapse: the claim
-        # below holds `due` `FOR SHARE` with its collections, finds no lapsed prebuild
-        # then, and waits at the pool's row.
-        {other, other_backend} =
-          hold(fn ->
-            _pool =
-              Repo.one!(
-                from n in Node, where: n.id == ^pool.id, lock: "FOR NO KEY UPDATE", select: n.id
-              )
+            # Another claim of the pool, which holds its row, lets the lease lapse: the
+            # claim below holds `due` `FOR SHARE` with its collections, finds no lapsed
+            # prebuild then, and waits at the pool's row.
+            {other, other_backend} =
+              hold(fn ->
+                _pool =
+                  Repo.one!(
+                    from n in Node,
+                      where: n.id == ^pool.id,
+                      lock: "FOR NO KEY UPDATE",
+                      select: n.id
+                  )
 
-            Repo.update_all(leases, set: [lease_until: lapsed_until])
-          end)
+                Repo.update_all(leases, set: [lease_until: lapsed_until])
+              end)
 
-        claim = start(claim_answer(key))
-        await_blocked(claim.backend, other_backend)
+            claim = start(claim_answer(key))
+            await_blocked(claim.backend, other_backend)
 
-        # The switch's statement holds `lapsed`, then waits at `due`, which the claim holds.
-        switch = start(change_pair(ctx, :switch, pair))
-        await_blocked(switch.backend, claim.backend)
+            # The switch's statement holds `lapsed`, then waits at `due`, which the claim
+            # holds.
+            switch = start(change_pair(ctx, :switch, pair))
+            await_blocked(switch.backend, claim.backend)
 
-        # The claim's free sets the lapsed prebuild waiting again, and its take claims it:
-        # that second write locks `lapsed` `FOR KEY SHARE` for its foreign key.
-        commit(other)
-        answer = Task.await(claim.task, 15_000)
-        changed = Task.await(switch.task, 15_000)
+            # The claim's free sets the lapsed prebuild waiting again, and its take claims
+            # it: that second write locks `lapsed` `FOR KEY SHARE` for its foreign key.
+            commit(other)
 
-        assert changed == {:ok, 2}, "round #{round}: #{inspect(changed)}"
+            answers = [
+              claim: Task.await(claim.task, 15_000),
+              switch: Task.await(switch.task, 15_000)
+            ]
 
-        assert match?({:ok, _}, answer) or answer == {:error, :unavailable},
-               "round #{round}: #{inspect(answer)}"
+            failed =
+              for {name, answer} <- answers,
+                  answer != {:ok, 2} and not match?({:ok, %{}}, answer),
+                  do: {round, name, answer}
 
-        assert written?(:switch, pair)
-      end
+            if failed == [] do
+              # The claim took the lapsed prebuild again: a second dispatch, and claimed.
+              assert Repo.aggregate(leases, :count) == 2, "round #{round}"
+              assert prebuilds(pair.lapsed) == [{:claimed, "env-1"}], "round #{round}"
+              assert written?(:switch, pair)
+            end
+
+            raised ++ failed
+        end
+
+      assert raised == []
     end
   end
 
