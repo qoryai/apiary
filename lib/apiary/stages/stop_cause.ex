@@ -670,8 +670,10 @@ defmodule Apiary.Stages.StopCause do
     do:
       "The run did not start: its variables take #{div(bytes + 1023, 1024)} KiB, and a run takes at most #{div(Resolution.max_bytes(), 1024)} KiB."
 
-  defp variable_rule(%{work_item: %WorkItem{target_system: system} = work_item} = n)
-       when is_binary(system) do
+  # The rule a run variable of the work item's target breaks, nil for none: a work item
+  # without a target, or whose target has no address, has no run variables to break one.
+  defp variable_rule(%{work_item: %WorkItem{target_collection_external_ref: ref} = work_item} = n)
+       when is_binary(ref) do
     target = WorkItem.target(work_item)
     found = Repo.one(Target.by_key(n.workspace_struct.id, target))
 

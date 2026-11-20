@@ -1350,11 +1350,13 @@ defmodule Apiary.Dispatches.Handover do
   defp test?(%WorkItem{test: true, connection_id: nil}), do: true
   defp test?(%WorkItem{}), do: false
 
-  # The run's labels: the target's (`Apiary.Lingo.Domain.target_labels/1`) and, where the
-  # domain has one and gives run variables, the label of the run's paths
+  # The run's labels: the target's address (`Apiary.Lingo.Domain.target_labels/1`) and,
+  # where the domain has one and gives run variables, the label of the run's paths
   # (`Apiary.Lingo.Domain.paths_label/1`), whose value is the run variables'
-  # QORY_RUN_REPOSITORIES, the same list in the same order. None without a target.
+  # QORY_RUN_REPOSITORIES, the same list in the same order. None without a target, nor for
+  # a target without an address.
   defp labels(_workspace, nil, _variables), do: %{}
+  defp labels(_workspace, %{system: nil, path: nil}, _variables), do: %{}
 
   defp labels(workspace, target, variables) do
     labels = Map.new(Enum.zip(Domain.target_labels(workspace), [target.system, target.path]))

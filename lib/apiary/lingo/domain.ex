@@ -275,15 +275,17 @@ defmodule Apiary.Lingo.Domain do
 
   @doc """
   The run variables of a run of the workspace whose target is `target`, nil for none, with
-  `picked` the further paths it also reads: `{:ok, nil}` without a target, else
-  `c:run_variables/2` of the workspace's domain.
+  `picked` the further paths it also reads: `{:ok, nil}` without a target or for a target
+  without an address, so such a run gets no `QORY_RUN_SYSTEM`; else `c:run_variables/2`
+  of the workspace's domain, of the target's address.
   """
   @spec run_variables(%Workspace{} | nil, target | nil, [String.t()]) ::
           {:ok, variables | nil} | {:error, atom}
   def run_variables(_workspace, nil, _picked), do: {:ok, nil}
+  def run_variables(_workspace, %{system: nil, path: nil}, _picked), do: {:ok, nil}
 
-  def run_variables(workspace, %{} = target, picked) when is_list(picked),
-    do: for_workspace(workspace).run_variables(target, picked)
+  def run_variables(workspace, %{system: system, path: path}, picked) when is_list(picked),
+    do: for_workspace(workspace).run_variables(%{system: system, path: path}, picked)
 
   @doc "Whether the workspace's collections are prebuilt: `c:prebuilds?/0` of its domain."
   @spec prebuilds?(%Workspace{} | nil) :: boolean
