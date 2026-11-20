@@ -2021,7 +2021,10 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   no "Jump to it" (`ApiaryWeb.PauseWords`): "Paused: every key of Northwind Claude is in
   cooldown until Fri 14:00. It continues in run 15.", the run's number a link to its
   page, while every key of its provider was in cooldown as it ended and that time is
-  still to come, the time as a key's row on Model providers shows it; else "Paused: a
+  still to come, the time as a key's row on Model providers shows it, and "Paused: every
+  key of Northwind Claude is in cooldown until Fri 14:00 or needs a new key. It continues
+  in run 15." where a key of the provider needs a new value too (the provider rejected it,
+  or its sign-in needs a new one); else "Paused: a
   key of Northwind Claude reached its limit or its Use up to percentage. It continues in
   run 15."; "Paused: a key of Northwind Claude reached its limit or its Use up to
   percentage." where no run continues it; and, once the provider is deleted, "Paused: a
@@ -2029,7 +2032,7 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   "Paused: a model key reached its limit or its Use up to percentage." where no run
   continues it. A provider of another organisation than the run's, left from when an
   operator managed whole organisations, is not named: "Paused: every model key is in
-  cooldown until Fri 14:00. It continues in run 15." while that time is still to come, else the lines
+  cooldown until Fri 14:00. It continues in run 15." (with "or needs a new key" after the time where a key of the provider needs a new value) while that time is still to come, else the lines
   of a deleted provider. On the work item's page, the run's row on Explore and the stage's round
   show the same line in place of the run's state, the number a link where the reader
   may read the workspace of the run that continues it. For a run that a failed step of its preparation stopped, the line states
@@ -2204,7 +2207,13 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      first, and when, the time as a key's row on Model providers shows it. For a
      provider of another organisation than the run's, left from when an operator
      managed whole organisations, the line has no name: "Waiting for a model key: every
-     model key is in cooldown until 14:00." Nothing runs when the cooldown ends: the first claim
+     model key is in cooldown until 14:00." Where, beside the keys in cooldown, a key
+     needs a new value (the provider rejected it, or its sign-in needs a new one), the
+     line reads "Waiting for a model key: every key of Northwind Claude is in cooldown
+     until 14:00 or needs a new key.", and "every model key" in place of "every key of
+     Northwind Claude" for a run with the keys of several providers or for a provider of
+     another organisation. Where every key needs a new value, the line is the one for the
+     key (a new value, or a new sign-in), as before. Nothing runs when the cooldown ends: the first claim
      after that time takes the run.
   5. "Waiting for the environment image: a build of northwind/storefront is queued." (or
      "is running."), or "Waiting for the environment image of northwind/storefront." with
@@ -2563,7 +2572,9 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   start."; "Run cancelled: time limit reached.", or "Run cancelled." with no reason; "Run
   lost: stopped responding." for a run whose exit's state is `lost`, and "Run lost. No
   heartbeat for 90 s." for one the lost-run check marked; a paused run in the words of
-  its paused line, "Paused: every key of Northwind Claude is in cooldown until Fri 14:00.
+  its paused line, "Paused: every key of Northwind Claude is in cooldown until Fri 14:00
+  or needs a new key. It continues in run 15." where a key of the provider needs a new
+  key too, else "Paused: every key of Northwind Claude is in cooldown until Fri 14:00.
   It continues in run 15."; and "Heartbeats resumed." when a quiet run is heard again. A
   state stored under an older name is said as its new state.
 - **A run through a gateway** looks as any run: its Machine or pool is the machine or pool that registered it,

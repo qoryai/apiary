@@ -1272,6 +1272,21 @@ defmodule ApiaryWeb.PreparationComponents do
         time: cooldown_time(until)
       )
 
+  defp waiting_words({:cooldown_or_new_key, nil, until}),
+    do:
+      gettext(
+        "Waiting for a model key: every model key is in cooldown until %{time} or needs a new key.",
+        time: cooldown_time(until)
+      )
+
+  defp waiting_words({:cooldown_or_new_key, provider, until}),
+    do:
+      gettext(
+        "Waiting for a model key: every key of %{provider} is in cooldown until %{time} or needs a new key.",
+        provider: ExternalText.line(provider),
+        time: cooldown_time(until)
+      )
+
   # The key's identity line is a link to the key's edit page.
   defp waiting_words({:sign_in, key, path}),
     do:

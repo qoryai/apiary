@@ -21,6 +21,9 @@ defmodule Apiary.Runs.Waiting do
   #         name of the one whose key leaves its cooldown first, nil for a provider of
   #         another organisation than the run's, left from when an operator managed whole
   #         organisations, and `until` when that key leaves it;
+  #       * `{:cooldown_or_new_key, provider, until}`, the same where a key also needs a new
+  #         value (the next item): `provider` is nil too for a run with the keys of several
+  #         providers;
   #       * `{:sign_in, provider, key}`, a sign-in needs a new one, and
   #         `{:new_key, provider, key}`, a provider rejected a key's value: nobody but a
   #         person's new value ends either. `provider` is the provider's public id, `key`
@@ -59,7 +62,7 @@ defmodule Apiary.Runs.Waiting do
           :harness
           | :no_pool
           | {:no_fit, String.t(), String.t() | :instance}
-          | {:cooldown, String.t() | nil, DateTime.t()}
+          | {:cooldown | :cooldown_or_new_key, String.t() | nil, DateTime.t()}
           | {:refreshing | :restart | :sign_in | :new_key, String.t(),
              %{id: Ecto.UUID.t() | nil, identity: String.t()}}
           | {:image, String.t(), :queued | :running | nil}
@@ -123,10 +126,13 @@ defmodule Apiary.Runs.Waiting do
 
   # No name for a provider of another organisation than the run's, left from when an
   # operator managed whole organisations: the run's organisation's people do not read it.
-  defp words({:cooldown, %Connection{} = provider, until}, queued) do
+  defp words({kind, %Connection{} = provider, until}, queued)
+       when kind in [:cooldown, :cooldown_or_new_key] do
     name = if provider.organisation_id == queued.organisation_id, do: provider.name
-    {:cooldown, name, until}
+    {kind, name, until}
   end
+
+  defp words({:cooldown_or_new_key, nil, until}, _queued), do: {:cooldown_or_new_key, nil, until}
 
   # A reason about a key has the key's row id, for the link to its page, and its identity
   # line (`Apiary.ModelKeys.Identity`). For a key deleted since the reason was found, the run

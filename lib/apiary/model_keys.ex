@@ -826,6 +826,9 @@ defmodule Apiary.ModelKeys do
        provider, value_id}`, one whose refresh starts after this node starts again, as
        this node is stopping (the check of `Login`'s `stopping?/0`);
     2. `{:cooldown, provider, until}`: the key that leaves its cooldown first;
+       `{:cooldown_or_new_key, provider, until}` where, beside the keys in cooldown, a key
+       needs a new value (a sign-in or a rejected key): `until` is the same, and
+       `provider` is nil where the run has the keys of several providers;
     3. `{:sign_in, provider, value_id}`: a sign-in that needs a new one, and
        `{:new_key, provider, value_id}`, a key whose provider rejected its value; each
        needs a person to give the key a new value. When both kinds are there, the first of
@@ -836,7 +839,7 @@ defmodule Apiary.ModelKeys do
   """
   @spec waiting_reason([Ecto.UUID.t()], DateTime.t(), keyword) ::
           {:refreshing | :restart | :sign_in | :new_key, Connection.t(), String.t()}
-          | {:cooldown, Connection.t(), DateTime.t()}
+          | {:cooldown | :cooldown_or_new_key, Connection.t() | nil, DateTime.t()}
           | nil
   def waiting_reason(provider_ids, %DateTime{} = now, opts \\ []) when is_list(provider_ids) do
     ids = Enum.uniq(provider_ids)
@@ -883,7 +886,14 @@ defmodule Apiary.ModelKeys do
         {provider, key} =
           Enum.min_by(cooling, fn {_provider, key} -> key.cooldown_until end, DateTime)
 
-        {:cooldown, provider, key.cooldown_until}
+        needs_new_value? =
+          Enum.any?(all, fn {_provider, key} -> key.blocked in [:sign_in, :new_key] end)
+
+        cond do
+          not needs_new_value? -> {:cooldown, provider, key.cooldown_until}
+          length(keyed) > 1 -> {:cooldown_or_new_key, nil, key.cooldown_until}
+          true -> {:cooldown_or_new_key, provider, key.cooldown_until}
+        end
 
       true ->
         # The first key a person has to fix, in the order the claim sends the keys

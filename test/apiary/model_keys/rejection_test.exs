@@ -408,7 +408,39 @@ defmodule Apiary.ModelKeys.RejectionTest do
       refute claimable?([ctx.provider.id], now)
       assert {id, until} = ModelKeys.first_to_leave([ctx.provider.id], now)
       assert id == ctx.provider.id and DateTime.compare(until, later) == :eq
-      assert {:cooldown, %Connection{}, ^until} = ModelKeys.waiting_reason([ctx.provider.id], now)
+
+      # One key is in cooldown and the other needs a new value: the reason says both.
+      assert {:cooldown_or_new_key, %Connection{}, ^until} =
+               ModelKeys.waiting_reason([ctx.provider.id], now)
+
+      assert ModelKeys.new_key_counts([ctx.provider]) == %{ctx.provider.id => 1}
+    end
+
+    test "a provider with every key in cooldown has the cooldown as its reason", ctx do
+      now = DateTime.utc_now()
+      later = DateTime.add(now, 3600)
+
+      for {value, name} <- [{ctx.values["main"], "model-1"}, {ctx.values["spare"], "model-2"}] do
+        ModelKeys.record(
+          [key(ctx, value, name)],
+          [
+            %{
+              credential: name,
+              window: "five_hour",
+              status: "rejected",
+              resets_at: later,
+              utilization: nil,
+              cooldown_until: later,
+              source: "provider",
+              observed_at: now
+            }
+          ],
+          now
+        )
+      end
+
+      assert {:cooldown, %Connection{}, ^later} = ModelKeys.waiting_reason([ctx.provider.id], now)
+      assert ModelKeys.new_key_counts([ctx.provider]) == %{ctx.provider.id => 0}
     end
 
     test "has no reason to wait while one key is free, and for a provider with no key", ctx do
@@ -449,6 +481,46 @@ defmodule Apiary.ModelKeys.RejectionTest do
 
       assert {:sign_in, %Connection{}, "login"} =
                ModelKeys.waiting_reason([login.id, ctx.provider.id], now)
+
+      assert ModelKeys.new_key_counts([ctx.provider, login]) ==
+               %{ctx.provider.id => 2, login.id => 1}
+    end
+
+    test "with a key in cooldown too, the reason has no provider", ctx do
+      now = DateTime.utc_now()
+      later = DateTime.add(now, 3600)
+
+      :ok = ModelKeys.reject([key(ctx, ctx.values["main"])], [unauthorized()], now)
+
+      ModelKeys.record(
+        [key(ctx, ctx.values["spare"], "model-2")],
+        [
+          %{
+            credential: "model-2",
+            window: "five_hour",
+            status: "rejected",
+            resets_at: later,
+            utilization: nil,
+            cooldown_until: later,
+            source: "provider",
+            observed_at: now
+          }
+        ],
+        now
+      )
+
+      {:ok, login} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "openai-subscription",
+          keys: [%{value_id: "login", value: device_login()}]
+        })
+
+      Repo.update_all(Login,
+        set: [state: "sign_in_needed", sign_in_cause: "refresh_token_expired"]
+      )
+
+      assert {:cooldown_or_new_key, nil, ^later} =
+               ModelKeys.waiting_reason([ctx.provider.id, login.id], now)
     end
   end
 
