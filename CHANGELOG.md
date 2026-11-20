@@ -3036,7 +3036,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   one of each, the run page says “Waiting for a model key: every key of Northwind Claude
   is in cooldown until 14:00 or needs a new key.” (“every model key”, with no name, where
   the run has the keys of several providers). A key of another organisation's provider
-  that needs a new value does not count. The time is when the first key leaves its cooldown. A paused run says the same in its
+  that needs a new value does not count. The time is when the first key leaves its
+  cooldown. A paused run says the same in its
   paused line: “Paused: every key of Northwind Claude is in cooldown until Fri 14:00 or
   needs a new key. It continues in run 15.” Where all keys are in cooldown, or all need a
   new key, the lines are as before.

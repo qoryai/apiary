@@ -439,7 +439,8 @@ replaces the navigation it is in.
   organisation's model providers. Its Keys column has how many keys each provider has
   and how many of them are in cooldown, "3 keys, 1 in cooldown", then how many need a new
   key, "3 keys, 1 in cooldown, 1 needs a new key" or "3 keys, 2 need a new key"; a count of
-  0 is not shown, so a provider with neither reads "3 keys" (`Apiary.ModelKeys.cooldown_counts/2`,
+  0 is not shown, so a provider with neither reads "3 keys". A key that needs a new key
+  is counted there only, not in cooldown (`Apiary.ModelKeys.cooldown_counts/2`,
   `Apiary.ModelKeys.new_key_counts/1`). A provider's page
   (`…/model-providers/:provider_id`, `ApiaryWeb.ProviderLive.Show`) lists its keys, the
   default key first, then in the order they were added. Each row has the key's name in
@@ -475,7 +476,8 @@ replaces the navigation it is in.
   `ApiaryWeb.ProviderLive.Key`, are pages (A form is a page, below), the breadcrumb ending
   with the provider's name and the act, and Edit key titled with the key's identity line.
   The form has no Name: Qory Apiary sets the value ID `key-<n>`, a number it did not give
-  the provider before, and no page shows it. On Add key the form has Key, a password field that is
+  the provider before, and no page shows it. On Add key the form has Key, a password field
+  that is
   empty after every save, with "Qory Apiary stores the key encrypted, and nobody can
   view it again."; on Edit key, New value, an optional password field that is empty
   after every save, with "Leave it empty to keep the value."; then Resets, Pause for and,
@@ -2035,7 +2037,8 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   cooldown until Fri 14:00. It continues in run 15." while that time is still to come,
   else the lines of a deleted provider. A key of that provider that needs a new value is
   not told, so the line never has "or needs a new key". On the work item's page, the
-  run's row on Explore and the stage's round show the same line in place of the run's state, the number a link where the reader
+  run's row on Explore and the stage's round show the same line in place of the run's
+  state, the number a link where the reader
   may read the workspace of the run that continues it. For a run that a failed step of its preparation stopped, the line states
   what happened at that step, with no advice, such as "Start the
   wall failed with exit code 125.", on every pool. Else the line is the last result of its
@@ -2214,8 +2217,10 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      until 14:00 or needs a new key.", and "every model key" in place of "every key of
      Northwind Claude" for a run with the keys of several providers. A key of a provider
      of another organisation than the run's that needs a new value does not count, so the
-     line stays the plain cooldown line. Where every key needs a new value, the line is the one for the
-     key (a new value, or a new sign-in), as before. Nothing runs when the cooldown ends: the first claim
+     line stays the plain cooldown line. Where every key needs a new value, the line is
+     the one for the
+     key (a new value, or a new sign-in), as before. Nothing runs when the cooldown ends:
+     the first claim
      after that time takes the run.
   5. "Waiting for the environment image: a build of northwind/storefront is queued." (or
      "is running."), or "Waiting for the environment image of northwind/storefront." with
