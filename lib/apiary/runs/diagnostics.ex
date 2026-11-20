@@ -58,7 +58,7 @@ defmodule Apiary.Runs.Diagnostics do
   alias Apiary.Dispatches.{Dispatch, DispatchRun, MachineLogs}
   alias Apiary.Harnesses.RunHarness
   alias Apiary.Organisations.{Organisation, Workspace}
-  alias Apiary.Runs.{Event, LeakedSecrets, LogChunk, Preparation, Record, Run}
+  alias Apiary.Runs.{Event, LeakedSecrets, LogChunk, Preparation, Record, Run, Target}
   alias Apiary.WorkItems.WorkItem
 
   @max_bytes 8 * 1024 * 1024
@@ -83,7 +83,10 @@ defmodule Apiary.Runs.Diagnostics do
   @step ~r/\A[a-z][a-z_]{0,39}\z/
   @workflow ~r/\A[a-z][a-z0-9-]{0,54}\z/
   @variable ~r/\A[A-Za-z_][A-Za-z0-9_]{0,127}\z/
-  @place_text ~r/\A[^\x00-\x1f\x7f]{1,256}\z/u
+  # A target's collection ref, and its address: a host name and a path.
+  @collection_ref ~r/\A[^\x00]{1,200}\z/u
+  @host_name ~r/\A[a-z0-9.-]{1,253}\z/
+  @address_path ~r/\A[^\x00-\x1f\x7f]{1,200}\z/u
   @machine_name ~r/\A[^\x00-\x1f\x7f]{1,100}\z/u
   @int32 -2_147_483_648..2_147_483_647
 
@@ -138,7 +141,12 @@ defmodule Apiary.Runs.Diagnostics do
   def document(%Run{} = run, reader, opts \\ []) do
     now = Keyword.get_lazy(opts, :now, &DateTime.utc_now/0)
     max_bytes = Keyword.get(opts, :max_bytes, @max_bytes)
-    run = Repo.preload(run, [:organisation, :workspace, :gateway, :dispatch_run], force: true)
+
+    run =
+      Repo.preload(run, [:organisation, :workspace, :gateway, :dispatch_run, :target],
+        force: true
+      )
+
     dispatch = dispatch(run)
 
     {scope, machine_logs?} =
@@ -257,9 +265,20 @@ defmodule Apiary.Runs.Diagnostics do
 
   defp work_item(_dispatch_run), do: nil
 
-  defp target(%Run{target_system: system, target_path: path}) do
-    with system when is_binary(system) <- matching(system, @place_text),
-         path when is_binary(path) <- matching(path, @place_text) do
+  # The run's target: the ref of its collection, from the run's target row, and the
+  # address the run's labels named, where both match their patterns. A run without a
+  # target row has no target.
+  defp target(%Run{target: %Target{collection_external_ref: ref}} = run) do
+    with collection when is_binary(collection) <- matching(ref, @collection_ref) do
+      put(%{"collection" => collection}, "address", address(run))
+    end
+  end
+
+  defp target(%Run{}), do: nil
+
+  defp address(%Run{target_system: system, target_path: path}) do
+    with system when is_binary(system) <- matching(system, @host_name),
+         path when is_binary(path) <- matching(path, @address_path) do
       %{"system" => system, "path" => path}
     end
   end
