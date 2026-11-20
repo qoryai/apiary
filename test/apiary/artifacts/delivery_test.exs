@@ -3,6 +3,7 @@ defmodule Apiary.Artifacts.DeliveryTest do
   # the database keeps on them, and the address of a version's previous delivery.
   use Apiary.DataCase, async: true
 
+  import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
@@ -102,6 +103,43 @@ defmodule Apiary.Artifacts.DeliveryTest do
           )
         end
       end
+    end
+
+    test "keep the target they went to, and lose it with the target's row", %{
+      work_item: work_item,
+      artifact: artifact
+    } do
+      target =
+        target_fixture(%{
+          organisation_id: work_item.organisation_id,
+          workspace_id: work_item.workspace_id
+        })
+
+      version = version!(artifact, 1, delivery: :sent, delivery_target_id: target.id)
+      assert Repo.get!(Version, version.id).delivery_target_id == target.id
+
+      Repo.delete!(target)
+
+      assert %{delivery: :sent, delivery_target_id: nil, workspace_id: workspace_id} =
+               Repo.get!(Version, version.id)
+
+      assert workspace_id == work_item.workspace_id
+    end
+
+    test "refuse a target of another workspace", %{work_item: work_item, artifact: artifact} do
+      other = work_item_fixture(scope_fixture())
+
+      target =
+        target_fixture(%{
+          organisation_id: other.organisation_id,
+          workspace_id: other.workspace_id
+        })
+
+      assert_raise Ecto.ConstraintError, ~r/delivery_target_id_fkey/, fn ->
+        version!(artifact, 1, delivery: :sent, delivery_target_id: target.id)
+      end
+
+      assert work_item.workspace_id != other.workspace_id
     end
 
     test "list the failure reasons of a change request in changes-failed.schema.json, and invalid" do

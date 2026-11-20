@@ -19,7 +19,8 @@ defmodule Apiary.Artifacts.Version do
   # `delivery_reply` is the adapter's reply, nil until one is stored; `delivery_failure`
   # is a reason in `delivery_failures/0`, nil until a failure is stored; `delivery_detail`
   # is what failed, 1 to 1000 characters on one line, nil for none; `delivery_at` is when the
-  # last of them was stored, nil until one is.
+  # last of them was stored, nil until one is; `delivery_target_id` is the workspace's
+  # target the entry went to, nil until it is sent and once the target is gone.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -56,6 +57,7 @@ defmodule Apiary.Artifacts.Version do
     belongs_to :artifact, Apiary.Artifacts.Artifact
     belongs_to :run, Apiary.Dispatches.DispatchRun
     belongs_to :user, Apiary.Accounts.User
+    belongs_to :delivery_target, Apiary.Runs.Target
     has_many :files, Apiary.Artifacts.ArtifactFile, foreign_key: :version_id
   end
 

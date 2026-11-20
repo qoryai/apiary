@@ -1969,7 +1969,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   writes the entry, so no entry is checked.
 - A version stores where its delivery to an adapter stands: `delivery` (`sent`,
   `delivered` or `failed`), the adapter's reply, the reason of a failure, a detail of 1 to
-  1000 characters on one line, and the time.
+  1000 characters on one line, the target it went to, and the time.
   `previous_address/1` reads the address of the newest reply of the version's artifact,
   for the `previous.address` of the next entry. No code writes the columns yet.
 - `record_invalid/2` stores a failed delivery with the reason `invalid` on a version whose
@@ -3763,11 +3763,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Three migrations add the saved features to the instance's settings (20261112120000,
   20261112140000) and the features each run started with (20261112120100).
 <!-- feature: workflow_model -->
-- `artifact_versions` (20261120140000 and 20261120140100): five nullable columns,
-  `delivery`, `delivery_reply`, `delivery_failure`, `delivery_detail` and `delivery_at`,
-  with no default, which rewrite no row and are empty on every stored version. Four checks
-  keep their values; the first migration adds them without a scan, and the second validates them with
-  a scan that does not block writes. Rolling back drops the columns and what they stored.
+- `artifact_versions` (20261120140000 and 20261120140100): six nullable columns,
+  `delivery`, `delivery_reply`, `delivery_failure`, `delivery_detail`,
+  `delivery_target_id` and `delivery_at`, with no default, which rewrite no row and are
+  empty on every stored version. `delivery_target_id` is a foreign key to `targets` of the
+  same workspace, set to NULL when the target is deleted, with a partial index. Four
+  checks keep their values; the first migration adds them without a scan, and the second
+  validates them with a scan that does not block writes. Rolling back drops the columns
+  and what they stored.
 <!-- /feature -->
 
 ## [0.1.0] - 2026-10-13

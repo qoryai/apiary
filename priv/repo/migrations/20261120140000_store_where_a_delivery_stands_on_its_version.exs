@@ -20,6 +20,10 @@ defmodule Apiary.Repo.Migrations.StoreWhereADeliveryStandsOnItsVersion do
   #   the schema also refuses a format character (category Cf) other than U+200C and
   #   U+200D, which a Postgres pattern cannot say, so the code that writes the column
   #   checks it.
+  # - `delivery_target_id`: the target of the workspace (`targets`) that the entry went to,
+  #   by its adapter and collection, nil until the entry is sent and once the target's row
+  #   is gone (`ON DELETE SET NULL` of this column alone, as `runs.target_id` does). A
+  #   report from an adapter applies only to a version whose target is that adapter's.
   # - `delivery_at`: when the last of these was stored, nil until one is.
   #
   # The columns are nullable with no default, so no existing row changes. The checks are
@@ -37,8 +41,20 @@ defmodule Apiary.Repo.Migrations.StoreWhereADeliveryStandsOnItsVersion do
       add :delivery_reply, :map
       add :delivery_failure, :text
       add :delivery_detail, :text
+
+      add :delivery_target_id,
+          references(:targets,
+            type: :binary_id,
+            with: [workspace_id: :workspace_id],
+            on_delete: {:nilify, [:delivery_target_id]}
+          )
+
       add :delivery_at, :utc_datetime_usec
     end
+
+    create index(:artifact_versions, [:delivery_target_id],
+             where: "delivery_target_id IS NOT NULL"
+           )
 
     create constraint(:artifact_versions, :artifact_versions_delivery_check,
              check: "delivery IS NULL OR delivery IN ('sent', 'delivered', 'failed')",
@@ -71,7 +87,10 @@ defmodule Apiary.Repo.Migrations.StoreWhereADeliveryStandsOnItsVersion do
     drop constraint(:artifact_versions, :artifact_versions_delivery_reply_check)
     drop constraint(:artifact_versions, :artifact_versions_delivery_check)
 
+    drop index(:artifact_versions, [:delivery_target_id], where: "delivery_target_id IS NOT NULL")
+
     alter table(:artifact_versions) do
+      remove :delivery_target_id
       remove :delivery_at
       remove :delivery_detail
       remove :delivery_failure

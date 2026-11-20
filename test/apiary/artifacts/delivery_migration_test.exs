@@ -15,7 +15,7 @@ defmodule Apiary.Artifacts.DeliveryMigrationTest do
              Apiary.Repo.Migrations.ValidateTheDeliveryChecksOfAnArtifactVersion,
              "validate_the_delivery_checks_of_an_artifact_version"}
   @options [log: false, migration_lock: false]
-  @columns ~w(delivery delivery_reply delivery_failure delivery_detail delivery_at)
+  @columns ~w(delivery delivery_reply delivery_failure delivery_detail delivery_target_id delivery_at)
 
   setup_all do
     for {version, migration, name} <- [@add, @validate], not Code.ensure_loaded?(migration) do
@@ -48,7 +48,7 @@ defmodule Apiary.Artifacts.DeliveryMigrationTest do
     %{rows: rows} =
       Repo.query!(
         "SELECT conname, convalidated FROM pg_constraint " <>
-          "WHERE conrelid = 'artifact_versions'::regclass AND conname LIKE 'artifact_versions_delivery%'" <>
+          "WHERE conrelid = 'artifact_versions'::regclass AND contype = 'c' AND conname LIKE 'artifact_versions_delivery%'" <>
           "ORDER BY conname"
       )
 
