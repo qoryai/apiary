@@ -228,7 +228,7 @@ defmodule Apiary.Sources.WireTest do
 
   describe "a failure report" do
     test "every body of changes-failed/ is read as written, raw or decoded" do
-      paths = fixtures("changes-failed/*.json")
+      paths = fixtures("changes-failed/{not-permitted,unreachable}.json")
 
       assert Enum.sort(paths) ==
                ~w(changes-failed/not-permitted.json changes-failed/unreachable.json)
@@ -250,8 +250,10 @@ defmodule Apiary.Sources.WireTest do
     end
 
     test "every invalid one is refused" do
-      paths = fixtures("invalid/changes-failed-*.json")
-      assert length(paths) == 2
+      paths =
+        fixtures("invalid/changes-failed-{unknown-reason,without-comment-id,comment-*}.json")
+
+      assert length(paths) == 6
 
       for path <- paths do
         assert Wire.failed(fixture(path)) == :error, path

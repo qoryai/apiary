@@ -329,6 +329,8 @@ defmodule Apiary.Integrations.DescriptionTest do
       "7f6c61e897edb6ff32cd519e33a49e821398fd27f4a6069fac5fd8499b86758f",
     "test/fixtures/contract/integration/v1/changes-failed.schema.json" =>
       "08ef050a381dc73db65a0c5fa844a44174ad2d699956f4cd68f75efc9745efb7",
+    "test/fixtures/contract/integration/v1/changes-submitted.schema.json" =>
+      "7c88e816e076f6f4166370b08680db09b534f05f0da81f341439a1342720b1f4",
     "test/fixtures/contract/integration/v1/changes.schema.json" =>
       "c56fa9aae6a93c5b7ca602740f73e16cac26dc9076c6579aec04eeb2ff98fd94",
     "test/fixtures/contract/integration/v1/description.schema.json" =>

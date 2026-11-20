@@ -95,12 +95,12 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
       # `Apiary.Adapters.Feed.append/2` takes (its test refuses each entry).
       refute Map.has_key?(fixture("invalid/changes-without-revision.json"), "revision")
 
-      # Every refused answer but that one, and but the failure reports, which are no
-      # answer.
+      # Every refused answer but that one, and but the failure reports and replies, which
+      # are no answer.
       paths =
         Enum.reject(
           fixtures("{closed,invalid}/changes-*.json") ++ ["changes/unknown-kind.json"],
-          &(String.starts_with?(&1, "invalid/changes-failed-") or
+          &(String.starts_with?(&1, ["invalid/changes-failed-", "invalid/changes-submitted-"]) or
               &1 == "invalid/changes-without-revision.json")
         )
 

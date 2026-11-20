@@ -29,15 +29,15 @@ defmodule Apiary.Adapters.FeedTest do
   end
 
   # The contract's refused answers whose entries an answer never has: every one but the
-  # one without `revision`, whose entries are good, and the failure reports, which are no
-  # answer.
+  # one without `revision`, whose entries are good, and the failure reports and replies,
+  # which are no answer.
   # `changes/unknown-kind.json` and `closed/changes-watch-with-ref.json` are accepted by the
   # contract's open schema, which ignores a member that it does not define. This writer
   # refuses their entries: it has no entry kind `settings`, and no `ref` on a `watch` entry.
   defp refused_entries do
     Enum.reject(
       fixtures("{closed,invalid}/changes-*.json") ++ ["changes/unknown-kind.json"],
-      &(String.starts_with?(&1, "invalid/changes-failed-") or
+      &(String.starts_with?(&1, ["invalid/changes-failed-", "invalid/changes-submitted-"]) or
           &1 == "invalid/changes-without-revision.json")
     )
   end

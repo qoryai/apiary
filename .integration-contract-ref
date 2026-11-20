@@ -4,7 +4,9 @@
 # signed connect pass and return and the signed setup pass, with and without the
 # organisation's slug, with their keys and payloads, setup passes refused, the adapter's
 # declarations, accepted and refused, with a setup_url among them, the change feed's
-# answers, accepted and refused, the listings of
+# answers, accepted and refused, the reports of a change request, replies under
+# changes-submitted/ and failures under changes-failed/change-request-*, accepted and
+# refused, the listings of
 # collections, each collection with the grant_ref of the grant that covers it, and a
 # disconnect of one, accepted and refused, the bodies of a collection's items and of an
 # item's comments, accepted and refused, a grant report with its external account, a

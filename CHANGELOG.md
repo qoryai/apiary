@@ -2902,6 +2902,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   disconnect and the feed writer, and their tests keep that. The `openai-subscription`
   description has the text of `9a1e64e`. The run, explore and diagnostics contracts stay
   at `e0d7be1`.
+- The reply to a change request (`changes-submitted.schema.json`) and the reports of a
+  change request (`changes-failed.schema.json`) are vendored from `9a1e64e` with their
+  fixtures. No endpoint reads the reply yet.
 
 ### Removed
 

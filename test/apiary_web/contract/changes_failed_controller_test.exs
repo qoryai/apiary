@@ -170,7 +170,7 @@ defmodule ApiaryWeb.Contract.ChangesFailedControllerTest do
     do: Repo.all(from c in Comment, order_by: c.id, select: {c.id, c.post_state, c.post_failure})
 
   test "each of the contract's reports is a signed 204 that marks the comment not posted", ctx do
-    paths = fixtures("changes-failed/*.json")
+    paths = fixtures("changes-failed/{not-permitted,unreachable}.json")
     assert paths == ~w(changes-failed/not-permitted.json changes-failed/unreachable.json)
 
     for path <- paths do
@@ -202,8 +202,8 @@ defmodule ApiaryWeb.Contract.ChangesFailedControllerTest do
     {_ticket, comment} = posting(ctx)
     before = states()
 
-    paths = fixtures("invalid/changes-failed-*.json")
-    assert length(paths) == 2
+    paths = fixtures("invalid/changes-failed-{unknown-reason,without-comment-id,comment-*}.json")
+    assert length(paths) == 6
 
     bodies =
       Enum.map(paths, &Map.put(fixture(&1), "time", now_time())) ++
