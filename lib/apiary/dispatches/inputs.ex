@@ -34,8 +34,8 @@ defmodule Apiary.Dispatches.Inputs do
   #     (`Apiary.Sources.Item`, `Apiary.Sources.Comment`);
   #   - `comments_omitted`: how many of the oldest were left out to keep the input within
   #     `max_bytes/0`, 768 KiB encoded, 0 for none;
-  #   - `target`: the run's target, the documents' `target`, left out where the
-  #     work item has none;
+  #   - `target`: the run's target, the documents' `target`, `{collection, address?}`
+  #     (`Apiary.Runs.Target.document/1`), left out where the work item has none;
   #   - `domain`: the name of the workspace's domain, the documents' `domain`.
   #
   #   The answers, the proposal and the review comments are not in the input: the run
@@ -63,6 +63,7 @@ defmodule Apiary.Dispatches.Inputs do
   alias Apiary.Accounts.User
   alias Apiary.Adapters.Wire, as: AdapterWire
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Runs.Target
   alias Apiary.Sources.{Comment, Item}
   alias Apiary.WorkItems.WorkItem
 
@@ -108,7 +109,7 @@ defmodule Apiary.Dispatches.Inputs do
           DispatchRun.t(),
           %{
             domain: String.t(),
-            target: %{system: String.t(), path: String.t()} | nil
+            target: Apiary.Lingo.Domain.target() | nil
           },
           pos_integer
         ) ::
@@ -279,8 +280,7 @@ defmodule Apiary.Dispatches.Inputs do
 
   defp target(nil), do: []
 
-  defp target(%{system: system, path: path}),
-    do: [{"target", Jason.OrderedObject.new([{"system", system}, {"path", path}])}]
+  defp target(target), do: [{"target", Target.document(target)}]
 
   # The document with every comment that fits, the newest kept: the fewest oldest left out
   # for the whole to be at most `max` bytes encoded. Each comment's size is counted once;

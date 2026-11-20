@@ -20,7 +20,7 @@ defmodule Apiary.Dispatches.InputsTakeInCommentTest do
     {:ok, inputs} =
       Inputs.explore(work_item, run, %{
         domain: "software",
-        target: %{system: work_item.target_system, path: work_item.target_path}
+        target: Apiary.WorkItems.WorkItem.target(work_item)
       })
 
     inputs |> Jason.encode!() |> Jason.decode!()

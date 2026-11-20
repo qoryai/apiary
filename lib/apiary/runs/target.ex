@@ -106,6 +106,22 @@ defmodule Apiary.Runs.Target do
   end
 
   @doc """
+  The target as the contracts write it, `{collection, address?}`: the ref of its
+  collection and, for a target with an address, `address` with its `system` and `path`.
+  A target without an address has no `address` member.
+  """
+  @spec document(Apiary.Lingo.Domain.target()) :: Jason.OrderedObject.t()
+  def document(%{collection_external_ref: ref, system: system, path: path})
+      when is_binary(ref) do
+    address =
+      if is_binary(system) and is_binary(path),
+        do: [{"address", Jason.OrderedObject.new([{"system", system}, {"path", path}])}],
+        else: []
+
+    Jason.OrderedObject.new([{"collection", ref} | address])
+  end
+
+  @doc """
   The query of the row of `target` in the workspace `workspace_id`, by its adapter and its
   collection ref.
   """

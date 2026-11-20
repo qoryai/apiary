@@ -28,6 +28,7 @@ defmodule Apiary.Dispatches.HandoverTest do
   alias Apiary.WorkItems.WorkItem
   alias Apiary.PublicGitServer
   alias Apiary.QoryHarnessFixture
+  alias ApiaryWeb.Contract.DispatchAnswer
 
   @moduletag needs: :factory
 
@@ -308,7 +309,11 @@ defmodule Apiary.Dispatches.HandoverTest do
       for key <- ~w(answers proposal changes facts solution),
           do: refute(Map.has_key?(inputs, key))
 
-      assert inputs["target"] == %{"system" => "forge.example.com", "path" => "acme/shop"}
+      assert inputs["target"] == %{
+               "collection" => work_item.target_collection_external_ref,
+               "address" => %{"system" => "forge.example.com", "path" => "acme/shop"}
+             }
+
       assert inputs["domain"] == "software"
     end
   end
@@ -1376,6 +1381,11 @@ defmodule Apiary.Dispatches.HandoverTest do
                system: nil,
                path: nil
              }
+
+      # The documents and the input write the target without an address member.
+      documents = claimed.documents |> DispatchAnswer.documents() |> Jason.encode!()
+      assert Jason.decode!(documents)["target"] == %{"collection" => "Q_support"}
+      assert inputs(claimed)["target"] == %{"collection" => "Q_support"}
 
       assert queue_run!(queued).state == :claimed
     end
