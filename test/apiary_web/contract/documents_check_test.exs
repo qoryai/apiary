@@ -2,10 +2,12 @@ defmodule ApiaryWeb.Contract.DocumentsCheckTest do
   # The two rules of a run's documents that the schema cannot state, as the integrations'
   # `Documents.Check()` states them (`contracts/run.go`). The three documents of
   # `contracts/run/v1/fixtures/check/` at the commit in
-  # `test/fixtures/documents-check/.contract-ref`, which the run contract's schema accepts,
-  # are replayed and return the message of the Go test `TestCheckRefusesWhatTheSchemaCannotSay`.
-  # The vendored run contract (`test/fixtures/contract/run/v1`) is at an earlier commit and
-  # has no `check/` folder, so these three are vendored beside it, by their SHA-256.
+  # `test/fixtures/documents-check/.contract-ref` are replayed and return the message of the
+  # Go test `TestCheckRefusesWhatTheSchemaCannotSay`. The run schema at that commit accepts
+  # them. The vendored run contract (`test/fixtures/contract/run/v1`) is at e0d7be1, whose
+  # schema refuses them for their `subject`, and has no `check/` folder. So these three are
+  # vendored beside it, by their SHA-256, until the run contract is vendored at a later
+  # commit (A-66, Q-72).
   use ExUnit.Case, async: true
 
   alias ApiaryWeb.Contract.DocumentsCheck
@@ -80,14 +82,19 @@ defmodule ApiaryWeb.Contract.DocumentsCheckTest do
       assert DocumentsCheck.check(%{}) == :ok
     end
 
-    test "is reported for the target before a repeat among the further targets that follows" do
-      # `documents.schema.json` has a repeated collection and the target's among the entries:
-      # the first entry that the rule refuses, by position, is the one reported.
+    test "reports the first entry that the rule refuses, by position" do
       assert DocumentsCheck.check(%{
                "target" => @target,
                "further_targets" => further(~w(R_2 R_2 R_1))
              }) ==
                {:error, ~s|List each collection of further_targets once: "R_2" appears twice.|}
+
+      assert DocumentsCheck.check(%{
+               "target" => @target,
+               "further_targets" => further(~w(R_2 R_1 R_2))
+             }) ==
+               {:error,
+                ~s|Remove the collection "R_1" from further_targets (index 1): target has it.|}
     end
 
     test "writes a quote, a backslash and a control character as Go's %q does" do
@@ -95,6 +102,14 @@ defmodule ApiaryWeb.Contract.DocumentsCheckTest do
                {:error,
                 ~s|List each collection of further_targets once: "a\\"b\\\\c\\n" appears twice.|}
     end
+  end
+
+  test "writes a character that Go's unicode.IsPrint refuses as \\u or \\U, and others as they are" do
+    ref = "a\u{2028}b\u{3000}c\u{E0041}d\u{E9}\u{7F}"
+
+    assert DocumentsCheck.check(%{"further_targets" => further([ref, ref])}) ==
+             {:error,
+              ~s|List each collection of further_targets once: "a\\u2028b\\u3000c\\U000e0041dé\\x7f" appears twice.|}
   end
 
   test "a deliver type that appears twice is reported before a repeat in further_targets" do

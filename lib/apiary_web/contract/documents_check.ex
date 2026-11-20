@@ -80,32 +80,42 @@ defmodule ApiaryWeb.Contract.DocumentsCheck do
     end
   end
 
-  defp hex(code),
-    do: code |> Integer.to_string(16) |> String.downcase() |> String.pad_leading(2, "0")
-
-  # Go's `%q`: the string in double quotes, `\` and `"` escaped with a backslash, and the
-  # control characters below U+0020 and U+007F written as `\a \b \f \n \r \t \v` or `\xNN`.
-  # shortcut: a non-ASCII non-printable character (U+0080 to U+009F, a format character)
-  # stays as it is where `%q` writes `\uNNNN`; replace it when a collection ref or a type
-  # may hold one (the type's pattern cannot; a ref is any text without U+0000).
+  # Go's `%q` (`strconv.Quote`): the string in double quotes; `\` and `"` escaped with a
+  # backslash; `\a \b \f \n \r \t \v` for those controls; `\xNN` for any other character
+  # below U+0020 and U+007F; `\uNNNN` or `\UNNNNNNNN`, in lower case, for any other
+  # character that Go's `unicode.IsPrint` refuses. IsPrint is true for a letter, mark,
+  # number, punctuation or symbol, and for U+0020 alone; `printable?/1` tests the first four.
+  # shortcut: the categories are those of this Erlang/OTP release, not of Go's Unicode
+  # version, so a character that only one of them has assigned is written differently;
+  # replace it when a collection ref or a type may hold such a character. A decoded JSON
+  # string has no invalid UTF-8, so Go's `\xNN` for an invalid byte is not needed.
   defp quote_string(value) when is_binary(value) do
-    escaped =
-      for <<char::utf8 <- value>>, into: "" do
-        case char do
-          ?\\ -> "\\\\"
-          ?" -> "\\\""
-          7 -> "\\a"
-          8 -> "\\b"
-          12 -> "\\f"
-          ?\n -> "\\n"
-          ?\r -> "\\r"
-          ?\t -> "\\t"
-          11 -> "\\v"
-          c when c < 0x20 or c == 0x7F -> "\\x" <> hex(c)
-          c -> <<c::utf8>>
-        end
-      end
-
+    escaped = for <<char::utf8 <- value>>, into: "", do: escape(char)
     ~s("#{escaped}")
   end
+
+  defp escape(?\\), do: "\\\\"
+  defp escape(?"), do: "\\\""
+  defp escape(7), do: "\\a"
+  defp escape(8), do: "\\b"
+  defp escape(12), do: "\\f"
+  defp escape(?\n), do: "\\n"
+  defp escape(?\r), do: "\\r"
+  defp escape(?\t), do: "\\t"
+  defp escape(11), do: "\\v"
+  defp escape(char) when char < 0x20 or char == 0x7F, do: "\\x" <> hex(char, 2)
+  defp escape(?\s), do: " "
+
+  defp escape(char) do
+    cond do
+      printable?(char) -> <<char::utf8>>
+      char < 0x10000 -> "\\u" <> hex(char, 4)
+      true -> "\\U" <> hex(char, 8)
+    end
+  end
+
+  defp printable?(char), do: Regex.match?(~r/\A[\p{L}\p{M}\p{N}\p{P}\p{S}]\z/u, <<char::utf8>>)
+
+  defp hex(code, width),
+    do: code |> Integer.to_string(16) |> String.downcase() |> String.pad_leading(width, "0")
 end

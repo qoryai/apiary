@@ -32,8 +32,8 @@ defmodule Apiary.Adapters.FeedTest do
   # one without `revision`, whose entries are good, and the failure reports, which are no
   # answer.
   # `changes/unknown-kind.json` and `closed/changes-watch-with-ref.json` are accepted by the
-  # contract's open schema, which a reader of the feed ignores an undefined member by; this
-  # writer refuses their entries, which it takes no kind or member for.
+  # contract's open schema, which ignores a member that it does not define. This writer
+  # refuses their entries: it has no entry kind `settings`, and no `ref` on a `watch` entry.
   defp refused_entries do
     Enum.reject(
       fixtures("{closed,invalid}/changes-*.json") ++ ["changes/unknown-kind.json"],

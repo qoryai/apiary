@@ -3,8 +3,7 @@
 # invalid/ and refused by a reader under refused-by-reader/, and under adapter/ the
 # signed connect pass and return and the signed setup pass, with and without the
 # organisation's slug, with their keys and payloads, setup passes refused, the adapter's
-# declarations, accepted and refused, with a setup_url among them, those that only a closed copy of the schema
-# refuses under closed/, the change feed's
+# declarations, accepted and refused, with a setup_url among them, the change feed's
 # answers, accepted and refused, the listings of
 # collections, each collection with the grant_ref of the grant that covers it, and a
 # disconnect of one, accepted and refused, the bodies of a collection's items and of an
@@ -15,7 +14,9 @@
 # signed answer, a declaration with a call_url, a signed call with its signed answer, and
 # the bodies of the calls for a run's credential, to resolve addresses and to read a
 # document, with their answers, accepted and refused),
-# and whose connect-return.schema.json and setup-pass.schema.json are under
+# and, under closed/, the documents that only a closed copy of a schema refuses: the
+# schemas are open, and a reader ignores a member that a schema does not define. Under
+# changes/, one entry of a kind that no schema defines. The connect-return.schema.json and setup-pass.schema.json are under
 # test/fixtures/integration-contract/schema/: a commit of the integrations, pinned by its
 # id.
 #

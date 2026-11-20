@@ -1,7 +1,8 @@
 defmodule Apiary.Adapters.ChangeRequestTest do
   # A `change_request` entry against the integrations contract's `changes.schema.json`,
-  # vendored under `priv/contract/integration/`: its title and text, and its data, as the
-  # contract's refused fixtures (`invalid/changes-change-request-*.json`) have them.
+  # vendored under `priv/contract/integration/`: its title, text and data, its id and kind,
+  # and `previous`. A refusal is asserted by where in the entry the schema refuses it, so
+  # an entry refused for another reason fails the test.
   use ExUnit.Case, async: true
 
   alias Apiary.Adapters.ChangeRequest
@@ -21,11 +22,16 @@ defmodule Apiary.Adapters.ChangeRequestTest do
     )
   end
 
-  defp refused(changes) do
-    assert {:error, %{valid: false, count: count, errors: [_ | _]}} =
-             ChangeRequest.validate(entry(changes))
-
+  # The error locations (`#/title` for the member `title`) of a refused entry.
+  defp locations(entry) do
+    assert {:error, %{valid: false, count: count, errors: errors}} = ChangeRequest.validate(entry)
     assert count >= 1
+    Enum.map(errors, & &1.instanceLocation)
+  end
+
+  # The entry with `value` as its member `key` is refused at that member.
+  defp refused(key, value) do
+    assert "#/#{key}" in locations(entry(%{key => value})), "#{key}: #{inspect(value)}"
   end
 
   test "a valid entry passes" do
@@ -41,17 +47,17 @@ defmodule Apiary.Adapters.ChangeRequestTest do
                entry(%{"title" => "A title with a zero-width joiner: 👩\u{200D}💻"})
              ) == :ok
 
-      refused(%{"title" => ""})
-      refused(%{"title" => String.duplicate("é", 257)})
-      refused(%{"title" => "Show delivery dates\nat checkout"})
+      refused("title", "")
+      refused("title", String.duplicate("é", 257))
+      refused("title", "Show delivery dates\nat checkout")
     end
 
     test "has no hidden character and at least one character that is not a space" do
-      refused(%{"title" => "Show delivery\u{200B}dates"})
-      refused(%{"title" => "Show delivery\u{202E}dates"})
-      refused(%{"title" => "Show delivery\u{E0041}dates"})
-      refused(%{"title" => "   "})
-      refused(%{"title" => "\u{A0}\u{3000}"})
+      refused("title", "Show delivery\u{200B}dates")
+      refused("title", "Show delivery\u{202E}dates")
+      refused("title", "Show delivery\u{E0041}dates")
+      refused("title", "   ")
+      refused("title", "\u{A0}\u{3000}")
     end
   end
 
@@ -60,8 +66,8 @@ defmodule Apiary.Adapters.ChangeRequestTest do
       assert ChangeRequest.validate(entry(%{"text" => String.duplicate("é", 20_000)})) == :ok
       assert ChangeRequest.validate(entry(%{"text" => ""})) == :ok
 
-      refused(%{"text" => "A text with a NUL" <> <<0>> <> " in it"})
-      refused(%{"text" => String.duplicate("é", 20_001)})
+      refused("text", "A text with a NUL" <> <<0>> <> " in it")
+      refused("text", String.duplicate("é", 20_001))
     end
 
     test "may have the line that marks a block: the marker rule is not the envelope's" do
@@ -74,21 +80,43 @@ defmodule Apiary.Adapters.ChangeRequestTest do
     test "is a JSON object" do
       assert ChangeRequest.validate(entry(%{"data" => %{}})) == :ok
 
-      for data <- ["branch", ["a"], nil, 1] do
-        refused(%{"data" => data})
-      end
+      for data <- ["branch", ["a"], nil, 1], do: refused("data", data)
     end
 
-    test "is required, with the title, the text, the kind and the target" do
-      for key <- ~w(data title text change_kind target change_request_id) do
-        assert {:error, %{valid: false}} = ChangeRequest.validate(Map.delete(entry(), key)), key
-      end
+    test "has no string with U+0000 in it, at any depth" do
+      assert "#/data/text" in locations(entry(%{"data" => %{"text" => "a" <> <<0>> <> "b"}}))
     end
   end
 
-  test "an entry that is no map is refused" do
+  describe "the id, the kind and the previous version" do
+    test "the id starts with av_ and has 16 characters of the id alphabet" do
+      refused("change_request_id", "wi_7k2m9q4v1x8z3c5d")
+      refused("change_request_id", "av_7k2m9q4v1x8z3c5")
+    end
+
+    test "the change kind is lower-case words joined by hyphens" do
+      assert ChangeRequest.validate(entry(%{"change_kind" => "pull-request"})) == :ok
+      refused("change_kind", "Reply")
+      refused("change_kind", "reply_all")
+    end
+
+    test "previous has a title, an address or both, and no other member alone" do
+      assert ChangeRequest.validate(entry(%{"previous" => %{"title" => "Dates"}})) == :ok
+      refused("previous", %{})
+      refused("previous", "Dates")
+      assert "#/previous/title" in locations(entry(%{"previous" => %{"title" => "a\nb"}}))
+    end
+  end
+
+  test "a member that the schema requires is missing" do
+    for key <- ~w(kind change_request_id change_kind target title text data) do
+      assert "#" in locations(Map.delete(entry(), key)), key
+    end
+  end
+
+  test "an entry that is no map is refused at the entry" do
     for value <- [nil, "reply", [], 1] do
-      assert {:error, %{valid: false}} = ChangeRequest.validate(value), inspect(value)
+      assert "#" in locations(value), inspect(value)
     end
   end
 end

@@ -48,7 +48,7 @@ defmodule Apiary.Integrations.DescriptionTest do
     end
 
     # The schema leaves an undefined member open, as the contract's reader ignores it: only
-    # a closed copy of the schema, which the integrations' own tests use, refuses these.
+    # a closed copy of the schema, which the tests of qoryai/integrations use, refuses these.
     test "a fixture that only a closed copy of the schema refuses is read" do
       names = fixture_names("closed/*.json")
       assert length(names) == 13
