@@ -2908,6 +2908,25 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Fixed
 
+<!-- feature: factory -->
+- A claim that queues a build no longer fails when a member's Rebuild of the same target
+  runs at the same time. The two waited on each other, and Postgres aborted the claim
+  (`deadlock_detected`). Both now lock the workspace's run counter before they write an
+  environment record or a waiting prebuild, so the second waits for the first. Run
+  numbers stay in order, without gaps.
+- A claim that frees a lapsed prebuild no longer fails when a listing of the prebuild's
+  connection, an assign, an unlink, a disconnect, a Backlog switch, a choice or an
+  adapter's start writes the same collections at the same time. Those changes now lock
+  collections `FOR NO KEY UPDATE`, which the claim's foreign key check on a collection
+  does not wait for, so Postgres no longer aborts the claim (`deadlock_detected`).
+- A claim of the instance's node pool that queues a build no longer fails, and the sweep
+  of lapsed leases no longer fails, when the two run at the same time with lapsed runs in
+  two workspaces. They locked the workspaces' run counters in opposite orders, and
+  Postgres aborted one of them (`deadlock_detected`). The claim now locks the run
+  counters of its builds and of the runs it puts back in the queue in one pass, in the
+  sweep's order.
+<!-- /feature -->
+
 <!-- feature: factory, secrets -->
 - A Codex run that Forager ends `paused` with `model_key_switch`, as its key is out while
   another key of the run is usable, is Paused, where it read as failed. The run that

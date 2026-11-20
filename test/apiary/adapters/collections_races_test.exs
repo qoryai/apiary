@@ -9,7 +9,8 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   # Backlog switch against two connections' parts naming its ref, a disconnect
   # against a part that completes its listing, a move against a disconnect that names
   # the connection the ref moves away from, a listing's part against a restore and
-  # a marking of the workspace of its grant's rule, a start that changes the adapter's items against a
+  # a marking of the workspace of its grant's rule, a start that changes the adapter's
+  # items against a
   # listing's part, a Backlog switch and an assign, and a collection's Backlog
   # switch, by its id, against a listing's part, its target's switch, a start and an
   # assign. Each side runs on a separate connection, outside the SQL sandbox, so each
@@ -205,8 +206,10 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
 
     assert Task.await(listing.task) == {:error, :ended}
 
-    assert Repo.aggregate(from(c in Collection, where: c.adapter_id == ^ctx.adapter.id), :count) ==
-             0
+    assert Repo.aggregate(
+             from(c in Collection, where: c.adapter_id == ^ctx.adapter.id),
+             :count
+           ) == 0
   end
 
   test "the connection's end waiting on a listing ends what the listing made", ctx do
@@ -220,7 +223,10 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     assert {:ok, %Connection{}} = Task.await(ended.task)
     assert live(ctx.connection) == []
 
-    assert Repo.one!(from c in Collection, where: c.connection_id == ^ctx.connection.id).ended_reason ==
+    assert Repo.one!(
+             from c in Collection,
+               where: c.connection_id == ^ctx.connection.id
+           ).ended_reason ==
              :connection_ended
   end
 
@@ -453,8 +459,17 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
       Collections.unlink_workspace(ctx.scope.organisation.id, ctx.scope.workspace.id)
     end
 
-  defp lock_row(id),
-    do: fn -> Repo.one!(from c in Collection, where: c.id == ^id, lock: "FOR UPDATE") end
+  # A disconnect of the live collection `ref` of `side`'s connection
+  # (`Collections.disconnect/2`): it holds that one row, by adapter, connection and ref
+  # (`lock_live/3`), and no connection's row, then the feed's counter when the collection
+  # is linked.
+  defp disconnect(ctx, side, ref),
+    do: fn ->
+      Collections.disconnect(ctx.key_scope, %{
+        connection_id: side.connection.public_id,
+        collection_ref: ref
+      })
+    end
 
   # What `fun` answers, or `{:raised, message}`: a deadlock fails the assertion, not the
   # process.
@@ -486,12 +501,17 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     """)
   end
 
-  # The middle collection held, a part waits on it holding `A`; then `change`, which
-  # holds the collections by id, `C` first, starts and waits. A change that took `C`
-  # would wait on `B`, and once `B` is let go the two would wait on each other in turn
-  # (`deadlock_detected`); it waits on the part's connection instead, and each answers.
+  # A disconnect of the middle collection held, a part waits on it holding `A`; then
+  # `change`, which holds the collections by id, `C` first, starts and waits. A change
+  # that took `C` would wait on `B`, and once `B` is let go the two would wait on each
+  # other in turn (`deadlock_detected`); it waits on the part's connection instead, and
+  # both commit. `B` is switched off first, so it is not linked and the disconnect takes
+  # no feed counter, which the change would wait on too. The disconnect ends `B`, so the
+  # part makes a new `B`, in no workspace.
   defp through_the_middle(ctx, rows, change) do
-    {held, held_pid} = hold(lock_row(rows.b))
+    {:ok, 1} = by_id(ctx, rows.b, false).()
+    {held, held_pid} = hold(disconnect(ctx, ctx, "B"))
+    assert held.result == {:ok, :disconnected}
     listed = start(safely(targeted(ctx, "second", DateTime.add(@started, 60))))
     await_blocked(listed.backend, held_pid)
 
@@ -507,11 +527,11 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     rows = against_ids(ctx)
 
     assert through_the_middle(ctx, rows, switch(ctx, rows.target, false)) ==
-             {{:ok, :accepted}, {:ok, 3}}
+             {{:ok, :accepted}, {:ok, 2}}
 
     assert Repo.all(
              from c in Collection,
-               where: c.id in ^[rows.a, rows.b, rows.c],
+               where: c.id in ^[rows.a, rows.c],
                select: c.backlog,
                distinct: true
            ) == [false]
@@ -535,6 +555,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
        ctx do
     rows = against_ids(ctx)
 
+    # The unlink counts `B`, ended, too.
     assert through_the_middle(ctx, rows, unlink(ctx)) == {{:ok, :accepted}, 3}
 
     assert Repo.all(
@@ -618,32 +639,32 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     )
   end
 
-  test "a disconnect holding a linked collection, then a part that completes the listing and links another: neither waits on the other in turn",
+  test "a disconnect holding a collection, then a part that completes the listing and links another, then a disconnect's entry: neither waits on the other in turn",
        ctx do
+    # `Z`, made before the grant has a rule, is in no workspace; `W`, of another
+    # connection of the adapter, is linked, with no feed entry yet.
+    {:ok, :accepted} = listing(ctx, ["Z"], "first", @started).()
+    [z] = ids(ctx.connection, ["Z"])
+    theirs = other_side(ctx)
+    linked(theirs, "W")
+
     # The grant's rule assigns what a part makes to the workspace, so the part links it.
     grant_rule_fixture(ctx.connection, ctx.scope.workspace)
 
-    {:ok, :accepted} = listing(ctx, ["Z"], "first", @started).()
-    [z] = ids(ctx.connection, ["Z"])
-
-    # The disconnect's first step: it holds `Z`, by adapter, connection and ref, and no
-    # connection's row.
-    {held, held_pid} = hold(lock_row(z))
+    # A disconnect of `Z`, held: it holds `Z`, by adapter, connection and ref, and no
+    # connection's row, and writes no entry for `Z`, which is not linked.
+    {held, held_pid} = hold(disconnect(ctx, ctx, "Z"))
+    assert held.result == {:ok, :disconnected}
 
     # The part makes `N`, linked, and ends `Z`, which the first listing named: it waits
     # on `Z`. A part that took the feed counter for `N` before it ended `Z` would keep
-    # the disconnect's entry waiting on it in turn.
+    # the entry of a disconnect holding `Z` waiting on it in turn. A disconnect of a
+    # linked collection holds it, then takes the counter: here the disconnect of `W`, in
+    # the same transaction, takes it after `Z`'s lock.
     listed = start(safely(listing(ctx, ["N"], "second", DateTime.add(@started, 60))))
     await_blocked(listed.backend, held_pid)
 
-    disconnect = fn ->
-      Collections.disconnect(ctx.key_scope, %{
-        connection_id: ctx.connection.public_id,
-        collection_ref: "Z"
-      })
-    end
-
-    assert continue(held, safely(disconnect)) == {:ok, :disconnected}
+    assert continue(held, safely(disconnect(ctx, theirs, "W"))) == {:ok, :disconnected}
     commit(held)
 
     assert Task.await(listed.task) == {:ok, :accepted}
@@ -651,8 +672,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     assert live(ctx.connection) == ["N"]
 
     assert collection_entries(ctx.adapter) == [
-             %{"collection_ref" => "Z", "status" => "linked"},
-             %{"collection_ref" => "Z", "status" => "unlinked"},
+             %{"collection_ref" => "W", "status" => "unlinked"},
              %{"collection_ref" => "N", "status" => "linked"}
            ]
   end
@@ -703,13 +723,16 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     theirs = other_side(ctx)
     rows = against_ids(theirs)
 
-    # The middle collection held. The part's transaction holds none of the three, and
-    # commits; its move ends `A`, alone in a transaction, then waits on `B`. A switch
-    # holding them by id, `C` first, waits on `B` too, behind the move; once `B` is let
-    # go neither waits on the other in turn, since the move holds one row at a time. The
-    # move takes `B` first and ends it, so the switch, which read `A` ended already,
-    # holds and turns off `C` alone, then the move ends `C`.
-    {held, held_pid} = hold(lock_row(rows.b))
+    # The middle collection held by a switch of `B` on, which it is already: the switch
+    # holds their connection `FOR SHARE` and `B`, and writes nothing. The part's
+    # transaction holds none of the three, and commits; its move ends `A`, alone in a
+    # transaction, then waits on `B`. A switch holding them by id, `C` first, waits on `B`
+    # too, behind the move; once `B` is let go neither waits on the other in turn, since
+    # the move holds one row at a time. The move takes `B` first and ends it, so the
+    # switch, which read `A` ended already, holds and turns off `C` alone, then the move
+    # ends `C`.
+    {held, held_pid} = hold(switch_one(theirs, rows.b, true))
+    assert held.result == {:ok, 0}
     listed = start(safely(targeted(ctx, "mine", @started)))
     await_blocked(listed.backend, held_pid)
     assert Repo.get!(Collection, rows.a).ended_reason == :disconnected
@@ -762,11 +785,15 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
 
   # `Z`, listed by `theirs` at `@started` and assigned to its workspace, so it is linked:
   # its id.
-  defp linked_z(theirs) do
-    {:ok, :accepted} = listing(theirs, ["Z"], "first", @started).()
-    [z] = ids(theirs.connection, ["Z"])
-    {:ok, _} = set_collection_workspace(Repo.get!(Collection, z), theirs.scope.workspace)
-    z
+  defp linked_z(theirs), do: linked(theirs, "Z")
+
+  # The collection `ref`, listed by `side` at `@started` and assigned to its workspace,
+  # so it is linked: its id.
+  defp linked(side, ref) do
+    {:ok, :accepted} = listing(side, [ref], "first", @started).()
+    [id] = ids(side.connection, [ref])
+    {:ok, _} = set_collection_workspace(Repo.get!(Collection, id), side.scope.workspace)
+    id
   end
 
   defp switch_one(side, id, on),
@@ -847,8 +874,10 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     theirs = other_side(ctx)
     z = linked_z(theirs)
 
-    # The move's first step waits on `Z`, held; the part's transaction has committed.
-    {held, held_pid} = hold(lock_row(z))
+    # The move's first step waits on `Z`, held by a switch of `Z` on, which it is
+    # already; the part's transaction has committed.
+    {held, held_pid} = hold(switch_one(theirs, z, true))
+    assert held.result == {:ok, 0}
     listed = start(safely(listing(ctx, ["Z"], "mine", DateTime.add(@started, 60))))
     await_blocked(listed.backend, held_pid)
 
@@ -878,9 +907,11 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     z = linked_z(theirs)
     unlinked_before = unlinked_refs(ctx.adapter)
 
-    # The move's first step waits on `Z`, held; then the disconnect that names their
-    # connection waits on the same row, behind it.
-    {held, held_pid} = hold(lock_row(z))
+    # The move's first step waits on `Z`, held by a switch of `Z` on, which it is
+    # already; then the disconnect that has their connection's id waits on the same
+    # row, behind it.
+    {held, held_pid} = hold(switch_one(theirs, z, true))
+    assert held.result == {:ok, 0}
     listed = start(safely(listing(ctx, ["Z"], "mine", DateTime.add(@started, 60))))
     await_blocked(listed.backend, held_pid)
 

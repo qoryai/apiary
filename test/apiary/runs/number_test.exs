@@ -152,10 +152,27 @@ defmodule Apiary.Runs.NumberTest do
     assert next(workspace) == 5
   end
 
+  test "hold/2 locks the counter and takes no number" do
+    %{workspace: workspace} = sign_up_fixture()
+
+    assert Repo.transact(fn -> {:ok, Number.hold(workspace, [])} end) == {:ok, :ok}
+    assert [[_organisation_id, 0]] = counter(workspace)
+    assert next(workspace) == 1
+
+    assert Repo.transact(fn ->
+             :ok = Number.hold(workspace, [])
+             {:ok, Number.next(workspace)}
+           end) == {:ok, 2}
+
+    assert Repo.transact(fn -> {:ok, Number.hold(workspace, [])} end) == {:ok, :ok}
+    assert next(workspace) == 3
+  end
+
   test "outside a transaction, taking a number raises" do
     %{workspace: workspace} = sign_up_fixture()
 
     assert_raise ArgumentError, ~r/inside the transaction/, fn -> Number.next(workspace) end
     assert_raise ArgumentError, ~r/inside the transaction/, fn -> Number.give_back(workspace) end
+    assert_raise ArgumentError, ~r/inside the transaction/, fn -> Number.hold(workspace, []) end
   end
 end
