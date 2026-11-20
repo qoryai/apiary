@@ -915,7 +915,8 @@ defmodule ApiaryWeb.ProviderLoginTest do
       end
     end
 
-    test "stores nothing for a key that was deleted and added again during the sign-in", ctx do
+    test "stores nothing for a key that was deleted, and another added, during the sign-in",
+         ctx do
       %{conn: conn, scope: scope} = ctx
       Stub.put(tokens: login_tokens(tag: "stale"), hold: true)
 
@@ -933,22 +934,22 @@ defmodule ApiaryWeb.ProviderLoginTest do
       old = key_value!(provider, "key-2")
       sign_in!(lv, "#{key_dom(provider, "key-2")}-sign-in")
 
-      # The key is deleted and a new key is added: it gets the value id `key-2` again, and
-      # another row id.
+      # The key is deleted and a new key is added: it gets the next value id, `key-3`, since
+      # a value id is never used again, and another row id.
       {:ok, provider} = Connections.delete_provider_key(scope, provider, "key-2")
 
       {:ok, provider} =
         Connections.add_provider_key(scope, provider, %{value: device_login(tag: "new")})
 
-      added = key_value!(provider, "key-2")
+      added = key_value!(provider, "key-3")
       refute added.id == old.id
-      before = login_of(provider, "key-2")
+      before = login_of(provider, "key-3")
 
       Stub.approve()
       eventually(fn -> assert %{state: :failed, cause: :store} = device_of(lv) end)
 
-      assert login_of(provider, "key-2") == before
-      assert key_value!(provider, "key-2").value_set_at == added.value_set_at
+      assert login_of(provider, "key-3") == before
+      assert key_value!(provider, "key-3").value_set_at == added.value_set_at
       refute render(lv) =~ "is saved."
     end
 
