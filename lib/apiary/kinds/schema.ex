@@ -7,12 +7,13 @@ defmodule Apiary.Kinds.Schema do
   settings schema. Every schema is given `Apiary.Kinds.Pattern.end_only/1` first, so its
   patterns read `$` as the contracts do. A schema from a file is built once and kept in
   `:persistent_term`. Nothing is fetched over the network. A reference outside the file
-  resolves, by its URL, to one of three vendored files: the Forager contract's
+  resolves, by its URL, to one of four vendored files: the Forager contract's
   `auth.schema.json`, which a service definition's `auth` and a description's
   `model_provider` role refer to, and its `api-format.schema.json`, which that role
   refers to, both under `priv/contract/`; and the integrations contract's
   `definitions.schema.json`, under `priv/contract/integration/`, which the description's
-  schema refers to. JSON Schema's meta-schemas, which JSV embeds, and schemas of loaded
+  schema refers to, and `description.schema.json`, which `definitions.schema.json` refers
+  to. JSON Schema's meta-schemas, which JSV embeds, and schemas of loaded
   modules resolve through JSV's local resolvers, and no other reference resolves. A
   settings schema reaches no module it names: `Apiary.Kinds.SettingsResolver` answers its
   `jsv:` references first.
@@ -25,7 +26,7 @@ defmodule Apiary.Kinds.Schema do
   @forager_contract "https://qory.dev/contracts/forager/v1/"
   @vendored ~w(api-format.schema.json auth.schema.json)
   @integration_contract "https://qory.dev/contracts/integration/v1/"
-  @integration_vendored ~w(definitions.schema.json)
+  @integration_vendored ~w(definitions.schema.json description.schema.json)
 
   @doc """
   build/2 builds `schema`, a decoded JSON Schema: `{:ok, root}`, or `{:error, reason}` for

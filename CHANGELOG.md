@@ -1961,6 +1961,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the schema cannot state: no `deliver` type twice, and no `collection` twice across `target`
   and `further_targets`. It returns the message of the integrations' `Documents.Check()`.
   No code calls it, because no run's documents have `deliver` or `further_targets`.
+- `ChangeRequest.validate/1` checks a `change_request` entry against the
+  integrations contract's `changes.schema.json`, vendored under `priv/contract/integration/`.
+  It refuses a title that is empty, over 256 characters, on more than one line or has a
+  hidden character, a text with U+0000 or over 20,000 characters, and a `data` that is not an
+  object. A text with a `<!-- qory:start -->` line is valid. No code writes the entry, so no
+  entry is checked.
 
 ### Changed
 
