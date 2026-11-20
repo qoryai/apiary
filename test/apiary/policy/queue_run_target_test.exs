@@ -20,7 +20,7 @@ defmodule Apiary.Policy.QueueRunTargetTest do
   @moduletag needs: [:registry, :security]
 
   # A run of the queue of a work item at forge.example.com/acme/shop, attached, in a
-  # workspace with a baseline, and its target's row with a rule of its own.
+  # workspace with a baseline, and its target's row with a rule for that target alone.
   setup do
     %{scope: scope} = sign_up_fixture()
     {:ok, _rule} = Policy.allow(scope, nil, %{host: "git.example"})

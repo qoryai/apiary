@@ -1807,7 +1807,7 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   projector and for the wire. A target is keyed on its adapter and the adapter's ref of
   its collection, and has the address as `system` and `path`. A run of a workspace's queue
   takes the target of its work item or its prebuild's collection, by adapter and ref. Any
-  other run takes the one target of the workspace at the address its labels name, or none
+  other run takes the one target of the workspace at the address in its labels, or none
   where no target or several have it: labels never make a target. So a registration, a
   reload and the digest in an answer pick the same target as the projector, or none. On the wire the labels are the registration's, compared to the
   stored ones byte for byte; labels the contract's rules refuse are `400
@@ -1857,9 +1857,11 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   of the reported digest comes before. Three to four small reads, not one. If a read fails
   the header it decides is absent, which means nothing to the gateway, and the delivery is
   still `202`.
-- A run that registered is answered the digest for the target its registration's
-  labels name, the baseline's when they name none, whatever its events say
-  (`Apiary.Policy.Serving.digest_for/4`). A run that did not register has its target
+- A run of a workspace's queue is answered the digest for its work item's or its
+  collection's target, by adapter and collection ref, the baseline's when it has none.
+  Any other run that registered is answered the digest for the target its
+  registration's labels name, the baseline's when they name none, whatever its events
+  say (`Apiary.Policy.Serving.digest_for/4`). A run that did not register has its target
   known to the server once its `run.started` is projected, which is after the receiver
   answers. Until then the answer's digest is, in this order: that of the target the
   batch's `run.started` labels name; else, when the request's

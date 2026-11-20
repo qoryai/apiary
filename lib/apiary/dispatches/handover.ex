@@ -1375,7 +1375,8 @@ defmodule Apiary.Dispatches.Handover do
   # workspace has no row of the target yet, where the run has no target, or where the
   # workspace's domain has no label for them (`Apiary.Lingo.Domain.paths_label/1`).
   # `{:error, :not_a_collection}` where one of them is no longer one of the collections of
-  # the target's adapter (`Apiary.Targets.further_collections/2`).
+  # the target's adapter, `{:error, :itself}` where one is the target's collection
+  # (`Apiary.Targets.further_collections/2`): the rule is logged.
   defp further_repositories(_workspace, nil), do: {:ok, []}
 
   defp further_repositories(workspace, %{} = target) do
