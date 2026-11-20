@@ -20,7 +20,12 @@ defmodule Mix.Tasks.Apiary.Demo do
   The set-up link (`Apiary.Setup`) creates no workspace: an owner creates one from the
   kind cards of the organisation's overview, `/<org>`.
 
-  Nothing is inserted from here. A run goes the way Forager's goes: its registration, read
+  First, each repository a run's labels have is made a target of the workspace, as an
+  adapter's collection assigned to it makes one: a collection of the instance's adapter
+  Example code host (`Mix.Tasks.Apiary.Demo.CodeHost`). A run's labels never make a
+  target, and a replayed run takes the one target at their address.
+
+  Nothing else is inserted from here. A run goes the way Forager's goes: its registration, read
   by `Apiary.Runs.Registration.parse/1` and stored by `Apiary.Runs.Registration.register/3`,
   then its events, cut into batches of 20, each parsed by `Apiary.Runs.Batch` and stored
   by `Apiary.Runs.Ingest`, the functions the receiver calls once it has verified a
@@ -47,11 +52,12 @@ defmodule Mix.Tasks.Apiary.Demo do
   alias Apiary.AccessKeys
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
+  alias Apiary.Lingo.Domain
   alias Apiary.Organisations.{Workspace, Membership}
   alias Apiary.Policy
   alias Apiary.Repo
-  alias Apiary.Runs.{Batch, Ingest, Projector, Registration, Target, Run}
-  alias Mix.Tasks.Apiary.Demo.Shell
+  alias Apiary.Runs.{Batch, Ingest, Projector, Registration, Run}
+  alias Mix.Tasks.Apiary.Demo.{CodeHost, Shell}
 
   @batch_size 20
   @source_prefix "urn:qory:run:"
@@ -77,6 +83,7 @@ defmodule Mix.Tasks.Apiary.Demo do
       Repo.preload(access_key, [:organisation, :workspace])
 
     runs_url = "#{ApiaryWeb.Endpoint.url()}/#{organisation.slug}/#{workspace.slug}/runs"
+    :ok = targets!(access_key, files)
 
     for file <- files do
       case replay(access_key, file) do
@@ -120,12 +127,7 @@ defmodule Mix.Tasks.Apiary.Demo do
   def policy(%AccessKey{workspace_id: workspace_id}) do
     with %Scope{} = scope <- owner_scope(workspace_id),
          true <- untouched?(scope) do
-      shop =
-        Repo.get_by(Target,
-          workspace_id: workspace_id,
-          system: "codeberg.org",
-          path: "acme/shop"
-        )
+      shop = CodeHost.target(workspace_id, "codeberg.org", "acme/shop")
 
       steps =
         [
@@ -163,6 +165,28 @@ defmodule Mix.Tasks.Apiary.Demo do
     else
       nil -> {:error, "the workspace has no owner"}
       false -> :kept
+    end
+  end
+
+  @doc """
+  Makes each repository the registrations of `files` have in their labels, by the
+  workspace's domain, a target of the key's workspace, through a collection of the
+  adapter Example code host (`Mix.Tasks.Apiary.Demo.CodeHost`). `:ok`, also for a
+  workspace without an owner, which gets none, and for a registration that cannot be read.
+  """
+  def targets!(%AccessKey{workspace_id: workspace_id}, files) do
+    case owner_scope(workspace_id) do
+      %Scope{workspace: workspace} = scope ->
+        addresses =
+          for file <- files,
+              {:ok, %{"labels" => labels}} <- [read_registration(file)],
+              {:ok, %{system: system, path: path}} <- [Domain.target(workspace, labels)],
+              do: %{system: system, path: path}
+
+        CodeHost.targets!(scope, addresses)
+
+      nil ->
+        :ok
     end
   end
 

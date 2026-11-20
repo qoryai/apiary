@@ -257,15 +257,11 @@ defmodule Mix.Tasks.Apiary.DemoTest do
 
     test "gives a workspace without rules a policy with overrides, a lock, versions and a history",
          %{scope: scope, access_key: access_key} do
-      # A replayed run takes the one target at its address, so the workspace has it first.
-      Apiary.NodesFixtures.address_target!(
-        scope.organisation.id,
-        scope.workspace.id,
-        "codeberg.org",
-        "acme/shop"
-      )
+      # A replayed run takes the one target at its address, so the workspace has it first,
+      # through a collection of the demo's adapter.
+      assert :ok = Demo.targets!(access_key, [file("session-with-subagents")])
 
-      assert {:ok, _run} = Demo.replay(access_key, file("session-with-subagents"))
+      assert {:ok, run} = Demo.replay(access_key, file("session-with-subagents"))
       assert %{items: [%{action: "first_version"}]} = Apiary.Policy.list_changes(scope, nil, 1)
       assert {:ok, 13} = Demo.policy(access_key)
 
@@ -273,6 +269,16 @@ defmodule Mix.Tasks.Apiary.DemoTest do
 
       [%{target: shop}] =
         Enum.filter(Apiary.Policy.list_targets(scope), &(&1.rule_count > 0))
+
+      assert run.target_id == shop.id
+
+      assert %Apiary.Adapters.Collection{workspace_id: workspace_id} =
+               Repo.get_by!(Apiary.Adapters.Collection,
+                 adapter_id: shop.adapter_id,
+                 target_collection_external_ref: shop.collection_external_ref
+               )
+
+      assert workspace_id == scope.workspace.id
 
       effective = Apiary.Policy.effective(scope, shop)
 
