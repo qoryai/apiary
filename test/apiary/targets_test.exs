@@ -5,6 +5,7 @@ defmodule Apiary.TargetsTest do
   import Apiary.RunEventsFixtures, only: [run_fixture: 2]
   import Apiary.RunListFixtures
 
+  alias Apiary.Adapters.Collection
   alias Apiary.Policy
   alias Apiary.Targets
 
@@ -470,6 +471,29 @@ defmodule Apiary.TargetsTest do
                [
                  "Choose a repository of this integration: acme/tools is not one of its collections."
                ]
+
+      assert saved(scope, shop) == []
+    end
+
+    test "a path of the target's collection itself is refused, so no collection is read twice",
+         %{scope: scope, shop: shop} do
+      # acme/mirror is a collection of the shop's adapter whose target is the shop.
+      [%Collection{} = docs] =
+        Repo.all(from c in Collection, where: c.target_path == "acme/docs")
+
+      Repo.insert!(%Collection{
+        docs
+        | id: nil,
+          public_id: Apiary.PublicId.generate(Collection.prefix()),
+          external_ref: "R_mirror",
+          title: "acme/mirror",
+          target_collection_external_ref: shop.collection_external_ref,
+          target_path: "acme/mirror"
+      })
+
+      assert further_errors(
+               Targets.set_further_repositories(scope, shop, "acme/docs\nacme/mirror")
+             ) == ["Line 2 is acme/shop itself."]
 
       assert saved(scope, shop) == []
     end
