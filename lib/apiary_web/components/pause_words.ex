@@ -24,7 +24,25 @@ defmodule ApiaryWeb.PauseWords do
   def line(pause, path, now \\ DateTime.utc_now())
 
   # A provider of another organisation than the run's: no name, and its cooldown while it
-  # lasts.
+  # lasts, or a key that needs a new key (`new_key`).
+  def line(
+        %{other_organisation: true, new_key: true, until: %DateTime{} = until, number: number} =
+          pause,
+        path,
+        now
+      )
+      when is_integer(number) do
+    if DateTime.compare(until, now) == :gt do
+      rich_gettext(
+        "Paused: every model key is in cooldown until %{time} or needs a new key. It continues in run %{number}.",
+        time: PreparationComponents.cooldown_time(until, now),
+        number: number(number, path)
+      )
+    else
+      line(%{pause | until: nil}, path, now)
+    end
+  end
+
   def line(
         %{other_organisation: true, until: %DateTime{} = until, number: number} = pause,
         path,
@@ -56,6 +74,24 @@ defmodule ApiaryWeb.PauseWords do
     rich_gettext("Paused: a key of %{provider} reached its limit or its Use up to percentage.",
       provider: {:bdi, ExternalText.line(provider)}
     )
+  end
+
+  def line(
+        %{provider: provider, new_key: true, until: %DateTime{} = until, number: number} = pause,
+        path,
+        now
+      )
+      when is_binary(provider) do
+    if DateTime.compare(until, now) == :gt do
+      rich_gettext(
+        "Paused: every key of %{provider} is in cooldown until %{time} or needs a new key. It continues in run %{number}.",
+        provider: {:bdi, ExternalText.line(provider)},
+        time: PreparationComponents.cooldown_time(until, now),
+        number: number(number, path)
+      )
+    else
+      line(%{pause | until: nil}, path, now)
+    end
   end
 
   def line(%{provider: provider, until: %DateTime{} = until, number: number} = pause, path, now) do

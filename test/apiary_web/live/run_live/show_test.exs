@@ -5081,6 +5081,28 @@ defmodule ApiaryWeb.RunLive.ShowTest do
                "Paused: every key of #{provider.name} is in cooldown until #{clock}. " <>
                  "It continues in run #{number}."
 
+      # The provider rejected the value of the key: the line adds that a key needs a new key.
+      value = Apiary.ModelKeysFixtures.key_value!(provider, "main")
+
+      {1, _rows} =
+        Repo.insert_all("model_key_rejections", [
+          %{
+            organisation_id: Ecto.UUID.dump!(value.organisation_id),
+            secret_value_id: Ecto.UUID.dump!(value.id),
+            rejected_at: DateTime.utc_now(),
+            value_set_at: value.value_set_at,
+            updated_at: DateTime.utc_now()
+          }
+        ])
+
+      {:ok, lv, _html} = live(conn, path)
+
+      assert has_element?(
+               lv,
+               "#run-why",
+               "Paused: every key of #{provider.name} is in cooldown until #{clock} or needs a new key. It continues in run #{number}."
+             )
+
       # A paused run that no run continues has its state alone.
       alone =
         projected(scope, [
