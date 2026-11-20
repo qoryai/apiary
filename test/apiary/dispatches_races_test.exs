@@ -1244,42 +1244,31 @@ defmodule Apiary.DispatchesRacesTest do
       assert raised == []
     end
 
-    test "that it missed before the pool's row, and a listing's part paused between two collections: no deadlock, both finish",
+    test "and a Backlog switch of the pair while a lapse it missed after its collections locks the lower: no deadlock, both written",
          ctx do
       pool = pool_fixture(ctx.scope)
       key = key!(ctx, pool)
       %{organisation: %{id: organisation_id}, workspace: %{id: workspace_id}} = ctx.scope
 
       for round <- 1..3 do
-        # Two collections of one connection, `A-` before `B-` by ref, each with a claimed
-        # prebuild of `env-1` whose lease has not lapsed yet. B's prebuild has the lower
-        # id, so the claim's take reaches it first; both end `superseded`, as the
-        # collections have `env-0`.
-        connection = ticket_connection_fixture(ctx.scope)
-        Agent.update(ctx.made, &%{&1 | adapters: [connection.adapter_id | &1.adapters]})
-        on = [connection: connection]
-        a = collection!(ctx, "A-#{round}", "acme/part-a-#{round}", on)
-        b = collection!(ctx, "B-#{round}", "acme/part-b-#{round}", on)
-        [low, high] = Enum.sort([Ecto.UUID.generate(), Ecto.UUID.generate()])
-        :ok = claimed_prebuilds!(ctx, key, pool, [{b, low}, {a, high}])
-        for c <- [a, b], do: :ok = record!(organisation_id, workspace_id, pool, c)
-        leases = from(d in Dispatch, where: d.dispatch_run_id in ^[low, high])
-        lapsed = Repo.one!(from d in leases, select: max(d.lease_until))
+        # `lapsed`, the lower id, has a claimed prebuild of `env-1`, its collection's ref,
+        # whose lease has not lapsed yet; `due` has a run held for its build.
+        pair = lapsed_pair!(ctx, key, pool, "acme/missed-#{round}")
+        :ok = record!(organisation_id, workspace_id, pool, pair.lapsed)
 
-        {2, _rows} =
-          Repo.update_all(leases, set: [lease_until: Dispatches.lease_until(Dispatches.now())])
+        leases =
+          from d in Dispatch,
+            join: r in DispatchRun,
+            on: r.id == d.dispatch_run_id,
+            where: r.source_collection_id == ^pair.lapsed.id
 
-        # The part holds its connection and A, the first row its statement holds.
-        {part, part_backend} =
-          hold(fn ->
-            _connection =
-              Repo.one!(from k in Connection, where: k.id == ^connection.id, lock: "FOR UPDATE")
+        lapsed_until = Repo.one!(from d in leases, select: max(d.lease_until))
+        future = Dispatches.lease_until(Dispatches.now())
+        {_count, _rows} = Repo.update_all(leases, set: [lease_until: future])
 
-            hold_live(connection, [a])
-          end)
-
-        # Another claim of the pool, whose lease lapsed: the claim below reads no lapsed
-        # prebuild when it holds its collections, and finds both once this commits.
+        # Another claim of the pool, which holds its row, lets the lease lapse: the claim
+        # below holds `due` `FOR SHARE` with its collections, finds no lapsed prebuild
+        # then, and waits at the pool's row.
         {other, other_backend} =
           hold(fn ->
             _pool =
@@ -1287,87 +1276,29 @@ defmodule Apiary.DispatchesRacesTest do
                 from n in Node, where: n.id == ^pool.id, lock: "FOR NO KEY UPDATE", select: n.id
               )
 
-            Repo.update_all(leases, set: [lease_until: lapsed])
+            Repo.update_all(leases, set: [lease_until: lapsed_until])
           end)
 
         claim = start(claim_answer(key))
         await_blocked(claim.backend, other_backend)
+
+        # The switch's statement holds `lapsed`, then waits at `due`, which the claim holds.
+        switch = start(change_pair(ctx, :switch, pair))
+        await_blocked(switch.backend, claim.backend)
+
+        # The claim's free sets the lapsed prebuild waiting again, and its take claims it:
+        # that second write locks `lapsed` `FOR KEY SHARE` for its foreign key.
         commit(other)
+        answer = Task.await(claim.task, 15_000)
+        changed = Task.await(switch.task, 15_000)
 
-        # The claim ends B's prebuild, which locks B `FOR KEY SHARE`, then A's. Where A's
-        # lock waits on the part, the claim waits past half the deadlock timeout, so
-        # Postgres aborts the claim should the part then wait on it.
-        answer =
-          case blocked_or_done(claim, part_backend) do
-            :blocked ->
-              await_waited(claim.backend, part_backend)
-              :blocked
-
-            {:done, answer} ->
-              answer
-          end
-
-        changed =
-          continue(
-            part,
-            rescued(fn ->
-              _held = hold_live(connection, [a, b])
-
-              {2, _rows} =
-                Repo.update_all(from(c in Collection, where: c.id in ^[a.id, b.id]),
-                  set: [environment_ref: "part-#{round}"]
-                )
-
-              {:ok, :changed}
-            end)
-          )
-
-        commit(part)
-        answer = if answer == :blocked, do: Task.await(claim.task, 15_000), else: answer
-
-        assert changed == {:ok, :changed}, "round #{round}: #{inspect(changed)}"
+        assert changed == {:ok, 2}, "round #{round}: #{inspect(changed)}"
 
         assert match?({:ok, _}, answer) or answer == {:error, :unavailable},
                "round #{round}: #{inspect(answer)}"
 
-        assert [{:ended, "env-1"}] = prebuilds(a)
-        assert [{:ended, "env-1"}] = prebuilds(b)
+        assert written?(:switch, pair)
       end
-    end
-  end
-
-  # The live collections of `connection` among `collections`, held as a listing's part
-  # holds them (`Apiary.Adapters.Collections.post_listing/2`): in one statement, by ref,
-  # `FOR NO KEY UPDATE`.
-  defp hold_live(connection, collections) do
-    refs = Enum.map(collections, & &1.external_ref)
-
-    Repo.all(
-      from c in Collection,
-        where: c.connection_id == ^connection.id and is_nil(c.ended_at),
-        where: c.external_ref in ^refs,
-        order_by: c.external_ref,
-        select: c.external_ref,
-        lock: "FOR NO KEY UPDATE"
-    )
-  end
-
-  # `:blocked` once `claim` waits on a lock the backend `holder` holds, or `{:done,
-  # answer}` once it answered; five seconds at most, which fails the test.
-  defp blocked_or_done(claim, holder, tries \\ 500) do
-    case Task.yield(claim.task, 10) do
-      {:ok, answer} ->
-        {:done, answer}
-
-      nil ->
-        %{rows: [[blocked?]]} =
-          Repo.query!("SELECT $1::int = ANY (pg_blocking_pids($2::int))", [holder, claim.backend])
-
-        cond do
-          blocked? -> :blocked
-          tries > 0 -> blocked_or_done(claim, holder, tries - 1)
-          true -> flunk("the claim neither waited on the part nor answered")
-        end
     end
   end
 
