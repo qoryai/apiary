@@ -1370,7 +1370,7 @@ defmodule Apiary.Dispatches.Handover do
     with %Target{} <- found,
          label when is_binary(label) <- Domain.paths_label(workspace),
          paths = Targets.further_repositories(found),
-         {:ok, _refs} <- Targets.further_collections(found, paths) do
+         :ok <- Targets.further_collections(found, paths) do
       {:ok, paths}
     else
       {:error, {rule, _n}} -> {:error, rule}

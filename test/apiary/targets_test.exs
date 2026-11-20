@@ -475,6 +475,49 @@ defmodule Apiary.TargetsTest do
       assert saved(scope, shop) == []
     end
 
+    test "a collection of the target's adapter in another organisation is not one", %{
+      scope: scope,
+      shop: shop
+    } do
+      %{scope: elsewhere} = sign_up_fixture()
+
+      %{
+        organisation_id: elsewhere.organisation.id,
+        workspace_id: elsewhere.workspace.id,
+        adapter_id: shop.adapter_id,
+        system: shop.system,
+        path: "acme/other"
+      }
+      |> Apiary.NodesFixtures.target_fixture()
+      |> Apiary.NodesFixtures.further_collections_fixture("acme/tools")
+
+      assert Targets.further_collections(shop, ["acme/tools"]) ==
+               {:error, {:not_a_collection, 1}}
+
+      assert {:error, %Ecto.Changeset{}} =
+               Targets.set_further_repositories(scope, shop, "acme/tools")
+
+      assert saved(scope, shop) == []
+    end
+
+    test "a collection on a connection that ended is not one", %{shop: shop} do
+      assert Targets.further_collections(shop, ["acme/docs"]) == :ok
+
+      [%{connection_id: id}] =
+        Apiary.Repo.all(
+          from c in Apiary.Adapters.Collection,
+            where: c.adapter_id == ^shop.adapter_id and c.target_path == "acme/docs"
+        )
+
+      {1, _rows} =
+        Apiary.Repo.update_all(from(k in Apiary.Adapters.Connection, where: k.id == ^id),
+          set: [state: :ended, ended_at: DateTime.utc_now(), ended_reason: :adapter_reported]
+        )
+
+      assert Targets.further_collections(shop, ["acme/docs"]) ==
+               {:error, {:not_a_collection, 1}}
+    end
+
     test "a path of the target's collection itself is refused, so no collection is read twice",
          %{scope: scope, shop: shop} do
       # acme/mirror is a collection of the shop's adapter whose target is the shop.
