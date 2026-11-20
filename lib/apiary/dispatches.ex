@@ -630,7 +630,9 @@ defmodule Apiary.Dispatches do
   # `environment_ref`, unless one waits for that ref already, which it answers, and the
   # environment record of the collection and pool where there is none, inside the
   # caller's transaction (the moduledoc). The run and the record are in the collection's
-  # workspace.
+  # workspace. It locks the pool and the workspace's run counter first
+  # (`Apiary.Runs.Number.hold/2`), before it inserts the record or the run, and takes the
+  # run's number last.
   @doc false
   @spec queue_prebuild(Collection.t(), Node.t(), String.t()) ::
           {:ok, DispatchRun.t()} | {:error, Ecto.Changeset.t()}
@@ -666,6 +668,8 @@ defmodule Apiary.Dispatches do
          environment_ref
        ) do
     in_transaction!("queue_prebuild/3")
+    workspace = %Workspace{id: workspace_id, organisation_id: organisation_id}
+    :ok = Apiary.Runs.Number.hold(workspace, [pool_id])
     now = now()
 
     {_count, _rows} =

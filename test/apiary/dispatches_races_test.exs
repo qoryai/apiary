@@ -939,6 +939,26 @@ defmodule Apiary.DispatchesRacesTest do
       end)
     end
 
+    # The environment record of `collection` for `pool`, with no build, committed.
+    defp record!(organisation_id, workspace_id, pool, collection) do
+      now = DateTime.utc_now()
+
+      {1, _rows} =
+        Repo.insert_all(Record, [
+          %{
+            id: Ecto.UUID.generate(),
+            organisation_id: organisation_id,
+            workspace_id: workspace_id,
+            pool_id: pool.id,
+            source_collection_id: collection.id,
+            inserted_at: now,
+            updated_at: now
+          }
+        ])
+
+      :ok
+    end
+
     # The environment records of `collection` for `pool`.
     defp records(collection, pool) do
       Repo.aggregate(
@@ -996,6 +1016,87 @@ defmodule Apiary.DispatchesRacesTest do
               waiting = waiting(c, pool)
               assert waiting == Enum.uniq(waiting), "round #{round}: #{inspect(waiting)}"
             end
+
+            raised ++
+              for {name, answer} <- answers,
+                  not match?({:ok, _}, answer),
+                  answer != {:error, :unavailable},
+                  do: {round, name, answer}
+        end
+
+      assert raised == []
+    end
+
+    test "and a Rebuild that holds the run counter: no deadlock, one record, one build per ref, numbers without gaps",
+         ctx do
+      pool = pool_fixture(ctx.scope)
+      key = key!(ctx, pool)
+      %{organisation: %{id: organisation_id}, workspace: %{id: workspace_id}} = ctx.scope
+
+      raised =
+        for round <- 1..9, reduce: [] do
+          raised ->
+            # The Rebuild queues X, the lower id, then Y. A run is held for Y's target only,
+            # so the claim queues a build of Y and none of X.
+            [low, high] = Enum.sort([Ecto.UUID.generate(), Ecto.UUID.generate()])
+            x = collection!(ctx, "X#{round}", "acme/x-#{round}", id: low)
+            y = collection!(ctx, "Y#{round}", "acme/y-#{round}", id: high)
+            _held = held!(ctx, "acme/y-#{round}")
+
+            answers =
+              case rem(round, 3) do
+                0 ->
+                  # Both let go together, with a lapsed prebuild of a third target that
+                  # the claim's free sets waiting again, which takes a number.
+                  z = collection!(ctx, "Z#{round}", "acme/z-#{round}")
+                  {:ok, _queued} = rebuild([z], [pool]).()
+                  :ok = claimed_prebuilds!(ctx, key, pool, [{z, Ecto.UUID.generate()}])
+
+                  [claim: claim_answer(key), rebuild: rebuild([x, y], [pool])]
+                  |> Enum.map(fn {name, fun} -> fn -> {name, fun.()} end end)
+                  |> together()
+
+                kind ->
+                  # In round 1, 4 and 7, Y has its record for the pool before the race;
+                  # in the others, the claim and the Rebuild both insert it.
+                  if kind == 1, do: :ok = record!(organisation_id, workspace_id, pool, y)
+
+                  # The Rebuild paused once it queued X, which takes the counter, and the
+                  # claim waiting for it; then the Rebuild queues Y and commits. Should the
+                  # two wait on each other, Postgres aborts the claim, which waited longer.
+                  {rebuild, rebuild_backend} =
+                    hold(fn ->
+                      [first | rest] = hold_rebuild([x, y])
+                      _x = queue_rebuild([first], [pool])
+                      rest
+                    end)
+
+                  claim = start(claim_answer(key))
+                  await_waited(claim.backend, rebuild_backend)
+
+                  queued =
+                    continue(
+                      rebuild,
+                      rescued(fn -> {:ok, queue_rebuild(rebuild.result, [pool])} end)
+                    )
+
+                  commit(rebuild)
+                  [claim: Task.await(claim.task, 15_000), rebuild: queued]
+              end
+
+            assert records(y, pool) == 1
+            assert [{_state, "env-0"}] = prebuilds(x)
+            assert [{_state, "env-0"}] = prebuilds(y)
+
+            numbers =
+              Repo.all(
+                from r in Apiary.Runs.Run,
+                  where: r.workspace_id == ^workspace_id,
+                  order_by: r.number,
+                  select: r.number
+              )
+
+            assert numbers == Enum.to_list(1..length(numbers)), "round #{round}"
 
             raised ++
               for {name, answer} <- answers,

@@ -2908,6 +2908,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Fixed
 
+<!-- feature: factory -->
+- A claim that queues a build no longer fails when a member's Rebuild of the same target
+  runs at the same time. The two waited on each other, and Postgres aborted the claim
+  (`deadlock_detected`). Both now lock the workspace's run counter before they write an
+  environment record or a waiting prebuild, so the second waits for the first. Run
+  numbers stay in order, without gaps.
+<!-- /feature -->
+
 <!-- feature: factory, secrets -->
 - A Codex run that Forager ends `paused` with `model_key_switch`, as its key is out while
   another key of the run is usable, is Paused, where it read as failed. The run that

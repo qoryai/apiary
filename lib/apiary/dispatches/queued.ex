@@ -32,7 +32,10 @@ defmodule Apiary.Dispatches.Queued do
   # (`Apiary.Processes.delete_leftovers_after_runs/1`).
   #
   # The number is taken last in `insert!/1`, as `Apiary.Runs.Number` requires: the
-  # counter of the workspace stays locked until the transaction ends.
+  # counter of the workspace stays locked until the transaction ends. A queue of a
+  # prebuild locks the counter before it inserts the run
+  # (`Apiary.Dispatches.queue_prebuild/3`), and `insert!/1` then takes the number under
+  # that lock.
 
   import Ecto.Query, only: [from: 2]
 
