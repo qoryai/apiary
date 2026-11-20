@@ -420,10 +420,10 @@ defmodule Apiary.ModelKeys.RejectionTest do
 
       # Only a key of the run's organisation makes the reason say that a key needs a new
       # value: for another organisation's, it is the plain cooldown.
-      own = ctx.scope.organisation.id
+      organisation_id = ctx.scope.organisation.id
 
       assert {:cooldown_or_new_key, %Connection{}, ^until} =
-               ModelKeys.waiting_reason([ctx.provider.id], now, organisation_id: own)
+               ModelKeys.waiting_reason([ctx.provider.id], now, organisation_id: organisation_id)
 
       assert {:cooldown, %Connection{}, ^until} =
                ModelKeys.waiting_reason([ctx.provider.id], now,
