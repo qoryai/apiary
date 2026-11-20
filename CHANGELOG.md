@@ -1957,6 +1957,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   type or, with `name` alone beside it, a standard type. A run cannot then withdraw a name
   of that type, and it cannot withdraw a name whose newest version a member approved at a
   gate: the run API returns `422` `type_not_withdrawable`.
+- `DocumentsCheck.check/1` states the two rules of a run's documents that
+  the schema cannot state: no `deliver` type twice, and no `collection` twice across `target`
+  and `further_targets`. It returns the message of the integrations' `Documents.Check()`.
+  No code calls it, because no run's documents have `deliver` or `further_targets`.
 
 ### Changed
 
