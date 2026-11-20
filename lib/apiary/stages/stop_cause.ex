@@ -193,19 +193,23 @@ defmodule Apiary.Stages.StopCause do
   def set_up_step(_run), do: nil
 
   # build_run/1 is the public id of the newest registered run that built the environment
-  # of the work item's target, whose page has the build's log; nil for none.
+  # of a collection of the work item's target row, by adapter and collection ref, whose
+  # page has the build's log; nil for none.
   @doc false
   @spec build_run(WorkItem.t()) :: String.t() | nil
-  def build_run(%WorkItem{target_system: system, target_path: path} = work_item)
-      when is_binary(system) and is_binary(path) do
+  def build_run(%WorkItem{target_id: target_id} = work_item) when is_binary(target_id) do
     Repo.one(
       from d in DispatchRun,
         join: c in Collection,
         on: c.id == d.source_collection_id,
+        join: t in Target,
+        on:
+          t.workspace_id == c.workspace_id and t.adapter_id == c.adapter_id and
+            t.collection_external_ref == c.target_collection_external_ref,
         join: r in subquery(Run.registered()),
         on: r.dispatch_run_id == d.id,
         where: d.workspace_id == ^work_item.workspace_id and d.step == ^@prebuild,
-        where: c.target_system == ^system and c.target_path == ^path,
+        where: t.id == ^target_id,
         order_by: [desc: d.updated_at, desc: d.id],
         limit: 1,
         select: r.public_id
@@ -516,9 +520,7 @@ defmodule Apiary.Stages.StopCause do
   # title of the adapter of the collection the entry comes from; nil for no
   # collection.
   defp reach(run, %{work_item: work_item}) do
-    target = %{system: work_item.target_system, path: work_item.target_path}
-
-    case Apiary.Runs.RunCredentials.reach(run, work_item, target) do
+    case Apiary.Runs.RunCredentials.reach(run, work_item, WorkItem.target(work_item)) do
       {state, %Node{} = adapter} -> {state, Apiary.Adapters.title(adapter)}
       nil -> nil
     end
@@ -672,19 +674,19 @@ defmodule Apiary.Stages.StopCause do
 
   # The rule a run variable of the work item's target breaks, nil for none: a work item
   # without a target, or whose target has no address, has no run variables to break one.
-  defp variable_rule(%{work_item: %WorkItem{target_collection_external_ref: ref} = work_item} = n)
-       when is_binary(ref) do
-    target = WorkItem.target(work_item)
-    found = Repo.one(Target.by_key(n.workspace_struct.id, target))
+  defp variable_rule(%{work_item: %WorkItem{} = work_item} = n) do
+    with %{} = target <- WorkItem.target(work_item) do
+      found = Repo.one(Target.by_key(n.workspace_struct.id, target))
 
-    picked =
-      if found && Domain.paths_label(n.workspace_struct),
-        do: Targets.further_repositories(found),
-        else: []
+      picked =
+        if found && Domain.paths_label(n.workspace_struct),
+          do: Targets.further_repositories(found),
+          else: []
 
-    case Domain.run_variables(n.workspace_struct, target, picked) do
-      {:error, rule} -> rule
-      _ok -> nil
+      case Domain.run_variables(n.workspace_struct, target, picked) do
+        {:error, rule} -> rule
+        _ok -> nil
+      end
     end
   end
 

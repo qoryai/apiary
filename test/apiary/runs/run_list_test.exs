@@ -466,7 +466,7 @@ defmodule Apiary.Runs.RunListTest do
 
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
-          set: [workspace_id: elsewhere.id]
+          set: [workspace_id: elsewhere.id, target_id: nil]
         )
 
       [row] = page!(schema, "")["runs"]

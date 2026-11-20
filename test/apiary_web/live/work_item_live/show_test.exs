@@ -1546,7 +1546,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       other = workspace_fixture(scope.organisation, "Second")
 
       Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
-        set: [workspace_id: other.id]
+        set: [workspace_id: other.id, target_id: nil]
       )
 
       send(view.pid, {:work_items_changed, [work_item.public_id]})
@@ -1695,7 +1695,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
         ])
 
       Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
-        set: [workspace_id: there.id]
+        set: [workspace_id: there.id, target_id: nil]
       )
 
       %{user: member} = member_fixture(owner, :member)
@@ -1733,7 +1733,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       %{run: running} = explore_run_fixture(work_item, state: :handed_over)
 
       Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
-        set: [workspace_id: ctx.there.id]
+        set: [workspace_id: ctx.there.id, target_id: nil]
       )
 
       org = owner.organisation

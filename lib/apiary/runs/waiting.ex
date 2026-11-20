@@ -19,7 +19,8 @@ defmodule Apiary.Runs.Waiting do
   #     when that key leaves it;
   #   * `{:image, target, build}`, it is held for the build of its target's environment
   #     image on every serving pool (`Apiary.Environments.held/1`): `build` is `:queued`
-  #     while a prebuild of the target waits, `:running` while one is claimed or handed
+  #     while a prebuild of a collection of its work item's target row, by adapter and
+  #     collection ref, waits, `:running` while one is claimed or handed
   #     over, nil when none is live;
   #   * `{:busy, pool, in_use, limit}`, every serving pool runs as many machines as its
   #     limit allows (`Apiary.Nodes.instances_in_use/2`), as the claim counts them: the
@@ -38,7 +39,7 @@ defmodule Apiary.Runs.Waiting do
   alias Apiary.Harnesses.RunHarness
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
-  alias Apiary.Runs.ProviderCredential
+  alias Apiary.Runs.{ProviderCredential, Target}
   alias Apiary.WorkItems.WorkItem
 
   @typedoc "Why a queued run waits (the moduledoc)."
@@ -139,9 +140,13 @@ defmodule Apiary.Runs.Waiting do
         from r in DispatchRun,
           join: c in Collection,
           on: c.id == r.source_collection_id,
+          join: t in Target,
+          on:
+            t.workspace_id == c.workspace_id and t.adapter_id == c.adapter_id and
+              t.collection_external_ref == c.target_collection_external_ref,
           where: r.workspace_id == ^queued.workspace_id and r.step == ^DispatchRun.prebuild(),
           where: r.pool_id in ^pool_ids and r.state in [:waiting, :claimed, :handed_over],
-          where: c.target_system == ^item.target_system and c.target_path == ^item.target_path,
+          where: t.id == ^item.target_id,
           order_by: [desc: r.queued_at],
           select: r.state,
           limit: 1

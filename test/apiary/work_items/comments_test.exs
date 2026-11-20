@@ -335,7 +335,7 @@ defmodule Apiary.WorkItems.CommentsTest do
       there = other_workspace_scope(ctx.scope)
 
       Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),
-        set: [workspace_id: there.workspace.id]
+        set: [workspace_id: there.workspace.id, target_id: nil]
       )
 
       assert Repo.reload!(comment).workspace_id == there.workspace.id

@@ -420,7 +420,7 @@ defmodule Apiary.Dispatches.InstancePoolTest do
 
     Repo.query!(
       "ANALYZE dispatch_runs, workspaces, organisations, nodes, source_collections, " <>
-        "work_items, environments, run_harnesses"
+        "work_items, targets, environments, run_harnesses"
     )
 
     counts

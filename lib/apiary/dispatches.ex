@@ -75,10 +75,10 @@ defmodule Apiary.Dispatches do
   # stage does not run, or while another run of the take in has not ended: `{:error,
   # :not_requeued}`.
   #
-  # `end_held(work_item_ids, workspace_id, target, now)` ends, inside the caller's
-  # transaction, the waiting runs of those work items with `target` that are not
-  # prebuilds, `build_failed`, with the outcome `error`, when the build they were held
-  # for failed (`Apiary.Environments.build_failed/6`).
+  # `end_held(work_item_ids, workspace_id, target_id, now)` ends, inside the caller's
+  # transaction, the waiting runs of those work items with the target row `target_id`
+  # that are not prebuilds, `build_failed`, with the outcome `error`, when the build they
+  # were held for failed (`Apiary.Environments.build_failed/6`).
   #
   # `cancel_for_undo(work_item)`, inside the caller's transaction, is what an undo of
   # the work item's take in asks first. An undo works while no claim holds a run of the
@@ -448,10 +448,7 @@ defmodule Apiary.Dispatches do
           id: w.id,
           organisation_id: w.organisation_id,
           workspace_id: w.workspace_id,
-          adapter_id: w.adapter_id,
-          target_collection_external_ref: w.target_collection_external_ref,
-          target_system: w.target_system,
-          target_path: w.target_path,
+          target_id: w.target_id,
           test: w.test,
           connection_id: w.connection_id
         }
@@ -710,22 +707,23 @@ defmodule Apiary.Dispatches do
 
   # end_held/4 ends the waiting runs of the work items `work_item_ids`, which the caller
   # holds `FOR KEY SHARE`, or `FOR UPDATE` with the workflow model on
-  # (`Apiary.Environments.hold_build/2`), that are not prebuilds, in the workspace `workspace_id`, of
-  # work items with `target`, `build_failed`, with the outcome `error`, with any stale
-  # dispatch of them (`run_ended`), inside the caller's transaction
-  # (`Apiary.Environments.build_failed/6`): the workspace and the work items to tell. A
-  # run a claim took is no longer waiting and is left as it is.
+  # (`Apiary.Environments.hold_build/2`), that are not prebuilds, in the workspace
+  # `workspace_id`, of work items with the target row `target_id`, `build_failed`, with
+  # the outcome `error`, with any stale dispatch of them (`run_ended`), inside the
+  # caller's transaction (`Apiary.Environments.build_failed/6`): the workspace and the
+  # work items to tell. A run a claim took is no longer waiting and is left as it is.
   @doc false
   @spec end_held(
           [Ecto.UUID.t()],
           Ecto.UUID.t(),
-          %{system: String.t(), path: String.t()},
+          Ecto.UUID.t(),
           DateTime.t()
         ) ::
           [Ecto.UUID.t() | Settle.told()]
-  def end_held([], _workspace_id, _target, %DateTime{}), do: []
+  def end_held([], _workspace_id, _target_id, %DateTime{}), do: []
 
-  def end_held(work_item_ids, workspace_id, %{system: system, path: path}, %DateTime{} = now) do
+  def end_held(work_item_ids, workspace_id, target_id, %DateTime{} = now)
+      when is_binary(target_id) do
     in_transaction!("end_held/4")
 
     {_count, ended} =
@@ -737,7 +735,7 @@ defmodule Apiary.Dispatches do
           on: w.id == r.work_item_id,
           where: r.work_item_id in ^work_item_ids and r.workspace_id == ^workspace_id,
           where: r.step != ^@prebuild and fragment("? = 'waiting'", r.state),
-          where: w.target_system == ^system and w.target_path == ^path,
+          where: w.target_id == ^target_id,
           select: {r.id, r.work_item_id}
         ),
         set: [state: :ended, end_cause: :build_failed, result_outcome: :error, updated_at: now]
@@ -805,10 +803,7 @@ defmodule Apiary.Dispatches do
             id: w.id,
             organisation_id: w.organisation_id,
             workspace_id: w.workspace_id,
-            adapter_id: w.adapter_id,
-            target_collection_external_ref: w.target_collection_external_ref,
-            target_system: w.target_system,
-            target_path: w.target_path,
+            target_id: w.target_id,
             test: w.test,
             connection_id: w.connection_id,
             state: w.state,
@@ -864,10 +859,7 @@ defmodule Apiary.Dispatches do
             id: w.id,
             organisation_id: w.organisation_id,
             workspace_id: w.workspace_id,
-            adapter_id: w.adapter_id,
-            target_collection_external_ref: w.target_collection_external_ref,
-            target_system: w.target_system,
-            target_path: w.target_path,
+            target_id: w.target_id,
             test: w.test,
             connection_id: w.connection_id,
             state: w.state,

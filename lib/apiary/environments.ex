@@ -21,8 +21,9 @@ defmodule Apiary.Environments do
   # there takes no prebuild
   # (`Apiary.Dispatches.waiting_query/2`). In a workspace whose
   # domain has prebuilds (`holds?/1`, `Apiary.Lingo.Domain.prebuilds?/1`), a waiting run
-  # that is not a prebuild, of a work item whose target a live collection of the
-  # workspace with an `environment_ref` has, is held for a node pool while no record of
+  # that is not a prebuild, of a work item whose target row (`target_id`) a live
+  # collection of the workspace with an address and an `environment_ref` has, by the
+  # row's adapter and collection ref, is held for a node pool while no record of
   # such a collection for that pool keeps an image whose `built_ref` is its collection's
   # `environment_ref`, built for the target (`held/1`, a subquery on the run as
   # `:run`). A claim of the pool takes no held run (`Apiary.Dispatches.claim/4`); a run
@@ -57,7 +58,8 @@ defmodule Apiary.Environments do
   # one per collection, pool and `environment_ref`, takes what is left.
   #
   # `claim_image(pool, work_item)` is what a claim gives an explore run it takes:
-  # `{:ok, image}` for the image `image_for/3` reads in the work item's workspace, `{:ok, nil}` for the pool's default
+  # `{:ok, image}` for the newest image the pool stored for a collection of the work
+  # item's target row, `{:ok, nil}` for the pool's default
   # where nothing holds the run, and `:held` where a build that landed or a key that
   # changed after the claim's read holds it again: the claim then leaves it waiting.
   # `Apiary.Dispatches.Handover` writes the image on the registered run
@@ -79,7 +81,8 @@ defmodule Apiary.Environments do
   # `hold_build(pool_id, collection_id)`: the connections of the live collections of the
   # prebuild's target that name an `environment_ref` `FOR SHARE`, by id, then those
   # collections `FOR SHARE`, by id, as a Rebuild holds them; then the work items in Explore of
-  # the workspace with that target and a waiting run, read without a lock, `FOR KEY SHARE`, by
+  # the workspace whose target row is the collection's target, by adapter and collection
+  # ref, with a waiting run, read without a lock, `FOR KEY SHARE`, by
   # id; then the record `FOR UPDATE` (`lock_record/2`), before the run of the queue.
   #
   # With the workflow model on, those work items are locked `FOR UPDATE` in place of
@@ -280,7 +283,8 @@ defmodule Apiary.Environments do
   # node pool `pool_id` and the collection `collection_id` holds before its run of the
   # queue (the moduledoc): the connections of the target's collections `FOR SHARE`, then
   # those collections `FOR SHARE`, by id (`hold_named/1`); then the work items in Explore
-  # with the collection's target and a waiting run, in its workspace, read without a lock,
+  # whose target row is the collection's target, by the collection's adapter and target
+  # collection ref, with a waiting run, in its workspace, read without a lock,
   # `FOR KEY SHARE`, by id; then the record `FOR UPDATE` (`lock_record/2`):
   # `{:build, record, collections, work_item_ids}`. A collection with no workspace or no
   # target holds its record alone.
@@ -312,8 +316,11 @@ defmodule Apiary.Environments do
           Repo.all(
             from w in WorkItem,
               as: :work_item,
+              join: t in Target,
+              on: t.id == w.target_id,
               where: w.workspace_id == ^workspace_id and w.state == :exploring,
-              where: w.target_system == ^system and w.target_path == ^path,
+              where: t.adapter_id == ^collection.adapter_id,
+              where: t.collection_external_ref == ^collection.target_collection_external_ref,
               where: exists(waiting),
               select: w.id
           )
@@ -385,9 +392,17 @@ defmodule Apiary.Environments do
 
   # The waiting runs held for the target of `collection` end `build_failed`, unless a
   # live pool of its workspace has an image for the target from its collection's
-  # `environment_ref`, which a claim of that pool gives them.
+  # `environment_ref`, which a claim of that pool gives them. The runs are those of work
+  # items whose target row is the collection's target, by adapter and collection ref.
   defp end_held(%Collection{} = collection, work_item_ids, now) do
     target = %{system: collection.target_system, path: collection.target_path}
+
+    target_id =
+      Repo.one(
+        from(t in Target.by_key(collection.workspace_id, Collection.target(collection)),
+          select: t.id
+        )
+      )
 
     served? =
       Repo.exists?(
@@ -397,9 +412,9 @@ defmodule Apiary.Environments do
           where: r.built_ref == c.environment_ref
       )
 
-    if served?,
+    if served? or is_nil(target_id),
       do: [],
-      else: Dispatches.end_held(work_item_ids, collection.workspace_id, target, now)
+      else: Dispatches.end_held(work_item_ids, collection.workspace_id, target_id, now)
   end
 
   # The work items whose runs wait for a build, by id, in order: `FOR KEY SHARE`, or
@@ -508,29 +523,60 @@ defmodule Apiary.Environments do
   end
 
   # claim_image/2 is the image a claim of `pool` gives an explore run of `work_item`
-  # (the moduledoc): `{:ok, image}` for the image `image_for/2` reads for its target,
-  # `{:ok, nil}` for a run that starts in the pool's default, and `:held` for a run held
-  # for the pool's build of its target (`held/1`). A stored image outside the
-  # organisation's place in the registry (`own?/2`) holds no run, as `held/1` reads it,
-  # and is not given: the run starts in the pool's default.
+  # (the moduledoc): `{:ok, image}` for the newest image the pool stored for a
+  # collection of its target row (`row_collections/1`), `{:ok, nil}` for a run that
+  # starts in the pool's default, and `:held` for a run held for the pool's build of its
+  # target (`held/1`). A stored image outside the organisation's place in the registry
+  # (`own?/2`) holds no run, as `held/1` reads it, and is not given: the run starts in
+  # the pool's default.
   @doc false
   @spec claim_image(Node.t(), WorkItem.t()) :: {:ok, String.t() | nil} | :held
   def claim_image(
         %Node{kind: :pool} = pool,
-        %WorkItem{workspace_id: workspace_id, target_system: system, target_path: path}
+        %WorkItem{workspace_id: workspace_id, target_id: target_id}
       )
-      when is_binary(workspace_id) and is_binary(system) and is_binary(path) do
-    target = %{system: system, path: path}
-
+      when is_binary(workspace_id) and is_binary(target_id) do
     cond do
       not prebuilt?(workspace_id) -> {:ok, nil}
-      image = stored_image(pool, workspace_id, target) -> {:ok, own_image(image, workspace_id)}
-      named?(workspace_id, target) -> :held
+      image = row_image(pool, target_id) -> {:ok, own_image(image, workspace_id)}
+      row_named?(target_id) -> :held
       true -> {:ok, nil}
     end
   end
 
   def claim_image(%Node{}, %WorkItem{}), do: {:ok, nil}
+
+  # The live collections with an address of the target row `target_id`, by its adapter
+  # and collection ref, assigned to its workspace: those a work item's run is held for.
+  defp row_collections(target_id) do
+    from c in Collection,
+      join: t in Target,
+      on:
+        c.workspace_id == t.workspace_id and c.adapter_id == t.adapter_id and
+          c.target_collection_external_ref == t.collection_external_ref,
+      where: t.id == ^target_id,
+      where: is_nil(c.ended_at) and not is_nil(c.target_system)
+  end
+
+  # The image the newest build for `pool` of one of `row_collections/1` stored, from the
+  # collection's `environment_ref` and at its address, whatever its place.
+  defp row_image(%Node{id: pool_id}, target_id) do
+    Repo.one(
+      from [c] in row_collections(target_id),
+        join: r in Record,
+        on: r.source_collection_id == c.id,
+        where: r.pool_id == ^pool_id and not is_nil(r.image),
+        where: not is_nil(c.environment_ref) and r.built_ref == c.environment_ref,
+        where: r.built_target_system == c.target_system and r.built_target_path == c.target_path,
+        order_by: [desc: r.built_at, desc: r.id],
+        limit: 1,
+        select: r.image
+    )
+  end
+
+  # Whether one of `row_collections/1` has an `environment_ref`.
+  defp row_named?(target_id),
+    do: Repo.exists?(from(c in row_collections(target_id), where: not is_nil(c.environment_ref)))
 
   # own_image/2 is `image` where it is under the registry's place of the organisation of
   # the workspace `workspace_id` (`placed?/2`), else nil: what a run is given of an image
@@ -563,17 +609,6 @@ defmodule Apiary.Environments do
   end
 
   def built_for_target?(_image, _organisation_id, _target_id), do: false
-
-  # Whether a live collection assigned to the workspace `workspace_id` with the target
-  # has an `environment_ref`.
-  defp named?(workspace_id, %{system: system, path: path}) do
-    Repo.exists?(
-      from c in Collection,
-        where: c.workspace_id == ^workspace_id and is_nil(c.ended_at),
-        where: c.target_system == ^system and c.target_path == ^path,
-        where: not is_nil(c.environment_ref)
-    )
-  end
 
   ## A build whose ref is older than the image's
 
@@ -1060,11 +1095,12 @@ defmodule Apiary.Environments do
 
   # held/1 is the query of the work item of a run of the queue bound `:run`, for
   # `exists/1`, when the run is held for the node pool `pool_id`: the run's workspace has
-  # a domain with prebuilds, its work item's target has a live collection assigned to the
-  # run's workspace with an `environment_ref`, no such collection has a record for the
-  # pool whose image was built for the target from that `environment_ref` (the
-  # moduledoc). It reads the run's workspace, so one query serves the instance's pool,
-  # whose runs are in many workspaces.
+  # a domain with prebuilds, its work item's target row has a live collection with an
+  # address, by the row's adapter and collection ref, assigned to the run's workspace
+  # with an `environment_ref`, no such collection has a record for the pool whose image
+  # was built for the collection's address from that `environment_ref` (the moduledoc).
+  # It reads the run's workspace, so one query serves the instance's pool, whose runs
+  # are in many workspaces.
   @doc false
   @spec held(Ecto.UUID.t()) :: Ecto.Query.t()
   def held(pool_id) when is_binary(pool_id) do
@@ -1073,16 +1109,19 @@ defmodule Apiary.Environments do
       join: s in Workspace,
       as: :workspace,
       on: s.id == parent_as(:run).workspace_id,
+      join: t in Target,
+      on: t.id == w.target_id,
       join: c in Collection,
       on:
         c.workspace_id == s.id and is_nil(c.ended_at) and
-          not is_nil(c.environment_ref) and c.target_system == w.target_system and
-          c.target_path == w.target_path,
+          not is_nil(c.environment_ref) and not is_nil(c.target_system) and
+          c.adapter_id == t.adapter_id and
+          c.target_collection_external_ref == t.collection_external_ref,
       left_join: e in Record,
       on:
         e.source_collection_id == c.id and e.pool_id == ^pool_id and not is_nil(e.image) and
-          e.built_ref == c.environment_ref and e.built_target_system == w.target_system and
-          e.built_target_path == w.target_path,
+          e.built_ref == c.environment_ref and e.built_target_system == c.target_system and
+          e.built_target_path == c.target_path,
       where: w.id == parent_as(:run).work_item_id,
       where: ^prebuilt_domain(),
       group_by: w.id,
@@ -1198,12 +1237,15 @@ defmodule Apiary.Environments do
         as: :run,
         join: w in WorkItem,
         on: w.id == r.work_item_id,
+        join: t in Target,
+        on: t.id == w.target_id,
         join: c in Collection,
         as: :collection,
         on:
           c.workspace_id == r.workspace_id and is_nil(c.ended_at) and
-            not is_nil(c.environment_ref) and c.target_system == w.target_system and
-            c.target_path == w.target_path,
+            not is_nil(c.environment_ref) and not is_nil(c.target_system) and
+            c.adapter_id == t.adapter_id and
+            c.target_collection_external_ref == t.collection_external_ref,
         where: ^runs_served(workspace_id),
         where: r.step != ^DispatchRun.prebuild(),
         where: fragment("? = 'waiting'", r.state) and w.state == :exploring,

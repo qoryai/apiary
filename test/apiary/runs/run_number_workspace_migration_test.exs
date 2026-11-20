@@ -145,7 +145,7 @@ defmodule Apiary.Runs.RunNumberWorkspaceMigrationTest do
 
     {1, _rows} =
       Repo.update_all(from(w in WorkItem, where: w.id == ^moved.id),
-        set: [workspace_id: there.workspace.id]
+        set: [workspace_id: there.workspace.id, target_id: nil]
       )
 
     new = explore_run_fixture(Repo.get!(WorkItem, moved.id), settle: false).run.id
@@ -185,7 +185,7 @@ defmodule Apiary.Runs.RunNumberWorkspaceMigrationTest do
 
     {1, _rows} =
       Repo.update_all(from(w in WorkItem, where: w.id == ^moved.id),
-        set: [workspace_id: there.workspace.id]
+        set: [workspace_id: there.workspace.id, target_id: nil]
       )
 
     down!()

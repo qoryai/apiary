@@ -13,10 +13,11 @@ defmodule Apiary.Runs.RunCredentials do
   #   * A prebuild's collection is the one it builds (`source_collection_id`).
   #   * A run with a work item takes a matching collection: one assigned to the run's
   #     workspace, whose adapter's latest start said its collections have targets
-  #     (`Apiary.Nodes.Node`'s `targets`), and whose target system and path equal the
-  #     run's target. A collection of an adapter that did not say so never counts, even
-  #     when its target equals the run's, as a tracker's collection's may. So the claim
-  #     never requests a forge's credential from a tracker's adapter. Of the matching
+  #     (`Apiary.Nodes.Node`'s `targets`), and whose adapter and target collection ref
+  #     are those of the work item's target row (`target_id`). A run whose target has no
+  #     address takes none. A collection of an adapter that did not say so never counts,
+  #     even when its target is the work item's. So the claim never requests a forge's
+  #     credential from a tracker's adapter. Of the matching
   #     collections, the run takes one that is live and on a connected connection before
   #     one that is not; then its ticket's collection (`Apiary.Sources.Item`) before
   #     another; then the oldest, by `inserted_at`, then by id.
@@ -61,7 +62,7 @@ defmodule Apiary.Runs.RunCredentials do
   alias Apiary.Integrations.ApplyTemplates
   alias Apiary.Nodes.Node
   alias Apiary.Repo
-  alias Apiary.Runs.{Run, RunCredential}
+  alias Apiary.Runs.{Run, RunCredential, Target}
   alias Apiary.Sources.Item
   alias Apiary.WorkItems.WorkItem
 
@@ -200,15 +201,19 @@ defmodule Apiary.Runs.RunCredentials do
 
   defp collection(
          %DispatchRun{} = dispatch_run,
-         %WorkItem{} = work_item,
+         %WorkItem{target_id: target_id} = work_item,
          %{system: system, path: path}
        )
-       when is_binary(system) and is_binary(path) do
+       when is_binary(target_id) and is_binary(system) and is_binary(path) do
     from([c, n, a] in with_adapter(),
+      join: t in Target,
+      on:
+        t.adapter_id == c.adapter_id and
+          t.collection_external_ref == c.target_collection_external_ref,
+      where: t.id == ^target_id,
       where:
         c.organisation_id == ^dispatch_run.organisation_id and
-          c.workspace_id == ^dispatch_run.workspace_id and c.target_system == ^system and
-          c.target_path == ^path and a.targets == true,
+          c.workspace_id == ^dispatch_run.workspace_id and a.targets == true,
       order_by: [desc: is_nil(c.ended_at) and n.state == :connected]
     )
     |> ticket_first(work_item)

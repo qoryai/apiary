@@ -339,7 +339,7 @@ defmodule Apiary.WorkItems.Moves do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Number, as: RunNumber
-  alias Apiary.Runs.Run
+  alias Apiary.Runs.{Run, Target}
   alias Apiary.Sources.{Item, Topic}
   alias Apiary.Sources.Comment, as: SourceComment
   alias Apiary.Explore.{Questions, ReviewComments}
@@ -383,9 +383,10 @@ defmodule Apiary.WorkItems.Moves do
              :ok <- Access.authorize(scope, :"work_item.take_in", workspace),
              :ok <- MachineTypes.hold(),
              {:ok, ticket} <- hold_ticket(scope, workspace, item_id),
+             placed = target(workspace, ticket),
              :ok <- none_yet(scope, ticket),
              :ok <- open(ticket),
-             {:ok, target} <- target(workspace, ticket),
+             {:ok, target} <- placed,
              {:ok, owner_id} <- owner(scope, attrs),
              {:ok, comment} <- take_in_comment(attrs) do
           make(scope, workspace, ticket, target, owner_id, attrs, comment)
@@ -430,6 +431,7 @@ defmodule Apiary.WorkItems.Moves do
         target_collection_external_ref: target && target.collection_external_ref,
         target_system: target && target.system,
         target_path: target && target.path,
+        target_id: target && target.id,
         owner_id: owner_id,
         first_instruction: instruction(attrs)
       })
@@ -627,10 +629,11 @@ defmodule Apiary.WorkItems.Moves do
              :ok <- Access.authorize(scope, :"work_item.take_in", workspace),
              :ok <- MachineTypes.hold(),
              {:ok, ticket} <- hold_ticket(scope, workspace, item_id),
+             placed = target(workspace, ticket),
              {:ok, ended} <- ended(scope, ticket),
              :ok <- open(ticket),
              :ok <- not_finished(scope, ended, ticket),
-             {:ok, target} <- target(workspace, ticket),
+             {:ok, target} <- placed,
              {:ok, owner_id} <- owner(scope, attrs),
              {:ok, comment} <- take_in_comment(attrs) do
           again(scope, workspace, ended, ticket, target, owner_id, attrs, comment)
@@ -685,6 +688,7 @@ defmodule Apiary.WorkItems.Moves do
         target_collection_external_ref: target && target.collection_external_ref,
         target_system: target && target.system,
         target_path: target && target.path,
+        target_id: target && target.id,
         owner_id: owner_id,
         first_instruction: instruction(attrs)
       })
@@ -816,10 +820,10 @@ defmodule Apiary.WorkItems.Moves do
       case before do
         %{state: :closed} ->
           [state: state, closed_at: before.at, closed_by_id: before.by_id] ++
-            taken_in_fields(before) ++ stage_fields(before, held)
+            taken_in_fields(before, held) ++ stage_fields(before, held)
 
         %{state: :undone} ->
-          [state: state] ++ taken_in_fields(before) ++ stage_fields(before, held)
+          [state: state] ++ taken_in_fields(before, held) ++ stage_fields(before, held)
 
         nil ->
           [state: state]
@@ -911,15 +915,34 @@ defmodule Apiary.WorkItems.Moves do
     at
   end
 
-  defp taken_in_fields(before) do
+  defp taken_in_fields(before, held) do
     [
       taken_in_by_id: before.taken_in_by_id,
       taken_in_at: before.taken_in_at,
       owner_id: before.owner_id,
       target_collection_external_ref: before.target_collection_external_ref,
       target_system: before.target_system,
-      target_path: before.target_path
+      target_path: before.target_path,
+      target_id: target_before(before, held)
     ]
+  end
+
+  # The work item's workspace's target row of the target the undo puts back, by the work
+  # item's adapter and that collection ref; nil for no target, and where the workspace
+  # has no such row. An undo makes no target row.
+  defp target_before(%{target_collection_external_ref: nil}, _held), do: nil
+
+  defp target_before(%{target_collection_external_ref: ref}, %WorkItem{} = held) do
+    Repo.one(
+      from(
+        t in Target.by_key(held.workspace_id, %{
+          adapter_id: held.adapter_id,
+          collection_external_ref: ref
+        }),
+        select: t.id
+      ),
+      log: false
+    )
   end
 
   ## Close
@@ -1794,7 +1817,9 @@ defmodule Apiary.WorkItems.Moves do
   # The work item's target: the ticket's target, else its collection's, nil for neither,
   # of the collection's adapter, as the workspace's domain allows it
   # (`Apiary.Lingo.Domain.check_target/2`). A target has a collection ref, and an
-  # address or none.
+  # address or none, and `id`, the workspace's target row of the adapter and that ref,
+  # made where the workspace has none (`Apiary.Runs.Target.id_of/3`). A take in reads it
+  # before it holds a work item, since nothing locks a target after a work item.
   defp target(workspace, %{item: item, collection: collection}) do
     target =
       cond do
@@ -1803,7 +1828,11 @@ defmodule Apiary.WorkItems.Moves do
         true -> nil
       end
 
-    with :ok <- Domain.check_target(workspace, target), do: {:ok, target}
+    with :ok <- Domain.check_target(workspace, target) do
+      {:ok,
+       target &&
+         Map.put(target, :id, Target.id_of(workspace.organisation_id, workspace.id, target))}
+    end
   end
 
   defp target_of(collection, row) do

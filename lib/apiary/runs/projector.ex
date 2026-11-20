@@ -755,16 +755,17 @@ defmodule Apiary.Runs.Projector do
 
   # The run's target. A run of a workspace's queue has its work item's target, or a
   # prebuild its collection's, by adapter and collection ref (`Target.dispatched/1`),
-  # made in the run's workspace where it has no row yet. A target seen before keeps its
-  # row, its public id and its address: a work item's address is the one it was taken in
-  # with, which may predate a move of its collection. Any other run has the one target at
+  # made in the run's workspace where it has no row yet (`Target.id_of/3`). A target seen
+  # before keeps its row, its public id and its address. Any other run has the one target at
   # the address its labels name (`Apiary.Runs.Target.id_at/3`), none where no target or
   # more than one has it.
   defp put_target(%Ecto.Changeset{data: %Run{dispatch_run_id: id} = run} = changeset, _folded)
        when is_binary(id) do
     case Target.dispatched(id) do
       %{} = target ->
-        Ecto.Changeset.change(changeset, target_id: target_id!(run, target))
+        Ecto.Changeset.change(changeset,
+          target_id: Target.id_of(run.organisation_id, run.workspace_id, target)
+        )
 
       nil ->
         changeset
@@ -778,19 +779,6 @@ defmodule Apiary.Runs.Projector do
   end
 
   defp put_target(changeset, _run), do: changeset
-
-  # shortcut: a target that another caller makes between the read and the insert takes
-  # this address, which may be older than its collection's; replace it when a run's
-  # target is read from its collection.
-  defp target_id!(run, target) do
-    query = from(t in Target.by_key(run.workspace_id, target), select: t.id)
-
-    Repo.one(query, log: false) ||
-      (
-        :ok = Target.insert_new(run.organisation_id, run.workspace_id, [target])
-        Repo.one!(query, log: false)
-      )
-  end
 
   defp insert_log_chunks(_run, []), do: :ok
 

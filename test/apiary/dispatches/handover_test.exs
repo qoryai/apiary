@@ -1266,7 +1266,12 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
-          set: [target_collection_external_ref: nil, target_system: nil, target_path: nil]
+          set: [
+            target_collection_external_ref: nil,
+            target_system: nil,
+            target_path: nil,
+            target_id: nil
+          ]
         )
 
       assert claim(ctx) == {:ok, :none}

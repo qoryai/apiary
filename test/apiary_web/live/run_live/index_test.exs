@@ -811,7 +811,7 @@ defmodule ApiaryWeb.RunLive.IndexTest do
 
       Repo.update_all(
         from(w in Apiary.WorkItems.WorkItem, where: w.id == ^work_item.id),
-        set: [workspace_id: elsewhere.id]
+        set: [workspace_id: elsewhere.id, target_id: nil]
       )
 
       view = open(conn, scope)

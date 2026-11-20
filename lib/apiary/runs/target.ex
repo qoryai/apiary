@@ -152,6 +152,26 @@ defmodule Apiary.Runs.Target do
   end
 
   @doc """
+  The id of the row of `target` in the workspace `workspace_id` of the organisation
+  `organisation_id`, by its adapter and collection ref, made with `insert_new/3` where
+  there is none. A row seen before keeps its address. Kept out of the query log
+  (`log: false`), since the address may be event data.
+  """
+  # shortcut: a target that another caller makes between the read and the insert takes
+  # this address, which may be older than its collection's; replace it when every
+  # target is made from its collection.
+  @spec id_of(Ecto.UUID.t(), Ecto.UUID.t(), Apiary.Lingo.Domain.target()) :: Ecto.UUID.t()
+  def id_of(organisation_id, workspace_id, %{} = target) do
+    query = from(t in by_key(workspace_id, target), select: t.id)
+
+    Repo.one(query, log: false) ||
+      (
+        :ok = insert_new(organisation_id, workspace_id, [target])
+        Repo.one!(query, log: false)
+      )
+  end
+
+  @doc """
   The target of the run of a workspace's queue `dispatch_run_id`: its work item's target,
   else its prebuild's collection's; nil for none. Read without a lock, and kept out of
   the query log (`log: false`), since the address may be event data.

@@ -253,7 +253,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
 
       {1, _} =
         Repo.update_all(from(w in Apiary.WorkItems.WorkItem, where: w.id == ^answered.id),
-          set: [workspace_id: there.id]
+          set: [workspace_id: there.id, target_id: nil]
         )
 
       assert WorkItems.explore(ctx.scope, answered) == nil
@@ -985,7 +985,7 @@ defmodule Apiary.WorkItems.ExploreViewTest do
       there = workspace_fixture(ctx.scope.organisation)
 
       Repo.update_all(from(w in Apiary.WorkItems.WorkItem, where: w.id == ^ctx.work_item.id),
-        set: [workspace_id: there.id]
+        set: [workspace_id: there.id, target_id: nil]
       )
 
       elsewhere = workspace_scope(ctx.scope.user, there)

@@ -812,8 +812,10 @@ ends as any exit does: a build or a new run pulls from the same registry, so no 
 cleared or queued, and nothing is queued again.
 
 **A run held for its build.** In a workspace whose domain has prebuilds, a waiting run
-of a work item whose target a live collection names with an `environment_ref` waits for
-the pool's build of that `environment_ref`: a pool's claim does not take it while the
+of a work item whose target a live collection with an address and an `environment_ref`
+has waits for the pool's build of that `environment_ref`. The collection has the adapter
+and the collection ref of the work item's target row: a collection of another adapter
+at the same address holds no run. A pool's claim does not take the run while the
 pool has no such image (`Apiary.Environments.held/1`), and gives it that image once the
 build is recorded. A pool's claim queues a prebuild of the collection's
 `environment_ref` whenever it holds such a run and no prebuild of that ref for the pool

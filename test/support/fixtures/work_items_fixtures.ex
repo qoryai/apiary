@@ -20,7 +20,9 @@ defmodule Apiary.WorkItemsFixtures do
   of that connection with the work item's ref, `source_item_fixture/2`), `external_ref`,
   `url`, `title`, `collection_title`, `target_system`, `target_path`,
   `target_collection_external_ref` (else the target's path, for a work item with a
-  target), `owner_id` and `first_instruction`. The adapter is the connection's.
+  target), `owner_id` and `first_instruction`. The adapter is the connection's. A work
+  item with a target gets the workspace's target row of the adapter and that ref, made
+  where there is none, as a take in gets it (`Apiary.Runs.Target.id_of/3`).
   """
   def work_item_fixture(%Scope{workspace: workspace, user: user} = scope, attrs \\ %{}) do
     attrs =
@@ -46,6 +48,7 @@ defmodule Apiary.WorkItemsFixtures do
       |> Map.put_new_lazy(:item_id, fn ->
         source_item_fixture(scope, connection: connection, external_ref: attrs.external_ref).id
       end)
+      |> put_target_id(workspace)
 
     {:ok, work_item} =
       Repo.transact(fn ->
@@ -704,4 +707,18 @@ defmodule Apiary.WorkItemsFixtures do
     do: Map.put_new(fields, :target_collection_external_ref, Map.fetch!(fields, key))
 
   defp put_target_ref(fields, _key), do: fields
+
+  defp put_target_id(%{target_collection_external_ref: ref} = attrs, workspace)
+       when is_binary(ref) do
+    Map.put_new_lazy(attrs, :target_id, fn ->
+      Apiary.Runs.Target.id_of(workspace.organisation_id, workspace.id, %{
+        adapter_id: attrs.adapter_id,
+        collection_external_ref: ref,
+        system: attrs[:target_system],
+        path: attrs[:target_path]
+      })
+    end)
+  end
+
+  defp put_target_id(attrs, _workspace), do: attrs
 end

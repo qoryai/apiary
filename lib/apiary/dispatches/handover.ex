@@ -1301,7 +1301,7 @@ defmodule Apiary.Dispatches.Handover do
       organisation_id: dispatch_run.organisation_id,
       workspace_id: dispatch_run.workspace_id,
       dispatch_run_id: dispatch_run.id,
-      target_id: target_row_id(dispatch_run, target)
+      target_id: Target.id_of(dispatch_run.organisation_id, dispatch_run.workspace_id, target)
     }
 
     case RunAccess.destinations(run) do
@@ -1329,21 +1329,6 @@ defmodule Apiary.Dispatches.Handover do
     case InstanceConfig.value(:prebuilt_image_max_gb) do
       nil -> []
       gb -> [{"largest_prebuilt_image_bytes", gb * 1_000_000_000}]
-    end
-  end
-
-  # The id of the row of `target` in the prebuild's workspace, by its adapter and
-  # collection ref, made where there is none.
-  defp target_row_id(%DispatchRun{} = dispatch_run, target) do
-    query = from t in Target.by_key(dispatch_run.workspace_id, target), select: t.id
-
-    case Repo.one(query) do
-      nil ->
-        :ok = Target.insert_new(dispatch_run.organisation_id, dispatch_run.workspace_id, [target])
-        Repo.one!(query)
-
-      id ->
-        id
     end
   end
 

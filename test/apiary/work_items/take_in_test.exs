@@ -15,6 +15,7 @@ defmodule Apiary.WorkItems.TakeInTest do
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Nodes.Node
+  alias Apiary.Runs.Target
   alias Apiary.Sources.Topic
   alias Apiary.WorkItems.{WorkItem, WorkItemEvent}
 
@@ -70,6 +71,24 @@ defmodule Apiary.WorkItems.TakeInTest do
       assert %DateTime{} = work_item.taken_in_at
       assert work_item.first_instruction == ""
       assert "wi_" <> _ = work_item.public_id
+    end
+
+    test "stores the workspace's target row of the ticket's adapter and collection ref", ctx do
+      collection = collection(ctx.ticket)
+
+      assert {:ok, work_item} = WorkItems.take_in(ctx.scope, ctx.ticket.public_id)
+
+      row = Repo.get!(Target, work_item.target_id)
+
+      assert {row.workspace_id, row.adapter_id, row.collection_external_ref, row.system, row.path} ==
+               {ctx.scope.workspace.id, ctx.ticket.adapter_id,
+                collection.target_collection_external_ref, collection.target_system,
+                collection.target_path}
+
+      # A second ticket of that collection gets the same row.
+      other = source_item_fixture(ctx.scope, collection: collection, external_ref: "acme/shop#13")
+      assert {:ok, second} = WorkItems.take_in(ctx.scope, other.public_id)
+      assert second.target_id == work_item.target_id
     end
 
     test "numbers each new work item of the workspace next", ctx do

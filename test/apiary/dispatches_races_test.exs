@@ -648,7 +648,7 @@ defmodule Apiary.DispatchesRacesTest do
     mover =
       start(fn ->
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
-          set: [workspace_id: other.id]
+          set: [workspace_id: other.id, target_id: nil]
         )
       end)
 
