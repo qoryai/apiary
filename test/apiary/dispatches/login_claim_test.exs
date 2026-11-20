@@ -165,7 +165,8 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       assert {:ok, :none} = claim(ctx)
       waiting = waiting!(queued, provider)
 
-      assert {:cooldown, name, at} = Waiting.reason(waiting)
+      # The sign-in of main needs a new one, beside the cooldown of spare.
+      assert {:cooldown_or_new_key, name, at} = Waiting.reason(waiting)
       assert name == provider.name
       assert DateTime.compare(at, until) == :eq
       assert requests() == []
