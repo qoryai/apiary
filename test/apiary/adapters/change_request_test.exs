@@ -100,7 +100,7 @@ defmodule Apiary.Adapters.ChangeRequestTest do
       refused("change_kind", "reply_all")
     end
 
-    test "previous has a title, an address or both, and no other member alone" do
+    test "previous is an object with at least one member, and its title has the title rule" do
       assert ChangeRequest.validate(entry(%{"previous" => %{"title" => "Dates"}})) == :ok
       refused("previous", %{})
       refused("previous", "Dates")

@@ -16,7 +16,8 @@
 # document, with their answers, accepted and refused),
 # and, under closed/, the documents that only a closed copy of a schema refuses: the
 # schemas are open, and a reader ignores a member that a schema does not define. Under
-# changes/, one entry of a kind that no schema defines. The connect-return.schema.json and setup-pass.schema.json are under
+# changes/, one entry of a kind that no schema defines. The
+# connect-return.schema.json and setup-pass.schema.json are under
 # test/fixtures/integration-contract/schema/: a commit of the integrations, pinned by its
 # id.
 #

@@ -1963,9 +1963,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   No code calls it, because no run's documents have `deliver` or `further_targets`.
 - `ChangeRequest.validate/1` checks a `change_request` entry against the
   integrations contract's `changes.schema.json`, vendored under `priv/contract/integration/`.
-  It refuses a title that is empty, only spaces, over 256 characters, on more than one
-  line or has a hidden character, a text with U+0000 or over 20,000 characters, and a
-  `data` that is not an object. A text with a `<!-- qory:start -->` line is valid. No code
+  It refuses a title that is empty, only spaces, over 256 characters or on more than one
+  line. It refuses a title with a hidden character, a text with U+0000 or over 20,000
+  characters, and a `data` that is not an object. A text with a `<!-- qory:start -->` line is valid. No code
   writes the entry, so no entry is checked.
 
 ### Changed
@@ -2888,10 +2888,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - The integrations contract is vendored at integrations `9a1e64e`. Its schemas leave an
   undefined member open. A description with a `publisher`, or a data description with a
   `program`, is read at `9a1e64e`, where `e0d7be1` refused it. The `document` of the
-  description keeps the member. The readers of a declaration, a call, a wire body, the
-  feed, source items, a grant end and a sources disconnect still refuse an undefined
-  member, and their tests keep that. The `openai-subscription` description has the text of
-  `9a1e64e`. The run, explore and diagnostics contracts stay at `e0d7be1`.
+  description keeps the member. The adapter declaration, the bodies of calls to an adapter
+  and source items still refuse an undefined member. So do the grant end, the sources
+  disconnect and the feed writer, and their tests keep that. The `openai-subscription`
+  description has the text of `9a1e64e`. The run, explore and diagnostics contracts stay
+  at `e0d7be1`.
 
 ### Removed
 
