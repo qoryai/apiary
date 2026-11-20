@@ -217,4 +217,41 @@ defmodule Apiary.Environments.RebuildRacesTest do
     for collection <- [first, second],
         do: assert(waiting(collection) == [{pool.id, "env-2"}])
   end
+
+  test "a registration on the second pool holds its row, then takes a run number, beside a Rebuild of both pools: neither deadlocks",
+       ctx do
+    second = pool_fixture(ctx.scope, name: "linux-pool")
+    [first, last] = Enum.sort_by([ctx.pool, second], & &1.id)
+
+    {1, _rows} =
+      Repo.update_all(from(n in Node, where: n.id == ^last.id), set: [instance_limit: 5])
+
+    last = Repo.get!(Node, last.id)
+
+    # A registration on `last`: the instance limit's check holds the pool's row
+    # `FOR UPDATE` (`Apiary.Nodes.check_instance_limit/3`), and the run's number comes
+    # next.
+    {registration, registration_backend} =
+      hold(fn -> Apiary.Nodes.check_instance_limit(last, "i-1", DateTime.utc_now()) end)
+
+    rebuild =
+      start(fn ->
+        try do
+          Environments.rebuild(ctx.scope, ctx.target)
+        rescue
+          error -> {:raised, Exception.message(error)}
+        end
+      end)
+
+    # The Rebuild waits at `last`'s row. Had it taken the run counter before that row, the
+    # registration would now wait on it for the counter, and the Rebuild, which has waited
+    # longer, would be refused (`deadlock_detected`).
+    await_waited(rebuild.backend, registration_backend)
+    number = continue(registration, fn -> Apiary.Runs.Number.next(ctx.scope.workspace, last) end)
+    commit(registration)
+
+    assert Task.await(rebuild.task, 10_000) == {:ok, 2}
+    assert is_integer(number)
+    assert waiting(ctx.collection) == [{first.id, "env-1"}, {last.id, "env-1"}]
+  end
 end
