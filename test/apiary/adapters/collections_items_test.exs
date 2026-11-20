@@ -77,7 +77,7 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
             url: "https://tracker.acme.example/" <> ref,
             title: ref,
             grant_ref: listing_grant(ctx.connection),
-            target: target && Map.put(target, :collection, ref),
+            target: target && Map.put_new(target, :collection, ref),
             items: items != false
           }
         end,
@@ -307,7 +307,9 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
     end
 
     test "turning its target's switch leaves it as it is, and turns the others", ctx do
-      {:ok, :accepted} = post(ctx, [{"SHOP", @shop, false}, {"MIRROR", @shop, nil}])
+      # MIRROR's target is SHOP, by the adapter's ref of it.
+      mirror = Map.put(@shop, :collection, "SHOP")
+      {:ok, :accepted} = post(ctx, [{"SHOP", @shop, false}, {"MIRROR", mirror, nil}])
       {:ok, 2} = assign(ctx, ["SHOP", "MIRROR"], ctx.workspace)
       target = target(ctx.workspace, @shop)
       assert Collections.backlog_switch(ctx.scope, target) == %{on: true, item_noun: nil}

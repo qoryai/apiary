@@ -1966,9 +1966,8 @@ defmodule Apiary.Adapters.Collections do
   defp same_workspace?(_scope, _target), do: false
 
   # The live collections of a connected connection, assigned to the workspace of `target`,
-  # whose target is the target's system and path, that have items, as their adapters do,
-  # by id. Every domain names a target by the system and path its labels carry, as they
-  # are, so a collection's are its target's.
+  # whose target is `target`, by the target's adapter and collection ref, that have items,
+  # as their adapters do, by id.
   defp target_collections(%Target{} = target) do
     from c in Collection,
       join: k in Connection,
@@ -1977,9 +1976,10 @@ defmodule Apiary.Adapters.Collections do
       on: n.id == c.adapter_id,
       where:
         c.organisation_id == ^target.organisation_id and
-          c.workspace_id == ^target.workspace_id and c.target_system == ^target.system and
-          c.target_path == ^target.path and is_nil(c.ended_at) and k.state == :connected and
-          is_nil(k.ended_at) and c.items and n.items,
+          c.workspace_id == ^target.workspace_id and c.adapter_id == ^target.adapter_id and
+          c.target_collection_external_ref == ^target.collection_external_ref and
+          is_nil(c.ended_at) and k.state == :connected and is_nil(k.ended_at) and c.items and
+          n.items,
       order_by: c.id
   end
 
@@ -2007,7 +2007,8 @@ defmodule Apiary.Adapters.Collections do
         from c in Collection,
           where: c.id in ^ids,
           where: c.workspace_id == ^target.workspace_id and is_nil(c.ended_at) and c.items,
-          where: c.target_system == ^target.system and c.target_path == ^target.path,
+          where: c.adapter_id == ^target.adapter_id,
+          where: c.target_collection_external_ref == ^target.collection_external_ref,
           order_by: c.id,
           lock: "FOR UPDATE"
       )

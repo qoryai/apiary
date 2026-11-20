@@ -103,8 +103,9 @@ defmodule Apiary.DispatchesRacesTest do
 
   # A live collection of the scope's workspace, with the target `acme/shop` or `path` on
   # `code.example.com`, under a fresh connection of an adapter remembered for `on_exit`,
-  # or under the connection `opts[:connection]`; its id `opts[:id]` when given, and its
-  # `environment_ref` `opts[:environment_ref]`, else `env-0`.
+  # or under the connection `opts[:connection]`; its id `opts[:id]` when given, its
+  # `environment_ref` `opts[:environment_ref]`, else `env-0`, and the collection ref of its
+  # target `opts[:target_ref]`, else `ref`.
   defp collection!(ctx, ref \\ "SHOP", path \\ "acme/shop", opts \\ []) do
     connection =
       Keyword.get_lazy(opts, :connection, fn ->
@@ -123,7 +124,7 @@ defmodule Apiary.DispatchesRacesTest do
       external_ref: ref,
       url: "https://code.example.com/acme/shop",
       title: "shop",
-      target_collection_external_ref: ref,
+      target_collection_external_ref: Keyword.get(opts, :target_ref, ref),
       target_system: "code.example.com",
       target_path: path,
       environment_ref: Keyword.get(opts, :environment_ref, "env-0"),
@@ -131,9 +132,10 @@ defmodule Apiary.DispatchesRacesTest do
     })
   end
 
-  # Two collections of one connection with the target `path`, and a run held for that
-  # target: `lapsed`, the lower id, whose `environment_ref` `env-1` has a prebuild
-  # claimed by `key` for `pool` whose lease lapsed, so no build of it is due, and `due`,
+  # Two collections of one connection with one target at `path`, the lower one's by its
+  # ref, and a run held for that target: `lapsed`, the lower id, whose `environment_ref`
+  # `env-1` has a prebuild claimed by `key` for `pool` whose lease lapsed, so no build of
+  # it is due, and `due`,
   # whose `env-0` has none, so a claim of the pool queues one. The claim's free sets the
   # lapsed prebuild waiting again and its take writes it again, which takes a
   # `FOR KEY SHARE` lock on `lapsed`. With the target's row, for a Backlog switch.
@@ -143,7 +145,7 @@ defmodule Apiary.DispatchesRacesTest do
     [low, high] = Enum.sort([Ecto.UUID.generate(), Ecto.UUID.generate()])
     on = [connection: connection]
     lapsed = collection!(ctx, "L-" <> path, path, [id: low, environment_ref: "env-1"] ++ on)
-    due = collection!(ctx, "D-" <> path, path, [id: high] ++ on)
+    due = collection!(ctx, "D-" <> path, path, [id: high, target_ref: "L-" <> path] ++ on)
     :ok = claimed_prebuilds!(ctx, key, pool, [{lapsed, Ecto.UUID.generate()}])
     _held = held!(ctx, path)
     target = Collection.target(lapsed)

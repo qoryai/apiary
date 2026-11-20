@@ -54,7 +54,8 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
         collection_ref: ref
       })
 
-  # One part of a listing naming `collections`, `{ref, target}` each.
+  # One part of a listing with `collections`, `{ref, target}` each. A target without a
+  # `collection` is the collection itself.
   defp post(ctx, collections, opts \\ []) do
     Collections.post_listing(ctx.key_scope, %{
       time: DateTime.utc_now(:second),
@@ -66,7 +67,7 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
             url: "https://tracker.acme.example/" <> ref,
             title: ref,
             grant_ref: listing_grant(ctx.connection),
-            target: target && Map.put(target, :collection, ref)
+            target: target && Map.put_new(target, :collection, ref)
           }
         end,
       listing: %{
@@ -164,7 +165,9 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
     end
 
     test "turns every collection of the target in the workspace, and none of another", ctx do
-      {:ok, :accepted} = post(ctx, [{"SHOP", @shop}, {"MIRROR", @shop}, {"API", @api}])
+      # MIRROR's target is SHOP, by the adapter's ref of it.
+      mirror = Map.put(@shop, :collection, "SHOP")
+      {:ok, :accepted} = post(ctx, [{"SHOP", @shop}, {"MIRROR", mirror}, {"API", @api}])
       {:ok, 3} = assign(ctx, ["SHOP", "MIRROR", "API"], ctx.workspace)
       target = target(ctx.workspace, @shop)
 

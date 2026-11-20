@@ -410,8 +410,8 @@ defmodule Apiary.Adapters do
 
   @doc false
   # target_item_nouns/2 is, for each of `target_ids`, targets of the organisation
-  # `organisation_id`, `shared_item_noun/1` of the adapters of the collections with its
-  # system and path, ended ones and those of other workspaces too: what its sources call
+  # `organisation_id`, `shared_item_noun/1` of the adapters of the collections whose target
+  # it is, by adapter and collection ref, ended ones and those of other workspaces too: what its sources call
   # its items, by target id. A target with none, or whose sources name none, has no key.
   # For the names a page reads with the entries of an audit trail it may read already
   # (`Apiary.Audit.names/2`), so it asks no access.
@@ -423,8 +423,8 @@ defmodule Apiary.Adapters do
     from(t in Target,
       join: c in Collection,
       on:
-        c.organisation_id == t.organisation_id and c.target_system == t.system and
-          c.target_path == t.path,
+        c.organisation_id == t.organisation_id and c.adapter_id == t.adapter_id and
+          c.target_collection_external_ref == t.collection_external_ref,
       join: n in Node,
       on: n.id == c.adapter_id,
       where: t.organisation_id == ^organisation_id and t.id in ^target_ids,

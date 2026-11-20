@@ -1799,7 +1799,7 @@ defmodule Apiary.Stacks.SourcesTest do
       assert row.target_id == target_id
 
       assert Sources.targets_chosen(ctx.scope.workspace) == %{
-               {@target.system, @target.path} => %{
+               {ctx.adapter.adapter.id, "R_app"} => %{
                  choice: :repository,
                  git: @harness,
                  narrowing: %{"stack" => "triage"},
@@ -1841,7 +1841,7 @@ defmodule Apiary.Stacks.SourcesTest do
       assert calls() == []
 
       assert %{choice: :qory, git: git, stack: "software", version: {:branch, "main"}, pin: pin} =
-               Sources.targets_chosen(ctx.scope.workspace)[{@target.system, @target.path}]
+               Sources.targets_chosen(ctx.scope.workspace)[{ctx.adapter.adapter.id, "R_app"}]
 
       assert {git, pin} == {qory.harness["git"], qory.harness["ref"]}
 
@@ -1927,7 +1927,7 @@ defmodule Apiary.Stacks.SourcesTest do
       [_app, harness] = Sources.repositories(ctx.scope)
 
       chosen = fn ->
-        Sources.targets_chosen(ctx.scope.workspace)[{@target.system, @target.path}]
+        Sources.targets_chosen(ctx.scope.workspace)[{ctx.adapter.adapter.id, "R_app"}]
       end
 
       # Under the Qory harness: a stack it exports, with no read.
@@ -1987,7 +1987,7 @@ defmodule Apiary.Stacks.SourcesTest do
       other = workspace_scope(ctx.scope.user, workspace_fixture(ctx.scope.organisation))
 
       chosen = fn ->
-        Sources.targets_chosen(ctx.scope.workspace)[{@target.system, @target.path}]
+        Sources.targets_chosen(ctx.scope.workspace)[{ctx.adapter.adapter.id, "R_app"}]
       end
 
       {:ok, _row} = Sources.choose_target(ctx.scope, target(ctx), {:workspace, "core"})
@@ -2032,7 +2032,7 @@ defmodule Apiary.Stacks.SourcesTest do
       {:ok, _shared} = Sources.reuse_shared(ctx.scope)
 
       assert %{git: @harness, stack: "triage", version: :workspace, pin: "main"} =
-               Sources.targets_chosen(ctx.scope.workspace)[{@target.system, @target.path}]
+               Sources.targets_chosen(ctx.scope.workspace)[{ctx.adapter.adapter.id, "R_app"}]
 
       assert {:ok, walked} = Walk.run(walk_input(ctx))
       assert walked.document["extends"]["git"] == @harness
@@ -2111,12 +2111,12 @@ defmodule Apiary.Stacks.SourcesTest do
       # acme/harness follows the shared branch; the stack of acme/other keeps its
       # document, with no version.
       assert %{choice: :qory, stack: "core", version: {:branch, "main"}} =
-               chosen[{@target.system, @target.path}]
+               chosen[{ctx.adapter.adapter.id, "R_app"}]
 
       assert %{git: @harness, stack: "triage", version: :workspace, pin: "main"} =
-               chosen[{@target.system, "acme/one"}]
+               chosen[{ctx.adapter.adapter.id, "acme/one"}]
 
-      assert %{version: nil, pin: "v1"} = chosen[{@target.system, "acme/two"}]
+      assert %{version: nil, pin: "v1"} = chosen[{ctx.adapter.adapter.id, "acme/two"}]
 
       two = %{target(ctx) | collection_external_ref: "acme/two", path: "acme/two"}
 
@@ -2157,7 +2157,7 @@ defmodule Apiary.Stacks.SourcesTest do
       assert Stacks.version_ref(row, ctx.scope.workspace, ctx.scope.organisation) == "v1"
 
       assert %{git: @harness, version: :workspace, pin: "v1"} =
-               Sources.targets_chosen(ctx.scope.workspace)[{@target.system, @target.path}]
+               Sources.targets_chosen(ctx.scope.workspace)[{ctx.adapter.adapter.id, "R_app"}]
 
       assert {:ok, walked} = Walk.run(walk_input(ctx))
 
@@ -2192,7 +2192,7 @@ defmodule Apiary.Stacks.SourcesTest do
         Sources.choose(ctx.scope, {:repository, harness, "triage", {:branch, "main"}})
 
       assert %{git: @harness, stack: "triage", version: :workspace, pin: "main"} =
-               Sources.targets_chosen(ctx.scope.workspace)[{@target.system, @target.path}]
+               Sources.targets_chosen(ctx.scope.workspace)[{ctx.adapter.adapter.id, "R_app"}]
 
       # A row of another repository, neither the old harness nor the new one, keeps its
       # document as written, with no version.

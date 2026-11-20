@@ -44,10 +44,10 @@ defmodule ApiaryWeb.HarnessTargets do
         id: collection.public_id,
         title: collection.title,
         target: target,
-        chosen: chosen[{target.system, target.path}]
+        chosen: chosen[{target.adapter_id, target.collection_external_ref}]
       }
     end
-    |> Enum.uniq_by(&{&1.target.system, &1.target.path})
+    |> Enum.uniq_by(&{&1.target.adapter_id, &1.target.collection_external_ref})
   end
 
   @doc false

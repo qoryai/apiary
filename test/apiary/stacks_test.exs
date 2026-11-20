@@ -7,7 +7,6 @@ defmodule Apiary.StacksTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.Edition
-  alias Apiary.Runs.Target
   alias Apiary.Stacks
   alias Apiary.Stacks.{Resolution, Stack}
 

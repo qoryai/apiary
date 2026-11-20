@@ -2124,9 +2124,9 @@ defmodule Apiary.Stacks.Sources do
         }
 
   @doc false
-  # targets_chosen/1 is the stacks chosen for the targets of `workspace`, by `{system,
-  # path}` (`t:target_chosen/0`). Read without a lock.
-  @spec targets_chosen(Workspace.t()) :: %{{String.t(), String.t()} => target_chosen}
+  # targets_chosen/1 is the stacks chosen for the targets of `workspace`, by `{adapter_id,
+  # collection_external_ref}` (`t:target_chosen/0`). Read without a lock.
+  @spec targets_chosen(Workspace.t()) :: %{{Ecto.UUID.t(), String.t()} => target_chosen}
   def targets_chosen(%Workspace{id: id, organisation_id: organisation_id} = workspace) do
     organisation = %Organisation{id: organisation_id}
 
@@ -2136,12 +2136,12 @@ defmodule Apiary.Stacks.Sources do
         on: t.id == s.target_id,
         where: s.organisation_id == ^organisation_id and s.workspace_id == ^id,
         where: is_nil(s.workflow) and not is_nil(s.choice),
-        select: {t.system, t.path, s}
+        select: {t.adapter_id, t.collection_external_ref, s}
     )
-    |> Map.new(fn {system, path, %Stack{choice: choice, harness: harness} = row} ->
+    |> Map.new(fn {adapter_id, ref, %Stack{choice: choice, harness: harness} = row} ->
       base = extended(harness)
 
-      {{system, path},
+      {{adapter_id, ref},
        %{
          choice: choice,
          git: row_git(choice, base),
