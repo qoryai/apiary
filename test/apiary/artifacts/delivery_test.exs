@@ -6,6 +6,7 @@ defmodule Apiary.Artifacts.DeliveryTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
+  alias Apiary.Adapters.ChangeRequest
   alias Apiary.Artifacts.{Artifact, Delivery, Version}
 
   @moduletag needs: :workflow_model
@@ -215,6 +216,66 @@ defmodule Apiary.Artifacts.DeliveryTest do
       )
 
       assert Delivery.previous_address(version!(artifact, 3)) == nil
+    end
+  end
+
+  describe "record_invalid/2" do
+    defp validated(title) do
+      ChangeRequest.validate(%{
+        "kind" => "change_request",
+        "change_request_id" => "av_7k2m9q4v1x8z3c5d",
+        "change_kind" => "reply",
+        "target" => %{"collection" => "SUPPORT"},
+        "title" => title,
+        "text" => "",
+        "data" => %{}
+      })
+    end
+
+    defp invalid_result do
+      assert {:error, %{valid: false}} = result = validated("Delivery\u{200B}dates")
+      result
+    end
+
+    test "stores a failed delivery with the reason invalid, and sends no reply", %{
+      artifact: artifact
+    } do
+      version = version!(artifact, 1)
+      before = DateTime.utc_now()
+
+      assert {:ok, stored} = Delivery.record_invalid(version, invalid_result())
+
+      row = Repo.get!(Version, version.id)
+      assert {row.delivery, row.delivery_failure, row.delivery_reply} == {:failed, :invalid, nil}
+      assert DateTime.compare(row.delivery_at, before) in [:gt, :eq]
+
+      assert {stored.delivery, stored.delivery_failure, stored.delivery_at} ==
+               {row.delivery, row.delivery_failure, row.delivery_at}
+    end
+
+    test "changes nothing for a valid entry", %{artifact: artifact} do
+      version = version!(artifact, 1)
+
+      assert Delivery.record_invalid(version, validated("Delivery dates")) == {:ok, version}
+      assert Repo.get!(Version, version.id).delivery == nil
+    end
+
+    test "leaves a version that has a delivery as it is", %{artifact: artifact} do
+      at = ~U[2026-11-20 10:00:00.000000Z]
+
+      for attrs <- [
+            [delivery: :sent],
+            [delivery: :delivered, delivery_reply: reply("1"), delivery_at: at],
+            [delivery: :failed, delivery_failure: :refused, delivery_at: at]
+          ] do
+        version = version!(artifact, System.unique_integer([:positive]), attrs)
+
+        assert Delivery.record_invalid(version, invalid_result()) == {:error, :delivery_set}
+        row = Repo.get!(Version, version.id)
+
+        assert {row.delivery, row.delivery_failure, row.delivery_at} ==
+                 {version.delivery, version.delivery_failure, version.delivery_at}
+      end
     end
   end
 end

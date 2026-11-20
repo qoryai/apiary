@@ -1971,6 +1971,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `delivered` or `failed`), the adapter's reply, the reason of a failure and the time.
   `previous_address/1` reads the address of the newest reply of the version's artifact,
   for the `previous.address` of the next entry. No code writes the columns yet.
+- `record_invalid/2` stores a failed delivery with the reason `invalid` on a version whose
+  entry failed `ChangeRequest.validate/1`, and sends nothing. A version that has a
+  delivery is left as it is. No code calls it yet.
 
 ### Changed
 

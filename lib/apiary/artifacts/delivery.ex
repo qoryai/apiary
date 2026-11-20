@@ -39,4 +39,35 @@ defmodule Apiary.Artifacts.Delivery do
 
     reply && reply["address"]
   end
+
+  @doc """
+  record_invalid/2 stores that the entry for `version` failed Qory Apiary's check, so
+  nothing is sent: `result` is what `Apiary.Adapters.ChangeRequest.validate/1` returned
+  for the entry. For `{:error, summary}` it sets `delivery` to `:failed`,
+  `delivery_failure` to `:invalid` and `delivery_at` to the time, and returns the version
+  with them. For `:ok` it changes nothing and returns the version. A version that already
+  has a `delivery` is left as it is and gets `{:error, :delivery_set}`, so a delivery that
+  was sent, or a reply that was stored, is not overwritten. The run is not stopped: only
+  the delivery fails.
+
+  The summary is not stored: the columns have no place for it.
+  """
+  @spec record_invalid(Version.t(), :ok | {:error, map}) ::
+          {:ok, Version.t()} | {:error, :delivery_set}
+  def record_invalid(%Version{} = version, :ok), do: {:ok, version}
+
+  def record_invalid(%Version{id: id} = version, {:error, %{valid: false}}) do
+    at = DateTime.utc_now()
+
+    {count, _rows} =
+      Repo.update_all(
+        from(v in Version, where: v.id == ^id and is_nil(v.delivery)),
+        set: [delivery: :failed, delivery_failure: :invalid, delivery_at: at]
+      )
+
+    case count do
+      1 -> {:ok, %{version | delivery: :failed, delivery_failure: :invalid, delivery_at: at}}
+      0 -> {:error, :delivery_set}
+    end
+  end
 end
