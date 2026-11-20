@@ -756,9 +756,9 @@ defmodule Apiary.Runs.Projector do
   # The run's target. A run of a workspace's queue has its work item's target, or a
   # prebuild its collection's, by adapter and collection ref (`Target.dispatched/1`),
   # made in the run's workspace where it has no row yet (`Target.id_of/3`). A target seen
-  # before keeps its row, its public id and its address. Any other run has the one target at
-  # the address its labels name (`Apiary.Runs.Target.id_at/3`), none where no target or
-  # more than one has it.
+  # before keeps its row, its public id and its address. Any other run has the one target
+  # at the address as the run's labels contain it (`Apiary.Runs.Target.id_at/3`), none
+  # where no target or more than one has it.
   defp put_target(%Ecto.Changeset{data: %Run{dispatch_run_id: id} = run} = changeset, _folded)
        when is_binary(id) do
     case Target.dispatched(id) do

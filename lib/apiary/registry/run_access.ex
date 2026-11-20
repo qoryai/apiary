@@ -263,7 +263,7 @@ defmodule Apiary.Registry.RunAccess do
   # The run's target, as `Apiary.Policy.Serving` reads it: for a run of a workspace's
   # queue, its work item's or its collection's target, by adapter and collection ref
   # (`Apiary.Runs.Target.dispatched_id/2`); for a run that registered, the one target row
-  # at the address its registration's labels name by the workspace's domain
+  # at the address as the run's labels contain it, by the workspace's domain
   # (`Apiary.Runs.Target.id_at/3`), whatever its events say, nil where two targets have
   # that address; for any other run, the target its row has. Nil for none.
   defp target_id(%{dispatch_run_id: id, workspace_id: workspace_id})

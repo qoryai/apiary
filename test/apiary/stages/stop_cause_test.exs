@@ -143,7 +143,7 @@ defmodule Apiary.Stages.StopCauseTest do
       )
   end
 
-  test "a further repository that the target's integration does not list names the target",
+  test "a further repository that the target's integration does not list: the cause and the fix",
        %{work_item: work_item, ws: ws, scope: scope} do
     work_item = at(work_item, scope, "git.example.com", "acme/web-shop")
     further!(work_item, ["acme/docs"])
@@ -153,7 +153,7 @@ defmodule Apiary.Stages.StopCauseTest do
                "Owners and admins of #{ws} correct the targets its runs also read, on the page of target acme/web-shop, under Targets."
   end
 
-  test "a further repository that is the target itself names the target",
+  test "a further repository that is the target itself: the cause and the fix",
        %{work_item: work_item, ws: ws, scope: scope} do
     work_item = at(work_item, scope, "git.example.com", "acme/web-shop")
 

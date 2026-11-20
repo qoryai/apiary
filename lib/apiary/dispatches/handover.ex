@@ -66,10 +66,11 @@ defmodule Apiary.Dispatches.Handover do
   #      workspace's domain has a label for them (`Apiary.Targets.further_repositories/1`),
   #      that break the domain's rules (`Apiary.Lingo.Domain.run_variables/3`), or a
   #      further path that is not one of the collections of the target's adapter
-  #      (`Apiary.Targets.further_collections/2`), end it `variables_invalid`, as do the variables of a run that is not a prebuild, from its
-  #      workspace and target (`Apiary.Variables.for_run/2`), when they are more than 126,
-  #      or take more than 64 KiB, with the count or the size kept as `end_detail`; a
-  #      prebuild gets none of them, and no refusal for them; an explore run whose
+  #      (`Apiary.Targets.further_collections/2`), end it `variables_invalid`. So do the
+  #      variables of a run that is not a prebuild, from its workspace and target
+  #      (`Apiary.Variables.for_run/2`), when they are more than 126, or take more than
+  #      64 KiB, with the count or the size kept as `end_detail`; a prebuild gets none
+  #      of them, and no refusal for them; an explore run whose
   #      work item's ticket is no longer kept, `ticket_gone`; one whose input cannot be
   #      formed (`Apiary.Dispatches.Inputs`), or
   #      whose work item has no target in a domain that requires one

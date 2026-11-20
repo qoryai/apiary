@@ -58,7 +58,7 @@ defmodule Apiary.Runs.Target do
   @typedoc "A target the workspace's runs named."
   @type t :: %__MODULE__{}
 
-  # Rows of one insert: nine parameters each, well below the 65,535 a query may carry.
+  # Rows of one insert: eleven parameters each, well below the 65,535 a query may carry.
   @insert_chunk 1_000
 
   @doc """
@@ -219,7 +219,7 @@ defmodule Apiary.Runs.Target do
 
   @doc """
   The id of the one target of the workspace `workspace_id` at the address `system` and
-  `path`, as a run's labels name it; nil when no target or more than one has that
+  `path`, as the run's labels contain it; nil when no target or more than one has that
   address, since two targets of two collections can share one.
   """
   @spec id_at(Ecto.UUID.t(), String.t(), String.t()) :: Ecto.UUID.t() | nil
