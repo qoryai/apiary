@@ -1194,6 +1194,22 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert id == second.id
     end
 
+    # The report window of `continuation` has passed: a claim takes it.
+    defp window_over!(%DispatchRun{id: id}) do
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^id),
+          set: [report_wait_until: DateTime.add(DateTime.utc_now(), -1, :second)]
+        )
+    end
+
+    defp default_value_id(%Run{} = run),
+      do: Enum.find(stored_keys(run), & &1.default_credential).secret_value_id
+
+    # `report_waited/1` ends a wait early for a key whose rejection is live and was marked
+    # in this pause, and the claim skips a key whose rejection is live (`claimable/2`
+    # reads it alike for the run's providers, the sign-in rows of a pending renewal
+    # through the rows `reject/3` writes). These tests give both the same data: a live
+    # rejection, a stale mark, a rejection for an older value.
     test "a mark from before this pause's window does not end the wait", ctx do
       provider = two_keys!(ctx)
 
@@ -1212,6 +1228,12 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
 
       assert {:ok, :none} = walked_claim(ctx.key, Dispatches.now(), @body)
       assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, continuation.id)
+
+      # The window ends. The claim reads the rejection as `report_waited/1` does, which is
+      # still live: it skips key-1.
+      window_over!(continuation)
+      assert {{:ok, run}, _queued} = claimed!(ctx, continuation)
+      assert default_value_id(run) == key_value!(provider, "key-2").id
     end
 
     test "a mark on a key of another run does not end the wait", ctx do
@@ -1246,6 +1268,12 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
 
       assert {:ok, :none} = walked_claim(ctx.key, Dispatches.now(), @body)
       assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, continuation.id)
+
+      # The window ends. The claim reads the rejection as `report_waited/1` does, which is
+      # no longer live for the new value: key-1 is the default again.
+      window_over!(continuation)
+      assert {{:ok, run}, _queued} = claimed!(ctx, continuation)
+      assert default_value_id(run) == key_value!(provider, "key-1").id
     end
 
     test "is continued on the paused session's provider, which the default runtime can use, though session 1's cannot",

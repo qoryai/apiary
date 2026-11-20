@@ -1699,7 +1699,8 @@ defmodule Apiary.Dispatches do
   #
   # shortcut: the rejection condition is written in SQL again, as in
   # `Apiary.ModelKeys.claimable/2`, and a sign-in key that the report lists while its
-  # renewal is pending is not marked, so the wait for it runs the 60 seconds; replace the
+  # renewal is pending is not marked, so the wait for it runs the 60 seconds. The tests of
+  # `Apiary.Dispatches.SharedProvidersTest` give both the same rejections; replace the
   # copies with one shared fragment when a third place needs the condition.
   defp report_waited(now) do
     dynamic(
