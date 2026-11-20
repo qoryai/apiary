@@ -135,6 +135,56 @@ defmodule Apiary.Stages.StopCauseTest do
                "Contact support with work item #12."
   end
 
+  # The further repositories `paths` on the target row of `work_item`.
+  defp further!(work_item, paths) do
+    {1, _rows} =
+      Repo.update_all(from(t in Apiary.Runs.Target, where: t.id == ^work_item.target_id),
+        set: [further_repositories: paths]
+      )
+  end
+
+  test "a further repository that the target's integration does not list names the target",
+       %{work_item: work_item, ws: ws, scope: scope} do
+    work_item = at(work_item, scope, "git.example.com", "acme/web-shop")
+    further!(work_item, ["acme/docs"])
+
+    assert text(:variables_invalid, work_item) ==
+             "The run did not start, because the runs of target acme/web-shop also read a repository that its integration does not list.\n" <>
+               "Owners and admins of #{ws} correct the targets its runs also read, on the page of target acme/web-shop, under Targets."
+  end
+
+  test "a further repository that is the target itself names the target",
+       %{work_item: work_item, ws: ws, scope: scope} do
+    work_item = at(work_item, scope, "git.example.com", "acme/web-shop")
+
+    connection =
+      Repo.one!(
+        from k in Apiary.Adapters.Connection, where: k.adapter_id == ^work_item.adapter_id
+      )
+
+    # acme/mirror is a collection of the target's adapter whose target is acme/web-shop.
+    Repo.insert!(%Apiary.Adapters.Collection{
+      public_id: Apiary.PublicId.generate(Apiary.Adapters.Collection.prefix()),
+      organisation_id: work_item.organisation_id,
+      adapter_id: work_item.adapter_id,
+      connection_id: connection.id,
+      workspace_id: work_item.workspace_id,
+      external_ref: "R_mirror",
+      url: "https://git.example.com/acme/mirror",
+      title: "acme/mirror",
+      target_collection_external_ref: "acme/web-shop",
+      target_system: "git.example.com",
+      target_path: "acme/mirror",
+      last_listed_at: DateTime.utc_now(:second)
+    })
+
+    further!(work_item, ["acme/mirror"])
+
+    assert text(:variables_invalid, work_item) ==
+             "The run did not start, because target acme/web-shop is among the repositories its runs also read.\n" <>
+               "Owners and admins of #{ws} correct the targets its runs also read, on the page of target acme/web-shop, under Targets."
+  end
+
   test "variables over the count a run takes show the count, and who removes some, and where",
        %{work_item: work_item, ws: ws} do
     assert text(:variables_invalid, work_item, end_detail: "names_129") ==
