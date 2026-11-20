@@ -1520,11 +1520,12 @@ defmodule Apiary.Dispatches.Handover do
         |> Ecto.Changeset.change(Map.drop(fields, [:inserted_at]))
         |> Repo.update!()
 
-      # A run queued by the previous release has no record. Its counter is not among those
-      # the claim locked in one pass in its free (`Apiary.Environments.make_records/3`).
+      # A waiting run with no run record, which only a node on a release before #55
+      # (6f95f9928a) queues. Its counter is not among those the claim locked in one pass
+      # in its free (`Apiary.Environments.make_records/3`).
       # shortcut: this counter comes after those, out of workspace order where its
       # workspace sorts before one of theirs, so this claim and a sweep can wait on each
-      # other here (40P01); drop this branch once no run queued before this release waits.
+      # other here (40P01); drop this branch once no node runs a release before #55.
       nil ->
         %Run{
           public_id: Run.new_public_id(),

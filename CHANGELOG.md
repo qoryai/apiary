@@ -2923,7 +2923,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   of lapsed leases no longer fails, when the two run at the same time with lapsed runs in
   two workspaces. They locked the workspaces' run counters in opposite orders, and
   Postgres aborted one of them (`deadlock_detected`). The claim now locks the run
-  counters of its builds and of the runs its free sets waiting again in one pass, in the
+  counters of its builds and of the runs it puts back in the queue in one pass, in the
   sweep's order.
 <!-- /feature -->
 

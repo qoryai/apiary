@@ -721,11 +721,12 @@ defmodule Apiary.Environments do
     for {collection, pool} <- due, run <- requeue(collection, [pool], now), do: run
   end
 
-  # Locks, for the `{{workspace_id, organisation_id}, pool_id}` pairs `due`, the run
-  # counter of each workspace after its pools, by workspace (`Apiary.Runs.Number.hold/2`),
-  # before a path writes a record or inserts a prebuild in it.
-  defp hold_counters(due) do
-    due
+  # Locks, for the `{{workspace_id, organisation_id}, pool_id}` pairs `workspaces`, the
+  # run counter of each workspace after its pools, in one pass by workspace
+  # (`Apiary.Runs.Number.hold/2`), before a path writes a record, inserts a prebuild or
+  # writes a new run record in one of them.
+  defp hold_counters(workspaces) do
+    workspaces
     |> Enum.group_by(fn {workspace, _pool_id} -> workspace end, fn {_workspace, pool_id} ->
       pool_id
     end)
