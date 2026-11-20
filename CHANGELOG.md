@@ -2919,6 +2919,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   adapter's start writes the same collections at the same time. Those changes now lock
   collections `FOR NO KEY UPDATE`, which the claim's foreign key check on a collection
   does not wait for, so Postgres no longer aborts the claim (`deadlock_detected`).
+- A claim of the instance's node pool that queues a build no longer fails, and the sweep
+  of lapsed leases no longer fails, when the two run at the same time with lapsed runs in
+  two workspaces. They locked the workspaces' run counters in opposite orders, and
+  Postgres aborted one of them (`deadlock_detected`). The claim now locks the run
+  counters of its builds and of the runs its free sets waiting again in one pass, in the
+  sweep's order.
 <!-- /feature -->
 
 <!-- feature: factory, secrets -->

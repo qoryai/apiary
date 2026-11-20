@@ -138,7 +138,7 @@ defmodule Apiary.Dispatches do
   #      locked the records of the lapsed prebuilds, their runs and their dispatches,
   #      locks the run counters and inserts the missing environment records of the
   #      collections held at 3 with no live prebuild of their ref for the pool
-  #      (`Apiary.Environments.make_records/2`), then a prebuild of
+  #      (`Apiary.Environments.make_records/3`), then a prebuild of
   #      each collection held at 3 queued for the pool, where none is live yet
   #      (`Apiary.Environments.queue_builds/2`), then the pool's limit counted: its held
   #      slots and its live runs that were not dispatched; at the limit, `{:ok, :none}`;
@@ -1151,7 +1151,7 @@ defmodule Apiary.Dispatches do
                {:ok, pool} <- lock_pool(key),
                pool = keep_offers(pool, offers),
                {:ok, gateway, keys} <- Handover.gateway(pool) do
-            freed = Slots.free(pool.id, now, fn -> Environments.make_records(builds, pool) end)
+            freed = Slots.free(pool.id, now, &Environments.make_records(builds, pool, &1))
             queued = Environments.queue_builds(builds, pool)
             through = %{gateway: gateway, keys: keys, body: body, reads: reads}
 

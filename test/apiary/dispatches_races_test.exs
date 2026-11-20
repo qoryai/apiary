@@ -1156,6 +1156,123 @@ defmodule Apiary.DispatchesRacesTest do
 
       assert raised == []
     end
+
+    # A run of a fresh work item of the workspace of `scope`, queued, then claimed by `key`
+    # for `pool` 700 seconds ago, its lease lapsed at `lease_until`: the run of the queue.
+    defp lapsed_run!(ctx, scope, key, pool, lease_until) do
+      work_item = work_item_fixture(scope)
+      Agent.update(ctx.made, &%{&1 | adapters: [work_item.adapter_id | &1.adapters]})
+      {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      back = DateTime.add(Dispatches.now(), -700, :second)
+
+      {1, _rows} =
+        Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id), set: [state: :claimed])
+
+      {1, _rows} =
+        Repo.insert_all(Dispatch, [
+          %{
+            id: Ecto.UUID.generate(),
+            organisation_id: run.organisation_id,
+            workspace_id: run.workspace_id,
+            dispatch_run_id: run.id,
+            pool_id: pool.id,
+            access_key_id: key.id,
+            claimed_at: back,
+            lease_until: %{DateTime.truncate(lease_until, :second) | microsecond: {0, 6}},
+            inserted_at: back,
+            updated_at: back
+          }
+        ])
+
+      run
+    end
+
+    # An installed key of `node`, its public half remembered for `on_exit`.
+    defp installed_key!(ctx, node, secrets \\ false) do
+      %{access_key: key, pair: pair} = installed_key_fixture(node, allow_secrets: secrets)
+      Agent.update(ctx.made, &%{&1 | public_keys: [pair.public_key | &1.public_keys]})
+      key
+    end
+
+    test "of the instance's pool and a sweep, with lapsed runs in two workspaces on other pools: no deadlock, numbers without gaps",
+         ctx do
+      # The instance's pool and gateway outlive the organisation: they go with the adapters.
+      gateway = instance_gateway_fixture()
+      pool = instance_pool_fixture()
+      Agent.update(ctx.made, &%{&1 | adapters: [gateway.id, pool.id | &1.adapters]})
+      _gateway_key = installed_key!(ctx, gateway, true)
+      key = installed_key!(ctx, pool)
+
+      # Two workspaces, A the lower id: the sweep takes A's counter, then B's.
+      second = Apiary.OrganisationsFixtures.workspace_fixture(ctx.scope.organisation)
+
+      [a, b] =
+        Enum.sort_by([ctx.scope, %{ctx.scope | workspace: second}], & &1.workspace.id)
+
+      # B: a run held for the instance pool's build of a collection of B, which the claim
+      # queues, and so takes B's counter in its free.
+      collection = collection!(%{ctx | scope: b}, "B", "acme/b")
+      _held = held!(%{ctx | scope: b}, "acme/b")
+
+      # A run of A claimed by the instance's pool, its lease lapsed a minute ago: the
+      # claim's free sets it waiting again, and takes A's counter for its new number. The
+      # sweep, at an earlier time, finds it not lapsed yet.
+      now = Dispatches.now()
+      _claimed = lapsed_run!(ctx, a, key, pool, DateTime.add(now, -60, :second))
+
+      # A run of each workspace claimed by a pool of that workspace, deleted since, so the
+      # instance's pool serves B; their leases lapsed ten minutes ago, which the sweep
+      # sets waiting again, taking A's counter, then B's.
+      for scope <- [a, b] do
+        other = pool_fixture(scope)
+
+        _run =
+          lapsed_run!(
+            ctx,
+            scope,
+            key!(%{ctx | scope: scope}, other),
+            other,
+            DateTime.add(now, -600, :second)
+          )
+
+        {1, _rows} =
+          Repo.update_all(from(n in Node, where: n.id == ^other.id), set: [deleted_at: now])
+      end
+
+      # The claim paused inside its free, once it holds the counters it takes before its
+      # records: a transaction that inserted the record of the collection for the pool,
+      # not committed, on which the claim's insert of that record waits.
+      {insert, insert_backend} =
+        hold(fn ->
+          :ok = record!(b.organisation.id, b.workspace.id, pool, collection)
+        end)
+
+      claim = start(claim_answer(key))
+      await_blocked(claim.backend, insert_backend)
+
+      # The sweep then waits on the claim at A's counter, which the claim locked with B's in
+      # one pass. Were the claim to hold only B's, the sweep would take A's and wait on B's,
+      # and the claim, once the record commits, would wait on A's: Postgres would abort one
+      # of them (40P01).
+      sweep = start(rescued(fn -> Dispatches.sweep(DateTime.add(now, -300, :second)) end))
+      await_blocked(sweep.backend, claim.backend)
+      commit(insert)
+
+      assert {:ok, _claimed} = Task.await(claim.task, 15_000)
+      assert [_ | _] = Task.await(sweep.task, 15_000)
+
+      for scope <- [a, b] do
+        numbers =
+          Repo.all(
+            from r in Apiary.Runs.Run,
+              where: r.workspace_id == ^scope.workspace.id,
+              order_by: r.number,
+              select: r.number
+          )
+
+        assert numbers == Enum.to_list(1..length(numbers)), inspect(numbers)
+      end
+    end
   end
 
   describe "a claim that frees a lapsed prebuild of a lower collection of a connection" do

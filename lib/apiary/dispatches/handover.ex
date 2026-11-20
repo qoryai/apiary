@@ -1520,9 +1520,9 @@ defmodule Apiary.Dispatches.Handover do
         |> Ecto.Changeset.change(Map.drop(fields, [:inserted_at]))
         |> Repo.update!()
 
-      # A run queued by the previous release has no record. Its counter can come after the
-      # counters `Slots.free/3` and a build's queue took in this claim, in another order;
-      # one sorted pass over a claim's counters needs a larger change.
+      # A run queued by the previous release has no record. Its counter is not among those
+      # the claim locked in one pass in its free (`Apiary.Environments.make_records/3`),
+      # and can come after them in another order.
       nil ->
         %Run{
           public_id: Run.new_public_id(),

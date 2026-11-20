@@ -124,7 +124,7 @@ defmodule Apiary.Dispatches.Slots do
   #      statement and after the run counter, 7.: a Rebuild's prebuild inserts the record
   #      of its pool where there is none (`Apiary.Dispatches.queue_prebuild/3`), and a
   #      claim's free, after its batches, inserts the missing records of the collections
-  #      it queues a build of (`Apiary.Environments.make_records/2`). A lock statement
+  #      it queues a build of (`Apiary.Environments.make_records/3`). A lock statement
   #      never waits on an insert not yet committed, and two paths that insert records
   #      wait on each other at the counter, before either inserts one. The
   #      free reads the records before their lock, as a run's collection and pool never
@@ -150,15 +150,19 @@ defmodule Apiary.Dispatches.Slots do
   #      inserts an environment record or a waiting prebuild takes the counter of its
   #      workspace before its first such insert: a Rebuild after its records
   #      (`Apiary.Environments.rebuild/2`), a claim after its free's batches
-  #      (`Apiary.Environments.make_records/2`), and every queue of a prebuild
+  #      (`Apiary.Environments.make_records/3`), and every queue of a prebuild
   #      (`Apiary.Dispatches.queue_prebuild/3`). So the end of a run whose image was
   #      missing takes it before it writes its records
-  #      (`Apiary.Environments.forget_image/3`). After the counter, a path inserts its
-  #      missing records, then its waiting prebuilds, then takes their numbers. A path
-  #      that writes no record and no waiting prebuild takes the counter last, as a run's
-  #      number (`Apiary.Runs.Number`). A prebuild set waiting again by `free/2`, or given
-  #      back by a release, is written under its record, before the counter. Every other
-  #      writer of that prebuild holds its record first, except a claim's
+  #      (`Apiary.Environments.forget_image/3`). A claim locks in one pass, by workspace,
+  #      the counters of the workspaces of the collections it queues a build of and of
+  #      the runs its free sets waiting again; the free's new run records
+  #      (`Apiary.Dispatches.Queued.requeue!/2`) and the claim's queues of prebuilds then
+  #      take only counters it holds. After the counter, a path inserts its missing
+  #      records, then its waiting prebuilds, then takes their numbers. A path that
+  #      writes no record and no waiting prebuild takes the counter last, as a run's
+  #      number (`Apiary.Runs.Number`). A prebuild set waiting again by `free/2`, or
+  #      given back by a release, is written under its record, before the counter. Every
+  #      other writer of that prebuild holds its record first, except a claim's
   #      `Apiary.Environments.queue_builds/2`, which locks no record: its check of the
   #      live prebuilds keeps it from queuing one beside a prebuild of the same ref. The
   #      end of a prebuild lost once (`Apiary.Environments.build_failed/6`) and
@@ -169,12 +173,13 @@ defmodule Apiary.Dispatches.Slots do
   # A claim (`Apiary.Dispatches`) keeps the order: the connections and the collections it
   # queues a build of or whose lapsed prebuilds its free writes, as 1., then the pool's
   # row, as 2., then the gateway's row `FOR SHARE`, then the free of its pool, as 3. to
-  # 6., which then locks the run counters of the collections it queues a build of, as 7.,
-  # and inserts their missing records, then the prebuilds it queues, as 5., whose records
-  # exist by then, then the waiting run it takes, as 5., and its dispatch, inserted; then,
-  # for an explore run, the rows of the model providers its choices name and of their
-  # keys' secrets, each `FOR SHARE` (`Apiary.Dispatches.RunSettings`), which no path that
-  # locks anything above locks after, and the run it registers
+  # 6., which then locks, as 7., in one pass by workspace, the run counters of the
+  # collections it queues a build of and of the runs it sets waiting again, and inserts
+  # the missing records of those collections, then the prebuilds it queues, as 5., whose
+  # records exist by then, then the waiting run it takes, as 5., and its dispatch,
+  # inserted; then, for an explore run, the rows of the model providers its choices name
+  # and of their keys' secrets, each `FOR SHARE` (`Apiary.Dispatches.RunSettings`), which
+  # no path that locks anything above locks after, and the run it registers
   # (`Apiary.Dispatches.Handover.register/2`), as a run of the queue is locked before the
   # run registered for it. A `dispatched` keeps it too: the free of its run, its run of
   # the queue, then its dispatch.
@@ -289,35 +294,31 @@ defmodule Apiary.Dispatches.Slots do
   # or of the runs `ids` with `{:runs, ids}`, as the moduledoc says: the ids of the
   # workspaces whose queue or slots changed. `records_made` runs once every batch locked
   # its records, runs and dispatches, and before the counters of the runs that wait again
-  # are taken: a claim makes there the records of the builds it queues, after it locks
-  # their workspaces' run counters (`Apiary.Environments.make_records/2`), so it holds no
-  # counter while a batch locks runs.
+  # are taken, with the workspaces of those runs
+  # (`Apiary.Dispatches.Queued.requeued_workspaces/1`): a claim locks there, in one pass by
+  # workspace, the run counters of those workspaces and of the builds it queues, then
+  # makes the records of those builds (`Apiary.Environments.make_records/3`), so it holds
+  # no counter while a batch locks runs.
   @doc false
   @spec free(
           Ecto.UUID.t() | :all | {:runs, [Ecto.UUID.t()]},
           DateTime.t(),
-          (-> :ok)
+          ([{Ecto.UUID.t(), Ecto.UUID.t()}] -> :ok)
         ) :: [Ecto.UUID.t()]
-  def free(pool, %DateTime{} = now, records_made \\ fn -> :ok end)
+  def free(pool, %DateTime{} = now, records_made \\ fn _requeued -> :ok end)
       when (is_binary(pool) or pool == :all or
               (is_tuple(pool) and tuple_size(pool) == 2 and elem(pool, 0) == :runs)) and
-             is_function(records_made, 0) do
+             is_function(records_made, 1) do
     in_transaction!()
     records = lock_records(pool, now)
     {lapsed, requeued} = lapse(pool, now, records, nil, {[], []})
     freed = free_due(pool, now)
-    :ok = records_made.()
+    :ok = records_made.(Queued.requeued_workspaces(requeued))
     # Each run that waits again is a new queued run, with the next number: its run record
     # failed in its batch (`Apiary.Dispatches.Queued`). The counters are taken last, once
     # every batch locked its runs, by workspace: no counter is held while a batch locks
-    # runs of the queue, and two lapses take the counters in the same order.
-    # shortcut: a claim of the instance's pool locks counters in two passes, each by
-    # workspace: those of its builds in `records_made`, then those of its lapsed runs
-    # here. The sweep (`free(:all)`) locks several counters too. With lapsed runs in two
-    # workspaces on pools other than the instance's pool, the two can wait on each other:
-    # Postgres aborts one (40P01), and a claim returns `{:error, :unavailable}`. The same
-    # cycle existed before the counters moved; replace it with one sorted pass over a
-    # claim's counters.
+    # runs of the queue, and two lapses take the counters in the same order. A claim
+    # locked these counters in `records_made`, in the same pass as those of its builds.
     _queued = Queued.requeue!(requeued, now)
     Enum.uniq(lapsed ++ freed)
   end
