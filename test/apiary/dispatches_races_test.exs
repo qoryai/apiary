@@ -1352,37 +1352,59 @@ defmodule Apiary.DispatchesRacesTest do
       end
     end
 
-    test "and takes it again while a listing's part holds that collection: the claim does not wait for the part",
-         ctx do
-      %{organisation: %{id: organisation_id}, workspace: %{id: workspace_id}} = ctx.scope
+    # A held side of `name` that locks `collection` and writes it, as the claim's take
+    # writes the collection's lapsed prebuild again.
+    defp holder(ctx, :part, collection), do: part(ctx, [collection], "env-1")
 
-      for round <- 1..3 do
-        # A collection alone on its connection, which the claim does not hold, with a
-        # claimed prebuild of `env-1`, its ref, whose lease has not lapsed yet.
-        pool = pool_fixture(ctx.scope, instance_limit: 1)
-        key = key!(ctx, pool)
-        lapsed = collection!(ctx, "P#{round}", "acme/listed-#{round}", environment_ref: "env-1")
-        :ok = record!(organisation_id, workspace_id, pool, lapsed)
-        :ok = claimed_prebuilds!(ctx, key, pool, [{lapsed, Ecto.UUID.generate()}])
-        {lapsed_until, leases} = lease_ahead!(lapsed)
+    defp holder(_ctx, :disconnect, collection) do
+      connection = Repo.get!(Connection, collection.connection_id)
+      {key_scope, _public_key} = listing_key!(connection)
 
-        {other, other_backend} = hold_other_claim(key, leases, lapsed_until)
-        claim = start(claim_answer(key))
-        await_blocked(claim.backend, other_backend)
+      fn ->
+        Apiary.Adapters.Collections.disconnect(key_scope, %{
+          connection_id: connection.public_id,
+          collection_ref: collection.external_ref
+        })
+      end
+    end
 
-        # A part of the collection's connection, held open once it wrote the collection,
-        # which it holds by ref (`hold_live/2`).
-        {listed, _listed_backend} = hold(part(ctx, [lapsed], "env-1"))
-        assert listed.result == {:ok, :accepted}
+    for {holder, name, held} <- [
+          {:part, "a listing's part", {:ok, :accepted}},
+          {:disconnect, "a disconnect", {:ok, :disconnected}}
+        ] do
+      test "and takes it again while #{name} holds that collection: the claim does not wait for it",
+           ctx do
+        %{organisation: %{id: organisation_id}, workspace: %{id: workspace_id}} = ctx.scope
 
-        # The claim's take writes the lapsed prebuild again, which locks the collection
-        # `FOR KEY SHARE` for its foreign key: the part's lock lets it through.
-        commit(other)
-        answer = Task.yield(claim.task, 5_000)
-        commit(listed)
+        for round <- 1..3 do
+          # A collection alone on its connection, which the claim does not hold, with a
+          # claimed prebuild of `env-1`, its ref, whose lease has not lapsed yet.
+          pool = pool_fixture(ctx.scope, instance_limit: 1)
+          key = key!(ctx, pool)
+          path = "acme/held-#{round}"
+          lapsed = collection!(ctx, "P#{round}", path, environment_ref: "env-1")
+          :ok = record!(organisation_id, workspace_id, pool, lapsed)
+          :ok = claimed_prebuilds!(ctx, key, pool, [{lapsed, Ecto.UUID.generate()}])
+          {lapsed_until, leases} = lease_ahead!(lapsed)
 
-        assert match?({:ok, {:ok, %{}}}, answer), "round #{round}: #{inspect(answer)}"
-        assert prebuilds(lapsed) == [{:claimed, "env-1"}], "round #{round}"
+          {other, other_backend} = hold_other_claim(key, leases, lapsed_until)
+          claim = start(claim_answer(key))
+          await_blocked(claim.backend, other_backend)
+
+          # The held side, open once it wrote the collection: a part holds it by ref
+          # (`hold_live/2`), a disconnect by adapter, connection and ref (`lock_live/3`).
+          {held, _held_backend} = hold(holder(ctx, unquote(holder), lapsed))
+          assert held.result == unquote(Macro.escape(held))
+
+          # The claim's take writes the lapsed prebuild again, which locks the collection
+          # `FOR KEY SHARE` for its foreign key: the held side's lock lets it through.
+          commit(other)
+          answer = Task.yield(claim.task, 5_000)
+          commit(held)
+
+          assert match?({:ok, {:ok, %{}}}, answer), "round #{round}: #{inspect(answer)}"
+          assert prebuilds(lapsed) == [{:claimed, "env-1"}], "round #{round}"
+        end
       end
     end
   end
