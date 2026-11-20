@@ -127,6 +127,19 @@ defmodule ApiaryWeb.ProviderNewKeyTest do
       assert keys_line(lv, provider) == "2 keys, 1 in cooldown, 1 needs a new key"
     end
 
+    test "counts a key in cooldown that needs a new key as needing one only", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = provider!(scope)
+      key_state!(provider, "main", until: in_seconds(3_600))
+      key_state!(provider, "spare", until: in_seconds(3_600))
+      reject!(scope, provider, "main", ~U[2026-11-18 09:12:00.000000Z])
+      reject!(scope, provider, "spare", ~U[2026-11-18 09:12:00.000000Z])
+
+      {:ok, lv, _html} = live(conn, base(scope))
+
+      assert keys_line(lv, provider) == "2 keys, 2 need a new key"
+    end
+
     test "not for a key whose new value was saved since", ctx do
       %{conn: conn, scope: scope} = ctx
       provider = provider!(scope)

@@ -1346,7 +1346,9 @@ defmodule Apiary.ModelKeys do
 
   @doc """
   How many keys of each of `providers` are in cooldown at `now` (`cooldown/4`), in one
-  query: a map from each provider's row id to its count, 0 for a provider with none.
+  query: a map from each provider's row id to its count, 0 for a provider with none. A
+  key that needs a new value (`never_ids/1`) is not counted, as a claim reads it as
+  needing one before it reads its cooldown (`new_key_counts/1` counts it).
   """
   @spec cooldown_counts([Connection.t()], DateTime.t()) :: %{Ecto.UUID.t() => non_neg_integer}
   def cooldown_counts(providers, %DateTime{} = now) when is_list(providers) do
@@ -1367,9 +1369,11 @@ defmodule Apiary.ModelKeys do
       |> Enum.map(fn {key, rows} -> {key, Enum.map(rows, &elem(&1, 2))} end)
 
     windows = Map.new(providers, &{&1.secret_id, limit_windows(&1)})
+    never = never_ids(secret_ids)
 
     cooling =
-      for {{secret_id, _id, percent}, states} <- keys,
+      for {{secret_id, id, percent}, states} <- keys,
+          not MapSet.member?(never, id),
           cooldown(states, percent, Map.get(windows, secret_id, []), now) != nil,
           reduce: %{} do
         acc -> Map.update(acc, secret_id, 1, &(&1 + 1))
