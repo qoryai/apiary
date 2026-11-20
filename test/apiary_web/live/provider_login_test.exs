@@ -953,6 +953,47 @@ defmodule ApiaryWeb.ProviderLoginTest do
       refute render(lv) =~ "is saved."
     end
 
+    test "stores nothing for a key that was deleted and added again with the same value id",
+         ctx do
+      %{conn: conn, scope: scope} = ctx
+      Stub.put(tokens: login_tokens(tag: "stale"), hold: true)
+
+      {:ok, provider} =
+        Connections.create_provider(scope, %{
+          provider: "openai-subscription",
+          keys: [%{value: device_login(tag: "a")}]
+        })
+
+      {:ok, provider} =
+        Connections.add_provider_key(scope, provider, %{value: device_login(tag: "b")})
+
+      needs_sign_in!(provider, "key-2")
+      {:ok, lv, _html} = live(conn, "#{base(scope)}/#{provider.public_id}")
+      old = key_value!(provider, "key-2")
+      sign_in!(lv, "#{key_dom(provider, "key-2")}-sign-in")
+
+      # The key is deleted and a key is added with the value id `key-2` again (only a
+      # call with a value id does this: no page sends one), another row.
+      {:ok, provider} = Connections.delete_provider_key(scope, provider, "key-2")
+
+      {:ok, provider} =
+        Connections.add_provider_key(scope, provider, %{
+          value_id: "key-2",
+          value: device_login(tag: "new")
+        })
+
+      added = key_value!(provider, "key-2")
+      refute added.id == old.id
+      before = login_of(provider, "key-2")
+
+      Stub.approve()
+      eventually(fn -> assert %{state: :failed, cause: :store} = device_of(lv) end)
+
+      assert login_of(provider, "key-2") == before
+      assert key_value!(provider, "key-2").value_set_at == added.value_set_at
+      refute render(lv) =~ "is saved."
+    end
+
     test "has the button from the oauth_device of the vendored description", ctx do
       %{conn: conn, scope: scope} = ctx
       provider = subscription!(scope)
