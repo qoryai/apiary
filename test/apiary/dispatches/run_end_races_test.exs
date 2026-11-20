@@ -654,16 +654,17 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
         Ecto.Adapters.SQL.Sandbox.checkin(Repo)
       end)
 
-      %{
-        collections_made: made,
-        target:
-          Apiary.NodesFixtures.address_target!(
-            ctx.scope.organisation.id,
-            ctx.scope.workspace.id,
-            @missing_target.system,
-            @missing_target.path
-          )
-      }
+      target =
+        Apiary.NodesFixtures.address_target!(
+          ctx.scope.organisation.id,
+          ctx.scope.workspace.id,
+          @missing_target.system,
+          @missing_target.path
+        )
+
+      # The target is of a fresh adapter, which the organisation's deletion leaves.
+      Agent.update(made, &[target.adapter_id | &1])
+      %{collections_made: made, target: target}
     end
 
     # A collection of the work items' target with `env-1`, the pool's record of it with a
