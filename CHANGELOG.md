@@ -91,6 +91,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   **Edit key** and in its row. An entry without `oauth_device` has no button. No token or
   code appears in a page, a log line or an audit entry. A run that claims the key gets its
   access token, as a later entry says.
+- The description of the **OpenAI subscription** provider says “Runs use your ChatGPT
+  subscription through a sign-in that Qory Apiary makes with OpenAI's device code.” in
+  place of “… through the sign-in that `codex login` creates.” The rest of the text is as
+  before.
 - Qory Apiary refreshes the sign-in of an **OpenAI subscription** key, one refresh at a time
   for each key, in the way `codex` does: when the access token's `exp` is near, or, for a
   token whose `exp` cannot be read, 8 days after the last refresh. A run's request refreshes
