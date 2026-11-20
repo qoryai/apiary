@@ -1980,9 +1980,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   and its report that one failed, by the integrations contract. A reply with a `data` over
   786432 bytes serialized, or an `address.url` off the system of its target, is refused.
   `find_sent/3`, `delivered/2` and `failed/2` find the version that a report is about and
-  store the first result only. No endpoint calls them yet.
+  store the first result only.
+- `POST /v1/work-items/changes/submitted` takes an adapter's reply to a change request,
+  and `POST /v1/work-items/changes/failed` takes a body with `change_request_id` as its
+  report that one failed. Each needs `change_request.report` and answers a signed `204`.
+  The result is stored with the version, once: a report for an unknown id, another
+  adapter's version, a version not sent or one with a result already changes nothing. No
+  code sends a version yet, so no report finds one.
 - `change_request.report`, an action of an adapter's key, covers the adapter's report of
-  what became of a change request: its reply and its failure. No endpoint asks for it yet.
+  what became of a change request: its reply and its failure.
 
 ### Changed
 

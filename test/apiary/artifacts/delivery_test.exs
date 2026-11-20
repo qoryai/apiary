@@ -3,12 +3,13 @@ defmodule Apiary.Artifacts.DeliveryTest do
   # the database keeps on them, and the address of a version's previous delivery.
   use Apiary.DataCase, async: true
 
+  import Apiary.DeliveryFixtures
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
   alias Apiary.Adapters.ChangeRequest
-  alias Apiary.Artifacts.{Artifact, Delivery, Version}
+  alias Apiary.Artifacts.{Delivery, Version}
 
   @moduletag needs: :workflow_model
 
@@ -23,34 +24,8 @@ defmodule Apiary.Artifacts.DeliveryTest do
     %{work_item: work_item, artifact: artifact!(work_item, "reply", "t-1")}
   end
 
-  defp artifact!(work_item, type, name) do
-    Repo.insert!(%Artifact{
-      public_id: Apiary.PublicId.generate("af"),
-      organisation_id: work_item.organisation_id,
-      workspace_id: work_item.workspace_id,
-      work_item_id: work_item.id,
-      type: type,
-      name: name,
-      inserted_at: ~U[2026-11-20 08:00:00.000000Z]
-    })
-  end
-
-  defp version!(artifact, number, attrs \\ []) do
-    Repo.insert!(
-      struct!(
-        %Version{
-          public_id: Apiary.PublicId.generate("av"),
-          organisation_id: artifact.organisation_id,
-          workspace_id: artifact.workspace_id,
-          artifact_id: artifact.id,
-          number: number,
-          writer: :person,
-          inserted_at: ~U[2026-11-20 09:00:00.000000Z]
-        },
-        attrs
-      )
-    )
-  end
+  defp artifact!(work_item, type, name), do: artifact_fixture(work_item, type, name)
+  defp version!(artifact, number, attrs \\ []), do: version_fixture(artifact, number, attrs)
 
   defp reply(path),
     do: %{"action" => "created", "address" => %{"url" => "https://x.example/" <> path}}
