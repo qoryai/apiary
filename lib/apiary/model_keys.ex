@@ -835,7 +835,9 @@ defmodule Apiary.ModelKeys do
        them in the order the claim sends the keys (`Apiary.ModelKeys.Order.sent/2`).
 
   `provider` is the provider's row, `value_id` the key's name. `expires_before:` and
-  `decrypt:` are as `claim_keys/3` has them. Reads without a lock; no call to any provider.
+  `decrypt:` are as `claim_keys/3` has them. `organisation_id:` is the run's organisation:
+  with it, only a key of a provider of that organisation makes the reason
+  `:cooldown_or_new_key`. Reads without a lock; no call to any provider.
   """
   @spec waiting_reason([Ecto.UUID.t()], DateTime.t(), keyword) ::
           {:refreshing | :restart | :sign_in | :new_key, Connection.t(), String.t()}
@@ -856,7 +858,7 @@ defmodule Apiary.ModelKeys do
       keyed == [] or length(keyed) < length(ids) -> nil
       Enum.any?(keyed, fn {_provider, keys} -> keys == [] end) -> nil
       Enum.any?(keyed, fn {_provider, keys} -> Enum.any?(keys, &free?(&1, now)) end) -> nil
-      true -> unfree_reason(keyed, now)
+      true -> unfree_reason(keyed, now, opts[:organisation_id])
     end
   end
 
@@ -864,7 +866,7 @@ defmodule Apiary.ModelKeys do
   defp free?(%{blocked: nil} = key, now), do: not Apiary.ModelKeys.Order.cooling?(key, now)
   defp free?(_key, _now), do: false
 
-  defp unfree_reason(keyed, now) do
+  defp unfree_reason(keyed, now, organisation_id) do
     all = for {provider, keys} <- keyed, key <- keys, do: {provider, key}
     refresh = Enum.find(all, fn {_provider, key} -> refresh_block?(key.blocked) end)
 
@@ -886,8 +888,13 @@ defmodule Apiary.ModelKeys do
         {provider, key} =
           Enum.min_by(cooling, fn {_provider, key} -> key.cooldown_until end, DateTime)
 
+        # Only a key of the run's organisation counts: a key of another organisation that
+        # needs a new value is not told to this one's people.
         needs_new_value? =
-          Enum.any?(all, fn {_provider, key} -> key.blocked in [:sign_in, :new_key] end)
+          Enum.any?(all, fn {provider, key} ->
+            key.blocked in [:sign_in, :new_key] and
+              (is_nil(organisation_id) or provider.organisation_id == organisation_id)
+          end)
 
         cond do
           not needs_new_value? -> {:cooldown, provider, key.cooldown_until}

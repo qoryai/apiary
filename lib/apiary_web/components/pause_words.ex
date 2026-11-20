@@ -24,25 +24,7 @@ defmodule ApiaryWeb.PauseWords do
   def line(pause, path, now \\ DateTime.utc_now())
 
   # A provider of another organisation than the run's: no name, and its cooldown while it
-  # lasts, or a key that needs a new key (`new_key`).
-  def line(
-        %{other_organisation: true, new_key: true, until: %DateTime{} = until, number: number} =
-          pause,
-        path,
-        now
-      )
-      when is_integer(number) do
-    if DateTime.compare(until, now) == :gt do
-      rich_gettext(
-        "Paused: every model key is in cooldown until %{time} or needs a new key. It continues in run %{number}.",
-        time: PreparationComponents.cooldown_time(until, now),
-        number: number(number, path)
-      )
-    else
-      line(%{pause | until: nil}, path, now)
-    end
-  end
-
+  # lasts.
   def line(
         %{other_organisation: true, until: %DateTime{} = until, number: number} = pause,
         path,

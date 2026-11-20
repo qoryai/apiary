@@ -414,6 +414,18 @@ defmodule Apiary.ModelKeys.RejectionTest do
                ModelKeys.waiting_reason([ctx.provider.id], now)
 
       assert ModelKeys.new_key_counts([ctx.provider]) == %{ctx.provider.id => 1}
+
+      # Only a key of the run's organisation makes the reason say that a key needs a new
+      # value: for another organisation's, it is the plain cooldown.
+      own = ctx.scope.organisation.id
+
+      assert {:cooldown_or_new_key, %Connection{}, ^until} =
+               ModelKeys.waiting_reason([ctx.provider.id], now, organisation_id: own)
+
+      assert {:cooldown, %Connection{}, ^until} =
+               ModelKeys.waiting_reason([ctx.provider.id], now,
+                 organisation_id: Ecto.UUID.generate()
+               )
     end
 
     test "a provider with every key in cooldown has the cooldown as its reason", ctx do

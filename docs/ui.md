@@ -2032,9 +2032,10 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   "Paused: a model key reached its limit or its Use up to percentage." where no run
   continues it. A provider of another organisation than the run's, left from when an
   operator managed whole organisations, is not named: "Paused: every model key is in
-  cooldown until Fri 14:00. It continues in run 15." (with "or needs a new key" after the time where a key of the provider needs a new value) while that time is still to come, else the lines
-  of a deleted provider. On the work item's page, the run's row on Explore and the stage's round
-  show the same line in place of the run's state, the number a link where the reader
+  cooldown until Fri 14:00. It continues in run 15." while that time is still to come,
+  else the lines of a deleted provider. A key of that provider that needs a new value is
+  not told, so the line never has "or needs a new key". On the work item's page, the
+  run's row on Explore and the stage's round show the same line in place of the run's state, the number a link where the reader
   may read the workspace of the run that continues it. For a run that a failed step of its preparation stopped, the line states
   what happened at that step, with no advice, such as "Start the
   wall failed with exit code 125.", on every pool. Else the line is the last result of its
@@ -2211,8 +2212,9 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      needs a new value (the provider rejected it, or its sign-in needs a new one), the
      line reads "Waiting for a model key: every key of Northwind Claude is in cooldown
      until 14:00 or needs a new key.", and "every model key" in place of "every key of
-     Northwind Claude" for a run with the keys of several providers or for a provider of
-     another organisation. Where every key needs a new value, the line is the one for the
+     Northwind Claude" for a run with the keys of several providers. A key of a provider
+     of another organisation than the run's that needs a new value does not count, so the
+     line stays the plain cooldown line. Where every key needs a new value, the line is the one for the
      key (a new value, or a new sign-in), as before. Nothing runs when the cooldown ends: the first claim
      after that time takes the run.
   5. "Waiting for the environment image: a build of northwind/storefront is queued." (or

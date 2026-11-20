@@ -557,6 +557,34 @@ defmodule ApiaryWeb.RunLive.QueuedTest do
                  "#{ApiaryWeb.Format.week_time(until, now)}."
     end
 
+    @tag needs: [:factory, :secrets]
+    test "does not say that a key of another organisation needs a new key",
+         %{conn: conn, scope: scope} do
+      %{scope: other} = Apiary.OrganisationsFixtures.sign_up_fixture()
+
+      {:ok, theirs} =
+        Apiary.Connections.create_provider(other, %{
+          provider: "anthropic",
+          name: "Other keys",
+          keys: [
+            %{value_id: "main", value: "sk-ant-queued-page-other-main"},
+            %{value_id: "spare", value: "sk-ant-queued-page-other-spare"}
+          ]
+        })
+
+      now = rejected_spare!(other, theirs)
+      {_work_item, queued} = queue!(scope)
+      until = DateTime.add(now, 2, :day)
+      key_state!(theirs, "main", until: until)
+      waits_on!(queued, [theirs.id])
+
+      view = open(conn, workspace_path(scope, "/runs/#{record(queued).number}"))
+
+      assert text(view, "#prepare-machine-why") ==
+               "Waiting for a model key: every model key is in cooldown until " <>
+                 "#{ApiaryWeb.Format.week_time(until, now)}."
+    end
+
     test "becomes the page of a registered run at the claim, with no reload",
          %{conn: conn, scope: scope} = ctx do
       {_work_item, queued} = queue!(scope)

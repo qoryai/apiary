@@ -97,7 +97,7 @@ defmodule Apiary.Dispatches.Pause do
        Map.merge(rest, %{
          provider: if(provider && not other, do: provider.name),
          other_organisation: other,
-         new_key: provider != nil and Map.get(new_keys, provider.id, 0) > 0
+         new_key: provider != nil and not other and Map.get(new_keys, provider.id, 0) > 0
        })}
     end)
   end
