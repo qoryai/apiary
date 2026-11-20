@@ -112,21 +112,14 @@ defmodule Apiary.Environments.RebuildRacesTest do
 
   test "a part holds the collection, a Rebuild waits for it, then the part commits: neither deadlocks",
        ctx do
-    %{id: id} = ctx.collection
+    connection = Repo.get!(Connection, ctx.collection.connection_id)
+    {key_scope, _public_key} = listing_key!(connection)
 
-    # The part holds its collection `FOR NO KEY UPDATE` and changes its `environment_ref`.
-    {part, part_backend} =
-      hold(fn ->
-        %Collection{} =
-          Repo.one!(from c in Collection, where: c.id == ^id, lock: "FOR NO KEY UPDATE")
-
-        {1, _rows} =
-          Repo.update_all(from(c in Collection, where: c.id == ^id),
-            set: [environment_ref: "env-2"]
-          )
-
-        :ok
-      end)
+    # A listing's part, held open once it wrote the collection's `environment_ref`: it
+    # holds its connection `FOR UPDATE`, then the collection `FOR NO KEY UPDATE`, by ref
+    # (`Apiary.Adapters.Collections.post_listing/2`).
+    {part, part_backend} = hold(listing_part(key_scope, connection, [ctx.collection], "env-2"))
+    assert part.result == {:ok, :accepted}
 
     rebuild = start(fn -> Environments.rebuild(ctx.scope, ctx.target) end)
 
@@ -170,46 +163,23 @@ defmodule Apiary.Environments.RebuildRacesTest do
         Repo.update_all(from(c in Collection, where: c.id == ^id), set: [external_ref: ref])
     end
 
-    connection_id = first.connection_id
+    connection = Repo.get!(Connection, first.connection_id)
+    {key_scope, _public_key} = listing_key!(connection)
+    named = Repo.all(from c in Collection, where: c.id in ^[low, high])
 
-    hold_refs = fn refs ->
-      Repo.all(
-        from c in Collection,
-          where: c.connection_id == ^connection_id and is_nil(c.ended_at),
-          where: c.external_ref in ^refs,
-          order_by: c.external_ref,
-          lock: "FOR NO KEY UPDATE",
-          select: c.id
-      )
-    end
-
-    # The part holds its connection `FOR UPDATE`, then, by ref, the collection `Y`, the
-    # higher id, `FOR NO KEY UPDATE`.
-    {part, part_backend} =
-      hold(fn ->
-        %Connection{} =
-          Repo.one!(from k in Connection, where: k.id == ^connection_id, lock: "FOR UPDATE")
-
-        [^high] = hold_refs.(["Y"])
-        :ok
-      end)
+    # A listing's part of both, held open once it wrote their `environment_ref`: it holds
+    # its connection `FOR UPDATE`, then, by ref, `Y`, the higher id, and `Z`, in one
+    # statement (`Apiary.Adapters.Collections.post_listing/2`). The part cannot be
+    # stopped between `Y` and `Z`, so it is held once it holds both.
+    {part, part_backend} = hold(listing_part(key_scope, connection, named, "env-2"))
+    assert part.result == {:ok, :accepted}
 
     rebuild = start(fn -> Environments.rebuild(scope, ctx.target) end)
 
-    # The Rebuild waits on the part. Had it held the lower id without the connection, the
-    # part would now wait on it for `Z`, and the Rebuild, which has waited longer, would
-    # be refused (`deadlock_detected`).
+    # The Rebuild waits on the part. Had it held the lower id without the connection, it
+    # could hold `Z` while a part held `Y` and waited on `Z`, and one of the two would be
+    # refused (`deadlock_detected`).
     await_waited(rebuild.backend, part_backend)
-
-    {2, _rows} =
-      continue(part, fn ->
-        [^low] = hold_refs.(["Z"])
-
-        Repo.update_all(from(c in Collection, where: c.id in ^[low, high]),
-          set: [environment_ref: "env-2"]
-        )
-      end)
-
     commit(part)
 
     # The Rebuild read both collections as the part left them, and queued their prebuilds
