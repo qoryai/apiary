@@ -24,8 +24,10 @@
 # id.
 #
 # contracts/integration/v1/description.schema.json, the definitions.schema.json it refers
-# to and changes.schema.json, which Apiary.Adapters.ChangeRequest checks an entry against,
-# are vendored under priv/contract/integration/ from this commit too, and the
+# to, changes.schema.json, which Apiary.Adapters.ChangeRequest checks an entry against,
+# and changes-submitted.schema.json and changes-failed.schema.json, which
+# Apiary.Adapters.ChangeReport checks a report against, are vendored under
+# priv/contract/integration/ from this commit too, and the
 # data descriptions of model providers, descriptions/*.json at the repository's root,
 # under priv/contract/integration/descriptions/. A description of a model provider has
 # `vendor`, its APIs have `runtimes`, `paths`, `oauth_refresh` and `oauth_device`, and

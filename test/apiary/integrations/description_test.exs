@@ -309,6 +309,10 @@ defmodule Apiary.Integrations.DescriptionTest do
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
       "585a039c29474a322dbee07684634839ea0e9a7a85cf14a78b3daf68981fdbd1",
+    "priv/contract/integration/changes-failed.schema.json" =>
+      "08ef050a381dc73db65a0c5fa844a44174ad2d699956f4cd68f75efc9745efb7",
+    "priv/contract/integration/changes-submitted.schema.json" =>
+      "7c88e816e076f6f4166370b08680db09b534f05f0da81f341439a1342720b1f4",
     "priv/contract/integration/changes.schema.json" =>
       "c56fa9aae6a93c5b7ca602740f73e16cac26dc9076c6579aec04eeb2ff98fd94",
     "priv/contract/integration/definitions.schema.json" =>

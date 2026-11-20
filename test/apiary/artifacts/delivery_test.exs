@@ -362,4 +362,152 @@ defmodule Apiary.Artifacts.DeliveryTest do
       end
     end
   end
+
+  describe "the report of an adapter" do
+    setup %{work_item: work_item, artifact: artifact} do
+      target =
+        target_fixture(%{
+          organisation_id: work_item.organisation_id,
+          workspace_id: work_item.workspace_id,
+          collection_external_ref: "R_1001"
+        })
+
+      sent = version!(artifact, 1, delivery: :sent, delivery_target_id: target.id)
+      %{target: target, sent: sent}
+    end
+
+    defp submitted(version, extra \\ %{}) do
+      Map.merge(
+        %{
+          change_request_id: version.public_id,
+          collection: "R_1001",
+          reply: %{"action" => "created", "address" => %{"url" => "https://x.example/p/1"}}
+        },
+        extra
+      )
+    end
+
+    defp refused(version, extra \\ %{}) do
+      Map.merge(
+        %{
+          change_request_id: version.public_id,
+          collection: "R_1001",
+          reason: :refused,
+          detail: nil
+        },
+        extra
+      )
+    end
+
+    test "find_sent/3 finds the version of the adapter, by id and collection", ctx do
+      assert %Version{id: id} =
+               Delivery.find_sent(ctx.target.adapter_id, ctx.sent.public_id, "R_1001")
+
+      assert id == ctx.sent.id
+    end
+
+    test "find_sent/3 finds nothing for any other case", ctx do
+      adapter_id = ctx.target.adapter_id
+      other = bare_adapter_fixture()
+
+      assert Delivery.find_sent(adapter_id, "av_0000000000000000", "R_1001") == nil
+      assert Delivery.find_sent(other.id, ctx.sent.public_id, "R_1001") == nil
+      assert Delivery.find_sent(adapter_id, ctx.sent.public_id, "R_2002") == nil
+
+      for state <- [nil, :delivered, :failed] do
+        version =
+          version!(ctx.artifact, System.unique_integer([:positive]),
+            delivery: state,
+            delivery_target_id: ctx.target.id
+          )
+
+        assert Delivery.find_sent(adapter_id, version.public_id, "R_1001") == nil
+      end
+
+      no_target = version!(ctx.artifact, System.unique_integer([:positive]), delivery: :sent)
+      assert Delivery.find_sent(adapter_id, no_target.public_id, "R_1001") == nil
+
+      Repo.delete!(ctx.target)
+      assert Delivery.find_sent(adapter_id, ctx.sent.public_id, "R_1001") == nil
+    end
+
+    test "delivered/2 stores the reply and the time on a sent version", ctx do
+      reply = %{"action" => "created", "address" => %{"url" => "https://x.example/p/1"}}
+      before = DateTime.utc_now()
+
+      assert Delivery.delivered(ctx.target.adapter_id, submitted(ctx.sent)) == {:ok, :stored}
+
+      row = Repo.get!(Version, ctx.sent.id)
+      assert {row.delivery, row.delivery_reply, row.delivery_failure} == {:delivered, reply, nil}
+      assert DateTime.compare(row.delivery_at, before) in [:gt, :eq]
+    end
+
+    test "failed/2 stores the reason and the detail on a sent version", ctx do
+      detail = "Shorten the title, then try again. The target returned 422."
+
+      assert Delivery.failed(ctx.target.adapter_id, refused(ctx.sent, %{detail: detail})) ==
+               {:ok, :stored}
+
+      row = Repo.get!(Version, ctx.sent.id)
+
+      assert {row.delivery, row.delivery_failure, row.delivery_detail, row.delivery_reply} ==
+               {:failed, :refused, detail, nil}
+    end
+
+    test "the first stored result wins, and a repeat leaves delivery_at as it is", ctx do
+      adapter_id = ctx.target.adapter_id
+      assert Delivery.delivered(adapter_id, submitted(ctx.sent)) == {:ok, :stored}
+      first = Repo.get!(Version, ctx.sent.id)
+
+      assert Delivery.delivered(
+               adapter_id,
+               submitted(ctx.sent, %{
+                 reply: %{"action" => "kept", "address" => %{"url" => "https://x.example/other"}}
+               })
+             ) ==
+               {:ok, :ignored}
+
+      assert Delivery.failed(adapter_id, refused(ctx.sent)) == {:ok, :ignored}
+      assert Repo.get!(Version, ctx.sent.id) == first
+
+      failed = version!(ctx.artifact, 2, delivery: :sent, delivery_target_id: ctx.target.id)
+      assert Delivery.failed(adapter_id, refused(failed)) == {:ok, :stored}
+      failed_row = Repo.get!(Version, failed.id)
+      assert Delivery.delivered(adapter_id, submitted(failed)) == {:ok, :ignored}
+      assert Delivery.failed(adapter_id, refused(failed, %{reason: :too_long})) == {:ok, :ignored}
+      assert Repo.get!(Version, failed.id) == failed_row
+    end
+
+    test "changes nothing for another adapter, another collection, an unknown id or a version not sent",
+         ctx do
+      other = bare_adapter_fixture()
+
+      done =
+        version!(ctx.artifact, 2,
+          delivery: :failed,
+          delivery_failure: :refused,
+          delivery_target_id: ctx.target.id
+        )
+
+      assert Delivery.delivered(other.id, submitted(ctx.sent)) == {:ok, :ignored}
+
+      assert Delivery.failed(ctx.target.adapter_id, refused(ctx.sent, %{collection: "R_2"})) ==
+               {:ok, :ignored}
+
+      assert Delivery.delivered(
+               ctx.target.adapter_id,
+               submitted(ctx.sent, %{change_request_id: "av_0000000000000000"})
+             ) == {:ok, :ignored}
+
+      assert Delivery.delivered(ctx.target.adapter_id, submitted(done)) == {:ok, :ignored}
+      assert Repo.get!(Version, ctx.sent.id).delivery == :sent
+    end
+
+    test "the next entry's previous.address is the address of the reply that was stored", ctx do
+      assert Delivery.delivered(ctx.target.adapter_id, submitted(ctx.sent)) == {:ok, :stored}
+      next = version!(ctx.artifact, 2)
+
+      assert Delivery.previous_address(next) == %{"url" => "https://x.example/p/1"}
+    end
+  end
 end

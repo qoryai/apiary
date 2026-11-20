@@ -1976,6 +1976,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   entry failed `ChangeRequest.validate/1`, and sends nothing. The detail is the first
   member of the entry that failed, such as `#/title`. A version that has a delivery is
   left as it is. No code calls it yet.
+- `ChangeReport.submitted/1` and `failed/1` read an adapter's reply to a change request
+  and its report that one failed, by the integrations contract. A reply with a `data` over
+  786432 bytes serialized, or an `address.url` off the system of its target, is refused.
+  `find_sent/3`, `delivered/2` and `failed/2` find the version that a report is about and
+  store the first result only. No endpoint calls them yet.
 - `change_request.report`, an action of an adapter's key, covers the adapter's report of
   what became of a change request: its reply and its failure. No endpoint asks for it yet.
 

@@ -14,6 +14,7 @@ defmodule Apiary.Artifacts.Delivery do
 
   alias Apiary.Artifacts.Version
   alias Apiary.Repo
+  alias Apiary.Runs.Target
 
   # The character rule of a line (`description.schema.json`, `$defs.line`): no control
   # character, no U+2028 or U+2029, no format character other than U+200C and U+200D.
@@ -105,5 +106,64 @@ defmodule Apiary.Artifacts.Delivery do
     |> Enum.take_while(&Regex.match?(@line, &1))
     |> Enum.join("/")
     |> String.slice(0, 1000)
+  end
+
+  @doc """
+  find_sent/3 is the version that the adapter `adapter_id` has an entry for, as an adapter's
+  report names it: the version whose `public_id` is `change_request_id`, whose `delivery` is
+  `:sent`, and whose `delivery_target_id` is a target of that adapter with the collection
+  ref `collection`; nil for any other case, an unknown id, another adapter's version, a
+  version not sent and a version whose target is gone included.
+  """
+  @spec find_sent(Ecto.UUID.t(), String.t(), String.t()) :: Version.t() | nil
+  def find_sent(adapter_id, change_request_id, collection),
+    do: Repo.one(sent(adapter_id, change_request_id, collection))
+
+  @doc """
+  delivered/2 stores the reply `report` of the adapter `adapter_id`
+  (`Apiary.Adapters.ChangeReport.submitted/1`) on the version it is about: `delivery` is
+  `:delivered`, `delivery_reply` is the report's reply, and `delivery_at` the time. It
+  writes only while the version is `:sent` (`find_sent/3`), in one statement, so the first
+  stored result wins. `{:ok, :stored}`, or `{:ok, :ignored}` and no change for any other
+  case: a report sent again, or late, is never an error.
+  """
+  @spec delivered(Ecto.UUID.t(), map) :: {:ok, :stored | :ignored}
+  def delivered(adapter_id, %{change_request_id: id, collection: collection, reply: reply}) do
+    store(adapter_id, id, collection,
+      delivery: :delivered,
+      delivery_reply: reply,
+      delivery_at: DateTime.utc_now()
+    )
+  end
+
+  @doc """
+  failed/2 stores the failure `report` of the adapter `adapter_id`
+  (`Apiary.Adapters.ChangeReport.failed/1`) on the version it is about: `delivery` is
+  `:failed`, `delivery_failure` is the reason, `delivery_detail` is the adapter's detail, nil
+  for none, and `delivery_at` the time. Otherwise as `delivered/2`.
+  """
+  @spec failed(Ecto.UUID.t(), map) :: {:ok, :stored | :ignored}
+  def failed(adapter_id, %{change_request_id: id, collection: collection} = report) do
+    store(adapter_id, id, collection,
+      delivery: :failed,
+      delivery_failure: report.reason,
+      delivery_detail: report.detail,
+      delivery_at: DateTime.utc_now()
+    )
+  end
+
+  defp store(adapter_id, id, collection, set) do
+    case Repo.update_all(sent(adapter_id, id, collection), set: set) do
+      {1, _rows} -> {:ok, :stored}
+      {0, _rows} -> {:ok, :ignored}
+    end
+  end
+
+  defp sent(adapter_id, change_request_id, collection) do
+    from v in Version,
+      join: t in Target,
+      on: t.id == v.delivery_target_id and t.workspace_id == v.workspace_id,
+      where: v.public_id == ^change_request_id and v.delivery == :sent,
+      where: t.adapter_id == ^adapter_id and t.collection_external_ref == ^collection
   end
 end
