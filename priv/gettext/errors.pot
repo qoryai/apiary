@@ -43,6 +43,11 @@ msgstr ""
 msgid "Choose a name with at least one letter or digit from A to Z or 0 to 9. The address is made from those characters."
 msgstr ""
 
+#: lib/apiary/targets.ex
+#, elixir-autogen, elixir-format
+msgid "Choose a repository of this integration: %{path} is not one of its collections."
+msgstr ""
+
 #: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a type."

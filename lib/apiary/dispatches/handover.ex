@@ -64,8 +64,9 @@ defmodule Apiary.Dispatches.Handover do
   #      its target are read, never its Backlog switch or whether it has items. Run
   #      variables of the target, and of the further paths its runs also read where the
   #      workspace's domain has a label for them (`Apiary.Targets.further_repositories/1`),
-  #      that break the domain's rules (`Apiary.Lingo.Domain.run_variables/3`) end it
-  #      `variables_invalid`, as do the variables of a run that is not a prebuild, from its
+  #      that break the domain's rules (`Apiary.Lingo.Domain.run_variables/3`), or a
+  #      further path that is not one of the collections of the target's adapter
+  #      (`Apiary.Targets.further_collections/2`), end it `variables_invalid`, as do the variables of a run that is not a prebuild, from its
   #      workspace and target (`Apiary.Variables.for_run/2`), when they are more than 126,
   #      or take more than 64 KiB, with the count or the size kept as `end_detail`; a
   #      prebuild gets none of them, and no refusal for them; an explore run whose
@@ -1192,10 +1193,10 @@ defmodule Apiary.Dispatches.Handover do
   # `inputs` is given the name of the workspace's domain. `session` is the members of the
   # documents about the run's first session (`session_members/3`).
   defp formed(dispatch_run, workspace, target, work_item, {settings, session}, harness, inputs) do
-    picked = further_repositories(workspace, target)
     domain = Domain.name(workspace)
 
-    with {:variables, {:ok, own}} <-
+    with {:further, {:ok, picked}} <- {:further, further_repositories(workspace, target)},
+         {:variables, {:ok, own}} <-
            {:variables, Domain.run_variables(workspace, target, picked)},
          {:resolved, {:ok, variables}} <-
            {:resolved, resolved(dispatch_run, workspace, target, own)},
@@ -1223,6 +1224,7 @@ defmodule Apiary.Dispatches.Handover do
          }
        }}
     else
+      {:further, {:error, rule}} -> variables_ended(dispatch_run, work_item, target, rule)
       {:variables, {:error, rule}} -> variables_ended(dispatch_run, work_item, target, rule)
       {:resolved, {:error, refusal}} -> resolved_ended(dispatch_run, work_item, refusal)
       {:inputs, {:error, :answer_too_large}} -> :unavailable
@@ -1372,14 +1374,22 @@ defmodule Apiary.Dispatches.Handover do
   # (`Apiary.Targets.further_repositories/1`), read without a lock: none where the
   # workspace has no row of the target yet, where the run has no target, or where the
   # workspace's domain has no label for them (`Apiary.Lingo.Domain.paths_label/1`).
-  defp further_repositories(_workspace, nil), do: []
+  # `{:error, :not_a_collection}` where one of them is no longer one of the collections of
+  # the target's adapter (`Apiary.Targets.further_collections/2`).
+  defp further_repositories(_workspace, nil), do: {:ok, []}
 
   defp further_repositories(workspace, %{} = target) do
     found = target_row(workspace, target)
 
-    if found && Domain.paths_label(workspace),
-      do: Targets.further_repositories(found),
-      else: []
+    with %Target{} <- found,
+         label when is_binary(label) <- Domain.paths_label(workspace),
+         paths = Targets.further_repositories(found),
+         {:ok, _refs} <- Targets.further_collections(found, paths) do
+      {:ok, paths}
+    else
+      {:error, {rule, _n}} -> {:error, rule}
+      _none -> {:ok, []}
+    end
   end
 
   # The workspace's row of the run's target, by its adapter and collection ref, nil where

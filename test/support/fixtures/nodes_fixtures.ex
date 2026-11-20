@@ -126,6 +126,59 @@ defmodule Apiary.NodesFixtures do
   end
 
   @doc """
+  A live collection of the adapter of `target`, assigned to its workspace, at the target's
+  system and each of `paths`, so that each path can be one of the target's further
+  repositories (`Apiary.Targets.further_collections/2`). The collections are of the
+  organisation's live connection to the adapter, made where it has none. Returns
+  `target`.
+  """
+  def further_collections_fixture(%Apiary.Runs.Target{} = target, paths) do
+    connection = live_connection!(target.organisation_id, target.adapter_id)
+    now = DateTime.utc_now(:second)
+
+    for path <- List.wrap(paths) do
+      ref = "R_#{System.unique_integer([:positive])}"
+
+      Repo.insert!(%Apiary.Adapters.Collection{
+        public_id: Apiary.PublicId.generate(Apiary.Adapters.Collection.prefix()),
+        organisation_id: target.organisation_id,
+        adapter_id: target.adapter_id,
+        connection_id: connection.id,
+        workspace_id: target.workspace_id,
+        external_ref: ref,
+        url: "https://#{target.system}/#{path}",
+        title: path,
+        target_collection_external_ref: ref,
+        target_system: target.system,
+        target_path: path,
+        last_listed_at: now
+      })
+    end
+
+    target
+  end
+
+  defp live_connection!(organisation_id, adapter_id) do
+    alias Apiary.Adapters.Connection
+
+    live =
+      from c in Connection,
+        where: c.organisation_id == ^organisation_id and c.adapter_id == ^adapter_id,
+        where: is_nil(c.ended_at)
+
+    Repo.one(live) ||
+      Repo.insert!(%Connection{
+        public_id: Apiary.PublicId.generate(Connection.prefix()),
+        organisation_id: organisation_id,
+        adapter_id: adapter_id,
+        created_by_id: Apiary.AccountsFixtures.user_fixture().id,
+        state: :connected,
+        pass_nonce: :crypto.strong_rand_bytes(16),
+        connected_at: DateTime.utc_now()
+      })
+  end
+
+  @doc """
   The target of the workspace `workspace_id` at the address `labels` name by the
   workspace's domain (`Apiary.Lingo.Domain.target/2`), made where the workspace has no
   target there (`address_target!/4`). A run's labels take the one target at their address

@@ -361,7 +361,15 @@ defmodule Apiary.TargetsTest do
           Apiary.NodesFixtures.target_key(%{system: "code.example.com", path: "acme/shop"})
         ])
 
-      %{scope: scope, shop: target(scope, "code.example.com", "acme/shop")}
+      shop =
+        scope
+        |> target("code.example.com", "acme/shop")
+        |> Apiary.NodesFixtures.further_collections_fixture(
+          ~w(acme/zeta acme/alpha acme/docs acme/api acme/web) ++
+            ["acme/" <> String.duplicate("a", 195), "acme/" <> String.duplicate("b", 40)]
+        )
+
+      %{scope: scope, shop: shop}
     end
 
     test "none until somebody chooses them", %{shop: shop} do
@@ -442,6 +450,28 @@ defmodule Apiary.TargetsTest do
 
       assert saved(scope, shop) == ["acme/docs"]
       assert length(entries_of(shop)) == 1
+    end
+
+    test "a path that is not one of the collections of the target's adapter is refused",
+         %{scope: scope, shop: shop} do
+      other_adapter =
+        Apiary.NodesFixtures.target_fixture(%{
+          organisation_id: scope.organisation.id,
+          workspace_id: scope.workspace.id,
+          system: "code.example.com",
+          path: "acme/other"
+        })
+
+      Apiary.NodesFixtures.further_collections_fixture(other_adapter, "acme/tools")
+
+      assert further_errors(
+               Targets.set_further_repositories(scope, shop, "acme/docs\nacme/tools")
+             ) ==
+               [
+                 "Choose a repository of this integration: acme/tools is not one of its collections."
+               ]
+
+      assert saved(scope, shop) == []
     end
 
     test "the owner is compared without case", %{scope: scope, shop: shop} do

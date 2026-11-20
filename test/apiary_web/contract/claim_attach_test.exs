@@ -188,6 +188,7 @@ defmodule ApiaryWeb.Contract.ClaimAttachTest do
 
   test "the attach answer's labels carry the repository and its further repositories", ctx do
     {target, of} = ticket_target_fixture(ctx.scope)
+    target = Apiary.NodesFixtures.further_collections_fixture(target, "acme/docs")
     {:ok, _target} = Apiary.Targets.set_further_repositories(ctx.scope, target, "acme/docs")
 
     work_item = work_item_fixture(ctx.scope, of)

@@ -615,15 +615,19 @@ defmodule Apiary.Dispatches.HandoverTest do
     end
   end
 
-  # The target of `work_item`, with `paths` its runs also read, saved as an owner saves
-  # them.
+  # The target of `work_item`, with `paths` its runs also read, each a collection of the
+  # target's adapter, saved as an owner saves them.
   defp further!(ctx, work_item, paths) do
     :ok =
       Apiary.Runs.Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [
         WorkItem.target(work_item)
       ])
 
-    target = Apiary.Targets.get(ctx.scope, "forge.example.com", "acme/shop")
+    target =
+      ctx.scope
+      |> Apiary.Targets.get("forge.example.com", "acme/shop")
+      |> further_collections_fixture(String.split(paths, "\n", trim: true))
+
     {:ok, target} = Apiary.Targets.set_further_repositories(ctx.scope, target, paths)
     target
   end
@@ -666,6 +670,23 @@ defmodule Apiary.Dispatches.HandoverTest do
       {1, _rows} =
         Repo.update_all(from(t in Apiary.Runs.Target, where: t.id == ^target.id),
           set: [further_repositories: ["other/docs"]]
+        )
+
+      assert claim(ctx) == {:ok, :none}
+      ended!(ctx, queued, :variables_invalid)
+    end
+
+    test "a saved path whose collection ended ends the run variables_invalid at the claim",
+         ctx do
+      {work_item, queued} = queued!(ctx)
+      target = further!(ctx, work_item, "acme/docs")
+
+      {1, _rows} =
+        Repo.update_all(
+          from(c in Apiary.Adapters.Collection,
+            where: c.adapter_id == ^target.adapter_id and c.target_path == "acme/docs"
+          ),
+          set: [ended_at: DateTime.utc_now(), ended_reason: :not_listed]
         )
 
       assert claim(ctx) == {:ok, :none}

@@ -23,7 +23,13 @@ defmodule ApiaryWeb.TargetLive.FurtherRepositoriesTest do
 
   setup %{scope: scope} do
     started_run(scope, %{"forge" => "code.example.com", "repository" => "acme/shop"})
-    shop = Targets.get(scope, "code.example.com", "acme/shop")
+
+    shop =
+      scope
+      |> Targets.get("code.example.com", "acme/shop")
+      |> Apiary.NodesFixtures.further_collections_fixture(
+        ~w(acme/shared-config acme/docs acme/api acme/web)
+      )
 
     %{
       shop: shop,

@@ -32,7 +32,8 @@ defmodule Apiary.Targets do
   # **What its runs also read.** A target's further repositories (`further_repositories/1`)
   # are the paths in its system its runs read after it, in the order a person put them:
   # owner/name each, no segment starting with a dash, of the target's owner, each once, the
-  # target's path and the list, joined with commas, at most 256 bytes.
+  # target's path and the list, joined with commas, at most 256 bytes, each the path of a
+  # live collection of the target's adapter at the target's system.
   # `set_further_repositories/3` writes the whole list at once
   # (`target.set_further_repositories`, owners and admins, asked of the target's
   # workspace, an action of the feature), and refuses a list that breaks a rule, so a
@@ -46,6 +47,7 @@ defmodule Apiary.Targets do
 
   alias Apiary.{Access, Audit, PublicId}
   alias Apiary.Accounts.{Scope, User}
+  alias Apiary.Adapters.Collection
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Repo
   alias Apiary.Runs.{Connection, Run, RunApi, RunVariables, Target}
@@ -747,8 +749,9 @@ defmodule Apiary.Targets do
   #     segments of letters, digits, `.`, `_` and `-`, neither starting with `-`, neither
   #     `.` nor `..`, and neither `.git` in any case; at most 200 characters; of the
   #     target's owner, and neither the target's path nor a line before it, all compared
-  #     without case; and the target's path and the list, joined with commas, at most 256
-  #     bytes;
+  #     without case; the target's path and the list, joined with commas, at most 256
+  #     bytes; and each path one of the collections of the target's adapter
+  #     (`further_collections/2`);
   #   * `Apiary.Access`'s refusal, `{:error, :forbidden}` or `{:error, :not_found}`, and
   #     `{:error, :not_found}` for a target that is gone.
   #
@@ -794,9 +797,44 @@ defmodule Apiary.Targets do
   defp check_further(%Target{} = target, lines) do
     paths = Enum.map(lines, &elem(&1, 0))
 
-    case RunVariables.check_repositories(target.path, paths) do
-      :ok -> :ok
+    with :ok <- RunVariables.check_repositories(target.path, paths),
+         {:ok, _refs} <- further_collections(target, paths) do
+      :ok
+    else
       {:error, {reason, n}} -> {:error, further_error(target, lines, reason, n)}
+    end
+  end
+
+  # further_collections/2 is the collection ref of each of `paths`, in order: of a live
+  # collection of the target's adapter at the target's system and that path, compared
+  # without case. `{:error, {:not_a_collection, n}}` for the first path that is not one,
+  # at place `n`, from 1; a target without an address has no such collection. The claim
+  # checks a run's further repositories here too
+  # (`Apiary.Dispatches.Handover`).
+  # Of the `factory` feature, and left out of the module reference.
+  @doc false
+  @spec further_collections(Target.t(), [String.t()]) ::
+          {:ok, [String.t()]} | {:error, {:not_a_collection, pos_integer}}
+  def further_collections(%Target{}, []), do: {:ok, []}
+  def further_collections(%Target{system: nil}, _paths), do: {:error, {:not_a_collection, 1}}
+
+  def further_collections(%Target{adapter_id: adapter_id, system: system}, paths) do
+    lowered = Enum.map(paths, &String.downcase/1)
+
+    found =
+      Repo.all(
+        from c in Collection,
+          where: c.adapter_id == ^adapter_id and c.target_system == ^system,
+          where: fragment("lower(?)", c.target_path) in ^lowered,
+          where: is_nil(c.ended_at) and not is_nil(c.target_collection_external_ref),
+          group_by: fragment("lower(?)", c.target_path),
+          select: {fragment("lower(?)", c.target_path), min(c.target_collection_external_ref)}
+      )
+      |> Map.new()
+
+    case Enum.find_index(lowered, &(not Map.has_key?(found, &1))) do
+      nil -> {:ok, Enum.map(lowered, &Map.fetch!(found, &1))}
+      index -> {:error, {:not_a_collection, index + 1}}
     end
   end
 
@@ -841,6 +879,12 @@ defmodule Apiary.Targets do
 
         :itself ->
           {dgettext_noop("errors", "Line %{line} is %{target} itself."), line: line, target: path}
+
+        :not_a_collection ->
+          {dgettext_noop(
+             "errors",
+             "Choose a repository of this integration: %{path} is not one of its collections."
+           ), path: entry}
 
         :repeats ->
           first = first_line(lines, entry)

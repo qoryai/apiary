@@ -1652,14 +1652,17 @@ defmodule Apiary.AuditChanges do
     {connection, collection, workspace_fixture(scope.organisation)}
   end
 
-  # A target of the scope's workspace, as a run's labels make it.
+  # A target of the scope's workspace, as a run's labels make it, with a collection of its
+  # adapter at acme/docs.
   defp prepare(:"target.set_further_repositories", %{scope: scope}) do
     :ok =
       Apiary.Runs.Target.insert_new(scope.organisation.id, scope.workspace.id, [
         Apiary.NodesFixtures.target_key(%{system: "code.example.com", path: "acme/shop"})
       ])
 
-    Targets.get(scope, "code.example.com", "acme/shop")
+    scope
+    |> Targets.get("code.example.com", "acme/shop")
+    |> Apiary.NodesFixtures.further_collections_fixture("acme/docs")
   end
 
   # A target of the scope's workspace, a node pool there, then a collection assigned there
