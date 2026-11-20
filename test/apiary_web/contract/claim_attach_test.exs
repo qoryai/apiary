@@ -92,6 +92,13 @@ defmodule ApiaryWeb.Contract.ClaimAttachTest do
 
   test "a run claimed is attached, reloaded, sent and ended as the claim stored it", ctx do
     work_item = work_item_fixture(ctx.scope)
+
+    # The work item's target has its row, as an assign of its collection makes it.
+    :ok =
+      Apiary.Runs.Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [
+        Apiary.WorkItems.WorkItem.target(work_item)
+      ])
+
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
     %{"dispatch_id" => dispatch_id, "run_code" => code} = claim(ctx)
     dispatch = Repo.get_by!(Dispatch, public_id: dispatch_id)
@@ -180,15 +187,10 @@ defmodule ApiaryWeb.Contract.ClaimAttachTest do
   end
 
   test "the attach answer's labels carry the repository and its further repositories", ctx do
-    :ok =
-      Apiary.Runs.Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [
-        Apiary.NodesFixtures.target_key(%{system: "forge.example.com", path: "acme/shop"})
-      ])
-
-    target = Apiary.Targets.get(ctx.scope, "forge.example.com", "acme/shop")
+    {target, of} = ticket_target_fixture(ctx.scope)
     {:ok, _target} = Apiary.Targets.set_further_repositories(ctx.scope, target, "acme/docs")
 
-    work_item = work_item_fixture(ctx.scope)
+    work_item = work_item_fixture(ctx.scope, of)
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
     %{"run_code" => code} = claim(ctx)
     run_key = redeemed_run_key!(code)

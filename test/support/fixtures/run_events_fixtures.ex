@@ -145,9 +145,23 @@ defmodule Apiary.RunEventsFixtures do
   prefix; `time:` defaults to `sequence` seconds after `t0/0` and `received_at:` to a
   hundred seconds after the time, so that the two clocks are told apart and two receptions
   of one record project the same.
+
+  A `run.started` of a run not of a workspace's queue whose labels name an address also
+  makes the workspace's target there (`Apiary.NodesFixtures.labelled_target!/3`), as a
+  collection assigned to the workspace would, unless `target: false`. A run of the queue
+  takes its work item's or its collection's target when projected.
   """
   def event_fixture(%Run{} = run, sequence, type, data, opts \\ []) do
     time = Keyword.get(opts, :time) || at(sequence)
+
+    if type == "run.started" and is_nil(run.dispatch_run_id) and Keyword.get(opts, :target, true) do
+      :ok =
+        Apiary.NodesFixtures.labelled_target!(
+          run.organisation_id,
+          run.workspace_id,
+          data["labels"]
+        )
+    end
 
     Repo.insert!(%Event{
       organisation_id: run.organisation_id,

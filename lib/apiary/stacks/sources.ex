@@ -1974,15 +1974,16 @@ defmodule Apiary.Stacks.Sources do
           | {:stack, source, stack, String.t()}
 
   @doc false
-  # choose_target/3 saves `choice` as the stack chosen for `target`, a `%{system, path}`
-  # of a destination of the scope's workspace (the moduledoc): `:default` removes the
+  # choose_target/3 saves `choice` as the stack chosen for `target`
+  # (`Apiary.Lingo.Domain.target/0`) of a destination of the scope's workspace (the
+  # moduledoc): `:default` removes the
   # target's choice. `{:ok, stack}`, `{:ok, nil}` for `:default`; `{:error, :forbidden}`
   # or `{:error, :not_found}` from the access check, asked first; `{:error, :not_found}`
   # for a target no destination of the workspace has; `{:error, {:limited, seconds}}`,
   # `{:error, {:walk, failure}}`, `{:error, :invalid}` or `{:error, changeset}`, as for
   # `choose/3`; `{:error, :invalid}` also for a stack of the workspace's harness that the
   # Qory harness does not export.
-  @spec choose_target(Scope.t(), %{system: String.t(), path: String.t()}, target_choice) ::
+  @spec choose_target(Scope.t(), Apiary.Lingo.Domain.target(), target_choice) ::
           {:ok, Stack.t() | nil}
           | {:error,
              Ecto.Changeset.t()
@@ -1992,10 +1993,10 @@ defmodule Apiary.Stacks.Sources do
              | {:walk, Walk.failure()}}
   def choose_target(
         %Scope{workspace: %Workspace{} = workspace} = scope,
-        %{system: system, path: path},
+        %{adapter_id: adapter_id, collection_external_ref: ref, system: system, path: path},
         choice
       ) do
-    target = %{system: system, path: path}
+    target = %{adapter_id: adapter_id, collection_external_ref: ref, system: system, path: path}
 
     with :ok <- Access.authorize(scope, :"harness.save", workspace),
          true <- destination?(workspace, target) || {:error, :not_found},
@@ -2022,14 +2023,7 @@ defmodule Apiary.Stacks.Sources do
 
   defp save_target(scope, workspace, target, chosen, harness, version) do
     :ok = Target.insert_new(workspace.organisation_id, workspace.id, [target])
-
-    row =
-      Repo.get_by!(Target,
-        organisation_id: workspace.organisation_id,
-        workspace_id: workspace.id,
-        system: target.system,
-        path: target.path
-      )
+    row = Repo.one!(Target.by_key(workspace.id, target))
 
     Stacks.put_stack(scope, {:target, row}, harness, choice: chosen, version: version)
   end
@@ -2095,9 +2089,12 @@ defmodule Apiary.Stacks.Sources do
   defp stack_base(_git, _stack), do: {:error, :invalid}
 
   # Whether a live collection of a connected connection, assigned to `workspace`, has
-  # `target`: a destination of the workspace, as the set-up's Destinations list has one
-  # (`Apiary.WorkspaceSetup.collections/3`).
-  defp destination?(%Workspace{} = workspace, %{system: system, path: path}) do
+  # `target`, of its adapter by collection ref: a destination of the workspace, as the
+  # set-up's Destinations list has one (`Apiary.WorkspaceSetup.collections/3`).
+  defp destination?(%Workspace{} = workspace, %{
+         adapter_id: adapter_id,
+         collection_external_ref: ref
+       }) do
     Repo.exists?(
       from c in Collection,
         join: k in Connection,
@@ -2106,7 +2103,7 @@ defmodule Apiary.Stacks.Sources do
         on: n.id == c.adapter_id,
         where: c.organisation_id == ^workspace.organisation_id,
         where: c.workspace_id == ^workspace.id and is_nil(c.ended_at),
-        where: c.target_system == ^system and c.target_path == ^path,
+        where: c.adapter_id == ^adapter_id and c.target_collection_external_ref == ^ref,
         where: k.state == :connected and is_nil(k.ended_at),
         where: n.kind == :adapter and is_nil(n.deleted_at) and n.targets == true
     )

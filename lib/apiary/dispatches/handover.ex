@@ -902,7 +902,7 @@ defmodule Apiary.Dispatches.Handover do
   # limit that the rest of the documents leave.
   defp formed(%{run: %DispatchRun{} = dispatch_run, held: held} = locked, workspace) do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
-    target = target(work_item)
+    target = WorkItem.target(work_item)
 
     with false <- is_nil(target) and not test?(work_item) and Domain.target_required?(workspace),
          :ok <- shared_access(dispatch_run),
@@ -1330,13 +1330,10 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
-  # The id of the row of `target` in the prebuild's workspace, made where there is none.
-  defp target_row_id(%DispatchRun{} = dispatch_run, %{system: system, path: path} = target) do
-    query =
-      from t in Target,
-        where: t.workspace_id == ^dispatch_run.workspace_id,
-        where: t.system == ^system and t.path == ^path,
-        select: t.id
+  # The id of the row of `target` in the prebuild's workspace, by its adapter and
+  # collection ref, made where there is none.
+  defp target_row_id(%DispatchRun{} = dispatch_run, target) do
+    query = from t in Target.by_key(dispatch_run.workspace_id, target), select: t.id
 
     case Repo.one(query) do
       nil ->
@@ -1352,12 +1349,6 @@ defmodule Apiary.Dispatches.Handover do
   # database holds them together (`work_items_test_check`).
   defp test?(%WorkItem{test: true, connection_id: nil}), do: true
   defp test?(%WorkItem{}), do: false
-
-  # A work item's target, or nil for one without.
-  defp target(%WorkItem{target_system: nil}), do: nil
-
-  defp target(%WorkItem{target_system: system, target_path: path}),
-    do: %{system: system, path: path}
 
   # The run's labels: the target's (`Apiary.Lingo.Domain.target_labels/1`) and, where the
   # domain has one and gives run variables, the label of the run's paths
@@ -1377,11 +1368,11 @@ defmodule Apiary.Dispatches.Handover do
 
   # The further paths the run's target's runs also read, in order
   # (`Apiary.Targets.further_repositories/1`), read without a lock: none where the
-  # workspace has no target of that system and path yet, where the run has no target, or
-  # where the workspace's domain has no label for them (`Apiary.Lingo.Domain.paths_label/1`).
+  # workspace has no row of the target yet, where the run has no target, or where the
+  # workspace's domain has no label for them (`Apiary.Lingo.Domain.paths_label/1`).
   defp further_repositories(_workspace, nil), do: []
 
-  defp further_repositories(workspace, %{system: _system, path: _path} = target) do
+  defp further_repositories(workspace, %{} = target) do
     found = target_row(workspace, target)
 
     if found && Domain.paths_label(workspace),
@@ -1389,23 +1380,20 @@ defmodule Apiary.Dispatches.Handover do
       else: []
   end
 
-  # The workspace's row of the run's target, nil where it has none yet: read without a
-  # lock.
-  defp target_row(
-         %Workspace{id: workspace_id, organisation_id: organisation_id},
-         %{system: system, path: path}
-       ) do
+  # The workspace's row of the run's target, by its adapter and collection ref, nil where
+  # it has none yet: read without a lock.
+  defp target_row(%Workspace{id: workspace_id, organisation_id: organisation_id}, target) do
     Repo.one(
-      from t in Target,
-        where: t.organisation_id == ^organisation_id and t.workspace_id == ^workspace_id,
-        where: t.system == ^system and t.path == ^path
+      from t in Target.by_key(workspace_id, target),
+        where: t.organisation_id == ^organisation_id
     )
   end
 
   # A prebuild's collection's target, while the collection is live, assigned to the run's
-  # workspace and has a target: its assignment, its workspace, its end and its target,
-  # read without a lock. Its Backlog switch and whether it has items are not read: neither
-  # ends a prebuild.
+  # workspace and has a target with an address, which a prebuild needs: its assignment,
+  # its workspace, its end and its target, of the collection's adapter, read without a
+  # lock. Its Backlog switch and whether it has items are not read: neither ends a
+  # prebuild.
   defp collection(%DispatchRun{source_collection_id: id, workspace_id: workspace_id}) do
     found =
       Repo.one(
@@ -1414,15 +1402,23 @@ defmodule Apiary.Dispatches.Handover do
           select: %{
             ended_at: c.ended_at,
             workspace_id: c.workspace_id,
+            adapter_id: c.adapter_id,
+            ref: c.target_collection_external_ref,
             system: c.target_system,
             path: c.target_path
           }
       )
 
     case found do
-      %{ended_at: nil, workspace_id: ^workspace_id, system: system, path: path}
+      %{ended_at: nil, workspace_id: ^workspace_id, system: system, path: path} = found
       when is_binary(system) and is_binary(path) ->
-        {:ok, %{system: system, path: path}}
+        {:ok,
+         %{
+           adapter_id: found.adapter_id,
+           collection_external_ref: found.ref,
+           system: system,
+           path: path
+         }}
 
       _ended_moved_or_without_target ->
         :ended

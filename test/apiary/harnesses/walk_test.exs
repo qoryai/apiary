@@ -52,12 +52,12 @@ defmodule Apiary.Harnesses.WalkTest do
     run = adapter()
     {connection, _nonce} = connection_fixture(scope, run.adapter, :listed)
     grant = grant(scope.organisation.id, run.adapter, connection, "G_run")
-    collection(scope, run.adapter, connection)
+    collection = collection(scope, run.adapter, connection)
 
     input = %{
       organisation: scope.organisation,
       workspace: scope.workspace,
-      target: %{system: "code.example.com", path: "acme/app"},
+      target: Collection.target(collection),
       workflow: "explore"
     }
 
@@ -103,6 +103,7 @@ defmodule Apiary.Harnesses.WalkTest do
       external_ref: "R_app",
       url: @target,
       title: "acme/app",
+      target_collection_external_ref: "R_app",
       target_system: "code.example.com",
       target_path: "acme/app",
       environment_ref: "env-1",
@@ -3435,13 +3436,12 @@ defmodule Apiary.Harnesses.WalkTest do
       end
 
       target =
-        Apiary.NodesFixtures.target_fixture(%{
-          organisation_id: ctx.scope.organisation.id,
-          workspace_id: ctx.scope.workspace.id,
-          system: "code.example.com",
-          path: "acme/app",
-          first_seen_at: DateTime.utc_now()
-        })
+        Apiary.NodesFixtures.target_fixture(
+          Map.merge(ctx.input.target, %{
+            organisation_id: ctx.scope.organisation.id,
+            workspace_id: ctx.scope.workspace.id
+          })
+        )
 
       choose = fn place, name, choice ->
         {:ok, row} = Stacks.put_stack(ctx.scope, place, named(name), choice: choice)

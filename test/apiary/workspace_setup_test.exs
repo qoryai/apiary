@@ -623,11 +623,17 @@ defmodule Apiary.WorkspaceSetupTest do
       assert WorkspaceSetup.destinations?(main, @software)
 
       # A collection with no target is in no destination list.
-      set!(Collection, collection.id, target_system: nil, target_path: nil)
+      set!(Collection, collection.id,
+        target_collection_external_ref: nil,
+        target_system: nil,
+        target_path: nil
+      )
+
       refute WorkspaceSetup.destinations?(main, @software)
 
       # A collection of another workspace counts for that workspace alone.
       set!(Collection, collection.id,
+        target_collection_external_ref: "acme/repo",
         target_system: "code.example.com",
         target_path: "acme/repo",
         backlog: true

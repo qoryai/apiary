@@ -256,7 +256,8 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
       Repo.all(from n in Node, where: n.kind == :adapter and is_nil(n.deleted_at))
       |> Map.new(&{&1.name, &1})
 
-    assert Map.keys(adapters) == ["Helpdesk", "Tracker"]
+    # Forges is the adapter of the history's repositories (`Mix.Tasks.Apiary.Demo.History`).
+    assert Map.keys(adapters) == ["Forges", "Helpdesk", "Tracker"]
     %{"Tracker" => tracker, "Helpdesk" => helpdesk} = adapters
     assert tracker.connect_url == "https://tracker.example.com/connect"
     assert Adapters.item_noun(tracker) == %{one: "ticket", other: "tickets"}
@@ -398,11 +399,13 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
 
   # Off, the `factory` feature is absent from the fill, which completes all the same.
   @tag with_features: [:observability, :security, :secrets]
-  test "without the factory feature the fill makes no adapter, ticket or work item" do
+  test "without the factory feature the fill makes no adapter but Forges, ticket or work item" do
     fill()
 
     assert Repo.exists?(from o in Organisation, where: o.slug == "acme")
-    refute Repo.exists?(from n in Node, where: n.kind == :adapter)
+
+    # Forges is the adapter of the history's repositories (`Mix.Tasks.Apiary.Demo.History`).
+    assert Repo.all(from n in Node, where: n.kind == :adapter, select: n.name) == ["Forges"]
     refute Repo.exists?(Adapters.Collection)
     refute Repo.exists?(Item)
     refute Repo.exists?(WorkItem)

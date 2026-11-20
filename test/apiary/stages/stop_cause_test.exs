@@ -24,6 +24,8 @@ defmodule Apiary.Stages.StopCauseTest do
       workspace_id: workspace.id,
       organisation_id: organisation.id,
       number: 12,
+      adapter_id: Ecto.UUID.generate(),
+      target_collection_external_ref: "acme/web-shop",
       target_system: "git.example.com",
       target_path: "acme/web-shop"
     }

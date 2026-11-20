@@ -70,7 +70,7 @@ defmodule Apiary.Adapters.CollectionsTargetsTest do
             url: "https://tracker.acme.example/" <> ref,
             title: ref,
             grant_ref: listing_grant(ctx.connection),
-            target: target
+            target: target && Map.put(target, :collection, ref)
           }
         end,
       listing: %{

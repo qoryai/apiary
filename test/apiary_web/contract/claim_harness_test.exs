@@ -221,6 +221,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       workflow!(ctx)
 
       explore!(ctx, [origin: :setting, document: section()], %{
+        target_collection_external_ref: nil,
         target_system: nil,
         target_path: nil
       })

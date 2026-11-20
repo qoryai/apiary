@@ -144,7 +144,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
             url: "https://t.example/" <> ref,
             title: ref,
             grant_ref: "G_" <> connection.public_id,
-            target: target
+            target: target && Map.put(target, :collection, ref)
           }
         ),
       listing: %{id: id, part: 1, started_at: started_at, complete: true}
@@ -1077,7 +1077,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
             url: "https://t.example/" <> ref,
             title: ref,
             grant_ref: "G_" <> ctx.connection.public_id,
-            target: target,
+            target: target && Map.put(target, :collection, ref),
             items: items
           }
         ],

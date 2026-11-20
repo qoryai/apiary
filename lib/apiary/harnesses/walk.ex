@@ -224,7 +224,7 @@ defmodule Apiary.Harnesses.Walk do
   @type input :: %{
           required(:organisation) => Organisation.t(),
           required(:workspace) => Workspace.t(),
-          required(:target) => %{system: String.t(), path: String.t()} | nil,
+          required(:target) => Apiary.Lingo.Domain.target() | nil,
           required(:workflow) => String.t(),
           optional(:stage_run?) => boolean
         }
@@ -509,8 +509,11 @@ defmodule Apiary.Harnesses.Walk do
 
   defp target(_input), do: {nil, :absent}
 
-  # The live collection of `workspace` with `target`, of a connected connection, and its
-  # adapter, which has a `call_url`; the first by when it was made. Nil for none.
+  # The live collection of `workspace` with `target`'s address, of a connected
+  # connection, and its adapter, which has a `call_url`; the first by when it was made.
+  # Nil for none, and for a target without an address, which has no file to read.
+  defp collection(_workspace, %{system: nil, path: nil}), do: nil
+
   defp collection(%Workspace{id: workspace_id}, %{system: system, path: path}) do
     Repo.one(
       from c in Collection,

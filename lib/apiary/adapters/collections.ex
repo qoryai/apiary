@@ -1791,29 +1791,29 @@ defmodule Apiary.Adapters.Collections do
       else: {:error, :not_found}
   end
 
-  # The targets of `collections` in `workspace`, as a dispatched run of each would name
-  # it: its labels carry the collection's system and path under the labels that name a
-  # target by the workspace's domain, and the domain reads them as the projector does
-  # (`Apiary.Lingo.Domain.target/2`), so the run lands on the target made here. A
-  # collection without a target, or with one no label could name, makes none.
+  # The targets of `collections` in `workspace` (`Apiary.Adapters.Collection.target/1`),
+  # by adapter and collection ref, as a dispatched run of each finds it. A target with an
+  # address is made only where the labels that name a target by the workspace's domain
+  # can carry it (`Apiary.Lingo.Domain.target/2`), as a run's labels carry it. A
+  # collection without a target, or with an address no label could name, makes none.
   defp insert_targets(_organisation_id, nil, _collections), do: :ok
 
   defp insert_targets(organisation_id, %Workspace{id: workspace_id} = workspace, collections) do
     targets =
       for collection <- collections,
-          {:ok, target} <- [collection_target(workspace, collection)],
+          %{} = target <- [Collection.target(collection)],
+          labelled?(workspace, target),
           do: target
 
     Target.insert_new(organisation_id, workspace_id, targets)
   end
 
-  defp collection_target(workspace, %Collection{target_system: system, target_path: path})
-       when is_binary(system) and is_binary(path) do
-    labels = workspace |> Domain.target_labels() |> Enum.zip([system, path]) |> Map.new()
-    Domain.target(workspace, labels)
-  end
+  defp labelled?(_workspace, %{system: nil, path: nil}), do: true
 
-  defp collection_target(_workspace, _collection), do: :none
+  defp labelled?(workspace, %{system: system, path: path}) do
+    labels = workspace |> Domain.target_labels() |> Enum.zip([system, path]) |> Map.new()
+    Domain.target(workspace, labels) == {:ok, %{system: system, path: path}}
+  end
 
   # Links `changed`, held, to `workspace_id`, or to none, with its entry, then the feed's
   # entries, the adapter's feed counter last.

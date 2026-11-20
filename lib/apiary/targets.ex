@@ -3,10 +3,11 @@ defmodule Apiary.Targets do
   The workspace's targets as the console reads them: the index of them, one target's
   page, and the targets a person pinned.
 
-  A target is what the workspace's runs change, in the system it lives in
-  (`Apiary.Runs.Target`), created the first time the workspace names it
-  (`Apiary.Runs.Target.insert_new/3`), as the projector does when a run first names it;
-  nothing here creates one. Every function takes the caller's scope first and reads only
+  A target is what the workspace's runs change: one of an adapter's collections, with its
+  address on a system or none (`Apiary.Runs.Target`), created the first time the
+  workspace names it (`Apiary.Runs.Target.insert_new/3`), as an assign of its collection
+  does, or the projector for the first run of the workspace's queue at it; nothing here
+  creates one. Every function takes the caller's scope first and reads only
   the scope's workspace.
 
   **Pins.** A person pins the targets they work in, in a workspace whose runs they read

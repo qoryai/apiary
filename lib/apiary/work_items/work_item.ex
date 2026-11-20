@@ -9,7 +9,7 @@ defmodule Apiary.WorkItems.WorkItem do
   # the ticket's row is gone; `external_ref`, the ticket's ref at its source, an external
   # id, 1 to 200 characters; `url`, its address, `https://`, 2,048 characters at most;
   # `title`, 1 to 1,024 characters; `collection_title`, the title of the collection that
-  # holds it, 1 to 1,024 characters; and where a change for it goes, its target: the ref
+  # contains it, 1 to 1,024 characters; and where a change for it goes, its target: the ref
   # of one of its adapter's collections, `target_collection_external_ref`, 1 to 200
   # characters, and, when the place has one, its address, both or neither:
   # `target_system`, a host name to the contract's pattern, and `target_path`, 1 to 200
@@ -118,6 +118,22 @@ defmodule Apiary.WorkItems.WorkItem do
   @doc false
   @spec prefix() :: String.t()
   def prefix, do: @prefix
+
+  # target/1 is the target (`Apiary.Lingo.Domain.target/0`) of a work item, or of a map
+  # of its fields `adapter_id`, `target_collection_external_ref`, `target_system` and
+  # `target_path`: its adapter, its collection ref and its address, both nil for a place
+  # with none; nil for a work item with no collection ref, which has no target.
+  @doc false
+  @spec target(t | map) :: Apiary.Lingo.Domain.target() | nil
+  def target(%{target_collection_external_ref: nil}), do: nil
+
+  def target(%{target_collection_external_ref: ref} = work_item),
+    do: %{
+      adapter_id: work_item.adapter_id,
+      collection_external_ref: ref,
+      system: work_item.target_system,
+      path: work_item.target_path
+    }
 
   # max_instruction/0 is the most characters, code points, a first instruction has.
   @doc false

@@ -24,7 +24,9 @@ defmodule Apiary.Runs.Target do
   # `Apiary.Targets.set_further_repositories/3`, which checks them.
   use Ecto.Schema
 
-  alias Apiary.PublicId
+  import Ecto.Query, only: [from: 2]
+
+  alias Apiary.{PublicId, Repo}
 
   @label_max 256
   # C0 and DEL, C1 (U+0085, the next line, among them), and the line and paragraph
@@ -101,6 +103,62 @@ defmodule Apiary.Runs.Target do
         log: false
       )
     end)
+  end
+
+  @doc """
+  The query of the row of `target` in the workspace `workspace_id`, by its adapter and its
+  collection ref.
+  """
+  @spec by_key(Ecto.UUID.t(), Apiary.Lingo.Domain.target()) :: Ecto.Query.t()
+  def by_key(workspace_id, %{adapter_id: adapter_id, collection_external_ref: ref}) do
+    from t in __MODULE__,
+      where: t.workspace_id == ^workspace_id,
+      where: t.adapter_id == ^adapter_id and t.collection_external_ref == ^ref
+  end
+
+  @doc """
+  The id of the one target of the workspace `workspace_id` at the address `system` and
+  `path`, as a run's labels name it; nil when no target or more than one has that
+  address, since two targets of two collections can share one.
+  """
+  @spec id_at(Ecto.UUID.t(), String.t(), String.t()) :: Ecto.UUID.t() | nil
+  def id_at(workspace_id, system, path) do
+    case ids_at(workspace_id, [{system, path}]) do
+      %{{^system, ^path} => id} -> id
+      _none -> nil
+    end
+  end
+
+  @doc """
+  The ids of the targets of the workspace `workspace_id` at each of the addresses
+  `addresses`, `{system, path}`: a map of each address that exactly one target has to that
+  target's id. An address of no target, or of more than one, is left out.
+  """
+  @spec ids_at(Ecto.UUID.t(), [{String.t(), String.t()}]) :: %{
+          {String.t(), String.t()} => Ecto.UUID.t()
+        }
+  def ids_at(_workspace_id, []), do: %{}
+
+  def ids_at(workspace_id, addresses) do
+    addresses = Enum.uniq(addresses)
+
+    Repo.all(
+      from(t in __MODULE__,
+        join:
+          p in fragment(
+            "SELECT * FROM unnest(?::text[], ?::text[]) AS p(system, path)",
+            ^Enum.map(addresses, &elem(&1, 0)),
+            ^Enum.map(addresses, &elem(&1, 1))
+          ),
+        on: t.system == p.system and t.path == p.path,
+        where: t.workspace_id == ^workspace_id,
+        group_by: [t.system, t.path],
+        having: count(t.id) == 1,
+        select: {{t.system, t.path}, type(fragment("(array_agg(?))[1]", t.id), :binary_id)}
+      ),
+      log: false
+    )
+    |> Map.new()
   end
 
   @primary_key {:id, :binary_id, autogenerate: true}

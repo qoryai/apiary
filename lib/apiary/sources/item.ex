@@ -15,7 +15,7 @@ defmodule Apiary.Sources.Item do
   # it is, or nil. The target is where a change for it would go: the ref of one of the
   # adapter's collections (`target_collection_external_ref`), and, when the place has
   # one, its address (`target_system`, `target_path`, both or neither), or none of the
-  # three. `truncated` names the fields the adapter cut, each once.
+  # three. `truncated` lists the fields the adapter cut, each once.
   # `comment_count` is how many comments it has at its source. `source_created_at` and
   # `source_updated_at` are its times at its source, which tell an earlier write of it from
   # a later one.

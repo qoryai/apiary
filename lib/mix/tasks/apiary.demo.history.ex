@@ -34,7 +34,9 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   are found lost a minute and a half later, as any run that stops talking is; one in two
   hundred writes tens of thousands of lines. The events are written with the times they happened
   and received a moment later, as the receiver would have stored them, and every run is
-  projected by `Apiary.Runs.Projector`, as the receiver's runs are.
+  projected by `Apiary.Runs.Projector`, as the receiver's runs are. Each repository is a
+  target of the workspace first, a collection of the adapter Forges, made where the
+  instance has none.
 
   Nodes, keys and people go through the contexts, as the console's pages would, in the
   name of the workspace's first owner, so the audit trail has them: a node per machine
@@ -56,7 +58,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   import Ecto.Query
 
   alias Apiary.{AccessKeys, Accounts, Nodes, Organisations, Policy, Repo}
-  alias Apiary.Nodes.Instance
+  alias Apiary.Nodes.{Instance, Node}
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Runs.{Event, Liveness, Projector, Run, Target}
@@ -134,6 +136,9 @@ defmodule Mix.Tasks.Apiary.Demo.History do
 
   # The repositories every history has: the recorded demo's, one path on three forges and
   # one on two, so that a path names more than one repository.
+  # The name of the adapter whose collections are the history's repositories.
+  @forges "Forges"
+
   @anchors [
     {"codeberg.org", "acme/shop"},
     {"github.com", "acme/shop"},
@@ -313,6 +318,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     if !opts[:skip_members], do: people(scope, opts[:passwords])
 
     catalogue = catalogue(repositories, days)
+    :ok = targets!(scope, catalogue)
     plan = plan(runs, days, catalogue, now)
     ctx = %{scope: scope, keys: keys, seed: seed, now: now, days: days}
 
@@ -558,6 +564,30 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   end
 
   ## The repositories
+
+  # The workspace's targets of the repositories of `catalogue`, as the collections of an
+  # adapter assigned to it would make them: of the adapter Forges, made where the instance
+  # has none, with each repository's system and path as its collection ref. A run whose
+  # labels name a repository takes its target (`Apiary.Runs.Target.id_at/3`).
+  defp targets!(%Scope{organisation: organisation, workspace: workspace}, catalogue) do
+    adapter =
+      Repo.get_by(Node, kind: :adapter, name: @forges) ||
+        %Node{kind: :adapter, gateway_choice: :direct}
+        |> Node.adapter_changeset(%{name: @forges})
+        |> Repo.insert!()
+
+    targets =
+      for %{system: system, path: path} <- catalogue do
+        %{
+          adapter_id: adapter.id,
+          collection_external_ref: "#{system}/#{path}",
+          system: system,
+          path: path
+        }
+      end
+
+    Target.insert_new(organisation.id, workspace.id, targets)
+  end
 
   # `count` repositories: the anchors, then pairs of a namespace and a name, each path
   # once. Each has a language, a weight that falls with its rank, and the days it was

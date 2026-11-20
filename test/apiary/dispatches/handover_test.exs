@@ -172,7 +172,8 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert claimed.run.id == queued.id
       assert claimed.work_item.id == work_item.id
       assert claimed.documents.domain == "software"
-      assert claimed.documents.target == %{system: "forge.example.com", path: "acme/shop"}
+      assert claimed.documents.target == WorkItem.target(work_item)
+      assert %{system: "forge.example.com", path: "acme/shop"} = claimed.documents.target
       assert claimed.documents.work_item.id == work_item.id
       assert claimed.gateway_url == ctx.gateway.url
 
@@ -323,10 +324,7 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert claimed.documents.work_item == nil
       assert claimed.documents.domain == "software"
 
-      assert claimed.documents.target == %{
-               system: collection.target_system,
-               path: collection.target_path
-             }
+      assert claimed.documents.target == Apiary.Adapters.Collection.target(collection)
 
       assert Jason.encode!(claimed.documents.inputs) ==
                ~s({"version":1,"environment_ref":"env-1"})
@@ -399,7 +397,7 @@ defmodule Apiary.Dispatches.HandoverTest do
             [ended_at: DateTime.utc_now(), ended_reason: :not_listed],
             [workspace_id: nil],
             [workspace_id: other.id],
-            [target_system: nil, target_path: nil]
+            [target_collection_external_ref: nil, target_system: nil, target_path: nil]
           ] do
         {collection, queued} = prebuild!(ctx)
         before = dispatches()
@@ -612,12 +610,12 @@ defmodule Apiary.Dispatches.HandoverTest do
     end
   end
 
-  # The target of the work items queued here, with `paths` its runs also read, saved as an
-  # owner saves them.
-  defp further!(ctx, paths) do
+  # The target of `work_item`, with `paths` its runs also read, saved as an owner saves
+  # them.
+  defp further!(ctx, work_item, paths) do
     :ok =
       Apiary.Runs.Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [
-        Apiary.NodesFixtures.target_key(%{system: "forge.example.com", path: "acme/shop"})
+        WorkItem.target(work_item)
       ])
 
     target = Apiary.Targets.get(ctx.scope, "forge.example.com", "acme/shop")
@@ -627,8 +625,8 @@ defmodule Apiary.Dispatches.HandoverTest do
 
   describe "the further repositories of the run's target" do
     test "follow its repository in QORY_RUN_REPOSITORIES, in the order saved", ctx do
-      further!(ctx, "acme/docs\nacme/tools")
-      {_work_item, _queued} = queued!(ctx)
+      {work_item, _queued} = queued!(ctx)
+      further!(ctx, work_item, "acme/docs\nacme/tools")
 
       run = Repo.get!(Run, claimed!(ctx).registered.id)
 
@@ -645,8 +643,8 @@ defmodule Apiary.Dispatches.HandoverTest do
     end
 
     test "an empty saved list gives the repositories label its repository alone", ctx do
-      further!(ctx, "")
-      {_work_item, _queued} = queued!(ctx)
+      {work_item, _queued} = queued!(ctx)
+      further!(ctx, work_item, "")
 
       assert Repo.get!(Run, claimed!(ctx).registered.id).registration_labels == %{
                "forge" => "forge.example.com",
@@ -657,14 +655,13 @@ defmodule Apiary.Dispatches.HandoverTest do
 
     test "a saved list that breaks the rules now ends the run variables_invalid at the claim",
          ctx do
-      target = further!(ctx, "acme/docs")
+      {work_item, queued} = queued!(ctx)
+      target = further!(ctx, work_item, "acme/docs")
 
       {1, _rows} =
         Repo.update_all(from(t in Apiary.Runs.Target, where: t.id == ^target.id),
           set: [further_repositories: ["other/docs"]]
         )
-
-      {_work_item, queued} = queued!(ctx)
 
       assert claim(ctx) == {:ok, :none}
       ended!(ctx, queued, :variables_invalid)
@@ -1243,7 +1240,7 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
-          set: [target_system: nil, target_path: nil]
+          set: [target_collection_external_ref: nil, target_system: nil, target_path: nil]
         )
 
       assert claim(ctx) == {:ok, :none}
@@ -1338,11 +1335,17 @@ defmodule Apiary.Dispatches.HandoverTest do
     test "has the domain's target labels, and no run variables", ctx do
       with_domain(ctx.scope, "example")
 
-      {_work_item, _queued} =
+      {work_item, _queued} =
         queued!(ctx, %{target_system: "ads.example.com", target_path: "accounts/1234/-a"})
 
       claimed = claimed!(ctx)
-      assert claimed.documents.target == %{system: "ads.example.com", path: "accounts/1234/-a"}
+
+      assert claimed.documents.target == %{
+               adapter_id: work_item.adapter_id,
+               collection_external_ref: "accounts/1234/-a",
+               system: "ads.example.com",
+               path: "accounts/1234/-a"
+             }
 
       run = Repo.get!(Run, claimed.registered.id)
 
@@ -1354,9 +1357,34 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert run.registration_variables == nil
     end
 
+    test "of a work item whose target has no address: the claim has its target", ctx do
+      with_domain(ctx.scope, "example")
+
+      {work_item, queued} =
+        queued!(ctx, %{
+          target_collection_external_ref: "Q_support",
+          target_system: nil,
+          target_path: nil
+        })
+
+      claimed = claimed!(ctx)
+      assert {claimed.run.id, claimed.work_item.id} == {queued.id, work_item.id}
+
+      assert claimed.documents.target == %{
+               adapter_id: work_item.adapter_id,
+               collection_external_ref: "Q_support",
+               system: nil,
+               path: nil
+             }
+
+      assert queue_run!(queued).state == :claimed
+    end
+
     test "of a work item with no target: its domain, no target, an input without one", ctx do
       with_domain(ctx.scope, "example")
-      {work_item, queued} = queued!(ctx, %{target_system: nil, target_path: nil})
+
+      {work_item, queued} =
+        queued!(ctx, %{target_collection_external_ref: nil, target_system: nil, target_path: nil})
 
       claimed = claimed!(ctx)
       assert {claimed.run.id, claimed.work_item.id} == {queued.id, work_item.id}

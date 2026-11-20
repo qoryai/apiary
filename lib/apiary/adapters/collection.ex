@@ -93,6 +93,21 @@ defmodule Apiary.Adapters.Collection do
       is_binary(collection.workspace_id) and collection.backlog == true and
         collection.items == true and adapter_items == true
 
+  # The collection's target (`Apiary.Lingo.Domain.target/0`), of its adapter: its target
+  # collection ref and its address, both nil for a place with none; nil for a collection
+  # with no target collection ref, which has no target.
+  @doc false
+  @spec target(t) :: Apiary.Lingo.Domain.target() | nil
+  def target(%__MODULE__{target_collection_external_ref: nil}), do: nil
+
+  def target(%__MODULE__{target_collection_external_ref: ref} = collection),
+    do: %{
+      adapter_id: collection.adapter_id,
+      collection_external_ref: ref,
+      system: collection.target_system,
+      path: collection.target_path
+    }
+
   # Whether `id` is a collection's public id, in the shape `Apiary.PublicId` makes.
   @doc false
   @spec public_id?(term) :: boolean

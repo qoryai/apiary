@@ -22,7 +22,8 @@ defmodule Apiary.SealedRunsFixtures do
   A run claimed with an `anthropic` provider of the scope's organisation, whose one key
   is `model_key/0` under the value id `main`, and attached by the gateway of
   `Apiary.DispatchedRunsFixtures.handover_place_fixture/2`, under the gateway's one key,
-  allowed stored secrets. Returns the place's map with `provider`, `run` (as stored after
+  allowed stored secrets. The work item's target has its row, as an assign of its
+  collection makes it (`Apiary.Runs.Target.insert_new/3`). Returns the place's map with `provider`, `run` (as stored after
   the attach), `attached` (the attach's answer: `settings`, its bytes, and `digest`) and
   `secrets_key: {key, seed}`.
 
@@ -74,6 +75,12 @@ defmodule Apiary.SealedRunsFixtures do
     {key, seed} = place.gateway_key
 
     work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+
+    :ok =
+      Apiary.Runs.Target.insert_new(scope.organisation.id, scope.workspace.id, [
+        Apiary.WorkItems.WorkItem.target(work_item)
+      ])
+
     adapter = if apply = opts[:work], do: callable_adapter_fixture(work_item.adapter_id, apply)
     if opts[:work], do: Apiary.WorkItemsFixtures.target_candidate!(work_item)
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)

@@ -126,6 +126,64 @@ defmodule Apiary.NodesFixtures do
   end
 
   @doc """
+  The target of the workspace `workspace_id` at the address `labels` name by the
+  workspace's domain (`Apiary.Lingo.Domain.target/2`), made where the workspace has no
+  target there (`address_target!/4`). A run's labels take the one target at their address
+  (`Apiary.Runs.Target.id_at/3`), so a test of a run with labels has it first. `:ok`,
+  also for labels that name no address.
+  """
+  def labelled_target!(organisation_id, workspace_id, labels) do
+    workspace = Repo.get!(Apiary.Organisations.Workspace, workspace_id)
+
+    case Apiary.Lingo.Domain.target(workspace, labels || %{}) do
+      {:ok, %{system: system, path: path}} ->
+        %Apiary.Runs.Target{} = address_target!(organisation_id, workspace_id, system, path)
+        :ok
+
+      :none ->
+        :ok
+    end
+  end
+
+  @doc """
+  The one target of the workspace `workspace_id` at `system` and `path`, made where the
+  workspace has none there: of the workspace's collection with that address when it has
+  one (`Apiary.Adapters.Collection.target/1`), else of a fresh adapter and collection ref
+  (`target_key/1`). For a test that reads targets by address, as the pages and
+  environments do.
+  """
+  def address_target!(organisation_id, workspace_id, system, path) do
+    at =
+      from t in Apiary.Runs.Target,
+        where: t.workspace_id == ^workspace_id and t.system == ^system and t.path == ^path
+
+    Repo.one(at) ||
+      (
+        :ok =
+          Apiary.Runs.Target.insert_new(organisation_id, workspace_id, [
+            collection_target(workspace_id, system, path) ||
+              target_key(%{system: system, path: path})
+          ])
+
+        Repo.one!(at)
+      )
+  end
+
+  defp collection_target(workspace_id, system, path) do
+    Repo.one(
+      from c in Apiary.Adapters.Collection,
+        where: c.workspace_id == ^workspace_id and c.target_system == ^system,
+        where: c.target_path == ^path and not is_nil(c.target_collection_external_ref),
+        order_by: c.inserted_at,
+        limit: 1
+    )
+    |> case do
+      nil -> nil
+      collection -> Apiary.Adapters.Collection.target(collection)
+    end
+  end
+
+  @doc """
   The instance's node pool, with no organisation and no workspace, written straight into
   the table, on `:default` unless `attrs` gives its `gateway_choice`. The instance has
   one in use at most, so a test that makes it is not async.

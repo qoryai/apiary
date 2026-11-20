@@ -212,8 +212,9 @@ defmodule Apiary.Policy.Serving do
         )
   end
 
-  # The labels name a target only by the workspace's domain, the rule the projector
-  # follows too (`Apiary.Runs.Fold`): the wire and the projector pick the same, or none.
+  # The labels name an address only by the workspace's domain, the rule the projector
+  # follows too (`Apiary.Runs.Fold`), and the target is the one target at that address
+  # (`Apiary.Runs.Target.id_at/3`): the wire and the projector pick the same, or none.
   # The key's workspace is loaded with it (`Apiary.AccessKeys.fetch_for_verification/1`):
   # a key without it is a caller's mistake, not a reason to read the default domain.
   defp target_id(
@@ -221,15 +222,8 @@ defmodule Apiary.Policy.Serving do
          labels
        ) do
     case Domain.target(workspace, labels) do
-      {:ok, %{system: system, path: path}} ->
-        Repo.one(
-          from t in Target,
-            where: t.workspace_id == ^workspace_id and t.system == ^system and t.path == ^path,
-            select: t.id
-        )
-
-      :none ->
-        nil
+      {:ok, %{system: system, path: path}} -> Target.id_at(workspace_id, system, path)
+      :none -> nil
     end
   end
 end

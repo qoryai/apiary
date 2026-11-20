@@ -569,7 +569,11 @@ defmodule ApiaryWeb.BacklogLive.EmptyTest do
                "Issues from the 1 repository assigned to #{workspace}."
 
       ticket
-      |> Ecto.Changeset.change(target_system: "code.example.com", target_path: "acme/bare")
+      |> Ecto.Changeset.change(
+        target_collection_external_ref: "acme/bare",
+        target_system: "code.example.com",
+        target_path: "acme/bare"
+      )
       |> Repo.update!()
 
       {:ok, view, _html} = live(ctx.conn, page(ctx.scope))

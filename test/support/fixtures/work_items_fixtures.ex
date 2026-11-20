@@ -250,6 +250,34 @@ defmodule Apiary.WorkItemsFixtures do
   end
 
   @doc """
+  A target of the scope's workspace (`Apiary.Runs.Target`), at forge.example.com acme/shop
+  unless `attrs` sets them, keyed as `work_item_fixture/2` keys the target of a work item
+  of a fresh ticket connection (`ticket_connection_fixture/1`): its adapter, and its path
+  as the collection ref. `{target, attrs}`, where `attrs` gives `work_item_fixture/2` that
+  connection, for a test that writes a target's settings before its work item. Two work
+  items of one connection need two `external_ref`s.
+  """
+  def ticket_target_fixture(%Scope{} = scope, attrs \\ %{}) do
+    connection = ticket_connection_fixture(scope)
+    attrs = Enum.into(attrs, %{system: "forge.example.com", path: "acme/shop"})
+
+    target =
+      Apiary.NodesFixtures.target_fixture(
+        Map.merge(
+          %{
+            organisation_id: scope.organisation.id,
+            workspace_id: scope.workspace.id,
+            adapter_id: connection.adapter_id,
+            collection_external_ref: attrs.path
+          },
+          attrs
+        )
+      )
+
+    {target, %{connection_id: connection.id}}
+  end
+
+  @doc """
   A connected connection of the scope's organisation to a new adapter of the instance,
   the kind of row a work item's ticket comes through, written straight to the database
   so that it needs no feature on (`Apiary.NodesFixtures.connection_fixture/3` goes

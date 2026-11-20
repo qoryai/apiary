@@ -68,6 +68,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
     if ticket_target do
       set!(Collection, collection_of(work_item).id,
+        target_collection_external_ref: ticket_target.path,
         target_system: ticket_target.system,
         target_path: ticket_target.path
       )

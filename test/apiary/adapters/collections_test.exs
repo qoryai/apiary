@@ -61,7 +61,7 @@ defmodule Apiary.Adapters.CollectionsTest do
             url: "https://tracker.acme.example/" <> ref,
             title: Keyword.get(opts, :title, "Title of " <> ref),
             grant_ref: Keyword.get_lazy(opts, :grant_ref, fn -> listing_grant(connection) end),
-            target: Keyword.get(opts, :target),
+            target: (target = Keyword.get(opts, :target)) && Map.put(target, :collection, ref),
             environment_ref: Keyword.get(opts, :environment_ref)
           }
         end,

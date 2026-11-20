@@ -372,23 +372,16 @@ defmodule Apiary.Dispatches.RunSettings do
     end
   end
 
-  # The target row of the run's work item in the run's workspace, nil for a work item
-  # with none or whose target no row of the workspace has.
+  # The target row of the run's work item in the run's workspace, by its adapter and
+  # collection ref, nil for a work item with none or whose target no row of the
+  # workspace has.
   defp target(%Workspace{id: workspace_id, organisation_id: organisation_id}, work_item_id) do
-    case Repo.one(
-           from w in WorkItem,
-             where: w.id == ^work_item_id,
-             select: {w.target_system, w.target_path}
-         ) do
-      {system, path} when is_binary(system) and is_binary(path) ->
-        Repo.one(
-          from t in Target,
-            where: t.organisation_id == ^organisation_id and t.workspace_id == ^workspace_id,
-            where: t.system == ^system and t.path == ^path
-        )
-
-      _no_target ->
-        nil
+    with %WorkItem{} = work_item <- Repo.get(WorkItem, work_item_id),
+         %{} = target <- WorkItem.target(work_item) do
+      Repo.one(
+        from t in Target.by_key(workspace_id, target),
+          where: t.organisation_id == ^organisation_id
+      )
     end
   end
 

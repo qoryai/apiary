@@ -70,6 +70,57 @@ defmodule Apiary.Runs.TargetTest do
     assert rows(ctx.scope) == [{ctx.adapter.id, "Q_support", nil, nil}]
   end
 
+  describe "id_at/3 and ids_at/2, the one target at an address, as a run's labels take it" do
+    test "none where no target has the address", ctx do
+      insert_new!(ctx.scope, [target(ctx.adapter, "C_1", "code.example.com", "acme/shop")])
+
+      assert Target.id_at(ctx.scope.workspace.id, "code.example.com", "acme/web") == nil
+      assert Target.ids_at(ctx.scope.workspace.id, [{"code.example.com", "acme/web"}]) == %{}
+    end
+
+    test "the one target with the address", ctx do
+      insert_new!(ctx.scope, [
+        target(ctx.adapter, "C_1", "code.example.com", "acme/shop"),
+        target(ctx.adapter, "C_2", "code.example.com", "acme/web")
+      ])
+
+      [shop] = Repo.all(from t in Target, where: t.collection_external_ref == "C_1")
+      [web] = Repo.all(from t in Target, where: t.collection_external_ref == "C_2")
+
+      assert Target.id_at(ctx.scope.workspace.id, "code.example.com", "acme/shop") == shop.id
+
+      assert Target.ids_at(ctx.scope.workspace.id, [
+               {"code.example.com", "acme/shop"},
+               {"code.example.com", "acme/web"}
+             ]) == %{
+               {"code.example.com", "acme/shop"} => shop.id,
+               {"code.example.com", "acme/web"} => web.id
+             }
+    end
+
+    test "none where two targets have the address, nor for another workspace's", ctx do
+      insert_new!(ctx.scope, [
+        target(ctx.adapter, "C_1", "code.example.com", "acme/shop"),
+        target(ctx.adapter, "C_2", "code.example.com", "acme/shop"),
+        target(ctx.adapter, "C_3", "code.example.com", "acme/web")
+      ])
+
+      %{scope: other} = sign_up_fixture()
+
+      insert_new!(other, [target(ctx.adapter, "C_4", "code.example.com", "acme/docs")])
+
+      assert Target.id_at(ctx.scope.workspace.id, "code.example.com", "acme/shop") == nil
+      assert Target.id_at(ctx.scope.workspace.id, "code.example.com", "acme/docs") == nil
+
+      assert ctx.scope.workspace.id
+             |> Target.ids_at([
+               {"code.example.com", "acme/shop"},
+               {"code.example.com", "acme/web"}
+             ])
+             |> Map.keys() == [{"code.example.com", "acme/web"}]
+    end
+  end
+
   test "the database holds a target's address to both or neither", ctx do
     row = %{
       organisation_id: ctx.scope.organisation.id,

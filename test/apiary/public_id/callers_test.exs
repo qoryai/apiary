@@ -214,16 +214,18 @@ defmodule Apiary.PublicId.CallersTest do
 
   describe "a target" do
     test "that a run names, with an id that is taken, gets a fresh id", %{scope: scope} do
+      # The adapter is made first: a node takes a public id from the same source.
+      adapter_id = Apiary.NodesFixtures.bare_adapter_fixture().id
       PublicIdSource.force([@taken])
 
       Target.insert_new(scope.organisation.id, scope.workspace.id, [
-        Apiary.NodesFixtures.target_key(%{system: "git", path: "a/one"})
+        Apiary.NodesFixtures.target_key(%{adapter_id: adapter_id, system: "git", path: "a/one"})
       ])
 
       PublicIdSource.force([@taken])
 
       Target.insert_new(scope.organisation.id, scope.workspace.id, [
-        Apiary.NodesFixtures.target_key(%{system: "git", path: "a/two"})
+        Apiary.NodesFixtures.target_key(%{adapter_id: adapter_id, system: "git", path: "a/two"})
       ])
 
       ids = Repo.all(from t in Target, order_by: t.path, select: {t.path, t.public_id})

@@ -670,16 +670,10 @@ defmodule Apiary.Stages.StopCause do
     do:
       "The run did not start: its variables take #{div(bytes + 1023, 1024)} KiB, and a run takes at most #{div(Resolution.max_bytes(), 1024)} KiB."
 
-  defp variable_rule(%{work_item: %WorkItem{target_system: system, target_path: path}} = n)
+  defp variable_rule(%{work_item: %WorkItem{target_system: system} = work_item} = n)
        when is_binary(system) do
-    target = %{system: system, path: path}
-
-    found =
-      Repo.one(
-        from t in Target,
-          where: t.workspace_id == ^n.workspace_struct.id,
-          where: t.system == ^system and t.path == ^path
-      )
+    target = WorkItem.target(work_item)
+    found = Repo.one(Target.by_key(n.workspace_struct.id, target))
 
     picked =
       if found && Domain.paths_label(n.workspace_struct),

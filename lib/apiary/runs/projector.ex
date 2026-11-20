@@ -50,8 +50,8 @@ defmodule Apiary.Runs.Projector do
   writes neither, because the results they come from are partly gone.
 
   A write's row (`Apiary.Runs.TargetWrite`) is one `dev.qory.run.target_write`, kept by
-  its sequence, with the workspace's target of its system and path when the workspace has
-  one: a write links to a target that exists, and creates none.
+  its sequence, with the workspace's target at its system and path when the workspace has
+  exactly one there: a write links to a target that exists, and creates none.
 
   Once its passes have committed, a projection records the run's `last_heartbeat_at` as
   its access key's last heartbeat when it is later than the key's
@@ -67,11 +67,14 @@ defmodule Apiary.Runs.Projector do
   require Logger
 
   alias Apiary.AccessKeys
+  alias Apiary.Adapters.Collection
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Runs
   alias Apiary.Runs.{Connection, Event, Fold, LeakedSecrets, LogChunk, Run, SessionChunk}
   alias Apiary.Runs.{Sessions, Step, Target, TargetWrite, Transcript, TranscriptPath}
+  alias Apiary.WorkItems.WorkItem
 
   # What the fold may change on the run's row. The registration's fields
   # (`Apiary.Runs.Registration`) are not among them, so a rebuild keeps them.
@@ -753,27 +756,57 @@ defmodule Apiary.Runs.Projector do
     connections |> Map.values() |> Enum.map(& &1.denied) |> Enum.sum()
   end
 
+  # The run's target. A run of a workspace's queue has its work item's target, or a
+  # prebuild its collection's, by adapter and collection ref (`dispatched_target/1`),
+  # made in the run's workspace where it has no row yet: a target seen before keeps its
+  # row, and so its public id. Any other run has the one target at the address its labels
+  # name (`Apiary.Runs.Target.id_at/3`), none where no target or more than one has it.
+  defp put_target(%Ecto.Changeset{data: %Run{dispatch_run_id: id} = run} = changeset, _folded)
+       when is_binary(id) do
+    case dispatched_target(id) do
+      %{} = target ->
+        :ok = Target.insert_new(run.organisation_id, run.workspace_id, [target])
+
+        target_id =
+          Repo.one!(from(t in Target.by_key(run.workspace_id, target), select: t.id),
+            log: false
+          )
+
+        Ecto.Changeset.change(changeset, target_id: target_id)
+
+      nil ->
+        changeset
+    end
+  end
+
   defp put_target(changeset, %{target_system: system, target_path: path})
        when is_binary(system) and is_binary(path) and system != "" and path != "" do
     run = changeset.data
-
-    # A target seen before keeps its row, and so its public id.
-    :ok =
-      Target.insert_new(run.organisation_id, run.workspace_id, [%{system: system, path: path}])
-
-    target_id =
-      Repo.one!(
-        from(t in Target,
-          where: t.workspace_id == ^run.workspace_id and t.system == ^system and t.path == ^path,
-          select: t.id
-        ),
-        log: false
-      )
-
-    Ecto.Changeset.change(changeset, target_id: target_id)
+    Ecto.Changeset.change(changeset, target_id: Target.id_at(run.workspace_id, system, path))
   end
 
   defp put_target(changeset, _run), do: changeset
+
+  # The target of the run of the queue `id`: its work item's (`WorkItem.target/1`), else
+  # its collection's (`Collection.target/1`), nil for none. Read without a lock.
+  defp dispatched_target(id) do
+    Repo.one(
+      from(d in DispatchRun,
+        left_join: w in WorkItem,
+        on: w.id == d.work_item_id,
+        left_join: c in Collection,
+        on: c.id == d.source_collection_id,
+        where: d.id == ^id,
+        select: {w, c}
+      ),
+      log: false
+    )
+    |> case do
+      {%WorkItem{} = work_item, _collection} -> WorkItem.target(work_item)
+      {nil, %Collection{} = collection} -> Collection.target(collection)
+      _none -> nil
+    end
+  end
 
   defp insert_log_chunks(_run, []), do: :ok
 
@@ -798,26 +831,7 @@ defmodule Apiary.Runs.Projector do
   defp insert_target_writes(_run, []), do: :ok
 
   defp insert_target_writes(run, writes) do
-    places = writes |> Enum.map(&{&1.system, &1.path}) |> Enum.uniq()
-    systems = Enum.map(places, &elem(&1, 0))
-    paths = Enum.map(places, &elem(&1, 1))
-
-    targets =
-      Repo.all(
-        from(t in Target,
-          join:
-            p in fragment(
-              "SELECT * FROM unnest(?::text[], ?::text[]) AS p(system, path)",
-              ^systems,
-              ^paths
-            ),
-          on: t.system == p.system and t.path == p.path,
-          where: t.workspace_id == ^run.workspace_id,
-          select: {{t.system, t.path}, t.id}
-        ),
-        log: false
-      )
-      |> Map.new()
+    targets = Target.ids_at(run.workspace_id, Enum.map(writes, &{&1.system, &1.path}))
 
     rows =
       for write <- writes do

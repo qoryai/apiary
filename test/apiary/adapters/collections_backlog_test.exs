@@ -66,7 +66,7 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
             url: "https://tracker.acme.example/" <> ref,
             title: ref,
             grant_ref: listing_grant(ctx.connection),
-            target: target
+            target: target && Map.put(target, :collection, ref)
           }
         end,
       listing: %{
@@ -92,8 +92,16 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
     Collections.assign_collections(ctx.scope, ctx.connection, ids, workspace)
   end
 
-  defp target(workspace, %{system: system, path: path}),
-    do: Repo.get_by!(Target, workspace_id: workspace.id, system: system, path: path)
+  # The target of `workspace` at the address: of the collection whose ref is last, SHOP
+  # where MIRROR has the same address.
+  defp target(workspace, %{system: system, path: path}) do
+    Repo.one!(
+      from t in Target,
+        where: t.workspace_id == ^workspace.id and t.system == ^system and t.path == ^path,
+        order_by: [desc: t.collection_external_ref],
+        limit: 1
+    )
+  end
 
   defp scope_in(ctx, workspace), do: workspace_scope(ctx.user, workspace)
 
