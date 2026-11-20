@@ -909,7 +909,7 @@ defmodule Apiary.Targets do
         :not_a_collection ->
           {dgettext_noop(
              "errors",
-             "Line %{line}: choose a repository this integration lists. %{path} is not one of them."
+             "Line %{line}: choose a target this integration lists. %{path} is not one of them."
            ), line: line, path: entry}
 
         :repeats ->

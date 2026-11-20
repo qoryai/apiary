@@ -199,6 +199,21 @@ defmodule ApiaryWeb.TargetLive.FurtherRepositoriesTest do
       assert saved(scope, shop) == []
     end
 
+    test "a path no collection of the integration has: the error in the software words",
+         %{conn: conn, form_path: form_path} do
+      form = open(conn, form_path)
+
+      form
+      |> form("#further-repositories-form", target: %{further_repositories: "acme/nowhere"})
+      |> render_submit()
+
+      assert has_element?(
+               form,
+               "#target_further_repositories-error",
+               "Line 1: choose a repository this integration lists. acme/nowhere is not one of them."
+             )
+    end
+
     test "a list over the joined limit stays too, with its error under the field",
          %{conn: conn, scope: scope, shop: shop, form_path: form_path} do
       form = open(conn, form_path)

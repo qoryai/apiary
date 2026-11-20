@@ -488,7 +488,7 @@ defmodule Apiary.TargetsTest do
                Targets.set_further_repositories(scope, shop, "acme/docs\nacme/tools")
              ) ==
                [
-                 "Line 2: choose a repository this integration lists. acme/tools is not one of them."
+                 "Line 2: choose a target this integration lists. acme/tools is not one of them."
                ]
 
       assert saved(scope, shop) == []
@@ -529,7 +529,7 @@ defmodule Apiary.TargetsTest do
         })
 
       assert further_errors(Targets.set_further_repositories(scope, bare, "acme/docs")) == [
-               "Line 1: choose a repository this integration lists. acme/docs is not one of them."
+               "Line 1: choose a target this integration lists. acme/docs is not one of them."
              ]
 
       assert {:ok, %{further_repositories: []}} =
