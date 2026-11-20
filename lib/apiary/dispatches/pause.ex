@@ -87,7 +87,7 @@ defmodule Apiary.Dispatches.Pause do
       |> Repo.all()
       |> Map.new()
 
-    new_keys = ModelKeys.new_key_counts(Map.values(providers))
+    new_keys = new_key_counts(Map.values(providers))
 
     Map.new(rows, fn {value, run, rest} ->
       provider = Map.get(providers, Map.fetch!(paused, run.id))
@@ -101,6 +101,9 @@ defmodule Apiary.Dispatches.Pause do
        })}
     end)
   end
+
+  defp new_key_counts([]), do: %{}
+  defp new_key_counts(providers), do: ModelKeys.new_key_counts(providers)
 
   # The provider of the session that paused (`Apiary.Runs.Run.session_provider_ids/2`),
   # its first for a session not known; nil for a run with none.
