@@ -121,12 +121,17 @@ defmodule Apiary.Targets do
   ## One target
 
   @doc """
-  get/3 is the target of the scope's workspace with this system and path, or nil: one
-  indexed read.
+  get/3 is the one target of the scope's workspace with this system and path
+  (`Apiary.Runs.Target.id_at/3`), or nil: nil also where two targets of two collections
+  have that address.
   """
   @spec get(Scope.t(), String.t(), String.t()) :: Target.t() | nil
-  def get(%Scope{} = scope, system, path) when is_binary(system) and is_binary(path) do
-    Repo.one(from t in in_scope(scope), where: t.system == ^system and t.path == ^path)
+  def get(%Scope{workspace: %Workspace{id: workspace_id}} = scope, system, path)
+      when is_binary(system) and is_binary(path) do
+    case Target.id_at(workspace_id, system, path) do
+      nil -> nil
+      id -> Repo.one(from t in in_scope(scope), where: t.id == ^id)
+    end
   end
 
   def get(%Scope{}, _system, _path), do: nil

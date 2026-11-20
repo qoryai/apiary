@@ -240,6 +240,25 @@ defmodule Apiary.TargetsTest do
   end
 
   describe "a target's page" do
+    test "get/3 is the one target at an address, and nil where two have it" do
+      %{scope: scope} = sign_up_fixture()
+      at = %{system: "code.example.com", path: "acme/shop"}
+      key = Apiary.NodesFixtures.target_key(at)
+      :ok = Apiary.Runs.Target.insert_new(scope.organisation.id, scope.workspace.id, [key])
+
+      assert %Apiary.Runs.Target{collection_external_ref: ref} =
+               Targets.get(scope, at.system, at.path)
+
+      assert ref == key.collection_external_ref
+
+      :ok =
+        Apiary.Runs.Target.insert_new(scope.organisation.id, scope.workspace.id, [
+          Apiary.NodesFixtures.target_key(at)
+        ])
+
+      assert Targets.get(scope, at.system, at.path) == nil
+    end
+
     test "every state counts in its family" do
       %{scope: scope} = sign_up_fixture()
       ended(scope, repo("github.example", "acme/shop"), "succeeded", ago: 60)
