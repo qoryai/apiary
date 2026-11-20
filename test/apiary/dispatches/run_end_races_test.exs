@@ -799,6 +799,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
 
       second = start(fn -> Projector.project(handed.run) end)
       await_blocked(second.backend, first_pid)
+      assert statement(second.backend) =~ ~s(FROM "adapter_connections")
 
       # Waiting on the connection, the end holds neither the work item nor the record:
       # the part's transaction locks both without waiting.

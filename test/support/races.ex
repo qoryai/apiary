@@ -137,6 +137,15 @@ defmodule Apiary.Races do
   end
 
   @doc """
+  The statement that the backend `backend` runs, as `pg_stat_activity` shows it: for a
+  test that checks at which statement a side waits.
+  """
+  def statement(backend) when is_integer(backend) do
+    [[query]] = Repo.query!("SELECT query FROM pg_stat_activity WHERE pid = $1", [backend]).rows
+    query
+  end
+
+  @doc """
   The key scope of a key enrolled on the adapter of `connection`, with which the adapter
   posts the connection's listings (`Apiary.Adapters.Collections.post_listing/2`), and a
   live grant of the connection, whose ref `listing_part/4` uses: `{key_scope,

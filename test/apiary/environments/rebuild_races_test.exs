@@ -123,8 +123,9 @@ defmodule Apiary.Environments.RebuildRacesTest do
 
     rebuild = start(fn -> Environments.rebuild(ctx.scope, ctx.target) end)
 
-    # The Rebuild waits on the part.
+    # The Rebuild waits on the part, at the part's connection.
     await_waited(rebuild.backend, part_backend)
+    assert statement(rebuild.backend) =~ ~s(FROM "adapter_connections")
     commit(part)
 
     # The Rebuild read the collection as the part left it, and queued its prebuild of
@@ -180,6 +181,7 @@ defmodule Apiary.Environments.RebuildRacesTest do
     # could hold `Z` while a part held `Y` and waited on `Z`, and one of the two would be
     # refused (`deadlock_detected`).
     await_waited(rebuild.backend, part_backend)
+    assert statement(rebuild.backend) =~ ~s(FROM "adapter_connections")
     commit(part)
 
     # The Rebuild read both collections as the part left them, and queued their prebuilds

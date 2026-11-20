@@ -60,17 +60,32 @@ defmodule Apiary.DispatchesRacesTest do
       Repo.one!(from k in AccessKey, where: k.node_id == ^gateway.id, select: k.public_key)
 
     {:ok, made} = Agent.start(fn -> %{public_keys: [gateway_key], adapters: []} end)
+    started = database_now()
 
-    # Before the clean up of `setup_races`: the organisation, then what outlives it.
+    # Before the clean up of `setup_races`: the organisation, then what outlives it: the
+    # adapters, the public halves of their keys (`listing_key!/1`), and the entries their
+    # keys' enrolment wrote in the trail of the instance's organisation.
     on_exit(fn ->
       :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
       %{public_keys: public_keys, adapters: adapters} = Agent.get(made, & &1)
       Agent.stop(made)
       Repo.delete_all(from o in Organisation, where: o.id == ^scope.organisation.id)
+
+      adapter_keys =
+        Repo.all(from k in AccessKey, where: k.node_id in ^adapters, select: k.key_id)
+
+      Repo.delete_all(from p in PublicKey, where: p.key_id in ^adapter_keys)
       Repo.delete_all(from k in AccessKey, where: k.node_id in ^adapters)
       Repo.delete_all(from c in EnrolmentCode, where: c.node_id in ^adapters)
       Repo.delete_all(from n in Node, where: n.id in ^adapters)
       Repo.delete_all(from p in PublicKey, where: p.public_key in ^public_keys)
+
+      Repo.delete_all(
+        from e in Apiary.Audit.Entry,
+          where: e.organisation_id == ^Apiary.Edition.instance_organisation_id(),
+          where: e.inserted_at >= ^started
+      )
+
       Ecto.Adapters.SQL.Sandbox.checkin(Repo)
     end)
 
@@ -162,8 +177,7 @@ defmodule Apiary.DispatchesRacesTest do
   defp part(ctx, collections, ref) do
     [connection_id] = collections |> Enum.map(& &1.connection_id) |> Enum.uniq()
     connection = Repo.get!(Connection, connection_id)
-    {key_scope, public_key} = listing_key!(connection)
-    Agent.update(ctx.made, &%{&1 | public_keys: [public_key | &1.public_keys]})
+    {key_scope, _public_key} = listing_key!(connection)
     rescued(listing_part(key_scope, connection, collections, ref))
   end
 
