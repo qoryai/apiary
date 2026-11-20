@@ -79,11 +79,18 @@ defmodule ApiaryWeb.TargetLive.FurtherRepositoriesTest do
     test "after the Backlog and Environment cards, last in the main column", %{
       conn: conn,
       scope: scope,
+      shop: shop,
       path: path
     } do
-      connection = ticket_connection_fixture(scope)
+      # A collection whose target is the shop, by the shop's adapter and collection ref.
+      connection =
+        Apiary.Repo.get_by!(Apiary.Adapters.Connection,
+          organisation_id: shop.organisation_id,
+          adapter_id: shop.adapter_id
+        )
 
       source_collection_fixture(scope, connection, %{
+        target_collection_external_ref: shop.collection_external_ref,
         target_system: "code.example.com",
         target_path: "acme/shop"
       })

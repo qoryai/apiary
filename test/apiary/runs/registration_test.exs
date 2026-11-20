@@ -10,7 +10,7 @@ defmodule Apiary.Runs.RegistrationTest do
   alias Apiary.Nodes.Node
   alias Apiary.Policy
   alias Apiary.Policy.{Render, RunConfiguration, Serving}
-  alias Apiary.Runs.{About, Batch, Ingest, Liveness, Projector, Registration, Run, Target}
+  alias Apiary.Runs.{About, Batch, Ingest, Liveness, Projector, Registration, Run}
 
   @no_policy ~s({"version":1})
   @nul <<0>>
