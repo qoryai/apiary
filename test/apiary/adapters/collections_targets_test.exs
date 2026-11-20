@@ -277,7 +277,7 @@ defmodule Apiary.Adapters.CollectionsTargetsTest do
     assert length(targets(scope.workspace)) == 2
   end
 
-  test "a part that changes the address of an assigned collection keeps its one target, at the first",
+  test "a part that changes the address of an assigned collection moves its one target there",
        ctx do
     {:ok, :accepted} = post(ctx, [{"SHOP", @shop}, {"API", @api}])
     {:ok, 1} = assign(ctx, ["SHOP"], ctx.workspace)
@@ -290,7 +290,8 @@ defmodule Apiary.Adapters.CollectionsTargetsTest do
         started_at: DateTime.add(@started, 60)
       )
 
-    assert targets(ctx.workspace) == [old]
+    assert [%{id: id, public_id: public_id, path: "acme/moved"}] = targets(ctx.workspace)
+    assert {id, public_id} == {old.id, old.public_id}
     assert targets(ctx.other_workspace) == []
     assert %{rows: [%{runs: 0}], total: 1} = Targets.page(ctx.scope, %{})
   end

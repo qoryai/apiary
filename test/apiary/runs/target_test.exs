@@ -42,14 +42,25 @@ defmodule Apiary.Runs.TargetTest do
            ]
   end
 
-  test "one collection of one adapter is one row, which keeps its first address", ctx do
+  test "one collection of one adapter is one row, which follows its collection's address",
+       ctx do
     insert_new!(ctx.scope, [target(ctx.adapter, "C_1", "code.example.com", "acme/shop")])
-    [%Target{public_id: public_id}] = Repo.all(Target)
+    [%Target{} = first] = Repo.all(Target)
+
+    # The same address again writes nothing.
+    insert_new!(ctx.scope, [target(ctx.adapter, "C_1", "code.example.com", "acme/shop")])
+    assert Repo.all(Target) == [first]
 
     insert_new!(ctx.scope, [target(ctx.adapter, "C_1", "code.example.com", "acme/web")])
+    assert rows(ctx.scope) == [{ctx.adapter.id, "C_1", "code.example.com", "acme/web"}]
 
-    assert rows(ctx.scope) == [{ctx.adapter.id, "C_1", "code.example.com", "acme/shop"}]
-    assert [%Target{public_id: ^public_id}] = Repo.all(Target)
+    insert_new!(ctx.scope, [target(ctx.adapter, "C_1", nil, nil)])
+    assert rows(ctx.scope) == [{ctx.adapter.id, "C_1", nil, nil}]
+
+    assert [%Target{id: id, public_id: public_id, first_seen_at: first_seen_at}] =
+             Repo.all(Target)
+
+    assert {id, public_id, first_seen_at} == {first.id, first.public_id, first.first_seen_at}
   end
 
   test "the same ref of two adapters is two rows", ctx do

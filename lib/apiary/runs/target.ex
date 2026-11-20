@@ -61,16 +61,14 @@ defmodule Apiary.Runs.Target do
   @doc """
   Creates each of `targets` (`t:Apiary.Lingo.Domain.target/0`), by adapter and collection
   ref, with its address or none, in the workspace `workspace_id` of the organisation
-  `organisation_id`, unless the workspace has it already: one seen before keeps its row,
-  its public id, its address and its `first_seen_at`, since the conflict writes nothing.
-  A new one is first seen now. The targets are inserted sorted by adapter and collection
-  ref, once each, so two callers that name the same targets take them in the same order.
-  The query is kept out of the query log (`log: false`), since the labels may be event
-  data.
+  `organisation_id`, unless the workspace has it already. One seen before keeps its row,
+  its public id and its `first_seen_at`, and takes the address given where it differs, so
+  a target follows its collection to a new address. A caller passes the collection's
+  address as it is now. A new one is first seen now. The targets are inserted sorted by
+  adapter and collection ref, once each, so two callers that name the same targets take
+  them in the same order. The query is kept out of the query log (`log: false`), since
+  the labels may be event data.
   """
-  # shortcut: a target seen before keeps the address it was first seen with, though its
-  # collection's address changes later; replace it when an address can change at the
-  # source.
   @spec insert_new(Ecto.UUID.t(), Ecto.UUID.t(), [Apiary.Lingo.Domain.target()]) :: :ok
   def insert_new(organisation_id, workspace_id, targets) when is_list(targets) do
     now = DateTime.utc_now()
@@ -98,11 +96,29 @@ defmodule Apiary.Runs.Target do
             updated_at: now
           }
         end,
-        on_conflict: :nothing,
+        on_conflict: moved(),
         conflict_target: [:workspace_id, :adapter_id, :collection_external_ref],
         log: false
       )
     end)
+  end
+
+  # The update of a target seen before whose address differs from the one given.
+  defp moved do
+    from t in __MODULE__,
+      where:
+        fragment(
+          "(?, ?) IS DISTINCT FROM (EXCLUDED.system, EXCLUDED.path)",
+          t.system,
+          t.path
+        ),
+      update: [
+        set: [
+          system: fragment("EXCLUDED.system"),
+          path: fragment("EXCLUDED.path"),
+          updated_at: fragment("EXCLUDED.updated_at")
+        ]
+      ]
   end
 
   @doc """

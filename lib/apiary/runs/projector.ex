@@ -758,21 +758,16 @@ defmodule Apiary.Runs.Projector do
 
   # The run's target. A run of a workspace's queue has its work item's target, or a
   # prebuild its collection's, by adapter and collection ref (`dispatched_target/1`),
-  # made in the run's workspace where it has no row yet: a target seen before keeps its
-  # row, and so its public id. Any other run has the one target at the address its labels
-  # name (`Apiary.Runs.Target.id_at/3`), none where no target or more than one has it.
+  # made in the run's workspace where it has no row yet. A target seen before keeps its
+  # row, its public id and its address: a work item's address is the one it was taken in
+  # with, which may predate a move of its collection. Any other run has the one target at
+  # the address its labels name (`Apiary.Runs.Target.id_at/3`), none where no target or
+  # more than one has it.
   defp put_target(%Ecto.Changeset{data: %Run{dispatch_run_id: id} = run} = changeset, _folded)
        when is_binary(id) do
     case dispatched_target(id) do
       %{} = target ->
-        :ok = Target.insert_new(run.organisation_id, run.workspace_id, [target])
-
-        target_id =
-          Repo.one!(from(t in Target.by_key(run.workspace_id, target), select: t.id),
-            log: false
-          )
-
-        Ecto.Changeset.change(changeset, target_id: target_id)
+        Ecto.Changeset.change(changeset, target_id: target_id!(run, target))
 
       nil ->
         changeset
@@ -786,6 +781,19 @@ defmodule Apiary.Runs.Projector do
   end
 
   defp put_target(changeset, _run), do: changeset
+
+  # shortcut: a target that another caller makes between the read and the insert takes
+  # this address, which may be older than its collection's; replace it when a run's
+  # target is read from its collection.
+  defp target_id!(run, target) do
+    query = from(t in Target.by_key(run.workspace_id, target), select: t.id)
+
+    Repo.one(query, log: false) ||
+      (
+        :ok = Target.insert_new(run.organisation_id, run.workspace_id, [target])
+        Repo.one!(query, log: false)
+      )
+  end
 
   # The target of the run of the queue `id`: its work item's (`WorkItem.target/1`), else
   # its collection's (`Collection.target/1`), nil for none. Read without a lock.
