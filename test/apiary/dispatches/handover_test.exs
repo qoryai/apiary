@@ -493,6 +493,26 @@ defmodule Apiary.Dispatches.HandoverTest do
       Repo.delete!(in_the_way)
       assert %{registered: %Run{}} = claimed!(ctx)
     end
+
+    test "a run whose record is missing is unavailable, and nothing is written", ctx do
+      {_work_item, queued} = queued!(ctx)
+
+      # The record its queueing wrote, deleted, which no product path does while the run
+      # waits: the registration finds no record to update, and the claim makes none.
+      {1, _rows} = Repo.delete_all(from r in Run, where: r.dispatch_run_id == ^queued.id)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert claim(ctx) == {:error, :unavailable}
+        end)
+
+      assert log =~ "a claim could not be made: Ecto.NoResultsError"
+      refute Repo.exists?(from r in Run, where: r.dispatch_run_id == ^queued.id)
+      assert runs() == 0
+      assert dispatches() == 0
+      assert queue_run!(queued).state == :waiting
+      assert Slots.held(ctx.pool.id) == 0
+    end
   end
 
   describe "the refusals of dispatched, in their order" do

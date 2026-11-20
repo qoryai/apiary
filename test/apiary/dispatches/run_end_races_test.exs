@@ -619,11 +619,11 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
     # the run of the queue; it clears the image, queues a prebuild of each collection,
     # unless one of its ref waits, and queues the next run of the take in with one more
     # attempt. A listing's part, which holds its connection `FOR UPDATE` and its
-    # collections `FOR NO KEY UPDATE`, a Rebuild, which holds the same rows as the end in the same order, a
-    # release and a close, which hold the work item `FOR UPDATE`, and a second end of the
-    # run take turns with it: none deadlocks, the run of the queue ends once, `run_ended`,
-    # the image is cleared, one prebuild waits for the pool, and one run of the work item
-    # waits, unless the work item was closed.
+    # collections `FOR NO KEY UPDATE`, a Rebuild, which holds the same rows as the end in
+    # the same order, a release and a close, which hold the work item `FOR UPDATE`, and a
+    # second end of the run take turns with it: none deadlocks, the run of the queue ends
+    # once, `run_ended`, the image is cleared, one prebuild waits for the pool, and one run
+    # of the work item waits, unless the work item was closed.
     setup :attach_deadlocks
 
     setup ctx do
@@ -728,22 +728,14 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
         )
     end
 
-    # A listing's part that changes the collection's `environment_ref`: its connection
-    # `FOR UPDATE` and its collection `FOR NO KEY UPDATE`, then the change.
-    defp part(%{collection: %Collection{id: id, connection_id: connection_id}}, ref) do
-      fn ->
-        Repo.transact(fn ->
-          Repo.one!(from k in Connection, where: k.id == ^connection_id, lock: "FOR UPDATE")
-          Repo.one!(from c in Collection, where: c.id == ^id, lock: "FOR NO KEY UPDATE")
-
-          {1, _rows} =
-            Repo.update_all(from(c in Collection, where: c.id == ^id),
-              set: [environment_ref: ref]
-            )
-
-          {:ok, :changed}
-        end)
-      end
+    # A listing's part that sets the collection's `environment_ref` to `ref`, posted with
+    # a key enrolled on the collection's adapter here
+    # (`Apiary.Adapters.Collections.post_listing/2`): it holds its connection
+    # `FOR UPDATE`, then the collection `FOR NO KEY UPDATE`, by ref, then writes it.
+    defp part(%{collection: %Collection{} = collection}, ref) do
+      connection = Repo.get!(Connection, collection.connection_id)
+      {key_scope, _public_key} = listing_key!(connection)
+      listing_part(key_scope, connection, [collection], ref)
     end
 
     # The `environment_ref` of each prebuild of the collection that waits for the pool.
@@ -801,19 +793,15 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
          ctx do
       handed = missing_handed_over!(ctx)
       missing_exit!(handed)
-      %{id: id, connection_id: connection_id} = handed.collection
-
-      {first, first_pid} =
-        hold(fn ->
-          Repo.one!(from k in Connection, where: k.id == ^connection_id, lock: "FOR UPDATE")
-          Repo.one!(from c in Collection, where: c.id == ^id, lock: "FOR NO KEY UPDATE")
-        end)
+      # The part, held open once it changed the collection's ref to `env-2`.
+      {first, first_pid} = hold(part(handed, "env-2"))
+      assert first.result == {:ok, :accepted}
 
       second = start(fn -> Projector.project(handed.run) end)
       await_blocked(second.backend, first_pid)
 
       # Waiting on the connection, the end holds neither the work item nor the record:
-      # the part locks both without waiting, then changes the collection's ref.
+      # the part's transaction locks both without waiting.
       continue(first, fn ->
         Repo.one!(
           from w in WorkItem,
@@ -822,11 +810,6 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
         )
 
         Repo.one!(from r in Record, where: r.id == ^handed.record.id, lock: "FOR UPDATE NOWAIT")
-
-        {1, _rows} =
-          Repo.update_all(from(c in Collection, where: c.id == ^id),
-            set: [environment_ref: "env-2"]
-          )
       end)
 
       commit(first)
@@ -835,12 +818,83 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
       missing_ended!(ctx, handed, "env-2")
     end
 
+    test "a claim that takes the run counter, then makes the record of the build it queues: the end takes the counter before it writes the record, none deadlocks",
+         ctx do
+      for round <- 1..6 do
+        handed = missing_handed_over!(ctx)
+        missing_exit!(handed)
+        collection = from(c in Collection, where: c.id == ^handed.collection.id)
+
+        # The collection's ref moves on to `env-2`, so the record's build, of `env-1`, no
+        # longer serves it: a run of its target waits, held for the pool's build, and a
+        # claim queues that build and makes its record, which exists already.
+        {1, _rows} = Repo.update_all(collection, set: [environment_ref: "env-2"])
+        held = held!(ctx, handed)
+
+        # A registration's run number, held open: it holds the workspace's run counter.
+        {numbered, numbered_backend} =
+          hold(fn -> Apiary.Runs.Number.next(ctx.scope.workspace) end)
+
+        # The claim waits at the counter, before it makes the record; the end, which
+        # holds the record, waits there too, before it writes the record
+        # (`Apiary.Environments.forget_image/3`). Once the counter is let go, either
+        # takes it first. An end that wrote the record before it took the counter would
+        # keep the claim's insert of the record waiting on it, while it waited on the
+        # claim for the counter (`deadlock_detected`).
+        claim = start(fn -> Dispatches.claim(ctx.key, Dispatches.now()) end)
+        await_blocked(claim.backend, numbered_backend)
+        ended = start(fn -> Projector.project(handed.run) end)
+        await_blocked(ended.backend, numbered_backend)
+        commit(numbered)
+
+        claimed = Task.await(claim.task, 10_000)
+        projected = Task.await(ended.task, 10_000)
+        refute_received {:deadlock, _query}
+        assert {:ok, _claimed} = claimed, "round #{round}"
+        assert {:ok, %Run{}} = projected, "round #{round}"
+
+        # The run of the queue ended once, `run_ended`, and the record's image is cleared.
+        assert %DispatchRun{state: :ended, end_cause: :run_ended} =
+                 Repo.get!(DispatchRun, handed.dispatch_run.id)
+
+        assert %Record{image: nil} = Repo.get!(Record, handed.record.id)
+
+        # The builds of the collection for the pool are of `env-2`, and one waits at most.
+        builds =
+          Repo.all(
+            from r in DispatchRun,
+              where: r.source_collection_id == ^handed.collection.id,
+              where: r.pool_id == ^ctx.pool.id and r.state in [:waiting, :claimed],
+              select: {r.state, r.environment_ref}
+          )
+
+        assert [_ | _] = builds
+        assert Enum.all?(builds, &(elem(&1, 1) == "env-2"))
+        assert Enum.count(builds, &(elem(&1, 0) == :waiting)) <= 1
+
+        # What waits or is claimed of the collection and of the held run ends, and the
+        # collection has no `environment_ref`, so the next round starts clean.
+        {_count, _rows} =
+          Repo.update_all(
+            from(r in DispatchRun,
+              where:
+                r.source_collection_id == ^handed.collection.id or r.id == ^held.id or
+                  r.work_item_id == ^handed.dispatch_run.work_item_id,
+              where: r.state in [:waiting, :claimed]
+            ),
+            set: [state: :ended, end_cause: :collection_ended]
+          )
+
+        {1, _rows} = Repo.update_all(collection, set: [environment_ref: nil])
+      end
+    end
+
     test "and a part at once: none deadlocks, one prebuild waits", ctx do
       for _round <- 1..4 do
         handed = missing_handed_over!(ctx)
         missing_exit!(handed)
 
-        [projected, {:ok, :changed}] =
+        [projected, {:ok, :accepted}] =
           together([fn -> Projector.project(handed.run) end, part(handed, "env-2")])
 
         assert {:ok, %Run{}} = projected
