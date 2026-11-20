@@ -2914,6 +2914,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   (`deadlock_detected`). Both now lock the workspace's run counter before they write an
   environment record or a waiting prebuild, so the second waits for the first. Run
   numbers stay in order, without gaps.
+- A claim that frees a lapsed prebuild no longer fails when a listing of the prebuild's
+  connection, an assign, an unlink, a disconnect, a Backlog switch, a choice or an
+  adapter's start writes the same collections at the same time. Those changes now lock collections `FOR NO KEY UPDATE`, which the claim's
+  foreign key check on a collection does not wait for, so Postgres no longer aborts the
+  claim (`deadlock_detected`).
 <!-- /feature -->
 
 <!-- feature: factory, secrets -->

@@ -93,8 +93,9 @@ defmodule Apiary.Dispatches.Slots do
   # free of more than one batch takes the records once, then the rest batch by batch, as
   # below says), so that no two paths wait on each other:
   #
-  #   1. the collections (a listing's part, by ref, or an assign, by id, `FOR UPDATE`;
-  #      `Apiary.Adapters.Collections`, whose lock order names what each holds before
+  #   1. the collections (a listing's part, by ref, or an assign, by id,
+  #      `FOR NO KEY UPDATE`; `Apiary.Adapters.Collections`, whose lock order names what
+  #      each holds before
   #      them, and the targets each makes after them; a Rebuild holds their connections
   #      `FOR SHARE`, by id, then them `FOR SHARE`, by id, `Apiary.Environments.rebuild/2`,
   #      and so do the end of a run whose image was missing,
@@ -106,7 +107,11 @@ defmodule Apiary.Dispatches.Slots do
   #      holds a work item after them holds it next: the end of a prebuild handed over,
   #      the work items whose runs wait for its build, `FOR KEY SHARE` (`FOR UPDATE` with
   #      the workflow model on), by id; the end of
-  #      a run whose image was missing, its work item `FOR UPDATE`;
+  #      a run whose image was missing, its work item `FOR UPDATE`. A path that writes
+  #      collections holds them `FOR NO KEY UPDATE`, which the `FOR KEY SHARE` of a
+  #      foreign key check on a collection never waits on; a path that deletes a
+  #      collection or changes a key column of it (`id`, `public_id`, `organisation_id`,
+  #      `adapter_id`) holds it `FOR UPDATE`;
   #   2. a node pool's row: a claim takes it `FOR NO KEY UPDATE` (`Apiary.Dispatches`), so
   #      a registration on the pool, which takes it `FOR UPDATE`
   #      (`Apiary.Nodes.check_instance_limit/3`), and another claim take turns with it,
@@ -220,13 +225,14 @@ defmodule Apiary.Dispatches.Slots do
   # that run's lock. A claim whose free set a lapsed prebuild back to waiting and that
   # then takes or ends it writes it a second time, and so does a claim that takes a
   # prebuild it queued: Postgres checks that write's foreign key with a `FOR KEY SHARE`
-  # lock on the collection, which would wait for a path that holds the collection
-  # `FOR UPDATE`, such as a listing's part, an assign, a Backlog switch or an adapter's
-  # start (`Apiary.Adapters.Collections`). So the claim holds every such collection
+  # lock on the collection, which does not wait for the `FOR NO KEY UPDATE` of a
+  # listing's part, an assign, a Backlog switch or an adapter's start
+  # (`Apiary.Adapters.Collections`), and would wait for a path that holds the collection
+  # `FOR UPDATE`, as 1. says. The claim holds every such collection
   # `FOR SHARE` before anything but the connections, in one statement, by id: the
   # collections of the pool's prebuilds whose dispatch lapsed at its `now`
   # (`lapsed_collections/2`) and those it queues a build of. A path that holds
-  # collections `FOR UPDATE` then waits for the claim at the first of them the claim
+  # collections `FOR NO KEY UPDATE` then waits for the claim at the first of them the claim
   # holds, or the claim waits there for that path before it holds any collection or the
   # pool, and the claim's later `FOR KEY SHARE` meets only the claim's `FOR SHARE` lock
   # on the same row. A part, which holds its connection `FOR UPDATE` first, can also
