@@ -257,6 +257,14 @@ defmodule Mix.Tasks.Apiary.DemoTest do
 
     test "gives a workspace without rules a policy with overrides, a lock, versions and a history",
          %{scope: scope, access_key: access_key} do
+      # A replayed run takes the one target at its address, so the workspace has it first.
+      Apiary.NodesFixtures.address_target!(
+        scope.organisation.id,
+        scope.workspace.id,
+        "codeberg.org",
+        "acme/shop"
+      )
+
       assert {:ok, _run} = Demo.replay(access_key, file("session-with-subagents"))
       assert %{items: [%{action: "first_version"}]} = Apiary.Policy.list_changes(scope, nil, 1)
       assert {:ok, 13} = Demo.policy(access_key)

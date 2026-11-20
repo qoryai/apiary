@@ -174,6 +174,14 @@ defmodule ApiaryWeb.Contract.RunVariablesServedTest do
     end
 
     test "a run that reports the digest it was given is not behind", ctx do
+      # A run's labels take the one target at their address, which the workspace has.
+      Apiary.NodesFixtures.address_target!(
+        ctx.scope.organisation.id,
+        ctx.scope.workspace.id,
+        "git.example.com",
+        "acme/shop"
+      )
+
       {run_id, run_key} = registered(ctx)
       attached = attach(ctx.gateway_key, run_id, run_key)
       [digest] = get_resp_header(attached, "x-qory-run-configuration")

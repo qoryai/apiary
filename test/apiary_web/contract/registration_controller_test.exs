@@ -9,7 +9,7 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
   alias Apiary.Policy
   alias Apiary.Policy.{Render, RunConfiguration, Schema}
   alias Apiary.Repo
-  alias Apiary.Runs.{Run, Target}
+  alias Apiary.Runs.Run
   alias ApiaryWeb.Contract.{Configuration, RawBody}
 
   @runs "/v1/runs"

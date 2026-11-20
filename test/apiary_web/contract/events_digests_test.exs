@@ -14,7 +14,7 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
 
   alias Apiary.Policy
   alias Apiary.Repo
-  alias Apiary.Runs.{Delivery, Projector, Target, Run}
+  alias Apiary.Runs.{Delivery, Projector, Run}
   alias ApiaryWeb.Contract.Configuration
 
   setup do
