@@ -209,6 +209,7 @@ defmodule ApiaryPro.AccessRows do
       {:"adapter.app_values_set", yes: []},
       {:"adapter.app_values_seal", yes: []},
       {:"source_item.post", yes: []},
+      {:"change_request.report", yes: []},
       {:"work_item.read_changes", yes: []},
       {:"adapter.disconnect", yes: []},
       # A node pool's key alone, asked of the workspace, its queue: none of the edition's actors.

@@ -1976,6 +1976,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   entry failed `ChangeRequest.validate/1`, and sends nothing. The detail is the first
   member of the entry that failed, such as `#/title`. A version that has a delivery is
   left as it is. No code calls it yet.
+- `change_request.report`, an action of an adapter's key, covers the adapter's report of
+  what became of a change request: its reply and its failure. No endpoint asks for it yet.
 
 ### Changed
 

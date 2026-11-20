@@ -526,6 +526,7 @@ defmodule ApiaryWeb.RefusalsRows do
         :"adapter.app_values_set",
         :"adapter.app_values_seal",
         :"source_item.post",
+        :"change_request.report",
         :"work_item.read_changes",
         :"adapter.disconnect",
         :"adapter.report_grant",

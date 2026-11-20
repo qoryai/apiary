@@ -215,6 +215,7 @@ defmodule Apiary.AccessRows do
       {:"adapter.app_values_set", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.app_values_seal", yes: [:adapter_key, :hidden], on: :adapter},
       {:"source_item.post", yes: [:adapter_key, :hidden], on: :adapter},
+      {:"change_request.report", yes: [:adapter_key, :hidden], on: :adapter},
       {:"work_item.read_changes", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.disconnect", yes: [:adapter_key, :hidden], on: :adapter},
       {:"adapter.report_grant", yes: [:adapter_key, :hidden], on: :adapter},

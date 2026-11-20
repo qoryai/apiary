@@ -216,6 +216,7 @@ defmodule Apiary.AdaptersWithoutFactoryTest do
     for action <- [
           :"adapter.declare",
           :"source_item.post",
+          :"change_request.report",
           :"work_item.read_changes",
           :"adapter.disconnect",
           :"adapter.report_grant",
