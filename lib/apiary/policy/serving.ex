@@ -214,7 +214,11 @@ defmodule Apiary.Policy.Serving do
 
   # The labels name an address only by the workspace's domain, the rule the projector
   # follows too (`Apiary.Runs.Fold`), and the target is the one target at that address
-  # (`Apiary.Runs.Target.id_at/3`): the wire and the projector pick the same, or none.
+  # (`Apiary.Runs.Target.id_at/3`): for a run outside the queue, the wire and the
+  # projector pick the same, or none.
+  # shortcut: a run of the queue is read by its labels here, while the projector keys it
+  # on its work item's or collection's target; at an address two targets share, or after
+  # its collection moved, this returns none, replace when the plan routes it by key.
   # The key's workspace is loaded with it (`Apiary.AccessKeys.fetch_for_verification/1`):
   # a key without it is a caller's mistake, not a reason to read the default domain.
   defp target_id(

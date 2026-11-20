@@ -353,8 +353,16 @@ defmodule Apiary.Lingo.DomainTest do
       assert Domain.check_target(%Workspace{domain: "example"}, no_address) == :ok
     end
 
-    test "run_variables/3 gives none without a target, else asks the workspace's domain" do
+    test "run_variables/3 gives none without a target or an address, else asks the workspace's domain" do
       assert Domain.run_variables(%Workspace{domain: "software"}, nil, []) == {:ok, nil}
+
+      keyed = %{adapter_id: Ecto.UUID.generate(), collection_external_ref: "Q_support"}
+
+      assert Domain.run_variables(
+               %Workspace{domain: "software"},
+               Map.merge(keyed, %{system: nil, path: nil}),
+               []
+             ) == {:ok, nil}
 
       assert {:ok, %{"QORY_RUN_SYSTEM" => "git.example.com"}} =
                Domain.run_variables(
