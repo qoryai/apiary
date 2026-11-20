@@ -1797,6 +1797,8 @@ defmodule Apiary.Adapters.Collections do
   # address is made only where the labels that name a target by the workspace's domain
   # can carry it (`Apiary.Lingo.Domain.target/2`), as a run's labels carry it. A
   # collection without a target, or with an address no label could name, makes none.
+  # Nor does a target that the domain refuses (`Apiary.Lingo.Domain.check_target/2`):
+  # in a software workspace, one without an address or with an address its rules refuse.
   defp insert_targets(_organisation_id, nil, _collections), do: :ok
 
   defp insert_targets(organisation_id, %Workspace{id: workspace_id} = workspace, collections) do
@@ -1804,6 +1806,7 @@ defmodule Apiary.Adapters.Collections do
       for collection <- collections,
           %{} = target <- [Collection.target(collection)],
           labelled?(workspace, target),
+          Domain.check_target(workspace, target) == :ok,
           do: target
 
     Target.insert_new(organisation_id, workspace_id, targets)

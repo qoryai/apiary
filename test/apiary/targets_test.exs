@@ -442,7 +442,7 @@ defmodule Apiary.TargetsTest do
       assert set.("other/docs") ==
                ["Line 1 is not a target of acme; runs of acme/shop read only targets of acme."]
 
-      assert set.("ACME/Shop") == ["Line 1 is acme/shop itself."]
+      assert set.("ACME/Shop") == ["Line 1 is ACME/Shop itself."]
       # A blank line counts: the line is the one the person sees.
       assert set.("acme/docs\n\nacme/api\nACME/DOCS") == ["Line 4 repeats line 1."]
       # The first broken rule only.
@@ -469,7 +469,7 @@ defmodule Apiary.TargetsTest do
                Targets.set_further_repositories(scope, shop, "acme/docs\nacme/tools")
              ) ==
                [
-                 "Choose a repository of this integration: acme/tools is not one of its collections."
+                 "Line 2: choose a repository this integration lists. acme/tools is not one of them."
                ]
 
       assert saved(scope, shop) == []
@@ -498,6 +498,23 @@ defmodule Apiary.TargetsTest do
                Targets.set_further_repositories(scope, shop, "acme/tools")
 
       assert saved(scope, shop) == []
+    end
+
+    test "a target without an address takes no further repository, and saves an empty list",
+         %{scope: scope, shop: shop} do
+      bare =
+        Apiary.NodesFixtures.target_fixture(%{
+          organisation_id: scope.organisation.id,
+          workspace_id: scope.workspace.id,
+          adapter_id: shop.adapter_id
+        })
+
+      assert further_errors(Targets.set_further_repositories(scope, bare, "acme/docs")) == [
+               "Line 1: choose a repository this integration lists. acme/docs is not one of them."
+             ]
+
+      assert {:ok, %{further_repositories: []}} =
+               Targets.set_further_repositories(scope, bare, "")
     end
 
     test "a collection on a connection that ended is not one", %{shop: shop} do
@@ -536,7 +553,7 @@ defmodule Apiary.TargetsTest do
 
       assert further_errors(
                Targets.set_further_repositories(scope, shop, "acme/docs\nacme/mirror")
-             ) == ["Line 2 is acme/shop itself."]
+             ) == ["Line 2 is acme/mirror itself."]
 
       assert saved(scope, shop) == []
     end

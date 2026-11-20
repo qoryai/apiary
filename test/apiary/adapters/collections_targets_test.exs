@@ -210,6 +210,22 @@ defmodule Apiary.Adapters.CollectionsTargetsTest do
     assert targets(ctx.workspace) == [target]
   end
 
+  test "a collection whose target has no address makes none in a software workspace, and one in a workspace whose domain takes it",
+       ctx do
+    example =
+      %Workspace{organisation_id: ctx.scope.organisation.id}
+      |> Workspace.create_changeset(%{name: "Example", domain: "example"})
+      |> Workspace.put_slug("example")
+      |> Repo.insert!()
+
+    {:ok, :accepted} = post(ctx, [{"BARE", %{system: nil, path: nil}}])
+    assert {:ok, 1} = assign(ctx, ["BARE"], ctx.workspace)
+    assert targets(ctx.workspace) == []
+
+    assert {:ok, 1} = assign(ctx, ["BARE"], example)
+    assert keys(example) == [{"BARE", nil, nil}]
+  end
+
   test "the workspace's domain names the target, as it reads a run's labels", ctx do
     example =
       %Workspace{organisation_id: ctx.scope.organisation.id}

@@ -794,6 +794,12 @@ defmodule Apiary.Targets do
     )
   end
 
+  defp check_further(%Target{}, []), do: :ok
+
+  # A target without an address is no repository, so it has no further ones.
+  defp check_further(%Target{path: nil} = target, lines),
+    do: {:error, further_error(target, lines, :not_a_collection, 1)}
+
   defp check_further(%Target{} = target, lines) do
     paths = Enum.map(lines, &elem(&1, 0))
 
@@ -874,7 +880,7 @@ defmodule Apiary.Targets do
   # the words of a page, on `further_repositories`.
   defp further_error(%Target{path: path} = target, lines, reason, n) do
     {entry, line} = Enum.at(lines, n - 1)
-    owner = owner(path)
+    owner = path && owner(path)
 
     {message, keys} =
       case reason do
@@ -892,13 +898,14 @@ defmodule Apiary.Targets do
            ), line: line, owner: owner, target: path}
 
         :itself ->
-          {dgettext_noop("errors", "Line %{line} is %{target} itself."), line: line, target: path}
+          {dgettext_noop("errors", "Line %{line} is %{target} itself."),
+           line: line, target: entry}
 
         :not_a_collection ->
           {dgettext_noop(
              "errors",
-             "Choose a repository of this integration: %{path} is not one of its collections."
-           ), path: entry}
+             "Line %{line}: choose a repository this integration lists. %{path} is not one of them."
+           ), line: line, path: entry}
 
         :repeats ->
           first = first_line(lines, entry)
