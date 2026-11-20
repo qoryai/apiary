@@ -457,10 +457,13 @@ defmodule Apiary.Dispatches.HandoverTest do
     test "a run that cannot be stored is unavailable, and nothing is written", ctx do
       {_work_item, queued} = queued!(ctx)
 
-      # A run of the queue with no record, as the previous release queued it, and a row of
-      # the run's id in the workspace already, which no product path writes: the
-      # registered run cannot be inserted.
-      :ok = Apiary.RunEventsFixtures.forget_queued!(queued.id)
+      # The queued run's record set to another run id, and a row of the run's id in the
+      # workspace already, which no product path writes: the registered run cannot be
+      # stored.
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.dispatch_run_id == ^queued.id),
+          set: [node_run_id: Ecto.UUID.generate()]
+        )
 
       in_the_way =
         Repo.insert!(%Run{

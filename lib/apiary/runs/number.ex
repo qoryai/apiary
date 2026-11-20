@@ -13,16 +13,15 @@ defmodule Apiary.Runs.Number do
   # locked. The trigger `runs_number_from_counter` is a second writer, which takes the
   # counter's next number under the same row lock for an insert with no number.
   #
-  # A run of a workspace's queue takes its number when it is queued, with `next/1`, as the
-  # last step of the transaction that queues it, on no node (`Apiary.Dispatches.Queued`);
-  # the claim that later puts it on a node keeps that number. Only a run of the queue
-  # queued by the previous release, which has no record, takes its number at its claim.
-  # A path that queues a prebuild locks the counter earlier, with `hold/2`, before its
-  # first insert of an environment record or a waiting prebuild, and takes the numbers
-  # later in the same transaction: a claim and a Rebuild that queue a prebuild of one
-  # collection and pool then wait on each other only at the counter (the lock order in
-  # `Apiary.Dispatches.Slots`). A claim locks, in one pass by workspace, the counters of
-  # its builds and of the runs its free sets waiting again.
+  # A run of a workspace's queue takes its number when it is queued, with `next/1`, as
+  # the last step of the transaction that queues it, on no node
+  # (`Apiary.Dispatches.Queued`); the claim that later puts it on a node keeps that
+  # number. A path that queues a prebuild locks the counter earlier, with `hold/2`,
+  # before its first insert of an environment record or a waiting prebuild, and takes the
+  # numbers later in the same transaction: a claim and a Rebuild that queue a prebuild of
+  # one collection and pool then wait on each other only at the counter (the lock order
+  # in `Apiary.Dispatches.Slots`). A claim locks, in one pass by workspace, the counters
+  # of its builds and of the runs its free sets waiting again, and takes no other.
   #
   # A run on a node takes its number with `next/2`, which locks the node first. Every path
   # in this release's code then takes the node's row, then the counter, so none deadlocks

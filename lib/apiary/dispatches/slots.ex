@@ -157,15 +157,16 @@ defmodule Apiary.Dispatches.Slots do
   #      the counters of the workspaces of the collections it queues a build of and of
   #      the runs its free sets waiting again; the free's new run records
   #      (`Apiary.Dispatches.Queued.requeue!/2`) and the claim's queues of prebuilds then
-  #      take only counters it holds. After the counter, a path inserts its missing
-  #      records, then its waiting prebuilds, then takes their numbers. A path that
-  #      writes no record and no waiting prebuild takes the counter last, as a run's
-  #      number (`Apiary.Runs.Number`). A prebuild set waiting again by `free/2`, or
-  #      given back by a release, is written under its record, before the counter. Every
-  #      other writer of that prebuild holds its record first, except a claim's
-  #      `Apiary.Environments.queue_builds/2`, which locks no record: its check of the
-  #      live prebuilds keeps it from queuing one beside a prebuild of the same ref. The
-  #      end of a prebuild lost once (`Apiary.Environments.build_failed/6`) and
+  #      take only counters it holds, and the claim takes no other counter. After the
+  #      counter, a path inserts its missing records, then its waiting prebuilds, then
+  #      takes their numbers. A path that writes no record and no waiting prebuild takes
+  #      the counter last, as a run's number (`Apiary.Runs.Number`). A prebuild set
+  #      waiting again by `free/2`, or given back by a release, is written under its
+  #      record, before the counter. Every other writer of that prebuild holds its record
+  #      first, except a claim's `Apiary.Environments.queue_builds/2`, which locks no
+  #      record: its check of the live prebuilds keeps it from queuing one beside a
+  #      prebuild of the same ref. The end of a prebuild lost once
+  #      (`Apiary.Environments.build_failed/6`) and
   #      `Apiary.Environments.record_end_failure/3` write the record before the counter:
   #      a claim's check reads that prebuild, of the same ref, as live, so the claim
   #      inserts no record of it.
