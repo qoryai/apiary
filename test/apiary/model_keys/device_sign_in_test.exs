@@ -28,12 +28,19 @@ defmodule Apiary.ModelKeys.DeviceSignInTest do
       assert {:ok, provider} = Apiary.Kinds.Providers.fetch(@kind)
       assert [%{"oauth_device" => device}] = provider.apis
       assert description.device == device
-      assert description.device["verification_url"] == "https://auth.openai.com/codex/device"
+
+      assert device == %{
+               "usercode_url" => "https://auth.openai.com/api/accounts/deviceauth/usercode",
+               "poll_url" => "https://auth.openai.com/api/accounts/deviceauth/token",
+               "verification_url" => "https://auth.openai.com/codex/device",
+               "redirect_uri" => "https://auth.openai.com/deviceauth/callback"
+             }
     end
 
     test "has none for a provider whose keys are no sign-ins, whatever a test puts" do
       Stub.put()
       refute DeviceSignIn.available?("anthropic")
+      refute DeviceSignIn.available?("claude-subscription")
       refute DeviceSignIn.available?("gone")
       refute DeviceSignIn.available?(nil)
     end
