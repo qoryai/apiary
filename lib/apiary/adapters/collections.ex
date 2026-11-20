@@ -178,9 +178,9 @@ defmodule Apiary.Adapters.Collections do
   #      transaction that holds what a part holds makes the new one. A disconnect
   #      (`disconnect/2`) holds one row too, by adapter, connection and ref, and no
   #      connection's row, then the feed's counter;
-  #   4. the targets an assign or a part makes, by workspace, then by system and path: a
-  #      part makes them after every collection it writes, its ends included
-  #      (`finish_part/3`);
+  #   4. the targets an assign or a part makes, by workspace, then by adapter and
+  #      collection ref, each existing row locked: a part makes them after every
+  #      collection it writes, its ends included (`finish_part/3`);
   #   5. the work items, `FOR UPDATE`, by id, where a change holds several
   #      (`Apiary.WorkItems`): a take in holds its ticket's connection and collection
   #      `FOR SHARE`, and makes its target, before the work item, and nothing locks a
