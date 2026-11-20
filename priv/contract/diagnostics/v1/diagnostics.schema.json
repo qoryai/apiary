@@ -142,22 +142,33 @@
           "pattern": "^wi_[A-Za-z0-9_-]{1,64}$"
         },
         "target": {
-          "description": "Where the run's change would go: the system and the path of a place on it; absent when the run has no target.",
+          "description": "Where the run's change would go: the ref of one of the adapter's collections, as definitions.schema.json, $defs.target, describes it, and, when the place has one, its address; absent when the run has no target.",
           "type": "object",
           "required": [
-            "system",
-            "path"
+            "collection"
           ],
           "properties": {
-            "system": {
-              "description": "The system of the target, 1 to 256 characters with no control character, U+0000 to U+001F or U+007F.",
-              "type": "string",
-              "pattern": "^[^\\x00-\\x1f\\x7f]{1,256}$"
+            "collection": {
+              "description": "The collection's ref, as the adapter's source-collections.schema.json listed it.",
+              "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/ref"
             },
-            "path": {
-              "description": "The path of the place on the system, 1 to 256 characters with no control character, U+0000 to U+001F or U+007F.",
-              "type": "string",
-              "pattern": "^[^\\x00-\\x1f\\x7f]{1,256}$"
+            "address": {
+              "description": "The address of the place on a system: the host name and the path. Absent when the place has no address.",
+              "type": "object",
+              "required": [
+                "system",
+                "path"
+              ],
+              "properties": {
+                "system": {
+                  "description": "The host name of the system.",
+                  "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/system"
+                },
+                "path": {
+                  "description": "The place on that system.",
+                  "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/address_path"
+                }
+              }
             }
           }
         },

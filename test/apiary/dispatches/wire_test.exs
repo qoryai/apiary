@@ -105,28 +105,28 @@ defmodule Apiary.Dispatches.WireTest do
     "time" => "2026-10-15T12:02:00Z",
     "reason" => "The job could not start."
   }
-  # The vendored contracts are at different integrations commits. The provisioner contract
+  # The vendored contracts are at two integrations commits. The provisioner contract
   # is at 8d859a1d, after 6fed8c73, which describes a machine's dispatch as dispatch_id in
   # place of key, and after 55a22cb8, which adds the access value write-no-push to the run
-  # documents. The run contract is at 8d859a1d, which allows time_limit_minutes from 1 to 1440. That commit
-  # comes after 6fed8c73, which adds the refusals of the next-session request, and plan
-  # and tier in place of time_limit on a workflow of a stack that a harness section
-  # defines, and after 283f8809, which adds the next-session request and
-  # its answer, time_limit_minutes, shared_run and full_suite to the documents of a run
-  # of a stage, the tier balanced in place of fast, the outcome of a run with its end
-  # codes, a later session's runtime, run_settings on every explore run, and
+  # documents. The run, integration, explore and diagnostics contracts are at e0d7be15,
+  # which writes a target as {collection, address?}: the ref of one of the adapter's
+  # collections and, when the place has one, its system and path. That commit comes after
+  # 8d859a1d, which allows time_limit_minutes from 1 to 1440, after 6fed8c73, which adds
+  # the refusals of the next-session request, plan and tier in place of time_limit on a
+  # workflow of a stack that a harness section defines, and `type` in place of `key` for a
+  # run's machine, and after 283f8809, which adds the next-session request and its
+  # answer, time_limit_minutes, shared_run and full_suite to the documents of a run of a
+  # stage, the tier balanced in place of fast, the outcome of a run with its end codes, a
+  # later session's runtime, run_settings on every explore run, and
   # model_provider_credential_name in place of model_credential in the next-session
-  # answer. The diagnostics contract is at 6fed8c73, at which a run's machine has `type`
-  # in place of `key`.
-  # The integration contract is at 805a7bdb, which adds `vendor`, and `runtimes`,
-  # `paths` and `oauth_refresh` of an API, to the description of a model provider.
+  # answer.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "8d859a1d5bd0693bd647e0543d29aa8651230c3f"},
-          {"run/v1", "8d859a1d5bd0693bd647e0543d29aa8651230c3f"},
-          {"integration/v1", "805a7bdb09a16441b8275857e9b50cdfe8227e2d"},
-          {"explore/v1", "e33240a984c5dd1a94270f3269b16c5b354dd768"},
-          {"diagnostics/v1", "6fed8c73033f4fd2be5e59a160ab9774e329cc5b"}
+          {"run/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"},
+          {"integration/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"},
+          {"explore/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"},
+          {"diagnostics/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"}
         ] do
       assert File.read!(Path.join([@vendored, dir, ".contract-ref"])) == ref <> "\n", dir
     end

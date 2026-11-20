@@ -299,14 +299,17 @@ defmodule Apiary.Integrations.DescriptionTest do
     end
   end
 
-  # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
-  # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
+  # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`,
+  # and at the commit in `test/fixtures/contract/integration/v1/.contract-ref`, by their
+  # SHA-256 there. `definitions.schema.json` is the bytes of the second commit in both
+  # places, as `.integration-contract-ref` explains.
   @integrations_ref "805a7bdb09a16441b8275857e9b50cdfe8227e2d"
+  @contract_ref "e0d7be154b18fac6df3b637c80486ac1102ce707"
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
       "972bf687e27cdc33da52f74c33d4184426ba1f818edb03108b295de470ed5240",
     "priv/contract/integration/definitions.schema.json" =>
-      "0e04d1d3e38af330351e585169decd78a9c629a8b1491a6ba86c0b910f2c16ff",
+      "1b3988f36e654b599d9ab873dde6b6f8e1a23bea20c3f8fe44973a656b4c1e4e",
     "priv/contract/integration/descriptions/anthropic.json" =>
       "c2dd98613aa6adf530e7a8c92b63dfc4bd7aabb9d20635630205492c3cbe9f3f",
     "priv/contract/integration/descriptions/claude-subscription.json" =>
@@ -322,13 +325,13 @@ defmodule Apiary.Integrations.DescriptionTest do
     "priv/contract/integration/descriptions/openrouter.json" =>
       "7f6c61e897edb6ff32cd519e33a49e821398fd27f4a6069fac5fd8499b86758f",
     "test/fixtures/contract/integration/v1/changes-failed.schema.json" =>
-      "8ca580eaf26da82ddc439c40658b6b4ba0198706535a3abff194b25077c610eb",
+      "ae0fa8dfea7bfe6c8dd45deac427471a7d5a8b1a22058db2f990ddf480f0ea57",
     "test/fixtures/contract/integration/v1/changes.schema.json" =>
-      "cfc7153e3b5d1f1e4bb966e351adea3694ceb8bfc625b28dd63685fb0adbf7f3",
+      "622721b4f702f7a1959f8cc541da70444d2556aa7e032310c9bfa47cb7083ee6",
     "test/fixtures/contract/integration/v1/definitions.schema.json" =>
-      "0e04d1d3e38af330351e585169decd78a9c629a8b1491a6ba86c0b910f2c16ff",
+      "1b3988f36e654b599d9ab873dde6b6f8e1a23bea20c3f8fe44973a656b4c1e4e",
     "test/fixtures/contract/integration/v1/refusal.schema.json" =>
-      "c4c84ffc71e09fc3849232377c9536bd9523cedcb5973f63db3128e61f836a4f"
+      "11f080fb999c58eea81fce16d3a1c261a3d7eea02aab60458eecd26360622a43"
   }
 
   @root Path.expand("../../..", __DIR__)
@@ -349,7 +352,7 @@ defmodule Apiary.Integrations.DescriptionTest do
       assert ref == [@integrations_ref]
 
       assert File.read!(Path.join(@root, "test/fixtures/contract/integration/v1/.contract-ref")) ==
-               @integrations_ref <> "\n"
+               @contract_ref <> "\n"
 
       vendored =
         for dir <- ["priv/contract/integration", "test/fixtures/contract/integration/v1"],

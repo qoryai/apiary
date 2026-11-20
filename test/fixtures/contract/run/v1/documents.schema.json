@@ -313,7 +313,7 @@
       ]
     },
     "target": {
-      "description": "Where the run's change would go, and absent when the run has no place where a change would go. The step explore may have none. For the step explore, inputs.target is this target, and is absent when the run has none, inputs.domain is domain, and inputs.work_item.id is work_item.id, as described in https://qory.dev/contracts/explore/v1/inputs.schema.json. The step prebuild always has one: the place whose environment the job builds. Present exactly when access is present.",
+      "description": "Where the run's change would go, and absent when the run has no place where a change would go: the ref of one of the adapter's collections, as https://qory.dev/contracts/integration/v1/definitions.schema.json, $defs.target, describes it, and an address, a host name and a path, when the place has one. The step explore may have none. For the step explore, inputs.target is this target, and is absent when the run has none, inputs.domain is domain, and inputs.work_item.id is work_item.id, as described in https://qory.dev/contracts/explore/v1/inputs.schema.json. The step prebuild always has one: the place whose environment the job builds. Present exactly when access is present.",
       "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/target"
     },
     "target_version": {
