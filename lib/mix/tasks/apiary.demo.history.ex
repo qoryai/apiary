@@ -36,7 +36,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   and received a moment later, as the receiver would have stored them, and every run is
   projected by `Apiary.Runs.Projector`, as the receiver's runs are. Each repository is a
   target of the workspace first, through a collection of the instance's adapter Example
-  code host (`Mix.Tasks.Apiary.Demo.CodeHost`), made where the instance has none.
+  code host, made where the instance has none.
 
   Nodes, keys and people go through the contexts, as the console's pages would, in the
   name of the workspace's first owner, so the audit trail has them: a node per machine

@@ -152,10 +152,9 @@ defmodule Apiary.Runs.Target do
   end
 
   @doc """
-  The target of the run of a workspace's queue `dispatch_run_id`: its work item's
-  (`Apiary.WorkItems.WorkItem.target/1`), else its prebuild's collection's
-  (`Apiary.Adapters.Collection.target/1`); nil for none. Read without a lock, and kept
-  out of the query log (`log: false`), since the address may be event data.
+  The target of the run of a workspace's queue `dispatch_run_id`: its work item's target,
+  else its prebuild's collection's; nil for none. Read without a lock, and kept out of
+  the query log (`log: false`), since the address may be event data.
   """
   @spec dispatched(Ecto.UUID.t()) :: Apiary.Lingo.Domain.target() | nil
   def dispatched(dispatch_run_id) do

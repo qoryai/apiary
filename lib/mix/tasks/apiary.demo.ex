@@ -22,7 +22,7 @@ defmodule Mix.Tasks.Apiary.Demo do
 
   First, each repository a run's labels have is made a target of the workspace, as an
   adapter's collection assigned to it makes one: a collection of the instance's adapter
-  Example code host (`Mix.Tasks.Apiary.Demo.CodeHost`). A run's labels never make a
+  Example code host, made where the instance has none. A run's labels never make a
   target, and a replayed run takes the one target at their address.
 
   Nothing else is inserted from here. A run goes the way Forager's goes: its registration, read
@@ -171,8 +171,8 @@ defmodule Mix.Tasks.Apiary.Demo do
   @doc """
   Makes each repository the registrations of `files` have in their labels, by the
   workspace's domain, a target of the key's workspace, through a collection of the
-  adapter Example code host (`Mix.Tasks.Apiary.Demo.CodeHost`). `:ok`, also for a
-  workspace without an owner, which gets none, and for a registration that cannot be read.
+  adapter Example code host. `:ok`, also for a workspace without an owner, which gets
+  none, and for a registration that cannot be read.
   """
   def targets!(%AccessKey{workspace_id: workspace_id}, files) do
     case owner_scope(workspace_id) do
