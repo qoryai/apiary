@@ -922,20 +922,35 @@ defmodule Apiary.Secrets do
     Repo.transact(fn ->
       with :ok <- provider_verdict(scope),
            {:ok, workspace_id} <- keys_place(scope, place) do
-        new_secret(
-          scope,
-          %Secret{organisation_id: organisation_id, workspace_id: workspace_id},
-          %{"name" => attrs["name"], "values" => List.wrap(attrs["values"])},
-          :ok,
-          provider: :new,
-          hint: Keyword.get(opts, :hint, true)
-        )
+        with {:ok, secret} <-
+               new_secret(
+                 scope,
+                 %Secret{organisation_id: organisation_id, workspace_id: workspace_id},
+                 %{"name" => attrs["name"], "values" => List.wrap(attrs["values"])},
+                 :ok,
+                 provider: :new,
+                 hint: Keyword.get(opts, :hint, true)
+               ),
+             :ok <- start_key_counter(secret) do
+          {:ok, secret}
+        end
       end
     end)
     |> reload()
   end
 
   def create_provider_keys(_scope, _attrs, _place, _opts), do: {:error, :not_found}
+
+  # The counter of `next_key_id/1` starts at the highest `key-<n>` the new secret's keys have.
+  defp start_key_counter(%Secret{id: id}) do
+    highest =
+      from(v in Value, where: v.secret_id == ^id, select: v.value_id)
+      |> Repo.all()
+      |> Value.highest_key_number()
+
+    Repo.update_all(from(s in Secret, where: s.id == ^id), set: [last_key_number: highest])
+    :ok
+  end
 
   # The level of a new provider's keys, its lock taken: `{:ok, nil}` for the
   # organisation's, `{:ok, workspace_id}` for the scope's workspace's.
@@ -1673,52 +1688,30 @@ defmodule Apiary.Secrets do
         created_by_id: scope.user.id
       )
 
-    with {:ok, value} <- encrypt_and_write(scope, secret, changeset, :insert, hint?) do
-      note_key_number(secret.id, value.value_id)
-      {:ok, value}
-    end
+    encrypt_and_write(scope, secret, changeset, :insert, hint?)
   end
 
   @doc """
-  next_key_id/1 is the value id `key-<n>` that a model provider's next key gets: the
-  number after the last one this secret gave, or after the highest `key-<n>` among its
-  `values` if that is higher, so a number is never given twice, even after the key that had
-  it is deleted (`secrets.last_key_number`). The counter moves in the transaction that
-  adds the key, under the lock of the provider's write.
+  next_key_id/1 is the value id `key-<n>` that a model provider's next key gets: the number
+  after the last one the secret gave (`secrets.last_key_number`), so a number is never
+  given twice, even after the key that had it is deleted. The counter is the only thing
+  that gives a number, and it moves in one UPDATE, in the transaction that adds the key,
+  under the row lock of the provider's write. `create_provider_keys/4` sets it to the
+  highest `key-<n>` of the keys the secret starts with.
   """
   @spec next_key_id(Secret.t()) :: String.t()
-  def next_key_id(%Secret{id: id, values: values}) do
-    highest = Value.highest_key_number(Enum.map(values, & &1.value_id))
-
+  def next_key_id(%Secret{id: id}) do
     {1, [number]} =
       Repo.update_all(
         from(s in Secret,
           where: s.id == ^id,
           select: s.last_key_number,
-          update: [
-            set: [last_key_number: fragment("GREATEST(?, ?) + 1", s.last_key_number, ^highest)]
-          ]
+          update: [inc: [last_key_number: 1]]
         ),
         []
       )
 
     "key-#{number}"
-  end
-
-  # A value written under `key-<n>` moves the secret's counter to `n` at least, whoever
-  # chose the value id, so `next_key_id/1` never gives that number again.
-  defp note_key_number(secret_id, value_id) do
-    if number = Value.key_number(value_id) do
-      Repo.update_all(
-        from(s in Secret,
-          where: s.id == ^secret_id,
-          update: [set: [last_key_number: fragment("GREATEST(?, ?)", s.last_key_number, ^number)]]
-        ),
-        []
-      )
-    end
-
-    :ok
   end
 
   # Whether the values written under `opts` keep a hint (`Apiary.Secrets.Value.hint/1`):
@@ -1787,14 +1780,6 @@ defmodule Apiary.Secrets do
       changeset
       |> Ecto.Changeset.change(nonce: nonce, ciphertext: ciphertext, updated_by_id: scope.user.id)
       |> Repo.update()
-      |> case do
-        {:ok, row} ->
-          note_key_number(secret.id, row.value_id)
-          {:ok, row}
-
-        other ->
-          other
-      end
     end
   end
 

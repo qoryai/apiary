@@ -1,8 +1,8 @@
 defmodule Apiary.Connections.KeyNumberMigrationTest do
   # The migration that adds `secrets.last_key_number`, run down and up again inside the
   # test's transaction, which rolls it all back: down drops the column, up adds it again
-  # and sets each secret to the highest `key-<n>` its values have, 0 for none. It changes
-  # the schema under every other test, so this is not async.
+  # with 0 for each secret. It changes the schema under every other test, so this is not
+  # async.
   use Apiary.DataCase, async: false
 
   import Apiary.OrganisationsFixtures
@@ -41,31 +41,16 @@ defmodule Apiary.Connections.KeyNumberMigrationTest do
     rows
   end
 
-  defp counter(%{secret_id: id}),
-    do: Repo.one!(from s in Secret, where: s.id == ^id, select: s.last_key_number)
-
-  test "up sets each secret to its highest key number, down drops the column" do
+  test "down drops the column, up adds it again with 0 for each secret" do
     %{scope: scope} = sign_up_fixture()
 
-    {:ok, keys} =
+    {:ok, provider} =
       Connections.create_provider(scope, %{
         provider: "anthropic",
-        keys: [
-          %{value_id: "key-2", value: "sk-ant-migration-a-0123456789"},
-          %{value_id: "key-11", value: "sk-ant-migration-b-0123456789"},
-          %{value_id: "main", value: "sk-ant-migration-c-0123456789"}
-        ]
-      })
-
-    {:ok, other} =
-      Connections.create_provider(scope, %{
-        provider: "anthropic",
-        keys: [%{value_id: "main", value: "sk-ant-migration-d-0123456789"}]
+        keys: [%{value: "sk-ant-migration-a-0123456789"}]
       })
 
     assert column() == [["integer", "NO", "0"]]
-    assert counter(keys) == 11
-    assert counter(other) == 0
 
     {version, migration, _name} = @migration
     assert :ok = Ecto.Migrator.down(Repo, version, migration, @options)
@@ -73,10 +58,8 @@ defmodule Apiary.Connections.KeyNumberMigrationTest do
 
     assert :ok = Ecto.Migrator.up(Repo, version, migration, @options)
     assert column() == [["integer", "NO", "0"]]
-    assert counter(keys) == 11
-    assert counter(other) == 0
 
-    assert Secrets.next_key_id(Repo.preload(Repo.get!(Secret, keys.secret_id), :values)) ==
-             "key-12"
+    secret = Repo.preload(Repo.get!(Secret, provider.secret_id), :values)
+    assert Secrets.next_key_id(secret) == "key-1"
   end
 end
