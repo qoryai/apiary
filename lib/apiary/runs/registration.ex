@@ -60,7 +60,7 @@ defmodule Apiary.Runs.Registration do
     5. any other run of this id, registered with other bytes or by another node, or
        created by its events without a registration, is `{:error, :run_id_used}`;
     6. a managed workspace whose run configuration cannot be read
-       (`Apiary.Policy.Serving.fetch/2`), or a run key that cannot be made for the
+       (`Apiary.Policy.Serving.fetch/3`), or a run key that cannot be made for the
        gateway's address, is `{:error, :unavailable}`: never a run without its policy;
     7. else the run is created, `pending`, under the key, on its node and the instance the
        request claimed (`Apiary.Nodes.placement/2`), with its registration, in the
@@ -80,7 +80,7 @@ defmodule Apiary.Runs.Registration do
 
   The answer to a direct registration is the run configuration in force for the target
   the labels name: for a managed workspace the stored bytes and their digest, exactly what
-  `Apiary.Policy.Serving.fetch/2` reads; for a workspace that serves none, the document of
+  `Apiary.Policy.Serving.fetch/3` reads; for a workspace that serves none, the document of
   no policy (`Apiary.Policy.Render.no_policy_document/0`) and its digest. The digest is
   kept on the run, so a repeat is given the same answer. The answer to a registration
   through a gateway is the run key (`Apiary.Runs.RunKey`), which names the gateway, with
@@ -550,6 +550,7 @@ defmodule Apiary.Runs.Registration do
     case composed(
            access_key,
            labels,
+           dispatch_run_id(opts[:run]),
            opts[:image],
            Keyword.get(opts, :prebuild, false),
            Keyword.get(opts, :fixed, false),
@@ -568,17 +569,32 @@ defmodule Apiary.Runs.Registration do
     end
   end
 
-  # The run configuration in force for the labels, composed with the image for a run
+  # The run of the queue that `run` is, nil for none and for no run.
+  defp dispatch_run_id(%Run{dispatch_run_id: id}), do: id
+  defp dispatch_run_id(nil), do: nil
+
+  # The run configuration in force for the run's target, composed with the image for a run
   # (`Apiary.Policy.ComposedConfiguration.serve/7`), the composed document kept: `{:ok,
   # settings, image}`; `:unmanaged` where the workspace serves none and nothing is
   # composed; `{:error, reason}` where the configuration cannot be read or the document
-  # cannot be composed. Where it serves none, a document is composed from no policy only
-  # when `from_no_policy?` is true (a boolean, or a function that reads it). `members` are
-  # the run's (`Apiary.Policy.ComposedConfiguration.members/1`), nil for none.
-  defp composed(access_key, labels, image, prebuild?, fixed?, from_no_policy?, members) do
+  # cannot be composed. The target is the one of the run of the queue `dispatch_run_id`,
+  # or for nil the one the labels name (`Apiary.Policy.Serving.fetch/3`). Where it serves
+  # none, a document is composed from no policy only when `from_no_policy?` is true (a
+  # boolean, or a function that reads it). `members` are the run's
+  # (`Apiary.Policy.ComposedConfiguration.members/1`), nil for none.
+  defp composed(
+         access_key,
+         labels,
+         dispatch_run_id,
+         image,
+         prebuild?,
+         fixed?,
+         from_no_policy?,
+         members
+       ) do
     %AccessKey{organisation_id: organisation_id, workspace_id: workspace_id} = access_key
 
-    case Serving.fetch(access_key, labels) do
+    case Serving.fetch(access_key, labels, dispatch_run_id) do
       {:ok, %RunConfiguration{} = configuration} ->
         case ComposedConfiguration.serve(
                organisation_id,
@@ -658,7 +674,7 @@ defmodule Apiary.Runs.Registration do
   # reloads are (`composed/7`), so a policy that sets an image is given without it, else
   # the document of no policy.
   defp settings(access_key, labels) do
-    case composed(access_key, labels, nil, false, false, false, nil) do
+    case composed(access_key, labels, nil, nil, false, false, false, nil) do
       {:ok, settings, _image} ->
         {:ok, settings}
 
@@ -1089,6 +1105,7 @@ defmodule Apiary.Runs.Registration do
         case composed(
                Sender.place_key(run, access_key),
                run.registration_labels,
+               run.dispatch_run_id,
                ComposedConfiguration.started(run),
                fn -> ComposedConfiguration.prebuild?(run) end,
                true,

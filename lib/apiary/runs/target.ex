@@ -27,6 +27,9 @@ defmodule Apiary.Runs.Target do
   import Ecto.Query, only: [from: 2]
 
   alias Apiary.{PublicId, Repo}
+  alias Apiary.Adapters.Collection
+  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.WorkItems.WorkItem
 
   @label_max 256
   # C0 and DEL, C1 (U+0085, the next line, among them), and the line and paragraph
@@ -146,6 +149,51 @@ defmodule Apiary.Runs.Target do
     from t in __MODULE__,
       where: t.workspace_id == ^workspace_id,
       where: t.adapter_id == ^adapter_id and t.collection_external_ref == ^ref
+  end
+
+  @doc """
+  The target of the run of a workspace's queue `dispatch_run_id`: its work item's
+  (`Apiary.WorkItems.WorkItem.target/1`), else its prebuild's collection's
+  (`Apiary.Adapters.Collection.target/1`); nil for none. Read without a lock, and kept
+  out of the query log (`log: false`), since the address may be event data.
+  """
+  @spec dispatched(Ecto.UUID.t()) :: Apiary.Lingo.Domain.target() | nil
+  def dispatched(dispatch_run_id) do
+    Repo.one(
+      from(d in DispatchRun,
+        left_join: w in WorkItem,
+        on: w.id == d.work_item_id,
+        left_join: c in Collection,
+        on: c.id == d.source_collection_id,
+        where: d.id == ^dispatch_run_id,
+        select: {w, c}
+      ),
+      log: false
+    )
+    |> case do
+      {%WorkItem{} = work_item, _collection} ->
+        WorkItem.target(work_item)
+
+      {nil, %Collection{} = collection} ->
+        Collection.target(collection)
+
+      _none ->
+        nil
+    end
+  end
+
+  @doc """
+  The id of the row in the workspace `workspace_id` of the target of the run of a
+  workspace's queue `dispatch_run_id` (`dispatched/1`), by adapter and collection ref,
+  whatever address the row has; nil for a run without a target, and for a target without
+  a row.
+  """
+  @spec dispatched_id(Ecto.UUID.t(), Ecto.UUID.t()) :: Ecto.UUID.t() | nil
+  def dispatched_id(workspace_id, dispatch_run_id) do
+    case dispatched(dispatch_run_id) do
+      %{} = target -> Repo.one(from(t in by_key(workspace_id, target), select: t.id), log: false)
+      nil -> nil
+    end
   end
 
   @doc """

@@ -650,7 +650,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
                  ]
     end
 
-    test "pushes nowhere without a dispatched target, whatever its labels are", ctx do
+    test "has no target without a dispatched target, whatever its labels are", ctx do
       e = environment(ctx)
       query = scopes(["repository:#{ctx.target}:pull,push", "repository:#{e}:pull,push"])
 
@@ -661,19 +661,9 @@ defmodule ApiaryWeb.RegistryTokenTest do
         )
 
       run = Repo.get!(Run, ctx.run.id)
-      assert RunAccess.rights(run) == %{ctx.target => ["pull"]}
-
-      assert access(token_for(ctx, query)) == [
-               %{"type" => "repository", "name" => ctx.target, "actions" => ["pull"]}
-             ]
-
-      assert RunAccess.member(run).paths ==
-               @base ++
-                 [
-                   "/v2/#{ctx.target}/manifests/sha256:*",
-                   "/v2/#{ctx.target}/blobs/*",
-                   "/v2/#{ctx.target}/referrers/*"
-                 ]
+      assert RunAccess.rights(run) == %{}
+      assert {401, "UNAUTHORIZED", _message} = error(token_for(ctx, query))
+      assert RunAccess.member(run).paths == @base
 
       # A run of no queue with the target's labels, as a registration stores them.
       {1, _rows} =

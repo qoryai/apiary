@@ -72,8 +72,10 @@ defmodule ApiaryWeb.Contract.RunVariablesServedTest do
   defp stored(ctx, run_id) do
     {key, _secret} = ctx.key
 
+    run = run(run_id)
+
     {:ok, %RunConfiguration{} = configuration} =
-      Serving.fetch(key, run(run_id).registration_labels)
+      Serving.fetch(key, run.registration_labels, run.dispatch_run_id)
 
     configuration
   end

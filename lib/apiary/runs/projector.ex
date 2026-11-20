@@ -67,14 +67,11 @@ defmodule Apiary.Runs.Projector do
   require Logger
 
   alias Apiary.AccessKeys
-  alias Apiary.Adapters.Collection
-  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Runs
   alias Apiary.Runs.{Connection, Event, Fold, LeakedSecrets, LogChunk, Run, SessionChunk}
   alias Apiary.Runs.{Sessions, Step, Target, TargetWrite, Transcript, TranscriptPath}
-  alias Apiary.WorkItems.WorkItem
 
   # What the fold may change on the run's row. The registration's fields
   # (`Apiary.Runs.Registration`) are not among them, so a rebuild keeps them.
@@ -757,7 +754,7 @@ defmodule Apiary.Runs.Projector do
   end
 
   # The run's target. A run of a workspace's queue has its work item's target, or a
-  # prebuild its collection's, by adapter and collection ref (`dispatched_target/1`),
+  # prebuild its collection's, by adapter and collection ref (`Target.dispatched/1`),
   # made in the run's workspace where it has no row yet. A target seen before keeps its
   # row, its public id and its address: a work item's address is the one it was taken in
   # with, which may predate a move of its collection. Any other run has the one target at
@@ -765,7 +762,7 @@ defmodule Apiary.Runs.Projector do
   # more than one has it.
   defp put_target(%Ecto.Changeset{data: %Run{dispatch_run_id: id} = run} = changeset, _folded)
        when is_binary(id) do
-    case dispatched_target(id) do
+    case Target.dispatched(id) do
       %{} = target ->
         Ecto.Changeset.change(changeset, target_id: target_id!(run, target))
 
@@ -793,27 +790,6 @@ defmodule Apiary.Runs.Projector do
         :ok = Target.insert_new(run.organisation_id, run.workspace_id, [target])
         Repo.one!(query, log: false)
       )
-  end
-
-  # The target of the run of the queue `id`: its work item's (`WorkItem.target/1`), else
-  # its collection's (`Collection.target/1`), nil for none. Read without a lock.
-  defp dispatched_target(id) do
-    Repo.one(
-      from(d in DispatchRun,
-        left_join: w in WorkItem,
-        on: w.id == d.work_item_id,
-        left_join: c in Collection,
-        on: c.id == d.source_collection_id,
-        where: d.id == ^id,
-        select: {w, c}
-      ),
-      log: false
-    )
-    |> case do
-      {%WorkItem{} = work_item, _collection} -> WorkItem.target(work_item)
-      {nil, %Collection{} = collection} -> Collection.target(collection)
-      _none -> nil
-    end
   end
 
   defp insert_log_chunks(_run, []), do: :ok

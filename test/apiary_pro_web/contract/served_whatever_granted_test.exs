@@ -81,7 +81,7 @@ defmodule ApiaryProWeb.Contract.ServedWhateverGrantedTest do
   # What the key's workspace serves a run now: its digest, nil where nothing is served.
   defp digest({key, _secret}) do
     with true <- Serving.managed?(key),
-         {:ok, configuration} <- Serving.fetch(key, %{}),
+         {:ok, configuration} <- Serving.fetch(key, %{}, nil),
          do: configuration.digest,
          else: (_none -> nil)
   end
@@ -166,7 +166,7 @@ defmodule ApiaryProWeb.Contract.ServedWhateverGrantedTest do
     test "is still served its policy and the organisation's", ctx do
       {key, _secret} = ctx.key
       assert Serving.managed?(key)
-      assert {:ok, configuration} = Serving.fetch(key, %{})
+      assert {:ok, configuration} = Serving.fetch(key, %{}, nil)
       assert configuration.digest == ctx.baseline
       assert Enum.sort(deny(configuration.document)) == ["ads.example", "paste.example"]
     end

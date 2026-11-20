@@ -10,8 +10,10 @@ defmodule Apiary.Registry.RunAccess do
   # the secrets request. Any other run gains nothing, and its tokens grant nothing.
   #
   # **The names.** A run with a target has its target's image name
-  # (`Apiary.Registry.Names.target_name/3`): for a run that registered, the target of
-  # its registration's labels; for any other run, the target its row has. A build is a
+  # (`Apiary.Registry.Names.target_name/3`): for a run of a workspace's queue, its work
+  # item's or its collection's target, by adapter and collection ref; for any other run
+  # that registered, the target of its registration's labels; for any other run, the
+  # target its row has. A build is a
   # run of a workspace's queue for the step `prebuild`
   # (`Apiary.Policy.ComposedConfiguration.prebuild?/1`) whose target is also its
   # collection's target when the run's names are read (`dispatched_target_id/1`). The
@@ -258,10 +260,16 @@ defmodule Apiary.Registry.RunAccess do
 
   defp dispatched_target_id(_run), do: nil
 
-  # The run's target, as `Apiary.Policy.Serving` reads it: for a run that registered,
-  # the one target row at the address its registration's labels name by the workspace's
-  # domain (`Apiary.Runs.Target.id_at/3`), whatever its events say; for any other run, the
-  # target its row has. Nil for none, and where two targets have that address.
+  # The run's target, as `Apiary.Policy.Serving` reads it: for a run of a workspace's
+  # queue, its work item's or its collection's target, by adapter and collection ref
+  # (`Apiary.Runs.Target.dispatched_id/2`); for a run that registered, the one target row
+  # at the address its registration's labels name by the workspace's domain
+  # (`Apiary.Runs.Target.id_at/3`), whatever its events say, nil where two targets have
+  # that address; for any other run, the target its row has. Nil for none.
+  defp target_id(%{dispatch_run_id: id, workspace_id: workspace_id})
+       when is_binary(id) and is_binary(workspace_id),
+       do: Target.dispatched_id(workspace_id, id)
+
   defp target_id(%{registration_labels: %{} = labels, workspace_id: workspace_id}) do
     with %Workspace{} = workspace <- Repo.get(Workspace, workspace_id),
          {:ok, %{system: system, path: path}} <- Domain.target(workspace, labels) do

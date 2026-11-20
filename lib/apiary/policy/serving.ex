@@ -8,16 +8,18 @@ defmodule Apiary.Policy.Serving do
   target costs no separate read.
 
   A workspace with no row yet (`Apiary.Policy.managed?/1`) serves no run configuration:
-  `fetch/2` is `{:error, :unmanaged}`,
+  `fetch/3` is `{:error, :unmanaged}`,
   `digest_for/4` is nil, and nothing is rendered from here: the workspace's machines use
   their local policy, from their `forager.yaml`. The same holds for every workspace on an
   instance without the `security` feature (`Apiary.Features.on?/1`): nothing is served,
   and the policy is absent from the contract. What a level below the instance shows changes
   nothing here: the key's scope answers as the instance.
 
-  `fetch/2` is the run endpoint's (`Apiary.Runs.Registration`), for a registration and a
-  reload: the stored bytes and their digest for the target the labels name, the
-  baseline's for a target the workspace does not know or that has no rules. A managed
+  `fetch/3` is the run endpoint's (`Apiary.Runs.Registration`), for a registration and a
+  reload: the stored bytes and their digest for the run's target, the baseline's for a
+  target the workspace does not know or that has no rules. A run of a workspace's queue
+  has its work item's or its collection's target, by adapter and collection ref; any
+  other run has the target its labels name. A managed
   workspace always has a baseline, and nothing here renders anything.
 
   `digest_for/4` is the events endpoint's, on the path the receiver answers from, so it
@@ -55,17 +57,21 @@ defmodule Apiary.Policy.Serving do
   @started "dev.qory.run.started"
 
   @doc """
-  The run configuration in force for the key's workspace and the target a run's `labels`
-  name, by the workspace's domain. `labels` is untrusted, any map: a label that is not a
-  string names nothing.
+  The run configuration in force for the key's workspace and a run's target. A run of a
+  workspace's queue, `dispatch_run_id`, has the target the projector gives it
+  (`Apiary.Runs.Target.dispatched_id/2`). Any other run, `dispatch_run_id` nil, has the
+  target its `labels` name, by the workspace's domain. `labels` is untrusted, any map: a
+  label that is not a string names nothing.
   """
-  @spec fetch(AccessKey.t(), term) :: {:ok, RunConfiguration.t()} | {:error, term}
+  @spec fetch(AccessKey.t(), term, Ecto.UUID.t() | nil) ::
+          {:ok, RunConfiguration.t()} | {:error, term}
   def fetch(
         %AccessKey{organisation_id: organisation_id, workspace_id: workspace_id} = key,
-        labels
+        labels,
+        dispatch_run_id
       ) do
     if managed?(key),
-      do: Policy.in_force(organisation_id, workspace_id, target_id(key, labels)),
+      do: Policy.in_force(organisation_id, workspace_id, target_id(key, labels, dispatch_run_id)),
       else: {:error, :unmanaged}
   end
 
@@ -89,11 +95,12 @@ defmodule Apiary.Policy.Serving do
   which means nothing to the gateway. `run` is the run's
   row or nil (a pruned run is looked up by the batch's subject).
 
-  For a run that registered (`Apiary.Runs.Registration`), the target is the one its
-  registration's labels name, the baseline's when they name none, whatever its events
-  say. For any other run, the target is the one the run's row holds; else the one the
-  batch's `run.started` names; else the digest the request reported, when it is in force,
-  or the baseline's.
+  For a run of a workspace's queue, the target is the one the projector gives it
+  (`Apiary.Runs.Target.dispatched_id/2`), the baseline's for none. For a run that
+  registered (`Apiary.Runs.Registration`), the target is the one its registration's
+  labels name, the baseline's when they name none, whatever its events say. For any other
+  run, the target is the one the run's row has; else the one the batch's `run.started`
+  names; else the digest the request reported, when it is in force, or the baseline's.
   """
   @spec digest_for(AccessKey.t(), Run.t() | nil, Batch.t(), String.t() | nil) :: String.t() | nil
   def digest_for(%AccessKey{} = access_key, run, %Batch{} = batch, reported) do
@@ -109,8 +116,11 @@ defmodule Apiary.Policy.Serving do
       target_id when is_binary(target_id) ->
         digest(organisation_id, workspace_id, target_id, run)
 
+      {:dispatched, target_id} ->
+        digest(organisation_id, workspace_id, target_id, run)
+
       {:registered, labels} ->
-        digest(organisation_id, workspace_id, target_id(access_key, labels), run)
+        digest(organisation_id, workspace_id, target_id(access_key, labels, nil), run)
 
       _unknown ->
         digest(organisation_id, workspace_id, nil, run)
@@ -161,15 +171,19 @@ defmodule Apiary.Policy.Serving do
     )
   end
 
-  # For a run that registered, its registration's labels, which name its target whatever
-  # its events say; for any other, the target the run's row holds.
+  # For a run of a workspace's queue, its target as the projector reads it; for a run that
+  # registered, its registration's labels, which name its target whatever its events say;
+  # for any other, the target the run's row has.
+  defp known_target(%Run{dispatch_run_id: id, workspace_id: workspace_id}) when is_binary(id),
+    do: {:dispatched, Target.dispatched_id(workspace_id, id)}
+
   defp known_target(%Run{registration_labels: %{} = labels}), do: {:registered, labels}
   defp known_target(%Run{target_id: target_id}) when is_binary(target_id), do: target_id
   defp known_target(_run), do: nil
 
   defp started_target(access_key, %Batch{events: events}) do
     with %{data: %{"labels" => labels}} <- Enum.find(events, &(&1.type == @started)) do
-      target_id(access_key, labels)
+      target_id(access_key, labels, nil)
     else
       _ -> nil
     end
@@ -212,18 +226,23 @@ defmodule Apiary.Policy.Serving do
         )
   end
 
-  # The labels name an address only by the workspace's domain, the rule the projector
-  # follows too (`Apiary.Runs.Fold`), and the target is the one target at that address
-  # (`Apiary.Runs.Target.id_at/3`): for a run outside the queue, the wire and the
+  # A run of a workspace's queue has its work item's or its collection's target, by
+  # adapter and collection ref, as the projector keys it (`Apiary.Runs.Target`), so two
+  # collections at one address, or a collection that moved, keep their targets apart.
+  # For a run outside the queue, the labels name an address only by the workspace's
+  # domain, the rule the projector follows too (`Apiary.Runs.Fold`), and the target is
+  # the one target at that address (`Apiary.Runs.Target.id_at/3`): the wire and the
   # projector pick the same, or none.
-  # shortcut: a run of the queue is read by its labels here, while the projector keys it
-  # on its work item's or collection's target; at an address two targets share, or after
-  # its collection moved, this returns none, replace when the plan routes it by key.
   # The key's workspace is loaded with it (`Apiary.AccessKeys.fetch_for_verification/1`):
   # a key without it is a caller's mistake, not a reason to read the default domain.
+  defp target_id(%AccessKey{workspace_id: workspace_id}, _labels, dispatch_run_id)
+       when is_binary(dispatch_run_id),
+       do: Target.dispatched_id(workspace_id, dispatch_run_id)
+
   defp target_id(
          %AccessKey{workspace: %Workspace{} = workspace, workspace_id: workspace_id},
-         labels
+         labels,
+         nil
        ) do
     case Domain.target(workspace, labels) do
       {:ok, %{system: system, path: path}} -> Target.id_at(workspace_id, system, path)

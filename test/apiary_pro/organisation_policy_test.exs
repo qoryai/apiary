@@ -415,7 +415,7 @@ defmodule ApiaryPro.OrganisationPolicyTest do
 
         %{access_key: key} = access_key_fixture(scope)
         assert Serving.managed?(key)
-        assert {:ok, configuration} = Serving.fetch(key, %{})
+        assert {:ok, configuration} = Serving.fetch(key, %{}, nil)
 
         assert Jason.decode!(configuration.document)["security_policy"]["egress"]["deny"] ==
                  ["paste.example"]
