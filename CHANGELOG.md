@@ -1967,6 +1967,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   line. It refuses a title with a hidden character, a text with U+0000 or over 20,000
   characters, and a `data` that is not an object. A text with a `<!-- qory:start -->` line is valid. No code
   writes the entry, so no entry is checked.
+- A version stores where its delivery to an adapter stands: `delivery` (`sent`,
+  `delivered` or `failed`), the adapter's reply, the reason of a failure and the time.
+  `previous_address/1` reads the address of the newest reply of the version's artifact,
+  for the `previous.address` of the next entry. No code writes the columns yet.
 
 ### Changed
 
@@ -3748,6 +3752,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   built inside the migration, so writes to `work_items` wait until the build ends.
 - Three migrations add the saved features to the instance's settings (20261112120000,
   20261112140000) and the features each run started with (20261112120100).
+<!-- feature: workflow_model -->
+- `artifact_versions` (20261120140000 and 20261120140100): four nullable columns,
+  `delivery`, `delivery_reply`, `delivery_failure` and `delivery_at`, with no default,
+  which rewrite no row and are empty on every stored version. Three checks keep their
+  values; the first migration adds them without a scan, and the second validates them with
+  a scan that does not block writes. Rolling back drops the columns and what they stored.
+<!-- /feature -->
 
 ## [0.1.0] - 2026-10-13
 

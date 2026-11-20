@@ -1,0 +1,65 @@
+defmodule Apiary.Repo.Migrations.StoreWhereADeliveryStandsOnItsVersion do
+  use Ecto.Migration
+
+  # A version of a type that the process marks `deliver` reaches one adapter, as one
+  # `change_request` entry (integration contract, `changes.schema.json`). Where that
+  # delivery stands is stored on the version, not in a table of its own, because a version
+  # has one target and so one entry:
+  #
+  # - `delivery`: `sent`, `delivered` or `failed`; nil for a version with no delivery.
+  # - `delivery_reply`: the adapter's reply to the entry, a JSON object with its `action`,
+  #   `address` and `data` (`changes-submitted.schema.json`); nil until a reply is stored.
+  # - `delivery_failure`: why the delivery failed, one of the reasons of a change request in
+  #   `changes-failed.schema.json` (`not_permitted`, `unreachable`, `target_gone`,
+  #   `too_long`, `refused`), or `invalid` when Qory Apiary's check of the entry against
+  #   `changes.schema.json` failed and nothing was sent; nil until a failure is stored.
+  # - `delivery_at`: when the last of these was stored, nil until one is.
+  #
+  # The columns are nullable with no default, so no existing row changes. The checks are
+  # added NOT VALID and take no scan under the lock; `20261120140100` validates them, as
+  # `20261117140000` and `20261117140100` did for `decision_id`. No check ties the
+  # columns to each other, and none bounds `delivery_reply`: the contract bounds the
+  # reply's `data` at 786432 bytes serialized.
+  #
+  # Rolled back, a version loses its delivery columns and what they stored.
+  @failures ~w(not_permitted unreachable target_gone too_long refused invalid)
+
+  def up do
+    alter table(:artifact_versions) do
+      add :delivery, :text
+      add :delivery_reply, :map
+      add :delivery_failure, :text
+      add :delivery_at, :utc_datetime_usec
+    end
+
+    create constraint(:artifact_versions, :artifact_versions_delivery_check,
+             check: "delivery IS NULL OR delivery IN ('sent', 'delivered', 'failed')",
+             validate: false
+           )
+
+    create constraint(:artifact_versions, :artifact_versions_delivery_reply_check,
+             check: "delivery_reply IS NULL OR jsonb_typeof(delivery_reply) = 'object'",
+             validate: false
+           )
+
+    create constraint(:artifact_versions, :artifact_versions_delivery_failure_check,
+             check:
+               "delivery_failure IS NULL OR delivery_failure IN (" <>
+                 Enum.map_join(@failures, ", ", &"'#{&1}'") <> ")",
+             validate: false
+           )
+  end
+
+  def down do
+    drop constraint(:artifact_versions, :artifact_versions_delivery_failure_check)
+    drop constraint(:artifact_versions, :artifact_versions_delivery_reply_check)
+    drop constraint(:artifact_versions, :artifact_versions_delivery_check)
+
+    alter table(:artifact_versions) do
+      remove :delivery_at
+      remove :delivery_failure
+      remove :delivery_reply
+      remove :delivery
+    end
+  end
+end
