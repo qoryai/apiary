@@ -95,7 +95,11 @@ defmodule ApiaryWeb.BacklogLive.TicketTest do
 
   test "a refused Take in says why", ctx do
     Repo.get!(Collection, ctx.ticket.collection_id)
-    |> Ecto.Changeset.change(target_collection_external_ref: nil, target_system: nil, target_path: nil)
+    |> Ecto.Changeset.change(
+      target_collection_external_ref: nil,
+      target_system: nil,
+      target_path: nil
+    )
     |> Repo.update!()
 
     {:ok, view, _html} = live(ctx.conn, ticket_path(ctx.scope, ctx.ticket.public_id))

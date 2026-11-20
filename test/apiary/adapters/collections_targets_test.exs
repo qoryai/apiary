@@ -104,6 +104,13 @@ defmodule Apiary.Adapters.CollectionsTargetsTest do
 
   defp pairs(workspace), do: Enum.map(targets(workspace), &{&1.system, &1.path})
 
+  defp keys(workspace) do
+    workspace
+    |> targets()
+    |> Enum.map(&{&1.collection_external_ref, &1.system, &1.path})
+    |> Enum.sort()
+  end
+
   test "assigning makes the target in the workspace, of the organisation, first seen now",
        ctx do
     {:ok, :accepted} = post(ctx, [{"SHOP", @shop}])
@@ -119,13 +126,18 @@ defmodule Apiary.Adapters.CollectionsTargetsTest do
     assert targets(ctx.other_workspace) == []
   end
 
-  test "assigning again, or two collections of one target, makes one target and keeps its first sighting",
+  test "assigning again keeps a collection's one target and its first sighting; two collections at one address are two targets",
        ctx do
     {:ok, :accepted} = post(ctx, [{"SHOP", @shop}, {"MIRROR", @shop}, {"API", @api}])
 
     assert {:ok, 2} = assign(ctx, ["SHOP", "MIRROR"], ctx.workspace)
-    assert pairs(ctx.workspace) == [{"code.example.com", "acme/shop"}]
-    [shop] = targets(ctx.workspace)
+
+    assert keys(ctx.workspace) == [
+             {"MIRROR", "code.example.com", "acme/shop"},
+             {"SHOP", "code.example.com", "acme/shop"}
+           ]
+
+    shop = Repo.get_by!(Target, workspace_id: ctx.workspace.id, collection_external_ref: "SHOP")
 
     # A first sighting the insert would never write: one it overwrote would show.
     Repo.update_all(from(t in Target, where: t.id == ^shop.id), set: [first_seen_at: @long_ago])
@@ -135,9 +147,10 @@ defmodule Apiary.Adapters.CollectionsTargetsTest do
     assert {:ok, 2} = assign(ctx, ["SHOP", "MIRROR"], nil)
     assert {:ok, 3} = assign(ctx, ["SHOP", "MIRROR", "API"], ctx.workspace)
 
-    assert pairs(ctx.workspace) == [
-             {"code.example.com", "acme/api"},
-             {"code.example.com", "acme/shop"}
+    assert keys(ctx.workspace) == [
+             {"API", "code.example.com", "acme/api"},
+             {"MIRROR", "code.example.com", "acme/shop"},
+             {"SHOP", "code.example.com", "acme/shop"}
            ]
 
     assert %Target{first_seen_at: @long_ago, public_id: public_id} = Repo.get!(Target, shop.id)
@@ -264,38 +277,22 @@ defmodule Apiary.Adapters.CollectionsTargetsTest do
     assert length(targets(scope.workspace)) == 2
   end
 
-  test "a part that changes the target of an assigned collection makes the new one and keeps the old",
+  test "a part that changes the address of an assigned collection keeps its one target, at the first",
        ctx do
     {:ok, :accepted} = post(ctx, [{"SHOP", @shop}, {"API", @api}])
     {:ok, 1} = assign(ctx, ["SHOP"], ctx.workspace)
     [old] = targets(ctx.workspace)
 
-    # API, linked to none, changes its target too, and makes none.
+    # API, linked to none, changes its address too, and makes no target.
     {:ok, :accepted} =
       post(ctx, [{"SHOP", %{@shop | path: "acme/moved"}}, {"API", %{@api | path: "acme/other"}}],
         id: "listing-2",
         started_at: DateTime.add(@started, 60)
       )
 
-    assert pairs(ctx.workspace) == [
-             {"code.example.com", "acme/moved"},
-             {"code.example.com", "acme/shop"}
-           ]
-
-    assert Repo.get!(Target, old.id) == old
+    assert targets(ctx.workspace) == [old]
     assert targets(ctx.other_workspace) == []
-
-    assert %{rows: rows, total: 2} = Targets.page(ctx.scope, %{})
-    assert Enum.all?(rows, &(&1.runs == 0))
-
-    # An older listing changes nothing: the collection keeps the newer target.
-    {:ok, :accepted} =
-      post(ctx, [{"SHOP", %{@shop | path: "acme/stale"}}],
-        id: "listing-0",
-        started_at: DateTime.add(@started, -60)
-      )
-
-    assert length(targets(ctx.workspace)) == 2
+    assert %{rows: [%{runs: 0}], total: 1} = Targets.page(ctx.scope, %{})
   end
 
   describe "targets?/1" do

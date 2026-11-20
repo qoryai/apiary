@@ -59,7 +59,7 @@ defmodule Apiary.Runs.Target do
   @insert_chunk 1_000
 
   @doc """
-  Creates each of `targets` (`Apiary.Lingo.Domain.target/0`), by adapter and collection
+  Creates each of `targets` (`t:Apiary.Lingo.Domain.target/0`), by adapter and collection
   ref, with its address or none, in the workspace `workspace_id` of the organisation
   `organisation_id`, unless the workspace has it already: one seen before keeps its row,
   its public id, its address and its `first_seen_at`, since the conflict writes nothing.

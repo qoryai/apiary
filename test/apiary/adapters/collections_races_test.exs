@@ -110,6 +110,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
 
   defp delete_adapters(query) do
     ids = Repo.all(select(query, [n], n.id))
+    Repo.delete_all(from t in Target, where: t.adapter_id in ^ids)
     connections = from c in Connection, where: c.adapter_id in ^ids, select: c.id
 
     Repo.delete_all(
@@ -420,18 +421,21 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     end
 
     {:ok, 3} = assign(ctx, ids, ctx.scope.workspace).()
-    :ok = Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [@shop])
     [a, b, c] = ids
 
+    # The assign makes a target of each collection, all at `@shop`: the switch of one
+    # turns the collections at its address.
     %{
       a: a,
       b: b,
       c: c,
       target:
-        Repo.get_by!(Target,
-          workspace_id: ctx.scope.workspace.id,
-          system: @shop.system,
-          path: @shop.path
+        Repo.one!(
+          from t in Target,
+            where: t.workspace_id == ^ctx.scope.workspace.id,
+            where: t.system == ^@shop.system and t.path == ^@shop.path,
+            order_by: t.collection_external_ref,
+            limit: 1
         )
     }
   end

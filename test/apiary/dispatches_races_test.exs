@@ -123,6 +123,7 @@ defmodule Apiary.DispatchesRacesTest do
       external_ref: ref,
       url: "https://code.example.com/acme/shop",
       title: "shop",
+      target_collection_external_ref: ref,
       target_system: "code.example.com",
       target_path: path,
       environment_ref: Keyword.get(opts, :environment_ref, "env-0"),
@@ -145,14 +146,14 @@ defmodule Apiary.DispatchesRacesTest do
     due = collection!(ctx, "D-" <> path, path, [id: high] ++ on)
     :ok = claimed_prebuilds!(ctx, key, pool, [{lapsed, Ecto.UUID.generate()}])
     _held = held!(ctx, path)
-    target = %{system: "code.example.com", path: path}
+    target = Collection.target(lapsed)
     :ok = Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [target])
 
     %{
       connection: connection,
       lapsed: lapsed,
       due: due,
-      target: Repo.get_by!(Target, workspace_id: ctx.scope.workspace.id, path: path)
+      target: Repo.one!(Target.by_key(ctx.scope.workspace.id, target))
     }
   end
 

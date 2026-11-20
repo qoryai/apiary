@@ -174,7 +174,11 @@ defmodule ApiaryWeb.BacklogLive.TakeInTest do
       collection = Repo.get!(Collection, ctx.ticket.collection_id)
 
       collection
-      |> Ecto.Changeset.change(target_collection_external_ref: nil, target_system: nil, target_path: nil)
+      |> Ecto.Changeset.change(
+        target_collection_external_ref: nil,
+        target_system: nil,
+        target_path: nil
+      )
       |> Repo.update!()
 
       {:ok, view, _html} = live(ctx.conn, open(ctx.scope, ctx.ticket))
