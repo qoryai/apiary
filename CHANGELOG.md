@@ -1971,11 +1971,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `delivered` or `failed`), the adapter's reply, the reason of a failure, a detail of 1 to
   1000 characters on one line, the target it went to, and the time.
   `previous_address/1` reads the address of the newest reply of the version's artifact,
-  for the `previous.address` of the next entry. No code writes the columns yet.
+  for the `previous.address` of the next entry. Nothing sets `sent` until the entry
+  writer of Q-72 and A-67 exists.
 - `record_invalid/2` stores a failed delivery with the reason `invalid` on a version whose
   entry failed `ChangeRequest.validate/1`, and sends nothing. The detail is the first
   member of the entry that failed, such as `#/title`. A version that has a delivery is
-  left as it is. No code calls it yet.
+  left as it is. Nothing calls it until the entry writer of Q-72 and A-67 exists.
 - `ChangeReport.submitted/1` and `failed/1` read an adapter's reply to a change request
   and its report that one failed, by the integrations contract. A reply with a `data` over
   786432 bytes serialized, or an `address.url` off the system of its target, is refused.
@@ -1985,8 +1986,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   and `POST /v1/work-items/changes/failed` takes a body with `change_request_id` as its
   report that one failed. Each needs `change_request.report` and answers a signed `204`.
   The result is stored with the version, once: a report for an unknown id, another
-  adapter's version, a version not sent or one with a result already changes nothing. No
-  code sends a version yet, so no report finds one.
+  adapter's version, a version not sent or one with a result already changes nothing.
+  Until the entry writer of Q-72 and A-67 sets `sent`, no report finds a version.
 - `change_request.report`, an action of an adapter's key, covers the adapter's report of
   what became of a change request: its reply and its failure.
 
@@ -2917,7 +2918,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   at `e0d7be1`.
 - The reply to a change request (`changes-submitted.schema.json`) and the reports of a
   change request (`changes-failed.schema.json`) are vendored from `9a1e64e` with their
-  fixtures. No endpoint reads the reply yet.
+  fixtures. `POST /v1/work-items/changes/submitted` reads the reply.
 
 ### Removed
 
@@ -3776,12 +3777,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: workflow_model -->
 - `artifact_versions` (20261120140000 and 20261120140100): six nullable columns,
   `delivery`, `delivery_reply`, `delivery_failure`, `delivery_detail`,
-  `delivery_target_id` and `delivery_at`, with no default, which rewrite no row and are
+  `delivery_target_id` and `delivery_at`. They have no default, rewrite no row and are
   empty on every stored version. `delivery_target_id` is a foreign key to `targets` of the
-  same workspace, set to NULL when the target is deleted, with a partial index. Four
-  checks keep their values; the first migration adds them without a scan, and the second
-  validates them with a scan that does not block writes. Rolling back drops the columns
-  and what they stored.
+  same workspace, set to NULL when the target is deleted. Four checks keep their values.
+  The first migration adds them without a scan. The second validates them with a scan that
+  does not block writes. Rolling back drops the columns and what they stored.
 <!-- /feature -->
 
 ## [0.1.0] - 2026-10-13

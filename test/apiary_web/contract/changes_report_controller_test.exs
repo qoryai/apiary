@@ -11,7 +11,6 @@ defmodule ApiaryWeb.Contract.ChangesReportControllerTest do
   # moves nothing. The clock is the application's environment, so this module is not async.
   use ApiaryWeb.ConnCase, async: false
 
-  import Ecto.Query
   import Apiary.ContractFixtures, only: [signed_post: 5, signed_answer?: 1, unsigned_answer?: 1]
   import Apiary.DeliveryFixtures
   import Apiary.NodesFixtures

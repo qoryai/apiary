@@ -20,7 +20,7 @@ defmodule Apiary.Adapters.ChangeReportTest do
   defp raw(path), do: @fixtures |> Path.join(path) |> File.read!()
   defp json(path), do: path |> raw() |> Jason.decode!()
 
-  defp reply(changes \\ %{}),
+  defp reply(changes),
     do: Map.merge(json("changes-submitted/pull-request-created.json"), changes)
 
   describe "a reply" do

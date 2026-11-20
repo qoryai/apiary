@@ -282,18 +282,28 @@ defmodule Apiary.Artifacts.DeliveryTest do
       assert detail(artifact, result) == "#"
     end
 
+    defp summary_at(place),
+      do:
+        {:error, %{valid: false, count: 1, errors: [%{kind: :pattern, instanceLocation: place}]}}
+
     test "ends the detail before a member name that a line cannot have, and cuts it", %{
       artifact: artifact
     } do
-      summary = fn place ->
-        {:error, %{valid: false, count: 1, errors: [%{kind: :pattern, instanceLocation: place}]}}
-      end
+      summary = &summary_at/1
 
       assert detail(artifact, summary.("#/data/a\u{200B}b/c")) == "#/data"
       assert detail(artifact, summary.("#/data/a\u{200D}b/c")) == "#/data/a\u{200D}b/c"
 
       assert detail(artifact, summary.("#/data/" <> String.duplicate("é", 1200)))
              |> String.length() == 1000
+    end
+
+    test "cuts the detail by code points, as the check counts them", %{artifact: artifact} do
+      # 600 graphemes of two code points each: a cut by graphemes would keep 1207.
+      stored = detail(artifact, summary_at("#/data/" <> String.duplicate("e\u0301", 600)))
+
+      assert length(String.codepoints(stored)) == 1000
+      assert String.starts_with?(stored, "#/data/e\u0301")
     end
 
     test "stores a failed delivery with the reason invalid, and sends no reply", %{

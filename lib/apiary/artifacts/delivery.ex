@@ -97,7 +97,8 @@ defmodule Apiary.Artifacts.Delivery do
     end
   end
 
-  # The first place of the errors that is not the entry, as `delivery_detail` has it.
+  # The first place of the errors that is not the entry, as `delivery_detail` has it. The
+  # check counts code points, not graphemes, so the cut counts them too.
   defp detail(errors) do
     errors
     |> Enum.map(& &1.instanceLocation)
@@ -105,7 +106,9 @@ defmodule Apiary.Artifacts.Delivery do
     |> String.split("/")
     |> Enum.take_while(&Regex.match?(@line, &1))
     |> Enum.join("/")
-    |> String.slice(0, 1000)
+    |> String.codepoints()
+    |> Enum.take(1000)
+    |> Enum.join()
   end
 
   @doc """

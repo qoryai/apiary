@@ -59,8 +59,11 @@ defmodule ApiaryWeb.Contract.ChangesFailedController do
   rescue
     exception ->
       Logger.error(
-        "an adapter's report of a comment not posted could not be stored: " <>
-          inspect(exception.__struct__)
+        "an adapter's report of " <>
+          if(kind(conn.assigns.raw_body) == :change_request,
+            do: "a change request that failed",
+            else: "a comment not posted"
+          ) <> " could not be stored: " <> inspect(exception.__struct__)
       )
 
       refuse(conn, 503, "unavailable")
@@ -74,6 +77,13 @@ defmodule ApiaryWeb.Contract.ChangesFailedController do
 
       _other ->
         with {:ok, report} <- Wire.failed(raw), do: {:ok, :comment, report}
+    end
+  end
+
+  defp kind(raw) do
+    case AdapterWire.decode(raw) do
+      {:ok, %{"change_request_id" => _id}} -> :change_request
+      _other -> :comment
     end
   end
 

@@ -3,7 +3,7 @@ defmodule Apiary.Repo.Migrations.StoreWhereADeliveryStandsOnItsVersion do
 
   # A version of a type that the process marks `deliver` reaches one adapter, as one
   # `change_request` entry (integration contract, `changes.schema.json`). Where that
-  # delivery stands is stored on the version, not in a table of its own, because a version
+  # delivery stands is stored on the version, not in a `deliveries` table, because a version
   # has one target and so one entry:
   #
   # - `delivery`: `sent`, `delivered` or `failed`; nil for a version with no delivery.
@@ -52,10 +52,6 @@ defmodule Apiary.Repo.Migrations.StoreWhereADeliveryStandsOnItsVersion do
       add :delivery_at, :utc_datetime_usec
     end
 
-    create index(:artifact_versions, [:delivery_target_id],
-             where: "delivery_target_id IS NOT NULL"
-           )
-
     create constraint(:artifact_versions, :artifact_versions_delivery_check,
              check: "delivery IS NULL OR delivery IN ('sent', 'delivered', 'failed')",
              validate: false
@@ -86,8 +82,6 @@ defmodule Apiary.Repo.Migrations.StoreWhereADeliveryStandsOnItsVersion do
     drop constraint(:artifact_versions, :artifact_versions_delivery_detail_check)
     drop constraint(:artifact_versions, :artifact_versions_delivery_reply_check)
     drop constraint(:artifact_versions, :artifact_versions_delivery_check)
-
-    drop index(:artifact_versions, [:delivery_target_id], where: "delivery_target_id IS NOT NULL")
 
     alter table(:artifact_versions) do
       remove :delivery_target_id
