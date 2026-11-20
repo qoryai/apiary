@@ -34,8 +34,11 @@ defmodule Apiary.ModelKeys.RejectionTest do
   # keeps for it (`run_key!/4`).
   defp key(ctx, %Value{} = value, name \\ "model-1"), do: run_key!(ctx.scope, value, name)
 
-  defp unauthorized(name \\ "model-1", at \\ DateTime.utc_now()),
-    do: %{credential: name, at: at}
+  # The 401 is 5 seconds after the database's clock, which writes the time a run's copy took
+  # a token (`keep_copies/2`): an entry before that time is for an earlier token, and the
+  # BEAM clock can be behind the database's.
+  defp unauthorized(name \\ "model-1", at \\ nil),
+    do: %{credential: name, at: at || DateTime.add(Login.db_now(), 5, :second)}
 
   defp rows(%Value{id: id}),
     do: Repo.all(from r in Rejection, where: r.secret_value_id == ^id)
