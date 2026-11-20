@@ -289,7 +289,7 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
   end
 
   @tag needs: :factory
-  test "a listing that changes an assigned collection's repository keeps its one target, at the first",
+  test "a listing that changes an assigned collection's repository moves its one target there",
        %{conn: conn, scope: scope} do
     connectable = connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
     {connection, _nonce} = connection_fixture(scope, connectable.adapter, :connected)
@@ -323,8 +323,8 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
     post.("acme/moved", "listing-2", DateTime.add(started_at, 60))
 
     view = open(conn, scope, "?view=never")
-    assert rows(view) == ["acme/new"]
-    assert Targets.get(scope, "code.example.com", "acme/moved") == nil
+    assert rows(view) == ["acme/moved"]
+    assert Targets.get(scope, "code.example.com", "acme/new") == nil
   end
 
   test "a workspace no run named a target of says what fills the page" do
