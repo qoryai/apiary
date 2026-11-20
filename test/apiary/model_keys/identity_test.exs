@@ -99,6 +99,17 @@ defmodule Apiary.ModelKeys.IdentityTest do
     end
   end
 
+  describe "Value.key_number/1" do
+    test "is the number of a key-<n> value id of 1 to 9 digits, else nil" do
+      assert Value.key_number("key-7") == 7
+      assert Value.key_number("key-999999999") == 999_999_999
+      assert Value.key_number("key-1000000000") == nil
+      assert Value.key_number("key-") == nil
+      assert Value.key_number("key-3b") == nil
+      assert Value.key_number(nil) == nil
+    end
+  end
+
   describe "Identity.line/3" do
     test "is the email of a sign-in, else its account's last 4 characters" do
       login = %Login{email: "dana@example.com", account_id: "acct-9d81c27e7c1d"}

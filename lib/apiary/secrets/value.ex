@@ -55,28 +55,32 @@ defmodule Apiary.Secrets.Value do
   @hint_max 16
 
   @doc """
-  The value id Apiary gives a model provider's next key, `key-<n>`: one more than the
-  highest `key-<n>` among `value_ids` (`key-1` for none). A value id of another form does
-  not count. The number of a key that was deleted is free again when it was the highest.
+  The number `n` of a value id `key-<n>`, 1 to 9 digits (so it fits `secrets.last_key_number`);
+  nil for a value id of another form.
+  """
+  @spec key_number(String.t() | nil) :: non_neg_integer | nil
+  def key_number("key-" <> digits) when byte_size(digits) in 1..9 do
+    case Integer.parse(digits) do
+      {number, ""} -> number
+      _other -> nil
+    end
+  end
+
+  def key_number(_value_id), do: nil
+
+  @doc """
+  The value id of a model provider's key that follows the highest `key-<n>` among
+  `value_ids` (`key-1` for none). A value id of another form does not count. It is for a
+  secret that is being created, which has no deleted key; `Apiary.Secrets.next_key_id/1`
+  is for a secret that has one.
   """
   @spec next_key_id([String.t() | nil]) :: String.t()
-  def next_key_id(value_ids) do
-    highest =
-      value_ids
-      |> Enum.flat_map(fn
-        "key-" <> digits when digits != "" ->
-          case Integer.parse(digits) do
-            {number, ""} -> [number]
-            _other -> []
-          end
+  def next_key_id(value_ids), do: "key-#{highest_key_number(value_ids) + 1}"
 
-        _other ->
-          []
-      end)
-      |> Enum.max(fn -> 0 end)
-
-    "key-#{highest + 1}"
-  end
+  @doc "The highest number among the `key-<n>` value ids of `value_ids`, 0 for none."
+  @spec highest_key_number([String.t() | nil]) :: non_neg_integer
+  def highest_key_number(value_ids),
+    do: value_ids |> Enum.map(&key_number/1) |> Enum.reject(&is_nil/1) |> Enum.max(fn -> 0 end)
 
   @doc "The fewest characters a value has when it keeps a hint."
   @spec hint_min() :: pos_integer

@@ -1896,7 +1896,7 @@ defmodule Apiary.Connections do
   add_provider_key/4 adds a key to a model provider's keys (`provider.write`): `attrs`
   has `value` and, optionally, `value_id`, as `Apiary.Secrets.add_value/4` takes them, the
   `value` without the whitespace at its ends (`String.trim/1`). With no `value_id` the
-  key gets `key-<n>` (`Apiary.Secrets.Value.next_key_id/1`); no page sends one. `settings`
+  key gets `key-<n>` (`Apiary.Secrets.next_key_id/1`); no page sends one. `settings`
   is the key's settings (`Apiary.ModelKeys.Setting.changeset/3`, with the provider's limit
   windows), nil for none. For a provider whose keys are logins the `value` is the sign-in of a
   device sign-in (`t:Apiary.ModelKeys.Login.parsed/0`), and any text is refused with
@@ -1913,7 +1913,7 @@ defmodule Apiary.Connections do
 
         value_id =
           Value.normalise_value_id(attrs["value_id"]) ||
-            Value.next_key_id(Enum.map(current.secret.values, & &1.value_id))
+            Secrets.next_key_id(current.secret)
 
         attrs = Map.put(attrs, "value_id", value_id)
 

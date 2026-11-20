@@ -1673,7 +1673,52 @@ defmodule Apiary.Secrets do
         created_by_id: scope.user.id
       )
 
-    encrypt_and_write(scope, secret, changeset, :insert, hint?)
+    with {:ok, value} <- encrypt_and_write(scope, secret, changeset, :insert, hint?) do
+      note_key_number(secret.id, value.value_id)
+      {:ok, value}
+    end
+  end
+
+  @doc """
+  next_key_id/1 is the value id `key-<n>` that a model provider's next key gets: the
+  number after the last one this secret gave, or after the highest `key-<n>` among its
+  `values` if that is higher, so a number is never given twice, even after the key that had
+  it is deleted (`secrets.last_key_number`). The counter moves in the transaction that
+  adds the key, under the lock of the provider's write.
+  """
+  @spec next_key_id(Secret.t()) :: String.t()
+  def next_key_id(%Secret{id: id, values: values}) do
+    highest = Value.highest_key_number(Enum.map(values, & &1.value_id))
+
+    {1, [number]} =
+      Repo.update_all(
+        from(s in Secret,
+          where: s.id == ^id,
+          select: s.last_key_number,
+          update: [
+            set: [last_key_number: fragment("GREATEST(?, ?) + 1", s.last_key_number, ^highest)]
+          ]
+        ),
+        []
+      )
+
+    "key-#{number}"
+  end
+
+  # A value written under `key-<n>` moves the secret's counter to `n` at least, whoever
+  # chose the value id, so `next_key_id/1` never gives that number again.
+  defp note_key_number(secret_id, value_id) do
+    if number = Value.key_number(value_id) do
+      Repo.update_all(
+        from(s in Secret,
+          where: s.id == ^secret_id,
+          update: [set: [last_key_number: fragment("GREATEST(?, ?)", s.last_key_number, ^number)]]
+        ),
+        []
+      )
+    end
+
+    :ok
   end
 
   # Whether the values written under `opts` keep a hint (`Apiary.Secrets.Value.hint/1`):
@@ -1742,6 +1787,14 @@ defmodule Apiary.Secrets do
       changeset
       |> Ecto.Changeset.change(nonce: nonce, ciphertext: ciphertext, updated_by_id: scope.user.id)
       |> Repo.update()
+      |> case do
+        {:ok, row} ->
+          note_key_number(secret.id, row.value_id)
+          {:ok, row}
+
+        other ->
+          other
+      end
     end
   end
 

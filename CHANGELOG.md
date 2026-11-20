@@ -2278,7 +2278,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the Thinking tier.
 - A model provider's key has no name that a person gives. **Add key** and **Edit key** have
   no **Name** field, and Qory Apiary sets the key's value ID to `key-<n>` (one more than the
-  highest `key-<n>` of the provider's secret), which no page shows. A key shows as its
+  last number it gave the provider's secret, or than the highest `key-<n>` the secret has
+  if that is higher, so a deleted key's number is not given again), which no page shows. A key shows as its
   identity line: for an API key, the provider's name and the last 4 characters of the key,
   “Northwind Claude · …9c2e”, or the provider's name alone when the key has fewer than 12
   characters, when its last 4 characters hold a control character, a format character or a
@@ -3317,6 +3318,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Migrations
 
 <!-- feature: factory, secrets -->
+- `secrets` (20261120090000): a column `last_key_number`, `NOT NULL` with the default 0,
+  the number of the last `key-<n>` value ID given to the secret's key. The migration sets
+  each secret to the highest `key-<n>` (1 to 9 digits) its values have, 0 for none, and
+  changes no value. Rolling back drops the column.
 - `model_key_copies` (20261119090000, 20261119090100, 20261119090400): the nullable columns
   `login_at` (the time of the sign-in or of its last refresh when the run's token was
   sealed), `login_sealed_at` (the database's UTC time at which the run's copy took that

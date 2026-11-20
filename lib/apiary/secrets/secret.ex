@@ -26,6 +26,7 @@ defmodule Apiary.Secrets.Secret do
     field :public_id, :string
     field :name, :string
     field :note, :string
+    field :last_key_number, :integer, default: 0
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
