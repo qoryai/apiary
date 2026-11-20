@@ -199,9 +199,9 @@ defmodule Apiary.Races do
   @doc """
   A part of a new listing of `connection`, posted with `key_scope` (`listing_key!/1`),
   that contains the ref of each of `collections`, with its target and the
-  `environment_ref` `ref`: a function that posts it (`Apiary.Adapters.Collections.post_listing/2`) and
-  returns its result. The part is not the listing's last, so it ends no other
-  collection of the connection.
+  `environment_ref` `ref`: a function that posts it
+  (`Apiary.Adapters.Collections.post_listing/2`) and returns its result. The part is
+  not the listing's last, so it ends no other collection of the connection.
   """
   def listing_part(key_scope, %Apiary.Adapters.Connection{} = connection, collections, ref) do
     fn ->

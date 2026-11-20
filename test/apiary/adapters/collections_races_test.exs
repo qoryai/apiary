@@ -9,7 +9,8 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
   # Backlog switch against two connections' parts naming its ref, a disconnect
   # against a part that completes its listing, a move against a disconnect that names
   # the connection the ref moves away from, a listing's part against a restore and
-  # a marking of the workspace of its grant's rule, a start that changes the adapter's items against a
+  # a marking of the workspace of its grant's rule, a start that changes the adapter's
+  # items against a
   # listing's part, a Backlog switch and an assign, and a collection's Backlog
   # switch, by its id, against a listing's part, its target's switch, a start and an
   # assign. Each side runs on a separate connection, outside the SQL sandbox, so each
@@ -205,8 +206,10 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
 
     assert Task.await(listing.task) == {:error, :ended}
 
-    assert Repo.aggregate(from(c in Collection, where: c.adapter_id == ^ctx.adapter.id), :count) ==
-             0
+    assert Repo.aggregate(
+             from(c in Collection, where: c.adapter_id == ^ctx.adapter.id),
+             :count
+           ) == 0
   end
 
   test "the connection's end waiting on a listing ends what the listing made", ctx do
@@ -220,7 +223,10 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     assert {:ok, %Connection{}} = Task.await(ended.task)
     assert live(ctx.connection) == []
 
-    assert Repo.one!(from c in Collection, where: c.connection_id == ^ctx.connection.id).ended_reason ==
+    assert Repo.one!(
+             from c in Collection,
+               where: c.connection_id == ^ctx.connection.id
+           ).ended_reason ==
              :connection_ended
   end
 
