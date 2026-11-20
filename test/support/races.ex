@@ -137,6 +137,60 @@ defmodule Apiary.Races do
   end
 
   @doc """
+  The key scope of a key enrolled on the adapter of `connection`, with which the adapter
+  posts the connection's listings (`Apiary.Adapters.Collections.post_listing/2`), and a
+  live grant of the connection, whose ref `listing_part/4` uses: `{key_scope,
+  public_key}`, with the key's public half, which outlives the organisation, for
+  `on_exit` to delete.
+  """
+  def listing_key!(%Apiary.Adapters.Connection{} = connection) do
+    adapter = Repo.get!(Apiary.Nodes.Node, connection.adapter_id)
+
+    %{access_key: key, pair: pair} =
+      Apiary.AccessKeysFixtures.enrolled_key_fixture(
+        OrganisationsFixtures.instance_admin_scope(),
+        adapter
+      )
+
+    _ref = Apiary.NodesFixtures.listing_grant(connection)
+    {:ok, verified} = Apiary.AccessKeys.fetch_for_verification(key.key_id)
+    {Scope.for_access_key(verified), pair.public_key}
+  end
+
+  @doc """
+  A part of a new listing of `connection`, posted with `key_scope` (`listing_key!/1`),
+  that names each of `collections` by its ref, with its target and the `environment_ref`
+  `ref`: a function that posts it (`Apiary.Adapters.Collections.post_listing/2`) and
+  returns its result. The part is not the listing's last, so it ends no other
+  collection of the connection.
+  """
+  def listing_part(key_scope, %Apiary.Adapters.Connection{} = connection, collections, ref) do
+    fn ->
+      Apiary.Adapters.Collections.post_listing(key_scope, %{
+        time: DateTime.utc_now(:second),
+        connection_id: connection.public_id,
+        collections:
+          for collection <- collections do
+            %{
+              ref: collection.external_ref,
+              url: collection.url,
+              title: collection.title,
+              grant_ref: "G_" <> connection.public_id,
+              target: %{system: collection.target_system, path: collection.target_path},
+              environment_ref: ref
+            }
+          end,
+        listing: %{
+          id: "races-" <> unique(),
+          part: 1,
+          started_at: DateTime.utc_now(:second),
+          complete: false
+        }
+      })
+    end
+  end
+
+  @doc """
   The database's clock now, for an `on_exit` that deletes the rows a test stamped from
   then on: `inserted_at` is set by the database, whose clock may run behind this node's.
   """
