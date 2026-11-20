@@ -618,8 +618,8 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
     # `FOR SHARE`, then the work item `FOR UPDATE`, then the records `FOR UPDATE`, before
     # the run of the queue; it clears the image, queues a prebuild of each collection,
     # unless one of its ref waits, and queues the next run of the take in with one more
-    # attempt. A listing's part, which holds its connection and its collections
-    # `FOR UPDATE`, a Rebuild, which holds the same rows as the end in the same order, a
+    # attempt. A listing's part, which holds its connection `FOR UPDATE` and its
+    # collections `FOR NO KEY UPDATE`, a Rebuild, which holds the same rows as the end in the same order, a
     # release and a close, which hold the work item `FOR UPDATE`, and a second end of the
     # run take turns with it: none deadlocks, the run of the queue ends once, `run_ended`,
     # the image is cleared, one prebuild waits for the pool, and one run of the work item
@@ -728,13 +728,13 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
         )
     end
 
-    # A listing's part that changes the collection's `environment_ref`: its connection and
-    # its collection `FOR UPDATE`, then the change.
+    # A listing's part that changes the collection's `environment_ref`: its connection
+    # `FOR UPDATE` and its collection `FOR NO KEY UPDATE`, then the change.
     defp part(%{collection: %Collection{id: id, connection_id: connection_id}}, ref) do
       fn ->
         Repo.transact(fn ->
           Repo.one!(from k in Connection, where: k.id == ^connection_id, lock: "FOR UPDATE")
-          Repo.one!(from c in Collection, where: c.id == ^id, lock: "FOR UPDATE")
+          Repo.one!(from c in Collection, where: c.id == ^id, lock: "FOR NO KEY UPDATE")
 
           {1, _rows} =
             Repo.update_all(from(c in Collection, where: c.id == ^id),
@@ -806,7 +806,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
       {first, first_pid} =
         hold(fn ->
           Repo.one!(from k in Connection, where: k.id == ^connection_id, lock: "FOR UPDATE")
-          Repo.one!(from c in Collection, where: c.id == ^id, lock: "FOR UPDATE")
+          Repo.one!(from c in Collection, where: c.id == ^id, lock: "FOR NO KEY UPDATE")
         end)
 
       second = start(fn -> Projector.project(handed.run) end)

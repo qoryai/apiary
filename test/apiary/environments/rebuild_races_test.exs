@@ -8,8 +8,9 @@ defmodule Apiary.Environments.RebuildRacesTest do
   #
   # The rule under test: a Rebuild holds the collections' connections, then the
   # collections, before their environment records, in the order a part and an assign keep
-  # (`Apiary.Dispatches.Slots`), so a part that holds its connection and its collections
-  # `FOR UPDATE` and then changes them, and a Rebuild, take turns, and neither deadlocks.
+  # (`Apiary.Dispatches.Slots`), so a part that holds its connection `FOR UPDATE` and its
+  # collections `FOR NO KEY UPDATE` and then changes them, and a Rebuild, take turns, and
+  # neither deadlocks.
   use ExUnit.Case, async: false
 
   @before_compile Apiary.TestSetup
@@ -113,10 +114,11 @@ defmodule Apiary.Environments.RebuildRacesTest do
        ctx do
     %{id: id} = ctx.collection
 
-    # The part holds its collection `FOR UPDATE` and changes its `environment_ref`.
+    # The part holds its collection `FOR NO KEY UPDATE` and changes its `environment_ref`.
     {part, part_backend} =
       hold(fn ->
-        %Collection{} = Repo.one!(from c in Collection, where: c.id == ^id, lock: "FOR UPDATE")
+        %Collection{} =
+          Repo.one!(from c in Collection, where: c.id == ^id, lock: "FOR NO KEY UPDATE")
 
         {1, _rows} =
           Repo.update_all(from(c in Collection, where: c.id == ^id),
@@ -176,13 +178,13 @@ defmodule Apiary.Environments.RebuildRacesTest do
           where: c.connection_id == ^connection_id and is_nil(c.ended_at),
           where: c.external_ref in ^refs,
           order_by: c.external_ref,
-          lock: "FOR UPDATE",
+          lock: "FOR NO KEY UPDATE",
           select: c.id
       )
     end
 
     # The part holds its connection `FOR UPDATE`, then, by ref, the collection `Y`, the
-    # higher id.
+    # higher id, `FOR NO KEY UPDATE`.
     {part, part_backend} =
       hold(fn ->
         %Connection{} =
@@ -244,8 +246,8 @@ defmodule Apiary.Environments.RebuildRacesTest do
       end)
 
     # The Rebuild waits at `last`'s row. Had it taken the run counter before that row, the
-    # registration would now wait on it for the counter, and the Rebuild, which has waited
-    # longer, would be refused (`deadlock_detected`).
+    # registration would now wait on it for the counter, and Postgres would abort the
+    # Rebuild, which has waited longer (`deadlock_detected`).
     await_waited(rebuild.backend, registration_backend)
     number = continue(registration, fn -> Apiary.Runs.Number.next(ctx.scope.workspace, last) end)
     commit(registration)

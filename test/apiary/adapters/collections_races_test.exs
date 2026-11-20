@@ -453,8 +453,9 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
       Collections.unlink_workspace(ctx.scope.organisation.id, ctx.scope.workspace.id)
     end
 
+  # The collection `id` held as a disconnect holds it (`lock_live/3`), `FOR NO KEY UPDATE`.
   defp lock_row(id),
-    do: fn -> Repo.one!(from c in Collection, where: c.id == ^id, lock: "FOR UPDATE") end
+    do: fn -> Repo.one!(from c in Collection, where: c.id == ^id, lock: "FOR NO KEY UPDATE") end
 
   # What `fun` answers, or `{:raised, message}`: a deadlock fails the assertion, not the
   # process.
