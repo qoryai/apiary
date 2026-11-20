@@ -228,7 +228,8 @@ defmodule Apiary.Dispatches.Slots do
   # lock on the collection, which does not wait for the `FOR NO KEY UPDATE` of a
   # listing's part, an assign, a Backlog switch or an adapter's start
   # (`Apiary.Adapters.Collections`), and would wait for a path that holds the collection
-  # `FOR UPDATE`, as 1. says. The claim holds every such collection
+  # `FOR UPDATE` to delete it or change a key column of it (1.). The claim holds every
+  # such collection
   # `FOR SHARE` before anything but the connections, in one statement, by id: the
   # collections of the pool's prebuilds whose dispatch lapsed at its `now`
   # (`lapsed_collections/2`) and those it queues a build of. A path that holds

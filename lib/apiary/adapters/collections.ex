@@ -197,11 +197,11 @@ defmodule Apiary.Adapters.Collections do
   #
   # A start that changes the adapter's `items` holds, after its row, the adapter's
   # connections that have not ended `FOR SHARE`, by id, then every live collection of
-  # theirs `FOR UPDATE`, by id, and no workspace (`relink_adapter/2`). Every other read of
-  # an adapter's `items` here takes no lock, and is safe against such a start because it
-  # comes after the collection it decides for is held, so it reads the adapter as the start
-  # left it, or before the start, which then waits for that collection and sees what was
-  # written:
+  # theirs `FOR NO KEY UPDATE`, by id, and no workspace (`relink_adapter/2`). Every other
+  # read of an adapter's `items` here takes no lock, and is safe against such a start
+  # because it comes after the collection it decides for is held, so it reads the adapter as
+  # the start left it, or before the start, which then waits for that collection and sees
+  # what was written:
   #
   #   * an assign reads it once it holds its collections (`relink/5`);
   #   * a Backlog switch reads the target's collections and their adapters with no lock
@@ -900,16 +900,16 @@ defmodule Apiary.Adapters.Collections do
   # under the connection `connection_id`, its public id
   # (`Apiary.Adapters.Wire.source_disconnect/1`), for the adapter's key of `key_scope`
   # (`adapter.disconnect`), as `POST /v1/sources/disconnect` asks, with the feed's
-  # `unlinked` entry when it is linked. It holds that one row `FOR UPDATE`, by adapter,
-  # connection and ref (`lock_live/3`), and no connection's row, then the feed's counter
-  # when it writes an entry. In this order: `{:error, :forbidden}` for a request outside the
-  # key's rights, decided before any collection is looked up; `{:ok, :unchanged}` for a
-  # ref with no live collection under that connection, which changes nothing and writes
-  # no entry (never seen, disconnected already, left out by a complete listing, ended
-  # with its connection, or live under another connection of the adapter, where it stays
-  # live), and so for a `connection_id` that names no connection of the adapter, a
-  # pending one or one that ended; `{:error, :suspended}` for a live collection under
-  # that connection whose organisation is out of use, which changes nothing;
+  # `unlinked` entry when it is linked. It holds that one row `FOR NO KEY UPDATE`, by
+  # adapter, connection and ref (`lock_live/3`), and no connection's row, then the feed's
+  # counter when it writes an entry. In this order: `{:error, :forbidden}` for a request
+  # outside the key's rights, decided before any collection is looked up;
+  # `{:ok, :unchanged}` for a ref with no live collection under that connection, which changes
+  # nothing and writes no entry (never seen, disconnected already, left out by a complete
+  # listing, ended with its connection, or live under another connection of the adapter,
+  # where it stays live), and so for a `connection_id` that names no connection of the
+  # adapter, a pending one or one that ended; `{:error, :suspended}` for a live collection
+  # under that connection whose organisation is out of use, which changes nothing;
   # `{:ok, :disconnected}`. Never `:unknown` or `:ended`.
   @spec disconnect(Scope.t() | nil, Wire.source_disconnect()) ::
           {:ok, :disconnected | :unchanged} | {:error, :forbidden | :suspended}
@@ -1984,9 +1984,9 @@ defmodule Apiary.Adapters.Collections do
   # meanwhile is left out; then, in the next statement, their adapters, so one whose
   # adapter lost its items meanwhile is left out too. That read takes no lock, and needs
   # none: a start that changes an adapter's `items` holds every live collection of the
-  # adapter `FOR UPDATE` before it commits (`relink_adapter/2`), so while these are held
-  # it has either committed, and this statement, which begins after the lock, reads its
-  # `items`, or it commits after this transaction, and its entries follow the switch's.
+  # adapter `FOR NO KEY UPDATE` before it commits (`relink_adapter/2`), so while these
+  # are held it has either committed, and this statement, which begins after the lock, reads
+  # its `items`, or it commits after this transaction, and its entries follow the switch's.
   # The adapter is never held here: a start holds it before the collections, and the
   # switch, which holds the collections first, would wait on it in turn.
   defp lock_target_collections(%Target{} = target, found, connections) do

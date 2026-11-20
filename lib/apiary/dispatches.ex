@@ -134,10 +134,11 @@ defmodule Apiary.Dispatches do
   #      read `FOR SHARE`, with its active keys: a choice that leads to no gateway,
   #      direct among them, is `{:error, :no_gateway}`
   #      (`Apiary.Dispatches.Handover.gateway/1`);
-  #   5. the slots due freed (`Apiary.Dispatches.Slots.free/3`), which inserts the missing
-  #      environment records of the collections held at 3 with no live prebuild of their
-  #      ref for the pool, once it has locked the records of the lapsed prebuilds and
-  #      before it locks a run (`Apiary.Environments.make_records/2`), then a prebuild of
+  #   5. the slots due freed (`Apiary.Dispatches.Slots.free/3`), which, once it has
+  #      locked the records of the lapsed prebuilds, their runs and their dispatches,
+  #      locks the run counters and inserts the missing environment records of the
+  #      collections held at 3 with no live prebuild of their ref for the pool
+  #      (`Apiary.Environments.make_records/2`), then a prebuild of
   #      each collection held at 3 queued for the pool, where none is live yet
   #      (`Apiary.Environments.queue_builds/2`), then the pool's limit counted: its held
   #      slots and its live runs that were not dispatched; at the limit, `{:ok, :none}`;

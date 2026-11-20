@@ -46,11 +46,11 @@ defmodule Apiary.Environments do
   # record then exists). So a key change while runs wait is
   # built by the next claim of each pool, and the claim ends a waiting prebuild of the old ref
   # `superseded` when it takes it. A listing's part holds its connection `FOR UPDATE`, then
-  # its collections `FOR UPDATE`, to change their `environment_ref`: the part and the claim
-  # take turns at the connection, and whichever comes second waits there holding no row the
-  # first needs. The instance's pool (`workspace_id` nil) does the same for the runs of
-  # every workspace it serves, those with no pool in use, and its prebuilds and records
-  # are in their collection's workspace.
+  # its collections `FOR NO KEY UPDATE`, to change their `environment_ref`: the part and
+  # the claim take turns at the connection, and whichever comes second waits there holding
+  # no row the first needs. The instance's pool (`workspace_id` nil) does the same for the
+  # runs of every workspace it serves, those with no pool in use, and its prebuilds and
+  # records are in their collection's workspace.
   # The claim locks no existing record for the build it queues: its check of the live
   # prebuilds and the pool's row, which a free of lapsed leases of the pool also holds,
   # keep it from queuing beside one that waits again; every other path that queues a
