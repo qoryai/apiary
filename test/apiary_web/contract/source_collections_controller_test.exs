@@ -356,7 +356,7 @@ defmodule ApiaryWeb.Contract.SourceCollectionsControllerTest do
       body = fresh("sources-disconnect/code-host.json", ctx)
 
       for bad <- [
-            fresh("invalid/sources-disconnect-with-reason.json", ctx),
+            fresh("closed/sources-disconnect-with-reason.json", ctx),
             fresh("invalid/sources-disconnect-without-connection-id.json", ctx),
             Map.delete(body, "connection_id"),
             Map.put(body, "connection_id", nil),

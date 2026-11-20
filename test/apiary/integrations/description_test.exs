@@ -40,11 +40,20 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 153
+      assert length(names) == 140
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name
       end
+    end
+
+    # The schema leaves an undefined member open, as the contract's reader ignores it: only
+    # a closed copy of the schema, which the integrations' own tests use, refuses these.
+    test "a fixture that only a closed copy of the schema refuses is read" do
+      names = fixture_names("closed/*.json")
+      assert length(names) == 13
+
+      for name <- names, do: assert({:ok, %Description{}} = parse_fixture(name), name)
     end
 
     test "a fixture past a bound is refused before the schema is applied" do
@@ -59,7 +68,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "a source role is refused where the schema refuses its shape" do
       names = fixture_names("invalid/description-source-*.json")
-      assert length(names) == 49
+      assert length(names) == 45
 
       for {name, kind, location} <- [
             {"arabic-letter-mark", :pattern, "#/roles/source/access"},
@@ -71,7 +80,6 @@ defmodule Apiary.Integrations.DescriptionTest do
             {"line-too-long", :maxLength, "#/roles/source/access"},
             {"program-upper-case", :pattern, "#/roles/source/program"},
             {"setup-no-help", :required, "#/roles/source/setup"},
-            {"undefined-member", :additionalProperties, "#/roles/source"},
             {"zero-width-space", :pattern, "#/roles/source/description"},
             {"item-noun-33-characters", :maxLength, "#/roles/source/item_noun/one"},
             {"item-noun-double-space", :pattern, "#/roles/source/item_noun/one"},
@@ -79,7 +87,6 @@ defmodule Apiary.Integrations.DescriptionTest do
             {"item-noun-leading-hyphen", :pattern, "#/roles/source/item_noun/one"},
             {"item-noun-no-other", :required, "#/roles/source/item_noun"},
             {"item-noun-non-ascii", :pattern, "#/roles/source/item_noun/one"},
-            {"item-noun-undefined-member", :additionalProperties, "#/roles/source/item_noun"},
             {"item-noun-upper-case", :pattern, "#/roles/source/item_noun/one"},
             {"item-noun-work-item", :not, "#/roles/source/item_noun/one"},
             {"item-noun-work-items-hyphen", :not, "#/roles/source/item_noun/other"},
@@ -91,8 +98,6 @@ defmodule Apiary.Integrations.DescriptionTest do
             {"collection-noun-leading-hyphen", :pattern, "#/roles/source/collection_noun/one"},
             {"collection-noun-no-other", :required, "#/roles/source/collection_noun"},
             {"collection-noun-non-ascii", :pattern, "#/roles/source/collection_noun/one"},
-            {"collection-noun-undefined-member", :additionalProperties,
-             "#/roles/source/collection_noun"},
             {"collection-noun-upper-case", :pattern, "#/roles/source/collection_noun/one"},
             {"collection-noun-work-item", :not, "#/roles/source/collection_noun/one"},
             {"collection-noun-work-items-hyphen", :not, "#/roles/source/collection_noun/other"},
@@ -101,7 +106,6 @@ defmodule Apiary.Integrations.DescriptionTest do
             {"guide-no-steps", :required, "#/roles/source/guide/connect"},
             {"guide-steps-11", :maxItems, "#/roles/source/guide/connect/steps"},
             {"guide-steps-empty", :minItems, "#/roles/source/guide/connect/steps"},
-            {"guide-undefined-member", :additionalProperties, "#/roles/source/guide/setup"},
             {"comments-false", :const, "#/roles/source/comments"},
             {"targets-false", :const, "#/roles/source/targets"},
             {"targets-string", :const, "#/roles/source/targets"}
@@ -299,17 +303,14 @@ defmodule Apiary.Integrations.DescriptionTest do
     end
   end
 
-  # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`,
-  # and at the commit in `test/fixtures/contract/integration/v1/.contract-ref`, by their
-  # SHA-256 there. `definitions.schema.json` is the bytes of the second commit in both
-  # places, as `.integration-contract-ref` explains.
-  @integrations_ref "805a7bdb09a16441b8275857e9b50cdfe8227e2d"
-  @contract_ref "e0d7be154b18fac6df3b637c80486ac1102ce707"
+  # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
+  # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
+  @integrations_ref "9a1e64ecaf040c0e4efe3041cd55ebe22d0853e1"
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
-      "972bf687e27cdc33da52f74c33d4184426ba1f818edb03108b295de470ed5240",
+      "585a039c29474a322dbee07684634839ea0e9a7a85cf14a78b3daf68981fdbd1",
     "priv/contract/integration/definitions.schema.json" =>
-      "1b3988f36e654b599d9ab873dde6b6f8e1a23bea20c3f8fe44973a656b4c1e4e",
+      "7a56015091697255c423ec2e9aad54e6aaeb315e7653e49dda604220edddb2aa",
     "priv/contract/integration/descriptions/anthropic.json" =>
       "c2dd98613aa6adf530e7a8c92b63dfc4bd7aabb9d20635630205492c3cbe9f3f",
     "priv/contract/integration/descriptions/claude-subscription.json" =>
@@ -319,19 +320,21 @@ defmodule Apiary.Integrations.DescriptionTest do
     "priv/contract/integration/descriptions/litellm.json" =>
       "8eb1c9dfec32169cefd9a4a66059696633883eb7d167b342fec4dc75150f8e00",
     "priv/contract/integration/descriptions/openai-subscription.json" =>
-      "c09e9e41b23359a86a241c4e462d3d67e43f325ab7eec6fae275d788dbd2af47",
+      "0bd977a294b8be3fc724a294eeb2bc74701864dc1f397f8d690d88364d230be1",
     "priv/contract/integration/descriptions/openai.json" =>
       "a6071435877a64d75384b8f5aae94a484ae3f22b0c250bc78e351fc67feb5147",
     "priv/contract/integration/descriptions/openrouter.json" =>
       "7f6c61e897edb6ff32cd519e33a49e821398fd27f4a6069fac5fd8499b86758f",
     "test/fixtures/contract/integration/v1/changes-failed.schema.json" =>
-      "ae0fa8dfea7bfe6c8dd45deac427471a7d5a8b1a22058db2f990ddf480f0ea57",
+      "08ef050a381dc73db65a0c5fa844a44174ad2d699956f4cd68f75efc9745efb7",
     "test/fixtures/contract/integration/v1/changes.schema.json" =>
-      "622721b4f702f7a1959f8cc541da70444d2556aa7e032310c9bfa47cb7083ee6",
+      "c56fa9aae6a93c5b7ca602740f73e16cac26dc9076c6579aec04eeb2ff98fd94",
+    "test/fixtures/contract/integration/v1/description.schema.json" =>
+      "585a039c29474a322dbee07684634839ea0e9a7a85cf14a78b3daf68981fdbd1",
     "test/fixtures/contract/integration/v1/definitions.schema.json" =>
-      "1b3988f36e654b599d9ab873dde6b6f8e1a23bea20c3f8fe44973a656b4c1e4e",
+      "7a56015091697255c423ec2e9aad54e6aaeb315e7653e49dda604220edddb2aa",
     "test/fixtures/contract/integration/v1/refusal.schema.json" =>
-      "11f080fb999c58eea81fce16d3a1c261a3d7eea02aab60458eecd26360622a43"
+      "ddde39f1b59919e5f3415b09a0e8b68ea279f7643d3cfdfbe5ae82d5130c6612"
   }
 
   @root Path.expand("../../..", __DIR__)
@@ -352,7 +355,7 @@ defmodule Apiary.Integrations.DescriptionTest do
       assert ref == [@integrations_ref]
 
       assert File.read!(Path.join(@root, "test/fixtures/contract/integration/v1/.contract-ref")) ==
-               @contract_ref <> "\n"
+               @integrations_ref <> "\n"
 
       vendored =
         for dir <- ["priv/contract/integration", "test/fixtures/contract/integration/v1"],
@@ -389,9 +392,9 @@ defmodule Apiary.Integrations.DescriptionTest do
       end
     end
 
-    test "is refused with a role member the apis replaced" do
-      assert {:error, {:description_invalid, [{:schema, _}]}} =
-               parse_fixture("invalid/description-model-provider-role-key-variables.json")
+    test "reads a role member the apis replaced as an undefined member, and ignores it" do
+      assert {:ok, %Description{}} =
+               parse_fixture("closed/description-model-provider-role-key-variables.json")
 
       anthropic = vendored_description("anthropic")
 
@@ -402,7 +405,7 @@ defmodule Apiary.Integrations.DescriptionTest do
             {"hosts", ["api.anthropic.com"]},
             {"auth", %{"scheme" => "bearer"}}
           ] do
-        assert {:error, {:description_invalid, [{:schema, _}]}} =
+        assert {:ok, %Description{}} =
                  anthropic
                  |> put_in(["roles", "model_provider", member], value)
                  |> encode()
@@ -479,7 +482,7 @@ defmodule Apiary.Integrations.DescriptionTest do
       end
     end
 
-    test "is refused with a role that has a program, or with a program member" do
+    test "is refused with a source role on a data description, and ignores a program member" do
       assert {:error, {:description_invalid, [{:schema, _}]}} =
                parse_fixture("invalid/description-data-source.json")
 
@@ -492,7 +495,7 @@ defmodule Apiary.Integrations.DescriptionTest do
                |> encode()
                |> Description.parse()
 
-      assert {:error, {:description_invalid, [{:schema, _}]}} =
+      assert {:ok, %Description{}} =
                anthropic
                |> Map.put("program", "qory-anthropic")
                |> encode()
@@ -563,17 +566,16 @@ defmodule Apiary.Integrations.DescriptionTest do
       assert tracker.secrets == [%{name: "api_key", title: "API key"}]
     end
 
-    test "is refused with a publisher, or any other member the contract does not have" do
-      assert {:error, {:description_invalid, [{:schema, _}]}} =
+    test "ignores a publisher, or any other member the contract does not have" do
+      assert {:ok, %Description{}} =
                parse(github_description(%{"publisher" => %{"name" => "Qory"}}))
 
-      assert {:error, {:description_invalid, [{:schema, _}]}} =
-               parse(github_description(%{"ways" => ["credential"]}))
+      assert {:ok, %Description{}} = parse(github_description(%{"ways" => ["credential"]}))
     end
 
-    test "is refused when its credential role lists settings or requires any" do
+    test "ignores a member of its credential role that the contract does not have" do
       for {key, value} <- [{"settings", ["app_id"]}, {"required", ["app_id"]}] do
-        assert {:error, {:description_invalid, [{:schema, _}]}} =
+        assert {:ok, %Description{}} =
                  parse(put_in(github_description(), ["roles", "credential", key], value))
       end
     end

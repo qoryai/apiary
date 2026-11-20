@@ -99,7 +99,7 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
       # answer.
       paths =
         Enum.reject(
-          fixtures("invalid/changes-*.json"),
+          fixtures("{closed,invalid}/changes-*.json") ++ ["changes/unknown-kind.json"],
           &(String.starts_with?(&1, "invalid/changes-failed-") or
               &1 == "invalid/changes-without-revision.json")
         )

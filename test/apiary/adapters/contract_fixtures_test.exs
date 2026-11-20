@@ -161,11 +161,13 @@ defmodule Apiary.Adapters.ContractFixturesTest do
 
     names =
       @fixtures
-      |> Path.join("adapter/invalid/setup-pass-*.json")
+      |> Path.join("adapter/{closed,invalid}/setup-pass-*.json")
       |> Path.wildcard()
       |> Enum.map(&Path.relative_to(&1, Path.join(@fixtures, "adapter")))
+      |> Enum.sort()
 
     assert names == [
+             "closed/setup-pass-undefined-member.json",
              "invalid/setup-pass-adapter-id-connection-id.json",
              "invalid/setup-pass-organisation-slug-41-characters.json",
              "invalid/setup-pass-organisation-slug-empty.json",
@@ -173,7 +175,6 @@ defmodule Apiary.Adapters.ContractFixturesTest do
              "invalid/setup-pass-organisation-slug-trailing-hyphen.json",
              "invalid/setup-pass-organisation-slug-underscore.json",
              "invalid/setup-pass-organisation-slug-upper-case.json",
-             "invalid/setup-pass-undefined-member.json",
              "invalid/setup-pass-version-2.json",
              "invalid/setup-pass-without-nonce.json"
            ]

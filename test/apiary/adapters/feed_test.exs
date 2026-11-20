@@ -31,9 +31,12 @@ defmodule Apiary.Adapters.FeedTest do
   # The contract's refused answers whose entries an answer never has: every one but the
   # one without `revision`, whose entries are good, and the failure reports, which are no
   # answer.
+  # `changes/unknown-kind.json` and `closed/changes-watch-with-ref.json` are accepted by the
+  # contract's open schema, which a reader of the feed ignores an undefined member by; this
+  # writer refuses their entries, which it takes no kind or member for.
   defp refused_entries do
     Enum.reject(
-      fixtures("invalid/changes-*.json"),
+      fixtures("{closed,invalid}/changes-*.json") ++ ["changes/unknown-kind.json"],
       &(String.starts_with?(&1, "invalid/changes-failed-") or
           &1 == "invalid/changes-without-revision.json")
     )
@@ -64,7 +67,7 @@ defmodule Apiary.Adapters.FeedTest do
     test "every change of changes/ is appended and read back as written, in order", %{
       adapter: adapter
     } do
-      paths = fixtures("changes/*.json")
+      paths = fixtures("changes/*.json") -- ["changes/unknown-kind.json"]
 
       assert paths ==
                ~w(changes/comment.json changes/empty.json changes/feed-loopback.json

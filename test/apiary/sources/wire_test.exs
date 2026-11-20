@@ -199,7 +199,7 @@ defmodule Apiary.Sources.WireTest do
     test "every invalid body of items and of comments is refused" do
       items = fixtures("invalid/source-items-*.json")
       comments = fixtures("invalid/source-item-comments-*.json")
-      assert length(items) == 22
+      assert length(items) == 21
       assert length(comments) == 3
       assert "invalid/source-item-comments-comment-id-upper-case.json" in comments
 
@@ -217,6 +217,12 @@ defmodule Apiary.Sources.WireTest do
         assert Wire.comments(fixture(path)) == :error, path
         assert Wire.comments(json(path)) == :error, path
       end
+
+      # Only a closed copy of the contract's schema refuses this body, as the contract's
+      # reader ignores an undefined member. This reader still refuses it.
+      path = "closed/source-items-undefined-member.json"
+      assert Wire.items(fixture(path)) == :error, path
+      assert Wire.items(json(path)) == :error, path
     end
   end
 

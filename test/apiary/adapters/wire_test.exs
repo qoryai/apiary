@@ -105,10 +105,6 @@ defmodule Apiary.Adapters.WireTest do
                "invalid/adapter-setup-url-state-first.json",
                "invalid/adapter-setup-url-state-percent-encoded.json",
                "invalid/adapter-setup-url-state.json",
-               # Each refused for a submit_module, an undefined member: "submit_module" below.
-               "invalid/adapter-submit-module-exclude.json",
-               "invalid/adapter-submit-module-ref-branch.json",
-               "invalid/adapter-submit-module-ref-short.json",
                "invalid/adapter-sync-without-sends-changes.json",
                "invalid/adapter-without-description.json",
                "refused-by-control-plane/adapter-integer-with-fraction.json",
@@ -854,20 +850,6 @@ defmodule Apiary.Adapters.WireTest do
                inspect(module)
       end
     end
-
-    test "each invalid fixture is refused for its submit_module: without it, it is accepted" do
-      for name <- [
-            "adapter-submit-module-exclude.json",
-            "adapter-submit-module-ref-branch.json",
-            "adapter-submit-module-ref-short.json"
-          ] do
-        body = Jason.decode!(fixture("invalid/" <> name))
-
-        assert declaration(body) == :error, name
-        assert {:ok, declaration} = declaration(Map.delete(body, "submit_module")), name
-        refute Map.has_key?(declaration, :submit_module), name
-      end
-    end
   end
 
   describe "sync" do
@@ -977,7 +959,7 @@ defmodule Apiary.Adapters.WireTest do
 
       assert listing("invalid/source-collections-without-grant-ref.json") == :error
 
-      assert source_disconnect("invalid/sources-disconnect-with-reason.json") == :error
+      assert source_disconnect("closed/sources-disconnect-with-reason.json") == :error
       assert source_disconnect("invalid/sources-disconnect-without-connection-id.json") == :error
       assert Wire.listing([]) == :error
       assert Wire.source_disconnect(nil) == :error
@@ -1186,7 +1168,7 @@ defmodule Apiary.Adapters.WireTest do
                 }}
 
       assert grant_end("invalid/grant-end-without-grant-ref.json") == :error
-      assert grant_end("invalid/grant-end-with-pass-nonce.json") == :error
+      assert grant_end("closed/grant-end-with-pass-nonce.json") == :error
       assert Wire.grant_end(nil) == :error
     end
 

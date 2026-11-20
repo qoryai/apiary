@@ -2875,6 +2875,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - `observability` is always on: `QORY_FEATURES` no longer turns it off.
 - A feature that a later release adds starts at its default, even on an instance whose
   features were saved.
+- The integrations contract is vendored at integrations `9a1e64e`. A description, an
+  adapter's declaration and the other documents of that contract are read as the contract
+  says: a member that the schema does not define is ignored, not refused. A description with
+  a `publisher`, or a data description with a `program`, is now read, and the member is not
+  kept. The description of the `openai-subscription` model provider has the text of that
+  commit. The run, explore and diagnostics contracts stay at `e0d7be1`.
 
 ### Removed
 

@@ -3,8 +3,8 @@
 # invalid/ and refused by a reader under refused-by-reader/, and under adapter/ the
 # signed connect pass and return and the signed setup pass, with and without the
 # organisation's slug, with their keys and payloads, setup passes refused, the adapter's
-# declarations, accepted and refused, with a setup_url and a submit_module among them,
-# the change feed's
+# declarations, accepted and refused, with a setup_url among them, those that only a closed copy of the schema
+# refuses under closed/, the change feed's
 # answers, accepted and refused, the listings of
 # collections, each collection with the grant_ref of the grant that covers it, and a
 # disconnect of one, accepted and refused, the bodies of a collection's items and of an
@@ -23,15 +23,9 @@
 # refers to are vendored under priv/contract/integration/ from this commit too, and the
 # data descriptions of model providers, descriptions/*.json at the repository's root,
 # under priv/contract/integration/descriptions/. A description of a model provider has
-# `vendor`, its APIs have `runtimes`, `paths` and `oauth_refresh`, and its role has
-# `key_lifetime_days`, each optional. Qory Apiary holds the bounds of a
+# `vendor`, its APIs have `runtimes`, `paths`, `oauth_refresh` and `oauth_device`, and
+# its role has `key_lifetime_days`, each optional. Qory Apiary holds the bounds of a
 # description: the 256 KiB of a fetched description.json when it is fetched, and every
 # bound, those 256 KiB included, in Apiary.Integrations.Description.parse/1, which an
 # adapter's start-up gives the description's value as its body carries it.
-#
-# Twelve fixtures under adapter/, of source collections and items, and
-# priv/contract/integration/definitions.schema.json are the bytes of
-# e0d7be154b18fac6df3b637c80486ac1102ce707, which writes a target as
-# {collection, address?}: the ref of one of the adapter's collections and, when the place
-# has one, its system and path. Every other file is the bytes of this commit.
-805a7bdb09a16441b8275857e9b50cdfe8227e2d
+9a1e64ecaf040c0e4efe3041cd55ebe22d0853e1

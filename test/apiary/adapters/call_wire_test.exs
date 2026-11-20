@@ -133,8 +133,7 @@ defmodule Apiary.Adapters.CallWireTest do
       |> Path.wildcard()
       |> Enum.map(&Path.basename/1)
 
-    assert length(names) == 47
-    assert "read-public-with-grant-ref.json" in names
+    assert length(names) == 46
 
     for name <- names do
       body = fixture("invalid/" <> name)
@@ -144,6 +143,13 @@ defmodule Apiary.Adapters.CallWireTest do
         do: assert(answer(path, body) == :error, name),
         else: refute(CallWire.call?(path, body), name)
     end
+  end
+
+  # The contract's reader ignores a member that it does not define, so this fixture is under
+  # `closed/`: only a closed copy of the schema refuses it. Apiary still refuses the member.
+  test "a public read with a grant_ref is refused" do
+    name = "read-public-with-grant-ref.json"
+    refute CallWire.call?(call_path(name), fixture("closed/" <> name))
   end
 
   describe "a run credential's answer" do
