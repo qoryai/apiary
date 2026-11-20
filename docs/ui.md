@@ -472,8 +472,8 @@ replaces the navigation it is in.
   (`…/keys/:key_id/edit`, the row id of the key's value; a value ID is not found),
   `ApiaryWeb.ProviderLive.Key`, are pages (A form is a page, below), the breadcrumb ending
   with the provider's name and the act, and Edit key titled with the key's identity line.
-  The form has no Name: Qory Apiary sets the value ID `key-<n>`, a number it did not give the provider before, and no page shows it. On
-  Add key the form has Key, a password field that is
+  The form has no Name: Qory Apiary sets the value ID `key-<n>`, a number it did not give
+  the provider before, and no page shows it. On Add key the form has Key, a password field that is
   empty after every save, with "Qory Apiary stores the key encrypted, and nobody can
   view it again."; on Edit key, New value, an optional password field that is empty
   after every save, with "Leave it empty to keep the value."; then Resets, Pause for and,
