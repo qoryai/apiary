@@ -731,7 +731,7 @@ defmodule ApiaryWeb.StagesLive.Words do
 
       :access ->
         gettext(
-          "Give every workflow in %{stage} the same access. The workflows of %{stage} run one after the other on one machine.",
+          "Give the workflows in %{stage} one access level, or only read and write. They run one after the other on one machine.",
           stage: stage
         )
 

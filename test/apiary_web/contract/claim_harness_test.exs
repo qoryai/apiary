@@ -621,7 +621,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
                )
 
       assert text ==
-               "The run stopped: it did not start, because the workflows of Build would run with different access: implement-changes runs with write-no-push access, because its harness sets write-no-push."
+               "The run stopped: it did not start, because the workflows of Build mix access levels that cannot share one run: implement-changes runs with write-no-push access, because its harness sets write-no-push."
 
       assert fix ==
                "Move implement-changes to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access, then run the round again."

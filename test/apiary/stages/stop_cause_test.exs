@@ -244,7 +244,7 @@ defmodule Apiary.Stages.StopCauseTest do
   test "a shared stage whose access no longer differs names no workflow, and runs the round again",
        %{work_item: work_item} do
     assert text(:shared_access_differs, work_item) ==
-             "The run did not start, because the workflows of the stage would run with different access.\n" <>
+             "The run did not start, because the workflows of the stage mix access levels that cannot share one run.\n" <>
                "Run the round again."
   end
 

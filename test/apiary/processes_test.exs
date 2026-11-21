@@ -1104,7 +1104,7 @@ defmodule Apiary.ProcessesTest do
       {:error, errors} = Processes.validate(document)
 
       assert Enum.map(errors, &ApiaryWeb.StagesLive.Words.refusal(&1, document)) == [
-               "Give every workflow in Build the same access. The workflows of Build run one after the other on one machine.",
+               "Give the workflows in Build one access level, or only read and write. They run one after the other on one machine.",
                "Give every workflow in Build the same machine type. The workflows of Build run one after the other on one machine."
              ]
     end

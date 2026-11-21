@@ -7337,7 +7337,7 @@ defmodule ApiaryWeb.WorkItemComponents do
        do:
          {"hero-exclamation-triangle-micro", gettext("The run did not start."),
           gettext(
-            "Move %{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it %{other} access, then run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access.",
+            "Move %{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it %{other} access, then run the round again. The harness sets one workflow to an access that cannot share one run with the others.",
             workflow: workflow,
             other: other
           )}
@@ -7831,7 +7831,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp unstarted_words(:shared_access_differs),
     do:
       gettext(
-        "Run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."
+        "Run the round again. The harness sets access levels that cannot share one run: only read and write can."
       )
 
   defp unstarted_words(:model_choice_missing),
