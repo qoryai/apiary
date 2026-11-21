@@ -50,6 +50,11 @@ defmodule Apiary.Harnesses.WalkTest do
   setup do
     scope = scope_fixture()
     run = adapter()
+    # The target's adapter brings in targets, as a code host's description says.
+    {1, _} =
+      Repo.update_all(from(n in Node, where: n.id == ^run.adapter.id), set: [targets: true])
+
+    run = %{run | adapter: Repo.get!(Node, run.adapter.id)}
     {connection, _nonce} = connection_fixture(scope, run.adapter, :listed)
     grant = grant(scope.organisation.id, run.adapter, connection, "G_run")
     collection = collection(scope, run.adapter, connection)
@@ -2443,17 +2448,9 @@ defmodule Apiary.Harnesses.WalkTest do
   ## The job
 
   describe "the job" do
-    # A queued run of a fresh work item of the walk's target: the collection `R_app` of
-    # the adapter `ctx.run`, which the walk reads the target's files from.
     defp queued(ctx) do
       work_item =
-        work_item_fixture(ctx.scope,
-          connection_id: ctx.connection.id,
-          external_ref: "acme/app##{System.unique_integer([:positive])}",
-          target_system: "code.example.com",
-          target_path: "acme/app",
-          target_collection_external_ref: "R_app"
-        )
+        work_item_fixture(ctx.scope, target_system: "code.example.com", target_path: "acme/app")
 
       {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
       run

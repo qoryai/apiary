@@ -519,23 +519,25 @@ defmodule Apiary.Harnesses.Walk do
 
   defp target(_input), do: {nil, :absent}
 
-  # The live collection of `workspace` of `target`, by its adapter and collection ref, of
-  # a connected connection, and its adapter, which has a `call_url`; the first by when it
+  # The live collection of `workspace` at `target`'s address, of an adapter that brings in
+  # targets, as the work credential takes it (`Apiary.Runs.RunCredentials`), of a
+  # connected connection, and its adapter, which has a `call_url`; the first by when it
   # was made. Nil for none, and for a target without an address, which has no file to
   # read.
   defp collection(_workspace, %{system: nil, path: nil}), do: nil
 
-  defp collection(%Workspace{id: workspace_id}, %{adapter_id: adapter_id} = target) do
+  defp collection(%Workspace{} = workspace, %{system: system, path: path}) do
     Repo.one(
       from c in Collection,
         join: n in Connection,
         on: n.id == c.connection_id,
         join: a in Node,
         on: a.id == c.adapter_id,
-        where: c.workspace_id == ^workspace_id and is_nil(c.ended_at),
         where:
-          c.adapter_id == ^adapter_id and
-            c.target_collection_external_ref == ^target.collection_external_ref,
+          c.organisation_id == ^workspace.organisation_id and
+            c.workspace_id == ^workspace.id and c.target_system == ^system and
+            c.target_path == ^path and a.targets == true,
+        where: is_nil(c.ended_at),
         where: n.state == :connected and is_nil(a.deleted_at) and not is_nil(a.call_url),
         order_by: [asc: c.inserted_at, asc: c.id],
         limit: 1,
