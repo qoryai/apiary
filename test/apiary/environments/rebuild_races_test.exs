@@ -8,8 +8,9 @@ defmodule Apiary.Environments.RebuildRacesTest do
   #
   # The rule under test: a Rebuild holds the collections' connections, then the
   # collections, before their environment records, in the order a part and an assign keep
-  # (`Apiary.Dispatches.Slots`), so a part that holds its connection and its collections
-  # `FOR UPDATE` and then changes them, and a Rebuild, take turns, and neither deadlocks.
+  # (`Apiary.Dispatches.Slots`), so a part that holds its connection `FOR UPDATE` and its
+  # collections `FOR NO KEY UPDATE` and then changes them, and a Rebuild, take turns, and
+  # neither deadlocks.
   use ExUnit.Case, async: false
 
   @before_compile Apiary.TestSetup
@@ -111,25 +112,20 @@ defmodule Apiary.Environments.RebuildRacesTest do
 
   test "a part holds the collection, a Rebuild waits for it, then the part commits: neither deadlocks",
        ctx do
-    %{id: id} = ctx.collection
+    connection = Repo.get!(Connection, ctx.collection.connection_id)
+    key_scope = listing_key!(connection)
 
-    # The part holds its collection `FOR UPDATE` and changes its `environment_ref`.
-    {part, part_backend} =
-      hold(fn ->
-        %Collection{} = Repo.one!(from c in Collection, where: c.id == ^id, lock: "FOR UPDATE")
-
-        {1, _rows} =
-          Repo.update_all(from(c in Collection, where: c.id == ^id),
-            set: [environment_ref: "env-2"]
-          )
-
-        :ok
-      end)
+    # A listing's part, held open once it wrote the collection's `environment_ref`: it
+    # holds its connection `FOR UPDATE`, then the collection `FOR NO KEY UPDATE`, by ref
+    # (`Apiary.Adapters.Collections.post_listing/2`).
+    {part, part_backend} = hold(listing_part(key_scope, connection, [ctx.collection], "env-2"))
+    assert part.result == {:ok, :accepted}
 
     rebuild = start(fn -> Environments.rebuild(ctx.scope, ctx.target) end)
 
-    # The Rebuild waits on the part.
+    # The Rebuild waits on the part, at the part's connection.
     await_waited(rebuild.backend, part_backend)
+    assert statement(rebuild.backend) =~ ~s(FROM "adapter_connections")
     commit(part)
 
     # The Rebuild read the collection as the part left it, and queued its prebuild of
@@ -168,46 +164,24 @@ defmodule Apiary.Environments.RebuildRacesTest do
         Repo.update_all(from(c in Collection, where: c.id == ^id), set: [external_ref: ref])
     end
 
-    connection_id = first.connection_id
+    connection = Repo.get!(Connection, first.connection_id)
+    key_scope = listing_key!(connection)
+    named = Repo.all(from c in Collection, where: c.id in ^[low, high])
 
-    hold_refs = fn refs ->
-      Repo.all(
-        from c in Collection,
-          where: c.connection_id == ^connection_id and is_nil(c.ended_at),
-          where: c.external_ref in ^refs,
-          order_by: c.external_ref,
-          lock: "FOR UPDATE",
-          select: c.id
-      )
-    end
-
-    # The part holds its connection `FOR UPDATE`, then, by ref, the collection `Y`, the
-    # higher id.
-    {part, part_backend} =
-      hold(fn ->
-        %Connection{} =
-          Repo.one!(from k in Connection, where: k.id == ^connection_id, lock: "FOR UPDATE")
-
-        [^high] = hold_refs.(["Y"])
-        :ok
-      end)
+    # A listing's part of both, held open once it wrote their `environment_ref`: it holds
+    # its connection `FOR UPDATE`, then, by ref, `Y`, the higher id, and `Z`, in one
+    # statement (`Apiary.Adapters.Collections.post_listing/2`). The part cannot be
+    # stopped between `Y` and `Z`, so it is held once it holds both.
+    {part, part_backend} = hold(listing_part(key_scope, connection, named, "env-2"))
+    assert part.result == {:ok, :accepted}
 
     rebuild = start(fn -> Environments.rebuild(scope, ctx.target) end)
 
-    # The Rebuild waits on the part. Had it held the lower id without the connection, the
-    # part would now wait on it for `Z`, and the Rebuild, which has waited longer, would
-    # be refused (`deadlock_detected`).
+    # The Rebuild waits on the part. Had it held the lower id without the connection, it
+    # could hold `Z` while a part held `Y` and waited on `Z`, and Postgres would roll back
+    # one of the two transactions with `deadlock_detected`.
     await_waited(rebuild.backend, part_backend)
-
-    {2, _rows} =
-      continue(part, fn ->
-        [^low] = hold_refs.(["Z"])
-
-        Repo.update_all(from(c in Collection, where: c.id in ^[low, high]),
-          set: [environment_ref: "env-2"]
-        )
-      end)
-
+    assert statement(rebuild.backend) =~ ~s(FROM "adapter_connections")
     commit(part)
 
     # The Rebuild read both collections as the part left them, and queued their prebuilds
@@ -216,5 +190,42 @@ defmodule Apiary.Environments.RebuildRacesTest do
 
     for collection <- [first, second],
         do: assert(waiting(collection) == [{pool.id, "env-2"}])
+  end
+
+  test "a registration on the second pool holds its row, then takes a run number, beside a Rebuild of both pools: neither deadlocks",
+       ctx do
+    second = pool_fixture(ctx.scope, name: "linux-pool")
+    [first, last] = Enum.sort_by([ctx.pool, second], & &1.id)
+
+    {1, _rows} =
+      Repo.update_all(from(n in Node, where: n.id == ^last.id), set: [instance_limit: 5])
+
+    last = Repo.get!(Node, last.id)
+
+    # A registration on `last`: the instance limit's check holds the pool's row
+    # `FOR UPDATE` (`Apiary.Nodes.check_instance_limit/3`), and the run's number comes
+    # next.
+    {registration, registration_backend} =
+      hold(fn -> Apiary.Nodes.check_instance_limit(last, "i-1", DateTime.utc_now()) end)
+
+    rebuild =
+      start(fn ->
+        try do
+          Environments.rebuild(ctx.scope, ctx.target)
+        rescue
+          error -> {:raised, Exception.message(error)}
+        end
+      end)
+
+    # The Rebuild waits at `last`'s row. Had it taken the run counter before that row, the
+    # registration would now wait on it for the counter, and Postgres would abort the
+    # Rebuild, which has waited longer (`deadlock_detected`).
+    await_waited(rebuild.backend, registration_backend)
+    number = continue(registration, fn -> Apiary.Runs.Number.next(ctx.scope.workspace, last) end)
+    commit(registration)
+
+    assert Task.await(rebuild.task, 10_000) == {:ok, 2}
+    assert is_integer(number)
+    assert waiting(ctx.collection) == [{first.id, "env-1"}, {last.id, "env-1"}]
   end
 end

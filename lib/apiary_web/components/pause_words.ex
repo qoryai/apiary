@@ -58,6 +58,24 @@ defmodule ApiaryWeb.PauseWords do
     )
   end
 
+  def line(
+        %{provider: provider, new_key: true, until: %DateTime{} = until, number: number} = pause,
+        path,
+        now
+      )
+      when is_binary(provider) do
+    if DateTime.compare(until, now) == :gt do
+      rich_gettext(
+        "Paused: every key of %{provider} is in cooldown until %{time} or needs a new key. It continues in run %{number}.",
+        provider: {:bdi, ExternalText.line(provider)},
+        time: PreparationComponents.cooldown_time(until, now),
+        number: number(number, path)
+      )
+    else
+      line(%{pause | until: nil}, path, now)
+    end
+  end
+
   def line(%{provider: provider, until: %DateTime{} = until, number: number} = pause, path, now) do
     if DateTime.compare(until, now) == :gt do
       rich_gettext(

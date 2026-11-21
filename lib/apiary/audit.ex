@@ -42,7 +42,14 @@ defmodule Apiary.Audit do
   worker. **Before and after** are the changed fields (`changed/3`), and `details` what
   else the entry says, as JSON maps. They never hold a secret, and never a person's name
   or email address: a person is named by their user id, and a page looks the account up
-  when it shows them. The edition may add to `details` as each entry is written
+  when it shows them. Two actions have one exception, `details.identity`:
+  `provider.write` (a change of a model provider's keys) and `model_key.refresh` (a refresh
+  of a ChatGPT sign-in) keep the identity line of the key as it was when the entry was
+  written (`Apiary.ModelKeys.Identity`), so that an Activity line keeps its text. The line
+  is the provider's name, and after a middle dot the email of the ChatGPT account of a
+  sign-in, or the last 4 characters of a pasted key or of the account id, never the key or
+  a token. The email is the vendor account's, not an account of Qory Apiary; the entry
+  keeps it as long as it keeps the rest. The edition may add to `details` as each entry is written
   (`c:Apiary.Edition.audit_details/3`), such as how the actor reached the organisation,
   which the entry keeps after that way is gone.
 

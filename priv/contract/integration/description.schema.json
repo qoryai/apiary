@@ -119,8 +119,12 @@
               "description": "true: the source takes comments from the control plane. The control plane writes a comment entry to the change feed (changes.schema.json) for each comment that a person writes in the control plane on a work item taken in from one of the source's items, and the adapter posts the comment on the item. Absent, the source takes no comment from the control plane, so the adapter cannot post comments there: the control plane writes no comment entry for the source, and keeps the comment in the control plane only. An adapter that does not set comments: true never receives a comment entry. A source with items: false has no items, and its description does not have comments.",
               "const": true
             },
+            "submissions": {
+              "description": "true: the source takes submissions from the control plane. The control plane writes a submission entry to the change feed (changes.schema.json) for each submission version that a run stores for a target in one of the source's collections, and the adapter puts the commits' addresses and, where the entry asks for it, a draft on the forge. This applies whatever source the run's work item came from, and also when the work item came from no item at a source. Absent, the source takes no submission from the control plane: the control plane writes no submission entry for the source. An adapter that does not set submissions: true never receives a submission entry. A run's submission goes to the adapter of the run's target collection, and only an adapter with targets: true offers collections as targets, so a source with submissions: true also has targets: true.",
+              "const": true
+            },
             "targets": {
-              "description": "true: the adapter's collections can have a target, a place where a run's changes go (source-collections.schema.json). An adapter with targets handles a run-credential call with purpose work for any of its collections that has a target, under the rules of run-credential.schema.json. This applies whatever source the run's work item came from, and also when the work item came from no item at a source. The control plane offers the collections of an adapter with targets as places for a run's changes. Absent: the control plane does not offer them. In both cases, the control plane accepts the target of each collection in a listing.",
+              "description": "true: the adapter's collections can have a target, a place where a run's changes go (source-collections.schema.json). An adapter with targets handles a run-credential call with purpose work for any of its collections that has a target, under the rules of run-credential.schema.json. This applies whatever source the run's work item came from, and also when the work item came from no item at a source. The control plane offers the collections of an adapter with targets as places for a run's changes, and writes a watch entry (changes.schema.json) only for such an adapter. A submission entry needs submissions: true as well. Absent: the control plane does not offer them. In both cases, the control plane accepts the target of each collection in a listing.",
               "const": true
             },
             "secrets": {
@@ -144,6 +148,7 @@
               "items": {"$ref": "#/$defs/apply"}
             }
           },
+          "dependentRequired": {"submissions": ["targets"]},
           "if": {"required": ["items"]},
           "then": {"not": {"anyOf": [{"required": ["item_noun"]}, {"required": ["comments"]}]}}
         },
@@ -220,7 +225,7 @@
   },
   "$defs": {
     "api": {
-      "description": "One API of a model provider: its format, its endpoint, how the gateway sets the key on a request, the prefixes a key must start with, the runtimes that may use a key, the paths the key is set on, and how the control plane refreshes an OAuth login.",
+      "description": "One API of a model provider: its format, its endpoint, how the gateway sets the key on a request, the prefixes a key must start with, the runtimes that may use a key, the paths the key is set on, how the control plane signs a person in with a device code, when oauth_device is set, and how it refreshes an OAuth login.",
       "type": "object",
       "additionalProperties": false,
       "required": ["format", "endpoint", "auth"],
@@ -276,16 +281,29 @@
           "required": ["url", "client_id"],
           "properties": {
             "url": {"description": "The URL the control plane sends the refresh request to, as $defs/endpoint defines it.", "$ref": "#/$defs/endpoint"},
-            "client_id": {"description": "The OAuth client id of the refresh request: 1 to 128 characters, with no white space.", "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^\\S+$"},
+            "client_id": {"description": "The OAuth client id of the refresh request, and of the device sign-in in oauth_device: 1 to 128 characters, with no white space.", "type": "string", "minLength": 1, "maxLength": 128, "pattern": "^\\S+$"},
             "scope": {"description": "The OAuth scope of the refresh request, such as openid profile email: 1 to 256 characters. Absent, the request has no scope.", "type": "string", "minLength": 1, "maxLength": 256}
+          }
+        },
+        "oauth_device": {
+          "description": "Where the control plane signs in to this API with the OAuth device code flow, so that a person approves the login in a browser on another device or page. The control plane sends a POST with a JSON body that has client_id to usercode_url, shows the person the user code from the response and verification_url, polls poll_url until the person approves, and sends the authorization code and code verifier from that response, with redirect_uri, to the url of oauth_refresh. It is allowed only with oauth_refresh, and it has no client id: the client id is the client_id of oauth_refresh. Absent, the control plane has no sign-in for this API.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["usercode_url", "poll_url", "verification_url", "redirect_uri"],
+          "properties": {
+            "usercode_url": {"description": "The URL the control plane sends the request for a user code to, as $defs/endpoint defines it.", "$ref": "#/$defs/endpoint"},
+            "poll_url": {"description": "The URL the control plane polls until the person approves the login, as $defs/endpoint defines it.", "$ref": "#/$defs/endpoint"},
+            "verification_url": {"description": "The page where the person enters the user code and approves the login, as $defs/endpoint defines it. The control plane shows this URL to the person; it does not send a request to it.", "$ref": "#/$defs/endpoint"},
+            "redirect_uri": {"description": "The redirect URI of the code exchange, as $defs/endpoint defines it. The control plane sends no request to it.", "$ref": "#/$defs/endpoint"}
           }
         }
       },
+      "dependentRequired": {"oauth_device": ["oauth_refresh"]},
       "if": {"required": ["oauth_refresh"]},
       "then": {"properties": {"auth": {"required": ["oauth"]}}}
     },
     "endpoint": {
-      "description": "An https URL, such as a model API's base URL or an OAuth refresh URL, in the grammar of Forager's run-configuration.schema.json: https://, a host, an optional port and path, and no user information, query or fragment, at most 2048 characters. The host is a host as $defs/host defines it, and a host whose last label is a number, all digits or 0x followed by hex digits or none, is an IPv4 address of four decimal parts from 0 to 255, each with no leading zero. A port, when one is written, is a number from 1 to 65535. This schema does not check the host and port rules; conformance checks them.",
+      "description": "An https URL, such as a model API's base URL, an OAuth refresh URL, or a verification page or redirect URI of a device sign-in, in the grammar of Forager's run-configuration.schema.json: https://, a host, an optional port and path, and no user information, query or fragment, at most 2048 characters. The host is a host as $defs/host defines it, and a host whose last label is a number, all digits or 0x followed by hex digits or none, is an IPv4 address of four decimal parts from 0 to 255, each with no leading zero. A port, when one is written, is a number from 1 to 65535. This schema does not check the host and port rules; conformance checks them.",
       "type": "string",
       "maxLength": 2048,
       "pattern": "^https://[^/?#@\\s]+(/[^?#\\s]*)?$"

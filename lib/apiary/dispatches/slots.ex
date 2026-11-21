@@ -89,24 +89,28 @@ defmodule Apiary.Dispatches.Slots do
   # held slots under its pool's row; a slot taken back without that lock counts from the
   # next claim on.
   #
-  # **Locks.** Every path that locks more than one of these takes them in this order (a
-  # free of more than one batch takes the records once, then the rest batch by batch, as
-  # below says), so that no two paths wait on each other:
+  # **Locks.** Every path that locks more than one of these takes them in this order, so
+  # that no two paths wait on each other. A free of more than one batch takes the records
+  # once, then the rest batch by batch (the paragraph on `@batch` describes it).
   #
-  #   1. the collections (a listing's part, by ref, or an assign, by id, `FOR UPDATE`;
-  #      `Apiary.Adapters.Collections`, whose lock order names what each holds before
-  #      them, and the targets each makes after them; a Rebuild holds their connections
-  #      `FOR SHARE`, by id, then them `FOR SHARE`, by id, `Apiary.Environments.rebuild/2`,
-  #      and so do the end of a run whose image was missing,
-  #      `Apiary.Environments.hold_missing/3`, and the end of a prebuild handed over,
-  #      `Apiary.Environments.hold_build/2`; a claim holds the connections and then the
-  #      collections it queues a build of, with the collections of its pool's lapsed
+  #   1. the collections (a listing's part, by ref, or an assign, by id,
+  #      `FOR NO KEY UPDATE`; `Apiary.Adapters.Collections`, whose lock order lists what
+  #      each holds before them, and the targets each makes after them; a Rebuild holds
+  #      their connections `FOR SHARE`, by id, then them `FOR SHARE`, by id,
+  #      `Apiary.Environments.rebuild/2`, and so do the end of a run whose image was
+  #      missing, `Apiary.Environments.hold_missing/3`, and the end of a prebuild handed
+  #      over, `Apiary.Environments.hold_build/2`; a claim holds the connections and then
+  #      the collections it queues a build of, with the collections of its pool's lapsed
   #      prebuilds, `FOR SHARE`, by id, in one statement,
   #      `Apiary.Environments.hold_builds/3`). A path that
   #      holds a work item after them holds it next: the end of a prebuild handed over,
   #      the work items whose runs wait for its build, `FOR KEY SHARE` (`FOR UPDATE` with
   #      the workflow model on), by id; the end of
-  #      a run whose image was missing, its work item `FOR UPDATE`;
+  #      a run whose image was missing, its work item `FOR UPDATE`. A path that writes
+  #      collections holds them `FOR NO KEY UPDATE`, which the `FOR KEY SHARE` of a
+  #      foreign key check on a collection never waits on; a path that deletes a
+  #      collection or changes a key column of it (`id`, `public_id`, `organisation_id`,
+  #      `adapter_id`) holds it `FOR UPDATE`;
   #   2. a node pool's row: a claim takes it `FOR NO KEY UPDATE` (`Apiary.Dispatches`), so
   #      a registration on the pool, which takes it `FOR UPDATE`
   #      (`Apiary.Nodes.check_instance_limit/3`), and another claim take turns with it,
@@ -117,12 +121,12 @@ defmodule Apiary.Dispatches.Slots do
   #      one prebuild (`Apiary.Environments.rebuild/2`), and `free/2` the records of every
   #      prebuild whose dispatch lapsed in its scope, those of every batch, before its
   #      first batch locks a run. A path inserts a missing record only after that
-  #      statement, by collection: a Rebuild's prebuild inserts the record of its pool
-  #      where there is none (`Apiary.Dispatches.queue_prebuild/3`), and a claim's free,
-  #      after its statement and before its first batch, inserts the missing records of
-  #      the collections it queues a build of (`Apiary.Environments.make_records/2`). A
-  #      lock statement never waits on an insert not yet committed, so two such paths
-  #      wait on each other only among their inserts, which both make in one order. The
+  #      statement and after the run counter, 7.: a Rebuild's prebuild inserts the record
+  #      of its pool where there is none (`Apiary.Dispatches.queue_prebuild/3`), and a
+  #      claim's free, after its batches, inserts the missing records of the collections
+  #      it queues a build of (`Apiary.Environments.make_records/3`). A lock statement
+  #      never waits on an insert not yet committed, and two paths that insert records
+  #      wait on each other at the counter, before either inserts one. The
   #      free reads the records before their lock, as a run's collection and pool never
   #      change. A prebuild seen lapsed only after that statement, its dispatch or its
   #      record committed after it, is taken only when its record is
@@ -140,20 +144,46 @@ defmodule Apiary.Dispatches.Slots do
   #      the record's lock, and which a claim writes under the pool's row
   #      (`Apiary.Environments.queue_builds/2`); a claim takes a waiting run
   #      `FOR UPDATE SKIP LOCKED`, which waits on none;
-  #   6. the dispatches.
+  #   6. the dispatches;
+  #   7. the run counters (`run_counters`), each after its workspace's pools
+  #      `FOR KEY SHARE`, by id (`Apiary.Runs.Number.hold/2`), by workspace. A path that
+  #      inserts an environment record or a waiting prebuild takes the counter of its
+  #      workspace before its first such insert: a Rebuild after its records
+  #      (`Apiary.Environments.rebuild/2`), a claim after its free's batches
+  #      (`Apiary.Environments.make_records/3`), and every queue of a prebuild
+  #      (`Apiary.Dispatches.queue_prebuild/3`). So the end of a run whose image was
+  #      missing takes it before it writes its records
+  #      (`Apiary.Environments.forget_image/3`). A claim locks in one pass, by workspace,
+  #      the counters of the workspaces of the collections it queues a build of and of
+  #      the runs its free sets waiting again; the free's new run records
+  #      (`Apiary.Dispatches.Queued.requeue!/2`) and the claim's queues of prebuilds then
+  #      take only counters it holds, and the claim takes no other counter. After the
+  #      counter, a path inserts its missing records, then its waiting prebuilds, then
+  #      takes their numbers. A path that writes no record and no waiting prebuild takes
+  #      the counter last, as a run's number (`Apiary.Runs.Number`). A prebuild set
+  #      waiting again by `free/2`, or given back by a release, is written under its
+  #      record, before the counter. Every other writer of that prebuild holds its record
+  #      first, except a claim's `Apiary.Environments.queue_builds/2`, which locks no
+  #      record: its check of the live prebuilds keeps it from queuing one beside a
+  #      prebuild of the same ref. The end of a prebuild lost once
+  #      (`Apiary.Environments.build_failed/6`) and
+  #      `Apiary.Environments.record_end_failure/3` write the record before the counter:
+  #      a claim's check reads that prebuild, of the same ref, as live, so the claim
+  #      inserts no record of it.
   #
   # A claim (`Apiary.Dispatches`) keeps the order: the connections and the collections it
   # queues a build of or whose lapsed prebuilds its free writes, as 1., then the pool's
-  # row, as 2., then the gateway's row `FOR SHARE`, then the free of its pool, which
-  # inserts the missing records of the collections it queues a build of after its record
-  # statement, as 3., then the prebuilds it queues, as 5., whose records exist by then,
-  # then the waiting run it takes, as 5., and its dispatch, inserted; then, for an
-  # explore run, the rows of the model
-  # providers its choices name and of their keys' secrets, each `FOR SHARE`
-  # (`Apiary.Dispatches.RunSettings`), which no path that locks anything above locks
-  # after, and the run it registers (`Apiary.Dispatches.Handover.register/2`), as a run
-  # of the queue is locked before the run registered for it. A `dispatched` keeps it too:
-  # the free of its run, its run of the queue, then its dispatch.
+  # row, as 2., then the gateway's row `FOR SHARE`, then the free of its pool, as 3. to
+  # 6., which then locks, as 7., in one pass by workspace, the run counters of the
+  # collections it queues a build of and of the runs it sets waiting again, and inserts
+  # the missing records of those collections, then the prebuilds it queues, as 5., whose
+  # records exist by then, then the waiting run it takes, as 5., and its dispatch,
+  # inserted; then, for an explore run, the rows of the model providers its choices name
+  # and of their keys' secrets, each `FOR SHARE` (`Apiary.Dispatches.RunSettings`), which
+  # no path that locks anything above locks after, and the run it registers
+  # (`Apiary.Dispatches.Handover.register/2`), as a run of the queue is locked before the
+  # run registered for it. A `dispatched` keeps it too: the free of its run, its run of
+  # the queue, then its dispatch.
   #
   # A release (`Apiary.Dispatches.Release`) keeps it as well, and holds one row before
   # the free of its run: for an explore run, its work item `FOR UPDATE`, as a close
@@ -205,13 +235,15 @@ defmodule Apiary.Dispatches.Slots do
   # that run's lock. A claim whose free set a lapsed prebuild back to waiting and that
   # then takes or ends it writes it a second time, and so does a claim that takes a
   # prebuild it queued: Postgres checks that write's foreign key with a `FOR KEY SHARE`
-  # lock on the collection, which would wait for a path that holds the collection
-  # `FOR UPDATE`, such as a listing's part, an assign, a Backlog switch or an adapter's
-  # start (`Apiary.Adapters.Collections`). So the claim holds every such collection
+  # lock on the collection, which does not wait for the `FOR NO KEY UPDATE` of a
+  # listing's part, an assign, a Backlog switch or an adapter's start
+  # (`Apiary.Adapters.Collections`), and would wait for a path that holds the collection
+  # `FOR UPDATE` to delete it or change a key column of it (1.). The claim holds every
+  # such collection
   # `FOR SHARE` before anything but the connections, in one statement, by id: the
   # collections of the pool's prebuilds whose dispatch lapsed at its `now`
   # (`lapsed_collections/2`) and those it queues a build of. A path that holds
-  # collections `FOR UPDATE` then waits for the claim at the first of them the claim
+  # collections `FOR NO KEY UPDATE` then waits for the claim at the first of them the claim
   # holds, or the claim waits there for that path before it holds any collection or the
   # pool, and the claim's later `FOR KEY SHARE` meets only the claim's `FOR SHARE` lock
   # on the same row. A part, which holds its connection `FOR UPDATE` first, can also
@@ -261,28 +293,33 @@ defmodule Apiary.Dispatches.Slots do
 
   # Frees what is due at `now` for the dispatches of `pool_id`, of every pool with `:all`,
   # or of the runs `ids` with `{:runs, ids}`, as the moduledoc says: the ids of the
-  # workspaces whose queue or slots changed. `records` runs once the environment records
-  # are locked and before any run is: a claim makes there the records of the builds it
-  # queues (`Apiary.Environments.make_records/2`), so it writes records before runs.
+  # workspaces whose queue or slots changed. `records_made` runs once every batch locked
+  # its records, runs and dispatches, and before the counters of the runs that wait again
+  # are taken, with the workspaces of those runs
+  # (`Apiary.Dispatches.Queued.requeued_workspaces/1`): a claim locks there, in one pass by
+  # workspace, the run counters of those workspaces and of the builds it queues, then
+  # makes the records of those builds (`Apiary.Environments.make_records/3`), so it holds
+  # no counter while a batch locks runs.
   @doc false
   @spec free(
           Ecto.UUID.t() | :all | {:runs, [Ecto.UUID.t()]},
           DateTime.t(),
-          (-> :ok)
+          ([{Ecto.UUID.t(), Ecto.UUID.t()}] -> :ok)
         ) :: [Ecto.UUID.t()]
-  def free(pool, %DateTime{} = now, records_made \\ fn -> :ok end)
+  def free(pool, %DateTime{} = now, records_made \\ fn _requeued -> :ok end)
       when (is_binary(pool) or pool == :all or
               (is_tuple(pool) and tuple_size(pool) == 2 and elem(pool, 0) == :runs)) and
-             is_function(records_made, 0) do
+             is_function(records_made, 1) do
     in_transaction!()
     records = lock_records(pool, now)
-    :ok = records_made.()
     {lapsed, requeued} = lapse(pool, now, records, nil, {[], []})
     freed = free_due(pool, now)
+    :ok = records_made.(Queued.requeued_workspaces(requeued))
     # Each run that waits again is a new queued run, with the next number: its run record
     # failed in its batch (`Apiary.Dispatches.Queued`). The counters are taken last, once
     # every batch locked its runs, by workspace: no counter is held while a batch locks
-    # runs of the queue, and two lapses take the counters in the same order.
+    # runs of the queue, and two lapses take the counters in the same order. A claim
+    # locked these counters in `records_made`, in the same pass as those of its builds.
     _queued = Queued.requeue!(requeued, now)
     Enum.uniq(lapsed ++ freed)
   end

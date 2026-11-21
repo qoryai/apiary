@@ -129,10 +129,10 @@ defmodule Apiary.Dispatches.RunSettings do
   # 1>`, the place counted per provider, `default_credential` on the default model
   # provider credential, its provider's row id, keys' secret's row id and chain, the API
   # its sessions use, with its `format`, its `endpoint` with a setting resolved to its
-  # address, its `auth`, and, when the description lists them, its `key_prefixes` and its
-  # limit windows as `use_up_to_windows`, and what its run configuration entry has of it),
-  # for the reads that follow the claim. The run settings take at most 64 KiB encoded; a
-  # claim with more fails.
+  # address, its `auth`, and, when the description lists them, its `paths`, its
+  # `key_prefixes` and its limit windows as `use_up_to_windows`, and what its run
+  # configuration entry has of it), for the reads that follow the claim. The run settings
+  # take at most 64 KiB encoded; a claim with more fails.
   #
   # `provider_models` is the description's models (`Apiary.Connections.provider_models/1`),
   # in its order, each with the effort values that both it and the runtime have, then the
@@ -142,8 +142,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # at most 200 models (`Apiary.Kinds.Provider.load!/1`), so the list stays within the
   # schema's 256.
   #
-  # Reads, and takes the locks above; writes nothing. It logs a provider that fails its
-  # integrity code, by its public id.
+  # Reads, and takes the locks above; it writes only the background refresh jobs of the
+  # sign-ins that expire before the end of the run's time limit (`refresh/3`). It logs a
+  # provider that fails its integrity code, by its public id.
 
   import Ecto.Query, only: [from: 2]
 
@@ -154,7 +155,7 @@ defmodule Apiary.Dispatches.RunSettings do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Kinds.{Endpoint, Provider, Providers, Runtime}
   alias Apiary.ModelChoices.Resolution
-  alias Apiary.ModelKeys.Order
+  alias Apiary.ModelKeys.{Login, LoginRefreshJob, Order}
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.{ProviderCredential, Target}
   alias Apiary.Secrets.{Secret, Value}
@@ -478,7 +479,8 @@ defmodule Apiary.Dispatches.RunSettings do
       providers: providers,
       described: described,
       held: held,
-      now: now
+      now: now,
+      horizon: horizon(held, now)
     }
 
     case Resolution.resolve(input) do
@@ -644,6 +646,9 @@ defmodule Apiary.Dispatches.RunSettings do
 
   defp same_api(choice, group, _groups), do: {:ok, choice, group}
 
+  # shortcut: `paths`, `key_prefixes` and the windows are not compared. A description has one API
+  # for each format (`Apiary.Kinds.Provider.load!/1`), so one provider and one format give one
+  # entry; compare them if a description may list a format twice.
   defp same_api?(api, other),
     do: Map.take(api, ~w(format endpoint auth)) == Map.take(other, ~w(format endpoint auth))
 
@@ -942,17 +947,88 @@ defmodule Apiary.Dispatches.RunSettings do
         do: {id, claim_keys(provider, context)}
   end
 
-  defp claim_keys(provider, context),
-    do: provider |> ModelKeys.claim_keys(context.now) |> Order.order(context.now)
+  defp claim_keys(provider, context), do: read_keys(provider, context.now, context.horizon)
 
   # The keys of `provider` a run gets at `now` (`Apiary.ModelKeys.Order.order/2`), with
   # the provider and the API of `formed`.
-  defp group(provider, formed, now) do
+  defp group(provider, formed, now, horizon) do
     %{
       provider: provider,
       api: formed.columns.provider_api,
-      keys: provider |> ModelKeys.claim_keys(now) |> Order.order(now)
+      keys: read_keys(provider, now, horizon)
     }
+  end
+
+  # The keys of `provider` a claim at `now` may give a run, in their order
+  # (`Apiary.ModelKeys.Order.order/2`): the keys' sign-ins are read against `horizon`, and
+  # the sign-ins that expire before it start a background refresh (`refresh/3`). A key
+  # that is blocked (it needs a new value, or its sign-in cannot serve) is left out.
+  defp read_keys(provider, now, horizon) do
+    all = ModelKeys.claim_keys(provider, now, expires_before: horizon)
+    refresh(provider, all, horizon)
+    all |> Enum.filter(&is_nil(&1.blocked)) |> Order.order(now)
+  end
+
+  # The time the claim reads the sign-ins' access tokens against: the end of the longest
+  # time limit a session of the run may have, from `now`. A run with no workflow has the
+  # default limit (`Apiary.TimeLimits.default_minutes/0`).
+  defp horizon(held, now) do
+    minutes =
+      [held.time_limit | Map.values(held.time_limits)]
+      |> Enum.reject(&is_nil/1)
+      |> Enum.max(fn -> TimeLimits.default_minutes() end)
+
+    DateTime.add(now, minutes * 60)
+  end
+
+  @doc false
+  # horizon_for/2 is the time a claim at `now` reads a sign-in's access token against for
+  # the run `dispatch_run`: `now` and the longest time limit of the run's workflows, read
+  # without a lock, for the run's page, which says why the run waits
+  # (`Apiary.Runs.Waiting`). Nil for a run that has no run settings, and for one whose
+  # workspace or work item is gone or whose limits cannot be read: a page render never
+  # raises, and without a horizon only a sign-in that needs a new one counts.
+  @spec horizon_for(DispatchRun.t(), DateTime.t()) :: DateTime.t() | nil
+  def horizon_for(
+        %DispatchRun{step: @step, workspace_id: workspace_id, work_item_id: id} = run,
+        now
+      )
+      when is_binary(workspace_id) and is_binary(id) do
+    with %Workspace{} = workspace <- Repo.get(Workspace, workspace_id) do
+      target = target(workspace, id)
+      workflow = workflow(run, workspace, target)
+
+      limits =
+        Map.new(
+          Enum.uniq(List.wrap(workflow) ++ Apiary.Stages.shared_workflows(run)),
+          &{&1, time_limit(workspace, target, &1)}
+        )
+
+      horizon(%{time_limit: workflow && Map.get(limits, workflow), time_limits: limits}, now)
+    end
+  rescue
+    exception ->
+      Logger.warning(
+        "the time limit of a waiting run could not be read: #{inspect(exception.__struct__)}"
+      )
+
+      nil
+  end
+
+  def horizon_for(%DispatchRun{}, _now), do: nil
+
+  # The sign-ins of `keys` whose access token expires before `horizon` and that no
+  # refresh has been started for are refreshed in the background, one job each
+  # (`Apiary.ModelKeys.LoginRefreshJob`), unless the node is stopping. The only write of the
+  # claim's read of the keys, and no call to any provider.
+  defp refresh(provider, keys, horizon) do
+    unless Login.stopping?() do
+      for %{blocked: :due, id: id} <- keys do
+        LoginRefreshJob.enqueue(provider, id, horizon)
+      end
+    end
+
+    :ok
   end
 
   # Without the features under which a run is given its provider's key
@@ -966,8 +1042,17 @@ defmodule Apiary.Dispatches.RunSettings do
   # built, provider_ids}`: the choice's settings without keys, and the choice's provider
   # first, then the providers of `fall_back/6`'s `{:cooling, ids}`.
   defp keys(built, provider, {input, resolution, providers, described}, held, now) do
-    with nil <- keyed(built, provider, now) do
-      case fall_back(input, resolution, {providers, described}, provider, held.workspace.id, now) do
+    horizon = horizon(held, now)
+
+    with nil <- keyed(built, provider, now, horizon) do
+      case fall_back(
+             input,
+             resolution,
+             {providers, described},
+             provider,
+             held.workspace.id,
+             {now, horizon}
+           ) do
         {:ok, _built, _start} = fallen ->
           fallen
 
@@ -980,8 +1065,8 @@ defmodule Apiary.Dispatches.RunSettings do
   # The settings `built` with the group of the run's default model provider credential,
   # `provider`'s keys at `now` in their order (`Apiary.ModelKeys.Order.order/2`); or nil
   # where every key is in cooldown. `merge/3` takes the run's keys from the group.
-  defp keyed(built, %Connection{} = provider, now) do
-    group = group(provider, built, now)
+  defp keyed(built, %Connection{} = provider, now, horizon) do
+    group = group(provider, built, now, horizon)
     if Order.first_free(group.keys, now), do: {:ok, built, group}
   end
 
@@ -1026,12 +1111,19 @@ defmodule Apiary.Dispatches.RunSettings do
   # whose settings check ran out of time or crashed, which a later claim checks again. A
   # step that does not form for a cause that ends a run on the choice's provider is
   # passed over and left out of `ids`.
-  defp fall_back(input, %Resolution{} = resolution, {providers, described}, provider, ws, now) do
+  defp fall_back(
+         input,
+         %Resolution{} = resolution,
+         {providers, described},
+         provider,
+         ws,
+         {now, horizon}
+       ) do
     steps = later_steps(input, resolution)
 
     steps
     |> Enum.reduce_while({:cooling, [], [provider.id]}, fn step, acc ->
-      step(step, {providers, described}, ws, now, acc)
+      step(step, {providers, described}, ws, {now, horizon}, acc)
     end)
     |> case do
       {:ok, _built, _group} = keyed -> keyed
@@ -1054,7 +1146,8 @@ defmodule Apiary.Dispatches.RunSettings do
 
   # One step of `fall_back/6`: `{:halt, {:ok, built, group}}` for a step with a free key,
   # else the providers waited for and those whose keys are all in cooldown (`cooled`).
-  defp step(%Resolution{connection_id: id} = step, {providers, described}, ws, now, acc) do
+  defp step(%Resolution{connection_id: id} = step, {providers, described}, ws, time, acc) do
+    {now, horizon} = time
     {:cooling, ids, cooled} = acc
     provider = Map.fetch!(providers, id)
 
@@ -1062,7 +1155,7 @@ defmodule Apiary.Dispatches.RunSettings do
          true <- Connections.intact?(provider),
          {:ok, runtime} <- runtime(step),
          {:ok, built} <- form(step, provider, described[id], runtime, ws) do
-      case keyed(built, provider, now) do
+      case keyed(built, provider, now, horizon) do
         {:ok, _built, _group} = keyed -> {:halt, keyed}
         nil -> {:cont, {:cooling, ids ++ [id], cooled ++ [id]}}
       end
@@ -1276,7 +1369,7 @@ defmodule Apiary.Dispatches.RunSettings do
         provider_connection_id: provider.id,
         provider_secret_id: provider.secret_id,
         provider_chain: provider.chain,
-        provider_api: Map.take(api, ~w(format endpoint auth key_prefixes use_up_to_windows))
+        provider_api: Map.take(api, ~w(format endpoint auth key_prefixes use_up_to_windows paths))
       }
     }
   end

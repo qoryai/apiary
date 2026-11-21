@@ -131,6 +131,7 @@ defmodule Apiary.Connections do
   }
 
   alias Apiary.Accounts.Scope
+  alias Apiary.ModelKeys.{Identity, Login}
 
   alias Apiary.Connections.{
     Connection,
@@ -1374,7 +1375,9 @@ defmodule Apiary.Connections do
       each address setting by `Apiary.Kinds.Endpoint.check/1`;
     * `keys`, its keys: a list of maps of `value_id` and `value`, or a map of them by
       index, as `Apiary.Secrets.create_provider_keys/2` takes them, each `value` without
-      the whitespace at its ends (`String.trim/1`);
+      the whitespace at its ends (`String.trim/1`); for a provider whose keys are logins
+      (`Apiary.ModelKeys.Login`) the `value` is the sign-in of a device sign-in
+      (`t:Apiary.ModelKeys.Login.parsed/0`), and any text is refused with "is invalid";
     * `default_key`, the value id of its default key, the first key's by default;
     * `chain`, `"organisation"` by default; any other chain is refused with
       `:forbidden`.
@@ -1409,14 +1412,18 @@ defmodule Apiary.Connections do
            {:ok, workspace_ids} <-
              workspace_ids(organisation.id, connection_reach_ids(changeset, attrs)),
            :ok <- placed_reach(place, workspace_ids),
+           {:ok, keys, logins} <-
+             login_keys(provider, attrs["keys"] |> in_order() |> trim_keys() |> name_keys()),
            {:ok, secret} <-
              Secrets.create_provider_keys(
                scope,
-               %{name: keys_name(new), values: attrs["keys"] |> in_order() |> trim_keys()},
-               place
+               %{name: keys_name(new), values: keys},
+               place,
+               hint: not Login.provider?(provider.name)
              ),
+           :ok <- put_logins(secret.id, logins),
            {:ok, changeset} <-
-             default_key(changeset, provider, secret, attrs["default_key"] || first_key(attrs)),
+             default_key(changeset, provider, secret, attrs["default_key"] || first_key(keys)),
            {:ok, inserted} <- insert_sealed(changeset),
            :ok <- insert_workspaces(inserted, workspace_ids),
            {:ok, _entry} <-
@@ -1531,11 +1538,34 @@ defmodule Apiary.Connections do
 
   defp in_order(_keys), do: []
 
-  defp first_key(attrs) do
-    case attrs["keys"] |> in_order() |> List.first() do
-      %{} = key -> Value.normalise_value_id(key["value_id"] || key[:value_id])
+  defp first_key(keys) do
+    case List.first(keys) do
+      %{} = key -> Value.normalise_value_id(key["value_id"])
       _none -> nil
     end
+  end
+
+  # Each key that has no value id gets the next `key-<n>` (`Apiary.Secrets.Value.next_key_id/1`),
+  # after the value ids the other keys have: Apiary names a model provider's key, and no
+  # page shows the name.
+  defp name_keys(keys) do
+    taken = for %{} = key <- keys, id = Value.normalise_value_id(key["value_id"]), do: id
+
+    {keys, _taken} =
+      Enum.map_reduce(keys, taken, fn
+        %{} = key, taken ->
+          if Value.normalise_value_id(key["value_id"]) do
+            {key, taken}
+          else
+            id = Value.next_key_id(taken)
+            {Map.put(key, "value_id", id), [id | taken]}
+          end
+
+        other, taken ->
+          {other, taken}
+      end)
+
+    keys
   end
 
   # `value_id`, a value id of the keys' secret, as the provider's default key; else the
@@ -1864,10 +1894,13 @@ defmodule Apiary.Connections do
 
   @doc """
   add_provider_key/4 adds a key to a model provider's keys (`provider.write`): `attrs`
-  has `value_id` and `value`, as `Apiary.Secrets.add_value/4` takes them, the `value`
-  without the whitespace at its ends (`String.trim/1`), and `settings` the key's
-  settings (`Apiary.ModelKeys.Setting.changeset/3`, with the provider's limit windows),
-  nil for none. The key and its settings are written in one transaction.
+  has `value` and, optionally, `value_id`, as `Apiary.Secrets.add_value/4` takes them, the
+  `value` without the whitespace at its ends (`String.trim/1`). With no `value_id` the
+  key gets `key-<n>` (`Apiary.Secrets.next_key_id/1`); no page sends one. `settings`
+  is the key's settings (`Apiary.ModelKeys.Setting.changeset/3`, with the provider's limit
+  windows), nil for none. For a provider whose keys are logins the `value` is the sign-in of a
+  device sign-in (`t:Apiary.ModelKeys.Login.parsed/0`), and any text is refused with
+  "is invalid". The key and its settings are written in one transaction.
   `{:ok, provider}`, or `{:error, refusal}` as `Apiary.Secrets.add_value/4` returns, or a
   changeset of the settings, which leaves no key added.
   """
@@ -1877,24 +1910,46 @@ defmodule Apiary.Connections do
     do:
       write_keys(scope, provider, fn scope, secret, current ->
         attrs = trim_value(stringify(attrs))
-        value_id = Value.normalise_value_id(attrs["value_id"])
 
-        with {:ok, _secret} <- Secrets.add_value(scope, secret, attrs, provider: current),
+        value_id =
+          Value.normalise_value_id(attrs["value_id"]) ||
+            Secrets.next_key_id(current.secret)
+
+        attrs = Map.put(attrs, "value_id", value_id)
+
+        with {:ok, attrs, login} <- login_attrs(current, attrs),
+             {:ok, _secret} <- Secrets.add_value(scope, secret, attrs, provider: current),
              {:ok, _setting} <- put_key_setting(current, value_id, settings),
-             do: {:ok, %{after: %{value_id: value_id}, details: %{value_id: value_id}}}
+             :ok <- put_login(current, value_id, login),
+             do:
+               {:ok,
+                %{
+                  after: %{value_id: value_id},
+                  details: %{
+                    value_id: value_id,
+                    identity: Identity.for_value_id(current, value_id)
+                  }
+                }}
       end)
 
   @doc """
   set_provider_key/5 replaces the value of a model provider's key with the value id
   `value_id` (`provider.write`) by `value` without the whitespace at its ends
-  (`String.trim/1`), and, with `settings`, its settings, in one transaction, which also
-  deletes the key's states (`Apiary.ModelKeys.clear_states/2`): the new value
-  is out of cooldown. The details of its `provider_keys_changed` entry have
-  `value_set: true`. `{:ok, provider}`, or `{:error, refusal}` as
-  `Apiary.Secrets.set_value/5` returns, or a changeset of the settings, which leaves the
-  value and the states as they were.
+  (`String.trim/1`; for a provider whose keys are logins, the sign-in of a device sign-in,
+  `t:Apiary.ModelKeys.Login.parsed/0`, and any text is refused with "is invalid"), and,
+  with `settings`, its settings, in one transaction, which also deletes the key's states
+  (`Apiary.ModelKeys.clear_states/2`): the new value is out of cooldown. The details of
+  its `provider_keys_changed` entry have `value_set: true`. `{:ok, provider}`, or
+  `{:error, refusal}` as `Apiary.Secrets.set_value/5` returns, or a changeset of the
+  settings, which leaves the value and the states as they were.
   """
-  @spec set_provider_key(Scope.t(), Connection.t(), String.t(), String.t(), map | nil) ::
+  @spec set_provider_key(
+          Scope.t(),
+          Connection.t(),
+          String.t(),
+          String.t() | Login.parsed(),
+          map | nil
+        ) ::
           {:ok, Connection.t()} | {:error, refusal}
   def set_provider_key(
         %Scope{} = scope,
@@ -1910,9 +1965,49 @@ defmodule Apiary.Connections do
           fn scope, secret, current ->
             with :ok <- set_key(scope, secret, current, value_id, trim_key(value)),
                  {:ok, _setting} <- put_key_setting(current, value_id, settings),
-                 do: {:ok, %{details: %{value_id: value_id, value_set: true}}}
+                 do:
+                   {:ok,
+                    %{
+                      details: %{
+                        value_id: value_id,
+                        identity: Identity.for_value_id(current, value_id),
+                        value_set: true
+                      }
+                    }}
           end
         )
+
+  @doc """
+  set_provider_key_of_row/4 replaces the value of the model provider's key whose value has
+  the row id `row_id` (`secret_values.id`) by `value`, as `set_provider_key/5` does for a
+  value id. The key is looked up by its row id in the transaction that writes, and not by
+  the value id of a `provider` that a page read earlier: a key that was deleted and added
+  again has the same value id and another row id, and is not written. `{:error,
+  :not_found}` for a row id that is not a key of the provider; any other result as
+  `set_provider_key/5`.
+  """
+  @spec set_provider_key_of_row(
+          Scope.t(),
+          Connection.t(),
+          Ecto.UUID.t(),
+          String.t() | Login.parsed()
+        ) :: {:ok, Connection.t()} | {:error, refusal}
+  def set_provider_key_of_row(%Scope{} = scope, %Connection{} = provider, row_id, value),
+    do:
+      write_keys(scope, provider, fn scope, secret, current ->
+        with %Value{value_id: value_id} <-
+               Enum.find(current.secret.values, &(&1.id == row_id)) || {:error, :not_found},
+             :ok <- set_key(scope, secret, current, value_id, trim_key(value)),
+             do:
+               {:ok,
+                %{
+                  details: %{
+                    value_id: value_id,
+                    identity: Identity.for_value_id(current, value_id),
+                    value_set: true
+                  }
+                }}
+      end)
 
   @doc """
   update_provider_key/4 changes a model provider's key with the value id `value_id`
@@ -1939,6 +2034,9 @@ defmodule Apiary.Connections do
 
     write_keys(scope, provider, fn scope, secret, current ->
       with %Value{} = value <- Enum.find(current.secret.values, &(&1.value_id == value_id)),
+           # Only a rename can be refused for a key in use, with the line the key has now.
+           renaming = new_value_id not in [nil, value_id],
+           before_line = if(renaming, do: Identity.for_value_id(current, value_id)),
            changeset =
              ModelKeys.change_setting(
                value,
@@ -1948,9 +2046,16 @@ defmodule Apiary.Connections do
            :ok <- valid(changeset),
            :ok <-
              if(new_value, do: set_key(scope, secret, current, value_id, new_value), else: :ok),
-           {:ok, renamed} <- rename_key(scope, secret, current, value_id, new_value_id),
+           {:ok, renamed} <-
+             scope
+             |> rename_key(secret, current, value_id, new_value_id)
+             |> with_identity(before_line),
            {:ok, _setting} <- write_setting(changeset) do
         set = if new_value, do: %{value_set: true}, else: %{}
+        shown = (renamed && new_value_id) || value_id
+
+        details =
+          Map.merge(set, %{value_id: shown, identity: Identity.for_value_id(current, shown)})
 
         cond do
           renamed ->
@@ -1958,11 +2063,11 @@ defmodule Apiary.Connections do
              %{
                before: %{value_id: value_id},
                after: %{value_id: new_value_id},
-               details: Map.put(set, :value_id, new_value_id)
+               details: details
              }}
 
           new_value || changeset.changes != %{} ->
-            {:ok, %{details: Map.put(set, :value_id, value_id)}}
+            {:ok, %{details: details}}
 
           true ->
             {:ok, :unchanged}
@@ -1978,9 +2083,110 @@ defmodule Apiary.Connections do
   # sets it before a rename, under the value id the key has, and the rename encrypts the
   # new value again under its new value id.
   defp set_key(scope, secret, current, value_id, value) do
-    with {:ok, _secret} <- Secrets.set_value(scope, secret, value_id, value, provider: current),
-         do: ModelKeys.clear_states(current.secret_id, value_id)
+    with {:ok, %{"value" => value}, login} <- login_attrs(current, %{"value" => value}),
+         {:ok, _secret} <- Secrets.set_value(scope, secret, value_id, value, provider: current),
+         :ok <- ModelKeys.clear_states(current.secret_id, value_id),
+         do: put_login(current, value_id, login)
   end
+
+  # The value of a key of `provider` as it is stored. For a provider whose keys are logins
+  # (`Apiary.ModelKeys.Login`), `attrs["value"]` is the sign-in a device sign-in made
+  # (`t:Apiary.ModelKeys.Login.parsed/0`), and the document of it replaces it:
+  # `{:ok, attrs, parsed}`. A text is no sign-in: `{:error, changeset}` whose error is on
+  # `value` and has none of the text. A blank value is left for the checks of the value.
+  # The attrs of any other provider are returned with `nil`.
+  defp login_attrs(%Connection{} = provider, attrs) do
+    with true <- Login.provider?(provider) do
+      case attrs["value"] do
+        %Login.Parsed{} = parsed -> {:ok, Map.put(attrs, "value", parsed.document), parsed}
+        value when is_binary(value) -> blank_or_refused(attrs, value, %Value{}, :value)
+        _other -> {:ok, attrs, nil}
+      end
+    else
+      _not_a_login -> {:ok, attrs, nil}
+    end
+  end
+
+  defp blank_or_refused(attrs, value, schema, field) do
+    if String.trim(value) == "",
+      do: {:ok, attrs, nil},
+      else: {:error, login_refused(schema, field)}
+  end
+
+  # The changeset of a text that is no sign-in: an error on `field` and nothing of the text.
+  defp login_refused(schema, field) do
+    schema
+    |> change()
+    |> add_error(field, dgettext_noop("errors", "is invalid"))
+    |> Map.put(:action, :validate)
+  end
+
+  # The keys a new provider is created with: for a provider whose keys are logins, each
+  # key's sign-in replaced by its document, with the logins by value id;
+  # `{:error, changeset}` with the refusal on the keys' secret's `values` for a text.
+  defp login_keys(%Provider{name: name}, keys) do
+    if Login.provider?(name), do: read_logins(keys, [], %{}), else: {:ok, keys, %{}}
+  end
+
+  defp read_logins([], stored, logins), do: {:ok, Enum.reverse(stored), logins}
+
+  defp read_logins([%{} = key | rest], stored, logins) do
+    case key["value"] do
+      %Login.Parsed{} = parsed ->
+        read_logins(
+          rest,
+          [Map.put(key, "value", parsed.document) | stored],
+          Map.put(logins, Value.normalise_value_id(key["value_id"]), parsed)
+        )
+
+      value when is_binary(value) ->
+        if String.trim(value) == "",
+          do: read_logins(rest, [key | stored], logins),
+          else: {:error, login_refused(%Secret{}, :values)}
+
+      _blank ->
+        read_logins(rest, [key | stored], logins)
+    end
+  end
+
+  defp read_logins([other | rest], stored, logins),
+    do: read_logins(rest, [other | stored], logins)
+
+  # The login rows of the keys of the secret `secret_id` that `logins` has parsed logins
+  # for, by value id; none for nil. `{:error, :login_not_stored}` and no row written when a
+  # login matches no key of the secret: the caller's transaction then rolls back, so a key
+  # is never left without its row.
+  @doc false
+  @spec put_logins(Ecto.UUID.t(), %{String.t() => Login.parsed()}) ::
+          :ok | {:error, :login_not_stored | Ecto.Changeset.t()}
+  def put_logins(_secret_id, logins) when logins == %{}, do: :ok
+
+  def put_logins(secret_id, logins) do
+    values =
+      Repo.all(
+        from v in Value,
+          where: v.secret_id == ^secret_id and v.value_id in ^Map.keys(logins),
+          select: struct(v, [:id, :organisation_id, :value_id])
+      )
+
+    if length(values) == map_size(logins) do
+      Enum.reduce_while(values, :ok, fn value, :ok ->
+        case Login.put(value, Map.fetch!(logins, value.value_id)) do
+          {:ok, _row} -> {:cont, :ok}
+          {:error, changeset} -> {:halt, {:error, changeset}}
+        end
+      end)
+    else
+      {:error, :login_not_stored}
+    end
+  end
+
+  # The login row of the key `value_id` after its value was written, nothing for a key
+  # that is not a login.
+  defp put_login(_current, _value_id, nil), do: :ok
+
+  defp put_login(%Connection{secret_id: secret_id}, value_id, parsed),
+    do: put_logins(secret_id, %{value_id => parsed})
 
   @doc """
   trim_key/1 is a model provider's key as the functions here store it: without the
@@ -2003,9 +2209,14 @@ defmodule Apiary.Connections do
     end)
   end
 
+  # Adds the line `identity` to the refusal of a key in use that `Apiary.Secrets` returns.
+  defp with_identity({:error, {:in_use, uses}}, identity), do: {:error, {:in_use, uses, identity}}
+  defp with_identity(result, _identity), do: result
+
   # A rename of the key `value_id` to `new_value_id`: `{:ok, true}` once renamed,
   # `{:ok, false}` for the same value id.
   defp rename_key(_scope, _secret, _current, value_id, value_id), do: {:ok, false}
+  defp rename_key(_scope, _secret, _current, _value_id, nil), do: {:ok, false}
 
   defp rename_key(scope, secret, current, value_id, new_value_id) do
     with {:ok, _secret} <-
@@ -2051,9 +2262,12 @@ defmodule Apiary.Connections do
         provider,
         fn scope, secret, current ->
           new_value_id = Value.normalise_value_id(new_value_id)
+          identity = Identity.for_value_id(current, value_id)
 
           with {:ok, _secret} <-
-                 Secrets.rename_value(scope, secret, value_id, new_value_id, provider: current),
+                 scope
+                 |> Secrets.rename_value(secret, value_id, new_value_id, provider: current)
+                 |> with_identity(identity),
                do: {:ok, %{before: %{value_id: value_id}, after: %{value_id: new_value_id}}}
         end
       )
@@ -2069,15 +2283,29 @@ defmodule Apiary.Connections do
   def delete_provider_key(%Scope{} = scope, %Connection{} = provider, value_id),
     do:
       write_keys(scope, provider, fn scope, secret, current ->
-        with {:ok, _secret} <- Secrets.delete_value(scope, secret, value_id, provider: current),
-             do: {:ok, %{before: %{value_id: value_id}, details: %{value_id: value_id}}}
+        # Read before the key goes: the entry has the line the key had.
+        identity = Identity.for_value_id(current, value_id)
+
+        with {:ok, _secret} <-
+               scope
+               |> Secrets.delete_value(secret, value_id, provider: current)
+               |> with_identity(identity),
+             do:
+               {:ok,
+                %{
+                  before: %{value_id: value_id},
+                  details: %{value_id: value_id, identity: identity}
+                }}
       end)
 
-  # A write to a provider's keys, under the provider's locks: `fun` of the scope, the
-  # keys' secret and the provider, as `Apiary.Secrets` writes it, answers the `before`,
-  # `after` and `details` of the change, which the provider's `provider_keys_changed`
-  # entry records, or `:unchanged`, which records none. A key that is the default key
-  # stays, with the reason on `value_id`.
+  # A write to a provider's keys, under the provider's locks. `fun` takes the scope, the
+  # keys' secret and the provider, as `Apiary.Secrets` writes it, and returns `{:ok, change}`,
+  # where `change` has the `before`, `after` and `details` that the provider's
+  # `provider_keys_changed` entry records, or `{:ok, :unchanged}`, which records none. A key
+  # that is the default key stays, with the reason on `value_id`.
+  # A refusal of a key in use has the identity line of the key as a third element
+  # (`with_identity/2`): the failed statement ends this transaction's reads, so the line is
+  # read before the write.
   defp write_keys(scope, provider, fun) do
     write_provider(scope, provider, fn scope, _organisation, current ->
       # The level the keys are at is read again from the secret's row
@@ -2106,7 +2334,7 @@ defmodule Apiary.Connections do
                  ),
                do: {:ok, current}
 
-        {:error, {:in_use, [%{kind: :model_provider} | _uses]}} ->
+        {:error, {:in_use, [%{kind: :model_provider} | _uses], identity}} ->
           {:error,
            current
            |> change()
@@ -2117,7 +2345,7 @@ defmodule Apiary.Connections do
                "Choose another default key for %{provider} first: %{value} is its default key."
              ),
              provider: current.name,
-             value: current.default_value_id
+             value: identity
            )}
 
         {:error, reason} ->

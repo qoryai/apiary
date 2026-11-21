@@ -170,16 +170,6 @@ defmodule Apiary.Dispatches.QueuedTest do
       refute Run.queued?(record(queued))
       assert length(records(ctx.scope)) == 1
     end
-
-    test "a run of the queue with no record, as the previous release queued it, gets one",
-         ctx do
-      queued = queued!(ctx.scope)
-      Repo.delete_all(from r in Run, where: r.dispatch_run_id == ^queued.id)
-
-      {:ok, %{registered: registered}} = walked_claim(ctx.key, Dispatches.now())
-      assert %Run{number: 2, registered_at: %DateTime{}} = registered
-      assert registered.dispatch_run_id == queued.id
-    end
   end
 
   describe "a failed start" do

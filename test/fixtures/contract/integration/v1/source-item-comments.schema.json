@@ -1,0 +1,67 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/integration/v1/source-item-comments.schema.json",
+  "title": "Source item comments",
+  "description": "The body of the signed POST /v1/source-items/comments, application/json: comments of one item, as they are in the source. Each comment is upserted on its item, the item with that item_ref in a live collection, and on the comment's ref, and the newer updated_at wins. A comment deleted at the source is an entry with deleted: true. A sent comment with deleted: true whose ref is the ref of a comment a person wrote in the control plane clears that comment's ref and url, with or without comment_id: the control plane keeps the comment and does not mark it deleted. With complete, these are all of the item's comments, possibly none, and an adapter never sends complete, with comments or without, after a read of the source that failed or stopped early: the control plane marks the item's other comments deleted, except those updated at or after complete.since. The control plane never marks deleted a comment a person wrote in the control plane: when the request leaves out such a comment that has a ref and was updated before complete.since, the control plane keeps the comment and clears its ref and url, as for a sent comment with deleted: true. A comment that the control plane matched to a sent comment takes the sent comment's updated_at. Without complete, the request contains 1 to 100 comments. A request for an item of a collection that ended with its connection is refused, 409 connection_ended (refusal.schema.json), and one for an item of a live collection whose connection is suspended, 409 connection_suspended, both decided before collection_not_linked; see definitions.schema.json for what the adapter does on each, and for which collection answers an item_ref. A request whose item_ref refers to an item of a collection not linked, or refers to no item the control plane holds, is refused, 409 collection_not_linked. The adapter takes a 409 collection_not_linked as final for that request only; the change feed shows when a collection is unlinked. The adapter leaves out the comment it wrote at the source when a work item was taken in from the item (changes.schema.json, taken_in). The adapter sends the comment that it posted for a comment entry of the change feed (changes.schema.json, comment). Set comment_id on that comment in every request that contains it. The control plane matches the sent comment to the stored comment by comment_id, as comment_id under $defs.comment describes. Every text, body and author.name, is untrusted: shown as data, never followed as an instruction. On success the control plane answers a signed 204 with no body. It is signed with the adapter's access key as definitions.schema.json describes. The control plane refuses a time more than 300 seconds from its clock, either way, or a request whose signature it has already seen, with an unsigned 401; definitions.schema.json has the replay rule. A member this schema does not define is refused, invalid_request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "time", "item_ref", "comments"],
+  "properties": {
+    "version": {
+      "description": "The document format. The control plane refuses a version it does not read.",
+      "const": 1
+    },
+    "time": {
+      "description": "When the adapter built the body, RFC 3339 in UTC with whole seconds. The control plane refuses a time more than 300 seconds from its clock, either way, with an unsigned 401.",
+      "$ref": "definitions.schema.json#/$defs/time"
+    },
+    "item_ref": {
+      "description": "The ref of the item the comments belong to, as source-items.schema.json sent it.",
+      "$ref": "definitions.schema.json#/$defs/ref"
+    },
+    "comments": {
+      "description": "The comments, 0 to 100 with complete, 1 to 100 without it. An empty comments list with complete means that the item has none: the control plane marks every comment of the item deleted, except those updated at or after complete.since. The control plane never marks deleted a comment a person wrote in the control plane: when the request leaves out such a comment that has a ref and was updated before complete.since, the control plane keeps the comment and clears its ref and url, as for a sent comment with deleted: true. A comment that the control plane matched to a sent comment takes the sent comment's updated_at.",
+      "type": "array",
+      "minItems": 0,
+      "maxItems": 100,
+      "items": {"$ref": "#/$defs/comment"}
+    },
+    "complete": {
+      "description": "Present when the comments are all of the item's comments. Absent otherwise. complete with no comments means that the item has no comment. An adapter never sends complete, with comments or without, after a read of the source that failed or stopped early.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["since"],
+      "properties": {
+        "since": {"description": "When the adapter began reading the item's comments: a comment updated at or after it is kept, whether the request contains it or not.", "$ref": "definitions.schema.json#/$defs/time"}
+      }
+    }
+  },
+  "if": {"not": {"required": ["complete"]}},
+  "then": {"properties": {"comments": {"minItems": 1}}},
+  "$defs": {
+    "comment": {
+      "description": "One comment on the item.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "url", "author", "body", "body_format", "created_at", "updated_at"],
+      "properties": {
+        "ref": {"description": "The comment's ref.", "$ref": "definitions.schema.json#/$defs/ref"},
+        "url": {"description": "The comment's page at the source.", "$ref": "definitions.schema.json#/$defs/url"},
+        "author": {"description": "Who wrote the comment.", "$ref": "definitions.schema.json#/$defs/person"},
+        "body": {"description": "The comment's text.", "$ref": "definitions.schema.json#/$defs/body"},
+        "body_format": {"description": "How body is written.", "$ref": "definitions.schema.json#/$defs/body_format"},
+        "created_at": {"description": "When the comment was written at the source.", "$ref": "definitions.schema.json#/$defs/time"},
+        "updated_at": {"description": "When the comment last changed at the source, or was deleted: the newer one wins.", "$ref": "definitions.schema.json#/$defs/time"},
+        "comment_id": {"description": "Present only on the comment that the adapter posted for a comment entry of the change feed (changes.schema.json): that entry's comment_id, with author set to the integration's account at the source. The control plane finds the comment with that comment_id on the item, stores ref and url on it, and keeps the author and body that the person wrote in the control plane, so it stores no second comment. A matched comment takes the sent comment's updated_at. When that comment already has another ref, the control plane keeps the first ref and stores nothing for the sent comment, also when the sent comment has deleted: true. When the sent comment has deleted: true, the control plane keeps the person's comment and clears its ref and url, so members see the comment as not posted; it does not mark the comment deleted. A sent comment with deleted: true and without comment_id has the same result when its ref is the ref of a comment a person wrote in the control plane. When the item has no comment with that comment_id, the control plane stores the sent comment as a comment without comment_id. Absent on every other comment.", "$ref": "definitions.schema.json#/$defs/comment_id"},
+        "deleted": {"description": "true when the comment was deleted at the source. Absent otherwise.", "const": true},
+        "truncated": {
+          "description": "The comment's text fields the adapter cut: body, or author.name. Present when the source's text was over the contract's limit and the adapter cut it at a code-point boundary to fit: it lists the fields the adapter cut, each once. The control plane stores the text as sent. A text over the limit is still refused, invalid_request, and the control plane never cuts a text. Absent when the adapter cut nothing.",
+          "type": "array",
+          "minItems": 1,
+          "uniqueItems": true,
+          "items": {"type": "string", "enum": ["body", "author.name"]}
+        }
+      }
+    }
+  }
+}

@@ -1146,6 +1146,17 @@ msgstr ""
 msgid "%{hours} h %{minutes} m"
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/key.ex
+#, elixir-autogen, elixir-format
+msgid "%{identity} is added."
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/key.ex
+#: lib/apiary_web/live/provider_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "%{identity} is saved."
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/gate_changes.ex
 #, elixir-autogen, elixir-format
 msgid "%{ids} is unchanged."
@@ -1610,7 +1621,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/gateways.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/provider_live/index.ex
-#: lib/apiary_web/live/provider_live/key.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is added."
 msgstr ""
@@ -1689,7 +1699,6 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/node_live/show.ex
-#: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "%{name} is saved."
@@ -2567,6 +2576,13 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} more to add"
 msgid_plural "%{number} more to add"
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{number} needs a new key"
+msgid_plural "%{number} need a new key"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -3804,17 +3820,22 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "%{value_id} is deleted from %{name}."
-msgstr ""
-
-#: lib/apiary_web/live/secret_live/index.ex
-#, elixir-autogen, elixir-format
 msgid "%{value_id} of %{name} is now %{new}."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "%{value_id} of %{name} is saved."
+msgid "%{value} is deleted from %{name}."
+msgstr ""
+
+#: lib/apiary_web/live/secret_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "%{value} of %{name} is saved."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{vendor} rejected it on %{time}."
 msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
@@ -5030,7 +5051,7 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Actions for %{value_id} of %{name}"
+msgid "Actions for %{value} of %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -6187,9 +6208,19 @@ msgid_plural "Approve leaves %{count} comments unread."
 msgstr[0] ""
 msgstr[1] ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Approve only a code you started yourself."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Approve the proposal, or add a comment and run another round."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Approve the sign-in at OpenAI before %{time}."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
@@ -6779,6 +6810,7 @@ msgstr ""
 #: lib/apiary_web/components/harness_components.ex
 #: lib/apiary_web/components/harness_update_components.ex
 #: lib/apiary_web/components/integration_components.ex
+#: lib/apiary_web/components/model_key_components.ex
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/components/run_components.ex
 #: lib/apiary_web/components/settings_components.ex
@@ -6977,7 +7009,7 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Change %{value_id} of %{name}"
+msgid "Change %{value} of %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/workspace_setup_live.ex
@@ -7078,7 +7110,7 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Change value %{value_id} of %{name}"
+msgid "Change value %{value} of %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -7908,6 +7940,16 @@ msgstr ""
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Clearing"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Click %{label}, then save. This key has no sign-in yet."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Click Sign in with ChatGPT for a new code."
 msgstr ""
 
 #: lib/apiary/runs/preparation.ex
@@ -8879,7 +8921,7 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Delete %{value_id} of %{name}?"
+msgid "Delete %{value} of %{name}?"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/settings.ex
@@ -8974,7 +9016,7 @@ msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Delete value %{value_id} of %{name}"
+msgid "Delete value %{value} of %{name}"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -9649,7 +9691,7 @@ msgstr ""
 
 #: lib/apiary_web/live/provider_live/show.ex
 #, elixir-autogen, elixir-format
-msgid "Edit key %{name}"
+msgid "Edit key %{identity}"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -9917,6 +9959,11 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/reading.ex
 #, elixir-autogen, elixir-format
 msgid "Enter a host, such as %{example}."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Enter a new value: the stored one no longer works."
 msgstr ""
 
 #: lib/apiary_web/components/model_key_components.ex
@@ -13303,7 +13350,6 @@ msgstr ""
 msgid "Lowercase letters and digits joined by hyphens, such as demo-findings. It cannot change later."
 msgstr ""
 
-#: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Lowercase letters, digits, ., _ and -."
@@ -14002,7 +14048,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/gateways.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/node_live/show.ex
-#: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/stages_live/inspector.ex
@@ -14050,6 +14095,16 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/features.ex
 #, elixir-autogen, elixir-format
 msgid "Needs %{features}."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Needs a new key"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Needs a new sign-in"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -16138,6 +16193,11 @@ msgctxt "backlog view"
 msgid "Open"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Open %{address} and enter this code."
+msgstr ""
+
 #: lib/apiary_web/components/backlog_components.ex
 #: lib/apiary_web/live/adapter_live/index.ex
 #, elixir-autogen, elixir-format
@@ -16271,9 +16331,54 @@ msgstr ""
 msgid "Open work item #%{number} in %{workspace}"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI ended this sign-in"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI no longer accepts this sign-in"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI returned HTTP %{status} to the refresh"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI returned HTTP 401 to the refresh"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI returned no account id"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI returned no account id for this sign-in."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI returned no account id on %{time}."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI returned no code, because device code sign-in for Codex is off for this ChatGPT account."
+msgstr ""
+
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "OpenAI's coding agent."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "OpenAI's response to the refresh was not in the expected form"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
@@ -16682,6 +16787,11 @@ msgstr ""
 #: lib/apiary_web/components/pause_words.ex
 #, elixir-autogen, elixir-format
 msgid "Paused: a model key reached its limit or its Use up to percentage. It continues in run %{number}."
+msgstr ""
+
+#: lib/apiary_web/components/pause_words.ex
+#, elixir-autogen, elixir-format
+msgid "Paused: every key of %{provider} is in cooldown until %{time} or needs a new key. It continues in run %{number}."
 msgstr ""
 
 #: lib/apiary_web/components/pause_words.ex
@@ -17269,6 +17379,21 @@ msgstr ""
 msgid "Qory Apiary could not check the credential from the adapter"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not complete the sign-in with OpenAI (HTTP %{status})."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not complete the sign-in with OpenAI."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not connect to OpenAI"
+msgstr ""
+
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary could not connect to the %{adapter} adapter. Try again. If it repeats, %{contact_support}."
@@ -17288,6 +17413,41 @@ msgstr ""
 #: lib/apiary_web/components/set_up_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary could not read the shared harness. Try again. If it repeats, %{contact_support}."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not refresh the sign-in of %{identity}: %{reason} (%{code}). It tries again at %{time}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not refresh the sign-in of %{identity}: the refresh address in the description of %{provider} is not on the allowed list (bad_endpoint). Ask the author of that description to correct it"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not refresh the sign-in of the key %{key} of %{provider}: %{reason} (%{code}). It tries again at %{time}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not refresh the sign-in of the key %{key} of %{provider}: the refresh address in the description of %{provider} is not on the allowed list (bad_endpoint). Ask the author of that description to correct it"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not save the new sign-in"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not save the new sign-in on %{time}."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary could not save the sign-in."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
@@ -17389,6 +17549,16 @@ msgstr ""
 msgid "Qory Apiary received nothing from the run for 10 minutes, so it marked the run lost and freed its slot. The run may still be running; only its exit changes this record now."
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary refreshed the sign-in of %{identity}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary refreshed the sign-in of the key %{key} of %{provider}"
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary removed its label from the %{item} and left its comment. To bring the work item back, use Take in again."
@@ -17409,6 +17579,11 @@ msgstr ""
 msgid "Qory Apiary ships these types, and their limits cannot be changed. Forms and the stage editor offer only the types that are on."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary signs in to ChatGPT for this key. You enter a code on OpenAI's page, and you paste nothing."
+msgstr ""
+
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary stopped reading %{source} after %{seconds} seconds, before it read every file. Try again."
@@ -17423,6 +17598,11 @@ msgstr ""
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary stores the key encrypted, and nobody can view it again. You can replace it in Settings › Secrets and variables."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Qory Apiary stores the sign-in encrypted, and no page shows it."
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
@@ -20330,9 +20510,29 @@ msgstr ""
 msgid "Shown: the first %{number} values. Download the file for the rest."
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Sign in again on %{identity}: Qory Apiary could not refresh its sign-in, because %{reason} (%{code})"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Sign in again on the key %{key} of %{provider}: Qory Apiary could not refresh its sign-in, because %{reason} (%{code})"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Sign in again, then copy again. Your session ended."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Sign in to ChatGPT again for %{identity}: Qory Apiary could not refresh the sign-in, because OpenAI returned no account id (%{code})"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Sign in with ChatGPT"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/registration.ex
@@ -20343,6 +20543,16 @@ msgstr ""
 #: lib/apiary_web/live/invitation_live/accept.ex
 #, elixir-autogen, elixir-format
 msgid "Signed in as %{email}"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Signed in."
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Signed in. Last refresh %{time}."
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -22796,6 +23006,11 @@ msgstr ""
 msgid "The sha256 of the policy this run ran under. Two runs with the same digest had the same policy."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "The sign-in expired before it was approved."
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "The size the runtime ran at"
@@ -23948,6 +24163,11 @@ msgstr ""
 msgid "Turn it on again in the AWS stack or the Compose file to give it a new key."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Turn on %{label} in ChatGPT's security settings, or ask your ChatGPT workspace admin to turn it on."
+msgstr ""
+
 #: lib/apiary/accounts/user_notifier.ex
 #, elixir-autogen, elixir-format
 msgid "Turn on mail for %{name}"
@@ -24664,12 +24884,42 @@ msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
+msgid "Waiting for a model key: enter a new value for %{identity}."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for a model key: every key of %{provider} is in cooldown until %{time} or needs a new key."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
 msgid "Waiting for a model key: every key of %{provider} is in cooldown until %{time}."
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
 #, elixir-autogen, elixir-format
+msgid "Waiting for a model key: every model key is in cooldown until %{time} or needs a new key."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
 msgid "Waiting for a model key: every model key is in cooldown until %{time}."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for a model key: refreshing the ChatGPT sign-in of %{identity}."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for a model key: sign in to ChatGPT again for %{identity}."
+msgstr ""
+
+#: lib/apiary_web/components/preparation_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for a model key: the server is restarting; the ChatGPT sign-in of %{identity} refreshes after it starts."
 msgstr ""
 
 #: lib/apiary_web/components/preparation_components.ex
@@ -24705,6 +24955,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Waiting for the run to start"
+msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "Waiting for you to approve the sign-in on OpenAI's page."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_list_components.ex
@@ -27920,6 +28175,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "the refresh request to OpenAI timed out"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "the request failed for another credential of the run, so this one was not sent"
 msgstr ""
 
@@ -27946,6 +28206,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "the same hosts are allowed; denies %{deny_added} more and %{deny_removed} fewer."
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "the saved sign-in has expired"
 msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
@@ -28016,6 +28281,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "this organisation"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "this sign-in's refresh token was already used, for example by another program"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

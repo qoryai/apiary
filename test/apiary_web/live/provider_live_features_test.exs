@@ -38,7 +38,7 @@ defmodule ApiaryWeb.ProviderLiveFeaturesTest do
             org <> "/new",
             org <> "/con_0000000000000000000000000000",
             org <> "/con_0000000000000000000000000000/keys/new",
-            org <> "/con_0000000000000000000000000000/keys/key-1/edit",
+            org <> "/con_0000000000000000000000000000/keys/#{Ecto.UUID.generate()}/edit",
             "/#{scope.organisation.slug}/#{scope.workspace.slug}/settings/model"
           ] do
         assert status(conn, path) == 404, path

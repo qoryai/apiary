@@ -1,0 +1,27 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/integration/v1/grant-end.schema.json",
+  "title": "Grant end",
+  "description": "The body of the signed POST /v1/grants/end, application/json, with which an adapter reports that the source no longer covers one grant of a connection, as when the external account of that grant withdraws the access it gave at the source. The control plane ends that grant and the collections listed under it, and the connection stays, with its other grants and their collections. The collections listed under a grant are the collections whose latest grant_ref is that grant's (source-collections.schema.json). The control plane removes the grant from its copy of grants (grants.schema.json) and writes a grant entry, unlinked, to the change feed (changes.schema.json). It ends each of those collections as POST /v1/sources/disconnect ends a live collection (sources-disconnect.schema.json): the collection's items are marked disconnected, not deleted, and the change feed has an unlinked entry for each of those collections that was linked. A grant the source suspends is not an end: the adapter logs it and fetches again later. A connection the source no longer grants access at all is ended with connections-disconnect.schema.json, not grant by grant. The adapter sends a grant end when the source no longer covers a grant that the control plane's copy has under that connection, a grant that a grant entry, linked, adds to the copy after the source stopped covering it included. For a grant whose report it is still sending again (grant.schema.json), which the copy does not contain, the adapter sends no grant end: it stops sending that report and drops the grant from its state. Once the adapter mints a linked connect return for the external account of a grant whose grant end it is still sending, it stops sending that grant end. The control plane decides rights first, in the order of refusal.schema.json: a request the access key may not make is answered 403 forbidden. It then refuses a connection_id that it does not hold for this adapter, 403 connection_unknown, with the same signed body for every cause, and a pending connection, which has no grant, is answered 403 connection_unknown too; then a connection that ended, 409 connection_ended, final for that connection; then a grant_ref that its copy of grants does not have under connection_id, 409 grant_unknown, as after an earlier grant end of the same grant, or for a grant whose report it never accepted. connection_suspended does not apply to this request: a grant end of a suspended connection is answered with the signed 204 and ends the grant. On success the control plane answers a signed 204 with no body. The adapter acts on each answer as follows. On the signed 204, it drops the grant, and the collections whose grant_ref is that grant's, from its state, and does not send the grant end again. On 409 grant_unknown, the copy has no such grant, and the adapter acts as on the signed 204. On 409 connection_ended, the grant ended with its connection: the adapter drops that connection's collections and the grant from its state, as on any 409 connection_ended, and does not send the grant end again. On 403 connection_unknown, it sends the grant end again, built anew as definitions.schema.json describes a retry, with backoff: 2 seconds after the first grant end, then twice as long after each refusal, and at most 60 seconds apart; a 403 connection_unknown that lasts after its retries counts as the connection ended, for a live connection, as definitions.schema.json describes, and the adapter then drops that connection's collections and the grant from its state. On 403 forbidden or 400 invalid_request, it stops sending the grant end and keeps its state, since neither refusal ends a connection or a grant. On a transient failure, no answer, a 5xx or an unsigned answer, it sends the grant end again, built anew, with the same backoff, and on a signed 429 it waits the seconds of Retry-After first. The adapter logs each refusal with the connection_id and the grant_ref, and never with an access key or a secret. It is signed with the adapter's access key as definitions.schema.json describes. The control plane refuses a time more than 300 seconds from its clock, either way, or a request whose signature it has already seen, with an unsigned 401; definitions.schema.json has the replay rule. A member this schema does not define is refused, invalid_request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "time", "connection_id", "grant_ref"],
+  "properties": {
+    "version": {
+      "description": "The document format. The control plane refuses a version it does not read.",
+      "const": 1
+    },
+    "time": {
+      "description": "When the adapter built the body, RFC 3339 in UTC with whole seconds. The control plane refuses a time more than 300 seconds from its clock, either way, with an unsigned 401.",
+      "$ref": "definitions.schema.json#/$defs/time"
+    },
+    "connection_id": {
+      "description": "The connection that has the grant, the connection_id of the grant report (grant.schema.json).",
+      "$ref": "definitions.schema.json#/$defs/connection_id"
+    },
+    "grant_ref": {
+      "description": "The grant the source no longer covers, the grant_ref of the grant report (grant.schema.json).",
+      "$ref": "definitions.schema.json#/$defs/ref"
+    }
+  }
+}

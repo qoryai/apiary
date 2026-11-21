@@ -13,10 +13,15 @@ defmodule Apiary.Runs.Number do
   # locked. The trigger `runs_number_from_counter` is a second writer, which takes the
   # counter's next number under the same row lock for an insert with no number.
   #
-  # A run of a workspace's queue takes its number when it is queued, with `next/1`, as the
-  # last step of the transaction that queues it, on no node (`Apiary.Dispatches.Queued`);
-  # the claim that later puts it on a node keeps that number. Only a run of the queue
-  # queued by the previous release, which has no record, takes its number at its claim.
+  # A run of a workspace's queue takes its number when it is queued, with `next/1`, as
+  # the last step of the transaction that queues it, on no node
+  # (`Apiary.Dispatches.Queued`); the claim that later puts it on a node keeps that
+  # number. A path that queues a prebuild locks the counter earlier, with `hold/2`,
+  # before its first insert of an environment record or a waiting prebuild, and takes the
+  # numbers later in the same transaction: a claim and a Rebuild that queue a prebuild of
+  # one collection and pool then wait on each other only at the counter (the lock order
+  # in `Apiary.Dispatches.Slots`). A claim locks, in one pass by workspace, the counters
+  # of its builds and of the runs its free sets waiting again, and takes no other.
   #
   # A run on a node takes its number with `next/2`, which locks the node first. Every path
   # in this release's code then takes the node's row, then the counter, so none deadlocks
@@ -60,6 +65,41 @@ defmodule Apiary.Runs.Number do
     in_transaction!("next/2")
     Repo.one(from n in Node, where: n.id == ^id, lock: "FOR KEY SHARE", select: n.id)
     next(workspace)
+  end
+
+  # hold/2 locks the counter of `workspace` inside the caller's transaction and takes no
+  # number, after the node pools `pool_ids` `FOR KEY SHARE`, by id, as `next/2` locks its
+  # node. It makes the counter's row at 0 where there is none: before a workspace's first
+  # run, `SELECT … FOR UPDATE` finds no row to lock. A later `next/1` in the transaction
+  # takes the number under the lock already held, so the numbers stay without gaps.
+  @doc false
+  @spec hold(%Workspace{}, [Ecto.UUID.t()]) :: :ok
+  def hold(%Workspace{id: id, organisation_id: organisation_id}, pool_ids)
+      when is_list(pool_ids) do
+    in_transaction!("hold/2")
+
+    _pools =
+      Repo.all(
+        from n in Node,
+          where: n.id in ^pool_ids,
+          order_by: n.id,
+          lock: "FOR KEY SHARE",
+          select: n.id
+      )
+
+    row = %{
+      workspace_id: Ecto.UUID.dump!(id),
+      organisation_id: Ecto.UUID.dump!(organisation_id),
+      last_number: 0
+    }
+
+    {1, _rows} =
+      Repo.insert_all("run_counters", [row],
+        on_conflict: from(c in "run_counters", update: [inc: [last_number: 0]]),
+        conflict_target: [:workspace_id]
+      )
+
+    :ok
   end
 
   # block/2 is the next `count` numbers of `workspace`'s runs, taken inside the caller's

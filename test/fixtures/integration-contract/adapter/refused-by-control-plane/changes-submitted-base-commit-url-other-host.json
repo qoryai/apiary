@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "time": "2026-11-18T12:00:00Z",
+  "submission_id": "av_7k2m9q4v1x8z3c5d",
+  "targets": [
+    {
+      "system": "code.example.com",
+      "path": "acme/shop",
+      "base": {
+        "commit": "4c3b2a190807f6e5d4c3b2a1908f7e6d5c4b3a29",
+        "commit_url": "https://code.example.org/acme/shop/commit/4c3b2a190807f6e5d4c3b2a1908f7e6d5c4b3a29"
+      },
+      "commits": [
+        {
+          "commit": "3e2d1c0b9a8f7e6d5c4b3a291807f6e5d4c3b2a1",
+          "commit_url": "https://code.example.com/acme/shop/commit/3e2d1c0b9a8f7e6d5c4b3a291807f6e5d4c3b2a1"
+        },
+        {
+          "commit": "9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c",
+          "commit_url": "https://code.example.com/acme/shop/commit/9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c"
+        },
+        {
+          "commit": "a1b2c3d4e5f60718293a4b5c6d7e8f9012345678",
+          "commit_url": "https://code.example.com/acme/shop/commit/a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"
+        }
+      ],
+      "draft": {
+        "number": 34,
+        "url": "https://code.example.com/acme/shop/pull/34",
+        "title": "Show delivery dates at checkout",
+        "state": "draft",
+        "action": "opened"
+      }
+    }
+  ]
+}

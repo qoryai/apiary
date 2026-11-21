@@ -14,8 +14,10 @@ defmodule Apiary.Dispatches.Queued do
   # keeps its number and its id.
   #
   # `requeue!/2` writes a new record for each run of the queue that waits again and has
-  # none, after a failed start ended its record (`Apiary.Dispatches.Handover.fail_start/3`):
-  # the retry takes the next number, and its `inserted_at` is when it went back to waiting.
+  # none, after a failed start ended its record
+  # (`Apiary.Dispatches.Handover.fail_start/3`): the retry takes the next number, and its
+  # `inserted_at` is when it went back to waiting. A claim locks the counters of those
+  # runs earlier, in one pass with the counters of its builds (`requeued_workspaces/1`).
   #
   # `ended/2` ends the record of each run of the queue that ended before its handover:
   # `cancelled` when its work item was closed or undone, or a prebuild was superseded or
@@ -32,7 +34,10 @@ defmodule Apiary.Dispatches.Queued do
   # (`Apiary.Processes.delete_leftovers_after_runs/1`).
   #
   # The number is taken last in `insert!/1`, as `Apiary.Runs.Number` requires: the
-  # counter of the workspace stays locked until the transaction ends.
+  # counter of the workspace stays locked until the transaction ends. A queue of a
+  # prebuild locks the counter before it inserts the run
+  # (`Apiary.Dispatches.queue_prebuild/3`), and `insert!/1` then takes the number under
+  # that lock.
 
   import Ecto.Query, only: [from: 2]
 
@@ -86,13 +91,35 @@ defmodule Apiary.Dispatches.Queued do
 
   def requeue!(dispatch_run_ids, %DateTime{} = now) when is_list(dispatch_run_ids) do
     Repo.all(
-      from d in DispatchRun,
-        as: :queued,
-        where: d.id in ^dispatch_run_ids and d.state == :waiting,
-        where: not exists(from r in Run, where: r.dispatch_run_id == parent_as(:queued).id),
+      from d in requeued(dispatch_run_ids),
         order_by: [asc: d.workspace_id, asc: d.queued_at, asc: d.id]
     )
     |> Enum.map(&insert!(&1, now))
+  end
+
+  # requeued_workspaces/1 is the workspaces whose counters `requeue!/2` takes for the
+  # runs of the queue `dispatch_run_ids`, inside the caller's transaction, which has them
+  # locked: `{workspace_id, organisation_id}`, by workspace. A claim locks these counters
+  # with those of its builds, before `requeue!/2` (`Apiary.Dispatches.Slots.free/3`).
+  @doc false
+  @spec requeued_workspaces([Ecto.UUID.t()]) :: [{Ecto.UUID.t(), Ecto.UUID.t()}]
+  def requeued_workspaces([]), do: []
+
+  def requeued_workspaces(dispatch_run_ids) when is_list(dispatch_run_ids) do
+    Repo.all(
+      from d in requeued(dispatch_run_ids),
+        distinct: true,
+        order_by: d.workspace_id,
+        select: {d.workspace_id, d.organisation_id}
+    )
+  end
+
+  # The runs of the queue of `dispatch_run_ids` that wait and have no record.
+  defp requeued(dispatch_run_ids) do
+    from d in DispatchRun,
+      as: :queued,
+      where: d.id in ^dispatch_run_ids and d.state == :waiting,
+      where: not exists(from r in Run, where: r.dispatch_run_id == parent_as(:queued).id)
   end
 
   # ended/2 ends, at `now`, the record of each of the runs of the queue

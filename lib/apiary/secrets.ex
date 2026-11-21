@@ -13,10 +13,15 @@ defmodule Apiary.Secrets do
   ## Write-only
 
   No function of this module returns a value, but `reveal_for_sealing/3` and the reveals
-  of a model provider's key, by its value id or its row id, which the secrets endpoint calls to seal a value to the
-  gateway, and only that. A listing loads the
+  of a model provider's key, by its value id or its row id, which the secrets endpoint calls
+  to seal a value to the gateway (a model key through `Apiary.ModelKeys.reveal_for_sealing/4`),
+  and only that. A listing loads the
   values without their ciphertext. Nothing logs a value, and an audit entry names a
-  secret and a value id, never a value.
+  secret and a value id, never a value. A model provider's API key also has a **hint**,
+  the last 4 characters of a value of at least 12 characters (none when they hold a
+  control character, a format character or a line or paragraph separator), kept beside
+  the ciphertext so that a page and an audit entry can tell one key from another
+  (`Apiary.Secrets.Value.hint/1`, `Apiary.ModelKeys.Identity`).
 
   ## At rest
 
@@ -101,6 +106,7 @@ defmodule Apiary.Secrets do
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Connections.Connection
+  alias Apiary.ModelKeys.Login
   alias Apiary.Secrets.{Cipher, DataKey, OrganisationDataKey, Secret, Usage, Value}
 
   @max_values 32
@@ -458,7 +464,7 @@ defmodule Apiary.Secrets do
          :ok <- valid_new(how, secret_changeset, value_changesets),
          {:ok, secret} <-
            secret_changeset |> PublicId.Insert.insert() |> with_values(how, value_changesets),
-         {:ok, value_ids} <- insert_values(scope, secret, value_changesets),
+         {:ok, value_ids} <- insert_values(scope, secret, value_changesets, hint?(opts)),
          {:ok, _entry} <-
            entry(opts, scope, secret, %{
              after: %{name: secret.name, note: secret.note, value_ids: value_ids},
@@ -581,9 +587,9 @@ defmodule Apiary.Secrets do
 
   defp with_values(result, _how, _values), do: result
 
-  defp insert_values(scope, secret, changesets) do
+  defp insert_values(scope, secret, changesets, hint?) do
     Enum.reduce_while(changesets, {:ok, []}, fn changeset, {:ok, value_ids} ->
-      case insert_value(scope, secret, changeset) do
+      case insert_value(scope, secret, changeset, hint?) do
         {:ok, value} -> {:cont, {:ok, value_ids ++ [value.value_id]}}
         {:error, reason} -> {:halt, {:error, reason}}
       end
@@ -646,7 +652,7 @@ defmodule Apiary.Secrets do
            changeset = Value.changeset(row, %{"value" => value}),
            :ok <- valid(changeset),
            {:ok, _row} <-
-             encrypt_and_write(scope, current, changeset, :update),
+             encrypt_and_write(scope, current, changeset, :update, hint?(opts)),
            {:ok, current} <- touch(scope, current),
            {:ok, _entry} <-
              entry(opts, scope, current, %{
@@ -683,7 +689,7 @@ defmodule Apiary.Secrets do
            {:ok, first} <- first_value_id(unnamed, attrs, changeset),
            :ok <- valid(changeset),
            :ok <- rename_first(scope, current, unnamed, first),
-           {:ok, _row} <- insert_value(scope, current, changeset),
+           {:ok, _row} <- insert_value(scope, current, changeset, hint?(opts)),
            {:ok, current} <- touch(scope, current),
            {:ok, _entry} <-
              entry(opts, scope, current, %{
@@ -889,7 +895,9 @@ defmodule Apiary.Secrets do
   `create_secret/2` takes several values. `{:ok, secret}`, or `{:error, refusal}` as
   `create_secret/2` answers; `:not_found` for `:workspace` with a scope whose workspace
   is not of its organisation or is marked for deletion. It leaves no `secret.write` entry:
-  the provider's `provider.write` entry records it.
+  the provider's `provider.write` entry records it. Each value keeps a hint of its last 4
+  characters (`Apiary.Secrets.Value.hint/1`) unless `opts` has `hint: false`, as it does
+  for the keys of a provider whose keys are sign-ins.
 
   `Apiary.Connections` calls it in the transaction that adds the provider, after the
   organisation's integrations lock; it asks `Apiary.Access` for `provider.write` with the
@@ -898,14 +906,15 @@ defmodule Apiary.Secrets do
   workspace's row `FOR NO KEY UPDATE`, as every write of a workspace's secrets does, so
   the workspace's first secret makes its data key alone.
   """
-  @spec create_provider_keys(Scope.t(), map, :organisation | :workspace) ::
+  @spec create_provider_keys(Scope.t(), map, :organisation | :workspace, keyword) ::
           {:ok, Secret.t()} | {:error, refusal}
-  def create_provider_keys(scope, attrs, place \\ :organisation)
+  def create_provider_keys(scope, attrs, place \\ :organisation, opts \\ [])
 
   def create_provider_keys(
         %Scope{organisation: %Organisation{id: organisation_id}} = scope,
         attrs,
-        place
+        place,
+        opts
       )
       when place in [:organisation, :workspace] do
     attrs = Map.new(attrs, fn {key, value} -> {to_string(key), value} end)
@@ -913,19 +922,35 @@ defmodule Apiary.Secrets do
     Repo.transact(fn ->
       with :ok <- provider_verdict(scope),
            {:ok, workspace_id} <- keys_place(scope, place) do
-        new_secret(
-          scope,
-          %Secret{organisation_id: organisation_id, workspace_id: workspace_id},
-          %{"name" => attrs["name"], "values" => List.wrap(attrs["values"])},
-          :ok,
-          provider: :new
-        )
+        with {:ok, secret} <-
+               new_secret(
+                 scope,
+                 %Secret{organisation_id: organisation_id, workspace_id: workspace_id},
+                 %{"name" => attrs["name"], "values" => List.wrap(attrs["values"])},
+                 :ok,
+                 provider: :new,
+                 hint: Keyword.get(opts, :hint, true)
+               ),
+             :ok <- start_key_counter(secret) do
+          {:ok, secret}
+        end
       end
     end)
     |> reload()
   end
 
-  def create_provider_keys(_scope, _attrs, _place), do: {:error, :not_found}
+  def create_provider_keys(_scope, _attrs, _place, _opts), do: {:error, :not_found}
+
+  # The counter of `next_key_id/1` starts at the highest `key-<n>` the new secret's keys have.
+  defp start_key_counter(%Secret{id: id}) do
+    highest =
+      from(v in Value, where: v.secret_id == ^id, select: v.value_id)
+      |> Repo.all()
+      |> Value.highest_key_number()
+
+    Repo.update_all(from(s in Secret, where: s.id == ^id), set: [last_key_number: highest])
+    :ok
+  end
 
   # The level of a new provider's keys, its lock taken: `{:ok, nil}` for the
   # organisation's, `{:ok, workspace_id}` for the scope's workspace's.
@@ -1026,7 +1051,9 @@ defmodule Apiary.Secrets do
   organisation's a workspace's.
 
   `{:ok, plaintext}`; `{:error, :not_found}` for a secret or a value the place does not
-  have at its level; `{:error, :unavailable}` when the value cannot be decrypted: the
+  have at its level; `{:error, :login}` for the secret of a model provider whose keys are
+  sign-ins, whose documents have a refresh token (`Apiary.ModelKeys.reveal_for_sealing/4`
+  seals their access token alone); `{:error, :unavailable}` when the value cannot be decrypted: the
   data key was wrapped under a key the instance does not hold, or the row is not the one
   that was written (moved to another secret, workspace, organisation or value id, or
   changed), with a line in the log that names the secret and the value id, never the
@@ -1041,7 +1068,7 @@ defmodule Apiary.Secrets do
   error.
   """
   @spec reveal_for_sealing(%Workspace{} | %Organisation{}, String.t(), String.t() | nil) ::
-          {:ok, binary} | {:error, Access.reason() | :unavailable}
+          {:ok, binary} | {:error, Access.reason() | :unavailable | :login}
   def reveal_for_sealing(
         %Workspace{id: workspace_id, organisation_id: organisation_id},
         secret_id,
@@ -1078,55 +1105,192 @@ defmodule Apiary.Secrets do
     end
   end
 
-  # With the `factory` feature: reveal_key_for_sealing/2 is the plaintext of the key of the
+  # With the `factory` feature: reveal_key_and_set_at/2 is the plaintext of the key of the
   # model provider `provider`, a row of `Apiary.Connections` the caller has read and
   # checked (`Apiary.Connections.intact?/1`), whose row id (`secret_values.id`) is
-  # `secret_value_id`, for the secrets endpoint alone (`Apiary.Runs.SecretsRequest`). The
-  # key is a value of the secret that the provider's row links (`secret_id`), read at the
-  # level that secret is at, as `reveal_for_sealing/3` reads it, with the same results:
-  # for the organisation's secret, under the organisation's data key; for a workspace's,
-  # under that workspace's data key. The caller checks that the run is of that workspace
-  # (`provider_keys_workspace/1`). The edition is not called: the core keeps the
-  # provider's keys whatever the edition returns for the organisation's other secrets. The
-  # key is decrypted under the value id it has now, which its associated data binds, so a
-  # key renamed since a run's claim is revealed. `{:error, :not_found}` for a provider that
-  # links no secret, and for a key that is not a value of that secret, or is gone.
+  # `secret_value_id`, and the time the revealed value was set (`secret_values.value_set_at`),
+  # read from the same row: `{:ok, plaintext, value_set_at}`. It is for the gate alone
+  # (`Apiary.ModelKeys.reveal_for_sealing/4`). The key is a value of the secret that the
+  # provider's row links (`secret_id`), read at the level that secret is at, as
+  # `reveal_for_sealing/3` reads it, with the same results: for the organisation's secret,
+  # under the organisation's data key; for a workspace's, under that workspace's data key.
+  # The caller checks that the run is of that workspace (`provider_keys_workspace/1`). The
+  # edition is not called: the core keeps the provider's keys whatever the edition returns
+  # for the organisation's other secrets. The key is decrypted under the value id it has
+  # now, which its associated data binds, so a key renamed since a run's claim is revealed.
+  # `{:error, :not_found}` for a provider that links no secret, and for a key that is not a
+  # value of that secret, or is gone; `{:error, :login}` for a key of a provider whose API
+  # has `oauth_refresh`, a login whose document `Apiary.ModelKeys.Login` alone reads
+  # (`reveal_login/2`); the gate seals only its access token. The catalogue entry decides
+  # `{:error, :login}`, not a row of the key: a key of such a provider is never revealed, so
+  # a login that has no row yet is not sealed whole, refresh token included.
   @doc false
-  @spec reveal_key_for_sealing(Connection.t(), Ecto.UUID.t()) ::
+  @spec reveal_key_and_set_at(Connection.t(), Ecto.UUID.t()) ::
+          {:ok, binary, DateTime.t()} | {:error, :not_found | :unavailable | :login}
+  def reveal_key_and_set_at(%Connection{provider_kind: kind} = provider, secret_value_id) do
+    if Login.provider?(kind),
+      do: {:error, :login},
+      else: reveal_key_row(provider, secret_value_id)
+  end
+
+  def reveal_key_and_set_at(_provider, _secret_value_id), do: {:error, :not_found}
+
+  # reveal_key_row/2 is `reveal_row/2` with the time the value was set.
+  defp reveal_key_row(provider, secret_value_id) do
+    with {:ok, plaintext, %Value{value_set_at: value_set_at}} <-
+           reveal_row(provider, secret_value_id),
+         do: {:ok, plaintext, value_set_at}
+  end
+
+  # reveal_login/2 is the plaintext of the key `secret_value_id` of `provider`, a provider
+  # whose API has `oauth_refresh`: the document of its login, for `Apiary.ModelKeys.Login`
+  # alone, which sends the refresh token to the provider. `{:error, :not_found}` for a
+  # provider whose keys are not logins, and as `reveal_key_and_set_at/2` for a key that
+  # is gone. The plaintext goes to the token endpoint and nowhere else.
+  @doc false
+  @spec reveal_login(Connection.t(), Ecto.UUID.t()) ::
           {:ok, binary} | {:error, :not_found | :unavailable}
-  def reveal_key_for_sealing(provider, secret_value_id) do
-    case reveal_key_and_set_at(provider, secret_value_id) do
-      {:ok, plaintext, _value_set_at} -> {:ok, plaintext}
+  def reveal_login(%Connection{} = provider, secret_value_id) do
+    with {:ok, plaintext, _snapshot} <- reveal_login_snapshot(provider, secret_value_id),
+         do: {:ok, plaintext}
+  end
+
+  # reveal_login_snapshot/2 is `reveal_login/2` with what a refresh starts from:
+  # `{:ok, plaintext, %{value_id:, value_set_at:}}`, read from the same row, so
+  # `write_refreshed_key/4` can tell that the value is still the one the refresh used: no
+  # new value was pasted since. `value_id` is the key's name when the refresh started; a
+  # rename changes it, and the write reads the name again.
+  @doc false
+  @spec reveal_login_snapshot(Connection.t(), Ecto.UUID.t()) ::
+          {:ok, binary, %{value_id: String.t(), value_set_at: DateTime.t() | nil}}
+          | {:error, :not_found | :unavailable}
+  def reveal_login_snapshot(%Connection{provider_kind: kind} = provider, secret_value_id) do
+    with true <- Login.provider?(kind),
+         {:ok, plaintext, %Value{} = row} <- reveal_row(provider, secret_value_id) do
+      {:ok, plaintext, %{value_id: row.value_id, value_set_at: row.value_set_at}}
+    else
+      false -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
     end
   end
 
-  # reveal_key_and_set_at/2 is `reveal_key_for_sealing/2` with the time the revealed
-  # value was set (`secret_values.value_set_at`), read from the same row:
-  # `{:ok, plaintext, value_set_at}`.
+  # login_value_id/2 is the value id (the key's name) the key `secret_value_id` of
+  # `provider` has now, or nil for a key that is gone: for the audit entry of a refresh,
+  # which names the key as it is named when the entry is written. The caller holds the
+  # secret's lock, so a rename cannot run between this read and the entry.
   @doc false
-  @spec reveal_key_and_set_at(Connection.t(), Ecto.UUID.t()) ::
-          {:ok, binary, DateTime.t()} | {:error, :not_found | :unavailable}
-  def reveal_key_and_set_at(
-        %Connection{organisation_id: organisation_id, secret_id: secret_row_id} = provider,
-        secret_value_id
-      )
-      when is_binary(organisation_id) and is_binary(secret_row_id) and
-             is_binary(secret_value_id) and not is_nil(provider.provider_kind) do
+  @spec login_value_id(Connection.t(), Ecto.UUID.t()) :: String.t() | nil
+  def login_value_id(%Connection{} = provider, secret_value_id) do
+    with {:ok, row_id} <- cast_row_id(secret_value_id),
+         {query, _secret_id, _workspace_id} <- provider_values(provider),
+         {%Value{value_id: value_id}, _data_key} when is_binary(value_id) <-
+           Repo.one(where(query, [v], v.id == ^row_id)) do
+      value_id
+    else
+      _gone -> nil
+    end
+  end
+
+  # reveal_row/2 is the plaintext of the key `secret_value_id` of `provider` and its row,
+  # whatever the provider's kind.
+  defp reveal_row(
+         %Connection{organisation_id: organisation_id, secret_id: secret_row_id} = provider,
+         secret_value_id
+       )
+       when is_binary(organisation_id) and is_binary(secret_row_id) and
+              is_binary(secret_value_id) and not is_nil(provider.provider_kind) do
     with {:ok, row_id} <- Ecto.UUID.cast(secret_value_id),
          {query, secret_id, workspace_id} <- provider_values(provider),
          {%Value{value_id: value_id} = row, data_key} when is_binary(value_id) <-
            Repo.one(where(query, [v], v.id == ^row_id)),
          {:ok, plaintext} <-
            decrypt_for_sealing(row, data_key, organisation_id, workspace_id, secret_id) do
-      {:ok, plaintext, row.value_set_at}
+      {:ok, plaintext, row}
     else
       {:error, :unavailable} -> {:error, :unavailable}
       _gone -> {:error, :not_found}
     end
   end
 
-  def reveal_key_and_set_at(_provider, _secret_value_id), do: {:error, :not_found}
+  defp reveal_row(_provider, _secret_value_id), do: {:error, :not_found}
+
+  # write_refreshed_key/4 stores `plaintext`, a refreshed login's document, as the value of
+  # the key `secret_value_id` of `provider`, for `Apiary.ModelKeys.Login` alone: the
+  # instance's write, with no scope. It writes only if no new value was pasted since the
+  # refresh started: the row's `value_set_at` must be the one in `from`, as
+  # `reveal_login_snapshot/2` returned it, compared in the update itself. A key that is gone
+  # is dropped too. A rename does not drop the result: it encrypts the value again under the
+  # key's new name, so this write reads the name the row has now, which the caller's lock on
+  # the secret keeps from changing, and encrypts under it, so that a rename while the call
+  # ran never loses the rotated refresh token. It encrypts under the key's data key and
+  # changes the ciphertext and nonce only: `value_set_at` stays, so the key's states and the
+  # copies that runs hold stay (`Apiary.ModelKeys.keep_copies/2`), as a new value would
+  # clear them; `updated_at` and `updated_by_id` stay too, as no person changed the value.
+  # The caller holds the locks of the lock order of docs/access.md in a transaction: the
+  # organisation `FOR SHARE`, the keys' secret `FOR UPDATE`, then the login's row. `:ok`, or
+  # `{:error, reason}`: `:not_found` for a provider whose keys are not logins and for a key
+  # that is gone, `:changed` for a value pasted since, `:unavailable` as `reveal_login/2` has
+  # it, `:too_large` for a document past a value's size, `:invalid` for a text that is no
+  # login's document (`Apiary.ModelKeys.Login.document?/1`).
+  @doc false
+  @spec write_refreshed_key(
+          Connection.t(),
+          Ecto.UUID.t(),
+          binary,
+          %{value_set_at: DateTime.t() | nil}
+        ) ::
+          :ok | {:error, :not_found | :changed | :unavailable | :too_large | :invalid}
+  def write_refreshed_key(
+        %Connection{organisation_id: organisation_id, secret_id: secret_row_id} = provider,
+        secret_value_id,
+        plaintext,
+        %{value_set_at: value_set_at}
+      )
+      when is_binary(organisation_id) and is_binary(secret_row_id) and
+             is_binary(secret_value_id) and is_binary(plaintext) and
+             not is_nil(provider.provider_kind) do
+    with true <- Login.provider?(provider) or {:error, :not_found},
+         true <- byte_size(plaintext) <= Value.value_max() or {:error, :too_large},
+         true <- Login.document?(plaintext) or {:error, :invalid},
+         {:ok, row_id} <- cast_row_id(secret_value_id),
+         {query, secret_id, workspace_id} <- provider_values(provider) || {:error, :not_found},
+         {%Value{value_id: value_id}, data_key} when is_binary(value_id) <-
+           Repo.one(where(query, [v], v.id == ^row_id)) || {:error, :not_found},
+         {:ok, key} <- unwrap(data_key) do
+      aad = value_aad(organisation_id, workspace_id, secret_id, value_id)
+      {new_nonce, ciphertext} = Cipher.encrypt(key, aad, plaintext)
+
+      case Repo.update_all(
+             from(v in Value,
+               where:
+                 v.id == ^row_id and v.value_id == ^value_id and
+                   fragment(
+                     "? IS NOT DISTINCT FROM ?",
+                     v.value_set_at,
+                     type(^value_set_at, :utc_datetime_usec)
+                   )
+             ),
+             set: [nonce: new_nonce, ciphertext: ciphertext]
+           ) do
+        {1, _rows} -> :ok
+        {0, _rows} -> {:error, :changed}
+      end
+    else
+      {:error, :key_unavailable} -> {:error, :unavailable}
+      {:error, reason} -> {:error, reason}
+      _gone -> {:error, :not_found}
+    end
+  end
+
+  def write_refreshed_key(_provider, _secret_value_id, _plaintext, _from),
+    do: {:error, :not_found}
+
+  defp cast_row_id(id) do
+    case Ecto.UUID.cast(id) do
+      {:ok, row_id} -> {:ok, row_id}
+      :error -> {:error, :not_found}
+    end
+  end
 
   # The query of the values of the secret the provider's row links, at that secret's
   # level, each with its data key, `{query, secret's public id, workspace id or nil}`;
@@ -1208,11 +1372,27 @@ defmodule Apiary.Secrets do
 
     case Repo.one(query) do
       {%Value{} = row, data_key} ->
-        decrypt_for_sealing(row, data_key, organisation_id, workspace_id, secret_id)
+        # The secret of a model provider whose keys are sign-ins is not sealed whole: its
+        # document has the refresh token (`ModelKeys.reveal_for_sealing/4` seals the access
+        # token alone).
+        if login_secret?(row.secret_id),
+          do: {:error, :login},
+          else: decrypt_for_sealing(row, data_key, organisation_id, workspace_id, secret_id)
 
       nil ->
         {:error, :not_found}
     end
+  end
+
+  # Whether a model provider whose keys are sign-ins (`Apiary.ModelKeys.Login.provider?/1`)
+  # links the secret.
+  defp login_secret?(secret_id) do
+    Repo.all(
+      from c in Connection,
+        where: c.secret_id == ^secret_id and not is_nil(c.provider_kind),
+        select: c.provider_kind
+    )
+    |> Enum.any?(&Login.provider?/1)
   end
 
   # The plaintext of `row`, under the associated data of its value id as the row has it.
@@ -1498,7 +1678,7 @@ defmodule Apiary.Secrets do
 
   ## Encryption
 
-  defp insert_value(scope, secret, changeset) do
+  defp insert_value(scope, secret, changeset, hint?) do
     changeset =
       changeset
       |> Ecto.Changeset.change(
@@ -1508,13 +1688,54 @@ defmodule Apiary.Secrets do
         created_by_id: scope.user.id
       )
 
-    encrypt_and_write(scope, secret, changeset, :insert)
+    encrypt_and_write(scope, secret, changeset, :insert, hint?)
+  end
+
+  @doc """
+  next_key_id/1 is the value id `key-<n>` that a model provider's next key gets: the number
+  after the last one the secret gave (`secrets.last_key_number`), so a number is never
+  given twice, even after the key that had it is deleted. The counter is the only thing
+  that gives a number, and it moves in one UPDATE, in the transaction that adds the key,
+  under the row lock of the provider's write. `create_provider_keys/4` sets it to the
+  highest `key-<n>` of the keys the secret starts with.
+  """
+  @spec next_key_id(Secret.t()) :: String.t()
+  # shortcut: a context call with an explicit value_id above the counter can collide with a
+  # later auto key. The unique index refuses the add, the counter rolls back with it, and
+  # nothing repairs the counter. Replace when a path lets a person choose a key number.
+  def next_key_id(%Secret{id: id}) do
+    {1, [number]} =
+      Repo.update_all(
+        from(s in Secret,
+          where: s.id == ^id,
+          select: s.last_key_number,
+          update: [inc: [last_key_number: 1]]
+        ),
+        []
+      )
+
+    "key-#{number}"
+  end
+
+  # Whether the values written under `opts` keep a hint (`Apiary.Secrets.Value.hint/1`):
+  # the keys of a model provider whose keys are not sign-ins. A sign-in's value is a JSON
+  # document with the refresh token in it, an ordinary secret's value is a secret that
+  # nothing else shows a part of, and neither keeps a hint. `create_provider_keys/4` has
+  # `hint: false` for a new provider whose keys are sign-ins.
+  defp hint?(opts) do
+    case Keyword.get(opts, :provider) do
+      %Connection{} = provider -> not Login.provider?(provider)
+      :new -> Keyword.get(opts, :hint, true)
+      _other -> false
+    end
   end
 
   # Encrypts the changeset's plaintext under the data key of the secret's level, bound to
   # the value id it will have, takes the plaintext out of the changeset, and writes the
-  # row, with the time its value was set (`value_set_at`).
-  defp encrypt_and_write(scope, secret, changeset, how) do
+  # row, with the time its value was set (`value_set_at`) and, when `hint?`, the hint of
+  # the plaintext: a value written over another replaces its hint, and a value too short
+  # for one clears it.
+  defp encrypt_and_write(scope, secret, changeset, how, hint?) do
     plaintext = Ecto.Changeset.get_change(changeset, :value)
     value_id = Ecto.Changeset.get_field(changeset, :value_id)
 
@@ -1530,7 +1751,7 @@ defmodule Apiary.Secrets do
           ciphertext: ciphertext,
           value_set_at: DateTime.utc_now(),
           updated_by_id: scope.user.id
-        ] ++ key_field
+        ] ++ key_field ++ if(hint?, do: [hint: Value.hint(plaintext)], else: [])
       )
       |> then(fn changeset ->
         case how do

@@ -116,9 +116,9 @@ defmodule Apiary.Dispatches.RunEnd do
   # work items in Explore whose runs wait for its build `FOR KEY SHARE`, or `FOR UPDATE`
   # with the workflow model on, by id; then its environment record `FOR UPDATE`, as a release holds it (`Apiary.Dispatches.Release`):
   # so each of them and a Rebuild take turns at the record, a listing's part that holds a
-  # collection `FOR UPDATE` and a close that holds a work item `FOR UPDATE` take turns
-  # with the end before the record. With the workflow model off, a claim, which takes no
-  # held run and holds the collections it queues a build of `FOR SHARE` as well, never
+  # collection `FOR NO KEY UPDATE` and a close that holds a work item `FOR UPDATE` take
+  # turns with the end before the record. With the workflow model off, a claim, which takes
+  # no held run and holds the collections it queues a build of `FOR SHARE` as well, never
   # waits on the end for a run the end ends. With it on, a claim waits for the end at one
   # of those work items once it writes a run of that work item a second time in its
   # transaction, as its registration and an end at the claim do: Postgres then checks
@@ -138,7 +138,7 @@ defmodule Apiary.Dispatches.RunEnd do
   # `FOR UPDATE` (`Apiary.Environments.lock_missing/3`). The prebuild it queues inserts a
   # run of the queue whose foreign key takes `FOR KEY SHARE` on its collection, which the
   # end then holds already: a listing's part or an assign, which holds its collections
-  # `FOR UPDATE`, waits for the end at the connection or at the collection, and never
+  # `FOR NO KEY UPDATE`, waits for the end at the connection or at the collection, and never
   # holds what the end waits for. A release, a close or a next run of the work item waits
   # for the end at the work item. For any other run with the workflow model off,
   # `FOR KEY SHARE` is enough on the work item: the end writes no work item and inserts

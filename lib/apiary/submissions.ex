@@ -20,6 +20,12 @@ defmodule Apiary.Submissions do
   # `list_cached/5` and `for_run/4` take and return a cache, a map the caller keeps between
   # reads: a stored version never changes, so what was read of it is kept by its public id,
   # and each call returns the entries it used, so the cache does not grow.
+  #
+  # The text of a change comes from the Deliverables table of the work item's plan, the
+  # artifact `main` of the plan type that the version's run recorded
+  # (`run_harnesses.plan_type`, the `plan` of its workflow in the stack file). A run with
+  # no plan type, or one whose plan has no such table, shows no text: no other type is
+  # read instead.
   @moduledoc false
 
   import Ecto.Query
@@ -28,6 +34,7 @@ defmodule Apiary.Submissions do
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.Collection
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Harnesses.RunHarness
   alias Apiary.Nodes.Node
   alias Apiary.Runs.{Preparation, Run}
   alias Apiary.Stages.Artifacts, as: StageArtifacts
@@ -40,22 +47,21 @@ defmodule Apiary.Submissions do
   # The commits listed for one repository: the first ones and the head.
   @max_commits 100
   @max_repositories 20
-  # The most of a stored submission and of a build plan that is read.
+  # The most of a stored submission and of a plan that is read.
   @max_json_bytes 1_048_576
   @max_plan_bytes 262_144
   @max_plan_rows 200
   # The characters of a stored text that are kept, and of an address.
   @max_text 200
   @max_url 2048
-  @plan_type "build-plan"
 
   @commit ~r/\A([0-9a-f]{40}|[0-9a-f]{64})\z/
   @id ~r/\A[A-Za-z0-9][A-Za-z0-9._-]{0,63}\z/
 
   @typedoc """
-  What a commit's step says: `{:change, id, text}` for a deliverable of the build plan,
-  `text` the plan's text of the change or nil, `{:fix, finding}` for a fix of a review
-  finding, and nil for any other step.
+  A commit's step is `{:change, id, text}` for a deliverable of the run's plan, `text`
+  the plan's text of the change or nil, `{:fix, finding}` for a fix of a review finding,
+  and nil for any other step.
   """
   @type step :: {:change, String.t(), String.t() | nil} | {:fix, String.t()} | nil
 
@@ -103,7 +109,7 @@ defmodule Apiary.Submissions do
     do: work_item |> list_cached(type, artifacts, only, %{}) |> elem(0)
 
   @doc """
-  `list/4` with a cache: `{rows, cache}`. A version's stored file is read once and a build
+  `list/4` with a cache: `{rows, cache}`. A version's stored file is read once and a
   plan's file once, whatever number of rows use them; a file is read only when a row needs
   it (a plan only for a row with a `deliverable:` step, and the versions that only an
   earlier row's `Base` would need only when a wanted row has a base).
@@ -128,7 +134,6 @@ defmodule Apiary.Submissions do
     included = MapSet.new(listed, & &1.public_id)
     ends = run_ends(listed)
     approved = approved(work_item, listed)
-    plans = plans(artifacts)
     state = {cache, %{}}
 
     {wanted, others} =
@@ -138,6 +143,11 @@ defmodule Apiary.Submissions do
     needs_others? = Enum.any?(wanted_reads, fn {_id, read} -> based?(read) end)
     {other_reads, state} = if needs_others?, do: read_all(others, state), else: {[], state}
     reads = Map.new(wanted_reads ++ other_reads)
+
+    # The plans are read only for the versions with a `deliverable:` step to word.
+    texted = Enum.filter(listed, &changes?(Map.get(reads, &1.public_id)))
+    plan_types = plan_types(texted)
+    plans = plans(artifacts, Map.values(plan_types))
 
     {rows, _heads, state} =
       listed
@@ -149,7 +159,10 @@ defmodule Apiary.Submissions do
           {rows, heads, state}
         else
           hidden? = hidden_before?(all, version, included)
-          {repositories, state} = with_texts(read.repositories, plans, version, state)
+
+          {repositories, state} =
+            with_texts(read.repositories, plans[plan_types[version.run_id]], version, state)
+
           repositories = based(repositories, heads, hidden?)
           run = version.run && version.run.run
 
@@ -238,7 +251,7 @@ defmodule Apiary.Submissions do
   @doc """
   The name of the integration that draws each of `systems` (`target_system` of the
   workspace's collections), by system, for the mark beside a draft's number. A system that
-  no collection of the workspace names is not in the map.
+  is the `target_system` of no collection of the workspace is not in the map.
   """
   @spec system_names(WorkItem.t(), [String.t()]) :: %{String.t() => String.t()}
   def system_names(_work_item, []), do: %{}
@@ -371,7 +384,7 @@ defmodule Apiary.Submissions do
   defp based?(%{repositories: repositories}), do: Enum.any?(repositories, & &1.base)
 
   # A stored file of a size the type allows is decoded; a larger one, or one that cannot be
-  # read, gives a row with no repository.
+  # read, has a row with no repository.
   defp read_version(%{files: [%{size: size} | _rest]} = version) when size <= @max_json_bytes do
     content = StageArtifacts.read_json(version) || %{}
 
@@ -383,18 +396,48 @@ defmodule Apiary.Submissions do
 
   defp read_version(_version), do: %{ref: nil, repositories: []}
 
-  ## The build plan's changes
+  ## The plan's changes
 
-  # The versions of the work item's build plan that count, oldest first.
-  defp plans(artifacts) do
-    case Enum.find(artifacts, &(&1.type == @plan_type and &1.name == "main")) do
-      %{versions: versions} -> versions |> counted() |> Enum.reverse()
-      nil -> []
+  # The versions of the plans of the work item that count, oldest first, by the plan's
+  # type: the artifacts named `main` of the types in `types`.
+  defp plans(artifacts, types) do
+    for %{name: "main", type: type, versions: versions} <- artifacts,
+        type in types,
+        into: %{} do
+      {type, versions |> counted() |> Enum.reverse()}
+    end
+  end
+
+  # Whether a read version has a commit with a `deliverable:` step whose text is not yet
+  # set.
+  defp changes?(nil), do: false
+
+  defp changes?(%{repositories: repositories}) do
+    Enum.any?(repositories, fn repository ->
+      Enum.any?(repository.commits, &match?(%{step: {:change, _id, nil}}, &1))
+    end)
+  end
+
+  # The plan type each run of `versions` recorded (`run_harnesses.plan_type`), by the
+  # run's id; a run with no walk or no type is not in the map. One query.
+  defp plan_types(versions) do
+    ids = for %{run_id: id} <- versions, is_binary(id), uniq: true, do: id
+
+    if ids == [] do
+      %{}
+    else
+      Repo.all(
+        from h in RunHarness,
+          where: h.dispatch_run_id in ^ids and not is_nil(h.plan_type),
+          select: {h.dispatch_run_id, h.plan_type}
+      )
+      |> Map.new()
     end
   end
 
   # The repositories of a row with the text of each change, where a commit has a
-  # `deliverable:` step: from the plan that was newest when the version was stored, read
+  # `deliverable:` step: from the version of `plans`, the run's plan type's versions
+  # (nil for a run with no plan type), that was newest when the version was stored, read
   # only now, and once.
   defp with_texts(repositories, plans, version, state) do
     ids =
@@ -407,7 +450,7 @@ defmodule Apiary.Submissions do
       {repositories, state}
     else
       plan =
-        plans
+        (plans || [])
         |> Enum.filter(&(DateTime.compare(&1.inserted_at, version.inserted_at) != :gt))
         |> List.last()
 
@@ -449,9 +492,11 @@ defmodule Apiary.Submissions do
   defp read(stream), do: {:ok, stream |> Enum.to_list() |> IO.iodata_to_binary()}
 
   @doc """
-  The text of each change of a build plan, by the id of its deliverable: the cells Id and
-  Change of the first 200 rows of the table under `## Deliverables`, each text of at most
-  200 characters. A row with another id form, or with no change text, is left out.
+  The text of each change of a plan, by the id of its deliverable: the first two cells of
+  the first 200 rows of the table under `## Deliverables` that have an id and a change
+  text, each text of at most 200 characters. The first table row is the header and the
+  row after it, if it is a separator (`|---|---|`), is skipped, whatever their text. A row
+  with another id form, or with no change text, is left out.
   """
   @spec deliverables(String.t()) :: %{String.t() => String.t()}
   def deliverables(markdown) when is_binary(markdown) do
@@ -460,15 +505,32 @@ defmodule Apiary.Submissions do
     |> Enum.drop_while(&(String.trim(&1) != "## Deliverables"))
     |> Enum.drop(1)
     |> Enum.take_while(&(not String.starts_with?(&1, "## ")))
+    |> Enum.map(&String.trim/1)
+    |> Enum.filter(&String.starts_with?(&1, "|"))
+    |> without_header()
     |> Enum.flat_map(&row/1)
     |> Enum.take(@max_plan_rows)
     |> Map.new()
   end
 
+  # The table rows without the header, the first row, whatever its text, and without the
+  # separator row (`|---|---|`) right after it. A table with no separator row keeps its
+  # second row.
+  defp without_header([_header, separator | rows] = all) do
+    if separator?(separator), do: rows, else: tl(all)
+  end
+
+  defp without_header(_rows), do: []
+
+  defp separator?(line) do
+    cells = cells(line)
+    cells != [] and Enum.all?(cells, &Regex.match?(~r/\A:?-+:?\z/, &1))
+  end
+
   defp row(line) do
     case line |> String.trim() |> cells() do
       [id, change | _rest] ->
-        if id != "Id" and Regex.match?(@id, id) and change != "",
+        if Regex.match?(@id, id) and change != "",
           do: [{id, cut(change)}],
           else: []
 

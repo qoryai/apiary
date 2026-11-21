@@ -476,10 +476,13 @@ defmodule Apiary.Dispatches.HandoverTest do
     test "a run that cannot be stored is unavailable, and nothing is written", ctx do
       {_work_item, queued} = queued!(ctx)
 
-      # A run of the queue with no record, as the previous release queued it, and a row of
-      # the run's id in the workspace already, which no product path writes: the
-      # registered run cannot be inserted.
-      :ok = Apiary.RunEventsFixtures.forget_queued!(queued.id)
+      # The queued run's record set to another run id, and a row of the run's id in the
+      # workspace already, which no product path writes: the registered run cannot be
+      # stored.
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.dispatch_run_id == ^queued.id),
+          set: [node_run_id: Ecto.UUID.generate()]
+        )
 
       in_the_way =
         Repo.insert!(%Run{
@@ -508,6 +511,26 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       Repo.delete!(in_the_way)
       assert %{registered: %Run{}} = claimed!(ctx)
+    end
+
+    test "a run whose record is missing is unavailable, and nothing is written", ctx do
+      {_work_item, queued} = queued!(ctx)
+
+      # The record its queueing wrote, deleted, which no product path does while the run
+      # waits: the registration finds no record to update, and the claim makes none.
+      {1, _rows} = Repo.delete_all(from r in Run, where: r.dispatch_run_id == ^queued.id)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert claim(ctx) == {:error, :unavailable}
+        end)
+
+      assert log =~ "a claim could not be made: Ecto.NoResultsError"
+      refute Repo.exists?(from r in Run, where: r.dispatch_run_id == ^queued.id)
+      assert runs() == 0
+      assert dispatches() == 0
+      assert queue_run!(queued).state == :waiting
+      assert Slots.held(ctx.pool.id) == 0
     end
   end
 

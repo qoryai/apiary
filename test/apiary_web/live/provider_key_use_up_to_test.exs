@@ -52,6 +52,17 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
   defp secrets_path(scope, rest),
     do: "/#{scope.organisation.slug}/#{scope.workspace.slug}/settings/secrets#{rest}"
 
+  # The Edit key page of the key `value_id`, at its row id.
+  defp edit_path(scope, provider, value_id),
+    do: "#{page(scope, provider)}/keys/#{value!(provider, value_id).id}/edit"
+
+  # The id of the key `value_id` in the page source: its row id.
+  defp key_dom(provider, value_id), do: "provider-key-#{value!(provider, value_id).id}"
+
+  # The Change value page of the key `value_id` of `secret`, at its row id.
+  defp change_path(scope, provider, secret, value_id),
+    do: secrets_path(scope, "/#{secret.public_id}/values/#{value!(provider, value_id).id}/change")
+
   describe "Add key and Edit key" do
     test "show Use up to for a provider with limit windows, and save it", ctx do
       %{conn: conn, scope: scope} = ctx
@@ -64,12 +75,12 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
       assert has_element?(lv, "#key_use_up_to-use-up-to-hint", @hint)
 
       lv
-      |> form("#key-form", key: %{value_id: "key-2", key: @key <> "-2", use_up_to: "90"})
+      |> form("#key-form", key: %{key: @key <> "-2", use_up_to: "90"})
       |> render_submit()
 
       assert ModelKeys.setting(value!(provider, "key-2").id).use_up_to_percent == 90
 
-      {:ok, lv, _html} = live(conn, "#{page(scope, provider)}/keys/key-2/edit")
+      {:ok, lv, _html} = live(conn, edit_path(scope, provider, "key-2"))
       assert has_element?(lv, ~s{#key_use_up_to[value="90"]})
 
       lv |> form("#key-form", key: %{use_up_to: ""}) |> render_submit()
@@ -81,7 +92,7 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
       provider = provider!(scope, "claude-subscription")
 
       for sent <- ["0", "100", "9.5", "abc"] do
-        {:ok, lv, _html} = live(conn, "#{page(scope, provider)}/keys/key-1/edit")
+        {:ok, lv, _html} = live(conn, edit_path(scope, provider, "key-1"))
         lv |> form("#key-form", key: %{use_up_to: sent}) |> render_submit()
 
         assert has_element?(
@@ -104,7 +115,7 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
       value = value!(provider, "key-1")
       stored!(value, 40)
 
-      {:ok, lv, _html} = live(conn, "#{page(scope, provider)}/keys/key-1/edit")
+      {:ok, lv, _html} = live(conn, edit_path(scope, provider, "key-1"))
 
       lv
       |> form("#key-form", key: %{pause_number: "5", pause_unit: "minutes"})
@@ -117,8 +128,8 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
       %{conn: conn, scope: scope} = ctx
       provider = provider!(scope, "anthropic")
 
-      for path <- ["keys/new", "keys/key-1/edit"] do
-        {:ok, lv, html} = live(conn, "#{page(scope, provider)}/#{path}")
+      for path <- ["#{page(scope, provider)}/keys/new", edit_path(scope, provider, "key-1")] do
+        {:ok, lv, html} = live(conn, path)
         refute has_element?(lv, "#key_use_up_to"), path
         refute html =~ "Use up to", path
       end
@@ -159,30 +170,39 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
       )
 
       {:ok, lv, _html} = live(conn, page(scope, provider))
-      assert has_element?(lv, "#provider-key-key-1-state", "In cooldown until")
-      assert has_element?(lv, "#provider-key-key-1-state", "5-hour at 90%, this key's Use up to")
+      assert has_element?(lv, "##{key_dom(provider, "key-1")}-state", "In cooldown until")
+
+      assert has_element?(
+               lv,
+               "##{key_dom(provider, "key-1")}-state",
+               "5-hour at 90%, this key's Use up to"
+             )
 
       # Above the window's use, the key is available, with its use.
       {:ok, _} = put_key_setting(scope, value, %{"use_up_to_percent" => 95})
       {:ok, lv, _html} = live(conn, page(scope, provider))
-      assert has_element?(lv, "#provider-key-key-1-state", "Available")
-      assert has_element?(lv, "#provider-key-key-1-state", "5-hour 93%")
+      assert has_element?(lv, "##{key_dom(provider, "key-1")}-state", "Available")
+      assert has_element?(lv, "##{key_dom(provider, "key-1")}-state", "5-hour 93%")
     end
   end
 
   describe "Secrets" do
-    test "Add value and Change value of a provider's key show and save Use up to", ctx do
+    test "Change value of a provider's key shows and saves Use up to; Add value is not found",
+         ctx do
       %{conn: conn, scope: scope} = ctx
       provider = provider!(scope, "claude-subscription", :workspace)
       secret = Repo.get!(Secret, provider.secret_id)
 
-      {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
+      assert {:error, {:live_redirect, %{flash: %{"error" => _}}}} =
+               live(conn, secrets_path(scope, "/#{secret.public_id}/add-value"))
+
+      {:ok, _provider} = Connections.add_provider_key(scope, provider, %{value: @key <> "-2"})
+
+      {:ok, lv, _html} = live(conn, change_path(scope, provider, secret, "key-2"))
       assert has_element?(lv, "#secret_value_use_up_to-use-up-to-hint", @hint)
 
       lv
-      |> form("#secret-form",
-        secret_value: %{value_id: "key-2", value: @key <> "-2", use_up_to: "0"}
-      )
+      |> form("#secret-form", secret_value: %{value: "", use_up_to: "0"})
       |> render_submit()
 
       assert has_element?(
@@ -191,17 +211,10 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
                "Enter a percentage from 1 to 99."
              )
 
-      lv
-      |> form("#secret-form",
-        secret_value: %{value_id: "key-2", value: @key <> "-2", use_up_to: "85"}
-      )
-      |> render_submit()
-
+      lv |> form("#secret-form", secret_value: %{value: "", use_up_to: "85"}) |> render_submit()
       assert ModelKeys.setting(value!(provider, "key-2").id).use_up_to_percent == 85
 
-      {:ok, lv, _html} =
-        live(conn, secrets_path(scope, "/#{secret.public_id}/values/key-2/change"))
-
+      {:ok, lv, _html} = live(conn, change_path(scope, provider, secret, "key-2"))
       assert has_element?(lv, ~s{#secret_value_use_up_to[value="85"]})
       lv |> form("#secret-form", secret_value: %{value: "", use_up_to: "70"}) |> render_submit()
       assert ModelKeys.setting(value!(provider, "key-2").id).use_up_to_percent == 70
@@ -214,8 +227,7 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
       value = value!(provider, "key-1")
       stored!(value, 40)
 
-      {:ok, lv, _html} =
-        live(conn, secrets_path(scope, "/#{secret.public_id}/values/key-1/change"))
+      {:ok, lv, _html} = live(conn, change_path(scope, provider, secret, "key-1"))
 
       lv
       |> form("#secret-form",
@@ -231,11 +243,9 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
       provider = provider!(scope, "anthropic", :workspace)
       secret = Repo.get!(Secret, provider.secret_id)
 
-      for rest <- ["/add-value", "/values/key-1/change"] do
-        {:ok, lv, _html} = live(conn, secrets_path(scope, "/#{secret.public_id}#{rest}"))
-        assert has_element?(lv, "#secret_value_pause_number"), rest
-        refute has_element?(lv, "#secret_value_use_up_to"), rest
-      end
+      {:ok, lv, _html} = live(conn, change_path(scope, provider, secret, "key-1"))
+      assert has_element?(lv, "#secret_value_pause_number")
+      refute has_element?(lv, "#secret_value_use_up_to")
     end
   end
 end

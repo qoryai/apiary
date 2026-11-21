@@ -64,6 +64,14 @@ being one. Every variable named here is described in [Install and configure](ins
   from its host over HTTPS, from public addresses only. Allow the Qory Apiary server
   outbound HTTPS to each host your harnesses use, such as `github.com:443`.
 <!-- /feature -->
+<!-- feature: factory, secrets -->
+- **Where an OpenAI subscription signs in and refreshes its sign-in.** When an
+  organisation uses an OpenAI subscription, Qory Apiary requests the sign-in code, polls for
+  the approval and refreshes the sign-in at the addresses of the provider's description,
+  such as `auth.openai.com`. Allow the Qory Apiary server outbound HTTPS to
+  `auth.openai.com:443`. The person's browser opens the page that shows the code, not the
+  server.
+<!-- /feature -->
 - **The proxy's address.** Behind a reverse proxy, set `TRUSTED_PROXIES` to the address
   the proxy's connections come from; unset, every client counts as the proxy, and they
   share its limits on signing in. With `compose.yaml` and a proxy on the same machine,

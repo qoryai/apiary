@@ -119,7 +119,9 @@ defmodule Apiary.Dispatches.WireTest do
   # stage, the tier balanced in place of fast, the outcome of a run with its end codes, a
   # later session's runtime, run_settings on every explore run, and
   # model_provider_credential_name in place of model_credential in the next-session
-  # answer.
+  # answer. e0d7be15 also comes after b5ae1a43, which adds `oauth_device` of an API to
+  # the description of a model provider, `submissions` to the source role, and the
+  # submission entry of the change feed with its reply and its failure report.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "8d859a1d5bd0693bd647e0543d29aa8651230c3f"},

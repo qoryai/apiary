@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "name": "acme-cloud",
+  "title": "Acme cloud",
+  "program_version": "0.1.0",
+  "settings": {"type": "object"},
+  "roles": {
+    "model_provider": {
+      "apis": [
+        {"format": "anthropic-messages", "endpoint": "https://api.acme-cloud.example", "auth": {"scheme": "bearer", "oauth": true}, "oauth_refresh": {"url": "https://auth.acme-cloud.example/oauth/token", "client_id": "acme-cli"}, "oauth_device": {"usercode_url": "https://auth.acme-cloud.example/device/usercode", "poll_url": "http://auth.acme-cloud.example/device/token", "verification_url": "https://auth.acme-cloud.example/device", "redirect_uri": "https://auth.acme-cloud.example/device/callback"}}
+      ],
+      "models": [{"id": "acme-large-2", "title": "Acme Large 2"}]
+    }
+  }
+}

@@ -14,7 +14,8 @@ defmodule ApiaryWeb.LingoCatalogueTest do
   # whose stage started no run (the build report), what Shape's tab says of a Shape that
   # did not run (the criterion), the commit that a full test suite ran on, and the line
   # under the Artifact types table for a type that the harness sets (the commit that each
-  # run uses).
+  # run uses), and the two lines of a device sign-in that say when its code stops working
+  # (the code).
   @software_sentences [
     "%{contact_support} to correct the version of %{source}: a version name has 1 to 255 letters, digits, dots, underscores, slashes and hyphens, and no spaces.",
     "%{contact_support}. A run that writes needs a wall, and this machine has none.",
@@ -28,6 +29,7 @@ defmodule ApiaryWeb.LingoCatalogueTest do
     "%{stage} runs for the first time, with your note and the run's outputs. The next run undoes this attempt.",
     "A file outside the folder the runs work in, given with: %{command}",
     "A harness source",
+    "Approve the sign-in at OpenAI before %{time}.",
     "A run uses the harness version its process version came from. Keep the process at the latest moves that harness version at each new harness version. A fixed version uses that version.",
     "Always the latest: a run uses the newest version. On the Qory harness, that is the version when a machine claims the run. On a harness source, it is the version when the run is queued. A fixed version uses that version.",
     "At each new harness version on %{branch}, Qory Apiary saves it as a new version of the stages. Edits saved on the Workflows page stop it.",
@@ -54,6 +56,7 @@ defmodule ApiaryWeb.LingoCatalogueTest do
     "Set a version that exists. %{url} has no version %{ref}.",
     "Set a wall in the machine's forager.yaml, then start the run again. A run that writes needs a wall, and this machine has none.",
     "The Qory harness is the harness at %{url}.",
+    "The sign-in expired before it was approved.",
     "The full test suite failed on that version, in %{minutes} minute.",
     "The full test suite passed on that version, in %{minutes} minute.",
     "The full test suite failed on that version: %{passed} passed, %{failed} failed, %{skipped} skipped, in %{minutes} minute.",

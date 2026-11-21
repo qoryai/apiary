@@ -1,0 +1,41 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/integration/v1/grant.schema.json",
+  "title": "Grant report",
+  "description": "The body of the signed POST /v1/grants, application/json, with which an adapter reports one grant of a connection: the access the source grants for one external account, which the adapter linked to connection_id under the connect pass whose nonce is pass_nonce (connect-pass.schema.json). A connection has a list of grants, one per external account at the source, and grant_ref is the adapter's ref to the grant of one external account, stable for that account. account is that external account: its id at the source and its display name. A report that replaces a grant replaces its account too. A grant is added to the connection, or replaces the grant of that external account, when the control plane accepts this report, and at no other step: a linked connect return makes the connection, if it is pending, and lets the control plane accept a report for its nonce, but adds no grant, since the return contains no id of the external account (connect-return.schema.json). A report of a grant_ref the connection already has replaces that grant. When the source no longer covers a grant, the adapter reports the end of that grant with POST /v1/grants/end (grant-end.schema.json), which ends the grant and its collections and leaves the connection. The adapter sends the report after it mints the linked connect return for the grant, and again whenever a newer pass for the same external account replaces that account's grant. The control plane accepts a report only when pass_nonce is the nonce of a connect pass of that connection whose linked connect return it accepted, and refuses another, 409 pass_unknown. So a report that reaches the control plane before the person's browser delivers the return is refused 409 pass_unknown, or 403 connection_unknown while the connection is pending. While the answer is 409 pass_unknown or 403 connection_unknown, the adapter sends the report again, built anew as definitions.schema.json describes a retry, with backoff: 2 seconds after the first report, then twice as long after each refusal, and at most 60 seconds apart, until the expires_at of that linked connect return has passed on its clock. Only then does the adapter stop sending the report, and it drops the grant from its state unless the control plane's copy contains it. A grant is linked to at most one live connection, as described in connect-pass.schema.json. The control plane refuses a report whose grant_ref its copy of grants has under another connection of this adapter that has not ended, 409 grant_taken, whether that connection is live, suspended, or made with no listing accepted yet. On 409 grant_taken, to the first report or to one sent again, the adapter stops sending that report at once, drops the grant from its state, logs the refusal with the connection_id and the grant_ref, and never with the pass, an access key or a secret, and does not send the report again for that pass. On success the control plane answers a signed 204 with no body, and writes a grant entry, linked, to the change feed (changes.schema.json). The control plane's copy of a connection's grants wins: the adapter reads it with GET /v1/grants (grants.schema.json) and follows the change feed, and when its state and that copy differ, it changes its state to match the copy, dropping a grant the copy does not contain, except a grant whose report the adapter is still sending again, until the expires_at of its linked connect return (grants.schema.json). The control plane decides rights first, in the order that refusal.schema.json lists, then 403 connection_unknown, 409 connection_ended and 409 connection_suspended, for connection_id, then 409 pass_unknown, then 409 grant_taken, for grant_ref, so a report is refused grant_taken only when the control plane accepts its pass_nonce. It is signed with the adapter's access key as definitions.schema.json describes. The control plane refuses a time more than 300 seconds from its clock, either way, or a request whose signature it has already seen, with an unsigned 401; definitions.schema.json has the replay rule. A member this schema does not define is refused, invalid_request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "time", "connection_id", "grant_ref", "account", "pass_nonce"],
+  "properties": {
+    "version": {
+      "description": "The document format. The control plane refuses a version it does not read.",
+      "const": 1
+    },
+    "time": {
+      "description": "When the adapter built the body, RFC 3339 in UTC with whole seconds. The control plane refuses a time more than 300 seconds from its clock, either way, with an unsigned 401.",
+      "$ref": "definitions.schema.json#/$defs/time"
+    },
+    "connection_id": {
+      "description": "The connection the grant is linked to, as it was in the connect pass.",
+      "$ref": "definitions.schema.json#/$defs/connection_id"
+    },
+    "grant_ref": {
+      "description": "The adapter's ref to the grant: one per external account at the source, stable for that account.",
+      "$ref": "definitions.schema.json#/$defs/ref"
+    },
+    "account": {
+      "description": "The external account the grant is for, at the source.",
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ref", "title"],
+      "properties": {
+        "ref": {"description": "The external account's id at the source, stable for that account: 1 to 200 characters with no NUL, as a collection's ref.", "$ref": "definitions.schema.json#/$defs/ref"},
+        "title": {"description": "The external account's display name at the source, one line: 1 to 1024 characters, as a collection's title, with no control characters, so no line feed or carriage return, no bidirectional controls and none of the format characters that are usually not shown, the characters description.schema.json refuses in a line.", "type": "string", "minLength": 1, "maxLength": 1024, "pattern": "^[^\\x00-\\x1f\\x7f-\\x9f\u00ad\u061c\u180e\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\ufff9-\ufffb]+$"}
+      }
+    },
+    "pass_nonce": {
+      "description": "The nonce of the connect pass under which the adapter linked the grant, as it was in the pass.",
+      "$ref": "definitions.schema.json#/$defs/nonce"
+    }
+  }
+}

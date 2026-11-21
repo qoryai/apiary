@@ -50,7 +50,7 @@ defmodule ApiaryWeb.ActivityModelProviderTest do
     end
   end
 
-  test "the change shows the host, the value ID or the model ID" do
+  test "the change shows the host, the key's identity line or value ID, or the model ID" do
     for action <- @actions do
       details = &entry(action, &1, &2).details
       changed = &changed(action, &1, &2, &3)
@@ -86,6 +86,16 @@ defmodule ApiaryWeb.ActivityModelProviderTest do
 
       assert changed.(nil, nil, details.("provider_keys_changed", %{"value_id" => "spare"})) ==
                [{:m, "spare"}]
+
+      # An entry with the identity line of the key shows it, not the value id.
+      assert changed.(
+               nil,
+               %{"value_id" => "key-2"},
+               details.("provider_keys_changed", %{
+                 "value_id" => "key-2",
+                 "identity" => "Anthropic API · …9c2e"
+               })
+             ) == [{:m, "Anthropic API · …9c2e"}]
 
       assert changed.(%{}, %{}, details.("provider_created", %{})) == nil
     end
