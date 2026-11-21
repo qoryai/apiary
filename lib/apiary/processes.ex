@@ -182,8 +182,8 @@ defmodule Apiary.Processes do
   that differs from the stage's first entry in its machine type, with `:access` or
   `:machine` as `detail`, one error for each of the two, and
   `{:access, workflow, level, other}` in place of `:access` where the harness's level for
-  `workflow` lowers its entry's, `other` the level the other of it and the first entry
-  runs with (`shared_access/2`);
+  `workflow`, `level`, lowers its entry's, and the harness setting `workflow` to `other`
+  lets the stage's entries share one run (`shared_access/2`);
   `:too_many_providers`, `:model_choice_missing` and `:session_key_missing` for a stage
   with `shared_run: true` whose model choices do not fit one run, with the detail of
   `shared_models/3`;
@@ -374,9 +374,10 @@ defmodule Apiary.Processes do
   and the rules it cannot say: every stage id and every stage name once, the stage of each
   workflow entry's `return` before the entry's stage, every track id once, each track a gate
   offers declared, the input of each condition an output of an earlier stage, the track of each
-  condition one that an earlier gate offers, one condition on an item, `when` or `unless`, and one machine type and access levels that
-  one run can have (`shared_access/2`) in a stage with
-  `shared_run: true`, with the access levels the workflows declare in the harness,
+  condition one that an earlier gate offers, one condition on an item, `when` or
+  `unless`, and one machine type and access levels that one run can have
+  (`shared_access/2`) in a stage with `shared_run: true`, with the access levels the
+  workflows declare in the harness,
   `levels` (`declared_access/1`), none by default; and, with `models`, the model choices
   of the workspace (`workspace_models/2`, Apiary.ModelChoices.shared_models/3), the
   model providers of each such stage (`shared_models/3`); with no `models`, the default,
@@ -842,7 +843,7 @@ defmodule Apiary.Processes do
 
       if shared_levels?(seen),
         do: {:cont, seen},
-        else: {:halt, {path, detail(first, entry, levels)}}
+        else: {:halt, {path, detail(entries, first, entry, levels)}}
     end)
     |> case do
       {_path, _detail} = differs -> differs
@@ -857,22 +858,39 @@ defmodule Apiary.Processes do
   defp shared_levels?(levels),
     do: MapSet.size(levels) == 1 or MapSet.equal?(levels, MapSet.new([:read, :write]))
 
-  # The detail of the difference in access level between `first` and `entry`:
-  # `{:access, workflow, level, other}` for the first of `entry` and `first` whose
-  # workflow's level in the harness lowers its entry's, with the level the other of the
-  # two runs with, else `:access`.
-  defp detail(first, entry, levels) do
-    cond do
-      harness_lowered?(entry, levels) -> access_detail(entry, first, levels)
-      harness_lowered?(first, levels) -> access_detail(first, entry, levels)
-      true -> :access
+  # The detail of the mix that `entry` makes with the entries before it, `first` the
+  # stage's first entry: `{:access, workflow, level, advised}` for the first of `entry`
+  # and `first` whose workflow's level in the harness, `level`, lowers its entry's, where
+  # a level `advised` for that workflow in the harness lets every entry of `entries` share
+  # one run (`advised_level/3`); else `:access`.
+  defp detail(entries, first, entry, levels) do
+    [entry, first]
+    |> Enum.filter(&harness_lowered?(&1, levels))
+    |> Enum.find_value(:access, &access_detail(entries, &1, levels))
+  end
+
+  defp access_detail(entries, %{"workflow" => workflow} = entry, levels) do
+    declared = Map.fetch!(levels, workflow)
+
+    case advised_level(entries, entry, levels) do
+      nil -> nil
+      advised -> {:access, workflow, level_text(declared), level_text(advised)}
     end
   end
 
-  defp access_detail(%{"workflow" => workflow}, other, levels),
-    do:
-      {:access, workflow, level_text(Map.fetch!(levels, workflow)),
-       level_text(effective_access(other, levels))}
+  # The highest level, no higher than the `access` of `entry`, other than the one its
+  # workflow has in `levels`, at which that workflow lets every entry of `entries` share
+  # one run; nil for none. The advice of a refusal names this level, so it never names a
+  # level that the rule refuses too.
+  defp advised_level(entries, %{"workflow" => workflow} = entry, levels) do
+    Enum.find([:write, :write_no_push, :read], fn level ->
+      level != Map.fetch!(levels, workflow) and
+        level_rank(level) <= level_rank(entry_access(entry)) and
+        entries
+        |> MapSet.new(&effective_access(elem(&1, 0), Map.put(levels, workflow, level)))
+        |> shared_levels?()
+    end)
+  end
 
   defp harness_lowered?(%{"workflow" => workflow} = entry, levels) do
     case Map.fetch(levels, workflow) do

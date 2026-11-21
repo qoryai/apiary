@@ -1084,6 +1084,26 @@ defmodule Apiary.ProcessesTest do
 
       assert error.detail == :access
 
+      # read, write and write-no-push: the harness setting review-changes to write lets
+      # the stage share one run, so the refusal advises write.
+      {:error, [error]} =
+        Processes.validate(shared(%{0 => %{"access" => "read"}}), %{
+          "review-changes" => :write_no_push
+        })
+
+      assert {error.path, error.detail} ==
+               {"#/stages/0/sequence/2/loop/body/1",
+                {:access, "review-changes", "write-no-push", "write"}}
+
+      # read, write-no-push and write, where plan-the-build reads by its harness: no level
+      # of plan-the-build lets the stage share one run, so the refusal advises no level.
+      {:error, [error]} =
+        Processes.validate(shared(%{1 => %{"access" => "write-no-push"}}), %{
+          "plan-the-build" => :read
+        })
+
+      assert {error.path, error.detail} == {"#/stages/0/sequence/1", :access}
+
       # A level of no entry's workflow changes nothing.
       assert Processes.validate(shared(), %{"explore-a-ticket" => :read}) == :ok
     end
