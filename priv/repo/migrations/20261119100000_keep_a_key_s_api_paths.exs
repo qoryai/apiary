@@ -8,8 +8,6 @@ defmodule Apiary.Repo.Migrations.KeepAKeySApiPaths do
   # bounds the length of the paths. The check holds the shape only: each path is a string
   # that starts with `/`. The path grammar of the Forager contract's `credential_paths` is
   # checked when the catalogue entry loads (`Apiary.Integrations.Description`), not here.
-  # The check replaces the one of `runs.provider_api`, which had the same members and was
-  # dropped with that column.
   #
   # The check is added NOT VALID, so adding it takes no scan of the table under its lock;
   # the next migration validates it. It changes no row: a key stored before has no paths,

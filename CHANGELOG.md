@@ -3399,12 +3399,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `model_choices` has. The migration deletes every fallback first and moves no data. The
   migration is short. Rolling back adds the dropped columns back empty and drops
   `runtime` and `tiers`.
-- `runs` (20261118160000, 20261118160100): the check on `provider_api` takes `paths`,
-  which the later migration 20261118162200 drops with the column. The check is added
-  `NOT VALID` and validated by the second migration. It changes no row.
 - `run_model_keys` (20261119100000, 20261119100100): the check on `api` takes `paths`,
-  1 to 32 paths that each start with `/`, as the check of `runs.provider_api` did before
-  the column was dropped. The check is added `NOT VALID` and validated by the second
+  1 to 32 paths that each start with `/`. The check is added `NOT VALID` and validated by the second
   migration, so neither takes a lock that blocks writes while it scans the table. It
   changes no row: a key stored before has no paths. Rolling back removes `paths` from
   every key that has them.
