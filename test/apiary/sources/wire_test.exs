@@ -119,7 +119,7 @@ defmodule Apiary.Sources.WireTest do
   describe "the contract's fixtures" do
     test "every body of source-items/ is accepted and read as written, raw or decoded" do
       paths = fixtures("source-items/*.json")
-      assert length(paths) == 15
+      assert length(paths) == 19
 
       for name <- ~w(url-empty-port url-port-leading-zeros url-ip-literal),
           do: assert("source-items/acme-tracker-event-#{name}.json" in paths)
@@ -203,7 +203,7 @@ defmodule Apiary.Sources.WireTest do
     test "every invalid body of items and of comments is refused" do
       items = fixtures("invalid/source-items-*.json")
       comments = fixtures("invalid/source-item-comments-*.json")
-      assert length(items) == 22
+      assert length(items) == 26
       assert length(comments) == 3
       assert "invalid/source-item-comments-comment-id-upper-case.json" in comments
 
