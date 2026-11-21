@@ -9479,6 +9479,11 @@ msgstr ""
 msgid "Discard changes"
 msgstr ""
 
+#: lib/apiary_web/controllers/adapter_redirect_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Disconnect the account that is connected to %{integration} first, then install again. An organisation connects one account of each integration."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
 msgid "Disk (GiB)"
