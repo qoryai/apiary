@@ -44,6 +44,10 @@ defmodule Apiary.SealedRunsFixtures do
   `before_claim: fun`, `fun` is called with the provider before the claim, to write the
   states of its keys, say.
 
+  With `work_item: attrs`, the work item is made with `attrs`
+  (`Apiary.WorkItemsFixtures.work_item_fixture/2`), such as `target_system: nil` and
+  `target_path: nil` for a run with no repository.
+
   With `attach: false`, the gateway does not attach the run: the map has `run` as the
   claim registered it, `run_key`, the run key its run code was redeemed for, and no
   `attached`, for a test that sends the attach.
@@ -75,7 +79,9 @@ defmodule Apiary.SealedRunsFixtures do
     place = Apiary.DispatchedRunsFixtures.handover_place_fixture(scope, allow_secrets: true)
     {key, seed} = place.gateway_key
 
-    work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+    work_item =
+      Apiary.WorkItemsFixtures.work_item_fixture(scope, Keyword.get(opts, :work_item, %{}))
+
     adapter = if apply = opts[:work], do: callable_adapter_fixture(work_item.adapter_id, apply)
     if opts[:work], do: Apiary.WorkItemsFixtures.target_candidate!(work_item)
     {:ok, _queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
