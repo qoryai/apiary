@@ -242,7 +242,6 @@ defmodule ApiaryWeb.Contract.MachineLogControllerTest do
 
       assert Enum.sort(refused) == [
                "invalid/machine-log-log-nul.json",
-               "invalid/machine-log-undefined-member.json",
                "invalid/machine-log-version-2.json",
                "invalid/machine-log-without-log.json"
              ]

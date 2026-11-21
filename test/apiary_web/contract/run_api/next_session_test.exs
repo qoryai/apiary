@@ -525,7 +525,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       valid = Path.wildcard(Path.join(@run_fixtures, "next-session-request/*.json"))
       invalid = Path.wildcard(Path.join(@run_fixtures, "invalid/next-session-request-*.json"))
       assert length(valid) == 6
-      assert length(invalid) == 13
+      assert length(invalid) == 11
 
       for file <- valid do
         assert {:ok, _report} = ApiaryWeb.Contract.RunApi.Body.next_session(File.read!(file)),

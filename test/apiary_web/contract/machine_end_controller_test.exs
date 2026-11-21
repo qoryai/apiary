@@ -308,7 +308,6 @@ defmodule ApiaryWeb.Contract.MachineEndControllerTest do
         end
 
       assert Enum.sort(refused) == [
-               "invalid/machine-end-undefined-member.json",
                "invalid/machine-end-unknown-state.json",
                "invalid/machine-end-version-2.json",
                "invalid/machine-end-without-state.json"
