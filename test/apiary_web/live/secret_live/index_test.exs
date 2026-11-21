@@ -8,7 +8,6 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
   alias Apiary.{Repo, Secrets, Variables}
   alias Apiary.Audit.Entry
-  alias Apiary.Runs.Target
   alias Apiary.Secrets.Value
 
   @moduletag needs: :secrets

@@ -9,8 +9,6 @@ defmodule Apiary.Stacks.QoryVersionMigrationTest do
 
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Runs.Target
-
   @migration {20_261_106_190_100, Apiary.Repo.Migrations.ChooseABranchTagOrCommitOfTheQoryHarness,
               "choose_a_branch_tag_or_commit_of_the_qory_harness"}
 

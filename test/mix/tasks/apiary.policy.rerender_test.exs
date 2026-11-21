@@ -13,7 +13,6 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
 
   alias Apiary.Policy
   alias Apiary.Policy.{Change, Render, RunConfiguration}
-  alias Apiary.Runs.Target
   alias Mix.Tasks.Apiary.Policy.Rerender
 
   setup do

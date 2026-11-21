@@ -11,7 +11,6 @@ defmodule ApiaryPro.OrganisationVariablesAboveTest do
 
   alias Apiary.{Features, Policy, Variables}
   alias Apiary.Policy.Above
-  alias Apiary.Runs.Target
   alias Apiary.Variables.Resolution
   alias ApiaryPro.{OrganisationPolicy, OrganisationVariables}
 

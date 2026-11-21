@@ -9,8 +9,6 @@ defmodule Apiary.Stacks.ChoiceMigrationTest do
 
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Runs.Target
-
   @migration {20_261_028_213_000,
               Apiary.Repo.Migrations.KeepAHarnessChoiceForATargetAndTheOrganisation,
               "keep_a_harness_choice_for_a_target_and_the_organisation"}

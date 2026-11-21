@@ -9,7 +9,6 @@ defmodule Apiary.VariablesAboveTest do
 
   alias Apiary.Audit.Entry
   alias Apiary.Policy.Above
-  alias Apiary.Runs.Target
   alias Apiary.Variables
   alias Apiary.Variables.{Resolution, Variable}
 

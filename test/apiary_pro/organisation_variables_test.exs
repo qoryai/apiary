@@ -13,7 +13,6 @@ defmodule ApiaryPro.OrganisationVariablesTest do
 
   alias Apiary.{Features, Organisations, Variables}
   alias Apiary.Audit.Entry
-  alias Apiary.Runs.Target
   alias Apiary.Variables.Resolution
   alias ApiaryPro.OrganisationVariables
   alias ApiaryPro.OrganisationVariables.Variable
