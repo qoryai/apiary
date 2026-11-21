@@ -1256,7 +1256,8 @@ defmodule Apiary.Runs.RunCredentialsTest do
       refute text(two) =~ two.tracker
     end
 
-    test "a deleted target's adapter ends the run and names its integration", ctx do
+    test "the target's deleted adapter ends the run, and the stop cause shows its integration",
+         ctx do
       two = two_integrations!(ctx)
       forge_adapter = Repo.get!(Node, two.forge.adapter_id)
       {:ok, _} = Apiary.Adapters.delete_adapter(instance_admin_scope(), forge_adapter)
