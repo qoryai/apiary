@@ -16,12 +16,13 @@ defmodule Apiary.Runs.RunCredentials do
   #     (`Apiary.Nodes.Node`'s `targets`), and whose target system and path equal the
   #     run's target. A collection of an adapter that did not say so never counts, even
   #     when its target equals the run's, as a tracker's collection's may. So the claim
-  #     never requests a forge's credential from a tracker's adapter. Nor does one of a
-  #     deleted adapter. The harness walk reads the target's file from the same
-  #     collection (`target_collection/4`). Of the matching
-  #     collections, the run takes one that is live and on a connected connection before
-  #     one that is not; then its ticket's collection (`Apiary.Sources.Item`) before
-  #     another; then the oldest, by `inserted_at`, then by id.
+  #     never requests a forge's credential from a tracker's adapter. The harness walk
+  #     reads the target's file from the same collection (`target_collection/4`). Of the
+  #     matching collections, the run takes one that is live and on a connected connection
+  #     before one that is not; then its ticket's collection (`Apiary.Sources.Item`)
+  #     before another; then the oldest, by `inserted_at`, then by id. A deleted adapter's
+  #     collection still matches: its connection ended with the adapter, so the run ends
+  #     `target_access_gone`, and its stop cause shows that integration.
   #
   #   * No entry, and the run runs as before: a run with no target, no collection (no
   #     matching one for a run with a work item), or an adapter whose latest start
@@ -217,7 +218,7 @@ defmodule Apiary.Runs.RunCredentials do
   # `{collection, connection, adapter}`, nil for none: the work entry's (the moduledoc)
   # and the harness walk's (`Apiary.Harnesses.Walk`), so both read the same collection.
   # The collection has the target's system and path, and its adapter said its
-  # collections have targets and is not deleted. Live on a connected connection first,
+  # collections have targets. Live on a connected connection first,
   # then the work item's ticket's, then the oldest. Nil for a target with no address.
   @spec target_collection(Ecto.UUID.t(), Ecto.UUID.t(), WorkItem.t() | nil, map) ::
           {Collection.t(), Connection.t(), Node.t()} | nil
@@ -226,8 +227,7 @@ defmodule Apiary.Runs.RunCredentials do
     from([c, n, a] in with_adapter(),
       where:
         c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id and
-          c.target_system == ^system and c.target_path == ^path and a.targets == true and
-          is_nil(a.deleted_at),
+          c.target_system == ^system and c.target_path == ^path and a.targets == true,
       order_by: [desc: is_nil(c.ended_at) and n.state == :connected]
     )
     |> ticket_first(work_item)

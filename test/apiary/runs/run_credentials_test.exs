@@ -1256,6 +1256,21 @@ defmodule Apiary.Runs.RunCredentialsTest do
       refute text(two) =~ two.tracker
     end
 
+    test "a deleted target's adapter ends the run and names its integration", ctx do
+      two = two_integrations!(ctx)
+      forge_adapter = Repo.get!(Node, two.forge.adapter_id)
+      {:ok, _} = Apiary.Adapters.delete_adapter(instance_admin_scope(), forge_adapter)
+
+      assert claim(ctx) == {:ok, :none}
+      gone!(two.queued)
+      assert entries() == []
+      org = ctx.scope.organisation.name
+
+      assert text(two) ==
+               "The run did not start, because #{two.integration} no longer reaches target acme/shop.\n" <>
+                 "Owners and admins of #{org} check #{two.integration} in Organisation settings › Integrations."
+    end
+
     test "a path the access rules do not take names its first refused part, and links Destinations",
          ctx do
       ws = ctx.scope.workspace.name
