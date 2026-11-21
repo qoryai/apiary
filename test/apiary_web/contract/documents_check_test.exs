@@ -13,7 +13,7 @@ defmodule ApiaryWeb.Contract.DocumentsCheckTest do
   alias ApiaryWeb.Contract.DocumentsCheck
 
   @fixtures Path.expand("../../fixtures/documents-check", __DIR__)
-  @ref "9a1e64ecaf040c0e4efe3041cd55ebe22d0853e1"
+  @ref "4c788f46237d3ffa3124c8c87d9de085e3a36dc1"
   @run_fixtures Path.expand("../../fixtures/contract/run/v1/fixtures/documents", __DIR__)
 
   defp read(path), do: @fixtures |> Path.join(path) |> File.read!() |> Jason.decode!()

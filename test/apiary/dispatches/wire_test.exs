@@ -119,14 +119,15 @@ defmodule Apiary.Dispatches.WireTest do
   # stage, the tier balanced in place of fast, the outcome of a run with its end codes, a
   # later session's runtime, run_settings on every explore run, and
   # model_provider_credential_name in place of model_credential in the next-session
-  # answer. The integration contract is at 9a1e64ec, after e0d7be15: it leaves an undefined
+  # answer. The integration contract is at 4c788f46, after e0d7be15: it leaves an undefined
   # member open in each schema, adds the entry `change_request` to the change feed's
-  # answer, and has `oauth_device` in the description of a model provider.
+  # answer, has `oauth_device` in the description of a model provider, and `links` in a
+  # description.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "8d859a1d5bd0693bd647e0543d29aa8651230c3f"},
           {"run/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"},
-          {"integration/v1", "9a1e64ecaf040c0e4efe3041cd55ebe22d0853e1"},
+          {"integration/v1", "4c788f46237d3ffa3124c8c87d9de085e3a36dc1"},
           {"explore/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"},
           {"diagnostics/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"}
         ] do

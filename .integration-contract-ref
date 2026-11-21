@@ -35,4 +35,9 @@
 # description: the 256 KiB of a fetched description.json when it is fetched, and every
 # bound, those 256 KiB included, in Apiary.Integrations.Description.parse/1, which an
 # adapter's start-up gives the description's value as its body carries it.
-9a1e64ecaf040c0e4efe3041cd55ebe22d0853e1
+#
+# A description may have `links`: one entry of a system and a link template for each
+# system. The schema checks the shape of each entry. It cannot check that each system is
+# listed once or that the host of a template is its system, which integrations'
+# `contracts.CheckLinks` checks, and Apiary does not check either rule.
+4c788f46237d3ffa3124c8c87d9de085e3a36dc1

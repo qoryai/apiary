@@ -1,0 +1,101 @@
+{
+  "version": 1,
+  "name": "example-links",
+  "title": "Example Links",
+  "program_version": "0.1.0",
+  "settings": {
+    "type": "object"
+  },
+  "roles": {
+    "source": {
+      "description": "Reads the open items of Example Tracker projects into the control plane.",
+      "program": "qory-example-server",
+      "setup": {
+        "command": "qory-example-server setup",
+        "help": "Asks for the address of the Example Tracker site and registers the adapter with it."
+      },
+      "start": "qory-example-server serve --secret-file /etc/qory-example-server/secret",
+      "connect": "Example Tracker asks you to sign in and to choose the projects the adapter may read.",
+      "access": "In Example Tracker, open Settings, then Connected adapters, to change which projects the adapter reads.",
+      "disconnect": "In Example Tracker, open Settings, then Connected adapters, and remove the adapter.",
+      "item_noun": {
+        "one": "issue",
+        "other": "issues"
+      },
+      "collection_noun": {
+        "one": "project",
+        "other": "projects"
+      }
+    }
+  },
+  "links": [
+    {
+      "system": "host0.example.com",
+      "template": "https://host0.example.com/{path}"
+    },
+    {
+      "system": "host1.example.com",
+      "template": "https://host1.example.com/{path}"
+    },
+    {
+      "system": "host2.example.com",
+      "template": "https://host2.example.com/{path}"
+    },
+    {
+      "system": "host3.example.com",
+      "template": "https://host3.example.com/{path}"
+    },
+    {
+      "system": "host4.example.com",
+      "template": "https://host4.example.com/{path}"
+    },
+    {
+      "system": "host5.example.com",
+      "template": "https://host5.example.com/{path}"
+    },
+    {
+      "system": "host6.example.com",
+      "template": "https://host6.example.com/{path}"
+    },
+    {
+      "system": "host7.example.com",
+      "template": "https://host7.example.com/{path}"
+    },
+    {
+      "system": "host8.example.com",
+      "template": "https://host8.example.com/{path}"
+    },
+    {
+      "system": "host9.example.com",
+      "template": "https://host9.example.com/{path}"
+    },
+    {
+      "system": "host10.example.com",
+      "template": "https://host10.example.com/{path}"
+    },
+    {
+      "system": "host11.example.com",
+      "template": "https://host11.example.com/{path}"
+    },
+    {
+      "system": "host12.example.com",
+      "template": "https://host12.example.com/{path}"
+    },
+    {
+      "system": "host13.example.com",
+      "template": "https://host13.example.com/{path}"
+    },
+    {
+      "system": "host14.example.com",
+      "template": "https://host14.example.com/{path}"
+    },
+    {
+      "system": "host15.example.com",
+      "template": "https://host15.example.com/{path}"
+    },
+    {
+      "system": "host16.example.com",
+      "template": "https://host16.example.com/{path}"
+    }
+  ]
+}

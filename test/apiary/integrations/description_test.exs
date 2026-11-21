@@ -29,7 +29,8 @@ defmodule Apiary.Integrations.DescriptionTest do
 
       assert names ==
                ~w(acme-chat.json acme-cloud.json acme-models.json acme-subscription.json
-                  acme-tracker.json example-gateway.json example-projects.json example-source-apply-basic.json
+                  acme-tracker.json example-gateway.json example-links.json example-projects.json
+                  example-source-apply-basic.json
                   example-source-apply-bearer.json example-source-apply-header.json
                   example-source-comments.json example-source-guide.json
                   example-source-targets.json example-tracker.json github.json
@@ -40,7 +41,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 140
+      assert length(names) == 159
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name
@@ -51,7 +52,7 @@ defmodule Apiary.Integrations.DescriptionTest do
     # a closed copy of the schema, which the tests of qoryai/integrations use, refuses these.
     test "a fixture that only a closed copy of the schema refuses is read" do
       names = fixture_names("closed/*.json")
-      assert length(names) == 13
+      assert length(names) == 14
 
       for name <- names, do: assert({:ok, %Description{}} = parse_fixture(name), name)
     end
@@ -305,10 +306,10 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
   # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
-  @integrations_ref "9a1e64ecaf040c0e4efe3041cd55ebe22d0853e1"
+  @integrations_ref "4c788f46237d3ffa3124c8c87d9de085e3a36dc1"
   @vendored_sha256 %{
     "priv/contract/integration/description.schema.json" =>
-      "585a039c29474a322dbee07684634839ea0e9a7a85cf14a78b3daf68981fdbd1",
+      "63c683abffa8188ec339ccec476411ebb8d144c988b51c6b52d348618c979089",
     "priv/contract/integration/changes-failed.schema.json" =>
       "08ef050a381dc73db65a0c5fa844a44174ad2d699956f4cd68f75efc9745efb7",
     "priv/contract/integration/changes-submitted.schema.json" =>
@@ -338,7 +339,7 @@ defmodule Apiary.Integrations.DescriptionTest do
     "test/fixtures/contract/integration/v1/changes.schema.json" =>
       "c56fa9aae6a93c5b7ca602740f73e16cac26dc9076c6579aec04eeb2ff98fd94",
     "test/fixtures/contract/integration/v1/description.schema.json" =>
-      "585a039c29474a322dbee07684634839ea0e9a7a85cf14a78b3daf68981fdbd1",
+      "63c683abffa8188ec339ccec476411ebb8d144c988b51c6b52d348618c979089",
     "test/fixtures/contract/integration/v1/definitions.schema.json" =>
       "7a56015091697255c423ec2e9aad54e6aaeb315e7653e49dda604220edddb2aa",
     "test/fixtures/contract/integration/v1/refusal.schema.json" =>
