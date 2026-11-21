@@ -370,7 +370,7 @@ defmodule Apiary.Connections.ProvidersTest do
         assert {:error, changeset} = refused
 
         assert errors_on(changeset).value_id == [
-                 "Choose another default key for OpenRouter first: main is its default key."
+                 "Choose another default key for OpenRouter first: OpenRouter · …6789 is its default key."
                ]
       end
 
@@ -582,7 +582,7 @@ defmodule Apiary.Connections.ProvidersTest do
       refute states[id]
       assert [%{status: "rejected"}] = states[main]
 
-      assert Secrets.reveal_key_for_sealing(Repo.get!(Connection, provider.id), id) ==
+      assert Apiary.ModelKeysFixtures.revealed_key(Repo.get!(Connection, provider.id), id) ==
                {:ok, "sk-new"}
 
       assert {:error, %Ecto.Changeset{data: %Setting{}}} =
@@ -592,7 +592,7 @@ defmodule Apiary.Connections.ProvidersTest do
 
       assert ModelKeys.setting(id).pause_seconds == 7200
 
-      assert Secrets.reveal_key_for_sealing(Repo.get!(Connection, provider.id), id) ==
+      assert Apiary.ModelKeysFixtures.revealed_key(Repo.get!(Connection, provider.id), id) ==
                {:ok, "sk-new"}
     end
 
@@ -689,7 +689,7 @@ defmodule Apiary.Connections.ProvidersTest do
       Apiary.ModelKeysFixtures.key_state!(provider, "main", until: until)
 
       reveal = fn ->
-        Secrets.reveal_key_for_sealing(Repo.get!(Connection, provider.id), spare.id)
+        Apiary.ModelKeysFixtures.revealed_key(Repo.get!(Connection, provider.id), spare.id)
       end
 
       # A value that is empty or only whitespace keeps the value and its cooldown.
@@ -823,7 +823,7 @@ defmodule Apiary.Connections.ProvidersTest do
 
       # Each key keeps its value.
       for p <- [provider, other_provider] do
-        assert Secrets.reveal_key_for_sealing(
+        assert Apiary.ModelKeysFixtures.revealed_key(
                  Repo.get!(Connection, p.id),
                  value!(p, "spare").id
                ) == {:ok, "sk-spare"}
@@ -842,7 +842,7 @@ defmodule Apiary.Connections.ProvidersTest do
 
     defp reveal!(provider, value_id) do
       provider = Repo.get!(Connection, provider.id)
-      Secrets.reveal_key_for_sealing(provider, value!(provider, value_id).id)
+      Apiary.ModelKeysFixtures.revealed_key(provider, value!(provider, value_id).id)
     end
 
     test "is trimmed at both ends when a provider is added, its inner spaces kept", ctx do

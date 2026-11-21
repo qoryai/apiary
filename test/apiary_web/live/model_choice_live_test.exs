@@ -51,6 +51,13 @@ defmodule ApiaryWeb.ModelChoiceLiveTest do
   defp models_only(tiers),
     do: Map.new(tiers, fn {tier, set} -> {tier, %{"model" => set["model"]}} end)
 
+  # A subscription's key is the sign-in that `codex login` writes (`Apiary.ModelKeys.Login`).
+  defp openai_key("openai-subscription" = kind),
+    do: %{
+      provider: kind,
+      keys: [%{value_id: "main", value: Apiary.ModelKeysFixtures.device_login()}]
+    }
+
   defp openai_key(kind),
     do: %{provider: kind, keys: [%{value_id: "main", value: "sk-#{kind}-model-page-0123456789"}]}
 

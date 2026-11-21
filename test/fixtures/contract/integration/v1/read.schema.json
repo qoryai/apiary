@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/integration/v1/read.schema.json",
+  "title": "Read call",
+  "description": "The body of the control plane's call with the path read, a POST of application/json to the adapter's call_url followed by read (adapter.schema.json), signed as definitions.schema.json describes a call: the text of one document of a resource at the source, at one version, read under one grant. grant_ref and resource_ref are the grant_ref and resource_ref of a resolve result, as the adapter answered them, never its public_ref (resolve-answer.schema.json). The adapter answers a signed 200 with read-answer.schema.json, or refuses with refusal.schema.json, in this order: 409 grant_unknown, the adapter holds no grant grant_ref; 403 resource_not_covered, the grant does not cover resource_ref; 404 version_not_found, the resource has no version at; 409 document_not_text, when the document is not UTF-8 text of at most 262144 bytes without a NUL. When the resource has the version at but no document at path at that version, the adapter answers the signed 200 with found: false and resolved_at, not a refusal (read-answer.schema.json). A version at that the resource does not have is refused, 404 version_not_found, unlike an absent document, since there is then no version for resolved_at. The adapter refuses a call whose time is more than 300 seconds from its clock, either way, or whose signature it has already seen, with an unsigned 401; definitions.schema.json has the replay rule. The adapter has one access key for every organisation, and no call but a call with the path run-credential whose purpose is work contains a connection_id, so a resolve result can contain a grant_ref of a connection of another organisation. The control plane uses a resolve result only under a grant that the run may use: a grant of a live connection of the run's organisation; or, only to read a harness source and only with access read, a grant whose organisation assigned that source to the run's organisation, at that version and at that path or export. The control plane also uses a result with public: true without a grant, and then only to read the resource with the call with the path read-public, with the result's public_ref as resource_ref (read-public.schema.json). Under an assignment, the control plane sends a call with the path run-credential only when the credential_scope of the adapter's description is resource, which it also is when absent (description.schema.json), and with resources set to the resource_ref of the assigned source alone; when credential_scope is grant, the control plane sends no call with the path run-credential under an assignment, and reads the assigned source only with the call with the path read. A harness source is a remote source that the run's harness extends or takes a module from, whether that harness is the harness file of the target or the harness member of the run documents (run/v1 documents.schema.json). An assignment never covers a call with the path run-credential whose purpose is work or whose access is write: work access comes only from a grant of a live connection of the run's organisation. The control plane treats every other resolve result as covered: false, or, when the result has public: true, as a result with public: true and no grant_ref, so nothing that a run of one organisation receives shows that another organisation holds a grant for that address. The control plane sends a call with the path read, and a call with the path run-credential whose purpose is harness, only under a grant that the run may use, and sends a call with the path run-credential whose purpose is work only with the connection_id of the run's target collection, which is a live connection of the run's organisation when the call is sent. The control plane sends a call with the path read-public only with resource_ref set to the public_ref of a resolve result with public: true, never with the resource_ref of a covered result, and never sends a call with the path run-credential for a resource that it reads with the call with the path read-public: reading a public resource gives the run no credential. A member this schema does not define is refused, invalid_request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "time",
+    "grant_ref",
+    "resource_ref",
+    "path",
+    "at"
+  ],
+  "properties": {
+    "version": {
+      "description": "The document format. The adapter refuses a version it does not read.",
+      "const": 1
+    },
+    "time": {
+      "description": "When the control plane built the body, RFC 3339 in UTC with whole seconds. The adapter refuses a time more than 300 seconds from its clock, either way, with an unsigned 401.",
+      "$ref": "definitions.schema.json#/$defs/time"
+    },
+    "grant_ref": {
+      "description": "The grant to read under, as the adapter reported it (grant.schema.json).",
+      "$ref": "definitions.schema.json#/$defs/ref"
+    },
+    "resource_ref": {
+      "description": "The resource to read from: the resource_ref of a resolve result, as the adapter answered it, never its public_ref.",
+      "$ref": "definitions.schema.json#/$defs/ref"
+    },
+    "path": {
+      "description": "The document's path in the resource, 1 to 1024 characters: parts joined by /, with no / at its start or its end, no empty part, no part that is . or .., and no NUL.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 1024,
+      "pattern": "^(?:[^/\\x00.][^/\\x00]*|\\.[^/\\x00.][^/\\x00]*|\\.\\.[^/\\x00]+)(?:/(?:[^/\\x00.][^/\\x00]*|\\.[^/\\x00.][^/\\x00]*|\\.\\.[^/\\x00]+))*$"
+    },
+    "at": {
+      "description": "The version of the resource to read the document at, as the source writes a version or a name of one.",
+      "$ref": "#/$defs/version_ref"
+    }
+  },
+  "$defs": {
+    "version_ref": {
+      "description": "A version of a resource, or a name of one, as the source writes it: 1 to 255 letters, digits, dots, underscores, slashes and hyphens.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._/-]{1,255}$"
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/integration/v1/grants.schema.json",
+  "title": "Grants",
+  "description": "The body of the signed 200 answer to the signed GET /v1/grants, application/json: the control plane's copy of the grants of the adapter's connections that have not ended, as the adapter reported them (grant.schema.json). A grant end removes a grant from the copy (grant-end.schema.json), and a later accepted report of the same grant_ref adds it again. This copy wins: when the adapter's state and the copy differ, the adapter changes its state to match the copy, dropping a grant the copy does not contain. One exception: until the expires_at of the linked connect return the adapter minted for a grant, the adapter keeps that grant while it sends the grant's report again after 409 pass_unknown or 403 connection_unknown, though the copy does not contain it (grant.schema.json), and never mints a work credential under that grant (run-credential.schema.json). Once that expires_at has passed, the copy wins for that grant too. The adapter reads it when it starts, and follows the grant entries of the change feed after that (changes.schema.json). The GET is signed with the adapter's access key, X-Qory-Timestamp included, and the answer under the control plane's server key, as definitions.schema.json describes; the adapter checks the answer under a server key it pinned at enrolment before using it. The answer contains the revision it was built for in revision, inside the signed body, and the adapter refuses an answer whose revision is not the revision it implements. The adapter refuses a member this schema does not define.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "revision", "grants"],
+  "properties": {
+    "version": {
+      "description": "The document format. The adapter refuses a version it does not read.",
+      "const": 1
+    },
+    "revision": {
+      "description": "The contract revision the control plane built the answer for, the one in the request's X-Qory-Contract-Version. The adapter refuses an answer whose revision is not the revision it implements.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "grants": {
+      "description": "The grants, each connection_id and grant_ref pair once; none when no connection of the adapter has a grant.",
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["connection_id", "grant_ref"],
+        "properties": {
+          "connection_id": {"description": "The connection that has the grant.", "$ref": "definitions.schema.json#/$defs/connection_id"},
+          "grant_ref": {"description": "The grant's ref, as the adapter reported it.", "$ref": "definitions.schema.json#/$defs/ref"}
+        }
+      }
+    }
+  }
+}

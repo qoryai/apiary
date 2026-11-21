@@ -56,9 +56,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   first: create an API key in the OpenAI Platform.” **OpenAI API key** lists 6 models and
   **OpenAI subscription** 10, each with its effort values, which Workspace settings › Model
   offers in the tiers when **Provider** is one of them. **Runtime** then shows **Codex**,
-  with the line “Codex is the only runtime that works with OpenAI API key.” Signing in
-  with an OpenAI subscription, refreshing that sign-in and limiting its paths are not
-  built yet.
+  with the line “Codex is the only runtime that works with OpenAI API key.” A run with an
+  OpenAI subscription key sets the key only under `/backend-api/codex/*` on `chatgpt.com`,
+  and with the header `chatgpt-account-id`, as the entries below say.
 - The link to a vendor's terms in a provider's help names that provider's vendor, such as
   “Anthropic's terms”.
 <!-- /feature -->
@@ -75,6 +75,136 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   with, and no note that it sends none. The note “Only Claude Code and Codex send session
   events.” stays for a program that is no runtime of the catalogue, and names the runtimes
   of the catalogue.
+<!-- /feature -->
+<!-- feature: factory, secrets -->
+- A key of an **OpenAI subscription** is made with a device sign-in. Each key form
+  (**Add key**, **Edit key**, **New model provider**, the set-up's Model step, and a
+  secret's **Add value** and **Change value**) has the button **Sign in with ChatGPT**. The
+  form shows the page to open, the code with **Copy**, the time it works until, the line
+  “Approve only a code you started yourself.”, and **Cancel**. Qory Apiary polls, at most
+  once every 5 seconds whatever interval OpenAI sends, until the person approves, cancels
+  or leaves, or the code expires, and **Save** stores the tokens encrypted. A code of more
+  than 64 characters is a bad response from OpenAI and fails the sign-in. A failed sign-in
+  (an expired code, device code sign-in off, a failed call to OpenAI, a response with no
+  account id, a sign-in that cannot be saved) shows a fix line and a cause line. A save
+  before the sign-in shows what to click. A key that needs a new sign-in has the button in
+  **Edit key** and in its row. An entry without `oauth_device` has no button. No token or
+  code appears in a page, a log line or an audit entry. A run that claims the key gets its
+  access token, as a later entry says.
+- The description of the **OpenAI subscription** provider says “Runs use your ChatGPT
+  subscription through a sign-in that Qory Apiary makes with OpenAI's device code.” in
+  place of “… through the sign-in that `codex login` creates.” The rest of the text is as
+  before.
+- Qory Apiary refreshes the sign-in of an **OpenAI subscription** key, one refresh at a time
+  for each key, in the way `codex` does: when the access token's `exp` is near, or, for a
+  token whose `exp` cannot be read, 8 days after the last refresh. A run's request refreshes
+  within 330 seconds of `exp`, and one that the schedule starts within 300 seconds, as
+  `codex` does. The run's lead is 30 seconds longer because the gateway renews a run's token
+  5 minutes before it expires, and a request a few seconds earlier would get the same token
+  and make the gateway call again 30 seconds later. A separate job, every 6 hours, refreshes
+  each sign-in that has not been refreshed for 7 days; a pass reads at most 20 pages of 50
+  sign-ins and starts after the last sign-in that the previous pass read; at the end of the
+  list it goes on from the oldest sign-in. The position is per node, kept in memory, and
+  lost when the node restarts: the next pass then starts at the oldest sign-in. A sign-in is
+  not refreshed again within 60 seconds of a refresh. The refresh is one HTTPS call to the
+  token address of the provider's catalogue entry, `https://auth.openai.com/oauth/token`,
+  with the refresh token, the client id of the entry and the reason (`proactive_expiry` or
+  `scheduled`); the server needs outbound HTTPS to `auth.openai.com`. A refresh keeps the
+  key's states and the copies that runs hold. The call and the write of its result run in a
+  task that is linked to no caller, so the new refresh token is stored even when the caller
+  stops waiting; a caller that stops waiting gets the old access token while it is valid. A
+  key renamed while a call is in flight keeps the result under its new name. A new
+  sign-in, or a key deleted, while a call is in flight keeps what the key has, and the result
+  is dropped. A new refresh token that the key cannot store, such as one past the size of a
+  value, is written once more at once; if that fails too, the key shows **Needs a new
+  sign-in** with the cause `token_not_stored` and the line “Qory Apiary could not save the
+  new sign-in on <time>.”, because the stored refresh token is replaced. A refresh whose new
+  access token has no account id keeps the stored sign-in, drops the new tokens and shows
+  **Needs a new sign-in** with the cause `no_account` and the line “OpenAI returned no
+  account id on <time>.”; a run that needs the key waits with the sign-in line until a new
+  sign-in is made with the device sign-in. The check of the `model_key_logins` table lists
+  the seventh cause. A node that is stopping starts no refresh and takes no lease, and a caller gets the stored token while it
+  is valid, else no token. A refresh that is already running when the node stops has 40
+  seconds from the SIGTERM with the grace that a deploy has (the endpoint stops for 20
+  seconds, Oban for 15, then the process is killed); the 75 seconds that the write is
+  allowed apply only with a longer grace. The call ends within 20 seconds. A call that is
+  ended before OpenAI returns a response counts as no failure, writes no Activity line and
+  leaves the key as it was. After a stop between OpenAI's response and the write, the next
+  refresh uses the stored, replaced refresh token; OpenAI accepted it in a check on
+  2026-11-18, and if it no longer does, the key shows **Needs a new sign-in** with the cause
+  `refresh_token_reused`. The deploy recipe is not changed. When OpenAI rejects the refresh
+  token for good (an expired, used or revoked token, `invalid_grant`, or a 401), the key
+  shows **Needs a new sign-in**, with the time of the rejection, and no further call is made
+  until a new sign-in is made. When a call fails for a reason that may pass (a 5xx or 429
+  answer, a timeout, a network error or an answer that is no refresh), the next call is made
+  30 seconds later at the earliest, then twice as long for each failure in a row, up to 10
+  minutes, and the key keeps its access token while that token is valid. The organisation's
+  Activity has one line when a key's refresh starts to fail and one when it works again:
+  “Qory Apiary refreshed the sign-in of the key … of …”. The failure line has the cause in
+  words and the code in brackets: “Sign in again on the key … of …” for a refusal that
+  stays, and, for a failure that may pass, the time of the next call. The failed calls
+  between the two leave no line. An organisation without the `secrets` feature, or marked
+  for deletion, makes no call. No Activity line contains a token or a part of OpenAI's
+  answer.
+- A run that uses an **OpenAI subscription** key gets the key's access token, not the
+  stored sign-in, and its refresh token never leaves the vault. A run's secrets request is
+  answered the access token with the time it expires, and the gateway asks again 5 minutes
+  before. A refresh that is due at the request is made first, and the request waits for it
+  until 2 seconds before its 8-second deadline, which leaves that time for the seal and the
+  answer. When the provider returns 401 to the token, the
+  gateway lists the key in `unauthorized` of its next request, and the request refreshes
+  the token with the reason `unauthorized_recovery`, at most once in 5 minutes for each
+  key; inside those 5 minutes the answer is `unavailable` (503) and the gateway asks again.
+  When the 401 was for a token older than the one the key holds now, because a refresh
+  came between, the answer is the newer token, with no refresh. A key that needs a new
+  sign-in, or a new value, is answered `credential_unavailable` (409), with no call.
+  The run keeps `paths` from the provider's catalogue entry (up to 32) and the header and
+  the claim of the account id in its API, once for the run; the claim is a JSON pointer
+  into the access token. The server reads the account id and the expiry from the access
+  token with no call to OpenAI: a stored access token with no account id counts as a
+  sign-in that needs a new one. The account id is read by the rules of the Forager
+  gateway, so a run waits where its gateway would refuse the token: a payload over 8 KiB,
+  a member name twice on the way to the account id, and an account id that is empty, has a
+  space or a tab at either end, or has a control character count as no account id; a
+  padded base64 payload is read.
+- A claim treats a key that needs a new sign-in as a cooldown with no end: the run waits,
+  and starts on another key of its provider or a fallback, if it has one that is free. A
+  sign-in whose access token expires before the end of the run's longest time limit,
+  counted from the claim, is refreshed in the background (a job, refresh reason
+  `proactive_expiry`), and the run waits until the refresh ends; the claim makes no call to
+  OpenAI. While the run waits, its page says “Waiting for a model key: sign in to ChatGPT
+  again on the page of <key>.”, “Waiting for a model key: refreshing the ChatGPT sign-in of
+  <key>.”, or, while the server stops, “Waiting for a model key: the server is restarting;
+  the ChatGPT sign-in of <key> refreshes after it starts.”; the key's name links to the
+  key's page. A run that waits because every API key needs a new value says “Waiting for a
+  model key: enter a new value for <key>.”, with the key's name linked to its **Edit key**
+  page. When keys wait for a sign-in and for a new value, the line is that of the first of
+  them in the order the claim sends the keys, the model providers in the run's order. A run that is already running and loses its only sign-in pauses as for any
+  key at its limit, and its continuation waits until the key has a new sign-in.
+<!-- /feature -->
+<!-- feature: factory, secrets -->
+- When a gateway's model keys report lists a key in `unauthorized`, because the model
+  provider returned 401 to the key's value, the key needs a new value. Runs skip it, as a
+  key in cooldown with no end, until a member saves a new value for it: also a value
+  equal to the stored one. If the provider rejects the new value, the key needs a new value
+  again. On the provider's page the key's row and the key's **Edit key** page show **Needs
+  a new key**, “Anthropic rejected it on <time>.” (the provider's vendor) and the provider's
+  help to get a key; **Edit key** says under **New value**: “Enter a new value: the stored
+  one no longer works.” A key of an OpenAI subscription shows **Needs a new sign-in**, as
+  when OpenAI rejects its refresh, unless a refresh can still renew its token: the gateway
+  lists such a key while its renewal is pending. The key is marked only when the run has the
+  key's current token and that token is less than 5 minutes old by the database's clock; a
+  401 for an older token marks nothing. The report's `unauthorized` list is checked
+  as the contract has it: 1 to 6 entries with `credential` and `at`, each credential once;
+  an entry for a credential that is not one of the run's is ignored, as is one whose `at` is
+  more than 5 minutes before the run was registered, and one for a key that no secrets
+  request sent to the run. A run marks a key once for each value: a second entry for the key
+  from the same run, in the same report or a later one, is ignored and does not change the
+  time that the key's page shows, and a request that seals a new value of the key for the
+  run lets the run mark that value. The report is answered the same way when an entry is
+  ignored. A run's gateway can mark any key sent to its run, and a key belongs to the whole
+  organisation (or the provider), so one run marks the key for every run that uses it. The
+  run that continues a run after such a 401 starts on the next key of the provider.
 <!-- /feature -->
 <!-- feature: factory -->
 - A work item has a **Questions** tab, before **Thread**, once an agent has asked a
@@ -2150,6 +2280,38 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   provider's models or suggestions.
 - A run takes its tiers from the model choice in effect alone, and its model and effort from
   the Thinking tier.
+- A model provider's key has no name that a person gives. **Add key** and **Edit key** have
+  no **Name** field, and Qory Apiary sets the key's value ID to `key-<n>` (one more than the
+  last number it gave the provider's secret, so a deleted key's number is not given
+  again), which no page shows. A key shows as its
+  identity line: for an API key, the provider's name and the last 4 characters of the key,
+  “Northwind Claude · …9c2e”, or the provider's name alone when the key has fewer than 12
+  characters, when its last 4 characters hold a control character, a format character or a
+  line or paragraph separator, or when it was saved before this change; for an OpenAI
+  sign-in, the provider's name and the email of the ChatGPT account, “Northwind OpenAI · dana@example.com”, or, when the
+  sign-in has no email, the name and “account …” with the last 4 characters of the account
+  ID. The line shows on the provider's page, as the title of **Edit key** (“Edit key” stays
+  in the breadcrumb), in “%{identity} is added.” and “%{identity} is saved.”, on Workspace
+  settings and Organisation settings › Secrets and variables, in the Activity and audit
+  lines of a key, and in the four waiting lines of a run, where it links to the key's **Edit
+  key** page. The page of **Edit key** is at `…/keys/<row id>/edit`, with the key's row id,
+  and a value ID in that address is not found.
+- On a model provider's secret under **Secrets and variables**, a key's line shows the
+  identity line in place of the value ID and the mask. The secret's menu has no **Add
+  value**, and a key's menu has no **Rename value**. **Change value** and **Delete value**
+  of a key are at the key's row id. The search over the secrets matches a key's identity
+  line as the page shows it: the provider's name, the last 4 characters or the email find
+  it, and `key-1` does not. A secret of any other kind keeps its value IDs, **Add value**
+  and **Rename value**.
+- The waiting lines of a run for a model key read “Waiting for a model key: sign in to
+  ChatGPT again for %{identity}.”, “…refreshing the ChatGPT sign-in of %{identity}.”, “…the
+  server is restarting; the ChatGPT sign-in of %{identity} refreshes after it starts.” and
+  “…enter a new value for %{identity}.” The Activity line for a refresh that OpenAI
+  answered with no account ID reads “Sign in to ChatGPT again for %{identity}: Qory Apiary
+  could not refresh the sign-in, because OpenAI returned no account id (%{code}).” Entries
+  written before this change keep their text.
+<!-- /feature -->
+<!-- feature: factory, secrets -->
 - A run receives the variables of its workspace. When a claim registers a run, Qory
   Apiary resolves the variables of the organisation, the workspace, and the target (a
   repository, in a software workspace) as they are then, and sends them in the run
@@ -2870,7 +3032,19 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- feature: factory, secrets -->
 - The Keys column of **Organisation settings › Model providers** shows how many keys each
   provider has and how many of them are in cooldown, such as “3 keys, 1 in cooldown”, in
-  place of a number. A provider's page shows each key's state in place of a mask.
+  place of a number, and, after that, how many need a new key (the provider rejected the
+  key's value, or its sign-in needs a new one), such as “3 keys, 1 in cooldown, 1 needs a
+  new key” or “3 keys, 2 need a new key”. A count of 0 is not shown. A provider's page
+  shows each key's state in place of a mask.
+- Where the keys that a run can use are each in cooldown or need a new key, with at least
+  one of each, the run page says “Waiting for a model key: every key of Northwind Claude
+  is in cooldown until 14:00 or needs a new key.” (“every model key”, with no name, where
+  the run has the keys of several providers). A key of another organisation's provider
+  that needs a new value does not count. The time is when the first key leaves its
+  cooldown. A paused run says the same in its
+  paused line: “Paused: every key of Northwind Claude is in cooldown until Fri 14:00 or
+  needs a new key. It continues in run 15.” Where all keys are in cooldown, or all need a
+  new key, the lines are as before.
 <!-- /feature -->
 - `observability` is always on: `QORY_FEATURES` no longer turns it off.
 - A feature that a later release adds starts at its default, even on an instance whose
@@ -2931,7 +3105,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A Codex run that Forager ends `paused` with `model_key_switch`, as its key is out while
   another key of the run is usable, is Paused, where it read as failed. The run that
   continues it resumes the session that paused, once 60 seconds have passed after the
-  exit, so that the run's model keys report is recorded first. A paused run waits for the
+  exit, so that the run's model keys report is recorded first, or at once when that
+  report marked a key in `unauthorized`: the continuation then starts on the next key. A
+  paused run waits for the
   keys of the provider of the session that paused, and its Paused line shows that
   provider.
 <!-- /feature -->
@@ -3177,6 +3353,37 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Migrations
 
 <!-- feature: factory, secrets -->
+- `secrets` (20261120090000): a column `last_key_number`, `NOT NULL` with the default 0,
+  the number of the last `key-<n>` value ID given to the secret's key. Adding the
+  provider sets it to the highest `key-<n>` its keys start with. The migration changes no
+  value. Rolling back drops the column.
+- `model_key_copies` (20261119090000, 20261119090100, 20261119090400): the nullable columns
+  `login_at` (the time of the sign-in or of its last refresh when the run's token was
+  sealed), `login_sealed_at` (the database's UTC time at which the run's copy took that
+  token) and `marked_at` (the UTC time at which a report of the run marked the key as
+  rejected, cleared when a request seals another value for the run). They change no row, and
+  a run registered before the change has none, so a report of its keys marks no sign-in.
+  Rolling back drops the columns.
+- `secret_values` (20261119090200): a nullable column `hint`, the last 4 characters of a
+  model provider's API key, written when the key has at least 12 characters. It changes no
+  row, and a key saved before this change has none until its value is saved again. Rolling
+  back drops the column.
+- `model_key_logins` (20261119090300): a nullable column `email`, the email of the ChatGPT
+  account, read from the sign-in's ID token when a person signs in. It changes no row, and a
+  sign-in made before this change has none until the person signs in again. Rolling back
+  drops the column.
+<!-- /feature -->
+<!-- feature: factory, secrets -->
+- `model_key_rejections` (20261118160200): a new table, one row for each model key whose
+  provider returned 401 to a run's request, by the value's row id, with the time of the
+  401, the value's `value_set_at` when the row was written, and the organisation. A row
+  goes with its value. Nothing exists to fill. Rolling back drops the table.
+- `model_key_logins` (20261118140000): a new table with a row for each model key whose
+  provider's API has `oauth_refresh`, by the value's row id, with the account, the time the
+  access token expires (empty for a token whose `exp` cannot be read), the sign-in's state,
+  with a check that lists the 6 causes of a needed sign-in, the time of the first failure of
+  a streak (`failing_since`), and the columns a refresh needs. It holds no token, and its
+  rows go with the key's value. Nothing exists to fill. Rolling back drops the table.
 - `dispatch_runs` and `dispatches` (20261118162000): the checks on `end_cause` and on
   `dispatch_runs.result_outcome` take the causes `model_choice_missing` and
   `too_many_providers`. Each new check scans its table as it is added, under a lock that
@@ -3211,6 +3418,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `model_choices` has. The migration deletes every fallback first and moves no data. The
   migration is short. Rolling back adds the dropped columns back empty and drops
   `runtime` and `tiers`.
+- `run_model_keys` (20261119100000, 20261119100100): the check on `api` takes `paths`,
+  1 to 32 paths that each start with `/`. The check is added `NOT VALID` and validated by
+  the second migration, so neither takes a lock that blocks writes while it scans the
+  table. It changes no row: a key stored before has no paths. Rolling back removes `paths`
+  from every key that has them.
 <!-- /feature -->
 - `session_records` and `session_key_windows` (20261118161000): two new tables, with their
   foreign keys to `organisations`, `workspaces`, `runs`, `dispatch_runs`, `work_items`,

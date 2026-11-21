@@ -11,12 +11,15 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
 
   import Ecto.Query, only: [from: 2]
   import Apiary.DispatchedRunsFixtures
-  import Apiary.ModelKeysFixtures, only: [stored_keys: 1, key_state!: 3, in_seconds: 1]
+
+  import Apiary.ModelKeysFixtures,
+    only: [stored_keys: 1, key_state!: 3, key_value!: 2, in_seconds: 1]
+
   import Apiary.RunEventsFixtures, only: [event_fixture: 4]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ForagerSchemas, ModelChoices, Processes}
+  alias Apiary.{Connections, Dispatches, ForagerSchemas, ModelChoices, ModelKeys, Processes}
   alias Apiary.Dispatches.{Dispatch, DispatchRun, Pause, RunSettings}
   alias Apiary.Policy.ComposedConfiguration
   alias Apiary.Runs.{ModelKey, Projector, ProviderCredential, Run, Transcript}
@@ -1126,6 +1129,151 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert run.provider_connection_id == storefront.id
       assert %{"session_id" => @session_id, "path" => @transcript} = run.resume
       assert %{"runtime" => "codex"} = run.run_settings
+    end
+
+    # The paused run's model keys report lists its key `value_id` of `provider` as
+    # `unauthorized`: a secrets request kept the key's copy for the run, and the report
+    # marks the key (`Apiary.ModelKeys.reject/3`).
+    defp rejected!(%Run{} = paused, provider, value_id) do
+      value = key_value!(provider, value_id)
+      :ok = ModelKeys.keep_copies(paused.id, [{value.id, value.value_set_at, nil}])
+      keys = ModelKeys.run_keys(paused)
+      key = Enum.find(keys, &(&1.secret_value_id == value.id))
+      now = DateTime.utc_now()
+      assert :ok = ModelKeys.reject(keys, [%{credential: key.name, at: now}], now)
+      assert [%{secret_value_id: id}] = Repo.all(Apiary.ModelKeys.Rejection)
+      assert id == value.id
+    end
+
+    # A provider with two keys, `key-1` the default, chosen for the stage's one workflow.
+    defp two_keys!(ctx) do
+      provider = provider!(ctx.scope, "Northwind keys", count: 2)
+      choose!(ctx.scope, {:workspace, "plan-the-build"}, provider)
+      assert {:ok, _version} = save(ctx.scope, ~w(plan-the-build))
+      provider
+    end
+
+    test "a continuation after a 401 skips the key in new_key_needed and starts on the next key",
+         ctx do
+      provider = two_keys!(ctx)
+
+      # The run's report marked its default model provider credential `unauthorized`.
+      {paused, _dispatch_run, continuation} =
+        paused!(ctx, session: nil, before_exit: fn _run -> :ok end)
+
+      rejected!(paused, provider, "key-1")
+      assert continuation.report_wait_until == nil
+
+      assert {{:ok, run}, _queued} = claimed!(ctx, continuation)
+      second = key_value!(provider, "key-2")
+      assert [%ModelKey{default_credential: true, secret_value_id: id}] = stored_keys(run)
+      assert id == second.id
+    end
+
+    test "a 401 pause whose report lists the key unauthorized continues on the next key before 60 s",
+         ctx do
+      provider = two_keys!(ctx)
+
+      {paused, _dispatch_run, continuation} =
+        paused!(ctx, session: nil, reason: "model_key_switch")
+
+      # The report window is open, and no report has marked a key: a claim takes no run.
+      assert %DateTime{} = wait = continuation.report_wait_until
+      assert DateTime.compare(wait, DateTime.utc_now()) == :gt
+      assert {:ok, :none} = walked_claim(ctx.key, Dispatches.now(), @body)
+      assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, continuation.id)
+
+      # The report lists the key `unauthorized`: the window is still open, and a claim
+      # takes the continuation, on the next key.
+      rejected!(paused, provider, "key-1")
+      assert %DispatchRun{report_wait_until: ^wait} = Repo.get!(DispatchRun, continuation.id)
+
+      assert {{:ok, run}, _queued} = claimed!(ctx, continuation)
+      second = key_value!(provider, "key-2")
+      assert [%ModelKey{default_credential: true, secret_value_id: id}] = stored_keys(run)
+      assert id == second.id
+    end
+
+    # The report window of `continuation` has passed: a claim takes it.
+    defp window_over!(%DispatchRun{id: id}) do
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^id),
+          set: [report_wait_until: DateTime.add(DateTime.utc_now(), -1, :second)]
+        )
+    end
+
+    defp default_value_id(%Run{} = run),
+      do: Enum.find(stored_keys(run), & &1.default_credential).secret_value_id
+
+    # `report_waited/1` ends a wait early for a key whose rejection is live and was marked
+    # in this pause, and the claim skips a key whose rejection is live (`claimable/2`
+    # reads it alike for the run's providers, the sign-in rows of a pending renewal
+    # through the rows `reject/3` writes). These tests give both the same data: a live
+    # rejection, a stale mark, a rejection for an older value.
+    test "a mark from before this pause's window does not end the wait", ctx do
+      provider = two_keys!(ctx)
+
+      {paused, _dispatch_run, continuation} =
+        paused!(ctx, session: nil, reason: "model_key_switch")
+
+      rejected!(paused, provider, "key-1")
+
+      # The mark is 1 s older than the window, as one of an earlier pause of the run.
+      older = DateTime.add(continuation.report_wait_until, -61, :second)
+
+      {1, _rows} =
+        Repo.update_all(from(c in Apiary.ModelKeys.Copy, where: c.run_id == ^paused.id),
+          set: [marked_at: older]
+        )
+
+      assert {:ok, :none} = walked_claim(ctx.key, Dispatches.now(), @body)
+      assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, continuation.id)
+
+      # The window ends. The claim reads the rejection as `report_waited/1` does, which is
+      # still live: it skips key-1.
+      window_over!(continuation)
+      assert {{:ok, run}, _queued} = claimed!(ctx, continuation)
+      assert default_value_id(run) == key_value!(provider, "key-2").id
+    end
+
+    test "a mark on a key of another run does not end the wait", ctx do
+      provider = two_keys!(ctx)
+
+      {_paused, _dispatch_run, waiting} =
+        paused!(ctx, session: nil, reason: "model_key_switch")
+
+      {other, _dispatch_run, other_continuation} =
+        paused!(ctx, session: nil, reason: "model_key_switch")
+
+      rejected!(other, provider, "key-1")
+
+      # The other run's continuation is taken; the first stays waiting.
+      assert {{:ok, _run}, _queued} = claimed!(ctx, other_continuation)
+      assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, waiting.id)
+    end
+
+    test "a mark whose key has a new value since does not end the wait", ctx do
+      provider = two_keys!(ctx)
+
+      {paused, _dispatch_run, continuation} =
+        paused!(ctx, session: nil, reason: "model_key_switch")
+
+      rejected!(paused, provider, "key-1")
+
+      {:ok, _provider} =
+        Connections.update_provider_key(ctx.scope, provider, "key-1", %{
+          value_id: "key-1",
+          value: "sk-ant-northwind-keys-1-9876543210"
+        })
+
+      assert {:ok, :none} = walked_claim(ctx.key, Dispatches.now(), @body)
+      assert %DispatchRun{state: :waiting} = Repo.get!(DispatchRun, continuation.id)
+
+      # The window ends. The claim reads the rejection as `report_waited/1` does, which is
+      # no longer live for the new value: key-1 is the default again.
+      window_over!(continuation)
+      assert {{:ok, run}, _queued} = claimed!(ctx, continuation)
+      assert default_value_id(run) == key_value!(provider, "key-1").id
     end
 
     test "is continued on the paused session's provider, which the default runtime can use, though session 1's cannot",

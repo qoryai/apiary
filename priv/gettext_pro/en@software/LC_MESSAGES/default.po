@@ -265,17 +265,17 @@ msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #, elixir-autogen, elixir-format
-msgid "%{value_id} is deleted from %{name}."
-msgstr ""
-
-#: lib/apiary_pro_web/live/settings_live/secrets.ex
-#, elixir-autogen, elixir-format
 msgid "%{value_id} of %{name} is now %{new}."
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #, elixir-autogen, elixir-format
-msgid "%{value_id} of %{name} is saved."
+msgid "%{value} is deleted from %{name}."
+msgstr ""
+
+#: lib/apiary_pro_web/live/settings_live/secrets.ex
+#, elixir-autogen, elixir-format
+msgid "%{value} of %{name} is saved."
 msgstr ""
 
 #: lib/apiary_pro_web/activity_describer.ex
@@ -458,7 +458,7 @@ msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #, elixir-autogen, elixir-format
-msgid "Actions for %{value_id} of %{name}"
+msgid "Actions for %{value} of %{name}"
 msgstr ""
 
 #: lib/apiary_pro_web/live/instance_live/accounts.ex
@@ -641,7 +641,7 @@ msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #, elixir-autogen, elixir-format
-msgid "Change %{value_id} of %{name}"
+msgid "Change %{value} of %{name}"
 msgstr ""
 
 #: lib/apiary_pro_web/live/policy_live/organisation.ex
@@ -668,7 +668,7 @@ msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #, elixir-autogen, elixir-format
-msgid "Change value %{value_id} of %{name}"
+msgid "Change value %{value} of %{name}"
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
@@ -838,7 +838,7 @@ msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #, elixir-autogen, elixir-format
-msgid "Delete %{value_id} of %{name}?"
+msgid "Delete %{value} of %{name}?"
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
@@ -853,7 +853,7 @@ msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex
 #, elixir-autogen, elixir-format
-msgid "Delete value %{value_id} of %{name}"
+msgid "Delete value %{value} of %{name}"
 msgstr ""
 
 #: lib/apiary_pro_web/live/settings_live/secrets.ex

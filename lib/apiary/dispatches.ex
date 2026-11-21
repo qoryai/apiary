@@ -68,12 +68,13 @@ defmodule Apiary.Dispatches do
   # so the take in loses no attempt, its `queued_at` the paused run's, so it keeps the
   # paused run's place in the queue, `continues_id` the paused run, and
   # `report_wait_until`, nil for a pause at the limit: a claim takes it only once that
-  # time has passed (`keys_free/2`), so the paused run's model keys report, which can
-  # arrive after the exit, is recorded before the claim orders the keys. The paused run
-  # keeps `paused_until`. A continuation that pauses is continued again. It writes none for a prebuild, for a work item no longer in Explore, in another
-  # workspace or at another take in, for a work item placed at another stage or whose
-  # stage does not run, or while another run of the take in has not ended: `{:error,
-  # :not_requeued}`.
+  # time has passed, or once the paused run's report marked a key `unauthorized`
+  # (`keys_free/2`), so the paused run's model keys report, which can arrive after the
+  # exit, is recorded before the claim orders the keys. The paused run
+  # keeps `paused_until`. A continuation that pauses is continued again. It writes none for
+  # a prebuild, for a work item no longer in Explore, in another workspace or at another
+  # take in, for a work item placed at another stage or whose stage does not run, or while
+  # another run of the take in has not ended: `{:error, :not_requeued}`.
   #
   # `end_held(work_item_ids, workspace_id, target, now)` ends, inside the caller's
   # transaction, the waiting runs of those work items with `target` that are not
@@ -1694,14 +1695,37 @@ defmodule Apiary.Dispatches do
   # that its window has ended at `now`: `report_wait_until` is null or not after `now`
   # (`requeue_for_pause/3`). The wait is about the paused run's report, not its keys.
   #
-  # The report's arrival is to end the wait early as well: a key of the paused run's key
-  # rows (`continues_id`, its `runs` row, `run_model_keys.secret_value_id`) whose state is
-  # that it needs a new key. That state does not exist yet; the condition goes here, as a
-  # third alternative, once it does.
+  # The report's arrival ends the wait early too: the run it continues (`continues_id`) has
+  # a copy of a key that a report marked in this pause's window
+  # (`model_key_copies.marked_at`, set by `Apiary.ModelKeys.reject/3`, not before the
+  # window opened, 60 seconds before `report_wait_until`), and the key still needs a new
+  # value (`Apiary.ModelKeys.Rejection`, whose `value_set_at` is the value's). A mark from
+  # an earlier pause of the run does not count. The run then starts on the next key at
+  # once, as the claim skips a key in that state.
+  #
+  # shortcut: the rejection condition is written in SQL again, as in
+  # `Apiary.ModelKeys.claimable/2`, and a sign-in key that the report lists while its
+  # renewal is pending is not marked, so the wait for it runs the 60 seconds. The tests of
+  # `Apiary.Dispatches.SharedProvidersTest` give both the same rejections; replace the
+  # copies with one shared fragment when a third place needs the condition.
   defp report_waited(now) do
     dynamic(
       [run: r],
-      is_nil(r.report_wait_until) or r.report_wait_until <= ^now
+      is_nil(r.report_wait_until) or r.report_wait_until <= ^now or
+        fragment(
+          """
+          EXISTS (SELECT 1 FROM runs paused
+            JOIN model_key_copies c ON c.run_id = paused.id
+            JOIN secret_values v ON v.id = c.secret_value_id
+            JOIN model_key_rejections j ON j.secret_value_id = v.id
+              AND j.value_set_at IS NOT DISTINCT FROM v.value_set_at
+            WHERE paused.dispatch_run_id = ?
+              AND c.marked_at >= ? - (?::integer * interval '1 second'))
+          """,
+          r.continues_id,
+          r.report_wait_until,
+          ^Apiary.ModelKeys.Report.after_exit_seconds()
+        )
     )
   end
 

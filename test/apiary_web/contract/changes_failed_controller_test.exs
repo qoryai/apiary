@@ -57,11 +57,15 @@ defmodule ApiaryWeb.Contract.ChangesFailedControllerTest do
 
   defp fixture(path), do: @fixtures |> Path.join(path) |> File.read!() |> Jason.decode!()
 
+  # Apiary does not build submissions, so the accepted fixtures of the submission entries
+  # and of their failure reports (`submission-*` under `changes/` and `changes-failed/`)
+  # are left out. Every refused fixture under `invalid/` stays.
   defp fixtures(pattern) do
     @fixtures
     |> Path.join(pattern)
     |> Path.wildcard()
     |> Enum.map(&Path.relative_to(&1, @fixtures))
+    |> Enum.reject(&(&1 =~ ~r{\A(changes|changes-failed)/submission-}))
     |> Enum.sort()
   end
 
@@ -203,7 +207,7 @@ defmodule ApiaryWeb.Contract.ChangesFailedControllerTest do
     before = states()
 
     paths = fixtures("invalid/changes-failed-*.json")
-    assert length(paths) == 2
+    assert length(paths) == 15
 
     bodies =
       Enum.map(paths, &Map.put(fixture(&1), "time", now_time())) ++

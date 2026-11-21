@@ -941,32 +941,43 @@ subscription, written into the run once: by its claim, or, for a run claimed bef
 kept several keys, by the upgrade (20261111100000). Where the claim had them, an entry
 also has `resets_at`, `schedule_resets_at` and `cooldown_until`. The contract has no
 member for the key of a model choice, since a model choice chooses a provider, not one
-of its keys. A key's `cooldown_until`
-is the latest end of its cooldown: a window's `cooldown_until`, or the `resets_at` of a
-limit window at the key's Use up to percentage. A key with a Use up to percentage, of a
-provider with limit windows, also has `use_up_to_percent` and `use_up_to_windows`, the
-provider's limit windows. Each key keeps its percentage and its provider's windows in
-its row of `run_model_keys`, from the catalogue entry at the claim, so a later release
-does not change a live run's windows. An entry has both or neither. The entries are
-fixed for the run: a later state reaches the gateway in the answer to its model keys
-report (The model keys report, below). Where every key of the provider is in cooldown,
-the claim takes the first of the choice's fallbacks, in their order, with a key out of
-cooldown, and the fallback's runtime and tiers: the run's `runtime` is the fallback's,
-and its `provider_api` the API of the fallback's provider for that runtime. Where every
-key of the provider and of each fallback is in cooldown, the claim registers nothing and
-the run of the queue waits again, its `dispatch_runs.model_provider_ids` set to those
-providers; no claim takes a run of the queue while every key of each of its providers is
-in cooldown (`Apiary.ModelKeys.claimable/1`). A change of a model choice, of its
-fallbacks, or of a model provider sets the providers of each waiting run it may change
-again, from the choice in effect, once the change has committed
-(`Apiary.Dispatches.refresh_model_providers/1`). A gateway's secrets request reveals
-each key in the request by the key's row id, from the secret of that key's provider
-alone, under the value id the key has at the request: a key renamed since the claim is
-revealed, and a request for a key deleted since fails. The checks of a provider run for
-each provider of the keys in the request, and one failure fails the whole request. A run
-claimed before runs kept their keys in `run_model_keys` has no key rows: its run
-configuration no longer has its model keys, and its gateway's secrets request is refused
-`410` `run_configuration_superseded`.
+of its keys. A key's `cooldown_until` is
+the latest end of its cooldown: a window's `cooldown_until`, or the `resets_at` of a limit
+window at the key's Use up to percentage. A key with a Use up to percentage, of a provider
+with limit windows, also has `use_up_to_percent` and `use_up_to_windows`, the provider's
+limit windows. Each key keeps its percentage and its provider's windows in its row of
+`run_model_keys`, from the catalogue entry at the claim, so a later release does not
+change a live run's windows. An entry has both or neither. The entries are fixed for the
+run: a later state reaches the gateway in the answer to its model keys report (The model
+keys report, below). Where every key of the provider is in cooldown, the claim takes the
+first of the choice's fallbacks, in their order, with a key out of cooldown, and the
+fallback's runtime and tiers: the run's `runtime` is the fallback's, and its
+`provider_api` the API of the fallback's provider for that runtime. Where every key of the
+provider and of each fallback is in cooldown, the claim registers nothing and the run of
+the queue waits again, its `dispatch_runs.model_provider_ids` set to those providers; no
+claim takes a run of the queue while every key of each of its providers is in cooldown
+(`Apiary.ModelKeys.claimable/1`). A change of a model choice, of its fallbacks, or of a
+model provider sets the providers of each waiting run it may change again, from the choice
+in effect, once the change has committed (`Apiary.Dispatches.refresh_model_providers/1`).
+A key that needs a new value (its sign-in needs a new one, or a gateway's model keys
+report listed it in `unauthorized`, which stays until a new value; a key that no secrets
+request sent to the run is not marked, and a run marks a key once for a value) is a key in
+cooldown with no end for the claim: the run waits while every key of the provider and of
+each fallback is in cooldown or needs a new value, and the paused run's `paused_until` has
+no time for such a key. A sign-in whose access token expires before the end of the run's
+longest time limit, counted from the claim, is not given to the run: a job refreshes it,
+and the run waits for the job. The claim calls no provider. A gateway's secrets request
+reveals each key in the request by the key's row id, from the secret of that key's
+provider alone, under the value id the key has at the request: a key renamed since the
+claim is revealed, and a request for a key deleted since fails. For a key of a provider
+with an `oauth_refresh` it seals the key's access token with `expires_at`, and, for a key
+the request lists in `unauthorized`, renews it first with the refresh reason
+`unauthorized_recovery`, at most once in 5 minutes per sign-in; an access token with no
+account id, the claim named by the API's `auth.account_claim`, is refused as
+`credential_unavailable`. The checks of a provider run for each provider of the keys in
+the request, and one failure fails the whole request. A run claimed before runs kept their
+keys in `run_model_keys` has no key rows: its run configuration no longer has its model
+keys, and its gateway's secrets request is refused `410` `run_configuration_superseded`.
 
 **A run that continues a paused run.** The end of a run of a workspace's queue whose exit
 paused it (How a run ends) queues, in the same transaction, the run that continues it
@@ -975,10 +986,12 @@ the paused run's place in the queue, its `continues_id` the paused run. After an
 `paused` with `model_key_switch`, which has no key, a claim takes the continuation only
 once 60 seconds have passed after the exit (`dispatch_runs.report_wait_until`), the time
 in which Qory Apiary still records the run's model keys report, so the report is recorded
-before the claim orders the keys. The end of a paused run queues no continuation for
-a prebuild, for a work item no longer in Explore, at another take in or placed at another
-stage, when the work item's stage does not run, such as one that waits for a person, or
-while another run of the take in has not ended. The paused run keeps
+before the claim orders the keys; the claim takes it earlier when that report marked a
+key in `unauthorized` since the window opened, and it then starts on the next key. A mark
+from an earlier pause of the run does not count. The end of a paused run queues no
+continuation for a prebuild, for a work item no longer in Explore, at another take in or
+placed at another stage, when the work item's stage does not run, such as one that waits
+for a person, or while another run of the take in has not ended. The paused run keeps
 `paused_until`, the earliest end of a cooldown among the keys of the provider of the
 session that paused (`Apiary.Runs.Run.session_provider_ids/2`), when every one of them is
 in cooldown then. The session that paused is the one whose `dev.qory.session.exited` is

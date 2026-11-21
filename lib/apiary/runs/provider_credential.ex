@@ -12,15 +12,17 @@ defmodule Apiary.Runs.ProviderCredential do
   #
   # Each entry has, in the schema's order: `name`, the key's credential name as the run
   # keeps it; `format`, `endpoint` and `auth` of the API its row keeps, the same for every
-  # key of one provider; `key_prefixes` when the API has them; and, as the claim wrote
-  # them, `resets_at`, `schedule_resets_at`, `pause_for_s`, `cooldown_until` and
-  # `use_up_to_percent`, each where the row has it. A key with `use_up_to_percent` also
-  # has `use_up_to_windows`, its provider's limit windows, which the claim wrote into the
-  # row's API from the catalogue's entry; a row whose API has no windows has neither
-  # member, as the contract requires both or none. The default model provider credential,
-  # `default_model_provider_credential_name`, is the key the run keeps with
-  # `default_credential`, else its first. An entry has no key value, no secret id and no
-  # value id: the gateway fetches the values with the secrets request
+  # key of one provider, `auth` with `account_header` and `account_claim` for an API whose
+  # keys are sign-ins that name the account; `paths`, the paths of the endpoint's host the
+  # gateway sets the key on, when the API has them; `key_prefixes` when the API has them;
+  # and, as the claim wrote them, `resets_at`, `schedule_resets_at`, `pause_for_s`,
+  # `cooldown_until` and `use_up_to_percent`, each where the row has it. A key with
+  # `use_up_to_percent` also has `use_up_to_windows`, its provider's limit windows, which
+  # the claim wrote into the row's API from the catalogue's entry; a row whose API has no
+  # windows has neither member, as the contract requires both or none. The default model
+  # provider credential, `default_model_provider_credential_name`, is the key the run
+  # keeps with `default_credential`, else its first. An entry has no key value, no secret
+  # id and no value id: the gateway fetches the values with the secrets request
   # (`Apiary.Runs.SecretsRequest`), which reveals a key by its row id.
   #
   # The hosts are, for each provider of the run's keys, the description's
@@ -74,7 +76,7 @@ defmodule Apiary.Runs.ProviderCredential do
         }
 
   # The order the contract's `auth.schema.json` lists its members in.
-  @auth_members ~w(scheme header username oauth)
+  @auth_members ~w(scheme header username oauth account_header account_claim)
   # The members a run keeps for each key, in the order of the contract's `api_credential`.
   @key_members ~w(resets_at schedule_resets_at pause_for_s cooldown_until use_up_to_percent)
 
@@ -386,6 +388,12 @@ defmodule Apiary.Runs.ProviderCredential do
         _none -> []
       end
 
+    paths =
+      case api["paths"] do
+        [_ | _] = paths -> [{"paths", paths}]
+        _none -> []
+      end
+
     kept = for member <- @key_members, Map.has_key?(key, member), do: {member, key[member]}
 
     # `use_up_to_percent` and `use_up_to_windows` go together, or neither does.
@@ -405,7 +413,7 @@ defmodule Apiary.Runs.ProviderCredential do
         {"format", format},
         {"endpoint", endpoint},
         {"auth", Jason.OrderedObject.new(auth)}
-      ] ++ prefixes ++ kept
+      ] ++ paths ++ prefixes ++ kept
     )
   end
 

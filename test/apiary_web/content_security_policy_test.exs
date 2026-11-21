@@ -28,6 +28,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   @moduletag :tmp_dir
   @moduletag :feature_sets
 
+  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
 
   import Apiary.AccessKeysFixtures
@@ -483,8 +484,8 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   defp value_of("adapter_id", _path, p), do: p.adapter_id
   defp value_of("provider_id", _path, p), do: p.provider_id
   defp value_of("release_id", _path, p), do: p.release_id
-  # A model provider's key, by the value id `provider_id/1` gave it.
-  defp value_of("value_id", "/:org/settings/model-providers/" <> _, _p), do: "key-1"
+  # A model provider's key, by its row id, which `provider/1` gives.
+  defp value_of("key_id", _path, p), do: p.key_id
   defp value_of("value_id", _path, p), do: p.value_id
   defp value_of("section", _path, _p), do: "runs"
   # Each step of a workspace's set-up; the chooser opens the owner's grant in Work sources.
@@ -715,9 +716,12 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
       grant_ref = listing_grant(connection)
       grant = Apiary.Repo.get_by!(Apiary.Adapters.Grant, grant_ref: grant_ref)
 
+      provider = provider(scope)
+
       %{
         grant_id: grant.public_id,
-        provider_id: provider_id(scope),
+        provider_id: provider.provider_id,
+        key_id: provider.key_id,
         adapter_id: adapter.public_id,
         adapter_key_id: adapter_key.key_id,
         adapter_code_id: adapter_code.id,
@@ -728,6 +732,7 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
     else
       %{
         provider_id: "con_none",
+        key_id: Ecto.UUID.generate(),
         adapter_id: "na_x",
         adapter_key_id: "x1",
         adapter_code_id: Ecto.UUID.generate(),
@@ -740,17 +745,22 @@ defmodule ApiaryWeb.ContentSecurityPolicyTest do
   end
 
   # A model provider, for its page, which needs `secrets` too.
-  defp provider_id(scope) do
+  defp provider(scope) do
     if Features.on?(:secrets) do
       {:ok, provider} =
         Connections.create_provider(scope, %{
           provider: hd(Apiary.Kinds.Providers.list()).name,
-          keys: [%{value_id: "key-1", value: "x"}]
+          keys: [%{value: "x"}]
         })
 
-      provider.public_id
+      key_id =
+        Apiary.Repo.one!(
+          from v in Apiary.Secrets.Value, where: v.secret_id == ^provider.secret_id, select: v.id
+        )
+
+      %{provider_id: provider.public_id, key_id: key_id}
     else
-      "con_none"
+      %{provider_id: "con_none", key_id: Ecto.UUID.generate()}
     end
   end
 

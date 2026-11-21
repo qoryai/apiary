@@ -28,11 +28,6 @@ msgstr ""
 msgid "An address is four numbers from 0 to 255 with dots between them and no leading zeros, such as 10.0.0.12."
 msgstr ""
 
-#: lib/apiary_web/live/provider_live/key.ex
-#, elixir-autogen, elixir-format
-msgid "Another key of %{provider} has this name."
-msgstr ""
-
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Choose a model for each tier: %{tier} has none."
@@ -477,6 +472,11 @@ msgstr ""
 #: lib/apiary/organisations/organisation.ex
 #, elixir-autogen, elixir-format
 msgid "is already the slug of another organisation"
+msgstr ""
+
+#: lib/apiary/connections.ex
+#, elixir-autogen, elixir-format
+msgid "is invalid"
 msgstr ""
 
 #: lib/apiary/organisations/slug.ex
