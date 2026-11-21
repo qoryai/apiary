@@ -113,11 +113,12 @@ defmodule Apiary.Harnesses.WalkJob do
       nil ->
         :ok
 
-      {row, run, target} ->
+      {row, run, work_item} ->
         input = %{
           organisation: scope.organisation,
           workspace: scope.workspace,
-          target: target,
+          target: WorkItem.target(work_item),
+          work_item: work_item,
           workflow: row.workflow,
           # Hand-over: with the workflow model, a run that `queue/2` gave its stage entry's
           # workflow (`Apiary.Stages.run_workflow/1`).
@@ -141,8 +142,8 @@ defmodule Apiary.Harnesses.WalkJob do
     end
   end
 
-  # The pending row of the run `id` while the run waits, the run, and its target; nil for
-  # none.
+  # The pending row of the run `id` while the run waits, the run, and its work item; nil
+  # for none.
   defp pending(id) do
     Repo.one(
       from h in RunHarness,
@@ -154,7 +155,7 @@ defmodule Apiary.Harnesses.WalkJob do
         select: {h, r, w}
     )
     |> case do
-      {row, run, work_item} -> {row, run, WorkItem.target(work_item)}
+      {row, run, work_item} -> {row, run, work_item}
       nil -> nil
     end
   end

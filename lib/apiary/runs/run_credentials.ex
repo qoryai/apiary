@@ -16,7 +16,10 @@ defmodule Apiary.Runs.RunCredentials do
   #     (`Apiary.Nodes.Node`'s `targets`), and whose target system and path equal the
   #     run's target. A collection of an adapter that did not say so never counts, even
   #     when its target equals the run's, as a tracker's collection's may. So the claim
-  #     never requests a forge's credential from a tracker's adapter. Of the matching
+  #     never requests a forge's credential from a tracker's adapter. Nor does one of an
+  #     adapter that is deleted or has no `call_url`, which no credential call reaches.
+  #     The harness walk reads the target's file from the same collection
+  #     (`target_collection/4`). Of the matching
   #     collections, the run takes one that is live and on a connected connection before
   #     one that is not; then its ticket's collection (`Apiary.Sources.Item`) before
   #     another; then the oldest, by `inserted_at`, then by id.
@@ -198,17 +201,36 @@ defmodule Apiary.Runs.RunCredentials do
        when is_binary(id),
        do: Repo.one(from([c, n, a] in with_adapter(), where: c.id == ^id))
 
-  defp collection(
-         %DispatchRun{} = dispatch_run,
-         %WorkItem{} = work_item,
-         %{system: system, path: path}
-       )
-       when is_binary(system) and is_binary(path) do
+  defp collection(%DispatchRun{} = dispatch_run, %WorkItem{} = work_item, target),
+    do:
+      target_collection(
+        dispatch_run.organisation_id,
+        dispatch_run.workspace_id,
+        work_item,
+        target
+      )
+
+  defp collection(%DispatchRun{}, _work_item, _target), do: nil
+
+  @doc false
+  # target_collection/4 is the collection of `target` in the workspace `workspace_id` of
+  # the organisation `organisation_id` that a run of `work_item` (nil for none) takes,
+  # `{collection, connection, adapter}`, nil for none: the work entry's (the moduledoc)
+  # and the harness walk's (`Apiary.Harnesses.Walk`), so both read the same collection.
+  # The collection has the target's system and path, and its adapter said its
+  # collections have targets, is not deleted and has a `call_url`: both the credential
+  # and the harness file are calls to that address. Live on a connected connection
+  # first, then the work item's ticket's, then the oldest. Nil for a target with no
+  # address.
+  @spec target_collection(Ecto.UUID.t(), Ecto.UUID.t(), WorkItem.t() | nil, map) ::
+          {Collection.t(), Connection.t(), Node.t()} | nil
+  def target_collection(organisation_id, workspace_id, work_item, %{system: system, path: path})
+      when is_binary(system) and is_binary(path) do
     from([c, n, a] in with_adapter(),
       where:
-        c.organisation_id == ^dispatch_run.organisation_id and
-          c.workspace_id == ^dispatch_run.workspace_id and c.target_system == ^system and
-          c.target_path == ^path and a.targets == true,
+        c.organisation_id == ^organisation_id and c.workspace_id == ^workspace_id and
+          c.target_system == ^system and c.target_path == ^path and a.targets == true and
+          is_nil(a.deleted_at) and not is_nil(a.call_url),
       order_by: [desc: is_nil(c.ended_at) and n.state == :connected]
     )
     |> ticket_first(work_item)
@@ -216,7 +238,7 @@ defmodule Apiary.Runs.RunCredentials do
     |> Repo.one()
   end
 
-  defp collection(%DispatchRun{}, _work_item, _target), do: nil
+  def target_collection(_organisation_id, _workspace_id, _work_item, _target), do: nil
 
   defp with_adapter do
     from c in Collection,
