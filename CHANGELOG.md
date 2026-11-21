@@ -2034,7 +2034,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   entry of the run's workflow sets (`plan`, under `workflows` in `qory-stack.yaml`), and
   no longer from the type `build-plan`. A run whose stack entry sets none, or whose plan
   has no Deliverables table, shows no change text. The walk records the type in the
-  column `run_harnesses.plan_type`, which migration 20261119150000 adds. A run walked
+  column `run_harnesses.plan_type`, which migration 20261119162000 adds. A run walked
   before the change has no plan type, so its submissions show no change text.
 - **Accept as it is** and **Approve** need every required output. Where an accept takes
   the stage to its gate, after the last entry of its sequence, **Accept as it is**
