@@ -1,9 +1,9 @@
 defmodule Apiary.SubmissionsTest do
   # The rows of a work item's submissions (`Apiary.Submissions`): one for each version of
   # the type in `submit.type` of the process version, with the commits of the run, the
-  # `Base` line from the earlier submissions, the text of each change from the build
-  # plan, and every stored member read as untrusted. Not async: the store's root is the
-  # application's setting.
+  # `Base` line from the earlier submissions, the text of each change from the plan of
+  # the type the run's walk recorded (`run_harnesses.plan_type`), and every stored member
+  # read as untrusted. Not async: the store's root is the application's setting.
   use Apiary.DataCase, async: false
 
   import Apiary.NodesFixtures
@@ -12,6 +12,7 @@ defmodule Apiary.SubmissionsTest do
 
   alias Apiary.{Artifacts, Submissions}
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Harnesses.RunHarness
   alias Apiary.Organisations.Workspace
   alias Apiary.Artifacts.Type
   alias Apiary.Processes.Version, as: ProcessVersion
@@ -69,11 +70,35 @@ defmodule Apiary.SubmissionsTest do
       work_item: work_item,
       first: first,
       second: second,
+      first_run: first_run,
       first_number: first_run.number,
       second_number: second_run.number
     }
 
-    submits!(ctx, @submit)
+    ctx = submits!(ctx, @submit)
+    plan_type!(ctx.first, "build-plan")
+    plan_type!(ctx.second, "build-plan")
+    ctx
+  end
+
+  # The plan type of the run's walk (`run_harnesses.plan_type`), nil for none.
+  defp plan_type!(%DispatchRun{id: id}, type) do
+    case Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^id),
+           set: [plan_type: type]
+         ) do
+      {0, _rows} ->
+        Repo.insert!(%RunHarness{
+          dispatch_run_id: id,
+          state: :resolved,
+          origin: :none,
+          plan_type: type
+        })
+
+        :ok
+
+      {1, _rows} ->
+        :ok
+    end
   end
 
   defp definition("structured"), do: %{"json_schema" => %{"type" => "object"}}
@@ -168,13 +193,13 @@ defmodule Apiary.SubmissionsTest do
       }
     ]
 
-  defp plan!(ctx, run, markdown \\ @plan) do
+  defp plan!(ctx, run, markdown \\ @plan, type \\ "build-plan") do
     {:ok, version} =
       Artifacts.push(
         {:run, run},
         ctx.work_item,
-        "build-plan",
-        [%{filename: "build-plan.md", content_type: "text/markdown", binary: markdown}],
+        type,
+        [%{filename: "#{type}.md", content_type: "text/markdown", binary: markdown}],
         stage_id: @build
       )
 
@@ -336,6 +361,277 @@ defmodule Apiary.SubmissionsTest do
 
       assert [row] = rows(ctx)
       assert [%{step: nil, head: true, url: nil}] = repository_of(row).commits
+    end
+  end
+
+  describe "the plan type of the run" do
+    defp release_plan_type!(ctx) do
+      {:ok, _type} =
+        Artifacts.create_type(
+          ctx.scope,
+          ctx.scope.workspace,
+          Map.merge(
+            %{"name" => "release-plan", "base_view" => "document"},
+            definition("document")
+          )
+        )
+    end
+
+    defp first_change(ctx) do
+      assert [row] = rows(ctx)
+
+      assert [%{step: {:change, "d-2", text}, short: "4c4c4c4"} | _fixes] =
+               repository_of(row).commits
+
+      text
+    end
+
+    test "a custom document type with a Deliverables table shows the texts", ctx do
+      release_plan_type!(ctx)
+      plan_type!(ctx.first, "release-plan")
+      plan!(ctx, ctx.first, @plan, "release-plan")
+      store!(ctx, ctx.first, submission())
+
+      assert first_change(ctx) == "Show the dates at checkout"
+    end
+
+    test "the plan of another type shows no texts", ctx do
+      release_plan_type!(ctx)
+      plan_type!(ctx.first, "release-plan")
+      plan!(ctx, ctx.first)
+      store!(ctx, ctx.first, submission())
+
+      assert first_change(ctx) == nil
+    end
+
+    test "a type with no Deliverables table shows no text and the commits stay", ctx do
+      release_plan_type!(ctx)
+      plan_type!(ctx.first, "release-plan")
+      plan!(ctx, ctx.first, "## Summary\n\nDates at checkout.\n", "release-plan")
+      plan!(ctx, ctx.first)
+      store!(ctx, ctx.first, submission())
+
+      assert [row] = rows(ctx)
+
+      assert [
+               %{short: "4c4c4c4", step: {:change, "d-2", nil}},
+               %{short: "7e7e7e7"},
+               %{head: true}
+             ] =
+               repository_of(row).commits
+    end
+
+    test "a nil plan type shows no text, though a build-plan exists", ctx do
+      plan_type!(ctx.first, nil)
+      plan!(ctx, ctx.first)
+      store!(ctx, ctx.first, submission())
+
+      assert first_change(ctx) == nil
+    end
+
+    test "a run with no walk shows no text, though a build-plan exists", ctx do
+      %DispatchRun{id: id} = ctx.first
+      {1, _rows} = Repo.delete_all(from h in RunHarness, where: h.dispatch_run_id == ^id)
+      plan!(ctx, ctx.first)
+      store!(ctx, ctx.first, submission())
+
+      assert first_change(ctx) == nil
+    end
+
+    test "a version with only fix steps shows its commits and reads no run_harnesses", ctx do
+      commits = [
+        %{"commit" => @fix_one, "step" => "fix:f1"},
+        %{"commit" => @head, "step" => "fix:f2"}
+      ]
+
+      plan!(ctx, ctx.first)
+      store!(ctx, ctx.first, submission(repository(%{"commits" => commits})))
+
+      parent = self()
+      handler = "submissions-queries-#{System.unique_integer([:positive])}"
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, meta, _config ->
+          if self() == parent, do: send(parent, {:query, meta.query})
+        end,
+        nil
+      )
+
+      rows =
+        try do
+          rows(ctx)
+        after
+          :telemetry.detach(handler)
+        end
+
+      queries = Stream.repeatedly(fn -> receive(do: ({:query, q} -> q), after: (0 -> nil)) end)
+      queries = queries |> Enum.take_while(& &1)
+
+      assert queries != []
+      refute Enum.any?(queries, &String.contains?(&1, "run_harnesses"))
+      assert [row] = rows
+      assert [%{step: {:fix, "f1"}}, %{step: {:fix, "f2"}}] = repository_of(row).commits
+    end
+
+    test "a later session of a shared run reads the plan type of the run's first session",
+         ctx do
+      release_plan_type!(ctx)
+
+      {:ok, version} =
+        Apiary.Processes.save(ctx.scope, ctx.scope.workspace, %{
+          "schema" => "qory.process/v1",
+          "machine" => "default",
+          "stages" => [
+            %{
+              "id" => @build,
+              "name" => "Shared build",
+              "shared_run" => true,
+              "inputs" => [],
+              "sequence" => [
+                %{"workflow" => "plan-the-build"},
+                %{"workflow" => "implement-changes"}
+              ],
+              "outputs" => [],
+              "gate" => %{"kind" => "person", "approvers" => "members"}
+            }
+          ]
+        })
+
+      {1, _rows} =
+        Repo.update_all(from(v in ProcessVersion, where: v.id == ^version.id),
+          set: [template: %{"commit" => String.duplicate("a", 40), "submit" => @submit}]
+        )
+
+      %DispatchRun{id: id} = ctx.second
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^id),
+          set: [
+            process_version_id: version.id,
+            stage_id: @build,
+            workflow: "plan-the-build",
+            stage_entry: 0,
+            round: 1
+          ]
+        )
+
+      {1, _rows} =
+        Repo.update_all(from(w in Apiary.WorkItems.WorkItem, where: w.id == ^ctx.work_item.id),
+          set: [
+            process_version_id: version.id,
+            stage_id: @build,
+            stage_state: :running,
+            stage_entry: 0,
+            stage_round: 1
+          ]
+        )
+
+      {1, _rows} =
+        Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^id),
+          set: [workflow: "plan-the-build", plan_type: "release-plan"]
+        )
+
+      ctx = %{ctx | work_item: Repo.reload!(ctx.work_item)}
+      run = Repo.get!(DispatchRun, id)
+      {:ok, :ok} = Repo.transact(fn -> {:ok, Apiary.Stages.claim_sessions!(run, %{})} end)
+
+      {:ok, _verdict} =
+        Apiary.Stages.Artifacts.push_json(
+          {:run, run},
+          ctx.work_item,
+          "verdict",
+          %{"verdict" => "passed"},
+          stage_id: @build
+        )
+
+      assert {:session, %{session: 2, workflow: "implement-changes"}} =
+               Apiary.Stages.next_session(run, %{session: 1, state: "succeeded", reason: nil})
+
+      plan!(ctx, run, @plan, "release-plan")
+
+      plan!(
+        ctx,
+        run,
+        "## Deliverables\n\n| Id | Change |\n|---|---|\n| d-2 | Build plan text |\n"
+      )
+
+      store!(ctx, run, submission())
+
+      assert first_change(ctx) == "Show the dates at checkout"
+    end
+
+    test "build-plan as the plan type shows its texts, not those of another type", ctx do
+      release_plan_type!(ctx)
+      plan_type!(ctx.first, "build-plan")
+
+      plan!(
+        ctx,
+        ctx.first,
+        "## Deliverables\n\n| Id | Change |\n|---|---|\n| d-2 | Ship the dates |\n",
+        "release-plan"
+      )
+
+      plan!(ctx, ctx.first)
+      store!(ctx, ctx.first, submission())
+
+      assert first_change(ctx) == "Show the dates at checkout"
+    end
+
+    test "each submission reads the plan of its run's type", ctx do
+      release_plan_type!(ctx)
+      plan_type!(ctx.first, "release-plan")
+
+      plan!(
+        ctx,
+        ctx.first,
+        "## Deliverables\n\n| Id | Change |\n|---|---|\n| d-2 | Ship the dates |\n",
+        "release-plan"
+      )
+
+      plan!(ctx, ctx.second)
+      store!(ctx, ctx.first, submission())
+      store!(ctx, ctx.second, submission())
+
+      assert [newest, oldest] = rows(ctx)
+
+      assert [%{step: {:change, "d-2", "Show the dates at checkout"}} | _] =
+               repository_of(newest).commits
+
+      assert [%{step: {:change, "d-2", "Ship the dates"}} | _] = repository_of(oldest).commits
+    end
+  end
+
+  describe "for_run/4, the run page's rows" do
+    defp outputs_of(version),
+      do: [%{name: "main", type: "submission", public_id: version.public_id}]
+
+    defp run_change(ctx, version) do
+      run = Repo.reload!(ctx.first_run)
+
+      assert {%{rows: rows}, _cache} =
+               Submissions.for_run(ctx.scope, run, outputs_of(version), %{})
+
+      assert %{repositories: [%{commits: [%{step: {:change, "d-2", text}} | _]}]} =
+               rows[version.public_id]
+
+      text
+    end
+
+    test "a run with a plan type shows the change texts of its plan", ctx do
+      plan!(ctx, ctx.first)
+      version = store!(ctx, ctx.first, submission())
+
+      assert run_change(ctx, version) == "Show the dates at checkout"
+    end
+
+    test "a run with no plan type shows no change text, though a build-plan exists", ctx do
+      plan_type!(ctx.first, nil)
+      plan!(ctx, ctx.first)
+      version = store!(ctx, ctx.first, submission())
+
+      assert run_change(ctx, version) == nil
     end
   end
 
@@ -878,7 +1174,7 @@ defmodule Apiary.SubmissionsTest do
       assert String.length(text) == 200
     end
 
-    test "a plan over 256 KiB gives no change text", ctx do
+    test "a plan over 256 KiB shows no change text", ctx do
       big =
         "## Deliverables\n\n| Id | Change |\n|---|---|\n| d-2 | Show |\n\n" <>
           String.duplicate("x", 262_144)
@@ -1079,6 +1375,28 @@ defmodule Apiary.SubmissionsTest do
       """
 
       assert Submissions.deliverables(markdown) == %{"d-2" => "Two | pieces"}
+    end
+
+    test "skips the header row by its position, whatever its text" do
+      markdown = "## Deliverables\n\n| ID | What |\n|---|---|\n| d-1 | One |\n"
+      assert Submissions.deliverables(markdown) == %{"d-1" => "One"}
+    end
+
+    test "reads the rows of a table whose header has other titles" do
+      markdown =
+        "## Deliverables\n\n| Number | Summary |\n| :--- | ---: |\n| d-1 | One |\n| d-2 | Two |\n"
+
+      assert Submissions.deliverables(markdown) == %{"d-1" => "One", "d-2" => "Two"}
+    end
+
+    test "a table with no separator row has its first row skipped and the rest read" do
+      markdown = "## Deliverables\n\n| Id | Change |\n| d-1 | One |\n| d-2 | Two |\n"
+      assert Submissions.deliverables(markdown) == %{"d-1" => "One", "d-2" => "Two"}
+
+      assert Submissions.deliverables("## Deliverables\n\n| d-1 | One |\n| d-2 | Two |\n") ==
+               %{"d-2" => "Two"}
+
+      assert Submissions.deliverables("## Deliverables\n\n| Id | Change |\n") == %{}
     end
 
     test "is empty for a plan with no table" do
