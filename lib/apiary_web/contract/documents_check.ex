@@ -14,8 +14,8 @@ defmodule ApiaryWeb.Contract.DocumentsCheck do
   # Call it after the schema has accepted the documents: it reads only the members that the
   # schema defines, and a document the schema refuses has no defined answer here.
   #
-  # At this commit nothing calls it: no run's documents have `deliver` or `read_targets`
-  # until the control plane writes them.
+  # At this commit nothing calls it: no run's documents have `deliver`, `read_targets` or
+  # `destinations` in `inputs` until the control plane writes them.
 
   @doc """
   check/1 is `:ok` for the decoded run `documents` (a map with string keys), or
