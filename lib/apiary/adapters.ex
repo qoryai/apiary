@@ -728,7 +728,7 @@ defmodule Apiary.Adapters do
   # owners and admins, asked of the organisation), with `adapter` as it is now, in use and
   # held `FOR SHARE`: the organisation's connection to it that has not ended, made or
   # taken, pending or connected (`Apiary.Adapters.Connections.start/3`: a connected one
-  # takes the pass for an external account the person adds to it), with a new connect
+  # takes the pass for a person who installs again), with a new connect
   # pass for it
   # (`Apiary.Adapters.ConnectPass`), made under the connection's row lock, whose nonce and
   # expiry the connection keeps as its latest pass's; each new pass of a connection

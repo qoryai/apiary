@@ -217,6 +217,44 @@ defmodule ApiaryWeb.Contract.GrantsControllerTest do
         "error" => "pass_unknown"
       })
 
+      # A second ref on a connection with a live grant, under a linked pass not spent: the
+      # response is `grant_taken` for G_1, live under another organisation's connection,
+      # and `connection_held` for G_3.
+      :ok = pass_made_earlier(connection.public_id)
+      {:ok, _url, {_id, nonce}} = Apiary.Adapters.connect(ctx.scope, ctx.adapter)
+
+      {:ok, :linked} =
+        Connections.complete_return(
+          ctx.scope,
+          connection.public_id,
+          return_token(ctx.seed, connection.public_id, nonce),
+          nonce
+        )
+
+      pass = %{"pass_nonce" => nonce}
+
+      refused.(
+        body(connection, Map.put(pass, "time", now_time(2))),
+        409,
+        fixture("refusal/grant-taken.json")
+      )
+
+      held = fixture("refusal/connection-held.json")
+
+      refused.(
+        body(connection, Map.merge(pass, %{"grant_ref" => "G_3", "time" => now_time(3)})),
+        409,
+        held
+      )
+
+      assert Enum.sort(live(ctx)) == Enum.sort([{connection.id, "G_2"}, {theirs.id, "G_1"}])
+
+      # The same ref replaces the grant, under the pass the refusal left unspent.
+      assert report(
+               ctx,
+               body(connection, Map.merge(pass, %{"grant_ref" => "G_2", "time" => now_time(4)}))
+             ).status == 204
+
       # Out of use, then ended.
       Edition.put_test_stub(EditionStubs.OutOfUse)
       Process.put(:out_of_use, [ctx.scope.organisation.id])
@@ -256,22 +294,16 @@ defmodule ApiaryWeb.Contract.GrantsControllerTest do
       assert signed_answer?(conn)
       assert conn.resp_body == compact("grants/empty.json")
 
-      assert report(ctx, body(connection, %{"grant_ref" => "G_2"})).status == 204
+      assert report(ctx, body(connection)).status == 204
       key_scope = Apiary.SourcesFixtures.key_scope(ctx.key)
 
-      # A second linked pass, for the second grant.
-      :ok = pass_made_earlier(connection.public_id)
-      {:ok, _url, {_id, nonce}} = Apiary.Adapters.connect(ctx.scope, ctx.adapter)
+      # A connection has one grant, so the second grant is under another connection.
+      %{scope: other} = sign_up_fixture()
+      PublicIdSource.force(["f1xt0re000000001"])
+      {second, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      assert second.public_id == "ac_f1xt0re000000001"
 
-      {:ok, :linked} =
-        Connections.complete_return(
-          ctx.scope,
-          connection.public_id,
-          return_token(ctx.seed, connection.public_id, nonce),
-          nonce
-        )
-
-      assert report(ctx, body(connection, %{"pass_nonce" => nonce, "time" => now_time(1)})).status ==
+      assert report(ctx, body(second, %{"grant_ref" => "G_2", "time" => now_time(1)})).status ==
                204
 
       conn = read(ctx, 1)
@@ -283,6 +315,7 @@ defmodule ApiaryWeb.Contract.GrantsControllerTest do
       refute Map.has_key?(fixture("invalid/grants-without-revision.json"), "revision")
 
       {:ok, _} = Connections.end_connection(key_scope, connection.public_id)
+      {:ok, _} = Connections.end_connection(key_scope, second.public_id)
       assert read(ctx, 2).resp_body == compact("grants/empty.json")
     end
 

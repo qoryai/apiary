@@ -506,7 +506,9 @@ defmodule Apiary.Adapters.CollectionsTest do
 
       assert Collections.post_listing(
                ctx.key_scope,
-               part(%{ctx.connection | public_id: "ac_0000000000000000"}, ["A"])
+               part(%{ctx.connection | public_id: "ac_0000000000000000"}, ["A"],
+                 grant_ref: "G_NEVER"
+               )
              ) == {:error, :unknown}
 
       # Suspended.

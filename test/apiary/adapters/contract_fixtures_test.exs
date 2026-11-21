@@ -10,6 +10,12 @@ defmodule Apiary.Adapters.ContractFixturesTest do
   # schema's, in its order; a call signed under the server key is the fixture's, byte for
   # byte, and the adapter's answer to it verifies under the access key, bound to that
   # call alone.
+  #
+  # shortcut: `schema/connect-return.schema.json`, `adapter/refusal/connection-held.json`,
+  # `adapter/connect-return/refused-connection-held.json`, `adapter/grants/two-grants.json`
+  # and `adapter/changes/grants.json` follow integrations effc22aa (T-30) for
+  # `connection_held` only, on top of `.integration-contract-ref`. The full pin moves in its
+  # own card, which brings integrations #66 to #77.
   use ExUnit.Case, async: true
 
   alias Apiary.Adapters.{Calls, ConnectPass, ReturnToken, SetupPass}
@@ -228,6 +234,12 @@ defmodule Apiary.Adapters.ContractFixturesTest do
 
     assert {:ok, %{outcome: :refused, reason: :grant_taken}} =
              "adapter/connect-return/refused-grant-taken.json"
+             |> compact()
+             |> sign(seed)
+             |> ReturnToken.verify([public_key])
+
+    assert {:ok, %{outcome: :refused, reason: :connection_held}} =
+             "adapter/connect-return/refused-connection-held.json"
              |> compact()
              |> sign(seed)
              |> ReturnToken.verify([public_key])
