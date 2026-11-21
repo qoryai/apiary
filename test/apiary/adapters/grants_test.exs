@@ -113,9 +113,12 @@ defmodule Apiary.Adapters.GrantsTest do
 
       assert {1, _} = insert(base)
 
+      # Ended, as a second live grant of the connection fails first on its own index.
+      ended = %{state: :ended, ended_at: DateTime.utc_now(), ended_reason: :connection_ended}
+
       for change <- [
-            %{organisation_id: other.organisation.id, grant_ref: "G_2"},
-            %{adapter_id: second.id, grant_ref: "G_3"}
+            Map.merge(ended, %{organisation_id: other.organisation.id, grant_ref: "G_2"}),
+            Map.merge(ended, %{adapter_id: second.id, grant_ref: "G_3"})
           ] do
         assert refused(fn -> insert(Map.merge(base, change)) end) ==
                  "adapter_grants_connection_id_fkey"
@@ -148,12 +151,17 @@ defmodule Apiary.Adapters.GrantsTest do
                })
              end) == "adapter_grants_live_index"
 
-      # The same pass for a second grant of the connection.
-      assert refused(fn -> insert(Map.merge(base, %{grant_ref: "G_2", pass_nonce: nonce})) end) ==
-               "adapter_grants_connection_id_pass_nonce_index"
+      # A second grant that has not ended for the connection, as a report cannot add one.
+      assert refused(fn -> insert(Map.put(base, :grant_ref, "G_2")) end) ==
+               "adapter_grants_one_live_per_connection"
 
       now = DateTime.utc_now()
       ended = %{state: :ended, ended_at: now, ended_reason: :connection_ended}
+
+      # The same pass for a second grant of the connection.
+      assert refused(fn ->
+               insert(Map.merge(base, Map.merge(ended, %{grant_ref: "G_2", pass_nonce: nonce})))
+             end) == "adapter_grants_connection_id_pass_nonce_index"
 
       # An ended grant leaves its ref free.
       assert {1, _} = insert(Map.merge(base, ended))

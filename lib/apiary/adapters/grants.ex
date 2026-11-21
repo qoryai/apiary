@@ -1,8 +1,9 @@
 defmodule Apiary.Adapters.Grants do
   # The grants of an organisation's connections to the instance's adapters
   # (`Apiary.Adapters.Grant`, `ag_…`), as the integration contract has them
-  # (`grant.schema.json`, `grants.schema.json`): a connection has at most one that has not
-  # ended, for the one external account it reaches (`report/2`).
+  # (`grant.schema.json`, `grants.schema.json`): a connection has one grant that has not
+  # ended at most, for the one external account it reaches (`report/2`). The unique index
+  # `adapter_grants_one_live_per_connection` makes a second one a database error.
   #
   # A grant is added when Qory Apiary accepts the adapter's report of it (`report/2`,
   # `POST /v1/grants`), and at no other step. The report names the nonce of a connect
@@ -36,7 +37,7 @@ defmodule Apiary.Adapters.Grants do
   # The lock order: the connection, then its linked passes, then the grants, then the
   # collections (`Apiary.Adapters.Collections`), then the adapter's feed counter. A
   # report holds the connection `FOR UPDATE`, so two reports for one connection run one
-  # after the other; an end holds the connection, ends its grants, then its collections,
+  # after the other; an end holds the connection, ends its grant, then its collections,
   # then writes the grants' entries. A grant end locks the connection `FOR UPDATE`, so it
   # runs one at a time with the connection's reports and the parts of its listings.
   #
@@ -163,16 +164,18 @@ defmodule Apiary.Adapters.Grants do
     end
   end
 
-  # The grant of the adapter with `ref` that has not ended, held `FOR UPDATE`; it runs
-  # after `lock_pass/2`, so `pass_unknown` comes first. The connection's grant takes the
-  # new nonce, account and time; a grant under any other connection of the adapter, of any
-  # organisation, a connection made but with no accepted listing yet included, refuses
-  # the report (`grant_taken`); with none, the connection's grants that have not ended are
-  # read `FOR UPDATE`, and one with another ref returns `connection_held`;
-  # with none, a grant is added. Two connections' reports of one ref at once: the second's
-  # insert waits on the live index for the first's to commit, and is refused then. Two
-  # reports of different refs for one connection run one after the other, because
-  # `lock_connected/1` locks the connection `FOR UPDATE`.
+  # The grant of the adapter with `ref` that has not ended, locked `FOR UPDATE`; it runs
+  # after `lock_pass/2`, so `pass_unknown` comes first. If the grant is the connection's,
+  # it takes the new nonce, account and time. If it is under any other connection of the
+  # adapter, of any organisation, a connection made but with no accepted listing yet
+  # included, the result is `{:error, :grant_taken}`. With none, if the connection has a
+  # grant that has not ended with another ref, the result is `{:error, :connection_held}`;
+  # else a grant is added. Two connections' reports of one ref at once: the second's insert
+  # waits on the live index for the first's to commit, and returns `{:error, :grant_taken}`
+  # then. Two reports of different refs for one connection run one after the other,
+  # because `lock_connected/1` locks the connection; the index
+  # `adapter_grants_one_live_per_connection` returns `{:error, :connection_held}` for an
+  # insert that the lock does not cover.
   defp put_grant(%Connection{} = connection, ref, account, nonce, now) do
     live =
       Repo.one(
@@ -210,8 +213,7 @@ defmodule Apiary.Adapters.Grants do
   defp held?(%Connection{id: id}, ref) do
     Repo.exists?(
       from g in Grant,
-        where: g.connection_id == ^id and g.grant_ref != ^ref and is_nil(g.ended_at),
-        lock: "FOR UPDATE"
+        where: g.connection_id == ^id and g.grant_ref != ^ref and is_nil(g.ended_at)
     )
   end
 
@@ -231,9 +233,13 @@ defmodule Apiary.Adapters.Grants do
     |> Ecto.Changeset.change()
     |> Ecto.Changeset.unique_constraint(:public_id)
     |> Ecto.Changeset.unique_constraint(:grant_ref, name: :adapter_grants_live_index)
+    |> Ecto.Changeset.unique_constraint(:connection_id,
+      name: :adapter_grants_one_live_per_connection
+    )
     |> PublicId.Insert.insert()
     |> case do
       {:ok, grant} -> {:ok, grant, false}
+      {:error, %Ecto.Changeset{errors: [{:connection_id, _} | _]}} -> {:error, :connection_held}
       {:error, %Ecto.Changeset{}} -> {:error, :grant_taken}
     end
   end
@@ -304,7 +310,7 @@ defmodule Apiary.Adapters.Grants do
   # is written; and the entry `adapter.end_grant` goes into the trail the key records in,
   # the instance organisation's, about the adapter, with the key as its actor, the
   # connection's and the grant's public ids and the number of collections ended, without
-  # the ref. The connection stays connected. Its collections under other grants stay.
+  # the ref. The connection stays connected.
   # Once it commits, the collections ended are broadcast to the organisation.
   # `{:ok, grant}`, ended. None of the refusals changes anything or leaves an entry.
   @spec end_grant(Scope.t() | nil, grant_end) ::

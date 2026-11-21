@@ -12,8 +12,9 @@ defmodule Apiary.Adapters.ContractFixturesTest do
   # call alone.
   #
   # shortcut: `schema/connect-return.schema.json`, `adapter/refusal/connection-held.json`
-  # and `adapter/connect-return/refused-connection-held.json` are copied from integrations
-  # T-30 459f2fb6, not from `.integration-contract-ref`; re-copy at T-30's squash commit.
+  # and `adapter/connect-return/refused-connection-held.json` follow integrations T-30
+  # 459f2fb6 for `connection_held` only, on top of `.integration-contract-ref`; integrations
+  # #66 (cf5bf94) is not taken. Copy the three files again from T-30's squash commit.
   use ExUnit.Case, async: true
 
   alias Apiary.Adapters.{Calls, ConnectPass, ReturnToken, SetupPass}

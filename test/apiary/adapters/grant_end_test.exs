@@ -5,8 +5,9 @@ defmodule Apiary.Adapters.GrantEndTest do
   # collection's grant, and a part with a grant the connection has no live grant
   # with is refused after the connection's checks and stores nothing; a grant end answers
   # in the contract's order, ends the grant and the collections it covers with their feed
-  # entries and one trail entry, leaves the connection and its other grants, goes on for
-  # a connection whose organisation is out of use, and changes nothing the second time.
+  # entries and one trail entry, leaves the connection and the grants of other
+  # connections, goes on for a connection whose organisation is out of use, and changes
+  # nothing the second time.
   use Apiary.DataCase, async: true
 
   import Ecto.Query
@@ -142,24 +143,6 @@ defmodule Apiary.Adapters.GrantEndTest do
   end
 
   describe "a listing with grant_ref" do
-    test "keeps each collection's grant; a newer listing changes it, an older one does not",
-         ctx do
-      g1 = listing_grant(ctx.connection, "G_1")
-      g2 = listing_grant(ctx.connection, "G_2")
-
-      assert post(ctx, [{"TRK", g1}, {"OPS", g2}]) == {:ok, :accepted}
-      assert live(ctx.connection) == [{"OPS", "G_2"}, {"TRK", "G_1"}]
-      assert collection(ctx.connection, "TRK").grant_id == grant(ctx.connection, "G_1").id
-
-      assert post(ctx, [{"TRK", g2}], id: "newer", started_at: DateTime.add(@started, 60)) ==
-               {:ok, :accepted}
-
-      assert post(ctx, [{"TRK", g1}], id: "older", started_at: DateTime.add(@started, -60)) ==
-               {:ok, :accepted}
-
-      assert live(ctx.connection) == [{"OPS", "G_2"}, {"TRK", "G_2"}]
-    end
-
     test "an unknown, ended or other connection's grant_ref is refused and stores nothing",
          ctx do
       ended = listing_grant(ctx.connection, "G_ENDED")
@@ -202,16 +185,19 @@ defmodule Apiary.Adapters.GrantEndTest do
   end
 
   describe "a grant end" do
-    test "ends that grant and its collections only; the connection and the other grant stay",
+    test "ends that grant and its collections only; the connection and another connection's grant stay",
          ctx do
       {:ok, one} = report(ctx, "G_1", ctx.connection.pass_nonce, %{ref: "1001", title: "acme"})
-      g2 = listing_grant(ctx.connection, "G_2")
-      {:ok, :accepted} = post(ctx, [{"TRK", "G_1"}, {"OPS", "G_1"}, {"DOC", g2}], complete: true)
-      # TRK and DOC linked, OPS assigned to no workspace.
-      for ref <- ["TRK", "DOC"],
-          do:
-            {:ok, _} =
-              set_collection_workspace(collection(ctx.connection, ref), ctx.scope.workspace)
+      %{scope: other} = sign_up_fixture()
+      {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      g2 = listing_grant(theirs, "G_2")
+      {:ok, :accepted} = post(ctx, [{"TRK", "G_1"}, {"OPS", "G_1"}], complete: true)
+
+      {:ok, :accepted} =
+        Collections.post_listing(ctx.key_scope, part(theirs, [{"DOC", g2}], complete: true))
+
+      # TRK linked, OPS assigned to no workspace.
+      {:ok, _} = set_collection_workspace(collection(ctx.connection, "TRK"), ctx.scope.workspace)
 
       {:ok, _} = set_collection_workspace(collection(ctx.connection, "OPS"), nil)
       before_feed = length(Feed.entries(ctx.adapter))
@@ -220,8 +206,9 @@ defmodule Apiary.Adapters.GrantEndTest do
                end_grant(ctx, "G_1")
 
       assert id == one.id
-      assert %Grant{state: :live, ended_at: nil} = grant(ctx.connection, g2)
-      assert live(ctx.connection) == [{"DOC", "G_2"}]
+      assert %Grant{state: :live, ended_at: nil} = grant(theirs, g2)
+      assert live(ctx.connection) == []
+      assert live(theirs) == [{"DOC", "G_2"}]
 
       for ref <- ["TRK", "OPS"] do
         assert %Collection{ended_reason: :disconnected, ended_at: %DateTime{}} =
@@ -255,7 +242,7 @@ defmodule Apiary.Adapters.GrantEndTest do
              }
 
       # Qory Apiary's copy no longer has the grant; a listing under it is refused.
-      assert Grants.list_for_adapter(ctx.key_scope) == {:ok, [{ctx.connection.public_id, g2}]}
+      assert Grants.list_for_adapter(ctx.key_scope) == {:ok, [{theirs.public_id, g2}]}
       assert post(ctx, [{"TRK", "G_1"}], id: "again") == {:error, :invalid}
     end
 

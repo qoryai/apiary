@@ -16,10 +16,11 @@ defmodule Apiary.Adapters.Connections do
   # any change; a return that says the adapter linked makes the connection connected, and
   # keeps its nonce as one a grant report may name (`Apiary.Adapters.LinkedPass`).
   # The adapter's first listing that names it is recorded as it is accepted
-  # (`mark_listed/1`, `listed_at`). A connected connection takes a new pass for each
-  # external account a person adds to it: a press of Install gives it one, as it gives a
-  # pending one, and a `linked` return under that pass keeps it connected, the person
-  # whose pass connected it and the time it connected as they were.
+  # (`mark_listed/1`, `listed_at`). A connected connection takes a new pass for a person
+  # who installs again, for the same account or after disconnecting the account: a press
+  # of Install makes one, as it does for a pending one, and a `linked` return under that
+  # pass keeps it connected, the person whose pass connected it and the time it connected
+  # as they were.
   #
   # At the server contract an adapter's key acts for an organisation only through a
   # connection of its adapter (`connection_for_key/3`), with its scope narrowed to that
@@ -172,8 +173,8 @@ defmodule Apiary.Adapters.Connections do
   # `nonce` as the nonce of its latest pass, unused, the pass's expiry as
   # `pass_expires_at`, and the scope's person as the one who started that pass
   # (`pass_started_by_id`, and `created_by_id` while it is pending). One connected
-  # (`complete_return/4`) takes the new pass in the same way, for an external account the
-  # person adds to it, and keeps its state, the time it connected, the person whose pass
+  # (`complete_return/4`) takes the new pass in the same way, for a person who installs
+  # again, and keeps its state, the time it connected, the person whose pass
   # connected it and the nonces a grant report may name. One pending is
   # replaced when its next pass would expire too far ahead, below.
   # `{:ok, connection, pass, replaced}`, `replaced` the connection this press ended in its

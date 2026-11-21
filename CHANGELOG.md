@@ -13,12 +13,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Added
 
 <!-- feature: factory -->
-- An organisation's connection to an adapter has one external account. A report of a grant
-  with another ref than the connection's live grant is refused with 409 `connection_held`,
-  and nothing changes: no grant, no pass spent, no feed entry. A report of the same ref
-  replaces the grant, and once that grant ends, a report of another ref is accepted. A
-  grant added before this change stays. The check comes after `pass_unknown` and
-  `grant_taken`. When the adapter returns a refused connect with the reason
+- An organisation's connection to an adapter has one external account. The server returns
+  409 `connection_held` for a grant report with another ref than the connection's grant
+  that has not ended, and nothing changes: no grant, no pass spent, no feed entry. A report
+  of the same ref replaces the grant, and once that grant ends, a report of another ref is
+  accepted. The check comes after `pass_unknown` and `grant_taken`. A unique index allows
+  one grant that has not ended per connection; its migration fails on a database where a
+  connection has two. When a connect return has the outcome `refused` and the reason
   `connection_held`, the page shows: “Disconnect the account that is connected to Acme
   first, then install again. An organisation connects one account of each integration.”
 <!-- /feature -->

@@ -217,9 +217,9 @@ defmodule ApiaryWeb.Contract.GrantsControllerTest do
         "error" => "pass_unknown"
       })
 
-      # A second ref on a connection with a live grant, under a linked pass not spent, is
-      # refused as the contract's fixture is, after grant_taken: G_1 is live under another
-      # organisation's connection, so it is grant_taken, and G_3 is connection_held.
+      # A second ref on a connection with a live grant, under a linked pass not spent: the
+      # response is `grant_taken` for G_1, live under another organisation's connection,
+      # and `connection_held` for G_3.
       :ok = pass_made_earlier(connection.public_id)
       {:ok, _url, {_id, nonce}} = Apiary.Adapters.connect(ctx.scope, ctx.adapter)
 
@@ -314,6 +314,9 @@ defmodule ApiaryWeb.Contract.GrantsControllerTest do
           %{"connection_id" => connection_id, "grant_ref" => grant_ref}
         end
 
+      # The fixture two-grants.json shows two grants of one connection, which the server
+      # cannot make now; it changes on integrations T-30. The test takes its version and
+      # revision, and checks the grants against two connections.
       assert Jason.decode!(conn.resp_body) ==
                Map.put(Jason.decode!(compact("grants/two-grants.json")), "grants", grants)
 
