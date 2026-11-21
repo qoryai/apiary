@@ -659,8 +659,8 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       ])
     end
 
-    # The run has one access level, in its documents; qory sets the review session read
-    # only.
+    # The process entry of review-changes sets read. The answer for its session has no
+    # access member: the run has one access level, which only its documents have.
     @tag :contract
     test "answers review-changes with no access for the session", ctx do
       body = json_response(request(ctx, ended(1)), 200)

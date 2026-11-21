@@ -1164,8 +1164,8 @@ defmodule Apiary.Dispatches.Handover do
   # (`Apiary.Runs.RunCredentials.run_access/1`): the lower of the level its harness walk
   # resolved and its stage entry's, `read` for a run of a stage with no entry for its
   # workflow. A run of a stage that shares one run gets the highest level of the stage's
-  # entries, each no higher than its workflow resolves, for every session. A run with no harness members
-  # has no level in its documents (read).
+  # entries, each no higher than its workflow resolves, for every session. A run with no
+  # harness members has no level in its documents (read).
   defp with_level(nil, _level), do: nil
   defp with_level(harness, level), do: %{harness | access: level}
 

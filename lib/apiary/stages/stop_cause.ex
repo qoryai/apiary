@@ -477,7 +477,7 @@ defmodule Apiary.Stages.StopCause do
 
     case detail do
       {:access, workflow, level, other} ->
-        {"The run did not start, because the workflows of #{stage} mix access levels that cannot share one run: #{workflow} runs with #{level} access, because its harness sets #{level}.",
+        {"The run did not start, because the workflows of #{stage} mix access levels that cannot share one run. #{workflow} runs with #{level} access, because its harness sets #{level}.",
          shared_access_fix(workflow, other)}
 
       :access ->
