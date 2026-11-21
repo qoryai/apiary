@@ -3,7 +3,9 @@
   "session": 5,
   "workflow": "review-changes",
   "time_limit_minutes": 15,
-  "full_suite": true,
+  "type_settings": {
+    "full_suite": true
+  },
   "inputs": {
     "version": 1
   }

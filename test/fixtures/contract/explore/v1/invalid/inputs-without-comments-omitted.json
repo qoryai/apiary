@@ -45,6 +45,18 @@
       "body": "Labelled as a bug."
     }
   ],
+  "destinations": [
+    {
+      "id": "tg_0123456789abcdef",
+      "target": {
+        "collection": "R_2001",
+        "address": {
+          "system": "code.example.com",
+          "path": "example/service"
+        }
+      }
+    }
+  ],
   "target": {
     "collection": "R_2001",
     "address": {

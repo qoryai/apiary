@@ -17,5 +17,17 @@
   },
   "comments": [],
   "comments_omitted": 0,
+  "destinations": [
+    {
+      "id": "tg_0123456789abcdef",
+      "target": {
+        "collection": "R_2001",
+        "address": {
+          "system": "code.example.com",
+          "path": "example/service"
+        }
+      }
+    }
+  ],
   "domain": "marketing"
 }

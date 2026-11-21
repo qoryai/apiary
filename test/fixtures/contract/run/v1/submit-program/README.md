@@ -5,8 +5,8 @@ the forge's address of each commit. A draft is a pull request or a merge request
 people can still change before it is ready. qory runs the program only on a run that has
 no run code: a person starts `qory run`, and the program uses the login of the forge's
 command line, such as `gh`, that the person made. A run that qory starts from a run code
-runs no program: the forge's adapter puts the submission on the forge from the change
-feed (`contracts/integration/v1/changes.schema.json`, the `submission` entry).
+runs no program: the forge's adapter puts the change on the forge from the change
+feed (`contracts/integration/v1/changes.schema.json`, the `change_request` entry).
 
 The contract has plain inputs and plain lines back. The program needs no JSON tool.
 
@@ -102,19 +102,18 @@ An address is an `https` address of at most 2048 characters, on the host in
 `QORY_SUBMIT_SYSTEM`, with no user information, port, query or fragment, and with a path.
 The host check runs when `QORY_SUBMIT_SYSTEM` is set and not empty. With no `system`,
 as for a target with a collection and no address, an address on any host passes, and
-every other rule of an address stays. A submit program runs only for a repository of a
-`submission` entry, and that entry always has a `system`, so `QORY_SUBMIT_SYSTEM` is set
-for every run of a submit program.
+every other rule of an address stays. qory takes `QORY_SUBMIT_SYSTEM` from the `system` of
+the repository's target address, so it is set when the target has an `address`.
 qory checks no more of its form, so the same program contract serves a forge whose
 addresses end in `/pull/<number>` and one whose addresses end in
 `/-/merge_requests/<number>`.
 
 An address passes the pattern of `$defs.url` in `contracts/integration/v1/definitions.schema.json`,
-the one that the adapter's reply has: the scheme is `https` in lower case, and the
+the one that `address.url` of the adapter's reply has: the scheme is `https` in lower case, and the
 address has no double quote, no `<`, `>`, `{`, `}`, `|`, `^`, backtick or backslash, no space and
-no character outside ASCII. `draft_title` has the rule of `$defs.draft_title` in the same
-file: UTF-8, no control character, no bidirectional control, no line or paragraph
-separator, no invisible format character, and at least one character that is not a space.
+no character outside ASCII. `draft_title` has the rule of `$defs.change_title` in the same
+file: UTF-8, no control character (category Cc), no U+2028 or U+2029, no format character
+(category Cf) other than U+200C and U+200D, and at least one character that is not a space, U+200C or U+200D.
 
 Each line ends in a line feed, or in a carriage return and a line feed: qory strips one
 carriage return at the end of each line before it reads the line.

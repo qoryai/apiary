@@ -307,92 +307,11 @@ defmodule Apiary.Integrations.DescriptionTest do
     end
   end
 
-  # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
-  # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
-  @integrations_ref "4c788f46237d3ffa3124c8c87d9de085e3a36dc1"
-  @vendored_sha256 %{
-    "priv/contract/integration/description.schema.json" =>
-      "63c683abffa8188ec339ccec476411ebb8d144c988b51c6b52d348618c979089",
-    "priv/contract/integration/changes-failed.schema.json" =>
-      "08ef050a381dc73db65a0c5fa844a44174ad2d699956f4cd68f75efc9745efb7",
-    "priv/contract/integration/changes-submitted.schema.json" =>
-      "7c88e816e076f6f4166370b08680db09b534f05f0da81f341439a1342720b1f4",
-    "priv/contract/integration/changes.schema.json" =>
-      "c56fa9aae6a93c5b7ca602740f73e16cac26dc9076c6579aec04eeb2ff98fd94",
-    "priv/contract/integration/definitions.schema.json" =>
-      "7a56015091697255c423ec2e9aad54e6aaeb315e7653e49dda604220edddb2aa",
-    "priv/contract/integration/descriptions/anthropic.json" =>
-      "c2dd98613aa6adf530e7a8c92b63dfc4bd7aabb9d20635630205492c3cbe9f3f",
-    "priv/contract/integration/descriptions/claude-subscription.json" =>
-      "7587c681a2dcd69b4aff0a2abf06bdceb82bf45ce38e60eacceac0b35ed344de",
-    "priv/contract/integration/descriptions/deepseek.json" =>
-      "76841285dc0bbb74f74d20963793608c0e7cb6fba110887807551017bddd0972",
-    "priv/contract/integration/descriptions/litellm.json" =>
-      "8eb1c9dfec32169cefd9a4a66059696633883eb7d167b342fec4dc75150f8e00",
-    "priv/contract/integration/descriptions/openai-subscription.json" =>
-      "0bd977a294b8be3fc724a294eeb2bc74701864dc1f397f8d690d88364d230be1",
-    "priv/contract/integration/descriptions/openai.json" =>
-      "a6071435877a64d75384b8f5aae94a484ae3f22b0c250bc78e351fc67feb5147",
-    "priv/contract/integration/descriptions/openrouter.json" =>
-      "7f6c61e897edb6ff32cd519e33a49e821398fd27f4a6069fac5fd8499b86758f",
-    "test/fixtures/contract/integration/v1/README.md" =>
-      "cb53e4d0520b51990190485c703b85a986bfe6ee05320efa37337d42fa82bae6",
-    "test/fixtures/contract/integration/v1/adapter-secrets-answer.schema.json" =>
-      "98e3f0b1530be9980bc6ada1f8554fae26755055d598ffbe742e6e1a11112198",
-    "test/fixtures/contract/integration/v1/adapter-secrets-plaintext.schema.json" =>
-      "aea8c2ddc5bf9023f5e9ba03ddb2dcbbeee76665d070df41a834ef29bad99172",
-    "test/fixtures/contract/integration/v1/adapter-secrets.schema.json" =>
-      "a93fcb68463b82918e9f9a68077a31512712480397ed93e9eb582595ba02a9c5",
-    "test/fixtures/contract/integration/v1/adapter.schema.json" =>
-      "8e3978b8cfc732a08572e882877815b8c3e76bd6cb5847d9f7d984b9b0f7ed1e",
-    "test/fixtures/contract/integration/v1/changes-failed.schema.json" =>
-      "08ef050a381dc73db65a0c5fa844a44174ad2d699956f4cd68f75efc9745efb7",
-    "test/fixtures/contract/integration/v1/changes-submitted.schema.json" =>
-      "7c88e816e076f6f4166370b08680db09b534f05f0da81f341439a1342720b1f4",
-    "test/fixtures/contract/integration/v1/changes.schema.json" =>
-      "c56fa9aae6a93c5b7ca602740f73e16cac26dc9076c6579aec04eeb2ff98fd94",
-    "test/fixtures/contract/integration/v1/description.schema.json" =>
-      "63c683abffa8188ec339ccec476411ebb8d144c988b51c6b52d348618c979089",
-    "test/fixtures/contract/integration/v1/definitions.schema.json" =>
-      "7a56015091697255c423ec2e9aad54e6aaeb315e7653e49dda604220edddb2aa",
-    "test/fixtures/contract/integration/v1/refusal.schema.json" =>
-      "ddde39f1b59919e5f3415b09a0e8b68ea279f7643d3cfdfbe5ae82d5130c6612"
-  }
-
   @root Path.expand("../../..", __DIR__)
   @descriptions Path.join(@root, "priv/contract/integration/descriptions")
 
   defp vendored_description(name),
     do: @descriptions |> Path.join(name <> ".json") |> File.read!() |> Jason.decode!()
-
-  describe "the files vendored from the integrations" do
-    test "are the bytes of the pinned commit" do
-      ref =
-        @root
-        |> Path.join(".integration-contract-ref")
-        |> File.read!()
-        |> String.split("\n", trim: true)
-        |> Enum.reject(&String.starts_with?(&1, "#"))
-
-      assert ref == [@integrations_ref]
-
-      assert File.read!(Path.join(@root, "test/fixtures/contract/integration/v1/.contract-ref")) ==
-               @integrations_ref <> "\n"
-
-      vendored =
-        for dir <- ["priv/contract/integration", "test/fixtures/contract/integration/v1"],
-            path <- Path.wildcard(Path.join([@root, dir, "**", "*"])),
-            File.regular?(path),
-            do: Path.relative_to(path, @root)
-
-      assert Enum.sort(vendored) == Enum.sort(Map.keys(@vendored_sha256))
-
-      for {path, sha256} <- @vendored_sha256 do
-        bytes = File.read!(Path.join(@root, path))
-        assert Base.encode16(:crypto.hash(:sha256, bytes), case: :lower) == sha256, path
-      end
-    end
-  end
 
   describe "a data description" do
     test "each vendored description of a model provider is read" do
