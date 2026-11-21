@@ -232,7 +232,6 @@ defmodule Apiary.Dispatches.Handover do
     InstanceConfig,
     Nodes,
     Processes,
-    PublicId,
     Repo,
     Runs,
     Targets,
@@ -262,7 +261,6 @@ defmodule Apiary.Dispatches.Handover do
   alias Apiary.Runs.{
     About,
     ModelKey,
-    Number,
     ProviderCredential,
     Registration,
     Run,
@@ -1510,12 +1508,10 @@ defmodule Apiary.Dispatches.Handover do
   # The registered run, pending, with its run code, and, for an explore run, the image the
   # claim read for it (`Apiary.Environments.claim_image/2`), nil for the pool's default.
   # The run's record written when it was queued (`Apiary.Dispatches.Queued`) is updated,
-  # locked `FOR UPDATE`, and keeps its id, its number and when it was queued. A run of
-  # the queue with no record, queued by the previous release, gets one, with the next
-  # number, as before.
+  # locked `FOR UPDATE`, and keeps its id, its number and when it was queued.
   defp insert_run(%{run: dispatch_run} = locked, formed, through) do
     queued =
-      Repo.one(
+      Repo.one!(
         from r in Run,
           where: r.dispatch_run_id == ^dispatch_run.id,
           lock: "FOR UPDATE"
@@ -1523,30 +1519,9 @@ defmodule Apiary.Dispatches.Handover do
 
     fields = registered(locked, formed, through)
 
-    case queued do
-      %Run{} = run ->
-        run
-        |> Ecto.Changeset.change(Map.drop(fields, [:inserted_at]))
-        |> Repo.update!()
-
-      # A run queued by the previous release has no record. Its counter can come after the
-      # counters `Slots.free/3` and a build's queue took in this claim, in another order;
-      # one sorted pass over a claim's counters needs a larger change.
-      nil ->
-        %Run{
-          public_id: Run.new_public_id(),
-          number:
-            Number.next(
-              %Workspace{
-                id: dispatch_run.workspace_id,
-                organisation_id: dispatch_run.organisation_id
-              },
-              locked.key.node
-            )
-        }
-        |> struct!(fields)
-        |> PublicId.Insert.insert!()
-    end
+    queued
+    |> Ecto.Changeset.change(Map.drop(fields, [:inserted_at]))
+    |> Repo.update!()
   end
 
   # The run's model keys as the claim formed them (`Apiary.Dispatches.RunSettings.build/2`),

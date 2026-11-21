@@ -34,22 +34,25 @@ defmodule Apiary.Environments do
   # locks the pool's row, `hold_builds(workspace_id, pool_id, now)` reads those
   # collections without a lock, with the collections of the pool's prebuilds whose
   # dispatch lapsed at `now`, whose prebuilds its free writes, and holds their
-  # connections `FOR SHARE`, by id, then all of them `FOR SHARE`, by id, in one
-  # statement (`Apiary.Dispatches.Slots`). After the pool's row, its free locks the
-  # records of the pool's lapsed prebuilds, then `make_records(collections, pool)`
-  # inserts the missing records of those collections a build is due for on the pool,
-  # with no live prebuild of their ref for it, by collection, before the free locks any
-  # run, as a Rebuild locks records and then inserts the missing ones. After the free,
-  # `queue_builds(collections, pool)` checks again and queues a prebuild of each for the
-  # collection's `environment_ref` (`Apiary.Dispatches.queue_prebuild/3`, whose record then
-  # exists, so the claim inserts no record after runs). So a key change while runs wait is
-  # built by the next claim of each pool, and the claim ends a waiting prebuild of the old ref
-  # `superseded` when it takes it. A listing's part holds its connection `FOR UPDATE`, then
-  # its collections `FOR UPDATE`, to change their `environment_ref`: the part and the claim
-  # take turns at the connection, and whichever comes second waits there holding no row the
-  # first needs. The instance's pool (`workspace_id` nil) does the same for the runs of
-  # every workspace it serves, those with no pool in use, and its prebuilds and records
-  # are in their collection's workspace.
+  # connections `FOR SHARE`, by id, then all of them `FOR SHARE`, by id, in one statement
+  # (`Apiary.Dispatches.Slots`). After the pool's row, its free locks the records of the
+  # pool's lapsed prebuilds, then their runs and dispatches; then
+  # `make_records(collections, pool, requeued)` locks, in one pass by workspace, the run
+  # counter of each workspace of those collections and of the runs the free sets waiting
+  # again (`Apiary.Runs.Number.hold/2`), and inserts the missing records of the
+  # collections a build is due for on the pool, with no live prebuild of their ref for
+  # it, by collection, as a Rebuild locks records, then the counter, and then inserts the
+  # missing ones. After the free, `queue_builds(collections, pool)` checks again and
+  # queues a prebuild of each for the collection's `environment_ref`
+  # (`Apiary.Dispatches.queue_prebuild/3`, whose record then exists). So a key change
+  # while runs wait is built by the next claim of each pool, and the claim ends a waiting
+  # prebuild of the old ref `superseded` when it takes it. A listing's part holds its
+  # connection `FOR UPDATE`, then its collections `FOR NO KEY UPDATE`, to change their
+  # `environment_ref`: the part and the claim take turns at the connection, and whichever
+  # comes second waits there holding no row the first needs. The instance's pool
+  # (`workspace_id` nil) does the same for the runs of every workspace it serves, those
+  # with no pool in use, and its prebuilds and records are in their collection's
+  # workspace.
   # The claim locks no existing record for the build it queues: its check of the live
   # prebuilds and the pool's row, which a free of lapsed leases of the pool also holds,
   # keep it from queuing beside one that waits again; every other path that queues a
@@ -239,7 +242,7 @@ defmodule Apiary.Environments do
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
   alias Apiary.Registry.Names
-  alias Apiary.Runs.Target
+  alias Apiary.Runs.{Number, Target}
   alias Apiary.WorkItems.WorkItem
 
   # fetch/2 is the record of the pool `pool_id` and the collection `collection_id`, or nil.
@@ -675,6 +678,30 @@ defmodule Apiary.Environments do
     in_transaction!("forget_image/3")
     ids = Enum.map(records, & &1.id)
 
+    pools =
+      Map.new(
+        Repo.all(from n in Node, where: n.id in ^Enum.map(records, & &1.pool_id)),
+        &{&1.id, &1}
+      )
+
+    collections = Map.new(collections, &{&1.id, &1})
+
+    due =
+      for %Record{} = record <- records,
+          %Collection{} = collection <- [collections[record.source_collection_id]],
+          %Node{kind: :pool, deleted_at: nil} = pool <- [pools[record.pool_id]],
+          rebuilt?(collection, pool),
+          do: {collection, pool}
+
+    # The counters before the records are written: a claim that holds a counter inserts
+    # a missing record of the same collection and pool, and would wait on this update.
+    :ok =
+      due
+      |> Enum.map(fn {collection, pool} ->
+        {{collection.workspace_id, collection.organisation_id}, pool.id}
+      end)
+      |> hold_counters()
+
     {_count, _rows} =
       Repo.update_all(from(r in Record, where: r.id in ^ids),
         set: [
@@ -691,20 +718,22 @@ defmodule Apiary.Environments do
         ]
       )
 
-    pools =
-      Map.new(
-        Repo.all(from n in Node, where: n.id in ^Enum.map(records, & &1.pool_id)),
-        &{&1.id, &1}
-      )
+    for {collection, pool} <- due, run <- requeue(collection, [pool], now), do: run
+  end
 
-    collections = Map.new(collections, &{&1.id, &1})
-
-    for %Record{} = record <- records,
-        %Collection{} = collection <- [collections[record.source_collection_id]],
-        %Node{kind: :pool, deleted_at: nil} = pool <- [pools[record.pool_id]],
-        rebuilt?(collection, pool),
-        run <- requeue(collection, [pool], now),
-        do: run
+  # Locks, for the `{{workspace_id, organisation_id}, pool_id}` pairs `workspaces`, the
+  # run counter of each workspace after its pools, in one pass by workspace
+  # (`Apiary.Runs.Number.hold/2`), before a path writes a record, inserts a prebuild or
+  # writes a new run record in one of them.
+  defp hold_counters(workspaces) do
+    workspaces
+    |> Enum.group_by(fn {workspace, _pool_id} -> workspace end, fn {_workspace, pool_id} ->
+      pool_id
+    end)
+    |> Enum.sort()
+    |> Enum.each(fn {{id, organisation_id}, pool_ids} ->
+      :ok = Number.hold(%Workspace{id: id, organisation_id: organisation_id}, Enum.uniq(pool_ids))
+    end)
   end
 
   # A collection whose image a prebuild for `pool` builds again: live, assigned to the
@@ -785,6 +814,9 @@ defmodule Apiary.Environments do
 
   # rebuild/2 queues a prebuild of `target`'s environment for each node pool of its
   # workspace whose prebuild of it does not wait unclaimed, changed or not (the moduledoc).
+  # It locks the records of the target's collections, then the workspace's pools and its
+  # run counter (`Apiary.Runs.Number.hold/2`), then inserts the missing records and the
+  # prebuilds, in the lock order of `Apiary.Dispatches.Slots`.
   @doc false
   @spec rebuild(Scope.t(), Target.t()) :: {:ok, non_neg_integer} | {:error, Access.reason()}
   def rebuild(%Scope{} = scope, %Target{} = target) do
@@ -793,7 +825,8 @@ defmodule Apiary.Environments do
            true <- prebuilt?(target.workspace_id) || [],
            [_ | _] = collections <- hold_named(target),
            :ok <- lock_records(collections),
-           [_ | _] = pools <- Map.get(pools([target.workspace_id]), target.workspace_id, []) do
+           [_ | _] = pools <- Map.get(pools([target.workspace_id]), target.workspace_id, []),
+           :ok <- Number.hold(workspace(target), Enum.map(pools, & &1.id)) do
         now = DateTime.utc_now()
         queued = for collection <- collections, run <- requeue(collection, pools, now), do: run
         :ok = audit_rebuild(scope, target, length(queued))
@@ -804,6 +837,9 @@ defmodule Apiary.Environments do
       end
     end)
   end
+
+  defp workspace(%Target{workspace_id: id, organisation_id: organisation_id}),
+    do: %Workspace{id: id, organisation_id: organisation_id}
 
   # The live collections assigned to the workspace of `target` with its system and path,
   # by id.
@@ -1222,24 +1258,27 @@ defmodule Apiary.Environments do
   defp runs_served(nil),
     do: dynamic([run: _r], ^Dispatches.no_pool_in_use() and ^Dispatches.in_use_place())
 
-  # make_records/2 inserts the environment record of each of `collections`, held by
+  # make_records/3 inserts the environment record of each of `collections`, held by
   # `hold_builds/3`, that a build is due for on the node pool `pool`, with no live
   # prebuild of its ref for the pool (`to_queue/3`), where there is none, by collection,
   # as `Apiary.Dispatches.queue_prebuild/3` inserts it, inside the caller's transaction.
-  # A claim calls it inside its free, once the records of its
-  # lapsed prebuilds are locked and before any run is (`Apiary.Dispatches.Slots.free/3`),
-  # so the prebuilds `queue_builds/2` queues later insert no record after runs are
-  # locked, and the claim locks existing records and then inserts missing ones, as a
-  # Rebuild does (the moduledoc). A collection it leaves out has a live prebuild of its
-  # ref, so its record exists already, or no build is due for it, so `queue_builds/2`
-  # queues none.
+  # Before the first insert, it locks, in one pass by workspace, after the pool, the run
+  # counter of the workspace of each of `collections` and of each of `requeued`, the
+  # `{workspace_id, organisation_id}` of the runs of the queue that the free sets waiting
+  # again (`Apiary.Runs.Number.hold/2`). A claim calls it inside its free, once the free
+  # locked the records of its lapsed prebuilds, their runs and their dispatches
+  # (`Apiary.Dispatches.Slots.free/3`): the claim locks existing records, then the
+  # counters, then inserts the missing records, as a Rebuild does (the moduledoc), and
+  # holds no counter while the free locks runs. The free and `queue_builds/2` then take
+  # only counters it holds. A collection it leaves out has a live prebuild of its ref, so
+  # its record exists already, or no build is due for it, so `queue_builds/2` queues none.
   @doc false
-  @spec make_records([Collection.t()], Node.t()) :: :ok
-  def make_records(collections, %Node{} = pool) do
-    case to_queue(collections, pool, "make_records/2") do
-      [] -> :ok
-      due -> insert_records(due, pool.id)
-    end
+  @spec make_records([Collection.t()], Node.t(), [{Ecto.UUID.t(), Ecto.UUID.t()}]) :: :ok
+  def make_records(collections, %Node{} = pool, requeued) when is_list(requeued) do
+    due = to_queue(collections, pool, "make_records/3")
+    workspaces = Enum.map(collections, &{&1.workspace_id, &1.organisation_id}) ++ requeued
+    :ok = hold_counters(Enum.map(workspaces, &{&1, pool.id}))
+    if due == [], do: :ok, else: insert_records(due, pool.id)
   end
 
   defp insert_records(collections, pool_id) do
@@ -1283,7 +1322,7 @@ defmodule Apiary.Environments do
   end
 
   # Those of `collections` a build is due for on the node pool `pool`, as
-  # `make_records/2` and `queue_builds/2` read them when each runs: each live, assigned
+  # `make_records/3` and `queue_builds/2` read them when each runs: each live, assigned
   # to the pool's workspace, with a target and an `environment_ref`, with no prebuild of
   # that ref for the pool waiting, claimed or handed over. None for a deleted pool. It
   # reads inside the caller's transaction; `what`, the caller, is named in the error

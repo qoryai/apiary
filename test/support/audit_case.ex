@@ -286,22 +286,53 @@ defmodule Apiary.AuditCase do
       when is_binary(id),
       do: id
 
+  # The actions whose entries write `details.identity`, the line of a model key
+  # (`Apiary.ModelKeys.Identity`): a ChatGPT sign-in's refresh and a change of a provider's keys.
+  @identity_actions ~w(model_key.refresh provider.write)
+
+  # The line is the provider's name alone, or the name, " · " and the email of the ChatGPT
+  # account, `…` and the last 4 characters of a key, or `account …` and the last 4 characters
+  # of an account id.
+  @identity_shape ~r/\A[^@]+( · ([^\s@]+@[^\s@]+|…[^\s@]{1,4}|account …[^\s@]{1,4}))?\z/u
+
   @doc """
   refute_personal/2 asserts that no email address of any account, nor its local part,
   which a name made from it would carry, and not `secret`, when given, is anywhere in what
-  the entry keeps: its `before`, `after` and `details`.
+  the entry keeps: its `before`, `after` and `details`. One field of `details` is left out
+  of that check, and only for the actions `model_key.refresh` and `provider.write`:
+  `identity`, the line of a model key (`Apiary.ModelKeys.Identity`), which for a sign-in
+  has the email of the ChatGPT account that the key signs in with, a vendor account and no
+  account of Qory Apiary. The entry stores it so that an Activity line keeps the text it
+  had when the entry was written. That field must have the shape of the line, and no email
+  of an account of Qory Apiary. In an entry of any other action `identity` is checked like
+  every other field.
   """
   @spec refute_personal(Entry.t(), String.t() | nil) :: :ok
   def refute_personal(%Entry{} = entry, secret) do
-    kept = Jason.encode!([entry.before, entry.after, entry.details])
+    {details, identity} = split_identity(entry)
+    kept = Jason.encode!([entry.before, entry.after, details])
+    emails = Repo.all(from u in User, where: not is_nil(u.email), select: u.email)
 
-    for email <- Repo.all(from u in User, where: not is_nil(u.email), select: u.email),
-        text <- [email, email |> String.split("@") |> hd()] do
+    for email <- emails, text <- [email, email |> String.split("@") |> hd()] do
       refute kept =~ text, "the entry keeps #{text}"
     end
 
     refute kept =~ "@", "the entry keeps something like an email address: #{kept}"
+
+    if identity do
+      assert is_binary(identity) and identity =~ @identity_shape,
+             "the entry's identity is not the line of a key: #{inspect(identity)}"
+
+      for email <- emails, do: refute(identity =~ email, "the entry's identity keeps #{email}")
+    end
+
     if secret, do: refute(kept =~ secret, "the entry keeps the secret")
     :ok
   end
+
+  defp split_identity(%Entry{action: action, details: %{"identity" => identity} = details})
+       when action in @identity_actions,
+       do: {Map.delete(details, "identity"), identity}
+
+  defp split_identity(%Entry{details: details}), do: {details, nil}
 end

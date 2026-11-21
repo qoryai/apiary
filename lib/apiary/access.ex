@@ -367,7 +367,7 @@ defmodule Apiary.Access do
     # Stored secrets and variables.
     Action.new(
       :"secret.read",
-      "read the stored secrets: their names, notes and value IDs, never a value",
+      "read the stored secrets: their names, notes and value IDs, and of a model provider's key the last 4 characters of a pasted key or the email of a sign-in, never the value",
       feature: :secrets,
       roles: @members,
       audited: {:not, @read}
@@ -425,6 +425,16 @@ defmodule Apiary.Access do
       "add, change and remove a runtime, and where and how it applies",
       feature: :secrets,
       roles: @admins,
+      asked_of: :organisation
+    ),
+    # The sign-in of a model key whose provider has an `oauth_refresh`, refreshed when a run
+    # needs its access token or the sweep finds it old: one entry for each call to the
+    # provider, about the provider (`Apiary.ModelKeys.Login`).
+    Action.new(
+      :"model_key.refresh",
+      "refresh the sign-in of a model key, such as an OpenAI subscription's, at its provider: the instance, by itself, when a run needs the key's access token or the sweep finds the sign-in old (Apiary.ModelKeys.Login)",
+      feature: :secrets,
+      roles: [:instance],
       asked_of: :organisation
     ),
     # The model a run uses: the choices of the workspace and its targets, which need the

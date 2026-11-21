@@ -84,8 +84,11 @@ defmodule Apiary.Adapters.WireTest do
     end
 
     test "the schema's refusals and the control plane's are refused" do
+      # The `invalid/adapter-secrets-*.json` bodies are those of `POST /v1/adapter/secrets`,
+      # not of a start-up.
       names =
-        Path.wildcard(Path.join(@fixtures, "invalid/adapter-*.json")) ++
+        (Path.wildcard(Path.join(@fixtures, "invalid/adapter-*.json")) --
+           Path.wildcard(Path.join(@fixtures, "invalid/adapter-secrets-*.json"))) ++
           Path.wildcard(Path.join(@fixtures, "refused-by-control-plane/adapter-*.json"))
 
       assert Enum.map(names, &Path.relative_to(&1, @fixtures)) == [
@@ -94,6 +97,7 @@ defmodule Apiary.Adapters.WireTest do
                "invalid/adapter-call-url-query.json",
                "invalid/adapter-call-url-without-final-slash.json",
                "invalid/adapter-description-item-noun-upper-case.json",
+               "invalid/adapter-description-secrets-twice.json",
                "invalid/adapter-description-string.json",
                "invalid/adapter-description-version-2.json",
                "invalid/adapter-description-without-roles.json",

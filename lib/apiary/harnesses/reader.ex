@@ -260,6 +260,23 @@ defmodule Apiary.Harnesses.Reader do
   end
 
   @doc """
+  workflow_plan/2 is `workflows.<name>.plan`, the artifact type of the plan of the
+  workflow `name`: the value where it is a string of an artifact type's form (lowercase
+  letters and digits in groups joined by single hyphens, at most 64 bytes), and nil for any
+  other value and where the key or the workflow is absent.
+  """
+  @spec workflow_plan(map, String.t()) :: String.t() | nil
+  def workflow_plan(workflows, name) when is_map(workflows) and is_binary(name) do
+    case workflows do
+      %{^name => %{"plan" => plan}} when is_binary(plan) and byte_size(plan) <= 64 ->
+        if Regex.match?(~r/\A[a-z0-9]+(-[a-z0-9]+)*\z/, plan), do: plan, else: nil
+
+      _none_or_invalid ->
+        nil
+    end
+  end
+
+  @doc """
   workflow_levels/1 is the access level of each workflow a stack's `workflows` list, by
   name (`workflow_access/2`).
   """

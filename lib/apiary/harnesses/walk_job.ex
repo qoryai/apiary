@@ -170,6 +170,7 @@ defmodule Apiary.Harnesses.WalkJob do
       ref_kind: Map.get(walked, :ref_kind),
       owner_organisation_id: walked.owner_organisation_id,
       harness_hidden: walked.harness_hidden,
+      plan_type: walked.plan_type,
       pins: walked.pins,
       harness_links: walked.harness_links,
       attempts: attempt

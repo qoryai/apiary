@@ -490,7 +490,7 @@ defmodule Apiary.EnvironmentsTest do
       end
 
       assert_raise ArgumentError, ~r/make_records.*caller's transaction/, fn ->
-        Environments.make_records([ctx.app], ctx.pool)
+        Environments.make_records([ctx.app], ctx.pool, [])
       end
 
       assert_raise ArgumentError, ~r/queue_builds.*caller's transaction/, fn ->
@@ -498,7 +498,7 @@ defmodule Apiary.EnvironmentsTest do
       end
     end
 
-    test "make_records/2 writes a record only for a collection queue_builds/2 queues a build of",
+    test "make_records/3 writes a record only for a collection queue_builds/2 queues a build of",
          ctx do
       due = collection_fixture(ctx.scope, external_ref: "DUE")
       ended = collection_fixture(ctx.scope, external_ref: "ENDED")
@@ -514,14 +514,14 @@ defmodule Apiary.EnvironmentsTest do
 
       # Nothing to queue: no record is written.
       {:ok, :ok} =
-        Repo.transact(fn -> {:ok, Environments.make_records([ctx.app, live], ctx.pool)} end)
+        Repo.transact(fn -> {:ok, Environments.make_records([ctx.app, live], ctx.pool, [])} end)
 
       assert Environments.fetch(ctx.pool.id, ctx.app.id) == nil
       assert Environments.fetch(ctx.pool.id, live.id) == kept
 
       {:ok, queued} =
         Repo.transact(fn ->
-          :ok = Environments.make_records(collections, ctx.pool)
+          :ok = Environments.make_records(collections, ctx.pool, [])
           {:ok, Environments.queue_builds(collections, ctx.pool)}
         end)
 

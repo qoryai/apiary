@@ -437,8 +437,11 @@ replaces the navigation it is in.
 - **Organisation settings › Model providers** (`/:org/settings/model-providers`,
   `ApiaryWeb.ProviderLive.Index`, with the features `factory` and `secrets`) lists the
   organisation's model providers. Its Keys column has how many keys each provider has
-  and how many of them are in cooldown, "3 keys, 1 in cooldown", or "3 keys" while none
-  is (`Apiary.ModelKeys.cooldown_counts/2`). A provider's page
+  and how many of them are in cooldown, "3 keys, 1 in cooldown", then how many need a new
+  key, "3 keys, 1 in cooldown, 1 needs a new key" or "3 keys, 2 need a new key"; a count of
+  0 is not shown, so a provider with neither reads "3 keys". A key that needs a new key
+  is counted there only, not in cooldown (`Apiary.ModelKeys.cooldown_counts/2`,
+  `Apiary.ModelKeys.new_key_counts/1`). A provider's page
   (`…/model-providers/:provider_id`, `ApiaryWeb.ProviderLive.Show`) lists its keys, the
   default key first, then in the order they were added. Each row has the key's name in
   mono and its state on one line (`ApiaryWeb.ModelKeyComponents.state_line/1`), in the
@@ -457,14 +460,24 @@ replaces the navigation it is in.
   (`ApiaryWeb.Format.week_time/2`). The windows read 5-hour, 7-day, 7-day Opus, 7-day
   Sonnet, Extra usage, Requests per minute, Tokens per minute, Input tokens per minute,
   Output tokens per minute, Spend limit and Limit; a window of another code shows its
-  code. The page shows no key and no part of one. Every member reads it
+  code. The page shows no key and no token; a row has, in its identity line (below), the
+  last 4 characters of a pasted API key or the email of a sign-in. Every member reads it
   (`connection.read`); owners and admins (`provider.write`) have **Add key** in the
-  section's actions and **Edit** at the right of each row, its label "Edit key main", and
-  anyone else neither.
+  section's actions and **Edit** at the right of each row, its label "Edit key" and the
+  key's identity line, and anyone else neither. A key has no name that a person gives: a
+  row shows its identity line (`Apiary.ModelKeys.Identity`), the provider's name and, after
+  a middle dot, for an API key of at least 12 characters the last 4 characters of the key
+  (none when they hold a control character, a format character such as U+202E, or a line
+  or paragraph separator), "Northwind Claude · …9c2e", for a sign-in the email of the
+  account, or, where the sign-in has none, "account …" and the last 4 characters of the
+  account ID, and the provider's name alone for any other key.
 - **Add key** (`…/model-providers/:provider_id/keys/new`) and **Edit key**
-  (`…/keys/:value_id/edit`), `ApiaryWeb.ProviderLive.Key`, are pages (A form is a page,
-  below), the breadcrumb ending with the provider's name and the act. The form has Name
-  ("Lowercase letters, digits, ., _ and -."); on Add key, Key, a password field that is
+  (`…/keys/:key_id/edit`, the row id of the key's value; a value ID is not found),
+  `ApiaryWeb.ProviderLive.Key`, are pages (A form is a page, below), the breadcrumb ending
+  with the provider's name and the act, and Edit key titled with the key's identity line.
+  The form has no Name: Qory Apiary sets the value ID `key-<n>`, a number it did not give
+  the provider before, and no page shows it. On Add key the form has Key, a password field
+  that is
   empty after every save, with "Qory Apiary stores the key encrypted, and nobody can
   view it again."; on Edit key, New value, an optional password field that is empty
   after every save, with "Leave it empty to keep the value."; then Resets, Pause for and,
@@ -484,9 +497,8 @@ replaces the navigation it is in.
   time and the time zone, or leave all three empty.", "Enter a time from 1 minute to 7
   days." and "Enter a percentage from 1 to 99."
   The foot has Add key or Save beside Cancel. A save goes back to the provider's page
-  with "main is added." or "main is saved."; a name another key of the provider has
-  shows "Another key of Northwind Claude has this name." under Name, and a key past the
-  32nd "Northwind Claude has 32 keys, the most it can have. Delete a key to add
+  with "Northwind Claude · …9c2e is added." or "… is saved." with the key's identity
+  line, and a key past the 32nd "Northwind Claude has 32 keys, the most it can have. Delete a key to add
   another." under Key. Both pages remove the spaces, tabs and newlines around Key or New
   value before the save and keep the spaces inside; a Key of only spaces, tabs or
   newlines shows "can't be blank", as an empty Key does. New model provider and the
@@ -2011,7 +2023,10 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   no "Jump to it" (`ApiaryWeb.PauseWords`): "Paused: every key of Northwind Claude is in
   cooldown until Fri 14:00. It continues in run 15.", the run's number a link to its
   page, while every key of its provider was in cooldown as it ended and that time is
-  still to come, the time as a key's row on Model providers shows it; else "Paused: a
+  still to come, the time as a key's row on Model providers shows it, and "Paused: every
+  key of Northwind Claude is in cooldown until Fri 14:00 or needs a new key. It continues
+  in run 15." where a key of the provider needs a new value too (the provider rejected it,
+  or its sign-in needs a new one); else "Paused: a
   key of Northwind Claude reached its limit or its Use up to percentage. It continues in
   run 15."; "Paused: a key of Northwind Claude reached its limit or its Use up to
   percentage." where no run continues it; and, once the provider is deleted, "Paused: a
@@ -2019,9 +2034,11 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   "Paused: a model key reached its limit or its Use up to percentage." where no run
   continues it. A provider of another organisation than the run's, left from when an
   operator managed whole organisations, is not named: "Paused: every model key is in
-  cooldown until Fri 14:00. It continues in run 15." while that time is still to come, else the lines
-  of a deleted provider. On the work item's page, the run's row on Explore and the stage's round
-  show the same line in place of the run's state, the number a link where the reader
+  cooldown until Fri 14:00. It continues in run 15." while that time is still to come,
+  else the lines of a deleted provider. A key of that provider that needs a new value is
+  not told, so the line never has "or needs a new key". On the work item's page, the
+  run's row on Explore and the stage's round show the same line in place of the run's
+  state, the number a link where the reader
   may read the workspace of the run that continues it. For a run that a failed step of its preparation stopped, the line states
   what happened at that step, with no advice, such as "Start the
   wall failed with exit code 125.", on every pool. Else the line is the last result of its
@@ -2194,7 +2211,16 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      first, and when, the time as a key's row on Model providers shows it. For a
      provider of another organisation than the run's, left from when an operator
      managed whole organisations, the line has no name: "Waiting for a model key: every
-     model key is in cooldown until 14:00." Nothing runs when the cooldown ends: the first claim
+     model key is in cooldown until 14:00." Where, beside the keys in cooldown, a key
+     needs a new value (the provider rejected it, or its sign-in needs a new one), the
+     line reads "Waiting for a model key: every key of Northwind Claude is in cooldown
+     until 14:00 or needs a new key.", and "every model key" in place of "every key of
+     Northwind Claude" for a run with the keys of several providers. A key of a provider
+     of another organisation than the run's that needs a new value does not count, so the
+     line stays the plain cooldown line. Where every key needs a new value, the line is
+     the one for the
+     key (a new value, or a new sign-in), as before. Nothing runs when the cooldown ends:
+     the first claim
      after that time takes the run.
   5. "Waiting for the environment image: a build of northwind/storefront is queued." (or
      "is running."), or "Waiting for the environment image of northwind/storefront." with
@@ -2553,7 +2579,9 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   start."; "Run cancelled: time limit reached.", or "Run cancelled." with no reason; "Run
   lost: stopped responding." for a run whose exit's state is `lost`, and "Run lost. No
   heartbeat for 90 s." for one the lost-run check marked; a paused run in the words of
-  its paused line, "Paused: every key of Northwind Claude is in cooldown until Fri 14:00.
+  its paused line, "Paused: every key of Northwind Claude is in cooldown until Fri 14:00
+  or needs a new key. It continues in run 15." where a key of the provider needs a new
+  key too, else "Paused: every key of Northwind Claude is in cooldown until Fri 14:00.
   It continues in run 15."; and "Heartbeats resumed." when a quiet run is heard again. A
   state stored under an older name is said as its new state.
 - **A run through a gateway** looks as any run: its Machine or pool is the machine or pool that registered it,

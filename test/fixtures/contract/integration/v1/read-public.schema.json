@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/integration/v1/read-public.schema.json",
+  "title": "Read public call",
+  "description": "The body of the control plane's call with the path read-public, a POST of application/json to the adapter's call_url followed by read-public (adapter.schema.json), signed as definitions.schema.json describes a call: the text of one document of a resource that the source shows to anyone without a credential, at one version, read under no grant. resource_ref is the public_ref of a resolve result with public: true (resolve-answer.schema.json), never the resource_ref of a covered result. The adapter reads the document as a request without a credential reads it, and never with a grant it holds. The adapter answers a signed 200 with read-answer.schema.json, exactly as it answers the call with the path read, or refuses with refusal.schema.json, in this order: 403 resource_not_public, the source does not show the resource without a credential at the moment of the read, a resource that no longer exists included, so a read never shows whether a resource that is not public exists; 404 version_not_found, the resource has no version at; 409 document_not_text, when the document is not UTF-8 text of at most 262144 bytes without a NUL; 503 source_unavailable, the source did not answer, was busy or refused the read for its rate limit, and the control plane may send the call again later, built anew. 404 version_not_found and 409 document_not_text have the meaning they have for the call with the path read (read.schema.json). When the resource has the version at but no document at path at that version, the adapter answers the signed 200 with found: false and resolved_at, not a refusal (read-answer.schema.json). The adapter refuses a call whose time is more than 300 seconds from its clock, either way, or whose signature it has already seen, with an unsigned 401; definitions.schema.json has the replay rule. The control plane sends a call with the path read-public only with resource_ref set to the public_ref of a resolve result with public: true, never with the resource_ref of a covered result, and never sends a call with the path run-credential for a resource that it reads with the call with the path read-public: reading a public resource gives the run no credential. A member this schema does not define is refused, invalid_request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "version",
+    "time",
+    "resource_ref",
+    "path",
+    "at"
+  ],
+  "properties": {
+    "version": {
+      "description": "The document format. The adapter refuses a version it does not read.",
+      "const": 1
+    },
+    "time": {
+      "description": "When the control plane built the body, RFC 3339 in UTC with whole seconds. The adapter refuses a time more than 300 seconds from its clock, either way, with an unsigned 401.",
+      "$ref": "definitions.schema.json#/$defs/time"
+    },
+    "resource_ref": {
+      "description": "The resource to read from: the public_ref of a resolve result with public: true, as the adapter answered it to a resolve call.",
+      "$ref": "definitions.schema.json#/$defs/ref"
+    },
+    "path": {
+      "description": "The document's path in the resource, as in read.schema.json: 1 to 1024 characters, parts joined by /, with no / at its start or its end, no empty part, no part that is . or .., and no NUL.",
+      "$ref": "read.schema.json#/properties/path"
+    },
+    "at": {
+      "description": "The version of the resource to read the document at, as the source writes a version or a name of one.",
+      "$ref": "read.schema.json#/$defs/version_ref"
+    }
+  }
+}

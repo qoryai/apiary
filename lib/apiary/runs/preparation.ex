@@ -409,6 +409,7 @@ defmodule Apiary.Runs.Preparation do
             }
           ),
         reason: Waiting.reason(queued),
+        organisation: scope.organisation,
         run: run.public_id,
         instance_admin: Access.instance_admin?(scope)
       }

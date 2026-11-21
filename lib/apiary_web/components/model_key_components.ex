@@ -9,7 +9,9 @@ defmodule ApiaryWeb.ModelKeyComponents do
   #     percentage, each optional, with their hints and their errors;
   #   * `params/3` the fields of a key's settings, `read_settings/2` the settings of what
   #     a form sent, and `errors/1` the errors of a settings changeset, by field group;
-  #   * `state/4` the state of a key from its states, in words.
+  #   * `state/4` the state of a key from its states, in words;
+  #   * `login/2` and `login_line/1` the sign-in of a key of a provider whose keys are
+  #     logins (`Apiary.ModelKeys.Login`), in words.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -20,7 +22,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
   alias Apiary.Connections.Connection
   alias Apiary.Kinds.{Provider, Providers}
   alias Apiary.ModelKeys
-  alias Apiary.ModelKeys.{Setting, State}
+  alias Apiary.ModelKeys.{Login, Rejection, Setting, State}
   alias ApiaryWeb.UserLive.Settings, as: UserSettings
 
   @fields ~w(reset_day reset_time reset_zone pause_number pause_unit use_up_to)
@@ -534,5 +536,406 @@ defmodule ApiaryWeb.ModelKeyComponents do
       <span :for={segment <- @segments} class="text-muted"> · {segment}</span>
     </span>
     """
+  end
+
+  ## A key's sign-in
+
+  @typedoc "The sign-in of a key, as `login/2` has it."
+  @type login ::
+          {:signed_in, String.t() | nil}
+          | {:sign_in_needed, String.t()}
+
+  @doc """
+  The sign-in of a key from its row `login` (`Apiary.ModelKeys.Login.by_key/1`), nil for a
+  key that has none, in the reader's time zone:
+
+    * `{:signed_in, refreshed}`: "Signed in. Last refresh 2026-11-12 10:04.", `refreshed`
+      nil until the first refresh;
+    * `{:sign_in_needed, rejected}`: the heading "Needs a new sign-in" and "OpenAI
+      rejected it on 2026-11-12 10:04." ("Qory Apiary could not save the new sign-in on
+      2026-11-12 10:04." for a rotated sign-in that Qory Apiary could not store, "OpenAI
+      returned no account id on 2026-11-12 10:04." for an answer whose token has none).
+  """
+  @spec login(Login.t() | nil, Connection.t()) :: login | nil
+  def login(nil, _provider), do: nil
+
+  def login(%Login{state: "signed_in", refreshed_at: refreshed_at}, _provider),
+    do: {:signed_in, refreshed_at && Format.datetime(refreshed_at)}
+
+  def login(%Login{state: "sign_in_needed"} = login, %Connection{} = provider) do
+    time = Format.datetime(login.last_failure || login.updated_at)
+    {:sign_in_needed, cause_line(login.sign_in_cause, provider, time)}
+  end
+
+  # A sign-in that the provider rejected says so. For a rotated sign-in that Qory Apiary
+  # could not store, Qory Apiary failed, and the line says that. An answer with no account
+  # id says that.
+  defp cause_line("token_not_stored", _provider, time),
+    do: gettext("Qory Apiary could not save the new sign-in on %{time}.", time: time)
+
+  defp cause_line("no_account", _provider, time),
+    do: gettext("OpenAI returned no account id on %{time}.", time: time)
+
+  defp cause_line(_cause, provider, time),
+    do:
+      gettext("%{vendor} rejected it on %{time}.",
+        vendor: capitalise(vendor(provider)),
+        time: time
+      )
+
+  @doc "Whether `login`, a key's sign-in as `login/2` has it, is one that needs a new sign-in."
+  @spec sign_in_needed?(login | nil) :: boolean
+  def sign_in_needed?({:sign_in_needed, _rejected}), do: true
+  def sign_in_needed?(_login), do: false
+
+  # The company that runs the provider's API (`Apiary.Kinds.Provider`), else the title of
+  # its catalogue entry.
+  defp vendor(%Connection{provider_kind: kind}) do
+    case Providers.fetch(kind) do
+      {:ok, %Provider{vendor: vendor}} when is_binary(vendor) -> vendor
+      {:ok, %Provider{title: title}} -> title
+      :error -> kind
+    end
+  end
+
+  defp capitalise(<<first::utf8, rest::binary>>), do: String.upcase(<<first::utf8>>) <> rest
+  defp capitalise(text), do: text
+
+  @doc """
+  A key's sign-in as `login/2` has it: the state, or, for a sign-in that the provider
+  rejected, what it needs and why, on separate lines.
+  """
+  attr :id, :string, required: true
+  attr :login, :any, required: true
+
+  def login_line(%{login: {:signed_in, refreshed}} = assigns) do
+    assigns = assign(assigns, :refreshed, refreshed)
+
+    ~H"""
+    <span id={@id} class="grid text-[13px]/5">
+      <span :if={@refreshed} class="font-medium">
+        {gettext("Signed in. Last refresh %{time}.", time: @refreshed)}
+      </span>
+      <span :if={!@refreshed} class="font-medium">{gettext("Signed in.")}</span>
+      <span class="text-muted">{stored_line()}</span>
+    </span>
+    """
+  end
+
+  def login_line(%{login: {:sign_in_needed, rejected}} = assigns) do
+    assigns = assign(assigns, :rejected, rejected)
+
+    ~H"""
+    <span id={@id} class="grid text-[13px]/5">
+      <span class="font-medium text-error">{gettext("Needs a new sign-in")}</span>
+      <span class="text-muted">{@rejected}</span>
+    </span>
+    """
+  end
+
+  ## Sign in with ChatGPT
+
+  # The line under a signed-in key's state.
+  defp stored_line, do: gettext("Qory Apiary stores the sign-in encrypted, and no page shows it.")
+
+  @doc """
+  The device sign-in of a key's form (`ApiaryWeb.ModelKeyDevice`), in the place of the
+  key field: by the state of `device`,
+
+    * `:idle`: the button Sign in with ChatGPT with its hint; for a key that needs a new
+      sign-in (`login`, as `login/2` has it), the heading and the reason above it;
+    * `:starting`: the button, off, until the provider sends a code;
+    * `:code`: the page to open, the code with Copy, until when it works, a spinner with
+      what Qory Apiary waits for, and Cancel, which stops the sign-in;
+    * `:signed_in`: the state of a new sign-in;
+    * `:expired`, `:off`, `:failed`: the fix, the cause and the button.
+
+  `errors` are the form's errors on the sign-in, as sentences or `:sign_in_missing`. `key`
+  is the value id of the key a button in a list row starts the sign-in for, nil on a form.
+  """
+  attr :id, :string, required: true
+
+  attr :device, :any,
+    required: true,
+    doc: "the sign-in as `ApiaryWeb.ModelKeyDevice` has it, or nil"
+
+  attr :login, :any, default: nil
+  attr :errors, :list, default: []
+  attr :key, :string, default: nil
+  attr :hint, :boolean, default: true, doc: "whether the button has its hint"
+
+  attr :disabled, :boolean,
+    default: false,
+    doc: "whether the button is off, as another row's sign-in is going on"
+
+  # A provider with no device sign-in has no button: its errors alone show.
+  def sign_in_with_chatgpt(%{device: nil} = assigns) do
+    ~H"""
+    <div :if={@errors != []} id={@id} class="grid gap-1">
+      <.sign_in_error
+        :for={{message, index} <- Enum.with_index(@errors)}
+        id={"#{@id}-error-#{index + 1}"}
+        message={message}
+      />
+    </div>
+    """
+  end
+
+  def sign_in_with_chatgpt(%{device: %{state: :code}} = assigns) do
+    ~H"""
+    <div id={@id} class="grid gap-2 text-[13.5px]/5">
+      <p id={"#{@id}-open"}>
+        <.rich text={
+          rich_gettext("Open %{address} and enter this code.",
+            address: {:part, :address}
+          )
+        }>
+          <:part name={:address}>
+            <a
+              href={@device.verification_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              class="q-link"
+            >
+              {address(@device.verification_url)}
+            </a>
+          </:part>
+        </.rich>
+      </p>
+      <div class="flex items-center gap-3">
+        <code
+          id={"#{@id}-code"}
+          class="rounded-selector border border-line bg-surface px-3 py-2 font-mono text-xl tracking-wider"
+        >{@device.user_code}</code>
+        <.copy_button id={"#{@id}-copy"} text={@device.user_code} />
+      </div>
+      <p id={"#{@id}-until"} class="text-muted">
+        {gettext("Approve the sign-in at OpenAI before %{time}.",
+          time: Format.time(@device.expires_at)
+        )}
+      </p>
+      <p id={"#{@id}-only-yours"} class="text-muted">
+        {gettext("Approve only a code you started yourself.")}
+      </p>
+      <div class="flex items-center gap-3">
+        <span class="loading loading-spinner loading-xs text-faint" aria-hidden="true" />
+        <span id={"#{@id}-waiting"}>
+          {gettext("Waiting for you to approve the sign-in on OpenAI's page.")}
+        </span>
+        <.button id={"#{@id}-cancel"} type="button" size="xs" phx-click="device_cancel">
+          {gettext("Cancel")}
+        </.button>
+      </div>
+    </div>
+    """
+  end
+
+  def sign_in_with_chatgpt(%{device: %{state: :signed_in}} = assigns) do
+    ~H"""
+    <div id={@id} class="grid text-[13px]/5">
+      <span id={"#{@id}-state"} class="font-medium">{gettext("Signed in.")}</span>
+      <span class="text-muted">{stored_line()}</span>
+    </div>
+    """
+  end
+
+  def sign_in_with_chatgpt(%{device: %{state: state}} = assigns)
+      when state in [:expired, :off, :failed] do
+    ~H"""
+    <div id={@id} class="grid justify-items-start gap-1.5 text-[13px]/5">
+      <.sign_in_needed id={@id} login={@login} />
+      <span id={"#{@id}-fix"} class="text-error">
+        <%= if @device.state == :off do %>
+          <.rich text={
+            rich_gettext(
+              "Turn on %{label} in ChatGPT's security settings, or ask your ChatGPT workspace admin to turn it on.",
+              label: {:b, "Enable device code sign-in for Codex"}
+            )
+          } />
+        <% else %>
+          {gettext("Click Sign in with ChatGPT for a new code.")}
+        <% end %>
+      </span>
+      <span :if={@device.state == :expired} id={"#{@id}-cause"} class="text-muted">
+        {gettext("The sign-in expired before it was approved.")}
+      </span>
+      <span :if={@device.state == :off} id={"#{@id}-cause"} class="text-muted">
+        {gettext(
+          "OpenAI returned no code, because device code sign-in for Codex is off for this ChatGPT account."
+        )}
+      </span>
+      <span
+        :if={@device.state == :failed}
+        id={"#{@id}-cause"}
+        class="text-muted"
+      >
+        {failed_cause(@device.cause)}
+      </span>
+      <.sign_in_button id={@id} key={@key} />
+    </div>
+    """
+  end
+
+  def sign_in_with_chatgpt(assigns) do
+    ~H"""
+    <div id={@id} class="grid justify-items-start gap-1.5">
+      <.sign_in_needed id={@id} login={@login} />
+      <.sign_in_button id={@id} key={@key} disabled={@disabled or @device.state == :starting} />
+      <p :if={@hint} id={"#{@id}-hint"} class="text-[12.5px]/[18px] text-muted">
+        {gettext(
+          "Qory Apiary signs in to ChatGPT for this key. You enter a code on OpenAI's page, and you paste nothing."
+        )}
+      </p>
+      <.sign_in_error
+        :for={{message, index} <- Enum.with_index(@errors)}
+        id={"#{@id}-error-#{index + 1}"}
+        message={message}
+      />
+    </div>
+    """
+  end
+
+  # The heading and the reason of a key that needs a new sign-in, above the button, in
+  # every state of the sign-in that makes a new one.
+  attr :id, :string, required: true
+  attr :login, :any, default: nil
+
+  defp sign_in_needed(assigns) do
+    ~H"""
+    <span :if={sign_in_needed?(@login)} id={"#{@id}-needed"} class="grid text-[13px]/5">
+      <span class="font-medium text-error">{gettext("Needs a new sign-in")}</span>
+      <span class="text-muted">{elem(@login, 1)}</span>
+    </span>
+    """
+  end
+
+  # An error of the sign-in under the button: `:sign_in_missing` for a save before the
+  # sign-in (`ApiaryWeb.ModelKeyDevice.errors/1`), else the sentence of the error.
+  attr :id, :string, required: true
+  attr :message, :any, required: true
+
+  defp sign_in_error(assigns) do
+    ~H"""
+    <p id={@id} class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error">
+      <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+      <%= if @message == :sign_in_missing do %>
+        <span>
+          <.rich text={
+            rich_gettext("Click %{label}, then save. This key has no sign-in yet.",
+              label: {:b, "Sign in with ChatGPT"}
+            )
+          } />
+        </span>
+      <% else %>
+        {@message}
+      <% end %>
+    </p>
+    """
+  end
+
+  # The cause line of a failed sign-in: the status of the response that failed it, when
+  # there is one; a sign-in that could not be saved; a response with no account id.
+  defp failed_cause(:store), do: gettext("Qory Apiary could not save the sign-in.")
+
+  defp failed_cause(:no_account),
+    do: gettext("OpenAI returned no account id for this sign-in.")
+
+  defp failed_cause(status) when is_integer(status),
+    do:
+      gettext("Qory Apiary could not complete the sign-in with OpenAI (HTTP %{status}).",
+        status: status
+      )
+
+  defp failed_cause(_unknown),
+    do: gettext("Qory Apiary could not complete the sign-in with OpenAI.")
+
+  attr :id, :string, required: true
+  attr :key, :string, default: nil
+  attr :disabled, :boolean, default: false
+
+  defp sign_in_button(assigns) do
+    ~H"""
+    <.button
+      id={"#{@id}-start"}
+      type="button"
+      phx-click="device_sign_in"
+      phx-value-key={@key}
+      disabled={@disabled}
+    >
+      {gettext("Sign in with ChatGPT")}
+    </.button>
+    """
+  end
+
+  # A page's address without its scheme, as the person reads it.
+  defp address("https://" <> address), do: address
+  defp address(address), do: address
+
+  ## A key whose provider rejected its value
+
+  @typedoc """
+  The state of a key that needs a new value, as `new_key/2` has it: `{:new_key, line}`, or,
+  for a key of a provider whose keys are sign-ins, the sign-in state `login/2` has.
+  """
+  @type new_key :: {:new_key, String.t()} | {:sign_in_needed, String.t()}
+
+  @doc """
+  The state of a key whose provider rejected its value with a 401 that a run's gateway
+  reported (`Apiary.ModelKeys.Rejection`), in the reader's time zone: nil for a key with no
+  rejection that counts (`Apiary.ModelKeys.rejections/1`). The line is "Anthropic rejected
+  it on 2026-11-18 09:12.", under the heading "Needs a new key" (`new_key_state/1`). For a
+  provider whose keys are sign-ins it is the state of a sign-in that needs a new one, with
+  the heading "Needs a new sign-in" (`login_line/1`). The state has no name that a page
+  shows.
+  """
+  @spec new_key(Rejection.t() | nil, Connection.t()) :: new_key | nil
+  def new_key(nil, _provider), do: nil
+
+  def new_key(%Rejection{rejected_at: rejected_at}, %Connection{} = provider) do
+    line =
+      gettext("%{vendor} rejected it on %{time}.",
+        vendor: capitalise(vendor(provider)),
+        time: Format.datetime(rejected_at)
+      )
+
+    if Login.provider?(provider),
+      do: {:sign_in_needed, line},
+      else: {:new_key, line}
+  end
+
+  @doc """
+  The hint under the New value of a key that needs a new value: the stored value no longer
+  works, so an empty field would keep nothing that works.
+  """
+  @spec new_key_hint() :: String.t()
+  def new_key_hint, do: gettext("Enter a new value: the stored one no longer works.")
+
+  @doc """
+  A key that needs a new value (`new_key/2`, `{:new_key, line}`): the heading, the line, and
+  the provider's key help (`ApiaryWeb.ProviderLive.Index.get_key/1`).
+  """
+  attr :id, :string, required: true
+  attr :state, :any, required: true
+  attr :provider, :any, required: true
+
+  def new_key_state(%{state: {:new_key, line}} = assigns) do
+    assigns = assign(assigns, line: line, chosen: chosen(assigns.provider))
+
+    ~H"""
+    <span id={@id} class="grid gap-1 text-[13px]/5">
+      <span class="grid">
+        <span class="font-medium text-error">{gettext("Needs a new key")}</span>
+        <span class="text-muted">{@line}</span>
+      </span>
+      <ApiaryWeb.ProviderLive.Index.get_key id={"#{@id}-get-key"} chosen={@chosen} />
+    </span>
+    """
+  end
+
+  defp chosen(%Connection{provider_kind: kind}) do
+    case Providers.fetch(kind) do
+      {:ok, chosen} -> chosen
+      :error -> nil
+    end
   end
 end

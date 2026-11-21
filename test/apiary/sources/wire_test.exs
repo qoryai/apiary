@@ -13,12 +13,16 @@ defmodule Apiary.Sources.WireTest do
   defp fixture(path), do: @fixtures |> Path.join(path) |> File.read!()
   defp json(path), do: path |> fixture() |> Jason.decode!()
 
+  # Apiary does not build submissions, so the accepted fixtures of their failure reports
+  # (`submission-*` under `changes-failed/`) are left out. Every refused fixture under
+  # `invalid/` stays.
   defp fixtures(pattern),
     do:
       @fixtures
       |> Path.join(pattern)
       |> Path.wildcard()
       |> Enum.map(&Path.relative_to(&1, @fixtures))
+      |> Enum.reject(&(&1 =~ ~r{\Achanges-failed/submission-}))
 
   defp time(value) do
     {:ok, time, 0} = DateTime.from_iso8601(value)

@@ -23,7 +23,10 @@ defmodule ApiaryWeb.ProviderLive.Index do
   #
   # A key is write-only: the page never renders it nor keeps it in an assign. Its field
   # is left out of the page's patches (`phx-update="ignore"`), so a change of the provider
-  # keeps what was typed, and each save renders a new, empty field.
+  # keeps what was typed, and each save renders a new, empty field. For a provider whose
+  # keys are logins (`Apiary.ModelKeys.Login`) the field is the button Sign in with ChatGPT
+  # (`ApiaryWeb.ModelKeyDevice`), and the sign-in is kept with the form until Save; a
+  # change of the provider stops it.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -37,7 +40,7 @@ defmodule ApiaryWeb.ProviderLive.Index do
   alias Apiary.{Access, Connections, ModelKeys}
   alias Apiary.Kinds.{Provider, Providers}
   alias ApiaryWeb.IntegrationLive.Common
-  alias ApiaryWeb.{SettingsComponents, UserAuth}
+  alias ApiaryWeb.{ModelKeyComponents, ModelKeyDevice, SettingsComponents, UserAuth}
 
   # The value id of the key that New model provider adds.
   @key_id "key-1"
@@ -52,10 +55,12 @@ defmodule ApiaryWeb.ProviderLive.Index do
 
     {:ok,
      socket
+     |> ModelKeyDevice.attach()
      |> assign(
        sections: SettingsComponents.sections(scope, :organisation),
        providers: providers,
        cooling: ModelKeys.cooldown_counts(providers, DateTime.utc_now()),
+       needing: ModelKeys.new_key_counts(providers),
        writes: writes,
        needs_workspace: needs_workspace?(scope),
        attempt: 0,
@@ -91,11 +96,28 @@ defmodule ApiaryWeb.ProviderLive.Index do
 
     params = Enum.reduce(errors, params, fn {field, _}, p -> Map.put_new(p, "#{field}", "") end)
 
-    assign(socket,
+    chosen = chosen(params["provider"])
+
+    socket
+    |> ModelKeyDevice.for_provider(login_kind(chosen))
+    |> assign(
       form: to_form(params, as: :provider, errors: errors),
-      chosen: chosen(params["provider"])
+      chosen: chosen
     )
   end
+
+  @doc false
+  # login?/1 is whether the keys of `chosen`, a catalogue provider or nil, are logins
+  # (`Apiary.ModelKeys.Login`): the form has the button Sign in with ChatGPT in place of the
+  # Key field. The set-up's Model step
+  # calls it too.
+  def login?(%Provider{name: name}), do: Apiary.ModelKeys.Login.provider?(name)
+  def login?(_chosen), do: false
+
+  @doc false
+  # login_kind/1 is the catalogue name of `chosen` when its keys are logins, else nil: what
+  # `ApiaryWeb.ModelKeyDevice.for_provider/2` takes. The set-up's Model step calls it too.
+  def login_kind(chosen), do: if(login?(chosen), do: chosen.name)
 
   defp chosen(name) do
     case Providers.fetch(name) do
@@ -129,7 +151,12 @@ defmodule ApiaryWeb.ProviderLive.Index do
 
     attrs = %{
       "provider" => params["provider"],
-      "keys" => [%{"value_id" => @key_id, "value" => params["key"] || ""}],
+      "keys" => [
+        %{
+          "value_id" => @key_id,
+          "value" => ModelKeyDevice.value(socket, login?(socket.assigns.chosen), params["key"])
+        }
+      ],
       "settings" => Map.new(address_names(params["provider"]), &{&1, params[&1] || ""})
     }
 
@@ -202,19 +229,27 @@ defmodule ApiaryWeb.ProviderLive.Index do
   defp keys(%{secret: %{values: values}}) when is_list(values), do: length(values)
   defp keys(_provider), do: 0
 
-  # "3 keys, 1 in cooldown"; without ", 1 in cooldown" when none is.
-  defp keys_words(count, 0),
-    do: ngettext("%{number} key", "%{number} keys", count, number: Format.number(count))
+  # "3 keys, 1 in cooldown, 1 needs a new key"; each part after the count of keys only
+  # when it is above 0.
+  defp keys_words(count, cooling, needing) do
+    parts = [
+      cooling > 0 &&
+        ngettext("%{number} in cooldown", "%{number} in cooldown", cooling,
+          number: Format.number(cooling)
+        ),
+      needing > 0 &&
+        ngettext("%{number} needs a new key", "%{number} need a new key", needing,
+          number: Format.number(needing)
+        )
+    ]
 
-  defp keys_words(count, cooling),
-    do:
-      gettext("%{keys}, %{cooling}",
-        keys: keys_words(count, 0),
-        cooling:
-          ngettext("%{number} in cooldown", "%{number} in cooldown", cooling,
-            number: Format.number(cooling)
-          )
-      )
+    parts
+    |> Enum.filter(& &1)
+    |> Enum.reduce(
+      ngettext("%{number} key", "%{number} keys", count, number: Format.number(count)),
+      fn part, words -> gettext("%{keys}, %{cooling}", keys: words, cooling: part) end
+    )
+  end
 
   # Who adds a model provider, to a person who may not.
   defp who_adds(scope) do
@@ -279,7 +314,14 @@ defmodule ApiaryWeb.ProviderLive.Index do
             label={gettext("Provider")}
             options={provider_options()}
           />
+          <ModelKeyComponents.sign_in_with_chatgpt
+            :if={login?(@chosen)}
+            id="new-provider-sign-in"
+            device={@device}
+            errors={ModelKeyDevice.errors(@form[:key])}
+          />
           <.input
+            :if={!login?(@chosen)}
             field={@form[:key]}
             id={"new-provider-key-#{@attempt}"}
             type="password"
@@ -382,7 +424,11 @@ defmodule ApiaryWeb.ProviderLive.Index do
           </:col>
           <:col :let={provider} label={gettext("Keys")}>
             <span id={"provider-#{provider.public_id}-keys"} class="text-muted">
-              {keys_words(keys(provider), Map.get(@cooling, provider.id, 0))}
+              {keys_words(
+                keys(provider),
+                Map.get(@cooling, provider.id, 0),
+                Map.get(@needing, provider.id, 0)
+              )}
             </span>
           </:col>
         </.table>

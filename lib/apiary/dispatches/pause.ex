@@ -17,18 +17,23 @@ defmodule Apiary.Dispatches.Pause do
   # nil; and the run number and workspace of the run that continues it, nil for a paused
   # run that no run continues, such as a prebuild or a run whose work item left Explore.
   # Any other run is not in the map.
+  # `new_key` is true while a key of that provider needs a new value
+  # (`Apiary.ModelKeys.new_key_counts/1`), so the line says that its keys are in cooldown or
+  # need a new key.
   # `of_public_ids/1` is the same by the runs' public ids (`rn_…`).
 
   import Ecto.Query, only: [from: 2]
 
   alias Apiary.Connections.Connection
   alias Apiary.Dispatches.DispatchRun
+  alias Apiary.ModelKeys
   alias Apiary.Repo
   alias Apiary.Runs.Run
 
   @type t :: %{
           provider: String.t() | nil,
           other_organisation: boolean,
+          new_key: boolean,
           until: DateTime.t() | nil,
           number: pos_integer | nil,
           workspace_id: Ecto.UUID.t() | nil
@@ -82,6 +87,8 @@ defmodule Apiary.Dispatches.Pause do
       |> Repo.all()
       |> Map.new()
 
+    new_keys = new_key_counts(Map.values(providers))
+
     Map.new(rows, fn {value, run, rest} ->
       provider = Map.get(providers, Map.fetch!(paused, run.id))
       other = provider != nil and provider.organisation_id != run.organisation_id
@@ -89,10 +96,14 @@ defmodule Apiary.Dispatches.Pause do
       {value,
        Map.merge(rest, %{
          provider: if(provider && not other, do: provider.name),
-         other_organisation: other
+         other_organisation: other,
+         new_key: provider != nil and not other and Map.get(new_keys, provider.id, 0) > 0
        })}
     end)
   end
+
+  defp new_key_counts([]), do: %{}
+  defp new_key_counts(providers), do: ModelKeys.new_key_counts(providers)
 
   # The provider of the session that paused (`Apiary.Runs.Run.session_provider_ids/2`),
   # its first for a session not known; nil for a run with none.

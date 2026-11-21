@@ -153,6 +153,7 @@ defmodule Apiary.Dispatches.PauseTest do
     assert Pause.of_run(paused) == %{
              provider: ctx.provider.name,
              other_organisation: false,
+             new_key: false,
              until: nil,
              number: continuation.number,
              workspace_id: ctx.scope.workspace.id
@@ -272,6 +273,54 @@ defmodule Apiary.Dispatches.PauseTest do
              "Paused: a key of #{ctx.provider.name} reached its limit or its Use up to percentage. It continues in run #{number}."
   end
 
+  test "a key that needs a new key beside the cooldown is in the line", ctx do
+    %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
+    exit!(run, @paused)
+
+    until = DateTime.add(DateTime.utc_now(), 3_600, :second)
+
+    {1, _rows} =
+      Repo.update_all(from(d in DispatchRun, where: d.id == ^dispatch_run.id),
+        set: [paused_until: until]
+      )
+
+    number = registered(run_of(dispatch_run.work_item_id, 2)).number
+    time = ApiaryWeb.PreparationComponents.cooldown_time(until)
+
+    line = fn pause ->
+      pause |> ApiaryWeb.PauseWords.line(nil) |> ApiaryWeb.RichText.plain_text()
+    end
+
+    # No key needs a new key: the line is as it was.
+    assert %{new_key: false} = pause = Pause.of_run(Repo.get!(Run, run.id))
+
+    assert line.(pause) ==
+             "Paused: every key of #{ctx.provider.name} is in cooldown until #{time}. It continues in run #{number}."
+
+    # The provider rejected the value of `spare`.
+    spare = key_value!(ctx.provider, "spare")
+
+    {1, _rows} =
+      Repo.insert_all("model_key_rejections", [
+        %{
+          organisation_id: Ecto.UUID.dump!(spare.organisation_id),
+          secret_value_id: Ecto.UUID.dump!(spare.id),
+          rejected_at: DateTime.utc_now(),
+          value_set_at: spare.value_set_at,
+          updated_at: DateTime.utc_now()
+        }
+      ])
+
+    assert %{new_key: true} = pause = Pause.of_run(Repo.get!(Run, run.id))
+
+    assert line.(pause) ==
+             "Paused: every key of #{ctx.provider.name} is in cooldown until #{time} or needs a new key. It continues in run #{number}."
+
+    # With no end time, the line is about the limit, as before.
+    assert line.(%{pause | until: nil}) ==
+             "Paused: a key of #{ctx.provider.name} reached its limit or its Use up to percentage. It continues in run #{number}."
+  end
+
   test "a provider deleted since has no name in the line", ctx do
     %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
     exit!(run, @paused)
@@ -325,7 +374,21 @@ defmodule Apiary.Dispatches.PauseTest do
 
     number = registered(run_of(dispatch_run.work_item_id, 2)).number
 
-    assert %{provider: nil, other_organisation: true} =
+    # The other organisation's key needs a new value: the run's organisation is not told.
+    theirs_value = key_value!(theirs, "main")
+
+    {1, _rows} =
+      Repo.insert_all("model_key_rejections", [
+        %{
+          organisation_id: Ecto.UUID.dump!(theirs_value.organisation_id),
+          secret_value_id: Ecto.UUID.dump!(theirs_value.id),
+          rejected_at: DateTime.utc_now(),
+          value_set_at: theirs_value.value_set_at,
+          updated_at: DateTime.utc_now()
+        }
+      ])
+
+    assert %{provider: nil, other_organisation: true, new_key: false} =
              pause = Pause.of_run(Repo.get!(Run, run.id))
 
     line = fn pause ->

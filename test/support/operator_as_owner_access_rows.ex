@@ -237,6 +237,7 @@ defmodule ApiaryPro.OperatorAsOwnerAccessRows do
       {:"adapter.install", yes: []},
       {:"node.install", yes: []},
       {:"collection.move", yes: []},
+      {:"model_key.refresh", yes: []},
       {:"work_item.read", yes: @all},
       {:"work_item.take_in", yes: @in_operated},
       {:"work_item.undo", yes: @in_operated},

@@ -32,6 +32,10 @@ defmodule Apiary.Secrets.Value do
     # When the value was last set, by this server's clock: at its insert and at each new
     # value, never at a rename (`Apiary.ModelKeys.record/4`).
     field :value_set_at, :utc_datetime_usec
+    # The last 4 characters of a model provider's key that is not a sign-in, written with
+    # the value (`hint/1`); nil for every other value. It is derived from the secret, so it
+    # is redacted from `inspect/2` and not encoded to JSON.
+    field :hint, :string, redact: true
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -43,6 +47,67 @@ defmodule Apiary.Secrets.Value do
 
     timestamps(type: :utc_datetime_usec)
   end
+
+  @hint_min 12
+  @hint_length 4
+  # A hint is at most this many code points: four characters that each carry many
+  # combining marks would not fit the column.
+  @hint_max 16
+
+  @doc """
+  The number `n` of a value id `key-<n>`, 1 to 9 digits only, with no sign (so it fits
+  `secrets.last_key_number`); nil for a value id of another form.
+  """
+  @spec key_number(String.t() | nil) :: non_neg_integer | nil
+  def key_number("key-" <> digits) when byte_size(digits) in 1..9 do
+    if digits =~ ~r/\A[0-9]+\z/, do: String.to_integer(digits)
+  end
+
+  def key_number(_value_id), do: nil
+
+  @doc """
+  The value id of a model provider's key that follows the highest `key-<n>` among
+  `value_ids` (`key-1` for none). A value id of another form does not count. It is for a
+  secret that is being created, which has no deleted key; `Apiary.Secrets.next_key_id/1`
+  is for a secret that has one.
+  """
+  @spec next_key_id([String.t() | nil]) :: String.t()
+  def next_key_id(value_ids), do: "key-#{highest_key_number(value_ids) + 1}"
+
+  @doc "The highest number among the `key-<n>` value ids of `value_ids`, 0 for none."
+  @spec highest_key_number([String.t() | nil]) :: non_neg_integer
+  def highest_key_number(value_ids),
+    do: value_ids |> Enum.map(&key_number/1) |> Enum.reject(&is_nil/1) |> Enum.max(fn -> 0 end)
+
+  @doc "The fewest characters a value has when it keeps a hint."
+  @spec hint_min() :: pos_integer
+  def hint_min, do: @hint_min
+
+  @doc """
+  The hint of a key's value: its last 4 characters, for a value of at least 12 characters
+  once the whitespace at its ends is trimmed, counted as characters and not bytes (`é` is
+  one); nil for a shorter value, for text that is not UTF-8, for a value whose last 4
+  characters have more than 16 code points and for a value whose last 4 characters have
+  a control character, a format character (Unicode category `Cf`, such as U+202E, which
+  reorders the text next to it) or a line or paragraph separator (U+2028, U+2029): the
+  identity line shows the hint. The hint is a part of the secret: only a model
+  provider's key that is not a sign-in has one (`Apiary.Secrets`).
+  """
+  @spec hint(term) :: String.t() | nil
+  def hint(value) when is_binary(value) do
+    with true <- String.valid?(value),
+         trimmed = String.trim(value),
+         true <- String.length(trimmed) >= @hint_min,
+         hint = trimmed |> String.graphemes() |> Enum.take(-@hint_length) |> Enum.join(),
+         true <- length(String.codepoints(hint)) <= @hint_max,
+         false <- String.match?(hint, ~r/[[:cntrl:]\p{Cf}\p{Zl}\p{Zp}]/u) do
+      hint
+    else
+      _none -> nil
+    end
+  end
+
+  def hint(_value), do: nil
 
   @doc "The most bytes a value has."
   @spec value_max() :: pos_integer

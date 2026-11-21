@@ -68,12 +68,13 @@ defmodule Apiary.Dispatches do
   # so the take in loses no attempt, its `queued_at` the paused run's, so it keeps the
   # paused run's place in the queue, `continues_id` the paused run, and
   # `report_wait_until`, nil for a pause at the limit: a claim takes it only once that
-  # time has passed (`keys_free/2`), so the paused run's model keys report, which can
-  # arrive after the exit, is recorded before the claim orders the keys. The paused run
-  # keeps `paused_until`. A continuation that pauses is continued again. It writes none for a prebuild, for a work item no longer in Explore, in another
-  # workspace or at another take in, for a work item placed at another stage or whose
-  # stage does not run, or while another run of the take in has not ended: `{:error,
-  # :not_requeued}`.
+  # time has passed, or once the paused run's report marked a key `unauthorized`
+  # (`keys_free/2`), so the paused run's model keys report, which can arrive after the
+  # exit, is recorded before the claim orders the keys. The paused run
+  # keeps `paused_until`. A continuation that pauses is continued again. It writes none for
+  # a prebuild, for a work item no longer in Explore, in another workspace or at another
+  # take in, for a work item placed at another stage or whose stage does not run, or while
+  # another run of the take in has not ended: `{:error, :not_requeued}`.
   #
   # `end_held(work_item_ids, workspace_id, target, now)` ends, inside the caller's
   # transaction, the waiting runs of those work items with `target` that are not
@@ -134,11 +135,13 @@ defmodule Apiary.Dispatches do
   #      read `FOR SHARE`, with its active keys: a choice that leads to no gateway,
   #      direct among them, is `{:error, :no_gateway}`
   #      (`Apiary.Dispatches.Handover.gateway/1`);
-  #   5. the slots due freed (`Apiary.Dispatches.Slots.free/3`), which inserts the missing
-  #      environment records of the collections held at 3 with no live prebuild of their
-  #      ref for the pool, once it has locked the records of the lapsed prebuilds and
-  #      before it locks a run (`Apiary.Environments.make_records/2`), then a prebuild of
-  #      each collection held at 3 queued for the pool, where none is live yet
+  #   5. the slots due freed (`Apiary.Dispatches.Slots.free/3`), which, once it has
+  #      locked the records of the lapsed prebuilds, their runs and their dispatches,
+  #      locks, in one pass by workspace, the run counters of the collections held at 3
+  #      and of the runs it sets waiting again, and inserts the missing environment
+  #      records of the collections held at 3 with no live prebuild of their ref for the
+  #      pool (`Apiary.Environments.make_records/3`), then a prebuild of each collection
+  #      held at 3 queued for the pool, where none is live yet
   #      (`Apiary.Environments.queue_builds/2`), then the pool's limit counted: its held
   #      slots and its live runs that were not dispatched; at the limit, `{:ok, :none}`;
   #   6. the oldest waiting run of the key's workspace, by `queued_at`, that the claim may
@@ -626,7 +629,9 @@ defmodule Apiary.Dispatches do
   # `environment_ref`, unless one waits for that ref already, which it answers, and the
   # environment record of the collection and pool where there is none, inside the
   # caller's transaction (the moduledoc). The run and the record are in the collection's
-  # workspace.
+  # workspace. It locks the pool and the workspace's run counter first
+  # (`Apiary.Runs.Number.hold/2`), before it inserts the record or the run, and takes the
+  # run's number last.
   @doc false
   @spec queue_prebuild(Collection.t(), Node.t(), String.t()) ::
           {:ok, DispatchRun.t()} | {:error, Ecto.Changeset.t()}
@@ -662,6 +667,8 @@ defmodule Apiary.Dispatches do
          environment_ref
        ) do
     in_transaction!("queue_prebuild/3")
+    workspace = %Workspace{id: workspace_id, organisation_id: organisation_id}
+    :ok = Apiary.Runs.Number.hold(workspace, [pool_id])
     now = now()
 
     {_count, _rows} =
@@ -1146,7 +1153,7 @@ defmodule Apiary.Dispatches do
                {:ok, pool} <- lock_pool(key),
                pool = keep_offers(pool, offers),
                {:ok, gateway, keys} <- Handover.gateway(pool) do
-            freed = Slots.free(pool.id, now, fn -> Environments.make_records(builds, pool) end)
+            freed = Slots.free(pool.id, now, &Environments.make_records(builds, pool, &1))
             queued = Environments.queue_builds(builds, pool)
             through = %{gateway: gateway, keys: keys, body: body, reads: reads}
 
@@ -1688,14 +1695,37 @@ defmodule Apiary.Dispatches do
   # that its window has ended at `now`: `report_wait_until` is null or not after `now`
   # (`requeue_for_pause/3`). The wait is about the paused run's report, not its keys.
   #
-  # The report's arrival is to end the wait early as well: a key of the paused run's key
-  # rows (`continues_id`, its `runs` row, `run_model_keys.secret_value_id`) whose state is
-  # that it needs a new key. That state does not exist yet; the condition goes here, as a
-  # third alternative, once it does.
+  # The report's arrival ends the wait early too: the run it continues (`continues_id`) has
+  # a copy of a key that a report marked in this pause's window
+  # (`model_key_copies.marked_at`, set by `Apiary.ModelKeys.reject/3`, not before the
+  # window opened, 60 seconds before `report_wait_until`), and the key still needs a new
+  # value (`Apiary.ModelKeys.Rejection`, whose `value_set_at` is the value's). A mark from
+  # an earlier pause of the run does not count. The run then starts on the next key at
+  # once, as the claim skips a key in that state.
+  #
+  # shortcut: the rejection condition is written in SQL again, as in
+  # `Apiary.ModelKeys.claimable/2`, and a sign-in key that the report lists while its
+  # renewal is pending is not marked, so the wait for it runs the 60 seconds. The tests of
+  # `Apiary.Dispatches.SharedProvidersTest` give both the same rejections; replace the
+  # copies with one shared fragment when a third place needs the condition.
   defp report_waited(now) do
     dynamic(
       [run: r],
-      is_nil(r.report_wait_until) or r.report_wait_until <= ^now
+      is_nil(r.report_wait_until) or r.report_wait_until <= ^now or
+        fragment(
+          """
+          EXISTS (SELECT 1 FROM runs paused
+            JOIN model_key_copies c ON c.run_id = paused.id
+            JOIN secret_values v ON v.id = c.secret_value_id
+            JOIN model_key_rejections j ON j.secret_value_id = v.id
+              AND j.value_set_at IS NOT DISTINCT FROM v.value_set_at
+            WHERE paused.dispatch_run_id = ?
+              AND c.marked_at >= ? - (?::integer * interval '1 second'))
+          """,
+          r.continues_id,
+          r.report_wait_until,
+          ^Apiary.ModelKeys.Report.after_exit_seconds()
+        )
     )
   end
 

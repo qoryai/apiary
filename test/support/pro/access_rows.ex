@@ -183,6 +183,7 @@ defmodule ApiaryPro.AccessRows do
       {:"collection.set_backlog", yes: @owners},
       # The instance's alone, by itself.
       {:"collection.move", yes: []},
+      {:"model_key.refresh", yes: []},
       {:"workspace_type.edit", yes: [:instance_owner]},
       {:"machine_type.rekey", yes: [:instance_owner]},
       {:"work_item.read", yes: @owners ++ @readers},

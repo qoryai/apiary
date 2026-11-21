@@ -64,6 +64,10 @@ defmodule Apiary.Harnesses.RunHarness do
     field :pins, {:array, :map}, default: []
     field :harness_links, {:array, :map}, default: []
     field :harness_hidden, :boolean, default: false
+    # The artifact type of the run's plan: `workflows.<workflow>.plan` of the stack file
+    # the walk read (`Apiary.Harnesses.Reader.workflow_plan/2`), nil where the stack file
+    # sets none or an invalid value, and for a walk that did not read one.
+    field :plan_type, :string
     field :failure, :string
     field :failed_source, :string
     field :failure_rule, :map

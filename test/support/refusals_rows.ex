@@ -513,7 +513,8 @@ defmodule ApiaryWeb.RefusalsRows do
         :"audit.prune",
         :"adapter.install",
         :"node.install",
-        :"collection.move"
+        :"collection.move",
+        :"model_key.refresh"
       ],
       contract: [
         :"run.post_events",

@@ -13,14 +13,17 @@ defmodule Apiary.Application do
   # (`Apiary.Adapters.SeenRequestsPurge`); every five minutes, the read of the newest
   # commit of the Qory harness's `main` (`Apiary.Harnesses.QoryRefresh`); then, every
   # minute, the sweep of the claims of node pools whose lease lapsed
-  # (`Apiary.Dispatches.Sweep`). The edition's follow (`Apiary.Edition.crontab/0`).
+  # (`Apiary.Dispatches.Sweep`); and every six hours, the refresh of the sign-ins of
+  # model keys that no run has refreshed for 7 days (`Apiary.ModelKeys.LoginSweep`). The
+  # edition's follow (`Apiary.Edition.crontab/0`).
   @crontab [
     {"40 2 * * *", Apiary.Audit.PruneSweep},
     {"50 2 * * *", Apiary.Organisations.InvitationSweep},
     {"20 3 * * *", Apiary.Deletion.PurgeSweep},
     {"*/10 * * * *", Apiary.Adapters.SeenRequestsPurge},
     {"*/5 * * * *", Apiary.Harnesses.QoryRefresh},
-    {"* * * * *", Apiary.Dispatches.Sweep}
+    {"* * * * *", Apiary.Dispatches.Sweep},
+    {"25 */6 * * *", Apiary.ModelKeys.LoginSweep}
   ]
 
   @doc """
@@ -124,6 +127,19 @@ defmodule Apiary.Application do
       {Task.Supervisor, name: Apiary.Runs.TaskSupervisor},
       # Each attempt of a call to an adapter, bounded in time (`Apiary.Adapters.Calls`).
       {Task.Supervisor, name: Apiary.Adapters.Calls.Supervisor},
+      # Each call that refreshes a model key's sign-in, bounded in time
+      # (`Apiary.ModelKeys.LoginRefresh`).
+      {Task.Supervisor, name: Apiary.ModelKeys.LoginRefresh.supervisor()},
+      # Each call of a model key's device sign-in, bounded in time
+      # (`Apiary.ModelKeys.LoginDevice`), and each sign-in, which belongs to the process of
+      # its form (`Apiary.ModelKeys.DeviceSignIn`).
+      {Task.Supervisor, name: Apiary.ModelKeys.LoginDevice.supervisor()},
+      # At most 200 sign-ins at once: each lives 30 minutes at most and polls no faster than
+      # once every 5 seconds (`Apiary.ModelKeys.LoginDevice` reads a shorter interval as 5),
+      # so 200 sign-ins make 40 calls a second to the provider at most. A sign-in over the
+      # bound does not start, and its form shows a failed sign-in.
+      {DynamicSupervisor,
+       name: Apiary.ModelKeys.DeviceSignIn.supervisor(), strategy: :one_for_one, max_children: 200},
       # The time of each call to an adapter, later than the one before
       # (`Apiary.Adapters.CallClock`).
       Apiary.Adapters.CallClock,

@@ -234,16 +234,20 @@ defmodule ApiaryProWeb.RefusalsRows do
   # organisation, the page is not there for a person of the operator, who reaches the
   # workspace the operator operates and nothing the organisation has as a whole.
   defp key_rows do
-    changes = fn secret ->
+    # A key is at its row id in a path (`:org_key_main`, `:org_key_spare`), as it has no name
+    # that a person gives; Add value and Rename value are not offered for a key, and their
+    # paths are refused as they open.
+    changes = fn secret, key ->
       [
-        {"#{secret}/values/main/change", "set_value",
-         %{"secret_value" => %{"value" => "not-to-be-saved"}}},
+        {"#{secret}/values/:#{key}_main/change", "set_value",
+         %{"secret_value" => %{"value" => "not-to-be-saved"}}, []},
         {"#{secret}/add-value", "add_value",
-         %{"secret_value" => %{"value_id" => "b", "value" => "not-to-be-saved"}}},
-        {"#{secret}/values/main/rename", "rename_value",
-         %{"secret_value" => %{"value_id" => "renamed"}}},
-        {"#{secret}/values/spare/delete", "delete_value", %{}},
-        {"#{secret}/delete", "delete_secret", %{}}
+         %{"secret_value" => %{"value_id" => "b", "value" => "not-to-be-saved"}},
+         [answer: :refused_at_mount]},
+        {"#{secret}/values/:#{key}_main/rename", "rename_value",
+         %{"secret_value" => %{"value_id" => "renamed"}}, [answer: :refused_at_mount]},
+        {"#{secret}/values/:#{key}_spare/delete", "delete_value", %{}, []},
+        {"#{secret}/delete", "delete_secret", %{}, []}
       ]
     end
 
@@ -269,8 +273,9 @@ defmodule ApiaryProWeb.RefusalsRows do
              needs: [:managed_organisations, :factory, :secrets, :organisation_variables]
            ]}
         ],
-        {path, event, params} <- changes.("#{org}/settings/secrets/#{key}"),
-        do: {:"provider.write", actor, path, event, params, opts}
+        {path, event, params, extra} <-
+          changes.("#{org}/settings/secrets/#{key}", String.trim_leading(key, ":")),
+        do: {:"provider.write", actor, path, event, params, Keyword.merge(extra, opts)}
   end
 
   # In an operated workspace, the operator's people, at every level, read everything and
@@ -528,6 +533,14 @@ defmodule ApiaryProWeb.RefusalsRows do
       org_key: key_secret(owner),
       operated_key: operators.operated && key_secret(operators.operated_owner.scope)
     })
+    |> then(fn world ->
+      Map.merge(world, %{
+        org_key_main: key_row_id(world.org_key, "main"),
+        org_key_spare: key_row_id(world.org_key, "spare"),
+        operated_key_main: key_row_id(world.operated_key, "main"),
+        operated_key_spare: key_row_id(world.operated_key, "spare")
+      })
+    end)
     |> Map.merge(%{
       stale_member: member,
       target_b: target_b,
@@ -584,6 +597,17 @@ defmodule ApiaryProWeb.RefusalsRows do
 
   # With the features `factory` and `secrets`: the secret of the keys of a model provider
   # added in the organisation of `scope` for every workspace, with two keys, which a row names.
+  # The row id of the key `value_id` of a keys' secret, nil where the world has none.
+  defp key_row_id(nil, _value_id), do: nil
+
+  defp key_row_id(%Apiary.Secrets.Secret{id: secret_id}, value_id) do
+    Repo.one!(
+      from v in Apiary.Secrets.Value,
+        where: v.secret_id == ^secret_id and v.value_id == ^value_id,
+        select: v.id
+    )
+  end
+
   defp key_secret(scope) do
     if :factory in Apiary.Features.enabled() and :secrets in Apiary.Features.enabled() do
       {:ok, provider} =
@@ -674,6 +698,10 @@ defmodule ApiaryProWeb.RefusalsRows do
   def value(:org_locked_variable, world), do: {:id, world.org_locked_variable.id}
   def value(:org_secret, world), do: {:id, world.org_secret.public_id}
   def value(:org_key, world), do: {:id, world.org_key.public_id}
+  def value(:org_key_main, world), do: {:id, world.org_key_main}
+  def value(:org_key_spare, world), do: {:id, world.org_key_spare}
+  def value(:operated_key_main, world), do: {:id, world.operated_key_main}
+  def value(:operated_key_spare, world), do: {:id, world.operated_key_spare}
   def value(:operated_key, world), do: {:id, world.operated_key.public_id}
   def value(:target_page_b, world), do: world.target_b.public_id
   def value(_name, _world), do: nil

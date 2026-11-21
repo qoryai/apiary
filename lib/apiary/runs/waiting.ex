@@ -11,12 +11,26 @@ defmodule Apiary.Runs.Waiting do
   #     (`Apiary.MachineTypes.unserved/2`): `pool` is the name of the first of them, or
   #     `:instance` for the instance's pool, a pool of no organisation and no workspace,
   #     whose admins are the instance's;
-  #   * `{:cooldown, provider, until}`, every key of each of its model providers
-  #     (`dispatch_runs.model_provider_ids`) is in cooldown, while runs are given model
-  #     keys (`Apiary.ModelKeys.first_to_leave/2`): `provider` is the name of the one whose
-  #     key leaves its cooldown first, nil for a provider of another organisation than
-  #     the run's, left from when an operator managed whole organisations, and `until`
-  #     when that key leaves it;
+  #   * of the run's model providers (`dispatch_runs.model_provider_ids`), while runs are
+  #     given model keys, when no key of any of them can be given
+  #     (`Apiary.ModelKeys.waiting_reason/3`), the first that applies:
+  #       * `{:refreshing, provider, key}`, a sign-in that expires before the end of the
+  #         run's time limit is refreshed in the background, `{:restart, provider, key}`
+  #         while the node is stopping and the refresh starts after it starts again;
+  #       * `{:cooldown, provider, until}`, every key is in cooldown: `provider` is the
+  #         name of the one whose key leaves its cooldown first, nil for a provider of
+  #         another organisation than the run's, left from when an operator managed whole
+  #         organisations, and `until` when that key leaves it;
+  #       * `{:cooldown_or_new_key, provider, until}`, the same where a key also needs a new
+  #         value (the next item): `provider` is nil too for a run with the keys of several
+  #         providers;
+  #       * `{:sign_in, provider, key}`, a sign-in needs a new one, and
+  #         `{:new_key, provider, key}`, a provider rejected a key's value: nobody but a
+  #         person's new value ends either. `provider` is the provider's public id, `key`
+  #         `%{id: row id, identity: identity line}` of the key, for the link to the key's
+  #         page and its name (`Apiary.ModelKeys.Identity`; the id is nil for a key deleted
+  #         since the reason was found, and the line is the provider's name); a provider of
+  #         another organisation has none of these two;
   #   * `{:image, target, build}`, it is held for the build of its target's environment
   #     image on every serving pool (`Apiary.Environments.held/1`): `build` is `:queued`
   #     while a prebuild of the target waits, `:running` while one is claimed or handed
@@ -32,6 +46,8 @@ defmodule Apiary.Runs.Waiting do
   import Ecto.Query
 
   alias Apiary.{Environments, ModelKeys, Repo}
+  alias Apiary.ModelKeys.Identity
+  alias Apiary.Dispatches.RunSettings
   alias Apiary.Adapters.Collection
   alias Apiary.Connections.Connection
   alias Apiary.Dispatches.DispatchRun
@@ -46,7 +62,9 @@ defmodule Apiary.Runs.Waiting do
           :harness
           | :no_pool
           | {:no_fit, String.t(), String.t() | :instance}
-          | {:cooldown, String.t() | nil, DateTime.t()}
+          | {:cooldown | :cooldown_or_new_key, String.t() | nil, DateTime.t()}
+          | {:refreshing | :restart | :sign_in | :new_key, String.t(),
+             %{id: Ecto.UUID.t() | nil, identity: String.t()}}
           | {:image, String.t(), :queued | :running | nil}
           | {:busy, String.t(), non_neg_integer, pos_integer}
           | {:busy, :instance}
@@ -92,23 +110,43 @@ defmodule Apiary.Runs.Waiting do
     end
   end
 
-  # Every key of each of the run's model providers in cooldown at `now`: the name of the
-  # provider whose key leaves its cooldown first, and when.
+  # No key of the run's model providers can be given at `now`: why (the moduledoc).
   defp cooldown(%DispatchRun{model_provider_ids: [_ | _] = ids} = queued, now) do
     with true <- ProviderCredential.applies?(),
-         {id, until} <- ModelKeys.first_to_leave(ids, now),
-         %Connection{} = provider <- Repo.get(Connection, id) do
-      # No name for a provider of another organisation than the run's, left from when an
-      # operator managed whole organisations: the run's organisation's people do not read
-      # it.
-      name = if provider.organisation_id == queued.organisation_id, do: provider.name
-      {:cooldown, name, until}
+         horizon = RunSettings.horizon_for(queued, now),
+         reason when not is_nil(reason) <-
+           ModelKeys.waiting_reason(ids, now,
+             expires_before: horizon,
+             decrypt: false,
+             organisation_id: queued.organisation_id
+           ) do
+      words(reason, queued)
     else
-      _not_cooling -> nil
+      _not_waiting -> nil
     end
   end
 
   defp cooldown(_queued, _now), do: nil
+
+  # No name for a provider of another organisation than the run's, left from when an
+  # operator managed whole organisations: the run's organisation's people do not read it.
+  defp words({kind, %Connection{} = provider, until}, queued)
+       when kind in [:cooldown, :cooldown_or_new_key] do
+    name = if provider.organisation_id == queued.organisation_id, do: provider.name
+    {kind, name, until}
+  end
+
+  defp words({:cooldown_or_new_key, nil, until}, _queued), do: {:cooldown_or_new_key, nil, until}
+
+  # A reason about a key has the key's row id, for the link to its page, and its identity
+  # line (`Apiary.ModelKeys.Identity`). For a key deleted since the reason was found, the run
+  # keeps the reason: the row id is nil, and the line is the provider's name.
+  defp words({kind, %Connection{} = provider, value_id}, queued) do
+    if provider.organisation_id == queued.organisation_id do
+      {row_id, identity} = Identity.ref(provider, value_id) || {nil, provider.name}
+      {kind, provider.public_id, %{id: row_id, identity: identity}}
+    end
+  end
 
   # Held for the build of its target's environment image on every serving pool, with the
   # state of the newest live prebuild of that target on one of them.

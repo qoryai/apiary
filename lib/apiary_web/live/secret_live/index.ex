@@ -39,7 +39,10 @@ defmodule ApiaryWeb.SecretLive.Index do
     keys (`Apiary.Connections.add_provider_key/4` to
     `Apiary.Connections.delete_provider_key/3`), under `provider.write`; Add value and
     Change value also take the key's settings, Resets and Pause for
-    (`Apiary.ModelKeys.Setting`), written with it. Delete secret is refused while the
+    (`Apiary.ModelKeys.Setting`), written with it. For a provider whose keys are logins
+    (`Apiary.ModelKeys.Login`), Add value and Change value have the button Sign in with
+    ChatGPT in place of the Value field (a device sign-in, `Apiary.ModelKeys.DeviceSignIn`),
+    and refuse a save before the person has signed in. Delete secret is refused while the
     provider links the secret, and Edit name and note is not offered.
   - **Variables** (`Apiary.Variables`): the workspace's variables, each with its value, which
     is plain configuration, its lock, and the targets that override the value or whose
@@ -60,10 +63,10 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   alias Apiary.{Access, Connections, ModelKeys, Secrets, Variables}
   alias Apiary.Connections.Connection
-  alias Apiary.ModelKeys.Setting
+  alias Apiary.ModelKeys.{Identity, Login, Setting}
   alias Apiary.Secrets.{Secret, Value}
   alias Apiary.Variables.{Denied, Variable}
-  alias ApiaryWeb.{ModelKeyComponents, People, SettingsComponents, UserAuth}
+  alias ApiaryWeb.{ModelKeyComponents, ModelKeyDevice, People, SettingsComponents, UserAuth}
   alias ApiaryWeb.SecretLive.Query
 
   # The acts of each view, each at a path of its own.
@@ -142,7 +145,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         tokens: Query.tokens(assigns.query),
         shown:
           if(assigns.view == :secrets,
-            do: Query.secrets(assigns.secrets, assigns.query),
+            do: Query.secrets(assigns.secrets, assigns.query, assigns.identities),
             else: Query.variables(assigns.variables, assigns.targets, assigns.query)
           ),
         listed: if(assigns.view == :secrets, do: assigns.secrets, else: assigns.variables)
@@ -351,8 +354,8 @@ defmodule ApiaryWeb.SecretLive.Index do
       id="secrets"
       label={gettext("Secrets")}
       rows={secret_rows(@shown)}
-      row_id={&row_id/1}
-      confirming={secret_confirming(@act, @secret, @value)}
+      row_id={&row_id(&1, @identities)}
+      confirming={secret_confirming(@act, @secret, @value, @identities)}
     >
       <:col :let={row} label={gettext("Name")} kind="title">
         <%= case row do %>
@@ -362,7 +365,7 @@ defmodule ApiaryWeb.SecretLive.Index do
               <span :if={secret.note} class="q-side" title={secret.note}>{secret.note}</span>
               <span
                 :if={@keys[secret.id]}
-                id={"#{row_id(row)}-provider"}
+                id={"#{row_id(row, @identities)}-provider"}
                 class="q-side"
                 title={@keys[secret.id].name}
               >
@@ -372,9 +375,18 @@ defmodule ApiaryWeb.SecretLive.Index do
           <% {:value, secret, value} -> %>
             <span class="flex items-center gap-1.5 pl-4 text-[12.5px] font-normal text-muted">
               <.icon name="hero-arrow-turn-down-right-micro" class="size-3.5 text-faint" />
-              <span class="font-mono" id={"#{row_id(row)}-value-id"}>{value.value_id}</span>
-              <span :if={@keys[secret.id]} class="font-mono text-faint" aria-hidden="true">
-                ••••••••••••
+              <span
+                :if={@keys[secret.id]}
+                id={"#{row_id(row, @identities)}-value-id"}
+              >
+                {@identities[value.id]}
+              </span>
+              <span
+                :if={!@keys[secret.id]}
+                class="font-mono"
+                id={"#{row_id(row, @identities)}-value-id"}
+              >
+                {value.value_id}
               </span>
             </span>
         <% end %>
@@ -401,7 +413,7 @@ defmodule ApiaryWeb.SecretLive.Index do
             </span>
             <span
               :if={Map.get(@uses, secret.id, []) != []}
-              id={"#{row_id(row)}-used-by"}
+              id={"#{row_id(row, @identities)}-used-by"}
               class="q-cut"
               title={used_by(@uses, secret.id)}
             >
@@ -416,11 +428,13 @@ defmodule ApiaryWeb.SecretLive.Index do
           row={row}
           scope={@current_scope}
           key={key_row?(row, @keys)}
+          identities={@identities}
         />
       </:action>
       <:confirm :let={row}>
         <.secret_confirm
           row={row}
+          identities={@identities}
           refusal={@refusal}
           cancel={list_path(@current_scope, :secrets, @query)}
         />
@@ -456,8 +470,14 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp key_row?({:secret, secret}, keys), do: Map.has_key?(keys, secret.id)
   defp key_row?({:value, secret, _value}, keys), do: Map.has_key?(keys, secret.id)
 
-  defp row_id({:secret, secret}), do: "secret-#{secret.public_id}"
-  defp row_id({:value, secret, value}), do: "secret-#{secret.public_id}-#{value.value_id}"
+  # The id of a row in the page's source. A model key has no value id in it (`key-<n>`, which
+  # no page shows): its row has the key's row id, which is in `identities`.
+  defp row_id({:secret, secret}, _identities), do: "secret-#{secret.public_id}"
+
+  defp row_id({:value, secret, value}, identities) do
+    segment = if Map.has_key?(identities, value.id), do: value.id, else: value.value_id
+    "secret-#{secret.public_id}-#{segment}"
+  end
 
   # The names of what uses a secret, as its Used by cell shows them and as its title holds
   # them whole.
@@ -509,6 +529,7 @@ defmodule ApiaryWeb.SecretLive.Index do
   attr :row, :any, required: true
   attr :scope, :any, required: true
   attr :key, :boolean, default: false, doc: "a model provider's keys, whose name stays"
+  attr :identities, :map, default: %{}, doc: "the identity line of each model key, by row id"
 
   defp secret_menu(%{row: {:secret, secret}} = assigns) do
     assigns = assign(assigns, secret: secret, one: match?([%Value{value_id: nil}], secret.values))
@@ -527,6 +548,7 @@ defmodule ApiaryWeb.SecretLive.Index do
         {gettext("Change value…")}
       </.menu_item>
       <.menu_item
+        :if={!@key}
         id={"secret-#{@secret.public_id}-add"}
         patch={secret_path(@scope, @secret, :add_value)}
         aria-label={gettext("Add value to %{name}", name: @secret.name)}
@@ -554,21 +576,25 @@ defmodule ApiaryWeb.SecretLive.Index do
   end
 
   defp secret_menu(%{row: {:value, secret, value}} = assigns) do
-    assigns = assign(assigns, secret: secret, value: value, id: row_id(assigns.row))
+    assigns =
+      assign(assigns,
+        secret: secret,
+        value: value,
+        id: row_id(assigns.row, assigns.identities),
+        shown: value_name(assigns.identities, value)
+      )
 
     ~H"""
     <.row_menu
       id={"#{@id}-menu"}
-      label={
-        gettext("Actions for %{value_id} of %{name}", value_id: @value.value_id, name: @secret.name)
-      }
+      label={gettext("Actions for %{value} of %{name}", value: @shown, name: @secret.name)}
     >
       <.menu_item
         id={"#{@id}-change"}
-        patch={value_path(@scope, @secret, @value, :change)}
+        patch={value_path(@scope, @secret, @value, :change, @key)}
         aria-label={
-          gettext("Change value %{value_id} of %{name}",
-            value_id: @value.value_id,
+          gettext("Change value %{value} of %{name}",
+            value: @shown,
             name: @secret.name
           )
         }
@@ -576,11 +602,12 @@ defmodule ApiaryWeb.SecretLive.Index do
         {gettext("Change value…")}
       </.menu_item>
       <.menu_item
+        :if={!@key}
         id={"#{@id}-rename"}
-        patch={value_path(@scope, @secret, @value, :rename)}
+        patch={value_path(@scope, @secret, @value, :rename, @key)}
         aria-label={
           gettext("Rename value %{value_id} of %{name}",
-            value_id: @value.value_id,
+            value_id: @shown,
             name: @secret.name
           )
         }
@@ -591,10 +618,10 @@ defmodule ApiaryWeb.SecretLive.Index do
       <.menu_item
         :if={length(@secret.values) > 1}
         id={"#{@id}-delete"}
-        patch={value_path(@scope, @secret, @value, :delete)}
+        patch={value_path(@scope, @secret, @value, :delete, @key)}
         aria-label={
-          gettext("Delete value %{value_id} of %{name}",
-            value_id: @value.value_id,
+          gettext("Delete value %{value} of %{name}",
+            value: @shown,
             name: @secret.name
           )
         }
@@ -1042,13 +1069,6 @@ defmodule ApiaryWeb.SecretLive.Index do
         phx-mounted={!@unnamed && JS.focus()}
       />
       <.value_field form={@form} />
-      <ModelKeyComponents.settings_fields
-        :if={@key_form}
-        form={@key_form}
-        errors={@key_errors}
-        subscription={@subscription}
-        limit_windows={@limit_windows}
-      />
       <.page_form_foot
         id="secret-save"
         cancel={list_path(@current_scope, :secrets, @query)}
@@ -1065,7 +1085,13 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp form_page(%{act: :change_value} = assigns) do
     ~H"""
     <.form for={@form} id="secret-form" phx-submit="set_value" class="grid gap-4" novalidate>
-      <.value_field form={@form} label={gettext("New value")} focus />
+      <ModelKeyComponents.sign_in_with_chatgpt
+        :if={Login.provider?(@provider)}
+        id="secret-sign-in"
+        device={@device}
+        errors={ModelKeyDevice.errors(@form[:value])}
+      />
+      <.value_field :if={!Login.provider?(@provider)} form={@form} label={gettext("New value")} focus />
       <ModelKeyComponents.settings_fields
         :if={@key_form}
         form={@key_form}
@@ -1253,6 +1279,11 @@ defmodule ApiaryWeb.SecretLive.Index do
     """
   end
 
+  # What a value is called: a model key by its identity line, a value of any other secret by
+  # its value id.
+  defp value_name(identities, %Value{} = value),
+    do: Map.get(identities, value.id) || value.value_id
+
   # The page's title, the act and what it acts on.
   defp form_title(%{act: :new_secret}), do: gettext("New secret")
 
@@ -1265,8 +1296,12 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp form_title(%{act: :change_value, secret: secret, value: %Value{value_id: nil}}),
     do: gettext("Change the value of %{name}", name: secret.name)
 
-  defp form_title(%{act: :change_value, secret: secret, value: value}),
-    do: gettext("Change %{value_id} of %{name}", value_id: value.value_id, name: secret.name)
+  defp form_title(%{act: :change_value, secret: secret, value: value, identities: identities}),
+    do:
+      gettext("Change %{value} of %{name}",
+        value: value_name(identities, value),
+        name: secret.name
+      )
 
   defp form_title(%{act: :rename_value, secret: secret, value: value}),
     do: gettext("Rename %{value_id} of %{name}", value_id: value.value_id, name: secret.name)
@@ -1329,15 +1364,16 @@ defmodule ApiaryWeb.SecretLive.Index do
   ## The confirmations in place
 
   # The row of the secrets that asks to confirm: a secret's, or one of its values'.
-  defp secret_confirming(:delete_secret, %Secret{} = secret, _value),
-    do: row_id({:secret, secret})
+  defp secret_confirming(:delete_secret, %Secret{} = secret, _value, identities),
+    do: row_id({:secret, secret}, identities)
 
-  defp secret_confirming(:delete_value, %Secret{} = secret, %Value{} = value),
-    do: row_id({:value, secret, value})
+  defp secret_confirming(:delete_value, %Secret{} = secret, %Value{} = value, identities),
+    do: row_id({:value, secret, value}, identities)
 
-  defp secret_confirming(_act, _secret, _value), do: nil
+  defp secret_confirming(_act, _secret, _value, _identities), do: nil
 
   attr :row, :any, required: true
+  attr :identities, :map, default: %{}, doc: "the identity line of each model key, by row id"
   attr :refusal, :string, default: nil, doc: "why the context refused it, once it did"
   attr :cancel, :string, required: true
 
@@ -1372,14 +1408,18 @@ defmodule ApiaryWeb.SecretLive.Index do
   end
 
   defp secret_confirm(%{row: {:value, secret, value}} = assigns) do
-    assigns = assign(assigns, secret: secret, value: value, id: row_id(assigns.row))
+    assigns =
+      assign(assigns,
+        secret: secret,
+        value: value,
+        id: row_id(assigns.row, assigns.identities),
+        shown: value_name(assigns.identities, value)
+      )
 
     ~H"""
     <.inline_confirm
       id={"#{@id}-confirm"}
-      question={
-        gettext("Delete %{value_id} of %{name}?", value_id: @value.value_id, name: @secret.name)
-      }
+      question={gettext("Delete %{value} of %{name}?", value: @shown, name: @secret.name)}
       cancel={@cancel}
     >
       {gettext("The value is deleted, and the secret keeps its other values. This cannot be undone.")}
@@ -1736,17 +1776,22 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp secret_path(scope, secret, :delete),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/secrets/#{secret.public_id}/delete"
 
-  defp value_path(scope, secret, value, :change),
-    do:
-      ~p"/#{scope.organisation}/#{scope.workspace}/settings/secrets/#{secret.public_id}/values/#{value.value_id}/change"
+  # The segment of a value's address: the row id of a model key, which has no name that a
+  # person gives, else the value id of an ordinary secret's value.
+  defp value_segment(%Value{id: id}, true), do: id
+  defp value_segment(%Value{value_id: value_id}, false), do: value_id
 
-  defp value_path(scope, secret, value, :rename),
+  defp value_path(scope, secret, value, :change, key?),
     do:
-      ~p"/#{scope.organisation}/#{scope.workspace}/settings/secrets/#{secret.public_id}/values/#{value.value_id}/rename"
+      ~p"/#{scope.organisation}/#{scope.workspace}/settings/secrets/#{secret.public_id}/values/#{value_segment(value, key?)}/change"
 
-  defp value_path(scope, secret, value, :delete),
+  defp value_path(scope, secret, value, :rename, key?),
     do:
-      ~p"/#{scope.organisation}/#{scope.workspace}/settings/secrets/#{secret.public_id}/values/#{value.value_id}/delete"
+      ~p"/#{scope.organisation}/#{scope.workspace}/settings/secrets/#{secret.public_id}/values/#{value_segment(value, key?)}/rename"
+
+  defp value_path(scope, secret, value, :delete, key?),
+    do:
+      ~p"/#{scope.organisation}/#{scope.workspace}/settings/secrets/#{secret.public_id}/values/#{value_segment(value, key?)}/delete"
 
   defp variable_path(scope, variable, :targets),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/variables/#{variable.id}/targets"
@@ -1765,6 +1810,7 @@ defmodule ApiaryWeb.SecretLive.Index do
 
     socket =
       socket
+      |> ModelKeyDevice.attach()
       |> assign(
         page_title:
           SettingsComponents.page_title(scope, :workspace, [gettext("Secrets and variables")]),
@@ -1819,6 +1865,8 @@ defmodule ApiaryWeb.SecretLive.Index do
        %{
          secrets: secrets,
          keys: Map.new(keys, &{&1.secret.id, &1.provider}),
+         identities:
+           Enum.reduce(keys, %{}, &Map.merge(&2, Identity.lines(&1.provider, &1.secret.values))),
          uses: uses,
          variables: variables,
          resolution: resolution,
@@ -1867,6 +1915,7 @@ defmodule ApiaryWeb.SecretLive.Index do
 
     socket =
       socket
+      |> ModelKeyDevice.for_provider(nil)
       |> assign(view: view, switched: switched)
       |> assign(
         act: nil,
@@ -1945,16 +1994,22 @@ defmodule ApiaryWeb.SecretLive.Index do
     )
   end
 
+  # Add value and Rename value are for the secrets that a person names: a model provider's
+  # secret is not found by these paths, as the keys have no names.
   defp open(socket, :add_value, %{"id" => id}) do
-    with_secret(socket, id, nil, fn socket, secret, _value ->
-      socket
-      |> assign(
-        act: :add_value,
-        secret: secret,
-        form: value_form(Ecto.Changeset.change(%Value{}))
-      )
-      |> key_settings(nil)
-    end)
+    with_secret(
+      socket,
+      id,
+      nil,
+      fn socket, secret, _value ->
+        assign(socket,
+          act: :add_value,
+          secret: secret,
+          form: value_form(Ecto.Changeset.change(%Value{}))
+        )
+      end,
+      false
+    )
   end
 
   defp open(socket, :change_value, %{"id" => id} = params) do
@@ -1971,14 +2026,20 @@ defmodule ApiaryWeb.SecretLive.Index do
   end
 
   defp open(socket, :rename_value, %{"id" => id, "value_id" => value_id}) do
-    with_secret(socket, id, {:value, value_id}, fn socket, secret, value ->
-      assign(socket,
-        act: :rename_value,
-        secret: secret,
-        value: value,
-        form: value_form(Ecto.Changeset.change(value))
-      )
-    end)
+    with_secret(
+      socket,
+      id,
+      {:value, value_id},
+      fn socket, secret, value ->
+        assign(socket,
+          act: :rename_value,
+          secret: secret,
+          value: value,
+          form: value_form(Ecto.Changeset.change(value))
+        )
+      end,
+      false
+    )
   end
 
   defp open(socket, :delete_value, %{"id" => id, "value_id" => value_id}) do
@@ -2047,7 +2108,9 @@ defmodule ApiaryWeb.SecretLive.Index do
     setting = value && ModelKeys.setting(value.id)
     params = ModelKeyComponents.params(setting, socket.assigns.current_scope, subscription)
 
-    assign(socket,
+    socket
+    |> ModelKeyDevice.for_provider(Login.provider?(provider) && provider.provider_kind)
+    |> assign(
       key_form: key_form(params),
       key_errors: %{},
       subscription: subscription,
@@ -2070,7 +2133,7 @@ defmodule ApiaryWeb.SecretLive.Index do
     with {:ok, secret, provider} <- secret_of(scope, id, keys),
          action = if(provider, do: :"provider.write", else: :"secret.write"),
          true <- may_change?(scope, secret, provider) || {:refused, action},
-         {:ok, value} <- value_of(secret, which) do
+         {:ok, value} <- value_of(secret, which, provider) do
       fun.(assign(socket, :provider, provider), secret, value)
     else
       {:refused, action} ->
@@ -2109,9 +2172,19 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp may_change?(scope, _secret, %Connection{}),
     do: Access.can?(scope, :"provider.write", scope.organisation)
 
-  defp value_of(_secret, nil), do: {:ok, nil}
+  defp value_of(_secret, nil, _provider), do: {:ok, nil}
 
-  defp value_of(secret, {:value, value_id}) do
+  # A model key is named by its row id in the address, any other value by its value id.
+  defp value_of(secret, {:value, key_id}, %Connection{}) do
+    with {:ok, row_id} <- Ecto.UUID.cast(key_id),
+         %Value{} = value <- Enum.find(secret.values, &(&1.id == row_id)) do
+      {:ok, value}
+    else
+      _none -> {:error, :no_value, secret}
+    end
+  end
+
+  defp value_of(secret, {:value, value_id}, nil) do
     case Enum.find(secret.values, &(&1.value_id == value_id)) do
       %Value{} = value -> {:ok, value}
       nil -> {:error, :no_value, secret}
@@ -2248,33 +2321,18 @@ defmodule ApiaryWeb.SecretLive.Index do
     end
   end
 
+  # The value of a secret that a person names: a model provider's secret has no Add value.
   defp handle(
          "add_value",
          %{"secret_value" => params},
          %{assigns: %{act: :add_value}} = socket
        )
        when is_map(params) do
-    %{current_scope: scope, secret: secret, provider: provider} = socket.assigns
-    sent = params
+    %{current_scope: scope, secret: secret} = socket.assigns
     params = Map.take(params, ~w(value_id value first_value_id))
 
-    added =
-      if provider,
-        do:
-          with_key_settings(sent, socket.assigns.limit_windows, fn settings ->
-            Connections.add_provider_key(
-              scope,
-              provider,
-              Map.delete(params, "first_value_id"),
-              settings
-            )
-          end),
-        else: Secrets.add_value(scope, secret, params)
-
-    socket = if provider, do: assign(socket, :key_form, key_form(sent)), else: socket
-
-    case added do
-      {:ok, _secret_or_provider} ->
+    case Secrets.add_value(scope, secret, params) do
+      {:ok, _secret} ->
         {:noreply,
          saved(
            socket,
@@ -2283,13 +2341,6 @@ defmodule ApiaryWeb.SecretLive.Index do
              name: socket.assigns.secret.name
            )
          )}
-
-      {:settings, errors} ->
-        value = Value.changeset(%Value{}, trimmed(params), value_id: :required)
-        {:noreply, assign(socket, form: value_form(value), key_errors: errors)}
-
-      {:error, %Ecto.Changeset{data: %Setting{}} = changeset} ->
-        {:noreply, assign(socket, :key_errors, ModelKeyComponents.errors(changeset))}
 
       {:error, %Ecto.Changeset{} = changeset} ->
         {:noreply, assign(socket, form: value_form(changeset), key_errors: %{})}
@@ -2306,6 +2357,7 @@ defmodule ApiaryWeb.SecretLive.Index do
        )
        when is_map(params) do
     %{current_scope: scope, secret: secret, value: value, provider: provider} = socket.assigns
+    params = ModelKeyDevice.put_login(params, socket)
 
     set =
       cond do
@@ -2342,8 +2394,9 @@ defmodule ApiaryWeb.SecretLive.Index do
            socket,
            if(value.value_id,
              do:
-               gettext("%{value_id} of %{name} is saved.",
-                 value_id: value.value_id,
+               gettext("%{value} of %{name} is saved.",
+                 value:
+                   if(provider, do: Identity.for_key(provider, value.id), else: value.value_id),
                  name: secret.name
                ),
              else: gettext("The value of %{name} is saved.", name: secret.name)
@@ -2351,7 +2404,7 @@ defmodule ApiaryWeb.SecretLive.Index do
          )}
 
       {:settings, errors} ->
-        value = Value.changeset(%Value{}, trimmed(Map.take(params, ["value"])))
+        value = value_changeset(Map.take(params, ["value"]), [])
         # An empty New value keeps the key's value: only the settings' errors show.
         value = if blank?(params["value"]), do: fresh(value), else: value
         {:noreply, assign(socket, form: value_form(value), key_errors: errors)}
@@ -2373,14 +2426,9 @@ defmodule ApiaryWeb.SecretLive.Index do
          %{assigns: %{act: :rename_value}} = socket
        )
        when is_map(params) do
-    %{current_scope: scope, secret: secret, value: value, provider: provider} = socket.assigns
+    %{current_scope: scope, secret: secret, value: value} = socket.assigns
 
-    renamed =
-      if provider,
-        do: Connections.rename_provider_key(scope, provider, value.value_id, params["value_id"]),
-        else: Secrets.rename_value(scope, secret, value.value_id, params["value_id"])
-
-    case renamed do
+    case Secrets.rename_value(scope, secret, value.value_id, params["value_id"]) do
       {:ok, _secret_or_provider} ->
         {:noreply,
          saved(
@@ -2402,6 +2450,7 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   defp handle("delete_value", _params, %{assigns: %{act: :delete_value}} = socket) do
     %{current_scope: scope, secret: secret, value: value, provider: provider} = socket.assigns
+    shown = value_name(socket.assigns.identities, value)
 
     deleted =
       if provider,
@@ -2413,8 +2462,8 @@ defmodule ApiaryWeb.SecretLive.Index do
         {:noreply,
          saved(
            socket,
-           gettext("%{value_id} is deleted from %{name}.",
-             value_id: value.value_id,
+           gettext("%{value} is deleted from %{name}.",
+             value: shown,
              name: secret.name
            )
          )}
@@ -2640,10 +2689,19 @@ defmodule ApiaryWeb.SecretLive.Index do
 
   ## After a change, and its refusals
 
+  defp blank?(%Login.Parsed{}), do: false
   defp blank?(value), do: not is_binary(value) or String.trim(value) == ""
 
   # A provider's key as `Apiary.Connections` checks it, without the whitespace at its
   # ends, so the errors shown with the settings' are those of the save.
+  defp value_changeset(%{"value" => %Login.Parsed{}} = params, opts) do
+    # A sign-in is no text: its value has nothing to check, and no error of it shows.
+    changeset = Value.changeset(%Value{}, Map.delete(params, "value"), opts)
+    %{changeset | errors: Keyword.delete(changeset.errors, :value)}
+  end
+
+  defp value_changeset(params, opts), do: Value.changeset(%Value{}, trimmed(params), opts)
+
   defp trimmed(%{"value" => value} = params),
     do: %{params | "value" => Connections.trim_key(value)}
 

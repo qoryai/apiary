@@ -33,7 +33,7 @@ defmodule Apiary.Integrations.DescriptionTest do
                   example-source-apply-basic.json
                   example-source-apply-bearer.json example-source-apply-header.json
                   example-source-comments.json example-source-guide.json
-                  example-source-targets.json example-tracker.json github.json
+                  example-source-submissions.json example-source-targets.json example-tracker.json github.json
                   unknown-role.json)
 
       for name <- names, do: assert({:ok, %Description{}} = parse_fixture(name), name)
@@ -109,7 +109,10 @@ defmodule Apiary.Integrations.DescriptionTest do
             {"guide-steps-empty", :minItems, "#/roles/source/guide/connect/steps"},
             {"comments-false", :const, "#/roles/source/comments"},
             {"targets-false", :const, "#/roles/source/targets"},
-            {"targets-string", :const, "#/roles/source/targets"}
+            {"targets-string", :const, "#/roles/source/targets"},
+            {"submissions-false", :const, "#/roles/source/submissions"},
+            {"submissions-string", :const, "#/roles/source/submissions"},
+            {"submissions-without-targets", :dependentRequired, "#/roles/source"}
           ] do
         name = "invalid/description-source-#{name}.json"
         assert name in names
@@ -332,6 +335,16 @@ defmodule Apiary.Integrations.DescriptionTest do
       "a6071435877a64d75384b8f5aae94a484ae3f22b0c250bc78e351fc67feb5147",
     "priv/contract/integration/descriptions/openrouter.json" =>
       "7f6c61e897edb6ff32cd519e33a49e821398fd27f4a6069fac5fd8499b86758f",
+    "test/fixtures/contract/integration/v1/README.md" =>
+      "cb53e4d0520b51990190485c703b85a986bfe6ee05320efa37337d42fa82bae6",
+    "test/fixtures/contract/integration/v1/adapter-secrets-answer.schema.json" =>
+      "98e3f0b1530be9980bc6ada1f8554fae26755055d598ffbe742e6e1a11112198",
+    "test/fixtures/contract/integration/v1/adapter-secrets-plaintext.schema.json" =>
+      "aea8c2ddc5bf9023f5e9ba03ddb2dcbbeee76665d070df41a834ef29bad99172",
+    "test/fixtures/contract/integration/v1/adapter-secrets.schema.json" =>
+      "a93fcb68463b82918e9f9a68077a31512712480397ed93e9eb582595ba02a9c5",
+    "test/fixtures/contract/integration/v1/adapter.schema.json" =>
+      "8e3978b8cfc732a08572e882877815b8c3e76bd6cb5847d9f7d984b9b0f7ed1e",
     "test/fixtures/contract/integration/v1/changes-failed.schema.json" =>
       "08ef050a381dc73db65a0c5fa844a44174ad2d699956f4cd68f75efc9745efb7",
     "test/fixtures/contract/integration/v1/changes-submitted.schema.json" =>
@@ -368,7 +381,8 @@ defmodule Apiary.Integrations.DescriptionTest do
 
       vendored =
         for dir <- ["priv/contract/integration", "test/fixtures/contract/integration/v1"],
-            path <- Path.wildcard(Path.join([@root, dir, "**", "*.json"])),
+            path <- Path.wildcard(Path.join([@root, dir, "**", "*"])),
+            File.regular?(path),
             do: Path.relative_to(path, @root)
 
       assert Enum.sort(vendored) == Enum.sort(Map.keys(@vendored_sha256))

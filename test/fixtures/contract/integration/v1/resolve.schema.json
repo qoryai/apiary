@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/integration/v1/resolve.schema.json",
+  "title": "Resolve call",
+  "description": "The body of the control plane's call with the path resolve, a POST of application/json to the adapter's call_url followed by resolve (adapter.schema.json), signed as definitions.schema.json describes a call: which grant and which resource at the source cover each of addresses, and whether the source shows that resource to anyone without a credential. An address is written as the document the control plane read it from writes it, such as an https URL or the form user@host:path, so it is a bounded string and not a URL of $defs. The adapter answers a signed 200 with resolve-answer.schema.json. It reads each address itself. A result may contain public: true: an adapter answers public: true only if it serves the call with the path read-public, and only for an address whose resource the source shows to anyone without a credential, decided from the visibility of the resource as a request without a credential sees it, never from a grant it holds; a resource that the source shows only to signed-in users is not public. It answers covered: false for an address it cannot read, or that no grant it holds covers and that it does not answer with public: true; an address that the adapter cannot read is never a refusal. The control plane sends a call with the path read-public only with resource_ref set to the public_ref of a resolve result with public: true, never with the resource_ref of a covered result, and never sends a call with the path run-credential for a resource that it reads with the call with the path read-public: reading a public resource gives the run no credential. The adapter refuses a call whose time is more than 300 seconds from its clock, either way, or whose signature it has already seen, with an unsigned 401; definitions.schema.json has the replay rule. A member this schema does not define is refused, invalid_request.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "time", "addresses"],
+  "properties": {
+    "version": {
+      "description": "The document format. The adapter refuses a version it does not read.",
+      "const": 1
+    },
+    "time": {
+      "description": "When the control plane built the body, RFC 3339 in UTC with whole seconds. The adapter refuses a time more than 300 seconds from its clock, either way, with an unsigned 401.",
+      "$ref": "definitions.schema.json#/$defs/time"
+    },
+    "addresses": {
+      "description": "The addresses, 1 to 64, none twice, each 1 to 2048 printable ASCII characters with no space.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 64,
+      "uniqueItems": true,
+      "items": {"$ref": "#/$defs/address"}
+    }
+  },
+  "$defs": {
+    "address": {
+      "description": "An address as a document writes it: 1 to 2048 printable ASCII characters with no space.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2048,
+      "pattern": "^[!-~]+$"
+    }
+  }
+}

@@ -47,7 +47,7 @@ defmodule Apiary.Connections.WorkspaceKeysTest do
           where: v.secret_id == ^provider.secret_id and v.value_id == ^value_id
       )
 
-    Secrets.reveal_key_for_sealing(provider, value.id)
+    Apiary.ModelKeysFixtures.revealed_key(provider, value.id)
   end
 
   describe "adding a provider for the workspace" do

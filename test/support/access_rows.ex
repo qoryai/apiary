@@ -193,6 +193,7 @@ defmodule Apiary.AccessRows do
       {:"collection.assign", yes: @owners ++ [:admin]},
       {:"collection.set_backlog", yes: @owners ++ [:admin]},
       {:"collection.move", yes: [:instance, :hidden]},
+      {:"model_key.refresh", yes: [:instance, :hidden]},
       {:"work_item.read", yes: @owners ++ [:member, :admin]},
       {:"work_item.take_in", yes: @owners ++ [:member, :admin]},
       {:"work_item.undo", yes: @owners ++ [:member, :admin]},

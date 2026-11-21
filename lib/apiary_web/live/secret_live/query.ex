@@ -96,18 +96,22 @@ defmodule ApiaryWeb.SecretLive.Query do
   def narrowed?(%__MODULE__{} = query), do: query.q != "" or tokens(query) != []
 
   @doc """
-  secrets/2 is `secrets` as `query` narrows and orders them: each an
-  `Apiary.Secrets.Secret` with its values.
+  secrets/3 is `secrets` as `query` narrows and orders them: each an
+  `Apiary.Secrets.Secret` with its values. The search matches a secret's name and each
+  value's value id, except for a model key, which has the identity line in `identities`
+  (by the value's row id, `Apiary.ModelKeys.Identity`) in place of its value id: the
+  search matches the line as the page shows it, and the value id `key-<n>`, which no page
+  shows, is not searchable.
   """
-  @spec secrets([struct], t) :: [struct]
-  def secrets(secrets, %__MODULE__{} = query) do
+  @spec secrets([struct], t, %{Ecto.UUID.t() => String.t()}) :: [struct]
+  def secrets(secrets, %__MODULE__{} = query, identities \\ %{}) do
     secrets
-    |> Enum.filter(&secret_matches?(&1, query))
+    |> Enum.filter(&secret_matches?(&1, query, identities))
     |> order(query.sort)
   end
 
-  defp secret_matches?(secret, query) do
-    found?(query.q, [secret.name | Enum.map(secret.values, & &1.value_id)]) and
+  defp secret_matches?(secret, query, identities) do
+    found?(query.q, [secret.name | Enum.map(secret.values, &value_text(&1, identities))]) and
       case query.values do
         nil -> true
         :one -> length(secret.values) == 1
@@ -139,6 +143,8 @@ defmodule ApiaryWeb.SecretLive.Query do
         :own -> Map.get(targets, String.downcase(variable.name), []) != []
       end
   end
+
+  defp value_text(value, identities), do: Map.get(identities, value.id) || value.value_id
 
   defp found?("", _texts), do: true
 
