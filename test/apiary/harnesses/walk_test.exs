@@ -2582,7 +2582,7 @@ defmodule Apiary.Harnesses.WalkTest do
       assert credential_collection(run, work_item).id == b.id
     end
 
-    test "the walk and the work entry pass over a collection whose adapter has no call address",
+    test "the walk and the work entry take an older collection whose adapter has no call address, and the walk reads no file from it",
          ctx do
       setting(ctx.scope, @setting)
 
@@ -2593,22 +2593,23 @@ defmodule Apiary.Harnesses.WalkTest do
       {connection, _nonce} = connection_fixture(ctx.scope, silent, :listed)
       older = DateTime.add(DateTime.utc_now(:second), -3600, :second)
 
-      Repo.insert!(%Collection{
-        public_id: Apiary.PublicId.generate(Collection.prefix()),
-        organisation_id: ctx.scope.organisation.id,
-        adapter_id: silent.id,
-        connection_id: connection.id,
-        workspace_id: ctx.scope.workspace.id,
-        external_ref: "R_silent",
-        url: "https://code.example.com/acme/app-silent",
-        title: "acme/app-silent",
-        target_collection_external_ref: "R_silent",
-        target_system: "code.example.com",
-        target_path: "acme/app",
-        last_listed_at: older,
-        inserted_at: DateTime.add(DateTime.utc_now(), -3600, :second),
-        updated_at: DateTime.add(DateTime.utc_now(), -3600, :second)
-      })
+      silent_collection =
+        Repo.insert!(%Collection{
+          public_id: Apiary.PublicId.generate(Collection.prefix()),
+          organisation_id: ctx.scope.organisation.id,
+          adapter_id: silent.id,
+          connection_id: connection.id,
+          workspace_id: ctx.scope.workspace.id,
+          external_ref: "R_silent",
+          url: "https://code.example.com/acme/app-silent",
+          title: "acme/app-silent",
+          target_collection_external_ref: "R_silent",
+          target_system: "code.example.com",
+          target_path: "acme/app",
+          last_listed_at: older,
+          inserted_at: DateTime.add(DateTime.utc_now(), -3600, :second),
+          updated_at: DateTime.add(DateTime.utc_now(), -3600, :second)
+        })
 
       run = queued(ctx)
 
@@ -2622,9 +2623,13 @@ defmodule Apiary.Harnesses.WalkTest do
 
       assert :ok = job(run)
 
-      assert Repo.get_by!(RunHarness, dispatch_run_id: run.id).target_version == "c-R_app"
-      app = Repo.get_by!(Collection, external_ref: "R_app", workspace_id: ctx.scope.workspace.id)
-      assert credential_collection(run, work_item).id == app.id
+      # The walk read no file of the target: a file is read through its adapter's call
+      # address.
+      assert %RunHarness{state: :resolved, origin: :setting, target_version: nil} =
+               Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+
+      refute Enum.any?(reads(calls()), &match?({"R_app", _path, _at}, &1))
+      assert credential_collection(run, work_item).id == silent_collection.id
     end
 
     test "a base no grant covers, at a full commit id, resolves with its pin and no link",

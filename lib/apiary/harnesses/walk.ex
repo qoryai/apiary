@@ -524,9 +524,9 @@ defmodule Apiary.Harnesses.Walk do
 
   # The collection of `workspace` that the run's work entry takes for `target`
   # (`Apiary.Runs.RunCredentials.target_collection/4`), with the work item's ticket's
-  # collection first, and its adapter; nil for none, for one that ended or whose
-  # connection is not connected, and for a target without an address, which has no file
-  # to read.
+  # collection first, and its adapter; nil for none, for one that ended, whose
+  # connection is not connected or whose adapter has no `call_url`, from which no file
+  # can be read, and for a target without an address, which has no file to read.
   defp collection(_input, %{system: nil, path: nil}), do: nil
 
   defp collection(%{workspace: %Workspace{} = workspace} = input, target) do
@@ -538,7 +538,9 @@ defmodule Apiary.Harnesses.Walk do
            work_item,
            target
          ) do
-      {%Collection{ended_at: nil} = collection, %Connection{state: :connected}, adapter} ->
+      {%Collection{ended_at: nil} = collection, %Connection{state: :connected},
+       %Node{call_url: url} = adapter}
+      when is_binary(url) ->
         {collection, adapter}
 
       _none ->
