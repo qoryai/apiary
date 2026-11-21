@@ -287,9 +287,10 @@ defmodule Apiary.Runs.RunCredentials do
   @doc false
   # run_access/1 is the access level of the run of the queue `dispatch_run`: its harness
   # walk's, `:read` for a prebuild and for a run with no walk. With the workflow model, the
-  # lower of the walk's and the stage entry's (`Apiary.Stages.run_access/2`). The claim
-  # computes it once, for the run's documents and its work entry
-  # (`Apiary.Dispatches.Handover`).
+  # lower of the walk's and the stage entry's, and for a run of a stage that shares one
+  # run, the highest of its entries', no higher than the walk's
+  # (`Apiary.Stages.run_access/2`). The claim computes it once, for the run's documents
+  # and its work entry (`Apiary.Dispatches.Handover`).
   @spec run_access(DispatchRun.t()) :: :read | :write_no_push | :write
   def run_access(%DispatchRun{step: @prebuild}), do: :read
 

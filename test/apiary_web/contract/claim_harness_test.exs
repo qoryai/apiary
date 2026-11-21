@@ -574,11 +574,11 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
         %{"shared_run" => true}
       )
 
-      # An update from the harness sets implement-changes to read after the save.
+      # An update from the harness sets implement-changes to write-no-push after the save.
       :ok =
         Apiary.Processes.record_declared(ctx.scope.workspace, %{
           "plan-the-build" => :write,
-          "implement-changes" => :read
+          "implement-changes" => :write_no_push
         })
 
       work_item = walked!(ctx, :write)
@@ -604,10 +604,64 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
                )
 
       assert text ==
-               "The run stopped: it did not start, because the workflows of Build would run with different access: implement-changes runs with read access, because its harness sets read."
+               "The run stopped: it did not start, because the workflows of Build would run with different access: implement-changes runs with write-no-push access, because its harness sets write-no-push."
 
       assert fix ==
                "Move implement-changes to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access, then run the round again."
+    end
+
+    test "with shared_run ends before it starts where the harness sets write-no-push beside a read entry",
+         ctx do
+      build!(
+        ctx,
+        [
+          %{"workflow" => "plan-the-build", "access" => "read"},
+          %{"workflow" => "implement-changes"}
+        ],
+        %{"shared_run" => true}
+      )
+
+      :ok =
+        Apiary.Processes.record_declared(ctx.scope.workspace, %{
+          "plan-the-build" => :write,
+          "implement-changes" => :write_no_push
+        })
+
+      work_item = walked!(ctx, :write)
+      :ok = Apiary.DispatchedRunsFixtures.walks_resolved!()
+      claim = signed(ctx, "/v1/pools/claim", %{"version" => 1, "wait_seconds" => 0})
+      assert claim.status == 204
+
+      assert %Apiary.Dispatches.DispatchRun{state: :ended, end_cause: :shared_access_differs} =
+               Repo.get_by!(Apiary.Dispatches.DispatchRun, work_item_id: work_item.id)
+    end
+
+    test "with shared_run starts a loop that writes in implement-changes and reads in review-changes, at write",
+         ctx do
+      build!(
+        ctx,
+        [
+          %{"workflow" => "plan-the-build"},
+          %{
+            "loop" => %{
+              "rounds" => 3,
+              "body" => [
+                %{"workflow" => "implement-changes"},
+                %{"workflow" => "review-changes", "access" => "read"}
+              ]
+            }
+          }
+        ],
+        %{"shared_run" => true}
+      )
+
+      work_item = walked!(ctx, :write)
+      documents = documents(claim(ctx))
+
+      assert %{"access" => "write", "shared_run" => true} = documents
+
+      assert {%{session_settings: %{"1.1" => %{"workflow" => "review-changes"}}}, _} =
+               claimed(work_item)
     end
 
     test "of Explore, whose entry is a loop, has no full_suite with write access", ctx do

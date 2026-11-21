@@ -260,16 +260,20 @@ defmodule Apiary.Runs.RunCredentialsTest do
       assert [%RunCredential{name: "work-1", access: :read}] = entries()
     end
 
-    # A version of the workspace's process, with `sequence` in its one stage.
-    defp process!(ctx, sequence) do
-      stage = %{
-        "id" => "st_r79kph11eg",
-        "name" => "Build",
-        "inputs" => [],
-        "sequence" => sequence,
-        "outputs" => [],
-        "gate" => %{"kind" => "person", "approvers" => "members"}
-      }
+    # A version of the workspace's process, with `sequence` and `extra` in its one stage.
+    defp process!(ctx, sequence, extra \\ %{}) do
+      stage =
+        Map.merge(
+          %{
+            "id" => "st_r79kph11eg",
+            "name" => "Build",
+            "inputs" => [],
+            "sequence" => sequence,
+            "outputs" => [],
+            "gate" => %{"kind" => "person", "approvers" => "members"}
+          },
+          extra
+        )
 
       document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => [stage]}
       {:ok, version} = Apiary.Processes.save(ctx.scope, ctx.scope.workspace, document)
@@ -366,6 +370,75 @@ defmodule Apiary.Runs.RunCredentialsTest do
       {_work_item, queued} = queued!(ctx)
 
       assert claimed_levels(ctx, queued, :read) == {:read, :read}
+    end
+
+    # The Build stage as one run: `first`, then a loop of implement-changes, which writes,
+    # and review-changes, which reads.
+    defp shared_build!(ctx, first) do
+      process!(
+        ctx,
+        first ++
+          [
+            %{
+              "loop" => %{
+                "rounds" => 3,
+                "body" => [
+                  %{"workflow" => "implement-changes"},
+                  %{"workflow" => "review-changes", "access" => "read"}
+                ]
+              }
+            }
+          ],
+        %{"shared_run" => true}
+      )
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run of a shared stage with a read entry beside a write entry writes, in its documents and its token",
+         ctx do
+      shared_build!(ctx, [])
+      {_work_item, queued} = queued!(ctx)
+      assert queued.workflow == "implement-changes"
+
+      assert claimed_levels(ctx, queued) == {:write, :write}
+      assert %{"access" => "write", "shared_run" => true} = sent_documents(queued)
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run of a shared stage that starts on a read entry writes for the later write entry",
+         ctx do
+      shared_build!(ctx, [%{"workflow" => "plan-the-build", "access" => "read"}])
+      {_work_item, queued} = queued!(ctx)
+      assert queued.workflow == "plan-the-build"
+
+      assert claimed_levels(ctx, queued) == {:write, :write}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run of a shared stage never writes above the level its walk resolved", ctx do
+      shared_build!(ctx, [%{"workflow" => "plan-the-build", "access" => "read"}])
+      {_work_item, queued} = queued!(ctx)
+
+      # The walk of plan-the-build resolved write-no-push: implement-changes does not push.
+      assert claimed_levels(ctx, queued, :write_no_push) == {:write_no_push, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run of a shared stage reads where the stacks record read for its write workflow",
+         ctx do
+      shared_build!(ctx, [%{"workflow" => "plan-the-build", "access" => "read"}])
+
+      {:ok, stack} =
+        Apiary.Stacks.put_stack(
+          ctx.scope,
+          {:workspace, ctx.scope.workspace, "implement-changes"},
+          "extends: {git: https://code.example.com/team/stacks, ref: main, path: core}\n"
+        )
+
+      set!(Apiary.Stacks.Stack, stack.id, access: :read)
+      {_work_item, queued} = queued!(ctx)
+
+      assert claimed_levels(ctx, queued) == {:read, :read}
     end
 
     @tag needs: [:factory, :workflow_model]

@@ -154,7 +154,8 @@ defmodule Apiary.Runs.Cancel do
   `access` of the documents the claim sent the run (`runs.run_documents`); else, for a run
   with neither,
   the level of its harness walk (`Apiary.Harnesses.RunHarness`) lowered by its stage
-  entry (`Apiary.Stages.run_access/2`), as the claim computes it.
+  entry, or for a run of a stage that shares one run the highest of its entries' levels
+  (`Apiary.Stages.run_access/2`), as the claim computes it.
   """
   @spec write_run?(Apiary.Organisations.Workspace.t(), Run.t()) :: boolean
   def write_run?(%{domain: "software"}, %Run{id: run_id, dispatch_run_id: id})

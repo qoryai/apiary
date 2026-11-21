@@ -7327,8 +7327,9 @@ defmodule ApiaryWeb.WorkItemComponents do
           gettext("The run ended after session %{number}.", number: session),
           unstarted_words(cause)}
 
-  # A run whose stage's workflows would run with different access, as the harness sets
-  # `workflow` a lower level than `other`, the level the other workflows run with.
+  # A run whose stage's workflows would run with access levels that one run cannot have,
+  # as the harness sets `workflow` a lower level than `other`, the level another workflow
+  # runs with.
   defp no_result_words(
          %{end_cause: :shared_access_differs, shared_access: {:access, workflow, _level, other}},
          _earlier
@@ -7403,7 +7404,8 @@ defmodule ApiaryWeb.WorkItemComponents do
        ),
        do: session_key_words(detail)
 
-  # A run whose stage's entries set different access, with no harness level between them.
+  # A run whose stage's entries set access levels that one run cannot have, with no
+  # harness level between them.
   defp no_result_words(%{end_cause: :shared_access_differs, shared_access: :access}, _earlier),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),

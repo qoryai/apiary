@@ -99,11 +99,13 @@ defmodule Apiary.Processes do
 
   A stage takes `shared_run: true` (default false, `shared_run?/1`): its workflow entries,
   those in a loop's body included, run as sessions of one run, on one machine. Every
-  entry of such a stage runs with the same access level and on the same machine type (the
-  entry's `machine`, else the document's, else `default`), so a save fails when two
-  entries of the stage differ in one of them (`:shared_run_differs`). An entry's level is
-  the lower of its `access` and the level its workflow declares in the workspace's
-  harness (`shared_access/2`).
+  entry of such a stage runs on the same machine type (the entry's `machine`, else the
+  document's, else `default`), and its entries have one access level, or `read` entries
+  beside `write` entries, so a save fails when two entries differ in machine type or the
+  access levels mix in any other way (`:shared_run_differs`). An entry's level is the
+  lower of its `access` and the level its workflow declares in the workspace's harness
+  (`shared_access/2`). The run's credential is at the highest level of its entries
+  (`shared_level/2`).
 
   The run of such a stage takes keys of at most 6 model providers, one provider per
   session, and starts on the provider of its first workflow's model choice. Given the
@@ -176,11 +178,12 @@ defmodule Apiary.Processes do
   for a track id in a gate's `tracks` that the document's `tracks` do not declare;
   `:gate_none_tracks` for tracks on a gate of kind `none`;
   `:shared_run_differs` for the first workflow entry of a stage with `shared_run: true`
-  that differs from the stage's first entry in its access level or its machine type, with
-  `:access` or `:machine` as `detail`, one error for each of the two, and
+  whose access level makes a mix that one run cannot have with the entries before it, or
+  that differs from the stage's first entry in its machine type, with `:access` or
+  `:machine` as `detail`, one error for each of the two, and
   `{:access, workflow, level, other}` in place of `:access` where the harness's level for
-  `workflow` lowers its entry's, `other` the level the other entry runs with
-  (`shared_access/2`);
+  `workflow` lowers its entry's, `other` the level the other of it and the first entry
+  runs with (`shared_access/2`);
   `:too_many_providers`, `:model_choice_missing` and `:session_key_missing` for a stage
   with `shared_run: true` whose model choices do not fit one run, with the detail of
   `shared_models/3`;
@@ -371,7 +374,8 @@ defmodule Apiary.Processes do
   and the rules it cannot say: every stage id and every stage name once, the stage of each
   workflow entry's `return` before the entry's stage, every track id once, each track a gate
   offers declared, the input of each condition an output of an earlier stage, the track of each
-  condition one that an earlier gate offers, one condition on an item, `when` or `unless`, and one access level and machine type in a stage with
+  condition one that an earlier gate offers, one condition on an item, `when` or `unless`, and one machine type and access levels that
+  one run can have (`shared_access/2`) in a stage with
   `shared_run: true`, with the access levels the workflows declare in the harness,
   `levels` (`declared_access/1`), none by default; and, with `models`, the model choices
   of the workspace (`workspace_models/2`, Apiary.ModelChoices.shared_models/3), the
@@ -482,20 +486,31 @@ defmodule Apiary.Processes do
     duplicates ++ offered ++ none
   end
 
-  # The entries of a stage with `shared_run: true` that differ from its first entry, those
-  # in a loop's body included: for each of the access level and the machine type, the
-  # first entry that differs, at its place. An entry's access level is the lower of its
-  # `access` and its workflow's level in `levels` (`shared_access/2`); its machine type
-  # is its `machine`, else the document's, else `default`, as the stage runner reads it.
+  # The entries of a stage with `shared_run: true` that one run cannot take, those in a
+  # loop's body included, each at its place: the first entry whose access level, with the
+  # levels of the entries before it, is a mix that one run cannot have (`access_differs/2`),
+  # and the first entry whose machine type differs from the first entry's. An entry's
+  # access level is the lower of its `access` and its workflow's level in `levels`
+  # (`shared_access/2`); its machine type is its `machine`, else the document's, else
+  # `default`, as the stage runner reads it.
   defp shared_run_errors(document, levels) do
     for {stage, index} <- Enum.with_index(document["stages"]),
         shared_run?(stage),
-        [{first, _path} | rest] <- [shared_entries(stage, "#/stages/#{index}")],
+        [_first | _rest] = entries <- [shared_entries(stage, "#/stages/#{index}")],
         kind <- [:access, :machine],
-        value <- [shared_value(first, kind, document, levels)],
-        {entry, path} <-
-          [Enum.find(rest, &(shared_value(elem(&1, 0), kind, document, levels) != value))],
-        do: %{path: path, error: :shared_run_differs, detail: detail(kind, first, entry, levels)}
+        {path, detail} <- [shared_differs(kind, entries, document, levels)],
+        do: %{path: path, error: :shared_run_differs, detail: detail}
+  end
+
+  defp shared_differs(:access, entries, _document, levels), do: access_differs(entries, levels)
+
+  defp shared_differs(:machine, [{first, _path} | rest], document, _levels) do
+    value = machine(first, document)
+
+    case Enum.find(rest, &(machine(elem(&1, 0), document) != value)) do
+      nil -> nil
+      {_entry, path} -> {path, :machine}
+    end
   end
 
   # The stages with `shared_run: true` whose model choices in `models` do not fit one run
@@ -775,40 +790,78 @@ defmodule Apiary.Processes do
   defp entries_of(_entry), do: []
 
   @doc """
-  shared_access/2 checks that every workflow entry of `stage`, a stage with
-  `shared_run: true`, those in a loop's body included, runs with one access level: the
-  lower of the entry's `access` and the level its workflow declares in `levels`
+  shared_access/2 checks that the workflow entries of `stage`, a stage with
+  `shared_run: true`, those in a loop's body included, have access levels that one run
+  can have: one level, or `read` entries beside `write` entries. An entry's level is the
+  lower of its `access` and the level its workflow declares in `levels`
   (`declared_access/1`), from lowest to highest `read`, `write-no-push` and `write`. An
   entry with no `access` takes the workflow's level, and a workflow with no level in
-  `levels` is lowered by its entry's `access` alone. `:ok`, or `{:error, detail}` for the
-  first entry that differs from the first, with the detail of `:shared_run_differs`
-  (`validate/2`). The save checks it, and the claim checks it again, as an update from
-  the harness can change a level after the save.
+  `levels` is lowered by its entry's `access` alone. Every other mix is refused: `read`
+  beside `write-no-push`, `write-no-push` beside `write`, and all three. `:ok`, or
+  `{:error, detail}` for the first entry that makes such a mix with the entries before
+  it, with the detail of `:shared_run_differs` (`validate/2`), its difference from the
+  first entry. The save checks it, and the claim checks it again, as an update from the
+  harness can change a level after the save.
   """
   @spec shared_access(map, %{String.t() => :read | :write_no_push | :write}) ::
           :ok | {:error, :access | {:access, String.t(), String.t(), String.t()}}
   def shared_access(stage, levels) when is_map(stage) and is_map(levels) do
-    case shared_entries(stage, "#") do
-      [{first, _path} | rest] ->
-        value = effective_access(first, levels)
-
-        case Enum.find(rest, &(effective_access(elem(&1, 0), levels) != value)) do
-          nil -> :ok
-          {entry, _path} -> {:error, detail(:access, first, entry, levels)}
-        end
-
-      [] ->
-        :ok
+    case access_differs(shared_entries(stage, "#"), levels) do
+      nil -> :ok
+      {_path, detail} -> {:error, detail}
     end
   end
 
-  # The detail of a difference between `first` and `entry`: `:machine`; for the access,
+  @doc """
+  shared_level/2 is the highest access level of the workflow entries of `stage`, a stage
+  with `shared_run: true`, those in a loop's body included, each the lower of its
+  `access` and its workflow's level in `levels`, as `shared_access/2` compares them. The
+  credential of the stage's run is at this level, so that a `write` entry beside `read`
+  entries can push. Nil for a stage with no entry.
+  """
+  @spec shared_level(map, %{String.t() => :read | :write_no_push | :write}) ::
+          :read | :write_no_push | :write | nil
+  def shared_level(stage, levels) when is_map(stage) and is_map(levels) do
+    case shared_entries(stage, "#") do
+      [] ->
+        nil
+
+      entries ->
+        entries |> Enum.map(&effective_access(elem(&1, 0), levels)) |> Enum.max_by(&level_rank/1)
+    end
+  end
+
+  # The first of `entries` (`{entry, path}`, in their order) whose access level, with the
+  # levels of the entries before it, is a mix that one run cannot have
+  # (`shared_levels?/1`): `{path, detail}`, with the detail of its difference from the
+  # first entry. Nil where every entry fits.
+  defp access_differs([{first, _path} | _rest] = entries, levels) do
+    entries
+    |> Enum.reduce_while(MapSet.new(), fn {entry, path}, seen ->
+      seen = MapSet.put(seen, effective_access(entry, levels))
+
+      if shared_levels?(seen),
+        do: {:cont, seen},
+        else: {:halt, {path, detail(first, entry, levels)}}
+    end)
+    |> case do
+      {_path, _detail} = differs -> differs
+      _fits -> nil
+    end
+  end
+
+  defp access_differs([], _levels), do: nil
+
+  # Whether one run can have the access levels in `levels`, a set: one level, or `read`
+  # beside `write`.
+  defp shared_levels?(levels),
+    do: MapSet.size(levels) == 1 or MapSet.equal?(levels, MapSet.new([:read, :write]))
+
+  # The detail of the difference in access level between `first` and `entry`:
   # `{:access, workflow, level, other}` for the first of `entry` and `first` whose
   # workflow's level in the harness lowers its entry's, with the level the other of the
   # two runs with, else `:access`.
-  defp detail(:machine, _first, _entry, _levels), do: :machine
-
-  defp detail(:access, first, entry, levels) do
+  defp detail(first, entry, levels) do
     cond do
       harness_lowered?(entry, levels) -> access_detail(entry, first, levels)
       harness_lowered?(first, levels) -> access_detail(first, entry, levels)
@@ -853,10 +906,7 @@ defmodule Apiary.Processes do
     end)
   end
 
-  defp shared_value(entry, :access, _document, levels), do: effective_access(entry, levels)
-
-  defp shared_value(entry, :machine, document, _levels),
-    do: entry["machine"] || document["machine"] || "default"
+  defp machine(entry, document), do: entry["machine"] || document["machine"] || "default"
 
   # The conditions that no earlier stage can meet, in the document's order: an `input` type
   # that is no output of an earlier stage (`:condition_input`), and a `track` that no earlier

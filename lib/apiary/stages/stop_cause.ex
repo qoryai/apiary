@@ -784,9 +784,9 @@ defmodule Apiary.Stages.StopCause do
 
   ## Names
 
-  # The name of the stage of `run`, a run whose stage's workflows would run with different
-  # access levels, and the difference as the harness declares the levels now
-  # (`Apiary.Stages.shared_access/1`); nil where the levels no longer differ.
+  # The name of the stage of `run`, a run whose stage's workflows would run with access
+  # levels that one run cannot have, and the difference as the harness declares the levels
+  # now (`Apiary.Stages.shared_access/1`); nil where the levels now fit one run.
   defp shared_access(%DispatchRun{} = run) do
     case Apiary.Stages.shared_access(run) do
       {:error, %{stage: stage, detail: detail}} ->
@@ -854,9 +854,9 @@ defmodule Apiary.Stages.StopCause do
 
   defp shared_models_fix(_cause, _fixed_or_other), do: "Run the round again."
 
-  # The fix for a run whose stage's workflows would run with different access, because
-  # the harness sets `workflow` a lower level than `other`, the level the other workflows
-  # of the stage run with.
+  # The fix for a run whose stage's workflows would run with access levels that one run
+  # cannot have, because the harness sets `workflow` a lower level than `other`, the level
+  # another workflow of the stage runs with.
   defp shared_access_fix(workflow, other),
     do:
       "Move #{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it #{other} access, then run the round again."
