@@ -664,8 +664,8 @@ defmodule Apiary.Stages.StopCause do
   end
 
   # `fun` in English, in the words of the domain of the run's workspace: the text is
-  # written once, and a software workspace says repository for target
-  # (`priv/gettext/en@software`).
+  # written once. The software catalogue (`priv/gettext/en@software`) has "repository"
+  # where a source string has "target".
   defp in_domain_words(n, fun),
     do: Gettext.with_locale(ApiaryWeb.Gettext, "en@" <> Domain.name(n.workspace_struct), fun)
 
