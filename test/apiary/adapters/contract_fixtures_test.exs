@@ -11,10 +11,11 @@ defmodule Apiary.Adapters.ContractFixturesTest do
   # byte, and the adapter's answer to it verifies under the access key, bound to that
   # call alone.
   #
-  # shortcut: `schema/connect-return.schema.json`, `adapter/refusal/connection-held.json`
-  # and `adapter/connect-return/refused-connection-held.json` follow integrations T-30
-  # 459f2fb6 for `connection_held` only, on top of `.integration-contract-ref`; integrations
-  # #66 (cf5bf94) is not taken. Copy the three files again from T-30's squash commit.
+  # shortcut: `schema/connect-return.schema.json`, `adapter/refusal/connection-held.json`,
+  # `adapter/connect-return/refused-connection-held.json`, `adapter/grants/two-grants.json`
+  # and `adapter/changes/grants.json` follow integrations effc22aa (T-30) for
+  # `connection_held` only, on top of `.integration-contract-ref`. The full pin moves in its
+  # own card, which brings integrations #66 to #77.
   use ExUnit.Case, async: true
 
   alias Apiary.Adapters.{Calls, ConnectPass, ReturnToken, SetupPass}

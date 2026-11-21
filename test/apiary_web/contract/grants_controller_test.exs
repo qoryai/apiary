@@ -294,31 +294,22 @@ defmodule ApiaryWeb.Contract.GrantsControllerTest do
       assert signed_answer?(conn)
       assert conn.resp_body == compact("grants/empty.json")
 
-      assert report(ctx, body(connection, %{"grant_ref" => "G_2"})).status == 204
+      assert report(ctx, body(connection)).status == 204
       key_scope = Apiary.SourcesFixtures.key_scope(ctx.key)
 
       # A connection has one grant, so the second grant is under another connection.
       %{scope: other} = sign_up_fixture()
+      PublicIdSource.force(["f1xt0re000000001"])
       {second, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      assert second.public_id == "ac_f1xt0re000000001"
 
-      assert report(ctx, body(second, %{"grant_ref" => "G_1", "time" => now_time(1)})).status ==
+      assert report(ctx, body(second, %{"grant_ref" => "G_2", "time" => now_time(1)})).status ==
                204
 
       conn = read(ctx, 1)
       assert conn.status == 200
       assert signed_answer?(conn)
-
-      grants =
-        for {connection_id, grant_ref} <-
-              Enum.sort([{connection.public_id, "G_2"}, {second.public_id, "G_1"}]) do
-          %{"connection_id" => connection_id, "grant_ref" => grant_ref}
-        end
-
-      # The fixture two-grants.json shows two grants of one connection, which the server
-      # cannot make now; it changes on integrations T-30. The test takes its version and
-      # revision, and checks the grants against two connections.
-      assert Jason.decode!(conn.resp_body) ==
-               Map.put(Jason.decode!(compact("grants/two-grants.json")), "grants", grants)
+      assert conn.resp_body == compact("grants/two-grants.json")
 
       # The answer always names its revision, which the refused fixture leaves out.
       refute Map.has_key?(fixture("invalid/grants-without-revision.json"), "revision")
