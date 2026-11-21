@@ -50,7 +50,7 @@ defmodule Apiary.Harnesses.WalkTest do
   setup do
     scope = scope_fixture()
     run = adapter()
-    # The target's adapter brings in targets, as a code host's description says.
+    # The target's adapter brings in targets, as a code host's description sets it.
     {1, _} =
       Repo.update_all(from(n in Node, where: n.id == ^run.adapter.id), set: [targets: true])
 
