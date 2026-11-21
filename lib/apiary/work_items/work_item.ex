@@ -13,11 +13,7 @@ defmodule Apiary.WorkItems.WorkItem do
   # of one of its adapter's collections, `target_collection_external_ref`, 1 to 200
   # characters, and, when the place has one, its address, both or neither:
   # `target_system`, a host name to the contract's pattern, and `target_path`, 1 to 200
-  # characters. A work item without a ref has no target, and no address either. These
-  # fields are the ticket's pair as taken in. `target_id` is the workspace's target row
-  # of that pair (`Apiary.Runs.Target.id_of/3`), and every read of the work item's target
-  # goes through it (`target/1`). Deleting the row clears it, and the work item then has
-  # no target. Whether
+  # characters. A work item without a ref has no target, and no address either. Whether
   # it needs a target is its workspace's domain's rule
   # (`Apiary.Lingo.Domain.target_required?/1`). A later change at the source does not change it until a take in again,
   # which takes the ticket's current record, its connection, its title, its address and
@@ -51,7 +47,6 @@ defmodule Apiary.WorkItems.WorkItem do
   use Ecto.Schema
   use Gettext, backend: ApiaryWeb.Gettext
   import Ecto.Changeset
-  import Ecto.Query, only: [from: 2]
 
   alias Apiary.Sources.Item
   alias Apiary.WorkItems.State
@@ -109,7 +104,6 @@ defmodule Apiary.WorkItems.WorkItem do
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
-    belongs_to :target, Apiary.Runs.Target
     belongs_to :connection, Apiary.Adapters.Connection
     belongs_to :adapter, Apiary.Nodes.Node
     belongs_to :item, Item
@@ -126,28 +120,20 @@ defmodule Apiary.WorkItems.WorkItem do
   def prefix, do: @prefix
 
   # target/1 is the target (`Apiary.Lingo.Domain.target/0`) of a work item, or of a map
-  # with its `target_id`, read from that target row: its adapter, its collection ref and
-  # its address, both nil for a place with none. Nil for a work item with no target row.
-  # The read is kept out of the query log (`log: false`), since the address may be event
-  # data.
+  # of its fields `adapter_id`, `target_collection_external_ref`, `target_system` and
+  # `target_path`: its adapter, its collection ref and its address, both nil for a place
+  # with none; nil for a work item with no collection ref, which has no target.
   @doc false
   @spec target(t | map) :: Apiary.Lingo.Domain.target() | nil
-  def target(%{target_id: nil}), do: nil
+  def target(%{target_collection_external_ref: nil}), do: nil
 
-  def target(%{target_id: id}) when is_binary(id) do
-    Apiary.Repo.one(
-      from(t in Apiary.Runs.Target,
-        where: t.id == ^id,
-        select: %{
-          adapter_id: t.adapter_id,
-          collection_external_ref: t.collection_external_ref,
-          system: t.system,
-          path: t.path
-        }
-      ),
-      log: false
-    )
-  end
+  def target(%{target_collection_external_ref: ref} = work_item),
+    do: %{
+      adapter_id: work_item.adapter_id,
+      collection_external_ref: ref,
+      system: work_item.target_system,
+      path: work_item.target_path
+    }
 
   # max_instruction/0 is the most characters, code points, a first instruction has.
   @doc false
@@ -181,7 +167,6 @@ defmodule Apiary.WorkItems.WorkItem do
         :target_collection_external_ref,
         :target_system,
         :target_path,
-        :target_id,
         :owner_id,
         :first_instruction
       ],
@@ -227,7 +212,6 @@ defmodule Apiary.WorkItems.WorkItem do
     |> foreign_key_constraint(:owner_id, name: :work_items_owner_id_fkey)
     |> foreign_key_constraint(:connection_id, name: :work_items_connection_id_fkey)
     |> foreign_key_constraint(:item_id, name: :work_items_item_id_fkey)
-    |> foreign_key_constraint(:target_id, name: :work_items_target_id_fkey)
   end
 
   # take_in_again_changeset/2 is the changeset of a take in again of an ended work item:
@@ -253,7 +237,6 @@ defmodule Apiary.WorkItems.WorkItem do
         :target_collection_external_ref,
         :target_system,
         :target_path,
-        :target_id,
         :owner_id,
         :first_instruction
       ],
@@ -291,7 +274,6 @@ defmodule Apiary.WorkItems.WorkItem do
     |> foreign_key_constraint(:owner_id, name: :work_items_owner_id_fkey)
     |> foreign_key_constraint(:connection_id, name: :work_items_connection_id_fkey)
     |> foreign_key_constraint(:item_id, name: :work_items_item_id_fkey)
-    |> foreign_key_constraint(:target_id, name: :work_items_target_id_fkey)
   end
 
   # test_collection_title/0 is the `collection_title` of every test work item.

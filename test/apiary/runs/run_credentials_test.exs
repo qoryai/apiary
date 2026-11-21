@@ -19,7 +19,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
   alias Apiary.Harnesses.RunHarness
   alias Apiary.Nodes.Node
-  alias Apiary.Runs.{Run, RunCredential, RunCredentials, Target}
+  alias Apiary.Runs.{Run, RunCredential, RunCredentials}
   alias Apiary.Sources.Item
   alias Apiary.WorkItems.WorkItem
 
@@ -98,11 +98,9 @@ defmodule Apiary.Runs.RunCredentialsTest do
   end
 
   # The work item's target path set to `path`, and its ticket's collection's to match.
-  # The work item's target moves to `path`, with its collection, as a listing moves it.
   defp retarget!(work_item, path) do
     set!(WorkItem, work_item.id, target_path: path)
     set!(Collection, collection_of(work_item).id, target_path: path)
-    set!(Target, work_item.target_id, path: path)
   end
 
   defp set!(schema, id, fields),

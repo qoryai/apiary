@@ -995,7 +995,7 @@ defmodule Apiary.Dispatches.SchemaTest do
              update!(
                "work_items",
                id,
-               "state = 'closed', closed_at = now(), number = 1000, workspace_id = $2, target_id = NULL",
+               "state = 'closed', closed_at = now(), number = 1000, workspace_id = $2",
                [Ecto.UUID.dump!(workspace_id)]
              )
   end

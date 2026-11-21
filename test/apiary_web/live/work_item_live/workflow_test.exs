@@ -456,7 +456,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     there = workspace_fixture(scope.organisation, "There")
 
     Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
-      set: [workspace_id: there.id, target_id: nil]
+      set: [workspace_id: there.id]
     )
 
     %{user: member} = member_fixture(scope, :member)
@@ -6272,7 +6272,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       other = workspace_fixture(scope.organisation, "Platform")
 
       Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
-        set: [workspace_id: other.id, target_id: nil]
+        set: [workspace_id: other.id]
       )
 
       hook(view, work_item, "stage_approve", %{"seen" => @shape, "note" => ""})
@@ -7339,7 +7339,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       there = workspace_fixture(scope.organisation, "There")
 
       Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
-        set: [workspace_id: there.id, target_id: nil]
+        set: [workspace_id: there.id]
       )
 
       %{user: member} = member_fixture(scope, :member)

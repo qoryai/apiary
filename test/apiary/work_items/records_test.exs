@@ -183,9 +183,7 @@ defmodule Apiary.WorkItems.RecordsTest do
       elsewhere = workspace_fixture(scope.organisation)
 
       assert %{num_rows: 1} =
-               update!("work_items", item.id, "workspace_id = $2, target_id = NULL", [
-                 Ecto.UUID.dump!(elsewhere.id)
-               ])
+               update!("work_items", item.id, "workspace_id = $2", [Ecto.UUID.dump!(elsewhere.id)])
 
       assert Repo.reload!(comment).workspace_id == elsewhere.id
       Repo.delete!(Repo.reload!(item))
@@ -220,9 +218,7 @@ defmodule Apiary.WorkItems.RecordsTest do
       elsewhere = workspace_fixture(scope.organisation)
 
       assert %{num_rows: 1} =
-               update!("work_items", item.id, "workspace_id = $2, target_id = NULL", [
-                 Ecto.UUID.dump!(elsewhere.id)
-               ])
+               update!("work_items", item.id, "workspace_id = $2", [Ecto.UUID.dump!(elsewhere.id)])
 
       assert Repo.reload!(confirmation).workspace_id == elsewhere.id
     end

@@ -326,7 +326,7 @@ defmodule Apiary.Processes.LeftoversTest do
            Dispatches.end_held(
              [work_item.id],
              scope.workspace.id,
-             work_item.target_id,
+             %{system: work_item.target_system, path: work_item.target_path},
              DateTime.utc_now()
            )}
         end)

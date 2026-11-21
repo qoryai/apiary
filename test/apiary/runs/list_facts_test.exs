@@ -375,7 +375,7 @@ defmodule Apiary.Runs.ListFactsTest do
 
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
-          set: [workspace_id: elsewhere.id, target_id: nil]
+          set: [workspace_id: elsewhere.id]
         )
 
       assert facts(scope, run).work_item == %{
@@ -454,7 +454,7 @@ defmodule Apiary.Runs.ListFactsTest do
 
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
-          set: [workspace_id: elsewhere.id, target_id: nil]
+          set: [workspace_id: elsewhere.id]
         )
 
       assert Runs.work_item(scope, moved) == facts(scope, moved).work_item

@@ -79,7 +79,7 @@ defmodule Apiary.DispatchesTest do
 
       # Moved after the caller loaded it: the struct still names the first workspace.
       Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
-        set: [workspace_id: other.id, target_id: nil]
+        set: [workspace_id: other.id]
       )
 
       run = queue!(work_item)
@@ -234,7 +234,7 @@ defmodule Apiary.DispatchesTest do
       other = workspace_fixture(ctx.scope.organisation)
 
       Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
-        set: [workspace_id: other.id, target_id: nil]
+        set: [workspace_id: other.id]
       )
 
       :ok = Dispatches.subscribe(other.id)
@@ -740,7 +740,7 @@ defmodule Apiary.DispatchesTest do
       other = workspace_fixture(ctx.scope.organisation)
 
       Repo.update_all(from(w in WorkItem, where: w.id == ^moved.id),
-        set: [workspace_id: other.id, target_id: nil]
+        set: [workspace_id: other.id]
       )
 
       assert Apiary.DispatchedRunsFixtures.walked_claim(ctx.key, Dispatches.now()) == {:ok, :none}

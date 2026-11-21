@@ -92,43 +92,20 @@ defmodule Apiary.Stages.StopCauseTest do
     assert StopCause.build_run(work_item) == nil
   end
 
-  # `work_item` with a target row at `system` and `path`, of a new adapter, as a take in
-  # stores it: the variables are read from that row.
-  defp at(work_item, scope, system, path) do
-    adapter_id = Apiary.WorkItemsFixtures.ticket_connection_fixture(scope).adapter_id
-
-    target_id =
-      Apiary.Runs.Target.id_of(scope.organisation.id, scope.workspace.id, %{
-        adapter_id: adapter_id,
-        collection_external_ref: "acme/web-shop",
-        system: system,
-        path: path
-      })
-
-    %{
-      work_item
-      | adapter_id: adapter_id,
-        target_id: target_id,
-        target_system: system,
-        target_path: path
-    }
-  end
-
-  test "a run variable names the variable and its rule",
-       %{work_item: work_item, org: org, scope: scope} do
-    work_item = at(work_item, scope, "Not_A_Host", "acme/web-shop")
+  test "a run variable names the variable and its rule", %{work_item: work_item, org: org} do
+    work_item = %{work_item | target_system: "Not_A_Host"}
 
     assert text(:variables_invalid, work_item) ==
              "The run did not start, because its variable QORY_RUN_SYSTEM, the system Not_A_Host of target acme/web-shop, is not a host name: a-z, 0-9, dots and dashes, with no dot at either end and no two dots in a row.\n" <>
                "Owners and admins of #{org} check the integration that brings in target acme/web-shop in Organisation settings › Integrations."
 
-    work_item = at(work_item, scope, "git.example.com", "-acme/web-shop")
+    work_item = %{work_item | target_system: "git.example.com", target_path: "-acme/web-shop"}
 
     assert text(:variables_invalid, work_item) =~
              "its variable QORY_RUN_REPOSITORIES breaks its rule"
 
     # No variable breaks its rule when the text is written: no variable is named.
-    work_item = at(work_item, scope, "git.example.com", "acme/web-shop")
+    work_item = %{work_item | target_path: "acme/web-shop"}
 
     assert text(:variables_invalid, work_item) ==
              "The run did not start, because one of its variables breaks its rule.\n" <>

@@ -14,9 +14,6 @@ defmodule Apiary.Repo.Migrations.KeyATargetOnItsAdapterSCollection do
   # - `source_collections`, `source_items` and `work_items`: `target_collection_external_ref`,
   #   the ref of the target's collection, 1 to 200 characters, of the row's adapter. A row
   #   with a system has a ref: a row without a ref has no target.
-  # - `work_items`: `target_id`, the workspace's target row of the ticket's adapter and
-  #   target collection ref, read or made at take in. Deleting the target row clears it,
-  #   as on runs: a work item without it has no target.
   #
   # The migration moves no data. The new columns of `targets` are NOT NULL with no
   # default, and a row with a target system has a ref: on a database with a target, or a
@@ -61,26 +58,9 @@ defmodule Apiary.Repo.Migrations.KeyATargetOnItsAdapterSCollection do
                check: "char_length(target_collection_external_ref) BETWEEN 1 AND 200"
              )
     end
-
-    alter table(:work_items) do
-      add :target_id,
-          references(:targets,
-            type: :binary_id,
-            with: [workspace_id: :workspace_id],
-            on_delete: {:nilify, [:target_id]}
-          )
-    end
-
-    create index(:work_items, [:workspace_id, :target_id])
   end
 
   def down do
-    drop index(:work_items, [:workspace_id, :target_id])
-
-    alter table(:work_items) do
-      remove :target_id
-    end
-
     for table <- @tables do
       drop constraint(table, :"#{table}_target_collection_external_ref_check")
       drop constraint(table, :"#{table}_target_collection_check")

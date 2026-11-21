@@ -153,7 +153,7 @@ defmodule ApiaryWeb.BacklogLive.FinishedTest do
 
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
-          set: [workspace_id: other.id, target_id: nil]
+          set: [workspace_id: other.id]
         )
 
       assert {:open, view} = shown_in(ctx.conn, ctx.scope, ctx.ticket)
@@ -167,7 +167,7 @@ defmodule ApiaryWeb.BacklogLive.FinishedTest do
 
       {1, _rows} =
         Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
-          set: [workspace_id: other.id, target_id: nil]
+          set: [workspace_id: other.id]
         )
 
       assert {:taken, view} = shown_in(ctx.conn, ctx.scope, ctx.ticket)

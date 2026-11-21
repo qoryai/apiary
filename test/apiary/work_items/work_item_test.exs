@@ -452,9 +452,8 @@ defmodule Apiary.WorkItems.WorkItemTest do
       elsewhere = workspace_fixture(scope.organisation)
       %{scope: other} = sign_up_fixture()
 
-      # Its target row is of the workspace it leaves, which the move clears.
       assert %{num_rows: 1} =
-               update!("work_items", item.id, "workspace_id = $2, target_id = NULL", [
+               update!("work_items", item.id, "workspace_id = $2", [
                  Ecto.UUID.dump!(elsewhere.id)
                ])
 
