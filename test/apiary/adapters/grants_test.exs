@@ -306,11 +306,11 @@ defmodule Apiary.Adapters.GrantsTest do
       {:ok, _} = report(ctx, connection, "G_1", connection.pass_nonce)
       second_nonce = linked_pass(ctx, connection)
 
-      # A spent pass is pass_unknown, though the ref is another one the connection holds.
+      # A spent pass is pass_unknown, though the connection has a live grant of G_1.
       assert report(ctx, connection, "G_2", connection.pass_nonce) == {:error, :pass_unknown}
 
       # A ref live under another organisation's connection is grant_taken, though the
-      # connection holds another ref.
+      # connection has a live grant of another ref.
       assert report(ctx, connection, "G_9", second_nonce) == {:error, :grant_taken}
       assert report(ctx, connection, "G_2", second_nonce) == {:error, :connection_held}
     end

@@ -162,9 +162,9 @@ defmodule Apiary.Adapters.GrantEndTest do
 
     test "an unknown, ended or other connection's grant_ref is refused and stores nothing",
          ctx do
-      g1 = listing_grant(ctx.connection, "G_1")
       ended = listing_grant(ctx.connection, "G_ENDED")
       {:ok, _} = end_grant(ctx, ended)
+      g1 = listing_grant(ctx.connection, "G_1")
       %{scope: other} = sign_up_fixture()
       {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
       their_ref = listing_grant(theirs)

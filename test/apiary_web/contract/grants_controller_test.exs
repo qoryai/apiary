@@ -247,7 +247,7 @@ defmodule ApiaryWeb.Contract.GrantsControllerTest do
         held
       )
 
-      assert live(ctx) |> Enum.sort() == [{connection.id, "G_2"}, {theirs.id, "G_1"}]
+      assert Enum.sort(live(ctx)) == Enum.sort([{connection.id, "G_2"}, {theirs.id, "G_1"}])
 
       # The same ref replaces the grant, under the pass the refusal left unspent.
       assert report(
