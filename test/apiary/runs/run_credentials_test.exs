@@ -441,6 +441,33 @@ defmodule Apiary.Runs.RunCredentialsTest do
     end
 
     @tag needs: [:factory, :workflow_model]
+    test "a run of a shared stage reads with the built-in read-only harness or no walk, and writes on a read walk of the harness",
+         ctx do
+      shared_build!(ctx, [%{"workflow" => "plan-the-build"}])
+      build_declared!(ctx)
+      {_work_item, queued} = queued!(ctx)
+      walk = fn -> Repo.all(from h in RunHarness, where: h.dispatch_run_id == ^queued.id) end
+
+      # The walk of plan-the-build in the workspace's harness resolved read.
+      walk_resolved!(queued,
+        origin: :setting,
+        document: %{"extends" => %{"git" => "https://code.example.com/team/stacks"}},
+        access_level: :read
+      )
+
+      assert RunCredentials.run_access(queued) == :write
+
+      # The built-in harness of a test work item reads for every workflow.
+      assert [%RunHarness{} = row] = walk.()
+      set!(RunHarness, row.id, Apiary.Harnesses.Builtin.walked())
+      assert RunCredentials.run_access(queued) == :read
+
+      # A run with no walk reads.
+      {1, _rows} = Repo.delete_all(from h in RunHarness, where: h.id == ^row.id)
+      assert RunCredentials.run_access(queued) == :read
+    end
+
+    @tag needs: [:factory, :workflow_model]
     test "a run of a shared stage reads where the harness declares no level for its write workflow",
          ctx do
       shared_build!(ctx, [%{"workflow" => "plan-the-build", "access" => "read"}])
