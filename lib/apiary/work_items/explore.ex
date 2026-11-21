@@ -29,7 +29,8 @@ defmodule Apiary.WorkItems.Explore do
   # ## A take in
   #
   # `status/2` is where Explore stands for a live work item, from the runs of its current
-  # take in and whether that take in was confirmed: `:shape` once confirmed; else its
+  # take in and whether that take in has a confirmation that counts (`confirmation/2`; a
+  # move back to Explore's stage or before it withdraws one): `:shape` once confirmed; else its
   # latest run's place, `:proposal` read as `:confirm`; and `:used_up` for a latest run at
   # `:no_result`, `:lost`, `:time_limit` or `:cancelled` whose attempt is its `of`, the run
   # limit, where no run is left. Questions wait for answers at any count of runs, as each
@@ -56,6 +57,7 @@ defmodule Apiary.WorkItems.Explore do
   alias Apiary.Harnesses.{RunHarness, WorkflowGap}
   alias Apiary.Repo
   alias Apiary.Runs.Run
+  alias Apiary.Stages.Withdrawals
   alias Apiary.WorkItems.{Confirmation, WorkItem, WorkItemEvent}
 
   @statuses [
@@ -241,12 +243,53 @@ defmodule Apiary.WorkItems.Explore do
 
   ## The status in SQL
 
+  # The SQL of `with_status/1`: a confirmation counts as `confirmations/0` of
+  # `Apiary.Stages.Withdrawals` reads it.
+  @status_sql """
+    SELECT CASE
+      WHEN EXISTS (
+        SELECT 1 FROM work_item_confirmations AS c
+        WHERE c.work_item_id = ? AND c.take_in = ?
+          AND NOT #{Withdrawals.confirmation_withdrawn_sql()}
+      ) THEN 'shape'
+      WHEN l.place IS NULL THEN 'queued'
+      WHEN l.place = 'proposal' THEN 'confirm'
+      WHEN l.place IN ('no_result', 'lost', 'time_limit', 'cancelled') AND l.attempt >= l.of
+        THEN 'used_up'
+      ELSE l.place
+    END AS status
+    FROM (SELECT 1) AS one
+    LEFT JOIN LATERAL (
+      SELECT d.attempt, d.of, CASE
+        WHEN d.state IN ('waiting', 'claimed') THEN 'queued'
+        WHEN d.state = 'handed_over' THEN 'running'
+        WHEN d.end_cause = 'lost' AND d.result_outcome = 'questions' THEN 'questions'
+        WHEN d.end_cause = 'lost' THEN 'lost'
+        WHEN d.end_cause IN ('released', 'closed', 'undone') THEN 'cancelled'
+        WHEN d.end_cause <> 'run_ended' THEN 'no_result'
+        WHEN d.result_outcome IS NULL THEN 'running'
+        WHEN d.result_outcome IN ('proposal', 'questions') THEN d.result_outcome
+        WHEN r.reason = 'timeout' THEN 'time_limit'
+        WHEN r.state = 'cancelled' THEN 'cancelled'
+        WHEN r.state = 'lost' THEN 'lost'
+        ELSE 'no_result'
+      END AS place
+      FROM dispatch_runs AS d
+      LEFT JOIN runs AS r ON r.dispatch_run_id = d.id
+        AND (r.registered_at IS NOT NULL OR r.node_id IS NOT NULL)
+      WHERE d.work_item_id = ? AND d.take_in = ?
+      ORDER BY d.attempt DESC
+      LIMIT 1
+    ) AS l ON true
+  """
+
   # with_status/1 is `query`, whose work items are bound as `:work_item`, with each work
   # item's status as `status/2` gives it, derived in SQL: bound as `:explore_status`, its
   # one column `status`, the status's name as text (`status_name/1`). One `LEFT JOIN
   # LATERAL` per work item: the latest run of the queue of its current take in, its
   # highest `attempt`, read backwards through the unique index on (`work_item_id`,
-  # `take_in`, `attempt`), with its registered run, and whether that take in is confirmed.
+  # `take_in`, `attempt`), with its registered run, and whether that take in has a confirmation that counts
+  # (`Apiary.Stages.Withdrawals`).
   # A run reads from what the run of the queue keeps, as `status/2` reads it. The status of
   # an ended work item is that of its last take in, which `status/2` does not give. For example, the live work items
   # of a workspace that wait for a member, with their status:
@@ -264,42 +307,7 @@ defmodule Apiary.WorkItems.Explore do
     from [work_item: w] in query,
       left_lateral_join:
         s in fragment(
-          """
-          SELECT CASE
-            WHEN EXISTS (
-              SELECT 1 FROM work_item_confirmations AS c
-              WHERE c.work_item_id = ? AND c.take_in = ?
-            ) THEN 'shape'
-            WHEN l.place IS NULL THEN 'queued'
-            WHEN l.place = 'proposal' THEN 'confirm'
-            WHEN l.place IN ('no_result', 'lost', 'time_limit', 'cancelled') AND l.attempt >= l.of
-              THEN 'used_up'
-            ELSE l.place
-          END AS status
-          FROM (SELECT 1) AS one
-          LEFT JOIN LATERAL (
-            SELECT d.attempt, d.of, CASE
-              WHEN d.state IN ('waiting', 'claimed') THEN 'queued'
-              WHEN d.state = 'handed_over' THEN 'running'
-              WHEN d.end_cause = 'lost' AND d.result_outcome = 'questions' THEN 'questions'
-              WHEN d.end_cause = 'lost' THEN 'lost'
-              WHEN d.end_cause IN ('released', 'closed', 'undone') THEN 'cancelled'
-              WHEN d.end_cause <> 'run_ended' THEN 'no_result'
-              WHEN d.result_outcome IS NULL THEN 'running'
-              WHEN d.result_outcome IN ('proposal', 'questions') THEN d.result_outcome
-              WHEN r.reason = 'timeout' THEN 'time_limit'
-              WHEN r.state = 'cancelled' THEN 'cancelled'
-              WHEN r.state = 'lost' THEN 'lost'
-              ELSE 'no_result'
-            END AS place
-            FROM dispatch_runs AS d
-            LEFT JOIN runs AS r ON r.dispatch_run_id = d.id
-              AND (r.registered_at IS NOT NULL OR r.node_id IS NOT NULL)
-            WHERE d.work_item_id = ? AND d.take_in = ?
-            ORDER BY d.attempt DESC
-            LIMIT 1
-          ) AS l ON true
-          """,
+          @status_sql,
           w.id,
           w.take_in,
           w.id,
@@ -421,11 +429,19 @@ defmodule Apiary.WorkItems.Explore do
     }
   end
 
-  # confirmation/2 is the confirmation of take in `take_in` of the work item `id`, or nil.
+  # confirmation/2 is the newest confirmation of take in `take_in` of the work item `id`
+  # that counts: no later move back to Explore's stage or before it withdrew it
+  # (`Apiary.Stages.Withdrawals`); nil for none.
   @doc false
   @spec confirmation(Ecto.UUID.t(), pos_integer) :: Confirmation.t() | nil
-  def confirmation(id, take_in),
-    do: Repo.one(from c in Confirmation, where: c.work_item_id == ^id and c.take_in == ^take_in)
+  def confirmation(id, take_in) do
+    Repo.one(
+      from [confirmation: c] in Withdrawals.confirmations(),
+        where: c.work_item_id == ^id and c.take_in == ^take_in,
+        order_by: [desc: c.confirmed_at],
+        limit: 1
+    )
+  end
 
   # proposal_version/3 is the version of the proposal the run `attempt` of take in
   # `take_in` of the work item `id` stands at: the number of the newest version of the

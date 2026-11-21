@@ -48,6 +48,19 @@ defmodule Apiary.Stages do
   # with a `decision`. The work item page marks the version until an approval lists it
   # or a later version of its artifact (`unapproved_changes/2`).
   #
+  # ## A move back
+  #
+  # Every way back to an earlier stage writes a `:move` with the stage it lands on: a
+  # member's Move (`move/5`), an escalation's Move back and a switch of track
+  # (`resolve_escalation/5`), and, with no member and `automatic` (`runner_move!/4`), a
+  # run's return, a return of Request changes, and a take in again (`take_in/2`). An
+  # approval of the stage it lands on or of a later one, made before it, no longer counts,
+  # and neither does an approval of an earlier take in (`Apiary.Stages.Withdrawals`): every
+  # read of approvals reads only those that count. A move back to Explore's stage or before
+  # it withdraws the confirmation of Explore's proposal too, so Approve at Explore's gate
+  # confirms again (`Apiary.WorkItems.Explore.confirmation/2`). The approvals and the
+  # confirmation stay stored.
+  #
   # ## After the last stage
   #
   # A work item closes when its last stage finishes, in the same transaction, as the
@@ -155,7 +168,7 @@ defmodule Apiary.Stages do
   alias Apiary.Runs.{Cancel, Run, SessionRecord}
   alias Apiary.Stacks.Sources
   alias Apiary.Stages.{Approvers, Artifacts, Check, Escalation, GateDecision, Notes, Points}
-  alias Apiary.Stages.{Runner, Session, Skip}
+  alias Apiary.Stages.{Runner, Session, Skip, Withdrawals}
   alias Apiary.Stages.StopCause
   alias Apiary.WorkItems
   alias Apiary.WorkItems.{Explore, Moves, WorkItem}
@@ -236,7 +249,9 @@ defmodule Apiary.Stages do
     version = Processes.current(Repo.get!(Workspace, work_item.workspace_id))
     [first | _rest] = version.document["stages"]
     :ok = close_open(work_item, :close, nil, nil)
-    {work_item, run} = enter_locked(%{work_item | process_version_id: version.id}, version, first)
+    work_item = %{work_item | process_version_id: version.id}
+    :ok = runner_move!(work_item, version, work_item.stage_id, first["id"])
+    {work_item, run} = enter_locked(work_item, version, first)
     tell_now(work_item)
     {:ok, run}
   end
@@ -2526,14 +2541,18 @@ defmodule Apiary.Stages do
   end
 
   # Whether the work item's take in has, after the run's return, an approval of the stage
-  # the return entered, or a move out of it.
-  defp left_since?(%WorkItem{id: id, take_in: take_in}, %DispatchRun{} = run) do
-    Repo.exists?(
+  # the return entered that counts (`Apiary.Stages.Withdrawals`), or a move out of it that
+  # is not the stage runner's (`runner_move!/4`).
+  defp left_since?(%WorkItem{id: id, take_in: take_in} = work_item, %DispatchRun{} = run) do
+    since =
       from d in GateDecision,
+        as: :decision,
         where:
           d.work_item_id == ^id and d.take_in == ^take_in and d.stage_id == ^run.returned_to and
-            d.kind in [:approve, :move] and d.inserted_at > ^run.returned_at
-    )
+            d.inserted_at > ^run.returned_at
+
+    Repo.exists?(from(d in since, where: d.kind == :move and not d.automatic)) or
+      Repo.exists?(from(d in since, where: d.kind == :approve) |> Withdrawals.counted(work_item))
   end
 
   # departures/2 is the decisions of the work item's take in that moved it out of a stage to
@@ -2541,7 +2560,8 @@ defmodule Apiary.Stages do
   # the newest of each, newest first, that nothing has ended: no approval of the stage, by
   # a person or automatic, and no move to a stage after it (`stage_ids` is the stages of the
   # process in order), made after it. A move with no `to_stage_id` counts as a move back and
-  # ends nothing.
+  # ends nothing. A move of the stage runner (`runner_move!/4`) is none of them: a return
+  # lists its findings through `returned_inputs/4`, and a take in starts again.
   defp departures(%WorkItem{id: id, take_in: take_in}, stage_ids) when is_integer(take_in) do
     decisions =
       Repo.all(
@@ -2553,7 +2573,7 @@ defmodule Apiary.Stages do
     index = &Enum.find_index(stage_ids, fn id -> id == &1 end)
 
     decisions
-    |> Enum.filter(&(&1.kind == :move and moved_back?(&1, index)))
+    |> Enum.filter(&(&1.kind == :move and not &1.automatic and moved_back?(&1, index)))
     |> Enum.uniq_by(& &1.stage_id)
     |> Enum.reject(fn departure ->
       Enum.any?(decisions, fn later ->
@@ -2727,13 +2747,13 @@ defmodule Apiary.Stages do
       )
 
     approvals =
-      Repo.all(
-        from d in GateDecision,
-          where:
-            d.work_item_id == ^id and d.kind in [:approve, :move] and not is_nil(d.track) and
-              d.take_in == ^take_in,
-          order_by: [d.inserted_at, d.id]
+      from(d in GateDecision,
+        as: :decision,
+        where: d.work_item_id == ^id and d.kind in [:approve, :move] and not is_nil(d.track),
+        order_by: [d.inserted_at, d.id]
       )
+      |> Withdrawals.counted(work_item)
+      |> Repo.all()
 
     {stages, entries} = Enum.split_with(rows, &is_nil(&1.workflow))
 
@@ -3194,29 +3214,32 @@ defmodule Apiary.Stages do
   defp decision_times(work_item, versions),
     do: Notes.times(work_item.id, Enum.map(versions, &Map.get(&1, :decision_id)))
 
-  # The approvals of the work item by the public id of each version they cover, oldest
-  # first. `gate_none` is whether the stage's gate was `none` in the process version the
+  # The approvals of the work item that count (`Apiary.Stages.Withdrawals`) by the public
+  # id of each version they cover, oldest first: those of its take in that no later move
+  # withdrew. `gate_none` is whether the stage's gate was `none` in the process version the
   # approval was recorded under, which a later version may change. The query reads only
   # that stage's gate kind, not the process document.
   defp approvals_by_version(work_item) do
-    Repo.all(
-      from d in GateDecision,
-        join: v in Processes.Version,
-        on: v.id == d.process_version_id,
-        where: d.work_item_id == ^work_item.id and d.kind == :approve,
-        order_by: d.inserted_at,
-        select:
-          {d,
-           fragment(
-             """
-             COALESCE((SELECT s -> 'gate' ->> 'kind' = 'none'
-                       FROM jsonb_array_elements(? -> 'stages') AS s
-                       WHERE s ->> 'id' = ? LIMIT 1), false)
-             """,
-             v.document,
-             d.stage_id
-           )}
+    from(d in GateDecision,
+      as: :decision,
+      join: v in Processes.Version,
+      on: v.id == d.process_version_id,
+      where: d.work_item_id == ^work_item.id and d.kind == :approve,
+      order_by: d.inserted_at,
+      select:
+        {d,
+         fragment(
+           """
+           COALESCE((SELECT s -> 'gate' ->> 'kind' = 'none'
+                     FROM jsonb_array_elements(? -> 'stages') AS s
+                     WHERE s ->> 'id' = ? LIMIT 1), false)
+           """,
+           v.document,
+           d.stage_id
+         )}
     )
+    |> Withdrawals.counted(work_item)
+    |> Repo.all()
     |> Enum.flat_map(fn {decision, gate_none} ->
       approval = %{
         user_id: decision.user_id,
@@ -3328,6 +3351,7 @@ defmodule Apiary.Stages do
 
       {:return, stage_id}, {work_item, _run} ->
         returned!(run_id, stage_id)
+        :ok = runner_move!(work_item, version, stage["id"], stage_id)
         enter_locked(work_item, version, Processes.stage(version, stage_id))
 
       :advance, {work_item, _run} ->
@@ -3379,6 +3403,36 @@ defmodule Apiary.Stages do
     :ok
   end
 
+  # The move the stage runner writes where no person moved the work item: a run's return
+  # and a return of Request changes, out of `from` to `to` (the person stays on the
+  # request for changes), and a take in again, out of the stage the work item was in to
+  # the first stage. It is `automatic`, with no member, so that the notes and the inputs
+  # of a move leave it out (`Apiary.Stages.Notes`, `departures/2`); it counts only for
+  # what a move back withdraws (`Apiary.Stages.Withdrawals`). It is written before the
+  # stage is entered, so an approval the entry writes comes after it. A first take in, with
+  # no stage to leave, writes none.
+  defp runner_move!(_work_item, _version, nil, _to), do: :ok
+
+  defp runner_move!(work_item, version, from, to) do
+    %GateDecision{
+      public_id: PublicId.generate(GateDecision.prefix()),
+      organisation_id: work_item.organisation_id,
+      workspace_id: work_item.workspace_id,
+      work_item_id: work_item.id,
+      stage_id: from,
+      process_version_id: version.id,
+      automatic: true,
+      kind: :move,
+      take_in: work_item.take_in,
+      to_stage_id: to,
+      left_stage_entered_at: work_item.stage_entered_at,
+      inserted_at: DateTime.utc_now()
+    }
+    |> PublicId.Insert.insert!()
+
+    :ok
+  end
+
   ## Tracks
 
   @doc """
@@ -3401,20 +3455,20 @@ defmodule Apiary.Stages do
   # resolves; `[]` for none.
   defp track_decisions(%WorkItem{take_in: nil}), do: []
 
-  defp track_decisions(%WorkItem{id: id, take_in: take_in}) do
-    Repo.all(
-      from d in GateDecision,
-        where:
-          d.work_item_id == ^id and d.kind in [:approve, :move] and not is_nil(d.track) and
-            d.take_in == ^take_in,
-        order_by: [desc: d.inserted_at, desc: d.id],
-        select: %{
-          track: d.track,
-          stage_id: d.stage_id,
-          escalation_id: d.escalation_id,
-          process_version_id: d.process_version_id
-        }
+  defp track_decisions(%WorkItem{id: id} = work_item) do
+    from(d in GateDecision,
+      as: :decision,
+      where: d.work_item_id == ^id and d.kind in [:approve, :move] and not is_nil(d.track),
+      order_by: [desc: d.inserted_at, desc: d.id],
+      select: %{
+        track: d.track,
+        stage_id: d.stage_id,
+        escalation_id: d.escalation_id,
+        process_version_id: d.process_version_id
+      }
     )
+    |> Withdrawals.counted(work_item)
+    |> Repo.all()
   end
 
   @doc """
@@ -4482,13 +4536,17 @@ defmodule Apiary.Stages do
     end)
   end
 
+  # The newest approval of the stage `stage_id` that counts (`Apiary.Stages.Withdrawals`);
+  # nil for none.
   defp last_approval(work_item, stage_id) do
-    Repo.one(
-      from d in GateDecision,
-        where: d.work_item_id == ^work_item.id and d.stage_id == ^stage_id and d.kind == :approve,
-        order_by: [desc: d.inserted_at],
-        limit: 1
+    from(d in GateDecision,
+      as: :decision,
+      where: d.work_item_id == ^work_item.id and d.stage_id == ^stage_id and d.kind == :approve,
+      order_by: [desc: d.inserted_at],
+      limit: 1
     )
+    |> Withdrawals.counted(work_item)
+    |> Repo.one()
   end
 
   # `track` is the track an approval or a move forward records, nil for the other kinds.
@@ -4862,9 +4920,10 @@ defmodule Apiary.Stages do
   # The version of each name of `type` that the gate of `stage_id` shows, as `{name,
   # version}` in `Artifacts.name_order/1`: the newest version of the name made in the
   # stage (`newest_names/3`), or a higher-numbered version of that artifact that a
-  # person's approval lists or that is its change (`listed_higher/3`), which every later
-  # run reads (`read_version/6`). So a person approves the text the runs use, also after a
-  # move back (624 (a)).
+  # person's approval that counts lists or that is its change (`listed_higher/3`), which
+  # every later run reads (`read_version/6`). So a person approves the text the runs use.
+  # After a move back, an approval of the stage moved to or of a later one no longer counts
+  # (`Apiary.Stages.Withdrawals`): a version it listed is shown only as a change.
   defp gate_names(artifacts, type, stage_id, approvals) do
     for {name, start} <- newest_names(artifacts, type, stage_id) do
       artifact = Enum.find(artifacts, &(&1.id == start.artifact_id))
@@ -4885,8 +4944,9 @@ defmodule Apiary.Stages do
     end
   end
 
-  # The highest-numbered version of `artifact` above `start` that a person's approval lists
-  # (`person_approval?/1`), or that is the artifact's change, which no approval lists yet
+  # The highest-numbered version of `artifact` above `start` that a person's approval in
+  # `approvals` lists (`person_approval?/1`; only approvals that count,
+  # `approvals_by_version/1`), or that is the artifact's change, which no approval lists yet
   # (`artifact_change/2`); else `start`. A withdrawal and a version by a run a member
   # cancelled are never taken.
   defp listed_higher(artifact, start, approvals) do
@@ -4972,31 +5032,34 @@ defmodule Apiary.Stages do
     end
   end
 
-  # The newest approval of the stage `stage_id` in the work item's take in that a person
-  # gave at the gate: not automatic, and at a gate that was not `none` in the process
-  # version it was recorded under, as `approvals_by_version/1` reads it; nil for none.
+  # The newest approval of the stage `stage_id` that counts (`Apiary.Stages.Withdrawals`)
+  # and that a person gave at the gate: not automatic, and at a gate that was not `none` in
+  # the process version it was recorded under, as `approvals_by_version/1` reads it; nil
+  # for none.
   defp last_person_approval(%WorkItem{take_in: nil}, _stage_id), do: nil
 
   defp last_person_approval(work_item, stage_id) do
-    Repo.one(
-      from d in GateDecision,
-        join: v in Processes.Version,
-        on: v.id == d.process_version_id,
-        where:
-          d.work_item_id == ^work_item.id and d.stage_id == ^stage_id and d.kind == :approve and
-            d.take_in == ^work_item.take_in and not d.automatic and
-            not fragment(
-              """
-              COALESCE((SELECT s -> 'gate' ->> 'kind' = 'none'
-                        FROM jsonb_array_elements(? -> 'stages') AS s
-                        WHERE s ->> 'id' = ? LIMIT 1), false)
-              """,
-              v.document,
-              d.stage_id
-            ),
-        order_by: [desc: d.inserted_at],
-        limit: 1
+    from(d in GateDecision,
+      as: :decision,
+      join: v in Processes.Version,
+      on: v.id == d.process_version_id,
+      where:
+        d.work_item_id == ^work_item.id and d.stage_id == ^stage_id and d.kind == :approve and
+          not d.automatic and
+          not fragment(
+            """
+            COALESCE((SELECT s -> 'gate' ->> 'kind' = 'none'
+                      FROM jsonb_array_elements(? -> 'stages') AS s
+                      WHERE s ->> 'id' = ? LIMIT 1), false)
+            """,
+            v.document,
+            d.stage_id
+          ),
+      order_by: [desc: d.inserted_at],
+      limit: 1
     )
+    |> Withdrawals.counted(work_item)
+    |> Repo.one()
   end
 
   # The newest version of each name of `type` made in `stage_id`, as `newest_made_in/3`
@@ -5263,7 +5326,8 @@ defmodule Apiary.Stages do
   # The version of `type` that the newest person's approval at a stage not in `earlier`
   # (this stage or a later one) listed, read from `approvals` (`approvals_by_version/1`), as
   # `approved_version/3` reads an approval; nil for none. Such a version is the approved
-  # version for every run after that approval, after a move back too (624 (a)). An
+  # version for every run after that approval, until a move back to the approval's stage or
+  # an earlier one withdraws it (`approvals_by_version/1`, `Apiary.Stages.Withdrawals`). An
   # approval at a gate `none` is no person's approval, also where a member accepted the
   # escalation that ended the stage (`approve_none!/4`). The approval's time tells one
   # approval from another: approvals of one work item are written under its lock.
@@ -5724,6 +5788,8 @@ defmodule Apiary.Stages do
     |> Enum.reverse()
   end
 
+  # The approvals of `stage` that count (`Apiary.Stages.Withdrawals`), newest first, each
+  # with the versions it covers.
   defp approvals(work_item, stage, artifacts) do
     by_id =
       for a <- artifacts,
@@ -5733,12 +5799,14 @@ defmodule Apiary.Stages do
             {v.public_id,
              %{type: a.type, name: a.name, number: v.number, newest: hd(a.versions).number}}
 
-    Repo.all(
-      from d in GateDecision,
-        where:
-          d.work_item_id == ^work_item.id and d.stage_id == ^stage["id"] and d.kind == :approve,
-        order_by: [desc: d.inserted_at]
+    from(d in GateDecision,
+      as: :decision,
+      where:
+        d.work_item_id == ^work_item.id and d.stage_id == ^stage["id"] and d.kind == :approve,
+      order_by: [desc: d.inserted_at]
     )
+    |> Withdrawals.counted(work_item)
+    |> Repo.all()
     |> Enum.map(fn decision ->
       %{
         user_id: decision.user_id,

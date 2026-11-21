@@ -89,9 +89,10 @@ defmodule Apiary.Retention do
   alias Apiary.Organisations.Workspace
   alias Apiary.Repo
   alias Apiary.Retention.RetentionRun
+  alias Apiary.Stages.Withdrawals
   alias Apiary.Runs.{Delivery, Event, LogChunk, Projector, Run, SessionChunk, Step, TargetWrite}
   alias Apiary.Runs.TranscriptPath
-  alias Apiary.WorkItems.{Confirmation, WorkItem}
+  alias Apiary.WorkItems.WorkItem
 
   @log_type "dev.qory.run.log"
   @default_batch 2_000
@@ -582,11 +583,11 @@ defmodule Apiary.Retention do
   # take in waits for a member; no run writes one since (`Apiary.Dispatches.Settle`). The
   # job clears it, `result` set to NULL and nothing else, its outcome kept, where the run
   # registered for it is past the events cut-off, as `due/6` reads it whether or not its
-  # events are pruned yet, and its take in no longer waits: the take in was confirmed;
-  # the work item was closed or undone
+  # events are pruned yet, and its take in no longer waits: the take in has a confirmation
+  # that counts (`Apiary.Stages.Withdrawals`); the work item was closed or undone
   # (no longer `:exploring`), or taken in again (its take in is later); or a later run of
-  # the take in was queued. Each is kept for good once written, so a result cleared is
-  # never waited for again. One statement over at most `:batch` rows at a time, a short
+  # the take in was queued. A close, an undo, a take in and a run are kept for good once
+  # written, so a result cleared for one of them is never waited for again. One statement over at most `:batch` rows at a time, a short
   # transaction for each, with no lock on a work item. It locks the runs of the queue it
   # clears, by id, and passes by one another holds (`SKIP LOCKED`): it never waits on a
   # lock, so it never forms a cycle with a path that holds a work item or runs of the
@@ -644,7 +645,7 @@ defmodule Apiary.Retention do
             l.attempt > parent_as(:dispatch_run).attempt
 
     confirmed =
-      from c in Confirmation,
+      from [confirmation: c] in Withdrawals.confirmations(),
         where:
           c.work_item_id == parent_as(:dispatch_run).work_item_id and
             c.take_in == parent_as(:dispatch_run).take_in

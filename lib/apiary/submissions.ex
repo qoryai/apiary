@@ -38,7 +38,7 @@ defmodule Apiary.Submissions do
   alias Apiary.Nodes.Node
   alias Apiary.Runs.{Preparation, Run}
   alias Apiary.Stages.Artifacts, as: StageArtifacts
-  alias Apiary.Stages.GateDecision
+  alias Apiary.Stages.{GateDecision, Withdrawals}
   alias Apiary.WorkItems.WorkItem
 
   # The versions read for one list, newest first. The `Base` line of a row looks for the
@@ -98,8 +98,9 @@ defmodule Apiary.Submissions do
   A row is `%{id:, number:, run:, run_id:, workspace_id:, stage_id:, at:, approved:, ref:,
   repositories:}`: the version's public id and number, its run's number, public id and
   workspace (nil where no run is registered), the stage it was made in, when its run ended
-  (when it was stored, for a run that has not ended), whether a gate decision approved it,
-  the branch (`ref`), and one `t:repository/0` for each repository.
+  (when it was stored, for a run that has not ended), whether an approval that counts
+  covers it (`Apiary.Stages.Withdrawals`), the branch (`ref`), and one
+  `t:repository/0` for each repository.
 
   With `only`, a list of version public ids, the rows of those versions alone.
   """
@@ -338,15 +339,18 @@ defmodule Apiary.Submissions do
     end
   end
 
-  # The public ids of the versions a gate decision approved.
-  defp approved(%WorkItem{id: id}, versions) do
+  # The public ids of the versions that an approval that counts covers
+  # (`Apiary.Stages.Withdrawals`).
+  defp approved(%WorkItem{id: id} = work_item, versions) do
     ids = Enum.map(versions, & &1.public_id)
 
-    Repo.all(
-      from d in GateDecision,
-        where: d.work_item_id == ^id and d.kind == :approve,
-        select: d.versions
+    from(d in GateDecision,
+      as: :decision,
+      where: d.work_item_id == ^id and d.kind == :approve,
+      select: d.versions
     )
+    |> Withdrawals.counted(work_item)
+    |> Repo.all()
     |> List.flatten()
     |> Enum.filter(&(&1 in ids))
     |> MapSet.new()
