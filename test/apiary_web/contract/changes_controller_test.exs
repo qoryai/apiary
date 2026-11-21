@@ -109,7 +109,7 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
               &1 == "invalid/changes-without-revision.json")
         )
 
-      assert length(paths) == 42
+      assert length(paths) == 49
       assert "invalid/changes-comment-author-name-unicode-spaces.json" in paths
 
       for path <- paths, change <- fixture(path)["changes"] do

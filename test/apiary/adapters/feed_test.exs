@@ -92,7 +92,7 @@ defmodule Apiary.Adapters.FeedTest do
       adapter: adapter
     } do
       paths = refused_entries()
-      assert length(paths) == 42
+      assert length(paths) == 49
       assert "invalid/changes-comment-author-name-unicode-spaces.json" in paths
       assert "invalid/changes-watch-work-item-id-wrong-prefix.json" in paths
 
