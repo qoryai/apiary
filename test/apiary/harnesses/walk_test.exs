@@ -505,7 +505,7 @@ defmodule Apiary.Harnesses.WalkTest do
       assert reads == [:read]
     end
 
-    test "a file with machine keys alone, or whose section has neither extends nor modules, takes the document",
+    test "a file with machine harness settings alone, or whose section has neither extends nor modules, takes the document",
          ctx do
       setting(ctx.scope, @setting)
 
@@ -753,13 +753,13 @@ defmodule Apiary.Harnesses.WalkTest do
     end
 
     test "no declaration, recorded write: read", ctx do
-      for declared <- [nil, "  explore: {time_limit: 45m}\n", "  review: {access: write}\n"] do
+      for declared <- [nil, "  explore: {tier: thinking}\n", "  review: {access: write}\n"] do
         assert level(ctx, declared, :write) == :read, inspect(declared)
       end
     end
 
     test "no declaration, recorded null: read", ctx do
-      for declared <- [nil, "  explore: {time_limit: 45m}\n", "  review: {access: write}\n"] do
+      for declared <- [nil, "  explore: {tier: thinking}\n", "  review: {access: write}\n"] do
         assert level(ctx, declared, nil) == :read, inspect(declared)
       end
     end
@@ -820,7 +820,7 @@ defmodule Apiary.Harnesses.WalkTest do
 
       for workflows <- [
             "",
-            "  workflows:\n    explore: {time_limit: 45m}\n",
+            "  workflows:\n    explore: {tier: thinking}\n",
             "  workflows:\n    review: {access: write}\n"
           ] do
         assert file_level(ctx, section.(workflows), nil, nil) == :read, workflows

@@ -1,0 +1,5 @@
+{
+  "error": "not_writable",
+  "message": "Record pushed commits only from a run with write access. This run cannot push.",
+  "from": "apiary"
+}

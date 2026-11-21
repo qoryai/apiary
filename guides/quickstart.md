@@ -200,8 +200,8 @@ Apiary keeps only its public half.
    set: Qory Apiary's `url`, the key's `access_key_id`, and `apiary_public_key`, Qory
    Apiary's key, which the code named and Qory Apiary's signed answer confirmed. The
    address and Qory Apiary's key are the same for every machine connected to this Qory
-   Apiary; only `access_key_id` is the machine's key's. The command works once, for 15
-   minutes.
+   Apiary; only `access_key_id` belongs to the machine's access key. The command works
+   once, for 15 minutes.
 4. The page, which read "Waiting for build-01 to run it.", now says "build-01 is
    connected." with the key and its **Fingerprint**. It is the one `qory` printed; if it
    is not, revoke the key on the **Access key** tab. Select **Done**.

@@ -55,10 +55,84 @@ defmodule Apiary.Stages.PointsTest do
            ]
   end
 
-  test "failed checks are one point for each output type" do
-    assert Points.check_failed(["spec", "mockup"]) == [
-             %{"text" => "No spec was stored in this stage.", "action" => "run_again"},
-             %{"text" => "No mockup was stored in this stage.", "action" => "run_again"}
+  test "a round limit's point has its fix without Accept as it is" do
+    assert [
+             %{
+               "fix" =>
+                 "Read the 2 open findings, then pick Accept as it is or Run another round.",
+               "without_accept" => %{
+                 "fix" => "Read the 2 open findings, then pick Run another round."
+               }
+             }
+           ] = Points.round_limit(3, 3, ["A.", "B."])
+
+    assert [
+             %{
+               "without_accept" => %{
+                 "fix" => "Read the open finding, then pick Run another round."
+               }
+             }
+           ] =
+             Points.round_limit(3, 3, ["A."])
+
+    assert [point] = Points.round_limit(3, 3)
+    refute Map.has_key?(point, "without_accept")
+  end
+
+  test "a round limit's point has the count of its open findings, and no workflow name" do
+    assert [%{"open_findings" => 2} = point] = Points.round_limit(3, 3, ["A.", "B."])
+    refute inspect(point) =~ "Start"
+    assert [%{"open_findings" => 1}] = Points.round_limit(3, 3, ["A."])
+    assert [point] = Points.round_limit(3, 3)
+    refute Map.has_key?(point, "open_findings")
+  end
+
+  test "start_fix/2 writes Start and the entry in place of Accept as it is" do
+    assert Points.start_fix(1, "Acceptance test run") ==
+             "Read the open finding, then pick Start Acceptance test run or Run another round."
+
+    assert Points.start_fix(2, "verify-a-ticket") ==
+             "Read the 2 open findings, then pick Start verify-a-ticket or Run another round."
+  end
+
+  test "a return limit's point stores the action with Accept as it is, and its stage" do
+    assert [%{"text" => text, "return_stage" => "Build"} = point] =
+             Points.return_limit(2, "Verify", "Build")
+
+    assert text ==
+             "Pick Move back to return the work item to Build once more, or pick Accept as it is."
+
+    refute Map.has_key?(point, "without_accept")
+  end
+
+  test "return_action/2 has the words of the controls the card shows" do
+    assert Points.return_action("Build", :accept) ==
+             "Pick Move back to return the work item to Build once more, or pick Accept as it is."
+
+    assert Points.return_action("Shape", {:start, "implement-the-change"}) ==
+             "Pick Move back to return the work item to Shape once more, or pick Start implement-the-change."
+
+    assert Points.return_action("Build", :move_back) ==
+             "Pick Move back to return the work item to Build once more."
+
+    assert Points.return_action("Build", {:switch, "Switch to Standard"}) ==
+             "Pick Switch to Standard."
+  end
+
+  test "failed checks are one point for each output type, with the type's words" do
+    assert Points.check_failed(["spec", "acceptance-criteria"]) == [
+             %{
+               "text" => "Run another round: the run stored no spec.",
+               "action" => "run_again",
+               "action_in_text" => true,
+               "missing_type" => "spec"
+             },
+             %{
+               "text" => "Run another round: the run stored no acceptance criteria.",
+               "action" => "run_again",
+               "action_in_text" => true,
+               "missing_type" => "acceptance-criteria"
+             }
            ]
   end
 

@@ -91,7 +91,7 @@ line.
 
 | Key | Value |
 |---|---|
-| `draft_number` | the draft's number: 1 to 9 digits, no leading zero |
+| `draft_number` | the draft's number: a whole number from 1 to 9223372036854775807, no leading zero |
 | `draft_url` | the draft's address |
 | `draft_title` | the draft's title after the call, 1 to 256 characters |
 | `draft_state` | `draft` while the forge shows the draft as not ready for review, `open` once it shows it as ready, `closed` when a person closed it without merging, `merged` once it is merged |

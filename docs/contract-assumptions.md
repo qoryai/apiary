@@ -365,42 +365,43 @@ contract requires (`documents.schema.json`); a prebuild's have none. `runtime` a
 (`Apiary.ModelChoices.Resolution`): a locked choice of the workspace, the workflow's choice
 at the run's target, the target's choice, the workflow's choice at the workspace, the
 workspace's (Workspace settings › Model), and the organisation's default. With no choice,
-`run_settings` has `runtime` alone, the catalogue's default, and the run uses the gateway's
-key. Each later session of a run of a stage with `shared_run: true` gets its workflow's
-runtime and model in the next-session answer's `model_choice`, which always has `runtime`,
-and, for a session on a provider other than that of the run's default model provider
-credential, `model_credential`, the key the session starts on (`docs/contract/run-api.md`). A pool claims a run only with the feature `factory` on (`dispatch.claim`), and
-`factory` needs `secrets`. The code that builds `run_settings` runs with either feature off
-too: with `factory` or `secrets` off, it builds the choice's `runtime`, `model`, `effort`,
-`provider_models` and `tiers` and no key, and checks neither the chosen key nor the
-provider's endpoint. An explore run's documents have `time_limit_minutes`, an integer from
-15 to 1440, after `run_settings`, for a run with a workflow (`Apiary.Stacks.workflow/2`,
-or, with the workflow model, the workflow of its stage entry) and `factory` on: the limit
-set for that workflow at the run's target, else the one set at its workspace
-(`Apiary.TimeLimits`), else 180 minutes.
-With no workflow for the run, the member is absent, and the run takes the default of the
-workflow's stack, which the machine applies. After it come `shared_run`, `true` for a run
-of a stage with `shared_run: true`, and `full_suite`, `true` for a run with `write` access
-of an entry in a loop or with `first_attempt: true`, never for a run of Explore; each is
-absent where it would be `false`. The claim registers the run, and the run
-endpoint refuses, under any key, a registration whose `run_id` is that of such a run,
-waiting, claimed, handed over or ended, with the signed `409` `run_id_used`, decided
-first: before the stored answer to a repeat and before the instance limit, the Forager
-contract giving the other causes and their order. Qory Apiary reads "first" as the first of
-the run endpoint's checks, so the lookup (`dispatch_runs.run_id`, unique on the instance,
-read across every workspace and organisation) comes after the refusals every signed request
-gets, the body's `400` and the `time`'s `401` included, so nothing is looked up for a
-request that does not verify or is not fresh, and before every answer that depends on the
-key: the `404` of a key that may not open a run, the repeat, the `410`, the resolution's
-`409`s and the instance limit. A node's key, a node pool's and a gateway's, one of a
-workspace or of an organisation, are given that one answer for such an id, and the answer
-never tells which kind of key asked or what the key may do. The refusal stores nothing
-beyond what every verified request leaves, the spent token of the key's rate and the
-instance's sighting (`Apiary.Nodes.seen/3`): no run, no count of the node's instance limit,
-no use recorded on the key. A lookup the database cannot answer is `503` `unavailable`. A
-run of the queue is given its `run_id`, a fresh UUID, when it is queued, before anyone
-outside the instance learns it, and the id never changes, so no registration can come
-between the queue and the lookup.
+`run_settings` has `runtime` alone, the catalogue's default, and the run uses the machine's
+local model provider credential. Each later session of a run of a stage with
+`shared_run: true` gets its workflow's runtime and model in the next-session answer's
+`model_choice`, which always has `runtime`, and, for a session on a provider other than
+that of the run's default model provider credential, `model_provider_credential_name`,
+the key the session starts on (`docs/contract/run-api.md`). A pool claims a run only with
+the feature `factory` on (`dispatch.claim`), and `factory` needs `secrets`. The code that
+builds `run_settings` runs with either feature off too: with `factory` or `secrets` off,
+it builds the choice's `runtime`, `model`, `effort`, `provider_models` and `tiers` and no
+key, and checks neither the chosen key nor the provider's endpoint. An explore run's
+documents have `time_limit_minutes`, an integer from 15 to 1440, after `run_settings`, for
+a run with a workflow (`Apiary.Stacks.workflow/2`, or, with the workflow model, the
+workflow of its stage entry) and `factory` on: the limit set for that workflow at the
+run's target, else the one set at its workspace (`Apiary.TimeLimits`), else 180 minutes.
+With no workflow for the run, the member is absent: Qory Apiary sets no time limit for
+session 1. After `time_limit_minutes` come `shared_run`, `true` for a run of a stage with
+`shared_run: true`, and `full_suite`, `true` for a run with `write` access of an entry in
+a loop or with `first_attempt: true`, never for a run of Explore; each is absent where it
+would be `false`. The claim registers the run, and the run endpoint refuses, under any
+key, a registration whose `run_id` is that of such a run, waiting, claimed, handed over or
+ended, with the signed `409` `run_id_used`, decided first: before the stored answer to a
+repeat and before the instance limit, the Forager contract giving the other causes and
+their order. Qory Apiary reads "first" as the first of the run endpoint's checks, so the
+lookup (`dispatch_runs.run_id`, unique on the instance, read across every workspace and
+organisation) comes after the refusals every signed request gets, the body's `400` and the
+`time`'s `401` included, so nothing is looked up for a request that does not verify or is
+not fresh, and before every answer that depends on the key: the `404` of a key that may
+not open a run, the repeat, the `410`, the resolution's `409`s and the instance limit. A
+node's key, a node pool's and a gateway's, one of a workspace or of an organisation, are
+given that one answer for such an id, and the answer never tells which kind of key asked
+or what the key may do. The refusal stores nothing beyond what every verified request
+leaves, the spent token of the key's rate and the instance's sighting
+(`Apiary.Nodes.seen/3`): no run, no count of the node's instance limit, no use recorded on
+the key. A lookup the database cannot answer is `503` `unavailable`. A run of the queue is
+given its `run_id`, a fresh UUID, when it is queued, before anyone outside the instance
+learns it, and the id never changes, so no registration can come between the queue and the
+lookup.
 
 The events endpoint holds such a run the same way. A batch whose subject is its `run_id`,
 from a key that does not reach a run under that id, is `409` `run_id_used`, before or
@@ -931,14 +932,16 @@ the key's Use up to percentage and a `resets_at` after the claim's clock
 (`Apiary.ModelKeys.cooldown/4`). The limit windows are `limit_windows` of the provider's
 model provider role in the integrations contract's description, vendored with the
 catalogue: `five_hour` and `seven_day` for the Claude subscription, none for an API key.
-The first key of that order is the start key, `model_credential`, never a key in
-cooldown. `credentials` lists the keys in the order the contract has the server send
+The first key of that order is the default model provider credential,
+`default_model_provider_credential_name`, never a key in cooldown.
+`credentials` lists the keys in the order the contract has the server send
 them: the keys out of cooldown in tie order, then the keys in cooldown in tie order.
 Each entry has `pause_for_s`, the key's Pause for, else 60 for an API key and 3600 for a
 subscription, written into the run once: by its claim, or, for a run claimed before runs
 kept several keys, by the upgrade (20261111100000). Where the claim had them, an entry
-also has `resets_at`, `schedule_resets_at` and `cooldown_until`; no entry has `chosen`,
-since a model choice chooses a provider, not one of its keys. A key's `cooldown_until`
+also has `resets_at`, `schedule_resets_at` and `cooldown_until`. The contract has no
+member for the key of a model choice, since a model choice chooses a provider, not one
+of its keys. A key's `cooldown_until`
 is the latest end of its cooldown: a window's `cooldown_until`, or the `resets_at` of a
 limit window at the key's Use up to percentage. A key with a Use up to percentage, of a
 provider with limit windows, also has `use_up_to_percent` and `use_up_to_windows`, the

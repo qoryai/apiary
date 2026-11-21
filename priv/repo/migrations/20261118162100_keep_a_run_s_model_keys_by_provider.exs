@@ -8,8 +8,8 @@ defmodule Apiary.Repo.Migrations.KeepARunSModelKeysByProvider do
   #
   # - `position`, 1 to 6, unique per run: the key's place in the run configuration's
   #   `credentials`. With the uniqueness, the check caps a run at 6 keys.
-  # - `name`, the credential's name, unique per run; `start`, true on the start key, at
-  #   most one per run.
+  # - `name`, the credential's name, unique per run; `start`, true on the default model
+  #   provider credential, at most one per run.
   # - `secret_value_id`, the key's row id (`secret_values.id`), with no foreign key: a
   #   key removed after the claim fails at the secrets request.
   # - `connection_id` and `secret_id`, the key's provider and that provider's keys'

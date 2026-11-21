@@ -49,7 +49,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
   # The vendored schemas by their URL under the contracts' base, and Forager's from its
   # contract directory (`Apiary.ContractFixtures.contract_dir/0`), which the answer's
-  # `model_credential` refers to. Nothing is fetched.
+  # `model_provider_credential_name` refers to. Nothing is fetched.
   defmodule Resolver do
     @moduledoc false
     @behaviour JSV.Resolver
@@ -74,7 +74,16 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
     def resolve(url, _roots), do: {:error, {:not_vendored, url}}
   end
 
-  defp answer_valid?(body) do
+  defp answer_valid?(body), do: valid?("next-session-answer", body)
+
+  # A refusal of the control plane, signed, as the gateway passes it on: its body with
+  # `from` set to `apiary`, valid against the run contract's next-session refusal.
+  defp refusal_valid?(conn) do
+    signed_answer?(conn) and
+      valid?("next-session-refusal", Map.put(Jason.decode!(conn.resp_body), "from", "apiary"))
+  end
+
+  defp valid?(schema, body) do
     forager =
       case contract_dir() do
         nil -> []
@@ -82,7 +91,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       end
 
     validator =
-      JSV.build!(%{"$ref" => @base <> "run/v1/next-session-answer.schema.json"},
+      JSV.build!(%{"$ref" => @base <> "run/v1/#{schema}.schema.json"},
         resolver: {Resolver, [@vendored | forager]},
         formats: true
       )
@@ -246,7 +255,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
                body["model_choice"]
 
       assert model == ctx.gateway_run.run_settings["model"]
-      refute Map.has_key?(body, "model_credential")
+      refute Map.has_key?(body, "model_provider_credential_name")
 
       assert String.starts_with?(conn.resp_body, ~s({"next":"session","session":2,))
 
@@ -266,7 +275,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       body = json_response(request(ctx, ended(1)), 200)
 
       assert body["model_choice"]["model"] == ctx.gateway_run.run_settings["model"]
-      refute Map.has_key?(body, "model_credential")
+      refute Map.has_key?(body, "model_provider_credential_name")
     end
 
     @tag :contract
@@ -275,6 +284,161 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       assert answer_valid?(json_response(request(ctx, ended(1)), 200))
       :ok = verdict!(ctx, "passed")
       assert answer_valid?(json_response(request(ctx, ended(2)), 200))
+    end
+
+    @tag :contract
+    test "every refusal body is valid against the run contract's next-session refusal",
+         ctx do
+      refusals =
+        [
+          request(ctx, ended(1), run_id: Ecto.UUID.generate()),
+          request(ctx, Jason.encode!(ended(1)) <> String.duplicate(" ", 4 * 1024)),
+          request(ctx, "not json"),
+          request(ctx, ended(1, "paused")),
+          request(ctx, Map.put(ended(1), String.duplicate("x", 65), true)),
+          request(ctx, Map.put(ended(1), "", true))
+        ]
+
+      :ok = verdict!(ctx, "passed")
+      assert request(ctx, ended(2)).status == 200
+      mismatch = request(ctx, ended(1))
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
+          set: [state: :ended, end_cause: :run_ended]
+        )
+
+      finished = request(ctx, ended(3))
+
+      assert Enum.map(refusals ++ [mismatch, finished], & &1.status) ==
+               [404, 413, 400, 400, 400, 400, 409, 409]
+
+      for conn <- refusals ++ [mismatch, finished],
+          do: assert(refusal_valid?(conn), conn.resp_body)
+    end
+
+    test "names the first member that fails, whatever the length of its name", ctx do
+      long = String.duplicate("x", 65)
+
+      for {body, names} <- [
+            {Map.put(ended(1), long, true), [long]},
+            {ended(1) |> Map.put(long, true) |> Map.put("verdict", "passed"), ["verdict"]},
+            {Map.put(ended(1), "", true), ["body"]},
+            {"[]", ["body"]}
+          ] do
+        assert %{"error" => "invalid_request", "names" => ^names} =
+                 json_response(request(ctx, body), 400),
+               inspect(body)
+      end
+    end
+
+    test "checks a run of Explore before the body: 404 for a body over 4 KiB", ctx do
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
+          set: [explore: true]
+        )
+
+      conn = request(ctx, Jason.encode!(ended(1)) <> String.duplicate(" ", 4 * 1024))
+      assert signed_answer?(conn)
+      assert conn.status == 404
+      assert conn.resp_body == ~s({"error":"not_found"})
+    end
+
+    test "checks a stage that no longer runs the run before the body: 409 for a bad body",
+         ctx do
+      stored = sessions(ctx)
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),
+          set: [stage_state: :escalated]
+        )
+
+      for body <- ["not json", ended(1, "paused"), ended(1)] do
+        assert json_response(request(ctx, body), 409) == %{
+                 "error" => "run_ended",
+                 "message" => "Close the run. It ended, so it starts no more sessions."
+               },
+               inspect(body)
+      end
+
+      assert sessions(ctx) == stored
+    end
+
+    test "checks a run that no claim of a shared stage registered before the body: 404",
+         ctx do
+      too_large = Jason.encode!(ended(1)) <> String.duplicate(" ", 4 * 1024)
+
+      # A run with no session recorded, then also a run record with no settings of a claim.
+      {_count, _rows} =
+        Repo.delete_all(from s in Session, where: s.dispatch_run_id == ^ctx.dispatch_run.id)
+
+      for unregister <- [
+            fn -> :ok end,
+            fn ->
+              {1, _rows} =
+                Repo.update_all(from(r in Run, where: r.id == ^ctx.gateway_run.id),
+                  set: [session_settings: nil]
+                )
+            end
+          ] do
+        unregister.()
+
+        for body <- ["not json", too_large, Map.put(ended(1), "verdict", "passed")] do
+          conn = request(ctx, body)
+          assert signed_answer?(conn)
+          assert conn.status == 404, inspect(body)
+          assert conn.resp_body == ~s({"error":"not_found"})
+        end
+      end
+
+      assert sessions(ctx) == []
+    end
+
+    test "checks the body before the inputs of the next session: 400, and the run goes on",
+         ctx do
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^ctx.work_item.id),
+          set: [item_id: nil]
+        )
+
+      :ok = verdict!(ctx, "passed")
+      stored = sessions(ctx)
+      stage_state = reload(ctx.work_item).stage_state
+
+      assert %{"error" => "invalid_request", "names" => ["body"]} =
+               json_response(request(ctx, "not json"), 400)
+
+      assert %DispatchRun{state: :handed_over, end_cause: nil} =
+               Repo.get!(DispatchRun, ctx.dispatch_run.id)
+
+      assert sessions(ctx) == stored
+      assert reload(ctx.work_item).stage_state == stage_state
+
+      # A valid body reaches the step, which cannot form the inputs.
+      assert %{"error" => "run_ended"} = json_response(request(ctx, ended(1)), 409)
+
+      assert %DispatchRun{state: :ended, end_cause: :ticket_gone} =
+               Repo.get!(DispatchRun, ctx.dispatch_run.id)
+    end
+
+    test "after the end, a repeat of the final session gets its stored end; any other request is 409",
+         ctx do
+      :ok = verdict!(ctx, "passed")
+      assert request(ctx, ended(1)).status == 200
+      :ok = verdict!(ctx, "passed")
+      final = request(ctx, ended(2))
+      assert final.resp_body == ~s({"next":"end"})
+      stored = sessions(ctx)
+
+      again = request(ctx, ended(2, "failed", "agent_error"))
+      assert again.status == 200
+      assert again.resp_body == final.resp_body
+
+      for body <- [ended(3), "not json"] do
+        assert %{"error" => "run_ended"} = json_response(request(ctx, body), 409), inspect(body)
+      end
+
+      assert sessions(ctx) == stored
     end
 
     test "returns end where no workflow of the stage follows", ctx do
@@ -526,7 +690,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
              } = body["model_choice"]
 
       assert body["model_choice"]["runtime"] == "claude"
-      refute Map.has_key?(body, "model_credential")
+      refute Map.has_key?(body, "model_provider_credential_name")
       assert answer_valid?(body)
     end
 
@@ -548,7 +712,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
       assert %{"runtime" => "claude", "model" => model} = body["model_choice"]
       assert model == ctx.gateway_run.run_settings["model"]
-      refute Map.has_key?(body, "model_credential")
+      refute Map.has_key?(body, "model_provider_credential_name")
     end
 
     test "is the default runtime alone where the session's workflow resolves to no choice",
@@ -561,7 +725,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
       assert %{"workflow" => "write-acceptance-checks"} = body
       assert body["model_choice"] == %{"runtime" => "claude"}
-      refute Map.has_key?(body, "model_credential")
+      refute Map.has_key?(body, "model_provider_credential_name")
     end
 
     test "is the fallback's where every key of the choice's provider is in cooldown at the claim",
@@ -585,8 +749,10 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       body = next!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
 
       assert %{"model" => "claude-sonnet-5-5", "effort" => "high"} = body["model_choice"]
-      # The run's keys are the fallback's: the session joins with the start key's group.
-      refute Map.has_key?(body, "model_credential")
+
+      # The run's keys are the fallback's: the session joins with the default model
+      # provider credential's group.
+      refute Map.has_key?(body, "model_provider_credential_name")
     end
 
     test "is the workflow's choice on another provider with a free key, not the fall back onto the run's provider",
@@ -618,13 +784,15 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
       # Session 2 starts on the first key of Checkout keys, with the choice's model.
       assert %{"runtime" => "claude", "model" => "claude-opus-5-5"} = body["model_choice"]
-      assert body["model_credential"] == "#{other.public_id}-1"
+      assert body["model_provider_credential_name"] == "#{other.public_id}-1"
 
-      # The run keeps the keys of both providers, the start key's provider's first.
+      # The run keeps the keys of both providers, the default model provider credential's
+      # provider's first.
       providers = ctx.gateway_run |> stored_keys() |> Enum.map(& &1.connection_id)
       assert Enum.uniq(providers) == [ctx.provider.id, other.id]
     end
 
+    @tag :contract
     test "is the workflow's choice on its provider, with that provider's first key, where its choice has another provider",
          ctx do
       {:ok, other} =
@@ -646,13 +814,19 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       :ok = verdict!(ctx, "passed")
       body = json_response(request(ctx, ended(1)), 200)
 
-      # Session 2 runs on Checkout keys: the choice's model, on its first key.
+      # Session 2 runs on Checkout keys: the choice's model, on its first key, in the
+      # member of the run contract's answer, whose schema fails a body with the member's
+      # former name.
       assert %{"runtime" => "claude", "model" => "claude-sonnet-5-5"} = body["model_choice"]
-      assert body["model_credential"] == "#{other.public_id}-1"
+      assert body["model_provider_credential_name"] == "#{other.public_id}-1"
+      refute Map.has_key?(body, "model_credential")
+      assert answer_valid?(body)
+      refute answer_valid?(Map.put(body, "model_credential", "#{other.public_id}-1"))
 
-      # The run keeps the keys of both providers, the start key's provider's first.
-      assert [%ModelKey{start: true} = start | rest] = stored_keys(ctx.gateway_run)
-      assert start.connection_id == ctx.provider.id
+      # The run keeps the keys of both providers, the default model provider credential's
+      # provider's first.
+      assert [%ModelKey{default_credential: true} = default | rest] = stored_keys(ctx.gateway_run)
+      assert default.connection_id == ctx.provider.id
       assert Enum.map(rest, &{&1.connection_id, &1.name}) == [{other.id, "#{other.public_id}-1"}]
     end
 
@@ -674,7 +848,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
       assert %{"runtime" => runtime, "model" => "claude-sonnet-5-5"} = body["model_choice"]
       assert runtime == second.name
-      refute Map.has_key?(body, "model_credential")
+      refute Map.has_key?(body, "model_provider_credential_name")
       assert answer_valid?(body)
     end
 
@@ -750,7 +924,7 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       assert %{"runtime" => runtime, "model" => model} = body["model_choice"]
       assert runtime == release.name
       assert model == ctx.gateway_run.run_settings["model"]
-      refute Map.has_key?(body, "model_credential")
+      refute Map.has_key?(body, "model_provider_credential_name")
     end
 
     test "is no session: the claim ends session_key_missing where session 1 has no provider's key",
@@ -844,23 +1018,28 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
   end
 
   describe "a run of a stage without shared_run" do
-    test "is 404 not_found and writes nothing", ctx do
+    test "is 404 not_found and writes nothing, before the body is read", ctx do
       ctx =
         shared!(ctx, [
           stage(@build, "Build", workflows(~w(plan-the-build write-acceptance-checks)))
         ])
 
       assert sessions(ctx) == []
-      conn = request(ctx, ended(1))
-      assert signed_answer?(conn)
-      assert conn.status == 404
-      assert conn.resp_body == ~s({"error":"not_found"})
+      too_large = Jason.encode!(ended(1)) <> String.duplicate(" ", 4 * 1024)
+
+      for body <- [ended(1), "not json", too_large] do
+        conn = request(ctx, body)
+        assert signed_answer?(conn)
+        assert conn.status == 404, inspect(body)
+        assert conn.resp_body == ~s({"error":"not_found"})
+      end
+
       assert sessions(ctx) == []
     end
   end
 
   describe "the feature" do
-    test "is 404 where the instance does not have workflow_model", ctx do
+    test "is 404 not_found, as JSON, where the instance does not have workflow_model", ctx do
       ctx = shared!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
       RunApiStubs.put(:flag, false)
 
@@ -871,8 +1050,8 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
       stored = sessions(ctx)
       conn = request(ctx, ended(1))
-      assert conn.status == 404
       assert signed_answer?(conn)
+      assert json_response(conn, 404) == %{"error" => "not_found"}
       assert sessions(ctx) == stored
     end
   end

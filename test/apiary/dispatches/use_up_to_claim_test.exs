@@ -104,7 +104,7 @@ defmodule Apiary.Dispatches.UseUpToClaimTest do
     assert [
              %{
                secret_value_id: spare_id,
-               start: true,
+               default_credential: true,
                use_up_to_percent: 80,
                cooldown_until: nil
              },

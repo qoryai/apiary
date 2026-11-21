@@ -15,8 +15,8 @@ defmodule Apiary.Stacks.Document do
   #      reductions of the budget, the work of one 50 ms interval between two reads of
   #      the reductions, or whose read runs past the reader's backstop of 10 seconds,
   #      may get a different answer there than at the save.
-  #   2. A key the run contract's harness section does not take, such as a machine key
-  #      (`runtime`, `model`) or `git`, `env`, `worktree`, `exports` or `target`.
+  #   2. A key the run contract's harness section does not take, such as a machine
+  #      harness setting (`runtime`, `model`) or `git`, `env`, `worktree`, `exports` or `target`.
   #   3. The kind of document: one with `extends` has no `workflows`, and one without
   #      `extends` has `modules`. The run contract's schema refuses both too, in words
   #      that name neither key.
@@ -35,12 +35,12 @@ defmodule Apiary.Stacks.Document do
   #      address's shape. Then each text `ref` of those sources (`ref_error/1`).
   #   6. The run contract's `harness_section` (`documents.schema.json` beside this file,
   #      vendored from the integrations contract at the commit in `.contract-ref`
-  #      beside it, with the tier rename of integrations `b22085a` applied on top),
-  #      validated with JSV: git sources and exports only, no `{path}` source, no module
-  #      by name alone, no `link`. A bare `{git, ref}` source, the root of a remote
-  #      source, is allowed. A document with `extends` extends that base and has no
-  #      `workflows`; one without `extends` defines a stack: it lists at least one module
-  #      and may contain `workflows`.
+  #      beside it), validated with JSV: git sources and exports only, no `{path}`
+  #      source, no module by name alone, no `link`. A bare `{git, ref}` source, the root
+  #      of a remote source, is allowed. A document with `extends` extends that base and
+  #      has no `workflows`; one without `extends` defines a stack: it lists at least one
+  #      module and may contain `workflows`, each with `access`, `plan` and `tier` only.
+  #      A workflow with `plan` has `access: write`.
   @moduledoc false
 
   @behaviour JSV.Resolver
@@ -475,6 +475,7 @@ defmodule Apiary.Stacks.Document do
           JSV.normalize_error(error)
 
         bind_refusal(section, pointer(place))
+        workflow_refusal(section, pointer(place))
 
         refuse("does not follow the harness format at %{place}: %{rule}",
           place: place,
@@ -538,6 +539,53 @@ defmodule Apiary.Stacks.Document do
   end
 
   defp bind_refusal(_section, _pointer), do: :ok
+
+  # A schema refusal of a workflow of a stack the document defines, in words that start
+  # with the fix: a plan on a workflow without `access: write`, and a `time_limit`, which
+  # a workflow of the run contract does not take. Any other refusal keeps the schema's
+  # words.
+  defp workflow_refusal(%{"workflows" => workflows}, ["workflows", name]) do
+    case workflows do
+      %{^name => %{"plan" => _plan} = workflow} when not is_map_key(workflow, "access") ->
+        plan_refusal(name)
+
+      %{^name => %{"plan" => _plan, "access" => access}} when access != "write" ->
+        plan_refusal(name)
+
+      _other ->
+        :ok
+    end
+  end
+
+  defp workflow_refusal(%{"workflows" => workflows}, ["workflows", name, "time_limit"]) do
+    case workflows do
+      %{^name => %{"time_limit" => _minutes}} ->
+        refuse(
+          dgettext_noop(
+            "errors",
+            "Remove time_limit from workflow %{workflow}: " <>
+              "a harness document takes no time limit for a workflow."
+          ),
+          workflow: name
+        )
+
+      _other ->
+        :ok
+    end
+  end
+
+  defp workflow_refusal(_section, _pointer), do: :ok
+
+  defp plan_refusal(name) do
+    refuse(
+      dgettext_noop(
+        "errors",
+        "Set access: write on workflow %{workflow}, or remove its plan: " <>
+          "only a workflow with access: write takes a plan."
+      ),
+      workflow: name
+    )
+  end
 
   # The keys of a JSON pointer such as `#/bind/agents~1developer`: `["bind",
   # "agents/developer"]`.

@@ -1117,7 +1117,7 @@ defmodule Apiary.Dispatches.SchemaTest do
   @options [log: false, migration_lock: false]
 
   defp down! do
-    assert :ok = Ecto.Migrator.down(Repo, @drop_columns_version, @drop_columns, @options)
+    assert :ok = Apiary.OneProviderColumns.back!()
     assert :ok = Ecto.Migrator.down(Repo, @records_version, @records, @options)
     assert :ok = Ecto.Migrator.down(Repo, @sessions_version, @sessions, @options)
 

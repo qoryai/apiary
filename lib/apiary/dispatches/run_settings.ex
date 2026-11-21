@@ -126,13 +126,13 @@ defmodule Apiary.Dispatches.RunSettings do
   # keeps the row id of the provider of the default model provider credential
   # (`provider_connection_id`) and its keys (`run_model_keys`, `Apiary.Runs.ModelKey`:
   # each key's place, its row id, its credential name `<provider's public id>-<place from
-  # 1>`, the place counted per provider, `start` on the default model provider
-  # credential, its provider's row id, keys' secret's row id and chain, the API its
-  # sessions use, with its `format`, its `endpoint` with a setting resolved to its
+  # 1>`, the place counted per provider, `default_credential` on the default model
+  # provider credential, its provider's row id, keys' secret's row id and chain, the API
+  # its sessions use, with its `format`, its `endpoint` with a setting resolved to its
   # address, its `auth`, and, when the description lists them, its `key_prefixes` and its
-  # limit windows as `use_up_to_windows`, and what its run configuration entry has of
-  # it), for the reads that follow the claim. The run settings take at most 64 KiB
-  # encoded; a claim with more fails.
+  # limit windows as `use_up_to_windows`, and what its run configuration entry has of it),
+  # for the reads that follow the claim. The run settings take at most 64 KiB encoded; a
+  # claim with more fails.
   #
   # `provider_models` is the description's models (`Apiary.Connections.provider_models/1`),
   # in its order, each with the effort values that both it and the runtime have, then the
@@ -512,7 +512,7 @@ defmodule Apiary.Dispatches.RunSettings do
                  held.workspace.id,
                  held.keyed
                ),
-             {:ok, built, start} <-
+             {:ok, built, default_group} <-
                keys(
                  built,
                  provider,
@@ -523,23 +523,23 @@ defmodule Apiary.Dispatches.RunSettings do
              do:
                built
                |> sealed()
-               |> with_sessions(start, context)
+               |> with_sessions(default_group, context)
     end
   end
 
   # The model and the key of each later session of a shared run, by its workflow, as
   # `sessions` beside `built`, which the claim keeps on the run
   # (`Apiary.Stages.claim_sessions!/3`), and the run's keys, as `keys`, with the default
-  # model provider credential's provider as `columns` (`merged/4`). `start` is the group
-  # of the run's default model provider credential (`keys/5`): its provider, the API its
-  # sessions use, and its keys in their order; nil for a run with no key. The workflows
+  # model provider credential's provider as `columns` (`merged/4`). `default_group` is the
+  # group of the run's default model provider credential (`keys/5`): its provider, the API
+  # its sessions use, and its keys in their order; nil for a run with no key. The workflows
   # are walked in session order (`Apiary.Stages.shared_workflows/1`). Each entry has
   # `model_choice`, which always has `runtime`, the runtime the session runs on, and, for
   # a session on a provider other than the default model provider credential's,
-  # `model_credential`, the name of that provider's first free key
-  # (`Apiary.ModelKeys.Order.start/2`), else its first key: the session starts on that
-  # key's group. A session with no `model_credential` joins the group of the run's
-  # default model provider credential.
+  # `model_provider_credential_name`, the name of that provider's first free key
+  # (`Apiary.ModelKeys.Order.first_free/2`), else its first key: the session starts on that
+  # key's group. A session with no `model_provider_credential_name` joins the group of the
+  # run's default model provider credential.
   #
   # `model_choice` is, for the choices of the workflow (`session_choice/4`):
   #   * the `runtime`, `model`, `effort`, `provider_models` and `tiers` of the choice on
@@ -563,15 +563,16 @@ defmodule Apiary.Dispatches.RunSettings do
   # does: the choice is set to a provider that was removed, or its provider is not there,
   # fails its integrity code, or `form/6` ends `provider_gone` for it. A session that
   # would have no key in the run ends the claim `session_key_missing`: its runtime uses
-  # another API of a provider that an earlier session uses (`same_api/3`, `on_start/2`);
-  # its provider has no key (`key_gone`) and no later step has a key; or the run's
-  # first session runs on the machine's local model provider credential (`session_on/6`).
+  # another API of a provider that an earlier session uses (`same_api/3`,
+  # `on_default_group/2`); its provider has no key (`key_gone`) and no later step has a
+  # key; or the run's first session runs on the machine's local model provider credential
+  # (`session_on/6`).
   # A settings check of the session's provider that ran out of time or crashed is
   # `{:unchecked, provider}`, which leaves the run waiting as for the run's provider. A
   # session whose provider has no key, and whose later steps' keys are all in cooldown,
   # leaves the run waiting for those steps' providers (`cooling_steps/4`): `{:cooling,
   # built, ids}`, once every session is checked.
-  defp with_sessions({:ok, built}, start, context) do
+  defp with_sessions({:ok, built}, default_group, context) do
     sessions = context.held.sessions
     context = Map.put(context, :claim_keys, session_keys(sessions, context))
 
@@ -580,7 +581,7 @@ defmodule Apiary.Dispatches.RunSettings do
     |> Enum.filter(&Map.has_key?(sessions, &1))
     |> Enum.reduce_while({:ok, [], [], []}, fn workflow, {:ok, chosen, groups, cooling} ->
       with {:ok, choice, group, ids} <-
-             session_choice(Map.fetch!(sessions, workflow), built, start, context)
+             session_choice(Map.fetch!(sessions, workflow), built, default_group, context)
              |> waiting(),
            {:ok, choice, group} <- same_api(choice, group, groups) do
         groups = if is_map(group) and group not in groups, do: groups ++ [group], else: groups
@@ -596,14 +597,15 @@ defmodule Apiary.Dispatches.RunSettings do
     |> case do
       {:ok, chosen, groups, cooling} ->
         cond do
-          not fits?(start, groups) ->
+          not fits?(default_group, groups) ->
             {:end, :too_many_providers}
 
           cooling == [] ->
-            {:ok, merged(built, start, {chosen, groups}, context.now)}
+            {:ok, merged(built, default_group, {chosen, groups}, context.now)}
 
           true ->
-            {:cooling, merged(built, start, {chosen, groups}, context.now), Enum.uniq(cooling)}
+            {:cooling, merged(built, default_group, {chosen, groups}, context.now),
+             Enum.uniq(cooling)}
         end
 
       other ->
@@ -626,9 +628,9 @@ defmodule Apiary.Dispatches.RunSettings do
   # a key (`merge/3`). The claim's guard checks the stage's choices before `hold/1` reads
   # them (`Apiary.Stages.shared_models/1`); a choice saved in between can add a provider,
   # and the claim then ends the run `too_many_providers`, as the guard would.
-  defp fits?(start, groups) do
-    start_ids = if start, do: [start.provider.id], else: []
-    ids = Enum.uniq(start_ids ++ Enum.map(groups, & &1.provider.id))
+  defp fits?(default_group, groups) do
+    default_group_ids = if default_group, do: [default_group.provider.id], else: []
+    ids = Enum.uniq(default_group_ids ++ Enum.map(groups, & &1.provider.id))
     length(ids) <= Order.max_keys()
   end
 
@@ -655,16 +657,16 @@ defmodule Apiary.Dispatches.RunSettings do
   # The run's keys, at most `Apiary.ModelKeys.Order.max_keys/0`, as `keys` (`merge/3`),
   # `columns` with the default model provider credential's provider, and each session's
   # entry with the name of its group's default model provider credential as
-  # `model_credential`. A run whose first session starts on the machine's local model
-  # provider credential (so the run has no default model provider credential) keeps no
-  # key.
+  # `model_provider_credential_name`. A run whose first session starts on the machine's
+  # local model provider credential (so the run has no default model provider credential)
+  # keeps no key.
   defp merged(built, nil, {chosen, _groups}, _now) do
     sessions = Map.new(chosen, fn {workflow, choice, _group} -> {workflow, entry(choice)} end)
     built |> Map.put(:keys, []) |> Map.put(:sessions, sessions)
   end
 
-  defp merged(built, start, {chosen, groups}, now) do
-    {keys, credentials} = merge(start, groups, now)
+  defp merged(built, default_group, {chosen, groups}, now) do
+    {keys, credentials} = merge(default_group, groups, now)
 
     sessions =
       Map.new(chosen, fn {workflow, choice, group} ->
@@ -672,18 +674,20 @@ defmodule Apiary.Dispatches.RunSettings do
       end)
 
     built
-    |> Map.put(:columns, %{provider_connection_id: start.provider.id})
+    |> Map.put(:columns, %{provider_connection_id: default_group.provider.id})
     |> Map.put(:keys, keys)
     |> Map.put(:sessions, sessions)
   end
 
   defp entry(choice, credential \\ nil)
   defp entry(choice, nil), do: %{"model_choice" => choice}
-  defp entry(choice, name), do: %{"model_choice" => choice, "model_credential" => name}
+
+  defp entry(choice, name),
+    do: %{"model_choice" => choice, "model_provider_credential_name" => name}
 
   # merge/3 is the keys a run gets from the group of its default model provider
-  # credential, `start`, and the groups of its later sessions' other providers, `groups`,
-  # in session order, at `now`, each group's keys in their order
+  # credential, `default_group`, and the groups of its later sessions' other providers,
+  # `groups`, in session order, at `now`, each group's keys in their order
   # (`Apiary.ModelKeys.Order.order/2`): the default model provider credential's
   # provider's keys, at most 6 less the number of other providers, so at least 1; then
   # the first key of each other provider; then the other providers' remaining keys,
@@ -692,15 +696,15 @@ defmodule Apiary.Dispatches.RunSettings do
   # credential's provider's first, then each other provider's, each provider's keys in
   # the order the run configuration sends them (`Apiary.ModelKeys.Order.sent/2`) and
   # named `<provider's public id>-<place>`, the place counted per provider from 1; and
-  # the name of each other provider's first free key (`Apiary.ModelKeys.Order.start/2`),
+  # the name of each other provider's first free key (`Apiary.ModelKeys.Order.first_free/2`),
   # else its first, by provider id. The claim's guard keeps the providers of a run's
   # stage at 6 or fewer (`Apiary.Stages.shared_models/1`), so every provider gets a key.
   @doc false
   @spec merge(map, [map], DateTime.t()) :: {[map], %{Ecto.UUID.t() => String.t()}}
-  def merge(start, groups, %DateTime{} = now) do
+  def merge(default_group, groups, %DateTime{} = now) do
     max = Order.max_keys()
     others = Enum.take(groups, max - 1)
-    first = Enum.take(start.keys, max - length(others))
+    first = Enum.take(default_group.keys, max - length(others))
     heads = Enum.map(others, &Enum.take(&1.keys, 1))
     left = max - length(first) - Enum.sum(Enum.map(heads, &length/1))
 
@@ -710,8 +714,8 @@ defmodule Apiary.Dispatches.RunSettings do
         {taken, left - length(taken)}
       end)
 
-    taken = [{start, first} | Enum.zip([others, heads, tails]) |> Enum.map(&taken/1)]
-    start_key = Order.start(first, now)
+    taken = [{default_group, first} | Enum.zip([others, heads, tails]) |> Enum.map(&taken/1)]
+    default_credential = Order.first_free(first, now)
 
     named =
       Enum.map(taken, fn {group, keys} ->
@@ -727,14 +731,16 @@ defmodule Apiary.Dispatches.RunSettings do
       |> Enum.flat_map(fn {group, keys} -> Enum.map(keys, &{group, &1}) end)
       |> Enum.with_index(1)
       |> Enum.map(fn {{group, {key, name}}, position} ->
-        start? = group == start and start_key != nil and key.id == start_key.id
-        stored_key(group, key, {position, name}, start?, now)
+        default? =
+          group == default_group and default_credential != nil and key.id == default_credential.id
+
+        stored_key(group, key, {position, name}, default?, now)
       end)
 
     credentials =
       for {group, keys} <- tl(named), into: %{} do
         {first_key, first_name} = hd(keys)
-        free = Order.start(Enum.map(keys, &elem(&1, 0)), now) || first_key
+        free = Order.first_free(Enum.map(keys, &elem(&1, 0)), now) || first_key
         {_key, name} = Enum.find(keys, {first_key, first_name}, &(elem(&1, 0).id == free.id))
         {group.provider.id, name}
       end
@@ -748,13 +754,13 @@ defmodule Apiary.Dispatches.RunSettings do
   # `{:ok, model_choice, group}`, `group` the session's provider's group where it is not
   # the default model provider credential's, else nil; `{:end, :provider_gone}`; `{:end,
   # :session_key_missing}`; or `{:unchecked, provider}`.
-  defp session_choice(input, built, start, context) do
+  defp session_choice(input, built, default_group, context) do
     input = Map.put(input, :providers, context.resolved)
 
     case Resolution.resolve(input) do
       {:ok, %Resolution{} = resolution} ->
         case runtime(resolution) do
-          {:ok, runtime} -> session_on(input, resolution, runtime, built, start, context)
+          {:ok, runtime} -> session_on(input, resolution, runtime, built, default_group, context)
           {:end, :runtime_unserved} -> {:ok, built.stored, nil}
         end
 
@@ -787,20 +793,20 @@ defmodule Apiary.Dispatches.RunSettings do
     |> session_result(built)
   end
 
-  defp session_on(input, resolution, runtime, built, start, context) do
+  defp session_on(input, resolution, runtime, built, default_group, context) do
     provider = Map.fetch!(context.providers, resolution.connection_id)
 
     with :ok <- intact(provider) do
       case session_form(resolution, provider, runtime, built, context) do
         {:ok, formed} ->
           cond do
-            provider.id == start.provider.id ->
-              on_start(formed, start)
+            provider.id == default_group.provider.id ->
+              on_default_group(formed, default_group)
 
             group = free_group(provider, formed, context) ->
               {:ok, formed.stored, group}
 
-            fallen = on_fallback(input, resolution, start, context) ->
+            fallen = on_fallback(input, resolution, default_group, context) ->
               fallen
 
             true ->
@@ -811,8 +817,8 @@ defmodule Apiary.Dispatches.RunSettings do
         # with a free key; else the run waits for the later steps whose keys are all in
         # cooldown; else the session would have no key in the run.
         {:end, :key_gone} when context.held.keyed ->
-          on_fallback(input, resolution, start, context) ||
-            cooling_steps(input, resolution, start, context) ||
+          on_fallback(input, resolution, default_group, context) ||
+            cooling_steps(input, resolution, default_group, context) ||
             {:end, :session_key_missing}
 
         other ->
@@ -848,8 +854,8 @@ defmodule Apiary.Dispatches.RunSettings do
   # A choice on the default model provider credential's provider joins the default model
   # provider credential's group where its runtime uses the same API; else the claim ends
   # `session_key_missing`.
-  defp on_start(formed, start) do
-    if same_api?(formed.columns.provider_api, start.api),
+  defp on_default_group(formed, default_group) do
+    if same_api?(formed.columns.provider_api, default_group.api),
       do: {:ok, formed.stored, nil},
       else: {:end, :session_key_missing}
   end
@@ -859,7 +865,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # with the same API: `{:ok, choice, group}`, or nil for none. Each step forms on its
   # runtime and tiers. A step that does not form, or whose settings check ran out of time
   # or crashed, is passed over.
-  defp on_fallback(input, %Resolution{} = resolution, start, ctx) do
+  defp on_fallback(input, %Resolution{} = resolution, default_group, ctx) do
     input
     |> later_steps(resolution)
     |> Enum.find_value(fn %Resolution{connection_id: id} = fallen ->
@@ -869,8 +875,8 @@ defmodule Apiary.Dispatches.RunSettings do
            {:ok, runtime} <- runtime(fallen),
            {:ok, formed} <- session_form(fallen, provider, runtime, nil, ctx) do
         cond do
-          id == start.provider.id ->
-            if same_api?(formed.columns.provider_api, start.api),
+          id == default_group.provider.id ->
+            if same_api?(formed.columns.provider_api, default_group.api),
               do: {:ok, formed.stored, nil}
 
           group = free_group(provider, formed, ctx) ->
@@ -889,13 +895,13 @@ defmodule Apiary.Dispatches.RunSettings do
   # the default model provider credential's, with keys that are all in cooldown at the
   # claim, as `on_fallback/4` found no free one: `{:cooling, choice, ids}`, the first
   # such step's choice and those steps' providers in order, each once; nil for none.
-  defp cooling_steps(input, %Resolution{} = resolution, start, ctx) do
+  defp cooling_steps(input, %Resolution{} = resolution, default_group, ctx) do
     input
     |> later_steps(resolution)
     |> Enum.flat_map(fn %Resolution{connection_id: id} = fallen ->
       provider = Map.fetch!(ctx.providers, id)
 
-      with false <- id == start.provider.id,
+      with false <- id == default_group.provider.id,
            true <- Connections.intact?(provider),
            {:ok, runtime} <- runtime(fallen),
            {:ok, formed} <- session_form(fallen, provider, runtime, nil, ctx),
@@ -918,7 +924,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # one of them is free; else nil.
   defp free_group(provider, formed, context) do
     group = session_group(provider, formed, context)
-    if Order.start(group.keys, context.now), do: group
+    if Order.first_free(group.keys, context.now), do: group
   end
 
   # The group of a later session on `provider` (`group/3`), from the keys
@@ -983,21 +989,21 @@ defmodule Apiary.Dispatches.RunSettings do
   # where every key is in cooldown. `merge/3` takes the run's keys from the group.
   defp keyed(built, %Connection{} = provider, now) do
     group = group(provider, built, now)
-    if Order.start(group.keys, now), do: {:ok, built, group}
+    if Order.first_free(group.keys, now), do: {:ok, built, group}
   end
 
   # A key as the run keeps it (`Apiary.Runs.ModelKey`) and its run configuration writes
   # it: its place, its name, its row id, its provider, its keys' secret, its chain and the
-  # API its group uses; `start` on the default model provider credential, its Pause for,
-  # and, where it has them, its known reset from the providers' responses, the next reset
-  # of its schedule, the end of its cooldown while it is in cooldown at `now`, a window
-  # at its Use up to percentage included, and that percentage. Times are in whole
+  # API its group uses; `default_credential` on the default model provider credential, its
+  # Pause for, and, where it has them, its known reset from the providers' responses, the
+  # next reset of its schedule, the end of its cooldown while it is in cooldown at `now`,
+  # a window at its Use up to percentage included, and that percentage. Times are in whole
   # seconds, rounded up.
-  defp stored_key(group, key, {position, name}, start?, now) do
+  defp stored_key(group, key, {position, name}, default?, now) do
     %{
       position: position,
       name: name,
-      start: start?,
+      default_credential: default?,
       secret_value_id: key.id,
       connection_id: group.provider.id,
       secret_id: group.provider.secret_id,

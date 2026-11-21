@@ -26,7 +26,7 @@ defmodule Apiary.ModelKeys.Order do
 
   The keys in cooldown follow, the earliest `cooldown_until` first, ties in tie order. Of
   the result, a run gets the first `max_keys/0`; the others serve later runs. The run's
-  default model provider credential is its first free key (`start/2`): never a key in
+  default model provider credential is its first free key (`first_free/2`): never a key in
   cooldown.
 
   **The order sent** (`sent/2`): the run configuration has the keys a run gets in tie
@@ -84,8 +84,8 @@ defmodule Apiary.ModelKeys.Order do
   end
 
   @doc "The first free key of `keys` at `now`, nil when every key is in cooldown."
-  @spec start([key], DateTime.t()) :: key | nil
-  def start(keys, %DateTime{} = now), do: Enum.find(keys, &(not cooling?(&1, now)))
+  @spec first_free([key], DateTime.t()) :: key | nil
+  def first_free(keys, %DateTime{} = now), do: Enum.find(keys, &(not cooling?(&1, now)))
 
   @doc "Whether `key` is in cooldown at `now`: its `cooldown_until` is after `now`."
   @spec cooling?(key, DateTime.t()) :: boolean

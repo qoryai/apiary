@@ -394,7 +394,7 @@ defmodule ApiaryWeb.InstanceLive.NodesTest do
 
       assert words(lv, "#code-issued-header-description") ==
                "The command connects #{node.name} by itself, through the Qory Gateway: it " <>
-                 "makes the machine's key there, saves it, and writes Qory Apiary's address " <>
+                 "makes the machine's access key there, saves it, and writes Qory Apiary's address " <>
                  "and public key and the gateway's address into the Forager file. The secret " <>
                  "never leaves the machine."
 

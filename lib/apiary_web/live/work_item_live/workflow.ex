@@ -37,12 +37,14 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.{Access, Artifacts, Features, Processes, Repo, Stages, WorkItems}
+  alias Apiary.{Access, Accounts, Artifacts, Features, Organisations, Processes, Repo, Stages}
+  alias Apiary.WorkItems
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.Pause
   alias Apiary.Runs.{Cancel, Run}
-  alias Apiary.Stages.{Approvers, Runner}
+  alias Apiary.Stages.{Approvers, Points, Runner}
   alias Apiary.WorkItems.WorkItem
+  alias ApiaryWeb.{People, SourceComponents}
   alias ApiaryWeb.WorkItemLive.{StageComponents, View}
 
   @states Apiary.Processes.Version.stage_states()
@@ -119,6 +121,11 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       if offers != [] and at_explore and opts[:proposal] == true,
         do: Stages.proposed_track_with_reason(row, artifacts)
 
+    switch = switch_tracks(row, state)
+    earlier = if(at, do: Enum.take(all, at), else: [])
+    can_decide = Access.can?(scope, :"gate.approve", row)
+    changes = changes(scope, row, artifacts)
+
     %{
       version: get(get(status, :version), :number) || get(version, :number),
       stages: all |> track(at, state) |> not_run(records.stage_skips),
@@ -151,32 +158,125 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
       notes: Enum.map(Stages.notes(row), &note(&1, all)),
       inputs: Enum.map(get(status, :inputs) || [], &input/1),
       outputs: outputs,
-      escalation: scope |> escalation(get(status, :escalation), runs, outputs) |> entry(stage),
+      escalation:
+        scope
+        |> escalation(
+          get(status, :escalation),
+          runs,
+          outputs,
+          get(status, :accept_needs),
+          %{
+            switch: switch,
+            earlier: earlier,
+            start: get(status, :accept_entry),
+            can_decide: can_decide,
+            approver_line: approver_line(scope, stage, get(status, :escalation), can_decide)
+          }
+        )
+        |> entry(stage),
       approvers: approvers(stage),
       # The gate's approvers from `Apiary.Stages.status/2`: `:members`, or account ids.
       gate_approvers: get(get(status, :gate) || %{}, :approvers) || :members,
       gate_kind: gate_kind,
       approvable: get(get(status, :gate) || %{}, :approvable?) == true,
+      # Each version that a person's change made and no person's approval lists yet, by
+      # its public id (`changes/3`); the page fills a changed acceptance criteria's
+      # `criteria`.
+      changes: changes,
+      # Who decides at the gate, for a reader who may not, where a version is changed
+      # (`gate_approver_line/6`); nil otherwise.
+      gate_approver_line: gate_approver_line(scope, stage, state, gate_kind, can_decide, changes),
       index: for(artifact <- index, not Artifacts.withdrawn?(artifact), do: indexed(artifact)),
       # The newest submission; the work item page fills `drafts` from its document
       # (`Apiary.Submissions.repositories/1`), which it reads once per version.
       submission: submission(version, index),
       drafts: [],
-      earlier: if(at, do: Enum.take(all, at), else: []),
+      earlier: earlier,
       # The tracks an escalation offers a switch to (`Apiary.Stages.switch_tracks/1`), each
-      # with its `id`, `name`, `gate`, `first` and `later`; with any, the card offers no
+      # with its `id`, `name`, `gate`, `first` and `later`; with any, the card shows no
       # Accept as it is and no Move back.
-      switch: switch_tracks(row, state),
+      switch: switch,
       missing_workflows: List.wrap(get(status, :waiting_workflow)),
       missing_outputs: List.wrap(get(status, :missing_outputs)),
+      # The missing required outputs that Accept as it is requires.
+      accept_needs: List.wrap(get(status, :accept_needs)),
       confirm_gate: false,
       explore: false,
       at_explore: at_explore,
       explore_id: explore_id,
       tabs: [],
       ended: false,
-      can_decide: Access.can?(scope, :"gate.approve", row)
+      can_decide: can_decide
     }
+  end
+
+  # Who decides the escalation of `stage`, for a reader who may not
+  # (`ApiaryWeb.WorkItemLive.StageComponents.approver_line/3`): the sentence that takes the
+  # place of the action in the points (`worded/2`), in any state that keeps the
+  # escalation, such as waiting for answers. nil with no escalation or for a reader who
+  # may decide.
+  defp approver_line(_scope, _stage, nil, _can_decide), do: nil
+
+  defp approver_line(scope, stage, _escalation, false), do: who_decides(scope, stage)
+
+  defp approver_line(_scope, _stage, _escalation, true), do: nil
+
+  # Who decides at the gate of `stage` (`StageComponents.approver_line/3`), for a reader
+  # who may not, at a gate that takes a decision, while a version is changed: the line
+  # takes the place of the line of what to do above a changed version's acceptance
+  # criteria. nil otherwise.
+  defp gate_approver_line(scope, stage, :at_gate, gate_kind, false, changes)
+       when gate_kind != "none" and changes != %{},
+       do: who_decides(scope, stage)
+
+  defp gate_approver_line(_scope, _stage, _state, _gate_kind, _can_decide, _changes), do: nil
+
+  # The sentence of who decides on `stage`. The page reads the members only for a stage
+  # that lists approvers.
+  defp who_decides(scope, stage) do
+    approvers = approvers(stage)
+
+    members =
+      case approvers do
+        {:listed, [_ | _]} -> Organisations.list_workspace_members(scope)
+        _members_or_none -> []
+      end
+
+    StageComponents.approver_line(stage.name, approvers, members)
+  end
+
+  # The versions of `artifacts` that a person's change made and no person's approval
+  # lists yet (`Apiary.Stages.unapproved_changes/2`), each with `whose`, who asked for it,
+  # for the reader of `scope`, as the type `whose` of
+  # `ApiaryWeb.WorkItemLive.GateChanges` has it: `:you` where the reader wrote the note,
+  # else `{:name, name}`, the writer's short name, or `:member` where the writer's account
+  # is gone.
+  defp changes(scope, row, artifacts) do
+    case Stages.unapproved_changes(row, artifacts) do
+      changes when changes == %{} ->
+        %{}
+
+      changes ->
+        reader = scope.user.id
+
+        names =
+          for user <- Accounts.list_users_by_id(Enum.map(Map.values(changes), & &1.by)),
+              user.id != reader,
+              is_nil(user.deleted_at),
+              into: %{},
+              do: {user.id, People.short(People.email(user))}
+
+        Map.new(changes, fn {id, change} ->
+          whose =
+            cond do
+              change.by == reader -> :you
+              is_binary(names[change.by]) -> {:name, names[change.by]}
+              true -> :member
+            end
+
+          {id, Map.put(change, :whose, whose)}
+        end)
+    end
   end
 
   defp switch_tracks(row, :escalated),
@@ -499,19 +599,39 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp named_output(named),
     do: %{name: get(named, :name), version: get(named, :number), version_id: get(named, :id)}
 
-  defp escalation(_scope, nil, _runs, _outputs), do: nil
+  defp escalation(_scope, nil, _runs, _outputs, _missing, _controls), do: nil
 
-  defp escalation(scope, escalation, runs, outputs) do
+  # `missing` is the missing required output types that Accept as it is requires
+  # (`accept_needs` of `Apiary.Stages.status/2`: the missing ones where the accept takes
+  # the stage to its gate): with any, the stage has no result to accept. `accept` is
+  # whether the card shows Accept as it is (`accept?/2`). `controls` has `switch` and
+  # `earlier`, the page's tracks to switch to and earlier stages, `start`, the entry that
+  # an accept starts (`accept_entry` of `Apiary.Stages.status/2`), `can_decide` and
+  # `approver_line` (`approver_line/4`); the points' words follow the controls the card
+  # shows (`points/2`). `start` is that entry where the card shows the accept button, and
+  # the button then reads Start and the entry in place of Accept as it is
+  # (`StageComponents.accept_label/1`); nil elsewhere.
+  defp escalation(scope, escalation, runs, outputs, missing, controls) do
+    %{switch: switch} = controls
     cause = get(escalation, :cause)
     cause = if is_atom(cause) and not is_nil(cause), do: Atom.to_string(cause), else: cause
     cause = Map.get(@causes, cause, :escalate)
 
     run = escalated_run(escalation, runs)
 
+    result =
+      List.wrap(missing) == [] and
+        result?(cause, outputs, get(escalation, :no_verdict) == true, run)
+
+    accept = accept?(result, switch)
+    start = if accept, do: Map.get(controls, :start)
+
     %{
       cause: cause,
-      result: result?(cause, outputs, get(escalation, :no_verdict) == true, run),
-      points: points(get(escalation, :points)),
+      accept: accept,
+      start: start,
+      points:
+        points(get(escalation, :points), Map.merge(controls, %{accept: accept, start: start})),
       round: get(escalation, :round),
       run: run,
       # The id of the run in the queue (`Apiary.Dispatches.DispatchRun`) that the versions
@@ -542,28 +662,156 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     Map.put(escalation, :entry, workflow && ((named && get(named, :name)) || workflow))
   end
 
+  # accept?/2 is whether the escalation card shows Accept as it is: where the stage has
+  # a result to accept (`result`, `escalation/6`) and the card shows no switch
+  # (`switch`). The button, the check of a sent accept (`checked/2`) and the points'
+  # words (`points/2`) read it.
+  @doc false
+  @spec accept?(boolean, list) :: boolean
+  def accept?(result, switch), do: result == true and switch == []
+
+  # move_back?/2 is whether the escalation card shows Move back: where it shows no switch
+  # (`switch`) and the stage has an earlier stage (`earlier`).
+  @doc false
+  @spec move_back?(list, list) :: boolean
+  def move_back?(switch, earlier), do: switch == [] and earlier != []
+
+  # The action of a return limit's point to the stage `to` (`Apiary.Stages.Points`), for
+  # the controls the card shows: the switch buttons by their labels, else Move back with
+  # the accept button where the card shows both, Start and the entry (`start`) or Accept as
+  # it is, else Move back alone. nil where the card shows neither a switch nor Move back.
+  defp return_action(to, %{switch: [_ | _] = switch}) do
+    labels = switch |> Enum.map(&StageComponents.switch_label/1) |> SourceComponents.joined(:or)
+    Points.return_action(to, {:switch, labels})
+  end
+
+  defp return_action(to, %{accept: accept, switch: switch, earlier: earlier} = controls) do
+    start = Map.get(controls, :start)
+
+    cond do
+      not move_back?(switch, earlier) -> nil
+      accept and is_binary(start) -> Points.return_action(to, {:start, start})
+      accept -> Points.return_action(to, :accept)
+      true -> Points.return_action(to, :move_back)
+    end
+  end
+
   # An escalation's points as the block "What the run needs from you" shows them: each
   # with its text, its action (`:answer` or `:run_again`) and, for `:answer`, the id of
-  # its question. A point without text is left out.
-  defp points(points) when is_list(points) do
-    for %{} = point <- points, text = get(point, :text), is_binary(text) and text != "" do
+  # its question; a `:run_again` point with `in_text` true where its text opens with its
+  # action (`Apiary.Stages.Points.check_failed/1`), and where it has no action sentence:
+  # a return limit's count, where the card shows neither a switch nor Move back
+  # (`worded/2`). A return limit's point has the action
+  # for the card's controls (`controls`, `return_action/2`); where the card shows no
+  # Accept as it is, another point's `without_accept` fields replace those that pick it
+  # (`Apiary.Stages.Points`). A point without text is left out.
+  defp points(points, controls) when is_list(points) do
+    for %{} = point <- points,
+        point = worded(point, controls),
+        text = get(point, :text),
+        is_binary(text) and text != "" do
       case get(point, :action) do
         action when action in ["answer", :answer] ->
           %{text: text, action: :answer, question: get(point, :question)}
 
         _run_again ->
-          %{text: text, action: :run_again, question: nil, fix: get(point, :fix)}
+          %{
+            text: text,
+            action: :run_again,
+            question: nil,
+            fix: get(point, :fix),
+            in_text: get(point, :action_in_text) == true
+          }
       end
     end
   end
 
-  defp points(_none), do: []
+  defp points(_none, _controls), do: []
 
-  # Whether the stage has a result to accept as it is: a version of one of its outputs; for
-  # a stage with no outputs, a run that did not stop before its verdict; or a run of the
+  # worded/2 is `point` (string keys, as stored) with the words for the card's controls
+  # `controls` (`%{accept:, switch:, earlier:}`): a return limit's point has the action
+  # for them (`return_action/2`), or, where the card shows neither a switch nor Move back,
+  # only its count of returns, with no action sentence; another point keeps its words,
+  # with its `without_accept` fields where the card shows no Accept as it is, and a round
+  # limit's fix with Start and the entry where the card shows them (`start`). For a reader
+  # who may not decide (`can_decide` false; true where `controls` has none), the sentence
+  # `approver_line` takes the place of a return limit's action and of a round limit's fix,
+  # and follows a failed check's fact, written without its action (`undecided/2`).
+  @doc false
+  @spec worded(map, map) :: map
+  def worded(point, controls) do
+    decides = Map.get(controls, :can_decide, true)
+
+    case get(point, :return_stage) do
+      to when is_binary(to) and decides -> return_worded(point, return_action(to, controls))
+      to when is_binary(to) -> return_worded(point, controls.approver_line)
+      _other when decides -> without_accept(point, controls.accept, Map.get(controls, :start))
+      _other -> undecided(point, controls.approver_line)
+    end
+  end
+
+  defp return_worded(point, nil) do
+    point
+    |> Map.merge(%{"text" => get(point, :fix), "action_in_text" => true})
+    |> Map.delete("fix")
+  end
+
+  defp return_worded(point, text), do: Map.put(point, "text", text)
+
+  defp without_accept(point, false, _start) do
+    case get(point, :without_accept) do
+      %{} = words -> Map.merge(point, Map.take(words, ["text", "fix"]))
+      _none -> point
+    end
+  end
+
+  defp without_accept(point, _accept, start) when is_binary(start), do: with_start(point, start)
+  defp without_accept(point, _accept, _start), do: point
+
+  # A round limit's point where the card shows Start and the entry `start` in place of
+  # Accept as it is: its fix has that button's words (`Points.start_fix/2`), with the
+  # count of open findings (`open_findings`). A point stored with no count has its
+  # `without_accept` fields, which contain only Run another round. Another point keeps
+  # its words.
+  defp with_start(point, start) do
+    case {get(point, :open_findings), get(point, :without_accept)} do
+      {count, _words} when is_integer(count) ->
+        Map.put(point, "fix", Points.start_fix(count, start))
+
+      {_none, %{} = words} ->
+        Map.merge(point, Map.take(words, ["text", "fix"]))
+
+      _other ->
+        point
+    end
+  end
+
+  # A point for a reader who may not decide (`Apiary.Stages.Points`): a round limit's
+  # with open findings (`without_accept`) has who decides in place of its fix; a failed
+  # check's (`missing_type`) has the fact without its action, then who decides. Another
+  # point keeps its words.
+  defp undecided(point, line) do
+    cond do
+      is_map(get(point, :without_accept)) ->
+        point |> Map.put("fix", line) |> Map.delete("without_accept")
+
+      is_binary(type = get(point, :missing_type)) ->
+        point
+        |> Map.merge(%{"text" => StageComponents.stored_no(type), "fix" => line})
+        |> Map.delete("action_in_text")
+
+      true ->
+        point
+    end
+  end
+
+  # Whether the stage has a result to accept as it is, where the check of the accept
+  # requires no missing output (`escalation/6`): a version of one of its outputs; for a
+  # stage with no outputs, a run that did not stop before its verdict; or a run of the
   # stage that ended with no verdict (`no_verdict`, `Apiary.Stages.status/2`) where no
-  # output is required. The run of an escalation the migration placed has no stage, so the
-  # page lists it nowhere (`Apiary.Stages.runs/1`) and that clause does not apply to it.
+  # output is required. The run of an escalation the migration placed has no stage, so
+  # the page lists it nowhere (`Apiary.Stages.runs/1`) and that clause does not apply to
+  # it.
   defp result?(:run_stopped, outputs, true, %{}),
     do: Enum.any?(outputs, & &1.version_id) or not Enum.any?(outputs, & &1.required)
 
@@ -604,15 +852,20 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     }
   end
 
-  # Who approves the stage's gate: any member, or the members it lists.
-  defp approvers(%{gate: gate}) do
+  @doc """
+  approvers/1 is who approves the gate of `stage`, a stage of the page (`page/2`):
+  `:members` where it lists no approvers, so any member with `gate.approve` may, else
+  `{:listed, ids}`, the account ids it lists, in its order.
+  """
+  @spec approvers(map) :: :members | {:listed, [String.t()]}
+  def approvers(%{gate: gate}) do
     case get(gate, :approvers) do
       %{} = listed -> {:listed, get(listed, :members) || []}
       _members -> :members
     end
   end
 
-  defp approvers(_stage), do: :members
+  def approvers(_stage), do: :members
 
   ## The list's rows
 
@@ -804,13 +1057,11 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   defp checked({:request_changes, _note, _id}, %{confirm_gate: true}),
     do: {:error, :confirm_gate}
 
-  # Accept as it is only where the stage has a result: the page offers it nowhere else.
-  defp checked({:resolve, :accept, _note}, %{escalation: %{result: false}}),
+  # Accept as it is only where the card shows it (`accept?/2`).
+  defp checked({:resolve, :accept, _note}, %{escalation: %{accept: false}}),
     do: {:error, :invalid}
 
-  # Accept as it is and Move back, where the card offers a switch: it offers neither.
-  defp checked({:resolve, :accept, _note}, %{switch: [_ | _]}), do: {:error, :invalid}
-
+  # Move back, where the card shows a switch: it shows no Move back then.
   defp checked({:resolve, {:move_back, _id}, _note}, %{switch: [_ | _]}),
     do: {:error, :invalid}
 

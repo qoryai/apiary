@@ -28,7 +28,7 @@
     },
     "gateway": "ng_0123456789abcdef",
     "machine": {
-      "key": "standard",
+      "type": "standard",
       "name": "sssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssssss"
     },
     "variables": [

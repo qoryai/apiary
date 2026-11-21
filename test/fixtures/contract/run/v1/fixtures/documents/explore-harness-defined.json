@@ -31,7 +31,8 @@
       "workflows": {
         "hello": {
           "access": "write",
-          "time_limit": "45m"
+          "plan": "build-plan",
+          "tier": "thinking"
         },
         "review": {}
       }

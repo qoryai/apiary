@@ -230,7 +230,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   workspace default: <Provider>.", or the organisation's default, or "No default is set.
   Set one in Workspace settings › Model." **Provider** lists every model provider, by its
   name. A provider that works with no runtime shows “<Provider> works with no runtime
-  in this version of Qory Apiary. Pick another provider.” under **Provider**, and **Save
+  in this version of Qory. Pick another provider.” under **Provider**, and **Save
   model choice** stays disabled. A model provider shows **Model and effort per tier**, as
   on Workspace settings › Model, then **Runtime**, as there, and **Save model choice**,
   enabled once every tier has a model and something changed. "Use workspace default"
@@ -350,7 +350,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   not start when a film ends. A film or pictures that no scenario has show no queue, and
   a set of pictures that no scenario has stays a stack of pictures.
 - On that tab, every output frame is open, the other outputs' frames, such as Demo
-  evidence and Explainer, show the version and the artifact rows only, and a row names
+  evidence and Walkthrough, show the version and the artifact rows only, and a row names
   the artifact as the gate card does, such as “demo video scenario-1 v1”. The gate card lists the
   films and pictures together, in scenario order.
 - On that tab, an output frame lists the artifact row of each name of its type, `main`
@@ -382,7 +382,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   One component takes a run and lists its versions, so another page can show them.
 - A `diff` code block in a run's Markdown shows as a diff box with the file and the count of
   changed lines, on every page that renders a run's Markdown. In the block "What the run
-  needs from you", the headings of the run's report show as small bold lines.
+  needs from you" and in the text of the frames of a stage's tab, the headings of the
+  run's report show as small bold lines. The tab's question context, review comments and
+  option proposals keep their headings.
 - After a person moves a work item to an earlier stage, `inputs` in `GET work-item` also
   lists, for each output of the stage the work item left, the newest version made in that
   stage from the time the work item last entered it to the time it left, with
@@ -467,10 +469,42 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   each version that approval recorded. The tab of a stage
   with a `verification` output keeps the frames of the Verify tab, which show only the
   versions that the take in's runs wrote. In a stage that started no run, the input frames
-  follow the output frames, folded. On the stage card, each output's version at the gate
+  follow the output frames, folded; with no output frame, the first input frame is open.
+  An input version that a run made has the caption "Version <n> · from <stage>, Attempt <a>
+  (Run <r>)", or "Version <n> · from <stage>, Attempt <a>" when the run has no registered
+  number; another input version has "Version <n>".
+  When another input remains, the version of the harness's submission type
+  (`submit.type`) has no frame in this tab; it stays in the stage's artifacts. Where it is
+  the only input, it has the frame. On the stage card, each output's version at the gate
   links to that version's page, and the gate also links every further version that an
   approval would record. In `GET artifacts`, each version has `decision` and
   `decision_at`, the time of that note.
+- The work item page marks a version that a run stored with a `decision` until a person's
+  approval lists it: "Changed on your request" for the person who wrote the note, "Changed
+  on sam's request" for any other reader, with the part of the writer's email before "@",
+  and "Changed on a member's request" where the writer's account is gone. The mark shows on
+  the version's line of the gate card ("acceptance criteria v2 · Changed on your request"),
+  after an output's check ("acceptance criteria v2 · Passed · Changed on your request",
+  then " · " and the approval marks the line shows, such as "Approved v1; v2 is newer"),
+  and on the caption of the version's frame on the stage's tab ("Version 2 · Changed on
+  your request"). For acceptance criteria approved before, the gate card compares each
+  criterion by its id with the version that a person approved, else with the one that a
+  gate `none`'s approval lists, and lists each changed, added or removed one: its id with
+  the mark, then "**Earlier:**" and "**New:**" with the two texts, then "**Earlier
+  check:**" and "**New check:**" where its check changed. An added criterion shows
+  "**Earlier:** none. This criterion is new." and its new check; a removed one shows
+  "**New:** Removed. Reason: …" and no check line; a criterion whose check alone changed
+  shows "**Text:**" and the two check lines. "AC-1 is unchanged." (or "AC-1 and AC-5 are
+  unchanged.") follows the list. Above the list, a reader who may approve sees "Check that
+  these 3 changes to the acceptance criteria match your request, then pick **Approve** or
+  **Request changes**." ("Check that this change to the acceptance criteria matches your
+  request, …" for one), or, where the card shows only **Request changes**, "Check that
+  these 3 changes to the acceptance criteria match your request. If they do not, pick
+  **Request changes**." The line contains only controls that the card shows, and does not
+  show while the form of Request changes is open. A reader who may not approve sees who
+  decides, such as "An approver of Build decides: sam and alex.", in place of that line and
+  of "Only the members this stage lists can approve." A changed version of any other type
+  shows the mark only.
 - Explore's gate lists the tracks it offers above Approve, each with its description, in the
   gate's order, under "Track to run after you approve". The track that the stage's runs
   proposed is selected and has the badge "Proposed by <stage>" and, where the run gave a
@@ -482,7 +516,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   card reads "Pick a track and approve the proposal, or add a comment and run another
   round." A gate that offers no track is as before.
 - The stage track under the work item's title marks a stage that a track passed over whole
-  with "Not run", in place of its number.
+  with "not run", in place of its number. The card's line "Read the inputs below, then
+  approve." (the build report line in a software workspace) is small and muted.
 - The tab of a stage of a work item on a track, where the runner passed over an entry, starts
   with the table "Workflows": each entry of the stage's sequence in order, with its state
   (Passed, Not run, Paused, Did not pass, Questions, Queued, Running, Undone or Ended without a
@@ -503,6 +538,26 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   as before.
 - A gate card that every member may decide has no line about who approves; for a stage that
   lists its approvers it reads "Only the members this stage lists can approve."
+- On the current stage's tab, at the gate of any stage after Explore, **Run another round**
+  shows only where the stage has a workflow entry that runs on the work item's track (an
+  entry whose condition on the track, "Runs on <track> only", is not met does not run); a
+  work item on no track keeps **Run another round**. **Comment on the stage's outputs**,
+  which that button sends, shows only with it and where the tab has an output frame. Where
+  the tab has no output frame, **Run another round** shows only while a review comment is
+  open or the gate has a decision a reader may change; a refused move's error shows in any
+  case. The runs fold shows where the stage has a run, a skipped entry that the table does
+  not list, or an artifact. The table of entries stays.
+- A table in the text of a frame of a stage's tab, a run's report among them, spans the
+  width of its frame. A table with columns too wide for the frame scrolls sideways in the
+  frame, and its words stay whole. Tables in Markdown on other pages, and in the tab's
+  question context, review comments and option proposals, keep their width.
+- A link in a run's Markdown to a page of this Qory Apiary shows as a plain link in the
+  same tab, with no icon for a link out. A page of this Qory Apiary is a path that starts
+  with one `/`, or an `http` or `https` address of this instance's host and port, with no
+  user name or password. A path with a character outside letters, digits and
+  `-._~!$&()*+,;=:@%/?#`, with an encoded `/` or `\`, or with a `.` or `..` segment stays
+  text, as do other relative links and `javascript:` and `data:` links. Links to other
+  sites keep the icon and open in a new tab.
 - A workflow entry outside a loop takes `first_attempt: true`, default false. When the
   run of that entry ends `passed`, the stage passes over the rest of its sequence and goes
   on to its output checks and its gate. Another verdict acts as for any entry. A save is
@@ -839,14 +894,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   report, its first failed removal and the removal.
 - **Copy diagnostics**, in the menu of a run's page, copies the run's diagnostics as
   JSON, for owners, admins and members who may read the run's log. The diagnostics
-  contain the run with its machine type's key and name, its queue entry and claim, how
-  its machine was prepared, its latest 5,000 events at most, the output that belongs to
-  no step, its last 1 MiB, the output of each step, and the secrets found printed in the
-  run, at most 8 MiB in all. Only an instance admin's copy contains the machine logs. A
-  copy contains no key, no run code and no variable value, only the variables' names.
-  Text is copied as Qory Apiary stored it, so a secret a run printed is in the copy.
-  When the copy fails, the menu shows the fix first, such as “Sign in again, then copy
-  again. Your session ended.”
+  contain the run with its machine type and that type's name, its queue entry and
+  claim, how its machine was prepared, its latest 5,000 events at most, the output that
+  belongs to no step, its last 1 MiB, the output of each step, and the secrets found
+  printed in the run, at most 8 MiB in all. Only an instance admin's copy contains the
+  machine logs. A copy contains no key, no run code and no variable value, only the
+  variables' names. Text is copied as Qory Apiary stored it, so a secret a run printed is
+  in the copy. When the copy fails, the menu shows the fix first, such as “Sign in again,
+  then copy again. Your session ended.”
 - Instance settings › **Diagnostics keys**, for instance admins, lists the diagnostics
   keys. With a diagnostics key, a computer lists the runs on this instance, with their
   organisation, workspace and work item title, and reads the diagnostics of any of them,
@@ -1039,7 +1094,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - **Model**, “Which models do runs in Main use?”, has three fields. **Provider** lists each
   model provider with a key that reaches the workspace, by its name, then **Add a key**.
   A provider that works with no runtime shows “<Provider> works with no runtime in
-  this version of Qory Apiary. Pick another provider.” under **Provider**, and **Continue** is
+  this version of Qory. Pick another provider.” under **Provider**, and **Continue** is
   disabled.
   **Add a key** is the one option where there is no provider to reuse. It opens
   **Kind of provider**, **Key**, and an address for a provider that needs one, as **Organisation
@@ -1230,7 +1285,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   the new provider works with it, else takes the first that does. A change of
   **Runtime** keeps the models, and an effort the runtime does not accept goes back to
   “Not set”. A provider that works with no runtime shows “<Provider> works with no
-  runtime in this version of Qory Apiary. Pick another provider.” under **Provider**, and
+  runtime in this version of Qory. Pick another provider.” under **Provider**, and
   **Save** writes nothing until another provider is chosen. A saved choice whose
   provider's settings no longer fit keeps its provider in **Provider**, with the line of
   why under it; no other provider is chosen in its place, and **Save** writes nothing
@@ -1766,7 +1821,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   value** keeps the key's value. The value of any other secret stays as you typed it,
   its last newline included.
 - **Workspace settings › Model** has the part **Fallbacks** under Provider, the tiers and
-  Runtime: “When every key of Northwind Claude is in cooldown, runs use these, in order,
+  Runtime: “When every key of this provider is in cooldown, runs use these, in order,
   from the next run.” Each fallback has **Provider**, **Model and effort per tier**, as
   the default models have, and **Runtime**, with **Move up**, **Move down** and
   **Remove**. **Runtime** lists the runtimes that work with the fallback's provider: one
@@ -1775,7 +1830,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   **Provider** lists every provider that applies to the workspace, also one that works
   with no runtime, but the chosen provider and the other fallbacks' providers. A
   fallback whose provider works with no runtime shows “<Provider> works with no runtime
-  in this version of Qory Apiary. Pick another provider.” under its **Provider**, and
+  in this version of Qory. Pick another provider.” under its **Provider**, and
   **Save** is disabled while it shows. **Add fallback** adds the first provider left that
   works with a runtime, else the first provider left. A new fallback, and a fallback
   whose provider changes, starts with no models and on the chosen runtime where its
@@ -1787,6 +1842,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   “Add another model provider in Organisation settings › Model providers, then add it here
   as a fallback.” A save that changes the chosen provider to a fallback's provider drops
   that fallback.
+- On **Workspace settings › Model**, **Provider** has a red border while the chosen
+  provider works with no runtime, and a fallback's **Provider** while the fallback's
+  provider does, as a workflow's **Provider** on **Workspace settings › Workflows** has.
+  On the set-up's **Model** step, a red ring goes around the **Provider** group while the
+  chosen provider works with no runtime.
 - Only a run of Explore uses a model key. Such a run gets up to 6 keys of its model
   provider at its claim, each a separate credential of the run, named after the
   provider's public id: `con_…-1` to `con_…-6`. The run starts with a key with no known
@@ -1900,6 +1960,39 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- Each value once called "machine key" or "start key" is renamed for what it is. The key
+  that `qory access-key enrol` makes is a machine's access key; a setting of the harness
+  section of a machine's `qory.yaml`, such as `runtime` or `model`, is a machine harness
+  setting; a type such as `browser` is a machine type; and a model provider credential
+  in a machine's `forager.yaml` is a local model provider credential. The Access key tab
+  shows "Only owners and admins add a machine's access keys.", "Only owners and admins
+  manage a machine's access keys." and "Reload the page: this machine's access keys
+  changed, and that access key or code is gone."
+- In a run's diagnostics, the machine type is `run.machine.type`, in place of
+  `run.machine.key`. A harness document without `extends` may set `plan` and `tier` on a
+  workflow, as in `qory-stack.yaml`, and a workflow with `plan` has `access: write`. The
+  save of a document whose workflow sets `time_limit` fails. The copies of the
+  integrations run and diagnostics contracts are at the commits that make these changes;
+  the run contract there allows a session time limit of 1 to 1440 minutes, and Qory
+  Apiary still saves a time limit of 15 minutes or more. A save whose workflow sets
+  `plan` without `access: write`, or sets `time_limit`, fails with a message that starts
+  with the fix and contains the workflow's name.
+<!-- feature: workflow_model -->
+- Qory Apiary checks a next-session request in the order of the run contract's refusals.
+  A run of Explore gets `404` `not_found`, and a run whose stage no longer runs it gets
+  `409` `run_ended`, before Qory Apiary reads the body. A repeat of the newest session
+  still gets its stored answer. `names` contains an unknown member at any length of its
+  name. Without `workflow_model`, the request gets `404` `not_found` as JSON.
+<!-- /feature -->
+<!-- feature: factory, secrets -->
+- The run configuration's `model_credential` is now
+  `default_model_provider_credential_name`, the default model provider credential, as in
+  Forager's contract (`contracts/forager/v1`), which Qory Apiary copies at the commit that
+  renames it; an API credential there has no `chosen`.
+- The same copy of Forager's contract adds the `runtime.result` event of a Codex launch,
+  and `agent` under the `codex` runtime's `model` and its `effort` in `runtimes.json`,
+  which Qory Apiary keeps with the runtime's `model` and does not read.
+<!-- /feature -->
 <!-- feature: factory -->
 - The claim builds an Explore run's `run_settings`, a stage's runs among them, with the
   feature `factory` or `secrets` off too: the choice's runtime and model, no model key,
@@ -1927,13 +2020,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   no key and the keys of its later steps are all in cooldown, the claim leaves the run
   waiting for those steps' providers. A run takes the keys of each provider its sessions
   run on, each kept as a row of `run_model_keys`. The claim picks at most 6 keys in this
-  order: the start key's provider's keys, then one key of each other provider, then the
-  rest; `credentials` lists them provider by provider, the start key's provider first.
-  Each key's entry in the run configuration has `group`, its provider's public id, so
-  the gateway rotates each provider's keys apart from the others. For a session on a key
-  of a provider other than the start key's, the answer has `model_credential`, the key
-  that session starts on; without it, the session joins the group of the run's start
-  key.
+  order: the default model provider credential's provider's keys, then one key of each
+  other provider, then the rest; `credentials` lists them provider by provider, the
+  default model provider credential's provider first. Each key's entry in the run
+  configuration has `group`, its provider's public id, so the gateway rotates each
+  provider's keys apart from the others. For a session on a key of a provider other than
+  the default model provider credential's, the answer has
+  `model_provider_credential_name`, the key that session starts on; without it, the
+  session joins the group of the run's default model provider credential.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - The Submissions list reads the text of each change from the plan type that the stack
@@ -1942,6 +2036,59 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   has no Deliverables table, shows no change text. The walk records the type in the
   column `run_harnesses.plan_type`, which migration 20261119150000 adds. A run walked
   before the change has no plan type, so its submissions show no change text.
+- **Accept as it is** and **Approve** need every required output. Where an accept takes
+  the stage to its gate, after the last entry of its sequence, **Accept as it is**
+  shows, and works, only while every required output of the stage has a version. An
+  accept before the last entry starts the next entry, as before. While a required output
+  is missing, the gate of every stage shows no **Approve** and takes no approval. For a
+  stage with a workflow, a sent approval then reads "Pick Request changes to write the
+  acceptance criteria. Approve needs the acceptance criteria.", or, where Request
+  changes returns the work item to an earlier stage, "Pick Request changes to send the
+  work item back to Build. Approve needs the verification." The gate's line and the line
+  of a queued or running stage put "the" before each output type: "Shape needs the
+  acceptance criteria", "then writes the spec and the mockup". Before, a member could
+  accept a stage whose run stored no acceptance criteria, and only the gate of a stage
+  with no workflow checked its outputs. The point of a missing output reads "Run another
+  round: the run stored no acceptance criteria.", with the output type's words; before,
+  it read "No acceptance-criteria was stored in this stage. Run another round." Where
+  the page shows no **Accept as it is**, the round limit's fix reads "Read the open
+  finding, then pick Run another round." and the return limit's point reads "Pick Move
+  back to return the work item to Build once more."; where the page shows a switch in
+  place of **Move back**, it reads "Pick Switch to Standard.", with the label of each
+  switch button; where the page shows neither, it has only the count of returns. An
+  optional output never stops either action. A member who may not decide the escalation
+  sees, in place of that action and of the round limit's fix, "An approver of Verify
+  decides: ann and ben.", with the names of the stage's listed approvers who are
+  workspace members; "A member who may approve Verify decides." where the stage lists no
+  approvers; and "Nobody may approve Verify. Ask an admin to list its approvers in
+  Workspace settings › Workflows." where it lists no workspace member. For that member,
+  the point of a missing output reads "The run stored no acceptance criteria." followed
+  by that sentence.
+- Where an accept of an escalation starts a run of the stage, or an entry whose workflow
+  the stage then waits for, the escalation card's button reads Start and the name of that
+  entry, in place of **Accept as it is**: "Start %{workflow}", such as **Start
+  capture-demo**. Its dialog's title reads "Start %{workflow}?" in place of "Accept as it
+  is?", and its button "Start %{workflow}". The dialog's line is as before: "Starts a run
+  of %{workflow} on %{machine}. The run uses model tokens.", such as "Starts a run of
+  capture-demo on a machine. The run uses model tokens.", with the run's workflow. The
+  entry's name is its `name` in the stage's `sequence` in the process version, else its
+  workflow, read when the page is drawn and again at the click, after loops and
+  `when`/`unless` conditions: for a loop, its first workflow; a later entry whose
+  condition is not met is passed over; where every later entry is passed over and a
+  required output is missing, the first workflow of the loop that the accept starts again;
+  where the harness does not list the entry's workflow, that entry, which the stage then
+  waits for. Qory Apiary's code and texts contain no workflow name. Where the accept takes
+  the stage to its gate, the button reads **Accept as it is**, as before, while every
+  required output has a version; where the stage escalates again, as when its checks fail
+  at a loop's round limit, the button stays **Accept as it is**. Where the button reads
+  Start and the entry's name, the round limit's fix reads "Read the open finding, then
+  pick Start %{workflow} or Run another round." or "Read the %{count} open findings, then
+  pick Start %{workflow} or Run another round.", and the return limit's point "Pick Move
+  back to return the work item to %{to} once more, or pick Start %{workflow}." The
+  Accepted findings frame ("Accepted as it is in Build by …") and the activity log line
+  are as before. A round limit's point stored before this change has no count of its open
+  findings: where the button reads Start and the entry's name, its fix reads "Read the 2
+  open findings, then pick Run another round."
 - On the tab of a stage with `shared_run: true`, each run of the stage is a fold in the
   runs fold: "Attempt 3 (Run 3) · 4 workflows · round 2 of 3 · passed · 2 minutes ago", or
   "round 1" for a run with no loop. Inside it, one row for each session in the order it
@@ -1964,6 +2111,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   file that matches `acceptance-criteria.schema.json` or `verification.schema.json`, and
   any other file, Markdown too, is `422` `invalid_artifact`. A criterion's id is once in
   the criteria. Qory Apiary reads no output's Markdown for data.
+- The standard artifact type `explainer` is now `walkthrough`, a document of one Markdown
+  file of up to 1 MiB. A run's push of `explainer`, or a template that lists `explainer`
+  by name alone, fails, as with any type that is not standard.
 - A work item has one set of acceptance criteria, under the name `main`. A run's push of
   `acceptance-criteria` under another name is `422` `invalid_artifact`, with `name` in
   `names` and a message that starts "Name the acceptance criteria main: a work item has
@@ -2121,9 +2271,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   versions out too.
 - The gate button of a stage read "Approve" and the stage's name, for example "Approve
   Shape". It reads **Approve** now. The confirmation dialog is titled "Approve this
-  stage?" and its button reads **Approve**. The line about a missing output reads "Move
-  this stage back, or give it a workflow that writes <outputs>. Approve needs them.",
-  where it ended with the stage's name.
+  stage?" and its button reads **Approve**. The line about a missing output reads "In
+  Workspace settings › Workflows, give this stage a workflow that writes <outputs>.
+  Approve needs <outputs>." for a member who may edit the process, and "Ask an admin
+  to give this stage a workflow in Workspace settings › Workflows. Approve needs
+  <outputs>." for another member, where it ended with the stage's name.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - The notes for the next run, on the work item and in `GET work-item`, list only open
@@ -2762,6 +2914,25 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Fixed
 
+<!-- feature: factory -->
+- A claim that queues a build no longer fails when a member's Rebuild of the same target
+  runs at the same time. The two waited on each other, and Postgres aborted the claim
+  (`deadlock_detected`). Both now lock the workspace's run counter before they write an
+  environment record or a waiting prebuild, so the second waits for the first. Run
+  numbers stay in order, without gaps.
+- A claim that frees a lapsed prebuild no longer fails when a listing of the prebuild's
+  connection, an assign, an unlink, a disconnect, a Backlog switch, a choice or an
+  adapter's start writes the same collections at the same time. Those changes now lock
+  collections `FOR NO KEY UPDATE`, which the claim's foreign key check on a collection
+  does not wait for, so Postgres no longer aborts the claim (`deadlock_detected`).
+- A claim of the instance's node pool that queues a build no longer fails, and the sweep
+  of lapsed leases no longer fails, when the two run at the same time with lapsed runs in
+  two workspaces. They locked the workspaces' run counters in opposite orders, and
+  Postgres aborted one of them (`deadlock_detected`). The claim now locks the run
+  counters of its builds and of the runs it puts back in the queue in one pass, in the
+  sweep's order.
+<!-- /feature -->
+
 <!-- feature: factory, secrets -->
 - A Codex run that Forager ends `paused` with `model_key_switch`, as its key is out while
   another key of the run is usable, is Paused, where it read as failed. The run that
@@ -3029,7 +3200,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   stays. No run's keys are copied, so a run claimed before the upgrade and still running
   has no key rows: its run configuration no longer has its model keys, and its gateway's
   secrets request is refused `410` `run_configuration_superseded`. Rolled back, the
-  columns come back, filled from the key rows of each run's start key's provider.
+  columns come back, filled from the key rows of each run's default model provider
+  credential's provider.
+- `run_model_keys` (20261119161000): the column `start` is renamed `default_credential`,
+  and its index `run_model_keys_start_index` is renamed
+  `run_model_keys_default_credential_index`. It changes no row.
 - `dispatch_runs` (20261118162300): a nullable column `report_wait_until`, the end of the
   report window of a run that continues a run paused with `model_key_switch`. It changes
   no row.

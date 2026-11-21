@@ -32,7 +32,7 @@ defmodule Apiary.ModelKeys.OrderTest do
 
     picked = Order.order(keys, @now)
     assert ids(picked) == ~w(free soon late cooling cooling-default)
-    assert Order.start(picked, @now).id == "free"
+    assert Order.first_free(picked, @now).id == "free"
     assert ids(Order.sent(picked, @now)) == ~w(late free soon cooling-default cooling)
   end
 
@@ -93,14 +93,14 @@ defmodule Apiary.ModelKeys.OrderTest do
     assert ids(Order.order(many_free ++ cooling, @now)) == for(n <- 1..6, do: "free-#{n}")
   end
 
-  test "the start key is the first free key, never a key in cooldown" do
+  test "the default model provider credential is the first free key, never a key in cooldown" do
     keys = [key("cool", 1, default: true, until: at(60)), key("free", 2)]
-    assert Order.start(Order.order(keys, @now), @now).id == "free"
+    assert Order.first_free(Order.order(keys, @now), @now).id == "free"
 
     all_cooling = [key("a", 1, until: at(60)), key("b", 2, until: at(120))]
     ordered = Order.order(all_cooling, @now)
     assert ids(ordered) == ~w(a b)
-    assert Order.start(ordered, @now) == nil
+    assert Order.first_free(ordered, @now) == nil
   end
 
   test "a key whose cooldown ended is free, and orders by its known reset" do

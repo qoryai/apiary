@@ -83,7 +83,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
         Artifacts.create_type(scope, scope.workspace, %{"name" => name, "base_view" => view})
     end
 
-    save_process!(scope, ~w(verification demo-video screenshot demo-evidence explainer))
+    save_process!(scope, ~w(verification demo-video screenshot demo-evidence walkthrough))
     :ok
   end
 
@@ -238,17 +238,17 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
     })
   end
 
-  defp explainer!(run, work_item) do
+  defp walkthrough!(run, work_item) do
     {:ok, version} =
       Artifacts.push(
         {:run, run},
         work_item,
-        "explainer",
+        "walkthrough",
         [
           %{
-            filename: "explainer.md",
+            filename: "walkthrough.md",
             content_type: "text/markdown",
-            binary: "Words of the explainer."
+            binary: "Words of the walkthrough."
           }
         ],
         stage_id: run.stage_id
@@ -1173,7 +1173,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
               "sequence" => [%{"workflow" => "verify-a-ticket"}],
               "outputs" => [
                 %{"type" => "verification", "required" => false},
-                %{"type" => "explainer", "required" => false}
+                %{"type" => "walkthrough", "required" => false}
               ],
               "gate" => gate
             }
@@ -1270,7 +1270,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       work_item =
         work_item
         |> verify_passes!(fn run, work_item ->
-          push!(run, work_item, "explainer", "main", [{"explainer.md", "# What changed"}])
+          push!(run, work_item, "walkthrough", "main", [{"walkthrough.md", "# What changed"}])
         end)
 
       assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
@@ -1280,7 +1280,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
       at = &(:binary.match(html, ~s|id="#{&1}"|) |> elem(0))
 
       assert texts(view, "#work-item-tab-accepted-findings-list li") == @findings
-      assert at.("work-item-tab-output-explainer") < at.("work-item-tab-accepted-findings")
+      assert at.("work-item-tab-output-walkthrough") < at.("work-item-tab-accepted-findings")
       assert at.("work-item-tab-accepted-findings") < at.("work-item-record")
     end
 
@@ -1525,26 +1525,26 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
   end
 
   describe "the tab's frames" do
-    test "every frame is open; the demo evidence and the explainer have their row only",
+    test "every frame is open; the demo evidence and the walkthrough have their row only",
          %{conn: conn, scope: scope} do
       work_item =
         at_verify_gate!(scope, fn run, work_item ->
           verification!(run, work_item)
           scenario!(run, work_item, 1, :film)
-          explainer!(run, work_item)
+          walkthrough!(run, work_item)
         end)
 
       view = tab(conn, scope, work_item)
 
-      for type <- ["verification", "demo-video", "demo-evidence", "explainer"] do
+      for type <- ["verification", "demo-video", "demo-evidence", "walkthrough"] do
         assert has_element?(view, "#work-item-tab-output-#{type}-fold[open]")
       end
 
-      explainer = "#work-item-tab-output-explainer"
-      assert has_element?(view, "#{explainer}-s", "Version 1")
-      assert has_element?(view, "#{explainer}-row", "explainer v1")
-      refute has_element?(view, explainer, "Words of the explainer.")
-      refute has_element?(view, "#{explainer}-text")
+      walkthrough = "#work-item-tab-output-walkthrough"
+      assert has_element?(view, "#{walkthrough}-s", "Version 1")
+      assert has_element?(view, "#{walkthrough}-row", "walkthrough v1")
+      refute has_element?(view, walkthrough, "Words of the walkthrough.")
+      refute has_element?(view, "#{walkthrough}-text")
       assert has_element?(view, "#work-item-tab-output-demo-evidence-s", "Version 1")
     end
 
@@ -1611,7 +1611,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
           scenario!(run, work_item, 10, :film)
           scenario!(run, work_item, 2, :pictures)
           scenario!(run, work_item, 1, :film)
-          explainer!(run, work_item)
+          walkthrough!(run, work_item)
         end)
 
       view = tab(conn, scope, work_item)
@@ -1620,7 +1620,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
                Enum.map(
                  ~w(verification demo-video--scenario-1-- screenshot--scenario-2--
                     demo-video--scenario-10-- demo-evidence--scenario-1--
-                    demo-evidence--scenario-2-- demo-evidence--scenario-10-- explainer),
+                    demo-evidence--scenario-2-- demo-evidence--scenario-10-- walkthrough),
                  &"work-item-stage-gate-output-#{&1}"
                )
 
@@ -1871,12 +1871,12 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
 
   test "the questions have a row frame, in the order of the stage's outputs",
        %{conn: conn, scope: scope} do
-    save_process!(scope, ~w(verification questions explainer))
+    save_process!(scope, ~w(verification questions walkthrough))
 
     work_item =
       at_verify_gate!(scope, fn run, work_item ->
         verification!(run, work_item)
-        explainer!(run, work_item)
+        walkthrough!(run, work_item)
 
         push!(run, work_item, "questions", "main", [
           {"questions.json", Jason.encode!(%{"questions" => []})}
@@ -1889,7 +1889,7 @@ defmodule ApiaryWeb.WorkItemLive.VerifyTabTest do
     assert ids(view, "section.q-xp-frame") == [
              "work-item-tab-output-verification",
              "work-item-tab-output-questions",
-             "work-item-tab-output-explainer"
+             "work-item-tab-output-walkthrough"
            ]
   end
 end

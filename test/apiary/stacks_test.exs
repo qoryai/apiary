@@ -307,13 +307,22 @@ defmodule Apiary.StacksTest do
       for document <- [
             "modules: [{source: {git: #{@stacks}, ref: v1}}]\n",
             "name: web\nmodules:\n  - source: {git: #{@stacks}, ref: v1, module: web}\n" <>
-              "workflows:\n  explore: {access: write, time_limit: 45m}\n  review: {}\n"
+              "workflows:\n  explore: {access: write, tier: thinking}\n  review: {}\n"
           ] do
         assert {:ok, stack} =
                  Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document)
 
         Repo.delete!(stack)
       end
+    end
+
+    test "take a document without extends whose write workflow sets a plan", ctx do
+      document =
+        "modules: [{source: {git: #{@stacks}, ref: v1}}]\n" <>
+          "workflows:\n  implement-changes: {access: write, plan: build-plan}\n"
+
+      assert {:ok, %Stack{harness: ^document}} =
+               Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, document)
     end
 
     test "take modules by git, by export and at the root, with the other keys", ctx do
@@ -710,6 +719,31 @@ defmodule Apiary.StacksTest do
         assert [error] = refused(ctx, document), document
         assert error =~ "does not follow the harness format at #{place}", document
         assert error =~ ~r/^does not follow the harness format at #[^:]*: .+/
+      end
+    end
+
+    test "refuse a workflow's time_limit", ctx do
+      document =
+        "modules: [{source: {git: #{@stacks}, ref: v1}}]\n" <>
+          "workflows:\n  implement-changes: {access: write, time_limit: 45m}\n"
+
+      assert refused(ctx, document) == [
+               "Remove time_limit from workflow implement-changes: " <>
+                 "a harness document takes no time limit for a workflow."
+             ]
+    end
+
+    test "refuse a workflow's plan without access: write", ctx do
+      for access <- ["", "access: read, ", "access: write-no-push, "] do
+        document =
+          "modules: [{source: {git: #{@stacks}, ref: v1}}]\n" <>
+            "workflows:\n  implement-changes: {#{access}plan: build-plan}\n"
+
+        assert refused(ctx, document) == [
+                 "Set access: write on workflow implement-changes, or remove its plan: " <>
+                   "only a workflow with access: write takes a plan."
+               ],
+               access
       end
     end
 

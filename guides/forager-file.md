@@ -7,7 +7,7 @@ else, so a repository cannot set the policy a run is under or where its events g
 
 Its `server` section, under `gateway:`, names the Qory Apiary every run on the machine
 reports to, and the access key the machine signs with. The section needs a `qory` command that has
-`qory access-key`, the command that makes the machine's key.
+`qory access-key`, the command that makes the machine's access key.
 
 ## The section
 
@@ -34,10 +34,10 @@ key written twice, is refused with a message that names the file.
 | `access_key_id` | The id Qory Apiary gave the machine's access key: `ak_` and 16 characters. It names the key to Qory Apiary and travels in clear with every request. |
 | `apiary_public_key` | The pin: Qory Apiary's public keys, a list of `alg` and `public_key`. Every answer of Qory Apiary is signed, and the gateway verifies it under these keys before it reads it. With a server and no pin, Forager does not start, `apiary_public_key_missing`. |
 
-Only `access_key_id` belongs to the machine's key. `url` and `apiary_public_key` are
-Qory Apiary's, set once for the instance: the same for every organisation, workspace, pool
-and machine. The address is Qory Apiary's `PUBLIC_URL`, and its key is made from its
-`APIARY_SIGNING_SECRET`.
+Only `access_key_id` belongs to the machine's access key. `url` and `apiary_public_key`
+are Qory Apiary's, set once for the instance: the same for every organisation,
+workspace, pool and machine. The address is Qory Apiary's `PUBLIC_URL`, and its key is
+made from its `APIARY_SIGNING_SECRET`.
 
 Nothing in the section is secret. The access key's secret is never in `forager.yaml`:
 `qory access-key` keeps it in the file `access-key-secret` beside it,
@@ -80,11 +80,11 @@ environment before it starts anything, so no session inherits them, and naming o
 
 ### A new key, and revoking one
 
-A key is never rotated. To change a machine's key, add a new one on the same machine or pool, under
-**Add a key** on its **Access key** tab, with a command or generated, and once the machine
-uses it, **Revoke…** the old one there. A machine or pool has two keys at a time for this. A
-revoked key stops verifying at once: a machine still using it fails its next request,
-`401`, and starts no new run.
+A key is never rotated. To change a machine's access key, add a new one on the same
+machine or pool, under **Add a key** on its **Access key** tab, with a command or
+generated, and once the machine uses it, **Revoke…** the old one there. A machine or
+pool has two keys at a time for this. A revoked key stops verifying at once: a machine
+still using it fails its next request, `401`, and starts no new run.
 
 ## What Forager does with it
 

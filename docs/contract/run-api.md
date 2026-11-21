@@ -71,7 +71,8 @@ The checks run in this order:
    twice, `401`, `429` `rate_limited`, `400` `bad_request` for an instance id absent or
    malformed, `400` `unsupported_contract_version`, and for a GET a timestamp outside
    300 seconds, `401`.
-2. Without the feature `workflow_model`: `404`, the error page.
+2. Without the feature `workflow_model`: `404`, the error page; for `POST next-session`,
+   `404` `not_found`.
 3. The run. The key must be a key of the gateway the run goes through, listed in the
    run's run key, from the instance that attached the run, of a gateway that may still
    serve the run's workspace; and the run must be a run of a work item. Any other case
@@ -695,10 +696,16 @@ The body, at most 64 KiB:
   points ends the last round of a loop, the stage escalates at its round limit with one
   point. Its text is "3 of 3 rounds ran, and 2 review findings are still open." followed
   by the `text` of each point, and its fix is "Read the 2 open findings, then pick Accept
-  as it is or Run another round." With no points, the text is "3 of 3 rounds ran." The
-  stage runner writes this point, and the limit of one sentence and 500 characters below
-  does not apply to it: with points, its text is more than one sentence and can be
-  longer than 500 characters. With `passed`, a verdict has none.
+  as it is or Run another round." Where the accept starts a run of the stage, or an
+  entry whose workflow the stage then waits for, the page shows **Start** and the name of
+  that entry in place of **Accept as it is** (the accept button, in the paragraph on a
+  run that ends with no verdict in [POST verdict](#post-verdict)), and the fix is "Read
+  the 2 open findings, then pick Start verify-a-ticket or Run another round." Where the
+  page shows neither, the fix is "Read the 2 open findings, then pick Run another round."
+  With no points, the text is "3 of 3 rounds ran." The stage runner writes this point,
+  and the limit of one sentence and 500 characters below does not apply to it: with
+  points, its text is more than one sentence and can be longer than 500 characters. With
+  `passed`, a verdict has none.
   Each point has `text`, one plain sentence on one line of 1 to 500 characters that
   states what is wrong, with no action, and `action`: `answer`, with `question`, the id of
   an open question, or `run_again`, without `question`. A `run_again` point may also have
@@ -743,11 +750,17 @@ next round. Returns `201` with the version, as `POST artifacts` does.
 A run of a workflow entry outside a loop must push a verdict. Make `qory run verdict
 passed` the last step of the workflow, on a first run and on a rerun. A run that ends with
 no verdict and no open question stops the stage: a member sees "The run stopped before its
-verdict." with **Run another round** and, where an output has a version or no output is
-required, **Accept as it is**. `changes-requested` outside a loop goes on to the next entry,
-as `passed` does. In a loop, a run with no verdict runs the next workflow of the ring. A test
-work item's run needs no verdict. Nor does a run of Explore whose take in has a proposal, or
-that left open questions: Explore's result is its proposal or its questions. A run of
+verdict." with **Run another round**, and with the accept button where an output has a
+version or no output is required. Where the accept starts a run of the stage, or an entry
+whose workflow the stage then waits for, the button is **Start** and the name of that
+entry: its `name` in the process, else its workflow, such as **Start verify-a-ticket**.
+Where the accept takes the stage to its gate, or the stage escalates again, the button is
+**Accept as it is**. An accept that takes the stage to its gate, after the sequence's last
+entry, also needs every required output: while one has no version, the page shows no
+**Accept as it is**. `changes-requested` outside a loop goes on to the next entry, as
+`passed` does. In a loop, a run with no verdict runs the next workflow of the ring. A test
+work item's run needs no verdict. Nor does a run of Explore whose take in has a proposal,
+or that left open questions: Explore's result is its proposal or its questions. A run of
 Explore that pushes `passed` or `changes-requested` goes on to the stage's checks.
 
 Checks: a body over 64 KiB is `413` `payload_too_large`; a body with a member other than
@@ -851,15 +864,17 @@ of the run contract. A next session of the same stage:
 - `model_choice` has the choice's model on the choice's provider where that provider has a
   key out of cooldown at the claim; else the model of the choice's first fallback that
   has one; else the choice's model on its provider, whose keys are all in cooldown. A
-  choice on the provider of the run's start key whose runtime uses the same API of that
-  provider as the run joins the group of the run's start key.
+  choice on the provider of the run's default model provider credential whose runtime
+  uses the same API of that provider as the run joins the group of the run's default
+  model provider credential.
 - `model_choice` is the run's `run_settings` where the choice's runtime or model is no
   longer valid, or its runtime is no longer in the catalogue. A choice whose provider
   was removed, or no longer fits the catalogue, ends the claim `provider_gone`.
 - `model_choice` has the catalogue's default runtime alone where the workflow resolves to
-  no model choice at any level: the session joins the group of the run's start key, or,
-  in a run with no start key, runs on the machine's local model provider credential, and
-  uses the default model of that runtime.
+  no model choice at any level: the session joins the group of the run's default model
+  provider credential, or, in a run with no default model provider credential, runs on
+  the machine's local model provider credential, and uses the default model of that
+  runtime.
 - Where a session's runtime uses another API of a provider that an earlier session of the
   run uses, the claim ends the run before it starts, with the end cause
   `session_key_missing`: one run uses one API of each provider. The claim ends the run so
@@ -870,13 +885,15 @@ of the run contract. A next session of the same stage:
   local model provider credential, as its workflow resolves to no model choice, gets no
   key: its claim ends it `session_key_missing` where a later session runs on a model
   provider.
-- `model_credential`, for a session on a key of a provider other than the start key's, is
-  the credential name of the key the session starts on: that provider's first key out of
-  cooldown, else its first key. The claim picks at most 6 keys in this order: the start
-  key's provider's keys, at most 6 less the number of other providers; then one key of
-  each other provider, in session order; then the other providers' remaining keys;
-  `credentials` lists them provider by provider, the start key's provider first. Where
-  `model_credential` is left out, the session joins the group of the run's start key.
+- `model_provider_credential_name`, for a session on a key of a provider other than the
+  default model provider credential's, is the credential name of the key the session
+  starts on: that provider's first key out of cooldown, else its first key. The claim
+  picks at most 6 keys in this order: the default model provider credential's provider's
+  keys, at most 6 less the number of other providers; then one key of each other
+  provider, in session order; then the other providers' remaining keys; `credentials`
+  lists them provider by provider, the default model provider credential's provider
+  first. Where `model_provider_credential_name` is left out, the session joins the group
+  of the run's default model provider credential.
 
 Or the end of the run, where the stage runs no further workflow in this run: an
 escalation, open questions, the gate, or the next stage, whose run is queued as any run:
@@ -889,26 +906,43 @@ escalation, open questions, the gate, or the next stage, whose run is queued as 
   the rest of the body leaves, with the oldest comments of the ticket left out first and
   counted in `comments_omitted`.
 - A second request for the same session returns the same body, byte for byte, and steps
-  nothing, whatever the newer verdicts: qory may send it again after a `5xx` or a
-  transport failure. A request for an older session than the newest one the run reported
-  is `409` `session_mismatch`.
+  nothing, whatever the newer verdicts, also once the stage no longer runs the run or its
+  last step returned `end`. qory may send the request again after a `5xx` or a transport
+  failure, and a lost answer does not end the run another way. A request for an older
+  session than the newest one the run reported is `409` `session_mismatch`.
 - The step and the record of the session are stored in one transaction, under the lock of
   the work item that a push, a verdict, the end of a run and a cancel also take. An error
   writes nothing, except the end of the run for inputs that cannot be formed.
 
-Checks, after checks 1 to 4 of the order of checks: a body over 4 KiB is `413`
-`payload_too_large`; a body outside the request's schema is `400` `invalid_request`, with
-the first member that failed in `names`, `body` for a body that is not a JSON object; then:
+The checks follow the order of the run contract's refusals,
+[`next-session-refusal.schema.json`](../../test/fixtures/contract/run/v1/next-session-refusal.schema.json):
+the run's checks before the request's.
 
-- a run of a stage without `shared_run`, a run of Explore, and a run that no claim of such
-  a stage registered are `404` `not_found`;
-- a run that the stage no longer runs, or whose last step returned `end`, is `409`
-  `run_ended`;
-- a store that cannot read the run's newest verdict or questions is `503` `unavailable`;
-- a ticket that is no longer kept, or inputs that break the rules of Explore's input or do
-  not fit the body's 1 MiB with every comment left out, end the run, as a claim ends a run
-  it cannot form, with the cause `ticket_gone` or `inputs_invalid` and the outcome `error`,
-  and are `409` `run_ended`. The stage escalates `run_stopped`.
+1. Checks 1 to 3 of the order of checks.
+2. A run of a stage without `shared_run`, a run of Explore, and a run that no claim of
+   such a stage registered are `404` `not_found`.
+3. Check 4 of the order of checks.
+4. A run that the stage no longer runs, or whose last step returned `end`, is `409`
+   `run_ended`. A valid repeat of the newest session the run reported gets its stored
+   answer instead.
+5. A body over 4 KiB is `413` `payload_too_large`.
+6. A body outside the request's schema is `400` `invalid_request`. `names` contains the
+   first member that failed, at any length of its name. It contains `body` for a body
+   that is not a JSON object, or for a member with an empty name.
+7. A request for an older session than the newest one the run reported is `409`
+   `session_mismatch`.
+8. A store that cannot read the run's newest verdict or questions is `503`
+   `unavailable`.
+
+The step forms the inputs, so their `409` comes after the request's checks. When the
+step cannot form the inputs, the run ends as at a claim, with the outcome `error` and one
+of these causes:
+
+- `ticket_gone`: the ticket is no longer kept;
+- `inputs_invalid`: the inputs break the rules of Explore's input, or do not fit the
+  body's 1 MiB with every comment left out.
+
+The request gets `409` `run_ended`, and the stage escalates `run_stopped`.
 
 Qory Apiary never returns `410` to this request, as the gateway turns a `410` into a `502`.
 
@@ -938,8 +972,8 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 |---|---|---|---|
 | `400` | `invalid_request` | `names`, and `message` for a report of pushed commits and a next-session request | A body that is not the request's object, a report of pushed commits over its limits or with a commit that is not a full commit id, a next-session request outside its schema, or a content that is not strict base64 |
 | `401` | `unauthorized` | | The request does not verify; unsigned |
-| `404` | `not_found` | | An unknown run, a run of another gateway, an unknown version or file; for `GET resume/transcript`, a run that ended, has no `resume`, or whose transcript cannot be served; for `POST next-session`, a run of a stage without `shared_run` |
-| `404` | (the error page) | | The instance does not have `workflow_model`, or for `GET resume/transcript`, `observability` |
+| `404` | `not_found` | | An unknown run, a run of another gateway, an unknown version or file; for `GET resume/transcript`, a run that ended, has no `resume`, or whose transcript cannot be served; for `POST next-session`, a run of Explore or of a stage without `shared_run`, and an instance without `workflow_model` |
+| `404` | (the error page) | | The instance does not have `workflow_model` (except for `POST next-session`), or, for `GET resume/transcript`, `observability` |
 | `409` | `run_ended` | `message` | A push or a verdict after the run ended or a member cancelled it, checked before the push and again when the version is stored; a report of pushed commits after the run ended (a cancel does not refuse it), checked before and again under the work item's lock |
 | `409` | `run_ended` | `message` | A next-session request after the run ended or a member cancelled it, after the stage stopped running the run, or for inputs that ended the run |
 | `409` | `session_mismatch` | `message` | A next-session request for an older session than the newest one the run reported |
@@ -1012,7 +1046,7 @@ The messages:
     WebP or SVG file." For a document type, the part after the colon is "a document is a
     Markdown file of UTF-8 text"; for a video type, "a file is an MP4 or WebM video, or a
     WebVTT file (.vtt)"; for a structured type, "the file is one JSON document".
-  - "Fix notes.txt to match the format of explainer: the filename of a document ends in
+  - "Fix notes.txt to match the format of walkthrough: the filename of a document ends in
     .md."
   - "Fix verdict.json to match the format of verdict: at #/verdict, value must be one of
     the enum values: "passed", "changes-requested" or "escalate"." For a file that fails

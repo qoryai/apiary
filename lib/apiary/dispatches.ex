@@ -134,11 +134,13 @@ defmodule Apiary.Dispatches do
   #      read `FOR SHARE`, with its active keys: a choice that leads to no gateway,
   #      direct among them, is `{:error, :no_gateway}`
   #      (`Apiary.Dispatches.Handover.gateway/1`);
-  #   5. the slots due freed (`Apiary.Dispatches.Slots.free/3`), which inserts the missing
-  #      environment records of the collections held at 3 with no live prebuild of their
-  #      ref for the pool, once it has locked the records of the lapsed prebuilds and
-  #      before it locks a run (`Apiary.Environments.make_records/2`), then a prebuild of
-  #      each collection held at 3 queued for the pool, where none is live yet
+  #   5. the slots due freed (`Apiary.Dispatches.Slots.free/3`), which, once it has
+  #      locked the records of the lapsed prebuilds, their runs and their dispatches,
+  #      locks, in one pass by workspace, the run counters of the collections held at 3
+  #      and of the runs it sets waiting again, and inserts the missing environment
+  #      records of the collections held at 3 with no live prebuild of their ref for the
+  #      pool (`Apiary.Environments.make_records/3`), then a prebuild of each collection
+  #      held at 3 queued for the pool, where none is live yet
   #      (`Apiary.Environments.queue_builds/2`), then the pool's limit counted: its held
   #      slots and its live runs that were not dispatched; at the limit, `{:ok, :none}`;
   #   6. the oldest waiting run of the key's workspace, by `queued_at`, that the claim may
@@ -630,7 +632,9 @@ defmodule Apiary.Dispatches do
   # `environment_ref`, unless one waits for that ref already, which it answers, and the
   # environment record of the collection and pool where there is none, inside the
   # caller's transaction (the moduledoc). The run and the record are in the collection's
-  # workspace.
+  # workspace. It locks the pool and the workspace's run counter first
+  # (`Apiary.Runs.Number.hold/2`), before it inserts the record or the run, and takes the
+  # run's number last.
   @doc false
   @spec queue_prebuild(Collection.t(), Node.t(), String.t()) ::
           {:ok, DispatchRun.t()} | {:error, Ecto.Changeset.t()}
@@ -666,6 +670,8 @@ defmodule Apiary.Dispatches do
          environment_ref
        ) do
     in_transaction!("queue_prebuild/3")
+    workspace = %Workspace{id: workspace_id, organisation_id: organisation_id}
+    :ok = Apiary.Runs.Number.hold(workspace, [pool_id])
     now = now()
 
     {_count, _rows} =
@@ -1146,7 +1152,7 @@ defmodule Apiary.Dispatches do
                {:ok, pool} <- lock_pool(key),
                pool = keep_offers(pool, offers),
                {:ok, gateway, keys} <- Handover.gateway(pool) do
-            freed = Slots.free(pool.id, now, fn -> Environments.make_records(builds, pool) end)
+            freed = Slots.free(pool.id, now, &Environments.make_records(builds, pool, &1))
             queued = Environments.queue_builds(builds, pool)
             through = %{gateway: gateway, keys: keys, body: body, reads: reads}
 

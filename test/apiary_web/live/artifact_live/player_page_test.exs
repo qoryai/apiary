@@ -75,7 +75,7 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
             "sequence" => [%{"workflow" => "verify-a-ticket"}],
             "outputs" =>
               Enum.map(
-                ~w(verification demo-video screenshot demo-evidence explainer),
+                ~w(verification demo-video screenshot demo-evidence walkthrough),
                 output
               ),
             "gate" => gate
@@ -564,10 +564,10 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
       work_item =
         at_verify_gate!(scope, fn run, work_item ->
           push!(run, work_item, "verification", "main", [{"verification.json", @verification}])
-          push!(run, work_item, "explainer", "main", [{"explainer.md", "Words."}])
+          push!(run, work_item, "walkthrough", "main", [{"walkthrough.md", "Words."}])
         end)
 
-      explainer = Artifacts.list(work_item) |> Enum.find(&(&1.type == "explainer"))
+      walkthrough = Artifacts.list(work_item) |> Enum.find(&(&1.type == "walkthrough"))
 
       {:ok, view, _html} =
         live(
@@ -575,7 +575,7 @@ defmodule ApiaryWeb.ArtifactLive.PlayerPageTest do
           ArtifactComponents.version_path(
             scope,
             work_item.number,
-            hd(explainer.versions).public_id
+            hd(walkthrough.versions).public_id
           )
         )
 

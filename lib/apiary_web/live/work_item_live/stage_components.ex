@@ -24,8 +24,9 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   use ApiaryWeb, :html
 
-  alias ApiaryWeb.PauseWords
+  alias ApiaryWeb.{PauseWords, People, SettingsComponents}
   alias ApiaryWeb.WorkItemComponents
+  alias ApiaryWeb.WorkItemLive.{GateChanges, Workflow}
 
   @note_units 2 * 2_000
 
@@ -67,7 +68,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           </span>
           {stage.name}
           <span :if={stage[:not_run]} id={"#{@id}-#{stage.id}-not-run"} class="q-wi-stage-note">
-            {gettext("Not run")}
+            {gettext("not run")}
           </span>
         </li>
       </ol>
@@ -426,6 +427,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           started_no_run?(assigns.page) and Enum.all?(assigns.page.outputs, &is_nil(&1.version))
       )
 
+    assigns = with_changes(assigns)
+
     ~H"""
     <div id={@id} class="flex flex-col gap-2">
       <p :for={{draft, i} <- Enum.with_index(@drafts)} id={"#{@id}-draft-#{i}"}>
@@ -439,7 +442,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           <span class="text-sm font-semibold">{gettext("Track")}</span>
           <.badge color="success">{@page.track.name}</.badge>
         </p>
-        <p :if={@started_no_run} id={"#{@id}-no-run"}>
+        <p :if={@started_no_run} id={"#{@id}-no-run"} class="text-xs opacity-70">
           {gettext("Read the inputs below, then approve.")}
         </p>
       </div>
@@ -466,6 +469,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             {version_words(output.type, output.name, output.version)}
           </span>
           · <span id={"#{@id}-check-#{frame_key(output)}"}>{check_words(output)}</span>
+          <span :if={@changed[output[:version_id]]} phx-no-format> · <span id={"#{@id}-output-#{frame_key(output)}-changed"} class="text-warning">{@changed[output.version_id]}</span><%= if approval_shown?(@marks[{output.type, output.name}]) do %> · <% end %></span>
           <.approval_mark
             id={"#{@id}-mark-#{frame_key(output)}"}
             mark={@marks[{output.type, output.name}]}
@@ -481,8 +485,18 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             phx-no-format
           >{version_words(other.type, other.version.number)}<%= if other.name != "main" do %> · {other.name}<% end %></.link>
           <span :if={!@version_path} phx-no-format>{version_words(other.type, other.version.number)}<%= if other.name != "main" do %> · {other.name}<% end %></span>
+          <span :if={@changed[other.version.public_id]} phx-no-format> · <span id={"#{@id}-recorded-#{frame_key(other)}-changed"} class="text-warning">{@changed[other.version.public_id]}</span></span>
         </li>
       </ul>
+      <GateChanges.changes
+        :if={@criteria}
+        id={"#{@id}-criteria"}
+        lead={@lead && elem(@lead, 1)}
+        lead_id={@lead && "#{@id}-criteria-#{elem(@lead, 0)}"}
+        changes={@criteria.changes}
+        unchanged={@criteria.unchanged}
+        mark={@criteria.mark}
+      />
       <.needs
         :if={@page.missing_outputs != [] and not @page.confirm_gate}
         id={@id}
@@ -490,65 +504,138 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         types={@page.missing_outputs}
       />
       <p
-        :if={@decides and not @page.confirm_gate and match?({:listed, _ids}, @page.approvers)}
+        :if={
+          @decides and not @page.confirm_gate and match?({:listed, _ids}, @page.approvers) and
+            not match?({:approvers, _line}, @lead)
+        }
         id={"#{@id}-approvers"}
         class="text-xs opacity-70"
       >
         {gettext("Only the members this stage lists can approve.")}
       </p>
-      <%= if @page.can_decide and not @page.confirm_gate do %>
-        <%= if @asking == :changes and @decides do %>
-          <form
-            novalidate
-            id={"#{@id}-changes"}
-            phx-submit="stage_request_changes"
-            class="flex flex-col gap-2"
-          >
-            <input type="hidden" name="number" value={@number} />
-            <input type="hidden" name="seen" value={@page.stage.id} />
-            <label for={"#{@id}-changes-version"}>{gettext("About")}</label>
-            <select id={"#{@id}-changes-version"} name="version">
-              <option value="">{gettext("The whole stage")}</option>
-              <option :for={output <- @versions} value={output.version_id}>
-                {version_words(output.type, output.name, output.version)}
-              </option>
-            </select>
-            <.note
-              id={"#{@id}-changes-note"}
-              error={@error == :note && gettext("Write what needs to change.")}
-            />
-            <div class="q-wi-acts">
-              <.button id={"#{@id}-changes-go"} type="submit" variant="primary">
-                {gettext("Request changes")}
-              </.button>
-              <.button id={"#{@id}-changes-cancel"} type="button" phx-click="cancel_question">
-                {gettext("Cancel")}
-              </.button>
-            </div>
-          </form>
-        <% else %>
-          <form :if={@page.approvable} novalidate id={"#{@id}-approve"} phx-submit="stage_approve">
-            <input type="hidden" name="number" value={@number} />
-            <input type="hidden" name="seen" value={@page.stage.id} />
-            <input type="hidden" name="note" value="" />
-            <.button id={"#{@id}-approve-go"} type="submit" variant="primary">
-              <.icon name="hero-check-micro" class="size-3.5" />{gettext("Approve")}
-            </.button>
-          </form>
-          <div :if={@decides} class="q-wi-acts">
-            <.button
-              id={"#{@id}-ask-changes"}
-              type="button"
-              phx-click="stage_ask_changes"
-              phx-value-number={@number}
-            >
-              {gettext("Request changes")}
-            </.button>
-          </div>
-        <% end %>
-      <% end %>
+      <form
+        :if={:form in @controls}
+        novalidate
+        id={"#{@id}-changes"}
+        phx-submit="stage_request_changes"
+        class="flex flex-col gap-2"
+      >
+        <input type="hidden" name="number" value={@number} />
+        <input type="hidden" name="seen" value={@page.stage.id} />
+        <label for={"#{@id}-changes-version"}>{gettext("About")}</label>
+        <select id={"#{@id}-changes-version"} name="version">
+          <option value="">{gettext("The whole stage")}</option>
+          <option :for={output <- @versions} value={output.version_id}>
+            {version_words(output.type, output.name, output.version)}
+          </option>
+        </select>
+        <.note
+          id={"#{@id}-changes-note"}
+          error={@error == :note && gettext("Write what needs to change.")}
+        />
+        <div class="q-wi-acts">
+          <.button id={"#{@id}-changes-go"} type="submit" variant="primary">
+            {gettext("Request changes")}
+          </.button>
+          <.button id={"#{@id}-changes-cancel"} type="button" phx-click="cancel_question">
+            {gettext("Cancel")}
+          </.button>
+        </div>
+      </form>
+      <form
+        :if={:approve in @controls}
+        novalidate
+        id={"#{@id}-approve"}
+        phx-submit="stage_approve"
+      >
+        <input type="hidden" name="number" value={@number} />
+        <input type="hidden" name="seen" value={@page.stage.id} />
+        <input type="hidden" name="note" value="" />
+        <.button id={"#{@id}-approve-go"} type="submit" variant="primary">
+          <.icon name="hero-check-micro" class="size-3.5" />{gettext("Approve")}
+        </.button>
+      </form>
+      <div :if={:changes in @controls} class="q-wi-acts">
+        <.button
+          id={"#{@id}-ask-changes"}
+          type="button"
+          phx-click="stage_ask_changes"
+          phx-value-number={@number}
+        >
+          {gettext("Request changes")}
+        </.button>
+      </div>
     </div>
     """
+  end
+
+  # The gate card's controls (`gate_controls/2`), the mark of each changed version on its
+  # lines by public id (`changed`), and, where a line is a changed version of the
+  # acceptance criteria that the page compared with the version approved before it
+  # (`criteria`), its changes and the line above them (`lead`): what to do, as
+  # `{:action, text}`, which contains only controls that the card shows, or who decides, as
+  # `{:approvers, text}`, for a reader who may not.
+  defp with_changes(assigns) do
+    page = assigns.page
+    changes = page.changes
+    controls = gate_controls(page, assigns.asking)
+
+    ids =
+      for(o <- assigns.shown, do: o[:version_id]) ++
+        for(o <- assigns.others, do: o.version.public_id)
+
+    criteria =
+      Enum.find_value(ids, fn id ->
+        case changes[id] do
+          %{type: "acceptance-criteria", criteria: {:ok, compared}, whose: whose} ->
+            Map.merge(compared, %{whose: whose, mark: GateChanges.mark(whose)})
+
+          _other ->
+            nil
+        end
+      end)
+
+    lead =
+      cond do
+        is_nil(criteria) ->
+          nil
+
+        controls != [] ->
+          case GateChanges.action(criteria.whose, length(criteria.changes), controls) do
+            nil -> nil
+            text -> {:action, text}
+          end
+
+        not page.can_decide and assigns.decides and not page.confirm_gate and
+            is_binary(page.gate_approver_line) ->
+          {:approvers, page.gate_approver_line}
+
+        true ->
+          nil
+      end
+
+    assign(assigns,
+      controls: controls,
+      changed: Map.new(changes, fn {id, change} -> {id, GateChanges.mark(change.whose)} end),
+      criteria: criteria,
+      lead: lead
+    )
+  end
+
+  # The controls the gate card shows under its lines: `[:form]`, the form of Request
+  # changes; or `:approve` and `:changes`, Approve where the gate may pass
+  # (`page.approvable`) and Request changes where it takes a decision; none for a reader
+  # who may not decide, and at Explore's Confirm gate. Each text of the card with a
+  # control's name in it is chosen by this list, so it contains only controls the card
+  # shows.
+  defp gate_controls(page, asking) do
+    decides = page.gate_kind != "none"
+
+    cond do
+      not page.can_decide or page.confirm_gate -> []
+      asking == :changes and decides -> [:form]
+      true -> for {control, true} <- [approve: page.approvable, changes: decides], do: control
+    end
   end
 
   @doc false
@@ -646,11 +733,16 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   # The escalation in the rail: one line, "Waits for you: N points", which links to the
   # block "What the run needs from you" (`needs_block/1`), the run it came from, and Accept as
-  # it is (only with a result), Move back and Close; where the page offers a switch
-  # (`page.switch`, one track a button, "Switch to <track>"), only the switches and Close. Their form has the note field and Run
-  # another round in the block, which name it in their `form` attribute, so the note goes
-  # with every action.
+  # it is (only where `Workflow.accept?/2` is true: with a result, with no required output
+  # missing where the accept takes the stage to its gate, and with no switch), Move back
+  # and Close; where the page shows a switch
+  # (`page.switch`, one track a button, "Switch to <track>"), only the switches and Close.
+  # Their form has the note field and Run another round in the block, which name it in
+  # their `form` attribute, so the note goes with every action.
   defp escalation_card(assigns) do
+    switch = Map.get(assigns.page, :switch) || []
+    result = Map.get(assigns.page, :accept_needs, []) == []
+
     assigns =
       assign(
         assigns,
@@ -658,14 +750,14 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
         assigns.page.escalation ||
           %{
             cause: :escalate,
-            result: true,
+            accept: Workflow.accept?(result, switch),
             points: [],
             run: nil,
             harness_path: nil,
             return_to: nil
           }
       )
-      |> assign(:switch, Map.get(assigns.page, :switch) || [])
+      |> assign(:switch, switch)
 
     ~H"""
     <div id={@id} class="flex flex-col gap-2">
@@ -697,7 +789,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
               name="switch"
               value={track.id}
             >
-              {gettext("Switch to %{track}", track: track.name)}
+              {switch_label(track)}
             </.button>
           </div>
           <p
@@ -708,7 +800,7 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             {switch_line(track)}
           </p>
         </div>
-        <div :if={@switch == [] and @escalation.result} class="q-wi-acts flex-wrap">
+        <div :if={@escalation.accept} class="q-wi-acts flex-wrap">
           <.button
             id={"#{@id}-accept"}
             type="submit"
@@ -716,10 +808,10 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
             value="accept"
             variant="primary"
           >
-            {gettext("Accept as it is")}
+            {accept_label(@escalation.start)}
           </.button>
         </div>
-        <div :if={@switch == [] and @page.earlier != []} class="q-wi-acts flex-wrap">
+        <div :if={Workflow.move_back?(@switch, @page.earlier)} class="q-wi-acts flex-wrap">
           <label for={"#{@id}-stage"} class="sr-only">{gettext("Earlier stage")}</label>
           <select id={"#{@id}-stage"} name="stage">
             <option
@@ -747,6 +839,25 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     """
   end
 
+  # accept_label/1 is the label of the escalation card's accept button: Start and the
+  # entry that the accept starts (`start`, `ApiaryWeb.WorkItemLive.Workflow`), else
+  # Accept as it is. accept_title/1 is the title of its spend dialog.
+  @doc false
+  @spec accept_label(String.t() | nil) :: String.t()
+  def accept_label(nil), do: gettext("Accept as it is")
+  def accept_label(start), do: gettext("Start %{workflow}", workflow: start)
+
+  @doc false
+  @spec accept_title(String.t() | nil) :: String.t()
+  def accept_title(nil), do: gettext("Accept as it is?")
+  def accept_title(start), do: gettext("Start %{workflow}?", workflow: start)
+
+  # switch_label/1 is the label of the button that switches to `track`; a return limit's
+  # point uses it for the button's words (`ApiaryWeb.WorkItemLive.Workflow`).
+  @doc false
+  @spec switch_label(map) :: String.t()
+  def switch_label(track), do: gettext("Switch to %{track}", track: track.name)
+
   # What a switch runs: the stage it starts, with the run's outputs, then the stages after
   # it that run on the track.
   defp switch_line(%{later: []} = track) do
@@ -773,9 +884,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   The block "What the run needs from you": the points of the stage's open escalation, one
   numbered sentence each, followed by the sentence of its action: "Answer question N.",
   with "question N" linked to the question on the Questions tab, or "Run another
-  round.", or the point's fix line in its place. While the stage is escalated, a reader who
-  may decide finds the note field and Run another round under the points; they belong to
-  the form of the escalation card in the rail (`stage_card/1`). While the stage waits for
+  round.", or the point's fix line in its place. A point whose text opens with its action
+  (`in_text`) has no sentence after it, nor has a point with no action sentence (also
+  `in_text`): a return limit's count, where the card shows neither a switch nor Move
+  back. While the stage is escalated, a reader who may decide finds the note field and
+  Run another round under the points; they belong to the form of the escalation card in
+  the rail (`stage_card/1`). While the stage waits for
   answers, the answers run the next round, so the block has no form.
   """
   attr :id, :string, default: "work-item-needs"
@@ -910,7 +1024,10 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   # "Answer question N.", with "question N" linked to its question; a `run_again` point
   # adds "Run another round.", or its fix line, escaped, in its place: a run's or a stop
   # cause's. In a fix line, the words "the set-up step Harness" link to that step when
-  # `harness_path` is set (`gap_line/1`); only a run stopped at that step sets it.
+  # `harness_path` is set (`gap_line/1`); only a run stopped at that step sets it. A point
+  # whose text opens with its action (`in_text`, a failed check's) adds nothing, nor does
+  # a point with no action sentence (`in_text` too): a return limit's count, where the
+  # card shows neither a switch nor Move back.
   defp point(%{point: %{action: :answer, number: n}, href: href} = assigns)
        when is_integer(n) and is_binary(href) do
     # The sentence is split at a marker, so that the link keeps its place in any locale.
@@ -932,6 +1049,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   defp point(%{point: %{action: :answer}} = assigns) do
     ~H"""
     {@point.text} {gettext("Answer the question.")}
+    """
+  end
+
+  defp point(%{point: %{in_text: true}} = assigns) do
+    ~H"""
+    {@point.text}
     """
   end
 
@@ -1152,18 +1275,25 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   defp approval_mark(assigns) do
     ~H"""
-    <span :if={@mark && @mark.approved && @mark.newer} id={@id} class="text-warning">
+    <span :if={newer_shown?(@mark)} id={@id} class="text-warning">
       {gettext("Approved v%{approved}; v%{newer} is newer",
         approved: Format.number(@mark.approved),
         newer: Format.number(@mark.newer)
       )}
     </span>
-    <span :if={@mark && @mark.approved && @mark.newer && @mark.changed_after_approval}> · </span>
-    <span :if={@mark && @mark.changed_after_approval} id={"#{@id}-changed"} class="text-warning">
+    <span :if={newer_shown?(@mark) and changed_shown?(@mark)}> · </span>
+    <span :if={changed_shown?(@mark)} id={"#{@id}-changed"} class="text-warning">
       {gettext("Changed after approval")}
     </span>
     """
   end
+
+  # The parts that `approval_mark/1` shows for `mark`: "Approved v1; v2 is newer" and
+  # "Changed after approval". Where it shows either, an output's line has " · " after the
+  # change's mark (`approval_shown?/1`), so " · " separates every part of the line.
+  defp newer_shown?(mark), do: !!(mark && mark.approved && mark.newer)
+  defp changed_shown?(mark), do: !!(mark && mark.changed_after_approval)
+  defp approval_shown?(mark), do: newer_shown?(mark) or changed_shown?(mark)
 
   ## The board
 
@@ -1205,8 +1335,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
   @doc false
   # type_words/1 is an artifact type in a sentence: its name with spaces for hyphens,
-  # "acceptance criteria" for `acceptance-criteria`.
-  def type_words(type) when is_binary(type), do: String.replace(type, "-", " ")
+  # "acceptance criteria" for `acceptance-criteria` (`Apiary.Artifacts.Type.words/1`).
+  def type_words(type) when is_binary(type), do: Apiary.Artifacts.Type.words(type)
   def type_words(type), do: to_string(type)
 
   defp version_words(type, nil), do: type_words(type)
@@ -1249,8 +1379,47 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
   def frame_key(%{type: type, name: name}) when name != "main", do: "#{type}--#{name}--"
   def frame_key(%{type: type}), do: type
 
-  @doc "Artifact types in a sentence: \"acceptance criteria and mockup\"."
-  def outputs_words(types), do: types |> Enum.map(&type_words/1) |> words_list()
+  @doc "Artifact types in a sentence, each with \"the\": \"the acceptance criteria and the mockup\"."
+  def outputs_words(types),
+    do: types |> Enum.map(&gettext("the %{type}", type: type_words(&1))) |> words_list()
+
+  @doc """
+  stored_no/1 is the fact of a failed Exists check of the output type `type`, without its
+  action, for a reader who may not decide: "The run stored no acceptance criteria."
+  """
+  @spec stored_no(String.t()) :: String.t()
+  def stored_no(type), do: gettext("The run stored no %{type}.", type: type_words(type))
+
+  @doc """
+  approver_line/3 is the sentence of who decides on the stage whose name is `stage`, for a
+  reader who may not: `approvers` as `ApiaryWeb.WorkItemLive.Workflow.approvers/1` returns
+  them, and `members`, the workspace's memberships, each with its `user`, as
+  `Apiary.Organisations.list_workspace_members/1` returns them. The names of the listed
+  members follow the list's order; a listed id that is no member's is left out. With no
+  member left, or none listed, the sentence is that nobody may approve the stage.
+  """
+  @spec approver_line(String.t(), :members | {:listed, [String.t()]}, [map]) :: String.t()
+  def approver_line(stage, :members, _members),
+    do: gettext("A member who may approve %{stage} decides.", stage: stage)
+
+  def approver_line(stage, {:listed, ids}, members) do
+    names = Map.new(members, &{&1.user.id, People.short(People.email(&1.user))})
+
+    case for(id <- Enum.uniq(ids), Map.has_key?(names, id), do: names[id]) do
+      [] ->
+        gettext(
+          "Nobody may approve %{stage}. Ask an admin to list its approvers in Workspace settings › %{workflows}.",
+          stage: stage,
+          workflows: SettingsComponents.workflows_label()
+        )
+
+      listed ->
+        gettext("An approver of %{stage} decides: %{approvers}.",
+          stage: stage,
+          approvers: words_list(listed)
+        )
+    end
+  end
 
   defp words_list([]), do: ""
   defp words_list([one]), do: one

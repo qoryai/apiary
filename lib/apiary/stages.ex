@@ -45,7 +45,8 @@ defmodule Apiary.Stages do
   # which contains the change the person asked for. Every later
   # run reads that version in place of the approved one (`read_version/6`), and the next
   # approval by a person at a gate lists it (`approve/4`). A gate `none` lists no version
-  # with a `decision`.
+  # with a `decision`. The work item page marks the version until an approval lists it
+  # or a later version of its artifact (`unapproved_changes/2`).
   #
   # ## After the last stage
   #
@@ -108,8 +109,13 @@ defmodule Apiary.Stages do
   # the person as `resolved_by`, and the trail the entry `escalation_another_round`; a run
   # again from the gate, the entry `another_round`.
   #
-  # A stage with no workflow waits at its gate while a required output is missing
-  # (`missing_outputs/1`); `approve/4` returns `{:error, {:outputs_missing, types}}`.
+  # A stage waits at its gate while a required output is missing (`missing_outputs/1`);
+  # `approve/4` returns `{:error, {:outputs_missing, types}}` for a stage with no
+  # workflow, and `{:error, {:outputs_not_written, types}}` for a stage that runs one, or
+  # `{:error, {:outputs_not_written, types, to}}` where Request changes at its gate
+  # returns the work item to the stage whose name is `to` (`Runner.gate_return/2`).
+  # Accept as it is that would take the stage to its gate is refused with `:invalid` while
+  # one is missing (`resolve_escalation/5`).
   #
   # ## What is told
   #
@@ -179,6 +185,8 @@ defmodule Apiary.Stages do
           | :not_live
           | :stage_changed
           | {:outputs_missing, [String.t()]}
+          | {:outputs_not_written, [String.t()]}
+          | {:outputs_not_written, [String.t()], String.t()}
           | {:track_not_offered, String.t()}
           | {:track_not_offered, String.t(), String.t()}
           | {:already_on, String.t()}
@@ -416,9 +424,10 @@ defmodule Apiary.Stages do
   #     every entry of the stage shares), and `model_choice`, the workflow's runtime and
   #     model in `models` as the claim formed them
   #     (`Apiary.Dispatches.RunSettings.build/2`, `sessions`), present for every entry of
-  #     a claimed run, and `model_credential`, the key the session starts on, for a
-  #     session on a provider other than the default model provider credential's; without
-  #     it, the session joins the group of the run's default model provider credential.
+  #     a claimed run, and `model_provider_credential_name`, the key the session starts
+  #     on, for a session on a provider other than the default model provider credential's;
+  #     without it, the session joins the group of the run's default model provider
+  #     credential.
   #     `next_session/2` reads these, so a change to the time limits or the model choices
   #     after the claim changes nothing for the run;
   #   * its first session (`Apiary.Stages.Session`), sequence 1, at the run's position,
@@ -457,7 +466,10 @@ defmodule Apiary.Stages do
                  "time_limit_minutes" => minutes,
                  "full_suite" => full_suite?(run, entry, loop_entry, level)
                },
-               Map.take(Map.get(models, workflow, %{}), ["model_choice", "model_credential"])
+               Map.take(Map.get(models, workflow, %{}), [
+                 "model_choice",
+                 "model_provider_credential_name"
+               ])
              )}
           end)
 
@@ -636,11 +648,11 @@ defmodule Apiary.Stages do
   # today's dispatch). `next` has `session`, Qory Apiary's number for it in the run,
   # `workflow`, `time_limit_minutes` and `full_suite` (the settings of its entry as the
   # claim kept them, `claim_sessions!/3`), `inputs` (the run's inputs,
-  # `Apiary.Dispatches.Inputs.explore/4`), and `model_choice` and `model_credential`, the
-  # runtime and model of the entry's workflow and the credential the session joins with,
-  # as the claim kept them (`claim_sessions!/3`); each nil where the claim kept none. With
-  # no `model_credential`, the session joins with the group of the run's default model
-  # provider credential.
+  # `Apiary.Dispatches.Inputs.explore/4`), and `model_choice` and
+  # `model_provider_credential_name`, the runtime and model of the entry's workflow and
+  # the credential the session joins with, as the claim kept them (`claim_sessions!/3`);
+  # each nil where the claim kept none. With no `model_provider_credential_name`, the
+  # session joins with the group of the run's default model provider credential.
   #
   # The step is recorded with its result, and a repeat for the same `session` returns
   # that result and steps nothing. Errors, with nothing written:
@@ -694,6 +706,46 @@ defmodule Apiary.Stages do
   end
 
   def next_session(_run, _report), do: {:error, :invalid_request}
+
+  # next_session_check/1 runs the checks of the run of a next-session request of `run`, a
+  # run of the queue (or its id), which come before its body is read, in the run
+  # contract's order: `{:error, :not_found}` for an unknown run, a run of Explore, a run of
+  # a stage without `shared_run`, and a run that no claim of a shared stage registered;
+  # then `{:error, :run_ended}` or `{:error, :run_cancelled}` for a run that ended or that
+  # a member cancelled; then `{:error, :run_ended, newest}` for a run whose stage no
+  # longer runs it or whose last step returned `:end`. `newest` is the number of the newest
+  # session the run reported, nil for none: a report of that session is a repeat, for
+  # which next_session/2 returns the stored result, so that a lost answer does not end the
+  # run another way. Else `:ok`. It reads without the work item's lock, and next_session/2
+  # checks all of it again under the lock.
+  @doc false
+  @spec next_session_check(DispatchRun.t() | Ecto.UUID.t()) ::
+          :ok
+          | {:error, :not_found | :run_ended | :run_cancelled}
+          | {:error, :run_ended, pos_integer | nil}
+  def next_session_check(%DispatchRun{id: id}), do: next_session_check(id)
+
+  def next_session_check(id) when is_binary(id) do
+    with {:ok, run} <- shared_run(id),
+         {:ok, _settings} <- session_settings(run),
+         [_ | _] = sessions <- sessions(run),
+         :ok <- run_live(run) do
+      work_item = Repo.get!(WorkItem, run.work_item_id)
+
+      with %Session{} = pending <- Enum.find(sessions, &is_nil(&1.forager_session)),
+           {:ok, _version, _stage} <- session_stage(work_item, run),
+           {:ok, _pending} <- pending_session(pending, work_item) do
+        :ok
+      else
+        _ended ->
+          newest = newest_reported(sessions)
+          {:error, :run_ended, newest && newest.forager_session}
+      end
+    else
+      [] -> {:error, :not_found}
+      {:error, _reason} = refused -> refused
+    end
+  end
 
   defp session_step(id, number, state, reason) do
     :ok = MachineTypes.hold()
@@ -783,13 +835,14 @@ defmodule Apiary.Stages do
 
   def newest_session(%DispatchRun{}), do: nil
 
-  # session_credential/2 is the `model_credential` that the claim of `run`, a registered
-  # run of a stage with `shared_run: true`, kept for its session number `session`
-  # (`claim_sessions!/3`): the key whose group that session starts on. The session is the
-  # one a report numbered `session` ended, else the open session (`open_session/1`), the
-  # one a run that paused was in. Nil for a session of the default model provider
-  # credential's group, and for a run with no session settings. `sessions`, the run's
-  # sessions as `session_rows_by_dispatch_run/1` reads them, is read here where it is nil.
+  # session_credential/2 is the `model_provider_credential_name` that the claim of `run`,
+  # a registered run of a stage with `shared_run: true`, kept for its session number
+  # `session` (`claim_sessions!/3`): the key whose group that session starts on. The
+  # session is the one a report numbered `session` ended, else the open session
+  # (`open_session/1`), the one a run that paused was in. Nil for a session of the default
+  # model provider credential's group, and for a run with no session settings. `sessions`,
+  # the run's sessions as `session_rows_by_dispatch_run/1` reads them, is read here where
+  # it is nil.
   @doc false
   @spec session_credential(map, pos_integer, [Session.t()] | nil) :: String.t() | nil
   def session_credential(run, session, sessions \\ nil)
@@ -806,7 +859,7 @@ defmodule Apiary.Stages do
     case Enum.find(sessions, &(&1.forager_session == session)) ||
            Enum.find(sessions, &is_nil(&1.forager_session)) do
       %Session{stage_entry: entry, loop_entry: loop_entry} when is_integer(entry) ->
-        get_in(settings, [session_place(entry, loop_entry), "model_credential"])
+        get_in(settings, [session_place(entry, loop_entry), "model_provider_credential_name"])
 
       _none ->
         nil
@@ -876,10 +929,7 @@ defmodule Apiary.Stages do
   # the session the run is in, the first with no report recorded yet. A run with no
   # session recorded is one that no claim of a shared stage registered.
   defp reported(sessions, number) do
-    newest =
-      sessions
-      |> Enum.filter(& &1.forager_session)
-      |> Enum.max_by(& &1.forager_session, fn -> nil end)
+    newest = newest_reported(sessions)
 
     cond do
       newest && number == newest.forager_session ->
@@ -897,6 +947,13 @@ defmodule Apiary.Stages do
           pending -> {:step, pending}
         end
     end
+  end
+
+  # The newest session of `sessions` that the run reported, nil for none.
+  defp newest_reported(sessions) do
+    sessions
+    |> Enum.filter(& &1.forager_session)
+    |> Enum.max_by(& &1.forager_session, fn -> nil end)
   end
 
   # The work item's stage, while the run is the newest of that stage, the stage runs, and
@@ -1045,7 +1102,7 @@ defmodule Apiary.Stages do
       "session" => pending.sequence + 1,
       "workflow" => spec.workflow,
       "model_choice" => entry["model_choice"],
-      "model_credential" => entry["model_credential"],
+      "model_provider_credential_name" => entry["model_provider_credential_name"],
       "time_limit_minutes" => entry["time_limit_minutes"],
       "full_suite" => entry["full_suite"],
       "inputs" => %{}
@@ -1087,7 +1144,7 @@ defmodule Apiary.Stages do
        session: stored["session"],
        workflow: stored["workflow"],
        model_choice: stored["model_choice"],
-       model_credential: stored["model_credential"],
+       model_provider_credential_name: stored["model_provider_credential_name"],
        time_limit_minutes: stored["time_limit_minutes"],
        full_suite: stored["full_suite"],
        inputs: stored["inputs"]
@@ -1658,9 +1715,12 @@ defmodule Apiary.Stages do
   # approve/3 approves the gate of the work item's stage, with the scope's person's
   # `note`: the decision covers the newest version of each output made in the stage, and
   # the work item enters the next stage, or its stage is done after the last. At Explore's
-  # gate it confirms today's proposal first (`Apiary.WorkItems.Moves`). The gate of a stage
-  # with no workflow is refused while a required output is missing,
-  # `{:error, {:outputs_missing, types}}` (`missing_outputs/1`).
+  # gate it confirms today's proposal first (`Apiary.WorkItems.Moves`). The gate of any
+  # stage is refused while a required output is missing (`missing_outputs/1`):
+  # `{:error, {:outputs_missing, types}}` for a stage with no workflow, whose people make
+  # its outputs, and `{:error, {:outputs_not_written, types}}` for a stage whose runs did
+  # not write them, with the name of the stage that Request changes returns the work item
+  # to as a third element where it returns it (`Runner.gate_return/2`).
   #
   # The decision records a track (`chosen_track/3`): the `track` of `opts` where the gate
   # offers it, else `{:error, {:track_not_offered, track}}`; with none, the track the stage's
@@ -1775,6 +1835,8 @@ defmodule Apiary.Stages do
   # switch it to another track of the gate that recorded its track (`{:switch, track}`,
   # `switch_tracks/1`), or close it. A work item that is offered a switch (`switch_tracks/1`
   # is not empty) is offered no accept and no move back: both are refused with `:invalid`.
+  # An accept that would take the stage to its gate returns `{:error, :invalid}` too while
+  # a required output of the stage is missing (`accept_needs/4`).
   @doc false
   @spec resolve_escalation(Scope.t(), WorkItem.t(), resolution, String.t() | nil, expect) ::
           {:ok, WorkItem.t()} | {:error, refusal}
@@ -1784,6 +1846,7 @@ defmodule Apiary.Stages do
            {:ok, work_item, version, stage} <- hold(scope, work_item, opts),
            %Escalation{} = escalation <- escalation!(work_item, version, stage),
            :ok <- switch_only(work_item, version, stage, resolution),
+           :ok <- accept_outputs(work_item, version, stage, resolution),
            {:ok, work_item} <-
              resolve(scope, work_item, version, stage, escalation, resolution, note),
            {:ok, _entry} <-
@@ -1870,6 +1933,19 @@ defmodule Apiary.Stages do
   end
 
   defp switch_only(_work_item, _version, _stage, _resolution), do: :ok
+
+  # An accept that takes the stage to its gate passes it as it is, so it needs every
+  # required output, as an approval does (`accept_needs/4`).
+  defp accept_outputs(work_item, version, stage, :accept) do
+    facts = facts(work_item, version, stage)
+
+    case accept_needs(work_item, stage, facts, facts.failed_checks) do
+      [] -> :ok
+      _missing -> {:error, :invalid}
+    end
+  end
+
+  defp accept_outputs(_work_item, _version, _stage, _resolution), do: :ok
 
   # A move of a person (`move/5`) resolves the open escalation as a move back, so it is
   # refused where the escalation is offered a switch, as that resolution is.
@@ -2072,8 +2148,16 @@ defmodule Apiary.Stages do
   defp would_start(work_item, version, stage, {:noted, act}),
     do: would_start(work_item, version, stage, act)
 
+  # An accept that fails the outputs check of `resolve_escalation/5` starts nothing.
+  defp would_start(work_item, version, stage, :accept) do
+    case accept_outputs(work_item, version, stage, :accept) do
+      :ok -> resolved_starts(work_item, version, stage, :accept, & &1)
+      {:error, :invalid} -> :none
+    end
+  end
+
   defp would_start(work_item, version, stage, act)
-       when act in [:accept, :another_round] or
+       when act == :another_round or
               (is_tuple(act) and elem(act, 0) in [:move, :switch]),
        do: resolved_starts(work_item, version, stage, act, & &1)
 
@@ -2176,7 +2260,13 @@ defmodule Apiary.Stages do
   defp stepped(work_item, version, stage, event, adjust, later \\ & &1, own \\ & &1) do
     facts = adjust.(facts(work_item, version, stage))
     %{actions: actions} = Runner.step(stage, position(work_item), event, facts)
+    queued(work_item, version, stage, actions, later, own)
+  end
 
+  # The run that the runner's `actions` for `stage` queue: their first `:queue`, or what
+  # their `:advance` or `{:return, _}` enters, in the order `apply_outcome/6` applies them
+  # (`stepped/7`).
+  defp queued(work_item, version, stage, actions, later \\ & &1, own \\ & &1) do
     Enum.reduce_while(actions, {:none, later}, fn
       {:queue, %{workflow: workflow}}, _acc ->
         {:halt, {{:run, workflow}, later}}
@@ -2242,9 +2332,12 @@ defmodule Apiary.Stages do
   # the version of each name of its type that the gate shows, which a person's approval
   # records (`gate_names/4`). `missing_outputs` is the
   # required output types whose Exists check fails (`missing_outputs/1`); while it has
-  # one, the gate of a stage with no workflow is not approvable. `loop` is whether the
-  # work item is in a loop of its stage: `rounds` is that loop's limit, or, past the last
-  # loop, the limit of the loop it left, which a later entry's runs do not count by.
+  # one, the gate of the stage is not approvable. `accept_needs` is the missing required
+  # output types that Accept as it is requires (`accept_needs/4`). `accept_entry` is the
+  # entry that an accept of the open escalation starts, where the accept does not take
+  # the stage to its gate (`accept_entry/5`), else nil. `loop` is whether the work item is
+  # in a loop of its stage: `rounds` is that loop's limit, or, past the last loop, the
+  # limit of the loop it left, which a later entry's runs do not count by.
   # `escalation` is the open escalation with its `points` (`shown_points/5`), also while
   # the stage waits for answers; `gaps` is why a stage waits for a workflow, else the
   # failed checks that started its round, nil with an escalation.
@@ -2274,15 +2367,21 @@ defmodule Apiary.Stages do
         gaps: shown_gaps(escalation, work_item, stage, artifacts, facts),
         outputs: outputs,
         missing_outputs: missing,
+        accept_needs: accept_needs(work_item, stage, facts, missing),
+        accept_entry:
+          accept_entry(work_item, version, stage, escalation,
+            strict: false,
+            artifacts: artifacts,
+            approvals: approvals,
+            conditions: facts
+          ),
         inputs: inputs(work_item, version, stage, artifacts, facts, approvals),
         escalation: escalation_map(escalation, work_item, stage, outputs, artifacts),
         waiting_workflow: waiting_workflow(work_item, stage, facts),
         gate: %{
           kind: get_in(stage, ["gate", "kind"]) || "person",
           approvers: Approvers.listed(stage),
-          approvable?:
-            state == :at_gate and Approvers.listed?(scope, stage) and
-              not (Runner.people?(stage) and missing != []),
+          approvable?: state == :at_gate and Approvers.listed?(scope, stage) and missing == [],
           approvals: approvals(work_item, stage, artifacts)
         }
       }
@@ -3711,17 +3810,27 @@ defmodule Apiary.Stages do
     %{work_item | state: :closed, closed_at: now}
   end
 
-  defp facts(work_item, version, stage) do
+  # The facts the stage runner steps on (`Runner.step/4`). `read` has what the caller has
+  # read already: `artifacts` (`Artifacts.list/1`), `approvals`
+  # (`approvals_by_version/1`) and `conditions`, the condition facts (`condition_facts/6`)
+  # read with `strict`, which is true by default; a page reads them with false, so the
+  # read does not raise.
+  defp facts(work_item, version, stage, read \\ []) do
     # The whole row: `Apiary.Processes.workflow_declaration/2` reads its stack.
     workspace = Repo.get!(Workspace, work_item.workspace_id)
-    artifacts = Artifacts.list(work_item)
+    artifacts = Keyword.get_lazy(read, :artifacts, fn -> Artifacts.list(work_item) end)
 
     declarations =
       Map.new(Runner.workflows(stage), &{&1, Processes.workflow_declaration(workspace, &1)})
 
     # Read once per event: the outputs' checks and the runner both use it.
-    approvals = approvals_by_version(work_item)
-    conditions = condition_facts(work_item, version, stage, artifacts, true, approvals)
+    approvals = Keyword.get_lazy(read, :approvals, fn -> approvals_by_version(work_item) end)
+    strict? = Keyword.get(read, :strict, true)
+
+    conditions =
+      Keyword.get_lazy(read, :conditions, fn ->
+        condition_facts(work_item, version, stage, artifacts, strict?, approvals)
+      end)
 
     Map.merge(conditions, %{
       missing_inputs:
@@ -4964,14 +5073,130 @@ defmodule Apiary.Stages do
 
   defp missing(outputs), do: for(%{required: true, check: :missing, type: t} <- outputs, do: t)
 
-  # A stage with no workflow is approved only once every required output exists (§ 4).
-  defp outputs_exist(work_item, version, stage) do
-    with true <- Runner.people?(stage),
-         [_one | _more] = types <-
-           missing(outputs(work_item, version, stage, Artifacts.list(work_item))) do
-      {:error, {:outputs_missing, types}}
+  # The required output types that Accept as it is requires: `missing`, where an accept
+  # at the work item's place takes the stage to its gate (`Runner.accept_to_gate?/3`, on
+  # `facts`); none where it starts the next entry, as the checks run at the sequence's
+  # end. A work item with no place in the sequence, as the migration placed some, counts
+  # as at its gate.
+  defp accept_needs(_work_item, _stage, _facts, []), do: []
+
+  defp accept_needs(work_item, stage, facts, missing) do
+    case position(work_item) do
+      nil -> missing
+      position -> if Runner.accept_to_gate?(stage, position, facts), do: missing, else: []
+    end
+  end
+
+  # accept_entry/5 is the name of the entry of the stage that an accept of the open
+  # escalation `escalation` starts, else its workflow (`Runner.entry_name/2`), where the
+  # accept does not take the stage to its gate (`Runner.accept_to_gate?/3`); else nil.
+  # The entry is the one whose run the runner's step queues in the stage, after loops and
+  # `when`/`unless` conditions, or whose workflow the stage then waits for
+  # (`started_entry/2`). `read` is what `status/2` has read (`facts/4`): the gate test
+  # reads only the condition facts, and the other facts are read only where the accept
+  # does not go to the gate. The escalation card's accept button reads Start and this
+  # entry (`ApiaryWeb.WorkItemLive.Workflow`).
+  defp accept_entry(
+         %WorkItem{stage_state: :escalated} = work_item,
+         version,
+         stage,
+         %Escalation{cause: cause},
+         read
+       ) do
+    with %{} = position <- position(work_item),
+         false <- Runner.accept_to_gate?(stage, position, Keyword.fetch!(read, :conditions)) do
+      facts = facts(work_item, version, stage, read)
+      stage |> Runner.step(position, {:accept, cause}, facts) |> started_entry(stage)
     else
-      _none -> :ok
+      _gate -> nil
+    end
+  end
+
+  defp accept_entry(_work_item, _version, _stage, _escalation, _read), do: nil
+
+  # The entry of `stage` that the runner's `outcome` of an accept starts: the entry of its
+  # first `:queue`, where no `:advance` or `{:return, _}` comes first, as those enter
+  # another stage; with none, the entry whose workflow the stage waits for
+  # (`:waiting_workflow`), which the accept starts once the harness lists it. nil for
+  # none.
+  defp started_entry(%{actions: actions} = outcome, stage) do
+    first =
+      Enum.find(actions, fn action ->
+        match?({:queue, _spec}, action) or action == :advance or
+          match?({:return, _stage_id}, action)
+      end)
+
+    case {first, outcome} do
+      {{:queue, spec}, _outcome} -> Runner.entry_name(stage, spec)
+      {nil, %{state: :waiting_workflow, position: at}} -> Runner.entry_name(stage, at)
+      _other -> nil
+    end
+  end
+
+  # accept_starts/1 is what an accept of the work item's open escalation starts, read
+  # once at the click, by the runner's rules on the facts read now: `entry`, the entry
+  # whose name the accept button shows (`accept_entry/5`), nil where the accept takes the
+  # stage to its gate; and `run`, the run it queues, as `starts/2` finds
+  # it, from the same step. The spend dialog reads both, so its title, its button and its
+  # line come from one step.
+  @doc false
+  @spec accept_starts(WorkItem.t()) :: %{entry: String.t() | nil, run: {:run, String.t()} | :none}
+  def accept_starts(%WorkItem{id: id} = work_item) do
+    with %WorkItem{state: :exploring, stage_state: :escalated} = work_item <-
+           Repo.get(WorkItem, id),
+         {:ok, version, stage} <- placed(work_item),
+         %Escalation{cause: cause} <-
+           open_escalation(work_item) || placed_escalation(work_item, version, stage),
+         %{} = position <- position(work_item) do
+      facts = facts(work_item, version, stage)
+
+      if accept_needs(work_item, stage, facts, facts.failed_checks) == [] do
+        outcome = Runner.step(stage, position, {:accept, cause}, facts)
+
+        entry =
+          if Runner.accept_to_gate?(stage, position, facts),
+            do: nil,
+            else: started_entry(outcome, stage)
+
+        %{entry: entry, run: queued(work_item, version, stage, outcome.actions)}
+      else
+        %{entry: nil, run: :none}
+      end
+    else
+      _other -> %{entry: nil, run: starts(work_item, :accept)}
+    end
+  end
+
+  # A stage is approved only once every required output exists. The refusal is set by
+  # who makes the outputs: people (a stage with no workflow, § 4) or the stage's runs.
+  defp outputs_exist(work_item, version, stage) do
+    case missing(outputs(work_item, version, stage, Artifacts.list(work_item))) do
+      [] ->
+        :ok
+
+      types ->
+        cond do
+          Runner.people?(stage) ->
+            {:error, {:outputs_missing, types}}
+
+          to = changes_return(work_item, version, stage) ->
+            {:error, {:outputs_not_written, types, to}}
+
+          true ->
+            {:error, {:outputs_not_written, types}}
+        end
+    end
+  end
+
+  # The name of the stage that Request changes at the gate returns the work item to
+  # (`Runner.gate_return/2`, which `request_changes/5` reaches through `Runner.step/4`);
+  # nil where it runs the stage again.
+  defp changes_return(work_item, version, stage) do
+    facts = facts(work_item, version, stage)
+
+    case Runner.gate_return(stage, facts) do
+      nil -> nil
+      stage_id -> Map.get(facts.earlier, stage_id)
     end
   end
 
@@ -5132,6 +5357,68 @@ defmodule Apiary.Stages do
 
   # The public ids of the versions that the approvals `approvals_by_version/1` returns list.
   defp listed(approvals), do: MapSet.new(Map.keys(approvals))
+
+  @doc false
+  # unapproved_changes/2 is each version of `artifacts`, the work item's
+  # (`Artifacts.list/1`), that is a person's change (`changes/2`, by the approvals that
+  # `listed/1` reads, as for the version that later runs read), by its public id, as
+  # `%{type:, name:, version:, by:, earlier:}`. `by` is the account id of the person who
+  # wrote the note that asked for the version (`Apiary.Stages.Notes.writers/2`), nil for
+  # none. `earlier` is the version of the same artifact, below this one, that was approved
+  # before the change (`approved_before/4`), nil for none. The work item page marks each
+  # such version until an approval lists it or a later version of its artifact. A gate
+  # `none` lists no version with a `decision`, so the mark stays through it.
+  @spec unapproved_changes(WorkItem.t(), [map]) :: %{String.t() => map}
+  def unapproved_changes(%WorkItem{} = work_item, artifacts) do
+    if Enum.any?(artifacts, fn a -> Enum.any?(a.versions, &is_binary(&1.decision_id)) end) do
+      approvals = approvals_by_version(work_item)
+      listed = listed(approvals)
+      by_person = person_listed(approvals)
+
+      found =
+        for artifact <- artifacts,
+            version <- changes(artifact, listed),
+            do: {artifact, version}
+
+      writers = Notes.writers(work_item.id, Enum.map(found, &elem(&1, 1).decision_id))
+
+      Map.new(found, fn {artifact, version} ->
+        {version.public_id,
+         %{
+           type: artifact.type,
+           name: artifact.name,
+           version: version,
+           by: Map.get(writers, version.decision_id),
+           earlier: approved_before(artifact, version, by_person, listed)
+         }}
+      end)
+    else
+      %{}
+    end
+  end
+
+  # The public ids of the versions that a person's approval (`person_approval?/1`) of
+  # `approvals` (`approvals_by_version/1`) lists: the versions a person approved.
+  defp person_listed(approvals) do
+    for {public_id, list} <- approvals,
+        Enum.any?(list, &person_approval?/1),
+        into: MapSet.new(),
+        do: public_id
+  end
+
+  # The text approved before `version`: the highest-numbered version of `artifact` below it
+  # that a person's approval lists (`by_person`, `person_listed/1`), else the highest below
+  # it that any approval lists (`listed`, `listed/1`), a gate `none`'s included; nil for
+  # none.
+  defp approved_before(artifact, version, by_person, listed) do
+    highest_below(artifact, version, by_person) || highest_below(artifact, version, listed)
+  end
+
+  defp highest_below(artifact, version, ids) do
+    artifact.versions
+    |> Enum.filter(&(&1.number < version.number and MapSet.member?(ids, &1.public_id)))
+    |> Enum.max_by(& &1.number, fn -> nil end)
+  end
 
   # The input types of the conditions of `stage` that count: each whose version the stage
   # reads has a file of more than 0 bytes (`Runner.condition_inputs/1`).

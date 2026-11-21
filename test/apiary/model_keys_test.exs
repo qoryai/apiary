@@ -746,7 +746,7 @@ defmodule Apiary.ModelKeysTest do
       assert Order.cooling?(claim_key(ctx, "main", before), before)
       assert ModelKeys.cooldown_counts([provider], before) == %{provider.id => 2}
       assert ModelKeys.cooling_until([provider.id], before) == until
-      refute ModelKeys.claim_keys(provider, before) |> Order.start(before)
+      refute ModelKeys.claim_keys(provider, before) |> Order.first_free(before)
 
       assert {:cooldown, _words, _source} =
                ApiaryWeb.ModelKeyComponents.state(states.(before), before)
@@ -755,7 +755,7 @@ defmodule Apiary.ModelKeysTest do
       refute Order.cooling?(claim_key(ctx, "main", until), until)
       assert ModelKeys.cooldown_counts([provider], until) == %{provider.id => 0}
       assert ModelKeys.cooling_until([provider.id], until) == nil
-      assert ModelKeys.claim_keys(provider, until) |> Order.start(until)
+      assert ModelKeys.claim_keys(provider, until) |> Order.first_free(until)
       assert {:available, _segments} = ApiaryWeb.ModelKeyComponents.state(states.(until), until)
     end
 
