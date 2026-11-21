@@ -2443,9 +2443,17 @@ defmodule Apiary.Harnesses.WalkTest do
   ## The job
 
   describe "the job" do
+    # A queued run of a fresh work item of the walk's target: the collection `R_app` of
+    # the adapter `ctx.run`, which the walk reads the target's files from.
     defp queued(ctx) do
       work_item =
-        work_item_fixture(ctx.scope, target_system: "code.example.com", target_path: "acme/app")
+        work_item_fixture(ctx.scope,
+          connection_id: ctx.connection.id,
+          external_ref: "acme/app##{System.unique_integer([:positive])}",
+          target_system: "code.example.com",
+          target_path: "acme/app",
+          target_collection_external_ref: "R_app"
+        )
 
       {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
       run
