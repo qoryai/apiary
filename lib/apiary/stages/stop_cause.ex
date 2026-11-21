@@ -691,10 +691,10 @@ defmodule Apiary.Stages.StopCause do
     with %{} = target <- WorkItem.target(work_item) do
       found = Repo.one(Target.by_key(n.workspace_struct.id, target))
 
-    picked =
-      if found && Domain.paths_label(n.workspace_struct),
-        do: Targets.further_repositories(found),
-        else: []
+      picked =
+        if found && Domain.paths_label(n.workspace_struct),
+          do: Targets.further_repositories(found),
+          else: []
 
       with :ok <- further_collections(found, picked),
            {:ok, _variables} <- Domain.run_variables(n.workspace_struct, target, picked) do
