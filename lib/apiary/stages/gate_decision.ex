@@ -6,12 +6,14 @@ defmodule Apiary.Stages.GateDecision do
   # to the stage `to_stage_id` (nil for a move written before that column).
   # A gate `none` records an approval too: `automatic` true, with no `user_id`, when the
   # runner passed the gate, and the member's `user_id` when they accepted the escalation
-  # that ended the stage. A nil `user_id` with `automatic` false is a member whose account
-  # is gone. `track` is the id of the track the approval chose, nil for none; only an
-  # approval has one. `note` is what the person wrote, nil for nothing. `stage_id`
-  # and `process_version_id` are the stage and the version of the process it was made
-  # under, and `take_in` the take in of the work item it was made in. Nothing changes a
-  # decision once it is written.
+  # that ended the stage. A `:move` that the stage runner wrote is `automatic` too, with no
+  # `user_id`: a run's return, a return of Request changes, or a take in again. A nil
+  # `user_id` with `automatic` false is a member whose account is gone. `track` is the id
+  # of the track the approval chose, nil for none; only an approval has one. `note` is what
+  # the person wrote, nil for nothing. `stage_id` and `process_version_id` are the stage
+  # and the version of the process it was made under, and `take_in` the take in of the work
+  # item it was made in. Nothing changes a decision once it is written; a later move back
+  # withdraws an approval, which stays stored (`Apiary.Stages.Withdrawals`).
   #
   # A `:move` also has `left_stage_entered_at`, when the work item had last entered
   # `stage_id` (`work_items.stage_entered_at`, which the move overwrites; nil for none).

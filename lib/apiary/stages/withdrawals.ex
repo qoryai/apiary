@@ -83,8 +83,8 @@ defmodule Apiary.Stages.Withdrawals do
 
   # counted/2 is `query`, whose gate decisions are bound as `:decision`, with only the
   # decisions of `work_item` that count: made in its take in and withdrawn by no later
-  # move. `work_item` gives the take in and the process version; none counts for a work
-  # item with no take in.
+  # move. The take in and the process version are those of `work_item`; none counts for a
+  # work item with no take in.
   @doc false
   @spec counted(Ecto.Queryable.t(), WorkItem.t()) :: Ecto.Query.t()
   def counted(query, %WorkItem{take_in: nil}), do: from(_ in query, where: false)

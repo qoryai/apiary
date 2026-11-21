@@ -7057,8 +7057,11 @@ defmodule Apiary.StagesTest do
       assert [_verdict, _verification] = from_return(returned)
     end
 
-    test "a work item moved to Build by a person lists none through a return", %{scope: scope} do
+    test "a work item moved back to Build by a person lists the return's versions again: " <>
+           "the move withdrew the approval that ended them",
+         %{scope: scope} do
       work_item = in_verify!(scope) |> returned_by("# Criterion 2 fails")
+      returned = from_return(work_item)
       work_item = end_run!(work_item, verdict("passed"))
       assert from_return(work_item) == []
 
@@ -7066,7 +7069,8 @@ defmodule Apiary.StagesTest do
         Stages.move(scope, work_item, @build, nil, expect_stage: @verify)
 
       assert %WorkItem{stage_id: @build} = moved
-      assert from_return(moved) == []
+      assert [_verdict, _verification] = from_return(moved)
+      assert from_return(moved) == returned
     end
 
     test "with no verification, only the verdict is listed", %{scope: scope} do
@@ -8960,6 +8964,24 @@ defmodule Apiary.StagesTest do
       assert Stages.track(reload(work_item)) == "fast-track"
     end
 
+    test "a switch's track still counts after a move back to the stage the switch landed on",
+         %{scope: scope} do
+      work_item = escalated_in_build!(scope, "fast-track")
+      assert {:ok, %WorkItem{stage_id: @shape}} = switch(scope, work_item, "standard")
+
+      shaping = end_run!(reload(work_item), verdict("passed"))
+      assert %WorkItem{stage_id: @shape, stage_state: :at_gate} = shaping
+
+      assert {:ok, %WorkItem{stage_id: @build}} =
+               Stages.approve(scope, shaping, nil, expect_stage: @shape)
+
+      # The switch decided the track of Explore's gate: a move back to Shape, after that
+      # gate, leaves it, and Explore's Fast track stays replaced.
+      {:ok, work_item} = Stages.move(scope, reload(work_item), @shape, nil, expect_stage: @build)
+      assert %WorkItem{stage_id: @shape} = work_item
+      assert Stages.track(reload(work_item)) == "standard"
+    end
+
     test "a run's return writes a move with no member and withdraws the approvals of the " <>
            "stage it returns to",
          %{scope: scope} do
@@ -9157,6 +9179,20 @@ defmodule Apiary.StagesTest do
 
       assert Explore.confirmation(work_item.id, 1).id == newest.id
       assert Explore.current(reload(work_item), DateTime.utc_now()).status == :shape
+    end
+
+    test "a move back to a stage after Explore's leaves the confirmation counting",
+         %{scope: scope} do
+      work_item = in_verify_with_outputs!(scope)
+      confirmation = Explore.confirmation(work_item.id, work_item.take_in)
+      assert %Confirmation{} = confirmation
+
+      {:ok, work_item} = Stages.move(scope, work_item, @shape, nil, expect_stage: @verify)
+      assert %WorkItem{stage_id: @shape} = work_item
+
+      assert Explore.confirmation(work_item.id, work_item.take_in).id == confirmation.id
+      assert Explore.current(work_item, DateTime.utc_now()).status == :shape
+      assert Explore.statuses([work_item.id]) == %{work_item.id => :shape}
     end
   end
 

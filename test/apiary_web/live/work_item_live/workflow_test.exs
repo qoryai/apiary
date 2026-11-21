@@ -1216,12 +1216,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     } do
       work_item = moved_back!(scope)
 
-      # The confirmation stays, so Explore's status is still Ready for Shape.
+      # The move back withdrew the confirmation, so Explore's status is the queued run's,
+      # and the header has the work item's status, as at a first Explore.
       assert work_item.stage_id == @explore
-      assert %{status: :shape} = WorkItems.explore(scope, work_item, DateTime.utc_now())
+      assert %{status: :queued} = WorkItems.explore(scope, work_item, DateTime.utc_now())
 
       {:ok, view, html} = live(conn, page(scope, work_item.number))
-      assert has_element?(view, "#work-item-head-stage-status", "Explore · Queued")
+      refute has_element?(view, "#work-item-head-stage-status")
       assert has_element?(view, "#work-item-explore")
       refute has_element?(view, "#work-item-ticket-text")
 
@@ -1827,7 +1828,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, ~s(#work-item-record .q-xp-runrow a[href="#{href}"]))
     end
 
-    test "after a move back, the stage card's line and the fold's row link the running run", %{
+    test "after a move back, Explore's wait block and the fold's row link the running run", %{
       conn: conn,
       scope: scope
     } do
@@ -1836,14 +1837,16 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
+      # The move back withdrew the confirmation: Explore's wait block, as at a first
+      # Explore, in place of the stage card's line.
       assert has_element?(
                view,
-               ~s(#work-item-stage-run-link[href="#{href}"]),
+               ~s(#work-item-explore-wait-h a[href="#{href}"]),
                "Run #{run.number}"
              )
 
-      assert line(view, "#work-item-stage-line") == "Explore is running."
-      refute has_element?(view, "#work-item-stage-line a")
+      refute has_element?(view, "#work-item-stage-line")
+      refute has_element?(view, "#work-item-stage-run-link")
 
       # Each of the take in's runs is Explore's, so Explore's fold lists them, and the
       # Runs list is not above the tabs.
@@ -1858,23 +1861,19 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       assert List.last(fold_rows(view)) =~ "· round 1 ·"
     end
 
-    test "after a move back, the header's status links the running run as a whole", %{
+    test "after a move back, the header has the work item's status, as at a first Explore", %{
       conn: conn,
       scope: scope
     } do
-      {work_item, run, _dispatch_run} = running_after_move!(scope)
-      href = ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}"
+      {work_item, _run, _dispatch_run} = running_after_move!(scope)
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(
-               view,
-               ~s(#work-item-head-stage-status a[href="#{href}"]),
-               "Explore · Running"
-             )
+      refute has_element?(view, "#work-item-head-stage-status")
+      assert has_element?(view, "#work-item-head", "Explore is running")
     end
 
-    test "after a move back, a queued run with no row has a header status with no link", %{
+    test "after a move back, a queued run with no row: no stage status in the header", %{
       conn: conn,
       scope: scope
     } do
@@ -1882,8 +1881,8 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-head-stage-status", "Explore · Queued")
-      refute has_element?(view, "#work-item-head-stage-status a")
+      refute has_element?(view, "#work-item-head-stage-status")
+      refute has_element?(view, ~s(#work-item-head a[href*="/runs/"]))
     end
 
     test "after a move back, a reader with no run.read has a header status with no link", %{
@@ -1892,8 +1891,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     } do
       view = running_where_runs_are_unreadable!(conn, scope)
 
-      assert has_element?(view, "#work-item-head-stage-status", "Explore · Running")
-      refute has_element?(view, "#work-item-head-stage-status a")
+      refute has_element?(view, "#work-item-head-stage-status")
+      assert has_element?(view, "#work-item-head", "Explore is running")
+      refute has_element?(view, ~s(#work-item-head a[href*="/runs/"]))
     end
 
     test "a later stage's header status has no link", %{conn: conn, scope: scope} do
@@ -1911,7 +1911,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     } do
       view = running_where_runs_are_unreadable!(conn, scope)
 
-      assert has_element?(view, "#work-item-stage-line", "Explore is running.")
+      assert has_element?(view, "#work-item-explore-wait-h", "Explore is running.")
       assert has_element?(view, "#work-item-record .q-xp-runrow", "Attempt")
       refute has_element?(view, ~s(a[href*="/runs/"]))
     end
@@ -7599,8 +7599,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, "#work-item-artifact-list", "round")
     end
 
-    test "a work item moved back to Explore has the artifacts above the tabs, its runs in Explore's fold",
+    test "a work item moved back to Explore has its artifacts and runs in Explore's fold, as at a first Explore",
          %{conn: conn, scope: scope} do
+      # The move back withdrew the confirmation, so the page lays out Explore as before a
+      # confirmation: nothing above the tabs.
       work_item = moved_back!(scope)
 
       for tab <- @tabs do
@@ -7608,10 +7610,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         [before_tabs, _after] = String.split(html, ~s(id="work-item-tabs"), parts: 2)
 
         refute has_element?(view, "#work-item-runs")
-        assert before_tabs =~ ~s(id="work-item-artifacts")
+        refute before_tabs =~ ~s(id="work-item-artifacts")
         refute has_element?(view, "#work-item-record.q-wi-foot")
-        assert found(view, "#work-item-artifact-list") == 1
       end
+
+      {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
+      assert found(view, "#work-item-artifact-list") == 1
+      assert has_element?(view, "#work-item-record #work-item-artifact-list")
     end
 
     test "a work item moved back to Explore from Shape's gate lists each run once, in its tab's fold",
@@ -7625,8 +7630,10 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         {:ok, view, html} = live(conn, path)
         [before_tabs, _after] = String.split(html, ~s(id="work-item-tabs"), parts: 2)
 
+        # The move back withdrew the confirmation: nothing above the tabs, as at a first
+        # Explore.
         refute has_element?(view, "#work-item-runs")
-        assert before_tabs =~ ~s(id="work-item-artifacts")
+        refute before_tabs =~ ~s(id="work-item-artifacts")
       end
 
       # Explore's runs, attempts 1 and 3, in Explore's fold; Shape's run in Shape's.
@@ -8217,8 +8224,9 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       conn: conn,
       scope: scope
     } do
+      # The move back withdrew the confirmation: Explore's status is the queued run's.
       work_item = moved_back!(scope)
-      assert %{status: :shape} = WorkItems.explore(scope, work_item, DateTime.utc_now())
+      assert %{status: :queued} = WorkItems.explore(scope, work_item, DateTime.utc_now())
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number) <> "/explore")
 

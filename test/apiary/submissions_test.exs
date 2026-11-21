@@ -872,6 +872,7 @@ defmodule Apiary.SubmissionsTest do
         stage_id: @build,
         kind: :approve,
         versions: [version.public_id],
+        take_in: ctx.work_item.take_in,
         inserted_at: DateTime.utc_now()
       })
 

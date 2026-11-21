@@ -165,6 +165,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
           user_id: ctx.scope.user.id,
           stage_id: @explore,
           kind: kind,
+          take_in: work_item.take_in,
           inserted_at: DateTime.utc_now()
         ] ++ fields
       )

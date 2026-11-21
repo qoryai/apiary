@@ -2493,8 +2493,9 @@ defmodule Apiary.Stages do
   # `verification` made in the stage that run belongs to, marked `from: :return` and not
   # required; a type with no such version has no entry. A version in `listed` (the entries
   # already there) is left out. The entries last until the stage's gate passes again or the
-  # work item leaves the stage by a move: an approval of the stage, or a move out of it,
-  # made after the return (`left_since?/2`). A Request changes at the gate and a decision
+  # work item leaves the stage by a move: an approval of the stage that counts, or a
+  # person's move out of it, made after the return (`left_since?/2`). A move back that
+  # withdraws the approval lists them again. A Request changes at the gate and a decision
   # in another stage end nothing. A newer return replaces them. They are not the stage's
   # outputs, so no approval lists them, and they are no person's note (`{feedback: new}`
   # stays false).
@@ -2717,17 +2718,18 @@ defmodule Apiary.Stages do
   @spec stage_skips(WorkItem.t()) :: [map]
   def stage_skips(%WorkItem{} = work_item), do: skip_records(work_item).stage_skips
 
-  # skip_records/1 is `%{skips:, earlier_skips:, stage_skips:}`, each as the function of its
-  # name returns it, read with one read of the work item's skips and one of its approvals
-  # with a track. A stage passed over whole has no workflow: its entry in `stage_skips` has
-  # its `stage_id`, the condition as `input` (a type) or `track` (an id, with `track_name`),
-  # `negated` (true for an `unless` that was met), when it was passed over, and `approved`,
-  # the approval that put the work item on the track that passed it over: the newest
-  # approval with a track made in the take in before the stage was passed over, as
-  # `%{kind, track_id, track_name, stage_id, user_id, at}`, `kind` `:approve` or `:move`; nil for none, and for a condition
-  # that is no track's. `track_name` is the name the process version declares, else the id.
-  # `track` is the id of the track the work item is on, as `track/1` reads it, nil for none.
-  # A stage's record is deleted when the stage is entered again (`enter_locked/4`), so a
+  # skip_records/1 is `%{skips:, earlier_skips:, stage_skips:}`, each as the function of
+  # its name returns it, read with one read of the work item's skips and one of its
+  # approvals with a track that count (`Apiary.Stages.Withdrawals`). A stage passed over
+  # whole has no workflow: its entry in `stage_skips` has its `stage_id`, the condition as
+  # `input` (a type) or `track` (an id, with `track_name`), `negated` (true for an `unless`
+  # that was met), when it was passed over, and `approved`, the approval that put the work
+  # item on the track that passed it over: the newest approval with a track that counts,
+  # made before the stage was passed over, as `%{kind, track_id, track_name, stage_id,
+  # user_id, at}`, `kind` `:approve` or `:move`; nil for none, and for a condition that is
+  # no track's. `track_name` is the name the process version declares, else the id. `track`
+  # is the id of the track the work item is on, as `track/1` reads it, nil for none. A
+  # stage's record is deleted when the stage is entered again (`enter_locked/4`), so a
   # stage has at most one, and none once it ran or waits at its gate.
   @doc false
   @spec skip_records(WorkItem.t()) :: %{
@@ -3437,9 +3439,11 @@ defmodule Apiary.Stages do
 
   @doc """
   track/1 is the id of the track `work_item` is on: the track of its newest approval, or move
-  forward past a gate, that has one, at any stage, made in its current take in, or nil where
-  none chose a track (a process with no tracks, or no approval yet). A later approval with
-  another track changes it. A work item taken in again starts with none.
+  forward past a gate, that has one and still counts, at any stage, made in its current take
+  in, or nil where none chose a track (a process with no tracks, or no approval yet). A later
+  approval with another track changes it. A move back that withdraws that decision
+  (`Apiary.Stages.Withdrawals`) leaves the track of the newest older one that counts, or
+  none. A work item taken in again starts with none.
   """
   @spec track(WorkItem.t()) :: String.t() | nil
   def track(%WorkItem{} = work_item) do
@@ -3449,10 +3453,10 @@ defmodule Apiary.Stages do
     end
   end
 
-  # The approvals and moves of the work item that have a track, made in its current take in,
-  # newest first: each `track`, the `stage_id` the decision was made at, the
-  # `process_version_id` it was made under and, for a switch, the `escalation_id` it
-  # resolves; `[]` for none.
+  # The approvals and moves of the work item that have a track and count
+  # (`Apiary.Stages.Withdrawals`), newest first: each `track`, the `stage_id` the decision
+  # was made at, the `process_version_id` it was made under and, for a switch, the
+  # `escalation_id` it resolves; `[]` for none.
   defp track_decisions(%WorkItem{take_in: nil}), do: []
 
   defp track_decisions(%WorkItem{id: id} = work_item) do
@@ -4990,7 +4994,7 @@ defmodule Apiary.Stages do
   # (`ApiaryWeb.WorkItemLive.StageTab.frames/1`), each with its artifact's type and name.
   # At the work item's stage, until its last stage is done, they are the versions an
   # approval would record now (`recorded_versions/4`, the set `approve_locked/7` lists).
-  # At any other stage with a person's approval in this take in, they are the versions the
+  # At any other stage with a person's approval that counts, they are the versions the
   # newest such approval recorded, in its order; with none, the versions its gate shows. []
   # for a stage the work item's process version does not have.
   @doc false
