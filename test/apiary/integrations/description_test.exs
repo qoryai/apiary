@@ -32,8 +32,8 @@ defmodule Apiary.Integrations.DescriptionTest do
                   acme-tracker.json example-gateway.json example-links.json example-projects.json
                   example-source-apply-basic.json
                   example-source-apply-bearer.json example-source-apply-header.json
-                  example-source-comments.json example-source-guide.json
-                  example-source-submissions.json example-source-targets.json example-tracker.json github.json
+                  example-source-change-kinds.json example-source-comments.json
+                  example-source-guide.json example-source-targets.json example-tracker.json github.json
                   unknown-role.json)
 
       for name <- names, do: assert({:ok, %Description{}} = parse_fixture(name), name)
@@ -41,7 +41,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "every refused fixture is refused, those a reader refuses included" do
       names = fixture_names("invalid/*.json") ++ fixture_names("refused-by-reader/*.json")
-      assert length(names) == 159
+      assert length(names) == 170
 
       for name <- names do
         assert {:error, {:description_invalid, _}} = parse_fixture(name), name
@@ -52,7 +52,7 @@ defmodule Apiary.Integrations.DescriptionTest do
     # a closed copy of the schema, which the tests of qoryai/integrations use, refuses these.
     test "a fixture that only a closed copy of the schema refuses is read" do
       names = fixture_names("closed/*.json")
-      assert length(names) == 14
+      assert length(names) == 15
 
       for name <- names, do: assert({:ok, %Description{}} = parse_fixture(name), name)
     end
@@ -69,7 +69,7 @@ defmodule Apiary.Integrations.DescriptionTest do
 
     test "a source role is refused where the schema refuses its shape" do
       names = fixture_names("invalid/description-source-*.json")
-      assert length(names) == 45
+      assert length(names) == 52
 
       for {name, kind, location} <- [
             {"arabic-letter-mark", :pattern, "#/roles/source/access"},
@@ -110,9 +110,13 @@ defmodule Apiary.Integrations.DescriptionTest do
             {"comments-false", :const, "#/roles/source/comments"},
             {"targets-false", :const, "#/roles/source/targets"},
             {"targets-string", :const, "#/roles/source/targets"},
-            {"submissions-false", :const, "#/roles/source/submissions"},
-            {"submissions-string", :const, "#/roles/source/submissions"},
-            {"submissions-without-targets", :dependentRequired, "#/roles/source"}
+            {"change-kinds-empty", :minItems, "#/roles/source/change_kinds"},
+            {"change-kinds-string", :type, "#/roles/source/change_kinds"},
+            {"change-kinds-without-targets", :dependentRequired, "#/roles/source"},
+            {"change-kinds-duplicate", :uniqueItems, "#/roles/source/change_kinds"},
+            {"change-kinds-upper-case", :pattern, "#/roles/source/change_kinds/0"},
+            {"change-kinds-65-characters", :maxLength, "#/roles/source/change_kinds/0"},
+            {"change-kinds-17-kinds", :maxItems, "#/roles/source/change_kinds"}
           ] do
         name = "invalid/description-source-#{name}.json"
         assert name in names
