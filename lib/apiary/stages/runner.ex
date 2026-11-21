@@ -968,7 +968,12 @@ defmodule Apiary.Stages.Runner do
       not in_loop?(position) and
         Map.get(entry_at(stage, position) || %{}, "first_attempt") == true
 
-  defp entry_at(stage, %{entry: index, loop_entry: loop_entry}) do
+  # entry_at/2 is the workflow entry of `stage` at `position` (its `entry` and
+  # `loop_entry`), nil where the stage has none there.
+  @doc false
+  @spec entry_at(map, %{entry: non_neg_integer, loop_entry: non_neg_integer | nil}) ::
+          map | nil
+  def entry_at(stage, %{entry: index, loop_entry: loop_entry}) do
     case Enum.at(sequence(stage), index) do
       %{"loop" => %{"body" => body}} -> Enum.at(body, loop_entry || 0)
       %{"workflow" => _name} = entry -> entry

@@ -393,6 +393,20 @@ defmodule Apiary.Runs.RunCredentialsTest do
       )
     end
 
+    # The levels the workspace's harness declares for the Build workflows, as a read of the
+    # harness after the save records them: each writes.
+    defp build_declared!(ctx) do
+      :ok =
+        Apiary.Processes.record_declared(ctx.scope.workspace, %{
+          "plan-the-build" => :write,
+          "implement-changes" => :write,
+          "review-changes" => :write
+        })
+    end
+
+    # A guard against a rule that refuses read beside write: the claim of this run ends
+    # `shared_access_differs` where it does. The level comes from the walk of
+    # implement-changes, the run's first workflow.
     @tag needs: [:factory, :workflow_model]
     test "a run of a shared stage with a read entry beside a write entry writes, in its documents and its token",
          ctx do
@@ -408,6 +422,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
     test "a run of a shared stage that starts on a read entry writes for the later write entry",
          ctx do
       shared_build!(ctx, [%{"workflow" => "plan-the-build", "access" => "read"}])
+      build_declared!(ctx)
       {_work_item, queued} = queued!(ctx)
       assert queued.workflow == "plan-the-build"
 
@@ -415,18 +430,31 @@ defmodule Apiary.Runs.RunCredentialsTest do
     end
 
     @tag needs: [:factory, :workflow_model]
-    test "a run of a shared stage never writes above the level its walk resolved", ctx do
+    test "a run of a shared stage that starts on a read walk writes for a later write entry",
+         ctx do
+      shared_build!(ctx, [%{"workflow" => "plan-the-build"}])
+      build_declared!(ctx)
+      {_work_item, queued} = queued!(ctx)
+
+      # The walk of plan-the-build resolved read; implement-changes declares write.
+      assert claimed_levels(ctx, queued, :read) == {:write, :write}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run of a shared stage reads where the harness declares no level for its write workflow",
+         ctx do
       shared_build!(ctx, [%{"workflow" => "plan-the-build", "access" => "read"}])
       {_work_item, queued} = queued!(ctx)
 
-      # The walk of plan-the-build resolved write-no-push: implement-changes does not push.
-      assert claimed_levels(ctx, queued, :write_no_push) == {:write_no_push, :read}
+      # implement-changes has no level in the harness: a walk reads it as read.
+      assert claimed_levels(ctx, queued) == {:read, :read}
     end
 
     @tag needs: [:factory, :workflow_model]
     test "a run of a shared stage reads where the stacks record read for its write workflow",
          ctx do
       shared_build!(ctx, [%{"workflow" => "plan-the-build", "access" => "read"}])
+      build_declared!(ctx)
 
       {:ok, stack} =
         Apiary.Stacks.put_stack(
@@ -437,6 +465,26 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
       set!(Apiary.Stacks.Stack, stack.id, access: :read)
       {_work_item, queued} = queued!(ctx)
+
+      assert claimed_levels(ctx, queued) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run of a shared stage moved onto another workflow's entry reads", ctx do
+      loop = fn body -> [%{"loop" => %{"rounds" => 3, "body" => body}}] end
+      implement = %{"workflow" => "implement-changes"}
+      review = %{"workflow" => "review-changes", "access" => "read"}
+
+      process!(ctx, loop.([implement, review]), %{"shared_run" => true})
+      build_declared!(ctx)
+      {work_item, queued} = queued!(ctx)
+      to = process!(ctx, loop.([review, implement]), %{"shared_run" => true})
+      assert {:ok, _assigned} = Apiary.Processes.assign(ctx.scope, work_item, to)
+
+      queued = Repo.get!(DispatchRun, queued.id)
+
+      assert {"implement-changes", 0, 0} =
+               {queued.workflow, queued.stage_entry, queued.loop_entry}
 
       assert claimed_levels(ctx, queued) == {:read, :read}
     end

@@ -554,6 +554,49 @@ defmodule Apiary.Stages.SharedRunTest do
       assert %WorkItem{stage_entry: 2, stage_state: :running} = reload(work_item)
     end
 
+    test "in review-changes continues at write, so the next implement-changes can push",
+         %{scope: scope} do
+      save!(scope, [
+        build([
+          loop([
+            %{"workflow" => "implement-changes"},
+            %{"workflow" => "review-changes", "access" => "read"}
+          ])
+        ])
+      ])
+
+      :ok =
+        Processes.record_declared(scope.workspace, %{
+          "implement-changes" => :write,
+          "review-changes" => :write
+        })
+
+      {_work_item, run} = taken_in!(scope, :write)
+      assert {:session, %{session: 2, workflow: "review-changes"}} = report(run, 1)
+
+      # The run pauses in review-changes, and its continuation is queued there.
+      {:ok, continuation} =
+        Repo.transact(fn ->
+          run
+          |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended)
+          |> Repo.update!()
+          |> Apiary.Dispatches.requeue_for_pause(nil, nil)
+        end)
+
+      assert %DispatchRun{workflow: "review-changes", stage_entry: 0, loop_entry: 1} =
+               continuation
+
+      # The walk of review-changes resolves read; the continuation still writes.
+      walk!(continuation, :read)
+      assert Apiary.Runs.RunCredentials.run_access(continuation) == :write
+
+      continuation = claim!(continuation)
+      :ok = verdict!(continuation, "changes-requested")
+
+      assert {:session, %{session: 2, workflow: "implement-changes"}} =
+               report(continuation, 1)
+    end
+
     # The session ids of the run's sessions: each writes its transcript at a path of its id.
     @session_ids %{1 => "a1b2c3d4", 2 => "e5f6a7b8"}
 

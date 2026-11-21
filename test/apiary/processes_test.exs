@@ -1023,6 +1023,8 @@ defmodule Apiary.ProcessesTest do
       assert Processes.validate(shared(), %{"review-changes" => :read}) == :ok
     end
 
+    # The first three cases guard against a rule that lets every mix share one run; the
+    # last fails under a rule that refuses read beside write.
     test "fails on any other mix of access levels, at the first entry that makes it" do
       read = %{"access" => "read"}
       no_push = %{"access" => "write-no-push"}

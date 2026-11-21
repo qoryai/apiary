@@ -457,6 +457,23 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       {:ok, _version} = Apiary.Processes.save(ctx.scope, ctx.scope.workspace, document)
     end
 
+    # plan-the-build, then a loop of implement-changes and review-changes, with `review`
+    # merged into the review-changes entry.
+    defp build_loop(review) do
+      [
+        %{"workflow" => "plan-the-build"},
+        %{
+          "loop" => %{
+            "rounds" => 3,
+            "body" => [
+              %{"workflow" => "implement-changes"},
+              Map.merge(%{"workflow" => "review-changes"}, review)
+            ]
+          }
+        }
+      ]
+    end
+
     # The run of the queue of `work_item`, its run record and its sessions.
     defp claimed(work_item) do
       run = Repo.get_by!(Apiary.Dispatches.DispatchRun, work_item_id: work_item.id)
@@ -610,6 +627,8 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
                "Move implement-changes to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access, then run the round again."
     end
 
+    # A guard against a rule that lets every mix share one run: the old rule refused this
+    # stage too.
     test "with shared_run ends before it starts where the harness sets write-no-push beside a read entry",
          ctx do
       build!(
@@ -636,32 +655,37 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
                Repo.get_by!(Apiary.Dispatches.DispatchRun, work_item_id: work_item.id)
     end
 
-    test "with shared_run starts a loop that writes in implement-changes and reads in review-changes, at write",
+    test "with shared_run starts a loop that writes in implement-changes and reads in review-changes, at write, with no access per session",
          ctx do
-      build!(
-        ctx,
-        [
-          %{"workflow" => "plan-the-build"},
-          %{
-            "loop" => %{
-              "rounds" => 3,
-              "body" => [
-                %{"workflow" => "implement-changes"},
-                %{"workflow" => "review-changes", "access" => "read"}
-              ]
-            }
-          }
-        ],
-        %{"shared_run" => true}
-      )
-
+      build!(ctx, build_loop(%{"access" => "read"}), %{"shared_run" => true})
       work_item = walked!(ctx, :write)
-      documents = documents(claim(ctx))
+      json = claim(ctx) |> stored()
+      documents = Jason.decode!(json)
+      valid!(documents)
 
+      # One access level for the run, at its top level; none for a session.
       assert %{"access" => "write", "shared_run" => true} = documents
+      assert json |> String.split(~s("access":)) |> length() == 2
 
-      assert {%{session_settings: %{"1.1" => %{"workflow" => "review-changes"}}}, _} =
+      assert {%{session_settings: %{"1.1" => %{"workflow" => "review-changes"} = review}}, _} =
                claimed(work_item)
+
+      refute Map.has_key?(review, "access")
+    end
+
+    test "with shared_run starts at write where the harness sets review-changes to read after the save",
+         ctx do
+      build!(ctx, build_loop(%{}), %{"shared_run" => true})
+
+      :ok =
+        Apiary.Processes.record_declared(ctx.scope.workspace, %{
+          "plan-the-build" => :write,
+          "implement-changes" => :write,
+          "review-changes" => :read
+        })
+
+      walked!(ctx, :write)
+      assert %{"access" => "write", "shared_run" => true} = documents(claim(ctx))
     end
 
     test "of Explore, whose entry is a loop, has no full_suite with write access", ctx do

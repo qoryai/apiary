@@ -308,8 +308,8 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
   end
 
   # Why the update cannot be saved: the stages come from the harness, so the fix is the
-  # harness keeper's, for a shared stage whose workflows the harness sets to different
-  # access; any other error in the save's words.
+  # harness keeper's, for a shared stage whose workflows the harness sets to access levels
+  # that one run cannot have; any other error in the save's words.
   defp refused_words(
          %{error: :shared_run_differs, detail: {:access, workflow, level, other}},
          _document
