@@ -16,6 +16,70 @@ under `https://qory.dev/contracts/integration/v1/`, as Forager's documents are
 A reader reads the versions it knows and refuses a description of any other. An
 addition keeps `version` 1; a change that breaks a reader is `version` 2.
 
+## Members a reader does not define
+
+A reader ignores a member that the schema of a document does not define, at any depth.
+The rule covers these documents:
+
+- every document of this contract: the description, the start-up body, the requests, the
+  answers, the calls, the passes, the refusal and the sealed plaintext of the adapter
+  secrets, and the answer of the change feed with each entry of it;
+- the documents of the run, provisioner and machines contracts, and the explore inputs.
+
+A writer may add a member, and an older reader reads the rest.
+
+- `must_understand` lists the members that the reader must understand. Each is a JSON
+  Pointer ([RFC 6901](https://www.rfc-editor.org/rfc/rfc6901)) counted from the object
+  that has the list, such as `/roles/source/program` in a description. Write a pointer
+  once. A document root may have the list, and each entry of the change feed may have one.
+- A reader refuses a document whose `must_understand` lists a pointer to a member that
+  it does not define. The schema accepts a pointer to a member that the schema defines.
+- A reader refuses a pointer that has a line break, a `~` that is not `~0` or `~1`, or an
+  empty name of a map key. The schema leaves some places open, such as `data` of a change
+  and the `settings` of a description. Below such a place the schema accepts an empty name.
+- A reader refuses a bad value of a member that it defines.
+- The description's `settings` is the integration's settings schema. The contract
+  neither opens nor closes it, and the schema accepts any pointer below it.
+- The Forager contract defines the `auth` and the `format` of an API. It also defines the
+  `credential` of `run-credential-answer.schema.json` and its `apply` items. A reader of
+  `auth` or `credential` ignores a member that Forager's schema does not define, unless
+  `must_understand` lists it. A reader refuses an object whose `must_understand` lists a
+  member that the reader does not define. `format` stays a fixed list and the set of
+  schemes stays closed: a reader refuses an unknown `scheme` or `format`. The schema
+  accepts a pointer to `auth` and `format` and refuses a pointer below them. For
+  `credential`, it accepts a pointer to `/credential` itself, to `token`, and to `apply`
+  with its `hosts`.
+- The documents that carry a secret ignore an undefined member like any other. They are
+  `adapter-secrets`, `adapter-secrets-answer`, `adapter-secrets-plaintext`,
+  `run-credential` and `run-credential-answer`. A writer sends no key or secret in a member
+  that the contract does not define. The schema refuses three members by name: `values` in
+  `sealed`, `token` in an `apply` item, and `placeholders` in a `credential`.
+- `minProperties` counts members, defined or not. An object with only an undefined member,
+  such as `{"zz": 1}`, reads as empty in two places. `previous` of a change then has no
+  title and no address. A harness selection, `exclude` or `only`, then lists no part:
+  `exclude` leaves nothing out, and `only` takes nothing.
+
+Example: a program prints a description with the member `/roles/source/extra`, which an
+older control plane does not define. The older control plane ignores the member and reads
+the rest. The program lists `/roles/source/extra` in `must_understand`. The older control
+plane then refuses the description.
+
+A program's test checks its description against a closed copy of the schema. The closed
+copy refuses a member that the schema does not define, so a misspelled member fails the
+test. It covers each object of the contracts that the schema reaches by reference. A schema
+that several documents share, such as `definitions.schema.json`, stays open for a reader
+and is closed in the copy.
+
+`conformance.Description` validates against the closed copy. These functions return the
+closed copy of a schema:
+
+- `contracts.CompileClosed`, for each schema of this contract except
+  `definitions.schema.json`. `adapter.schema.json` embeds the description, so its closed
+  copy checks that description too.
+- `contracts.CompileRunClosed`, `contracts.CompileProvisionerClosed`,
+  `contracts.CompileMachinesClosed` and `contracts.CompileExploreClosed`, for the schemas
+  of those contracts.
+
 ## Describe
 
 ```sh
@@ -36,6 +100,8 @@ from it.
 | `program_version` | the program's version, a string, such as `0.1.0` |
 | `settings` | a JSON Schema, draft 2020-12, of type `object`: the settings document the program takes |
 | `roles` | the roles the program plays, an object keyed by the role's name; at least one |
+| `links` | where a person opens a reference of the integration: 1 to 16 entries `{system, template}`, one for each system, as [Links](#links) describes; may be absent |
+| `must_understand` | the JSON Pointers of the members of the description that the reader must understand, as [Members a reader does not define](#members-a-reader-does-not-define) describes; may be absent |
 
 ```json
 {"version": 1, "name": "acme-tracker", "title": "Acme tracker", "program_version": "0.1.0",
@@ -178,6 +244,79 @@ The tracker's `$X` is written `\u0024X`, which JSON reads as `$X`, and the quote
 A run's policy selects them by the key, as it selects any credential:
 `{name: github, argument: acme/shop}`.
 
+## Links
+
+`links` lets a reader give a reference a link to the page where a person opens it. A
+reference is a `collection` with an optional `address` of `system` and `path`, as
+`$defs/target` in `definitions.schema.json` defines it. A commit is a reference whose
+`collection` is the repository and whose `address.path` is the commit id.
+
+`links` has 1 to 16 entries `{system, template}`. List each system once. The program
+`integration-conformance` refuses a description with two entries for one `system`, so a
+reader never sees two. A `template` has at most 2048 characters (Unicode code points), on
+one line. It starts with `https://`, then the host, then a path that starts with `/`. The
+host is the `system` of the entry, written out. It has no placeholder and no port. The
+path has no `?` or `#`, so a value reaches only the path. A reader ignores an entry whose
+template has another host than its `system`, and `integration-conformance` refuses such a
+description.
+
+The path has two placeholders, and no other brace:
+
+| Placeholder | Value |
+|---|---|
+| `{collection_path}` | the `address.path` of the `target` that `source-collections.schema.json` lists for the collection of the reference, such as `acme/shop` |
+| `{path}` | the `address.path` of the reference |
+
+A reader makes a link in these steps, in any language:
+
+1. If the reference has no `address`, make no link.
+2. The `address.system` must be the `system` of an entry of `links`. It must also be the
+   `system` of the `target` that `source-collections.schema.json` lists for the collection
+   of the reference. This applies to every template, including one that uses only
+   `{path}`. If the collection has no `target` there, make no link, whether or not the
+   template uses `{collection_path}`. A `target` with no `address` has no system to
+   compare, so make no link.
+3. For each placeholder the template uses, build its written value first. Split the value
+   at each `/`. If a segment is empty, `.` or `..`, make no link. Write each segment so
+   that the characters `A-Z`, `a-z`, `0-9`, `-`, `.`, `_` and `~` stay. Write every other
+   byte of the segment's UTF-8 as `%XX` with upper-case hex digits. Join the segments with
+   `/`. An empty value has an empty segment, so it makes no link. These checks apply only
+   to the placeholders the template uses.
+4. Put each written value into the template in one pass. Copy the text outside the
+   placeholders unchanged. A brace in a value is not a placeholder.
+5. Check the filled link: it starts with `https://`, has the host of the template, and
+   has no user information. A correct fill always passes. A value cannot reach the host,
+   and the template has no `?` or `#`, so a value reaches only the path. If the check
+   fails, show plain text, not a link.
+
+Written values, for `{path}` in a template:
+
+| Value | Written as |
+|---|---|
+| `a/b` | `a/b` |
+| `a b` | `a%20b` |
+| `a?b` | `a%3Fb` |
+| `a#b` | `a%23b` |
+| `a%b` | `a%25b` |
+| `ä` | `%C3%A4` |
+| `..` | no link |
+| `.` | no link |
+| `a//b` | no link |
+| `a/../b` | no link |
+
+Examples, with example hosts. In each, the reference is on the system of its entry.
+
+- Software: `{"system": "code.example.com", "template": "https://code.example.com/{collection_path}/commit/{path}"}`.
+  A commit with the collection path `acme/shop` and the address path `3e2d1c0b9a8f7e6d5c4b3a291807f6e5d4c3b2a1`
+  links to `https://code.example.com/acme/shop/commit/3e2d1c0b9a8f7e6d5c4b3a291807f6e5d4c3b2a1`.
+- Customer care: `{"system": "desk.example.com", "template": "https://desk.example.com/conversations/{path}"}`.
+  A reply with the address path `48213` links to `https://desk.example.com/conversations/48213`,
+  the conversation in the help desk.
+- Performance marketing: `{"system": "ads.example.com", "template": "https://ads.example.com/console/{collection_path}/keywords/{path}"}`.
+  A bid change with the collection path `profile-5521/campaign-9` and the address path `30417`
+  links to `https://ads.example.com/console/profile-5521/campaign-9/keywords/30417`, the
+  keyword in the advertising console.
+
 ## Change feed and comments
 
 A source adapter reads its change feed with the signed
@@ -187,90 +326,153 @@ The feed answer has at least one entry whenever the feed has an entry of a kind 
 revision in the request's `X-Qory-Contract-Version` defines after the cursor. The
 adapter reads the next entries from the feed answer's `cursor`.
 
-The control plane writes a `watch` entry, with `work_item_id` and `url`, and a
-`submission` entry, as [Submissions](#submissions) describes, whenever a run stores a
-submission version. It writes both entries in the feed of the adapter of the run's
-target collection, whatever source the work item came from, and also when the work item
-came from no item at a source. It writes a `watch` entry only for an adapter whose
-`source` role has `targets: true`, and a `submission` entry only for an adapter whose
-`source` role has `submissions: true`. An adapter that does not set `submissions: true`
-never receives a `submission` entry.
+Each entry kind and each member of the feed belongs to the revision of this contract
+that defines it. The control plane sends an adapter only the kinds and members of the
+revision in its `X-Qory-Contract-Version`. An adapter skips and acknowledges an entry of
+a kind that its revision does not define. It applies nothing of the entry and moves its
+cursor past it. Example: an adapter at an older revision skips and acknowledges an entry
+of a kind that a higher revision defines, and reads the next entry. An adapter ignores a member of the answer, and of an entry of a defined kind, that its
+revision does not define. The answer has no `must_understand`, so a member of the answer
+never stops the adapter from reading its entries. Each entry may have a `must_understand`,
+as [Members a reader does not define](#members-a-reader-does-not-define) describes. Each
+pointer of an entry is counted from the entry, such as `/target/collection`.
 
-## Submissions
+- An adapter that cannot meet an entry's `must_understand` skips and acknowledges the
+  entry. It applies nothing of it and moves its cursor past it, as for a kind that it
+  does not define.
+- A `change_request` entry is the exception. The adapter sends
+  `POST /v1/work-items/changes/failed` with reason `refused`. The `detail` has at most
+  1000 characters and starts with the fix: `Use an adapter that defines "/target/extra".
+  The entry lists it in must_understand, and this adapter does not define it.` A pointer
+  of more than 300 bytes is cut. The adapter then stops working on the entry.
+  `contracts.CheckChangeMustUnderstand` returns that text.
+- The artifact type of the `change_kind` defines `data`, so this contract does not. The
+  schema accepts any pointer below `data`. The adapter checks it against the artifact
+  type. If the artifact type does not define the pointer, the adapter reports the entry
+  failed. That is the report for a pointer that this contract does not define.
+- The replies `changes-submitted.schema.json` and `changes-failed.schema.json` have a
+  `must_understand` at their root. The control plane ignores an undefined member of a
+  reply, unless the list contains it. An adapter sends only the members of the revision
+  that the control plane implements.
+- The `target` and the `address` in a reply are shared with the entries. They ignore an
+  undefined member.
 
-A submission is the work item's branch at its head commit, with the commits that the run
-made. When a run stores a submission version, the forge's adapter, an adapter whose
-`source` role has `submissions: true`, reads it from the change feed and puts it on
-the forge. The adapter runs no program. A `system` is a host name without a port, so a
-forge on a port other than 443 is not a target. The steps:
+The control plane writes a `watch` entry, with `work_item_id` and `url`, whenever a run
+stores a change request version, and a `change_request` entry for each target of that
+version, as [Change requests](#change-requests) describes. It writes both entries in the
+feed of the adapter of the target's collection, whatever source the work item came from,
+and also when the work item came from no item at a source. It writes a `watch` entry only
+for an adapter whose `source` role has `targets: true`, and a `change_request` entry only
+for an adapter whose `source` role lists the change's kind in `change_kinds`. An adapter
+without `change_kinds`, or without that kind in it, never receives a `change_request`
+entry.
 
-1. The control plane stores the submission version and writes a `submission` entry to
-   the feed of the adapter of the run's target collection (`changes.schema.json`). The
-   entry has `submission_id`, `targets` and `text`. Each target has `system`, `path`,
-   `branch`, `base` (`commit` and `branch`), the head `commit`, `commits` (each with
-   `commit` and the ledger `step`) and `draft`: `{action: open}` or
-   `{action: update, number}`. `text` and `draft` are absent after a session that did
-   not pass, when the run wrote no text, and when the session escalated: the adapter then
-   only builds the address of each commit. A draft is a
-   pull request or a merge request that people can still change before it is ready.
-   The entry is the same for every forge, so one adapter opens a pull request and
-   another a merge request from it.
-2. The adapter builds the forge's address of `base.commit` and of each commit, for every
-   target, whether or not the session passed.
-3. For a target with `draft`, the adapter opens the draft, or edits the draft with that
-   `number`. The `number` is a hint: when the forge has no draft with that number, the
-   adapter finds the draft from `branch` in any state and goes on with it, or opens a
-   draft if there is none. With `open`, the adapter first looks for a draft from `branch`
-   in any state, so a draft that exists is not opened a second time. The adapter finds a
-   draft by its head branch, `branch`, and the repository only, never by `base.branch`. With several drafts on the branch, the adapter takes the entry's `draft.number` when it is among them, otherwise the not-closed, not-merged draft with the highest number; with none, the closed or merged one with the highest number, reported as kept. The adapter edits a
-   draft only while it is `draft` or `open`; a draft that a person closed or merged stays
-   as it is. The draft's description has one block between the lines
-   `<!-- qory:start -->` and `<!-- qory:end -->`, and `text.description` is the content
-   of that block. On an update, the adapter takes the first end marker line that has a
-   start marker line before it, and the last start marker line before that end line. It
-   replaces the text from the start line to the end marker with the new block, and keeps
-   the rest of the description. If there is no such pair, as when a person removed a
-   marker, the adapter adds a blank line and a new block at the end. The new block uses
-   the line ending of the description, CRLF when its first line ending is CRLF and
-   otherwise LF, for the line endings that the adapter adds: the ones next to the two
-   marker lines, and the blank line before a block added at the end. The line endings
-   inside `text.description` stay as given. On an update, the adapter sets the title
-   to `text.title` only while the draft's title equals `previous_title`, the
-   `text.title` of the previous version; a title that a person edited stays. If the
-   forge adds a text before the title of a draft that is not ready, the adapter compares
-   the title without it. The adapter reads the draft's state before it edits. `ref`, when
-   present, is the ref of the source item that the work item was taken from, for an
-   adapter that links the draft to that item.
-4. The adapter sends `POST /v1/work-items/changes/submitted`
-   (`changes-submitted.schema.json`) with `submission_id` and, for each target that did not fail, the
-   `commit_url` of each commit and of the base, and, for a target that had `draft`,
-   `draft`: `{number, url, title, state, action}`. `state` is `draft`, `open`, `closed` or
-   `merged`. A draft that a person closed or merged has the action `kept`. The `number`
-   may differ from the entry's. The reply has `draft` exactly when the entry's target had
-   a draft; the control plane refuses a reply that does not, 400. The control plane
-   stores the addresses and the draft.
-5. After a failure that trying again cannot fix, or when its retries end, the adapter
-   sends `POST /v1/work-items/changes/failed` (`changes-failed.schema.json`) with
-   `submission_id`, `system`, `path`, `reason` and, optionally, `detail`: one line of 1
-   to 1000 characters with what to do first, then the forge's status and message. The
-   adapter never puts an access token, a secret or a header in `detail`. A report about
-   a comment has no `detail`.
+## Change requests
+
+A change request is what a run wrote for a place outside the control plane. Examples are
+a reply to a customer, a bid change for an advertising campaign, and a pull request for a
+repository. Every type of workspace uses the same entry, reply and failure report. This
+contract lists no kind of change.
+
+A `change_kind` is the name of an artifact type in the process of the workspace's type,
+such as `reply`, `bid-changes` or `pull-request`. It has lower-case letters and digits in
+groups joined by single hyphens, 1 to 64 characters, as the `type` of an entry of
+`deliver` of the run documents has. That artifact type defines the members of the part, `data`. The control
+plane validates the `data` of an entry against it.
+
+The adapter of a place applies the kinds that it lists in `change_kinds` of its `source`
+role, 1 to 16 kinds, each once. A source with `change_kinds` also has `targets: true`. The
+steps:
+
+1. The control plane stores the change request version. It writes one `change_request`
+   entry for each target of the version to the feed of the adapter of the target's
+   collection (`changes.schema.json`). It writes the entry only when `change_kinds` of
+   the adapter's `source` role lists the `change_kind` of the entry. An adapter that
+   lists no kinds, or not that kind, never receives the entry. The change stays in the
+   control plane. The entry has these members:
+   - `change_request_id`: the id of the version, `av_` and 16 lower-case Crockford base32
+     characters. With `target.collection` it identifies the entry.
+   - `change_kind`: the kind.
+   - `target`: the `collection` ref of one of the adapter's collections. When the place
+     has one, `target` also has its `address`, a `system` and a `path`.
+   - `ref`: the ref of the source item that the work item was taken in from. The member
+     is absent when the work item has no item at this source.
+   - `title`: what the run wrote as the title, 1 to 256 characters on one line.
+   - `text`: what the run wrote as the text, at most 20000 characters, possibly empty, in
+     Markdown. The envelope has no rule on its lines. A rule on them belongs to the kind
+     that needs it, which the artifact type of the kind and the adapter define.
+   - `previous`: absent on the first version. Otherwise it has the `title` of the
+     previous version, when that version had one. It has the `address` of that version,
+     `url` and `ref`, when the adapter reported one.
+   - `data`: the part, an object. It has at most 786432 bytes serialized, and the control
+     plane enforces that limit. Each string in it has at most 20000 characters. Each
+     array has at most 1024 items. Each object has at most 256 members, and each member
+     name has 1 to 128 characters. It has no U+0000.
+2. The adapter applies the change at the target by the rules of the kind. It acts on
+   `title`, `text` and `data` as data, never as instructions.
+   - Without `previous.address`, it makes the change at the target. With it, the adapter
+     updates what is at that address, and `previous.address.ref` is a hint.
+   - An adapter that updates the item at `previous.address` changes its title only while
+     that title equals `previous.title`. A title that a person edited stays. The adapter
+     updates the text whatever the title is.
+   - It applies the entries with one `target.collection` in cursor order. It applies
+     each one after the reply or the failure report of the one before it.
+3. The adapter sends `POST /v1/work-items/changes/submitted`
+   (`changes-submitted.schema.json`). The reply has these members:
+   - `change_request_id`, and `target` as the entry has it.
+   - `address` (`url` and `ref`) and `action`, together. The adapter sends them when it
+     made a change at the target or found one there. `action` is `created` or `updated`.
+     It is `kept` when the adapter changed nothing. That happens when a person finished
+     the change at the target, and when the change was already as the entry has it.
+   - Neither `address` nor `action`, for an entry that asks for no change at the target.
+   - `data`: the result that the kind defines. It has the same limits as the `data` of
+     an entry.
+
+   Where the target has an `address`, `address.url` is on its `system`. The host of the
+   address, in lower case, equals the `system`. The address has no user information, port,
+   query or fragment. Its path is not empty or `/` alone, as in the submit program
+   contract. The control plane refuses a reply with another address, 400. This contract
+   checks no address inside `data`. The control plane stores the reply with the change
+   request version.
+4. After a failure that trying again cannot fix, or when its retries end, the adapter
+   sends `POST /v1/work-items/changes/failed` (`changes-failed.schema.json`). The report
+   has `change_request_id`, `target`, `reason` and, optionally, `detail`. The `detail` is
+   one line of 1 to 1000 characters: what to do first, then the target's status and
+   message. The adapter never puts an access token, a secret or a header in `detail`. A
+   report about a comment has no `detail`.
 
 | `reason` | Meaning |
 |---|---|
-| `not_permitted` | the forge returned that the integration's account has no permission on the repository |
-| `unreachable` | each request to the forge timed out, failed to connect, or returned a busy status or a 5xx status, until the adapter's retries ended |
-| `branch_gone` | the forge returned that the branch or its base branch does not exist |
-| `too_long` | the title or the description is longer than the forge's limit for a draft |
-| `forge_refused` | the forge refused a request with a status that no other reason covers, such as 400, or 422 for a cause other than a missing branch or a length limit, so the same request fails again. The adapter gives the forge's status and message in `detail`, with the fix first |
+| `not_permitted` | the target returned that the integration's account has no permission for the change |
+| `unreachable` | each request to the target timed out, failed to connect, or returned a busy status or a 5xx status, until the adapter's retries ended |
+| `target_gone` | the target returned that the place the change goes to does not exist, as after it was deleted |
+| `too_long` | the title or the text is longer than the target's limit |
+| `refused` | the target refused a request with a status that no other reason covers, so the same request fails again, or the adapter cannot apply the entry, as for a `change_kind` that it did not list, or for a `must_understand` pointer that it does not define. The adapter writes the status and message in `detail`, with the fix first |
+
+The integer rule does not apply inside the `data` of an entry and of a reply. A number
+there has a fraction or an exponent when the artifact type of the kind allows it: a bid of
+`1.25` is valid. That artifact type checks the numbers. JSON Schema counts `34.0` as an
+integer, so a schema with `type: integer` in the artifact type accepts `34.0`. No object
+inside `data` repeats a member, at any depth. The control plane refuses a repeat, 400.
+
+### Kinds of change request
+
+The kind `pull-request` is defined by the `pull-request` artifact type in the process of
+the workspace's type, and its rules by the adapter that applies it, such as qory-github.
+This contract defines neither.
+
+### The submit program
 
 On a run with no run code, `qory run` runs a submit program with the login of the forge's
-command line that the person made. That run has no work item and no earlier submission,
-so the program opens a draft from the branch that qory made for the run and pushed (`QORY_SUBMIT_BRANCH`, `qory/run-<run id>` unless that name is taken),
-or edits the draft that it finds there, and builds the address of each commit as in step
-2. The program sends nothing to the control plane: only the adapter sends
-`changes/submitted`. The [submit program contract](../../run/v1/submit-program/README.md)
-lists its inputs and its result lines, and has the rule of the block in the same words.
+command line that the person made. That run has no work item and no earlier change
+request. The program opens a draft from the branch that qory made for the run and pushed,
+or edits the draft that it finds there. The branch is in `QORY_SUBMIT_BRANCH`, and is
+`qory/run-<run id>` unless that name is taken. It builds the address of each commit. The
+program sends nothing to the control plane: only the adapter sends `changes/submitted`.
+The [submit program contract](../../run/v1/submit-program/README.md) lists its inputs and
+its result lines, and the rule of the block.
+
+## Comments from a person
 
 A person can write a comment in the control plane on a work item taken in from an item
 at the source. The comment reaches the source in four steps:
@@ -327,9 +529,9 @@ with `items: false` has no items, and its `source` role has no `comments`.
 
 | Path | Contains | Validated against |
 |---|---|---|
-| `fixtures/*.json` | descriptions that are accepted: `github.json`, what `qory-github describe` printed at commit c8a3ea5, built with `go build -buildvcs=false`, so its `program_version` is `dev`, with `egress_hosts` added; `acme-tracker.json`, a description with the members every description must have, plus `egress_hosts` for its credential host; `acme-chat.json`, one that serves two domains; `unknown-role.json`, one with `acme_role`, a role the contract does not define, beside `credential`; `example-source-apply-bearer.json`, a source role with an apply item of the scheme `bearer` whose paths are templates with `{target.path}` and a path without it; `example-source-apply-basic.json`, one with an apply item of the scheme `basic` and its `username`; `example-source-apply-header.json`, one with an apply item of the scheme `header` and its `header`, on a DNS name and an IPv4 address; `example-source-guide.json`, a source role with a `guide`: a `setup` part with `before`, three `steps` and `after`, and a `connect` part with two `steps` alone; `example-source-targets.json`, a source role with `targets: true`; `example-source-submissions.json`, a source role with `targets: true` and `submissions: true`; `example-source-comments.json`, a source role with `comments: true` | `description.schema.json` |
-| `fixtures/adapter/<name>/` | the requests and answers of the adapter, named by their schema; among them `changes/submission-github-like.json` and `changes/submission-gitlab-like.json`, a submission entry that opens a draft on one host and one that updates a draft on another, `changes/submission-two-versions.json`, a first version with no `previous_title` and a second that has the title of the first, `changes-submitted/github-like.json` and `changes-submitted/gitlab-like.json`, the replies, and `changes-failed/submission-*.json`, one for each reason of a submission | `<name>.schema.json` |
-| `fixtures/invalid/` | descriptions the schema refuses, named `description-<reason>`; among them `description-source-apply-host-wildcard.json`, an apply host with `*.` in front; `description-source-apply-header-without-header.json`, the scheme `header` without `header`; `description-source-apply-username-with-bearer.json`, a `username` with the scheme `bearer`; `description-source-apply-path-two-placeholders.json`, a path template with `{target.path}` twice; `description-source-apply-path-star-before-placeholder.json`, a path template with `*` before `{target.path}`, outside Forager's path grammar; `description-source-apply-path-star-after-placeholder.json`, a path template with `*` right after `{target.path}`, in the same segment; `description-source-guide-steps-11.json` and `description-source-guide-steps-empty.json`, a guide part with 11 steps and with none; `description-source-guide-no-steps.json`, a guide part without `steps`; `description-source-guide-line-feed.json`, a guide line with a line feed; `description-source-guide-301-characters.json`, a guide line of 301 characters; `description-source-guide-undefined-member.json`, a guide part with a member the schema does not define; `description-source-comments-false.json`, `comments: false`; `description-source-submissions-false.json`, `submissions: false`; `description-source-submissions-string.json`, `submissions` as the string `"true"`; `description-source-submissions-without-targets.json`, `submissions: true` with no `targets`; and `description-source-items-false-with-comments.json`, `comments` beside `items: false` | `description.schema.json`, expecting a failure |
+| `fixtures/*.json` | descriptions that are accepted: `github.json`, what `qory-github describe` printed at commit c8a3ea5, built with `go build -buildvcs=false`, so its `program_version` is `dev`, with `egress_hosts` added; `acme-tracker.json`, a description with the members every description must have, plus `egress_hosts` for its credential host; `acme-chat.json`, one that serves two domains; `unknown-role.json`, one with `acme_role`, a role the contract does not define, beside `credential`; `example-source-apply-bearer.json`, a source role with an apply item of the scheme `bearer` whose paths are templates with `{target.path}` and a path without it; `example-source-apply-basic.json`, one with an apply item of the scheme `basic` and its `username`; `example-source-apply-header.json`, one with an apply item of the scheme `header` and its `header`, on a DNS name and an IPv4 address; `example-source-guide.json`, a source role with a `guide`: a `setup` part with `before`, three `steps` and `after`, and a `connect` part with two `steps` alone; `example-source-targets.json`, a source role with `targets: true`; `example-source-change-kinds.json`, a source role with `targets: true` and `change_kinds` of `pull-request` and `reply`; `example-source-comments.json`, a source role with `comments: true`; `example-links.json`, a description with a `links` entry for each of two systems, each template with the host of its system | `description.schema.json` |
+| `fixtures/adapter/<name>/` | the requests and answers of the adapter, named by their schema; among them, as example data of kinds that this contract does not define, `changes/change-request-pull-request.json` and `changes/change-request-pull-request-another-host.json`, an entry of the kind `pull-request` that opens a draft on one host and one that updates a draft on another, `changes/change-request-pull-request-two-versions.json`, a first version with no `previous` and a second whose `previous` has the title and the address of the first, `changes/change-request-pull-request-earlier-commits.json`, a part with 100 listed commits and `earlier_commits` 40, `changes/change-request-pull-request-one-commit.json`, a part with one commit, one step and `head` equal to that commit, `changes/change-request-reply.json` and `changes/change-request-bid-changes.json`, an entry of the kinds `reply` and `bid-changes`, the second with a number that has a fraction, `changes-submitted/pull-request-created.json` and the other replies there, one for each kind, and `changes-failed/change-request-*.json`, one for each reason of a change request and one for an entry whose kind the adapter did not list | `<name>.schema.json` |
+| `fixtures/invalid/` | descriptions the schema refuses, named `description-<reason>`; among them `description-source-apply-host-wildcard.json`, an apply host with `*.` in front; `description-source-apply-header-without-header.json`, the scheme `header` without `header`; `description-source-apply-username-with-bearer.json`, a `username` with the scheme `bearer`; `description-source-apply-path-two-placeholders.json`, a path template with `{target.path}` twice; `description-source-apply-path-star-before-placeholder.json`, a path template with `*` before `{target.path}`, outside Forager's path grammar; `description-source-apply-path-star-after-placeholder.json`, a path template with `*` right after `{target.path}`, in the same segment; `description-source-guide-steps-11.json` and `description-source-guide-steps-empty.json`, a guide part with 11 steps and with none; `description-source-guide-no-steps.json`, a guide part without `steps`; `description-source-guide-line-feed.json`, a guide line with a line feed; `description-source-guide-301-characters.json`, a guide line of 301 characters; `description-source-guide-undefined-member.json`, a guide part with a member the schema does not define; `description-source-comments-false.json`, `comments: false`; `description-source-change-kinds-empty.json`, `change_kinds` with no kind; `description-source-change-kinds-string.json`, `change_kinds` as the string `"pull-request"`; `description-source-change-kinds-without-targets.json`, `change_kinds` with no `targets`; `description-source-change-kinds-duplicate.json`, `description-source-change-kinds-upper-case.json`, `description-source-change-kinds-65-characters.json` and `description-source-change-kinds-17-kinds.json`, a list with a kind twice, with a kind in upper case, with a kind of 65 characters and with 17 kinds; and `description-source-items-false-with-comments.json`, `comments` beside `items: false`; and the `description-links-*.json` fixtures, each with a `links` that breaks one rule: an `http://` template, an unknown placeholder, a placeholder inside a placeholder, `{path}`, `{system}` or `{collection_path}` as the host, a template with a port, a `?`, a `#` or no path, with an upper-case host or with user information, a template of 2049 characters or with a line feed, no entries, 17 entries, an entry without `system` or without `template`, and a `system` in upper case | `description.schema.json`, expecting a failure |
 
 Every fixture is synthetic. No host name of anyone's infrastructure and no real secret.
 
