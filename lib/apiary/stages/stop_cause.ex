@@ -642,18 +642,32 @@ defmodule Apiary.Stages.StopCause do
         {"The run did not start, because one of its variables breaks its rule.", support(n)}
 
       {:not_a_collection, _target} ->
-        {"The run did not start, because the runs of target #{n.target} also read a repository that its integration does not list.",
-         further_fix(n)}
+        {in_domain_words(n, fn ->
+           gettext(
+             "The run did not start, because the runs of target %{target} also read a target that its integration does not list.",
+             target: n.target
+           )
+         end), further_fix(n)}
 
       {:itself, _target} ->
-        {"The run did not start, because target #{n.target} is among the repositories its runs also read.",
-         further_fix(n)}
+        {in_domain_words(n, fn ->
+           gettext(
+             "The run did not start, because target %{target} is among the targets its runs also read.",
+             target: n.target
+           )
+         end), further_fix(n)}
 
       {_repositories, _target} ->
         {"The run did not start, because its variable QORY_RUN_REPOSITORIES breaks its rule: each entry owner/name, all of the target's owner, none twice, and at most 256 bytes together.",
          further_fix(n)}
     end
   end
+
+  # `fun` in English, in the words of the domain of the run's workspace: the text is
+  # written once, and a software workspace says repository for target
+  # (`priv/gettext/en@software`).
+  defp in_domain_words(n, fun),
+    do: Gettext.with_locale(ApiaryWeb.Gettext, "en@" <> Domain.name(n.workspace_struct), fun)
 
   defp further_fix(n),
     do:

@@ -22786,6 +22786,16 @@ msgstr ""
 msgid "The rules stay as they are, locked ones too."
 msgstr ""
 
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "The run did not start, because target %{target} is among the targets its runs also read."
+msgstr "The run did not start, because target %{target} is among the repositories its runs also read."
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "The run did not start, because the runs of target %{target} also read a target that its integration does not list."
+msgstr "The run did not start, because the runs of target %{target} also read a repository that its integration does not list."
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "The run did not start."
