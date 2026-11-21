@@ -698,7 +698,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                  output <- stage["outputs"],
                  do: %{
                    "type" => output["type"],
-                   "required" => output["required"] != false,
+                   "required" => output["required"] == true,
                    "version" => nil,
                    "check" => "missing"
                  }
