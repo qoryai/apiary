@@ -3400,10 +3400,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   migration is short. Rolling back adds the dropped columns back empty and drops
   `runtime` and `tiers`.
 - `run_model_keys` (20261119100000, 20261119100100): the check on `api` takes `paths`,
-  1 to 32 paths that each start with `/`. The check is added `NOT VALID` and validated by the second
-  migration, so neither takes a lock that blocks writes while it scans the table. It
-  changes no row: a key stored before has no paths. Rolling back removes `paths` from
-  every key that has them.
+  1 to 32 paths that each start with `/`. The check is added `NOT VALID` and validated by
+  the second migration, so neither takes a lock that blocks writes while it scans the
+  table. It changes no row: a key stored before has no paths. Rolling back removes `paths`
+  from every key that has them.
 <!-- /feature -->
 - `session_records` and `session_key_windows` (20261118161000): two new tables, with their
   foreign keys to `organisations`, `workspaces`, `runs`, `dispatch_runs`, `work_items`,
