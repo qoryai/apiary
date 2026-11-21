@@ -112,10 +112,21 @@ defmodule Apiary.Stages.StopCauseTest do
                "Contact support with work item #12."
   end
 
+  # `work_item` at `system` and `path`, of a new adapter, with the workspace's target row
+  # of that adapter and collection ref, as a take in finds it.
+  defp at(work_item, scope, system, path) do
+    adapter_id = Apiary.WorkItemsFixtures.ticket_connection_fixture(scope).adapter_id
+    work_item = %{work_item | adapter_id: adapter_id, target_system: system, target_path: path}
+    target = WorkItem.target(work_item)
+    _id = Apiary.Runs.Target.id_of(scope.organisation.id, scope.workspace.id, target)
+    work_item
+  end
+
   # The further repositories `paths` on the target row of `work_item`.
   defp further!(work_item, paths) do
     {1, _rows} =
-      Repo.update_all(from(t in Apiary.Runs.Target, where: t.id == ^work_item.target_id),
+      Repo.update_all(
+        Apiary.Runs.Target.by_key(work_item.workspace_id, WorkItem.target(work_item)),
         set: [further_repositories: paths]
       )
   end
