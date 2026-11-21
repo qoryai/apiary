@@ -31,8 +31,7 @@ defmodule Apiary.WorkItems.TargetRowTest do
   @path "acme/shop"
 
   # Two collections of two adapters at one address, OTHER listed first, both with targets
-  # and an `environment_ref`, and a work item of each: each work item's target row is its
-  # collection's, so the workspace has both rows.
+  # and an `environment_ref`, and a work item whose target row is SHOP's.
   setup do
     %{scope: scope} = sign_up_fixture()
     workspace_gateway!(scope)
@@ -46,14 +45,7 @@ defmodule Apiary.WorkItems.TargetRowTest do
         set: [targets: true]
       )
 
-    %{
-      scope: scope,
-      pool: pool,
-      other: other,
-      shop: shop,
-      work_item: of(scope, shop),
-      other_item: of(scope, other)
-    }
+    %{scope: scope, pool: pool, other: other, shop: shop, work_item: of(scope, shop)}
   end
 
   # A work item taken in through `collection`'s connection, whose target is that
@@ -140,8 +132,8 @@ defmodule Apiary.WorkItems.TargetRowTest do
        ctx do
     run = queue!(ctx.work_item)
 
-    # With an image of the other adapter's collection at the same address alone, the run
-    # stays held and gets no image.
+    # An image of the collection at the same address of another adapter holds the run
+    # all the same, and is not given.
     built!(ctx, ctx.other, "1")
     assert held?(ctx, run)
     assert Environments.claim_image(ctx.pool, ctx.work_item) == :held
@@ -163,13 +155,14 @@ defmodule Apiary.WorkItems.TargetRowTest do
 
   test "a failed build ends the held runs of the work items of its target row alone", ctx do
     shop_run = queue!(ctx.work_item)
-    other_run = queue!(ctx.other_item)
+    other_item = of(ctx.scope, ctx.other)
+    other_run = queue!(other_item)
 
     {:ok, _told} =
       Repo.transact(fn ->
         {:ok,
          Dispatches.end_held(
-           [ctx.work_item.id, ctx.other_item.id],
+           [ctx.work_item.id, other_item.id],
            ctx.scope.workspace.id,
            ctx.work_item.target_id,
            DateTime.utc_now()
