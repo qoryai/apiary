@@ -9,9 +9,9 @@ defmodule Apiary.Artifacts.DeliveryMigrationTest do
   @moduletag :capture_log
   @moduletag needs: :workflow_model
 
-  @add {20_261_120_140_000, Apiary.Repo.Migrations.StoreWhereADeliveryStandsOnItsVersion,
+  @add {20_261_122_093_000, Apiary.Repo.Migrations.StoreWhereADeliveryStandsOnItsVersion,
         "store_where_a_delivery_stands_on_its_version"}
-  @validate {20_261_120_140_100,
+  @validate {20_261_122_093_100,
              Apiary.Repo.Migrations.ValidateTheDeliveryChecksOfAnArtifactVersion,
              "validate_the_delivery_checks_of_an_artifact_version"}
   @options [log: false, migration_lock: false]

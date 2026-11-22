@@ -27,7 +27,7 @@ defmodule Apiary.Repo.Migrations.StoreWhereADeliveryStandsOnItsVersion do
   # - `delivery_at`: when the last of these was stored, nil until one is.
   #
   # The columns are nullable with no default, so no existing row changes. The checks are
-  # added NOT VALID and take no scan under the lock; `20261120140100` validates them, as
+  # added NOT VALID and take no scan under the lock; `20261122093100` validates them, as
   # `20261117140000` and `20261117140100` did for `decision_id`. No check ties the
   # columns to each other, and none bounds `delivery_reply`: the contract bounds the
   # reply's `data` at 786432 bytes serialized.

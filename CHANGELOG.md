@@ -4030,7 +4030,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - Three migrations add the saved features to the instance's settings (20261112120000,
   20261112140000) and the features each run started with (20261112120100).
 <!-- feature: workflow_model -->
-- `artifact_versions` (20261120140000 and 20261120140100): six nullable columns,
+- `artifact_versions` (20261122093000 and 20261122093100): six nullable columns,
   `delivery`, `delivery_reply`, `delivery_failure`, `delivery_detail`,
   `delivery_target_id` and `delivery_at`. They have no default, rewrite no row and are
   empty on every stored version. `delivery_target_id` is a foreign key to `targets` of the
