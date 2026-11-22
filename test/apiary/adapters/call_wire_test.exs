@@ -42,7 +42,7 @@ defmodule Apiary.Adapters.CallWireTest do
   defp call("read-public"), do: fixture("read-public/at-a-name.json")
 
   # shortcut: the reader refuses a work credential call of more than 1 resource; replace
-  # when it takes 1 to 250 as the contract says, and drop this list.
+  # when it takes 1 to 250 as the contract allows, and drop this list.
   @refused_work_calls ~w(
     run-credential/read-work-250-resources.json
     run-credential/read-work-two-resources.json
