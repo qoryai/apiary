@@ -1347,7 +1347,7 @@ defmodule Apiary.Artifacts do
   defp watch_entry(%{actor: :run, run_id: run_id}, held, %Type{standard: false, name: name}) do
     with %DispatchRun{} = dispatch_run <- Repo.get(DispatchRun, run_id),
          ^name <- submit_type(dispatch_run),
-         %{} = target <- target(held),
+         %{} = target <- WorkItem.target(held),
          {_collection, _connection, %Node{kind: :adapter, organisation_id: nil} = adapter} <-
            RunCredentials.work_collection(dispatch_run, held, target) do
       url = WorkItems.stable_url(held)
@@ -1388,14 +1388,6 @@ defmodule Apiary.Artifacts do
 
   defp submit_of(%{"submit" => %{"type" => type}}) when is_binary(type), do: type
   defp submit_of(_template), do: nil
-
-  # The work item's target, as a run's claim reads it (`Apiary.Dispatches.Handover`), nil
-  # for none.
-  defp target(%WorkItem{target_system: system, target_path: path})
-       when is_binary(system) and is_binary(path),
-       do: %{system: system, path: path}
-
-  defp target(%WorkItem{}), do: nil
 
   # Drops staged copies; one kept in the store already has no staged copy left.
   defp discard(staged) do

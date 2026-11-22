@@ -44,9 +44,11 @@ defmodule ApiaryWeb.RunLive.ShowPoolPlaceTest do
     %{pool_run: pool_run, local_run: local_run, key: key, local_key: local_key}
   end
 
-  # The run with its `run.started` from `host`, of the target acme/shop, projected.
+  # The run with its `run.started` from `host`, of the target acme/shop, projected: the
+  # pool's run has its work item's target, and the other run's labels name its address.
   defp started(run, host) do
-    event_fixture(run, 1, "run.started", started_data(%{"host" => host}))
+    labels = %{"forge" => "forge.example.com", "repository" => "acme/shop"}
+    event_fixture(run, 1, "run.started", started_data(%{"host" => host, "labels" => labels}))
     {:ok, run} = Projector.project(run)
     ^host = run.host
     true = is_binary(run.target_id)

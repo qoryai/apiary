@@ -3,10 +3,11 @@ defmodule Apiary.Targets do
   The workspace's targets as the console reads them: the index of them, one target's
   page, and the targets a person pinned.
 
-  A target is what the workspace's runs change, in the system it lives in
-  (`Apiary.Runs.Target`), created the first time the workspace names it
-  (`Apiary.Runs.Target.insert_new/3`), as the projector does when a run first names it;
-  nothing here creates one. Every function takes the caller's scope first and reads only
+  A target is what the workspace's runs change: one of an adapter's collections, with its
+  address on a system or none (`Apiary.Runs.Target`), created the first time the
+  workspace names it (`Apiary.Runs.Target.insert_new/3`), as an assign of its collection
+  does, or the projector for the first run of the workspace's queue at it; nothing here
+  creates one. Every function takes the caller's scope first and reads only
   the scope's workspace.
 
   **Pins.** A person pins the targets they work in, in a workspace whose runs they read
@@ -31,7 +32,8 @@ defmodule Apiary.Targets do
   # **What its runs also read.** A target's further repositories (`further_repositories/1`)
   # are the paths in its system its runs read after it, in the order a person put them:
   # owner/name each, no segment starting with a dash, of the target's owner, each once, the
-  # target's path and the list, joined with commas, at most 256 bytes.
+  # target's path and the list, joined with commas, at most 256 bytes, each the path of a
+  # live collection of the target's adapter at the target's system.
   # `set_further_repositories/3` writes the whole list at once
   # (`target.set_further_repositories`, owners and admins, asked of the target's
   # workspace, an action of the feature), and refuses a list that breaks a rule, so a
@@ -45,6 +47,7 @@ defmodule Apiary.Targets do
 
   alias Apiary.{Access, Audit, PublicId}
   alias Apiary.Accounts.{Scope, User}
+  alias Apiary.Adapters.Collection
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Repo
   alias Apiary.Runs.{Connection, Run, RunApi, RunVariables, Target}
@@ -118,12 +121,17 @@ defmodule Apiary.Targets do
   ## One target
 
   @doc """
-  get/3 is the target of the scope's workspace with this system and path, or nil: one
-  indexed read.
+  get/3 is the one target of the scope's workspace with this system and path
+  (`Apiary.Runs.Target.id_at/3`), or nil: nil also where two targets of two collections
+  have that address.
   """
   @spec get(Scope.t(), String.t(), String.t()) :: Target.t() | nil
-  def get(%Scope{} = scope, system, path) when is_binary(system) and is_binary(path) do
-    Repo.one(from t in in_scope(scope), where: t.system == ^system and t.path == ^path)
+  def get(%Scope{workspace: %Workspace{id: workspace_id}} = scope, system, path)
+      when is_binary(system) and is_binary(path) do
+    case Target.id_at(workspace_id, system, path) do
+      nil -> nil
+      id -> Repo.one(from t in in_scope(scope), where: t.id == ^id)
+    end
   end
 
   def get(%Scope{}, _system, _path), do: nil
@@ -746,8 +754,9 @@ defmodule Apiary.Targets do
   #     segments of letters, digits, `.`, `_` and `-`, neither starting with `-`, neither
   #     `.` nor `..`, and neither `.git` in any case; at most 200 characters; of the
   #     target's owner, and neither the target's path nor a line before it, all compared
-  #     without case; and the target's path and the list, joined with commas, at most 256
-  #     bytes;
+  #     without case; the target's path and the list, joined with commas, at most 256
+  #     bytes; and each path one of the collections of the target's adapter
+  #     (`further_collections/2`);
   #   * `Apiary.Access`'s refusal, `{:error, :forbidden}` or `{:error, :not_found}`, and
   #     `{:error, :not_found}` for a target that is gone.
   #
@@ -790,12 +799,67 @@ defmodule Apiary.Targets do
     )
   end
 
+  defp check_further(%Target{}, []), do: :ok
+
+  # A target without an address is no repository, so it has no further ones.
+  defp check_further(%Target{path: nil} = target, lines),
+    do: {:error, further_error(target, lines, :not_a_collection, 1)}
+
   defp check_further(%Target{} = target, lines) do
     paths = Enum.map(lines, &elem(&1, 0))
 
-    case RunVariables.check_repositories(target.path, paths) do
-      :ok -> :ok
+    with :ok <- RunVariables.check_repositories(target.path, paths),
+         :ok <- further_collections(target, paths) do
+      :ok
+    else
       {:error, {reason, n}} -> {:error, further_error(target, lines, reason, n)}
+    end
+  end
+
+  # further_collections/2 checks that each of `paths` is a live collection of the
+  # target's adapter at the target's system and that path, compared without case: a
+  # collection of the target's organisation, on a connection that is connected and not
+  # ended. `:ok` where each one is. `{:error, {:not_a_collection, n}}` for the first path
+  # that is not one, at place `n`, from 1; a target without an address has no such
+  # collection. `{:error, {:itself, n}}` for the first path whose collection ref is the
+  # target's, so no collection is read twice. The claim checks a run's further
+  # repositories here too (`Apiary.Dispatches.Handover`).
+  # Of the `factory` feature, and left out of the module reference.
+  @doc false
+  @spec further_collections(Target.t(), [String.t()]) ::
+          :ok | {:error, {:not_a_collection | :itself, pos_integer}}
+  def further_collections(%Target{}, []), do: :ok
+  def further_collections(%Target{system: nil}, _paths), do: {:error, {:not_a_collection, 1}}
+
+  def further_collections(%Target{} = target, paths) do
+    lowered = Enum.map(paths, &String.downcase/1)
+
+    found =
+      Repo.all(
+        from c in Collection,
+          join: k in Apiary.Adapters.Connection,
+          on: k.id == c.connection_id and k.organisation_id == c.organisation_id,
+          where: c.organisation_id == ^target.organisation_id,
+          where: c.adapter_id == ^target.adapter_id and c.target_system == ^target.system,
+          where: fragment("lower(?)", c.target_path) in ^lowered,
+          where: is_nil(c.ended_at) and not is_nil(c.target_collection_external_ref),
+          where: k.state == :connected and is_nil(k.ended_at),
+          group_by: fragment("lower(?)", c.target_path),
+          select: {fragment("lower(?)", c.target_path), min(c.target_collection_external_ref)}
+      )
+      |> Map.new()
+
+    refs = Enum.map(lowered, &Map.get(found, &1))
+
+    cond do
+      index = Enum.find_index(refs, &is_nil/1) ->
+        {:error, {:not_a_collection, index + 1}}
+
+      index = Enum.find_index(refs, &(&1 == target.collection_external_ref)) ->
+        {:error, {:itself, index + 1}}
+
+      true ->
+        :ok
     end
   end
 
@@ -821,7 +885,7 @@ defmodule Apiary.Targets do
   # the words of a page, on `further_repositories`.
   defp further_error(%Target{path: path} = target, lines, reason, n) do
     {entry, line} = Enum.at(lines, n - 1)
-    owner = owner(path)
+    owner = path && owner(path)
 
     {message, keys} =
       case reason do
@@ -839,7 +903,14 @@ defmodule Apiary.Targets do
            ), line: line, owner: owner, target: path}
 
         :itself ->
-          {dgettext_noop("errors", "Line %{line} is %{target} itself."), line: line, target: path}
+          {dgettext_noop("errors", "Line %{line} is %{target} itself."),
+           line: line, target: entry}
+
+        :not_a_collection ->
+          {dgettext_noop(
+             "errors",
+             "Line %{line}: choose a target this integration lists. %{path} is not one of them."
+           ), line: line, path: entry}
 
         :repeats ->
           first = first_line(lines, entry)

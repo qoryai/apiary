@@ -7,9 +7,10 @@ defmodule Apiary.Lingo.Domain.Software do
   other label, sent by Forager beside them, names nothing here. The `repositories` label,
   which Qory may add to a run (`paths_label/0`), names nothing here either.
 
-  A work item needs a target, its repository. The target's rules are those of the run
-  variables `QORY_RUN_SYSTEM` and `QORY_RUN_REPOSITORIES`: the system a host name, the
-  path `owner/name` with no segment that starts with a dash. Take in checks them, and a
+  A work item needs a target, its repository, which has an address: a target without
+  one breaks the domain's rules. The address's rules are those of the run variables
+  `QORY_RUN_SYSTEM` and `QORY_RUN_REPOSITORIES`: the system a host name, the path
+  `owner/name` with no segment that starts with a dash. Take in checks them, and a
   claim checks them again with the further repositories. A collection's environment
   is prebuilt, and a target may have a harness file at its root.
 
@@ -70,12 +71,15 @@ defmodule Apiary.Lingo.Domain.Software do
   def target_required?, do: true
 
   @impl true
-  def check_target(target) do
-    case RunVariables.for_target(target) do
+  def check_target(%{system: system, path: path}) when is_binary(system) and is_binary(path) do
+    case RunVariables.for_target(%{system: system, path: path}) do
       {:ok, _variables} -> :ok
       {:error, _rule} -> {:error, :target_invalid}
     end
   end
+
+  # A repository has an address: a target without one is no repository.
+  def check_target(_no_address), do: {:error, :target_invalid}
 
   @impl true
   def run_variables(target, picked), do: RunVariables.for_target(target, picked)

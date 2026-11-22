@@ -149,12 +149,12 @@
       "then": {"required": ["text"]}
     },
     "submission_target": {
-      "description": "One repository of the submission: where it is, the branch that the run pushed, the base it started at, the commits it made, and what to do with the draft.",
+      "description": "One repository of the submission: where it is, the branch that the run pushed, the base it started at, the commits it made, or the newest 100 of them with a count of the earlier ones, and what to do with the draft.",
       "type": "object",
       "additionalProperties": false,
       "required": ["system", "path", "branch", "base", "commit", "commits"],
       "properties": {
-        "system": {"description": "The host name of the repository's system, as definitions.schema.json, $defs.target, describes it. It has no port, so a forge on a port other than 443 is not expressible.", "$ref": "definitions.schema.json#/$defs/target/properties/system"},
+        "system": {"description": "The host name of the repository's system, as definitions.schema.json, $defs.system, describes it. It has no port, so a forge on a port other than 443 is not expressible.", "$ref": "definitions.schema.json#/$defs/system"},
         "path": {"description": "The path of the repository on its system, as definitions.schema.json, $defs.repository_path, describes it.", "$ref": "definitions.schema.json#/$defs/repository_path"},
         "branch": {"description": "The branch that the run pushed to, the same in each repository: qory/ and the work item's public id. The head of the draft.", "$ref": "definitions.schema.json#/$defs/branch_name"},
         "base": {
@@ -169,7 +169,7 @@
         },
         "commit": {"description": "The head of branch: the last entry of commits.", "$ref": "definitions.schema.json#/$defs/commit_id"},
         "commits": {
-          "description": "Each commit from the base to the head, oldest first, 1 to 100, ending in commit. The adapter builds the address of each one.",
+          "description": "The commits of the run in this repository, oldest first, 1 to 100, ending in commit. Without earlier_commits, the list has each commit from the base to the head. With earlier_commits, it has the newest 100. The adapter builds the address of each listed commit.",
           "type": "array",
           "minItems": 1,
           "maxItems": 100,
@@ -183,14 +183,15 @@
             }
           }
         },
+        "earlier_commits": {"description": "The number of commits of the run in this repository that are not listed, at least 1. They are older than the first entry of commits. Absent when commits lists each commit from the base to the head. The control plane sets it only when the run has more than 100 commits in the repository, and then commits has the newest 100: with earlier_commits, commits has exactly 100 entries. The adapter builds no address for the earlier commits. It is 1 to 9223372036854775807, the largest 64-bit signed integer. The control plane writes it without a decimal point or exponent.", "type": "integer", "minimum": 1, "maximum": 9223372036854775807},
         "draft": {
-          "description": "What to do with the draft of the repository. Absent after a session that did not pass, when the run wrote no text, and when the session escalated: the adapter then only builds the address of each commit.",
+          "description": "What to do with the draft of the repository. Absent after a session that did not pass, when the run wrote no text, and when the session escalated: the adapter then only builds the address of each listed commit.",
           "type": "object",
           "additionalProperties": false,
           "required": ["action"],
           "properties": {
             "action": {"description": "open: open a draft. update: edit the draft with number draft.number.", "type": "string", "enum": ["open", "update"]},
-            "number": {"description": "The number of the draft to update, as the adapter reported it in the reply to an earlier version. It is a hint: when the forge has no draft with that number, the adapter finds the draft from branch. Present exactly with update.", "type": "integer", "minimum": 1}
+            "number": {"description": "The number of the draft to update, as the adapter reported it in the reply to an earlier version, 1 to 9223372036854775807, the largest 64-bit signed integer. The control plane refuses a larger number in that reply, so the adapter never receives one. The control plane writes it without a decimal point or exponent. It is a hint: when the forge has no draft with that number, the adapter finds the draft from branch. Present exactly with update.", "type": "integer", "minimum": 1, "maximum": 9223372036854775807}
           },
           "if": {"properties": {"action": {"const": "update"}}},
           "then": {"required": ["number"]},
@@ -198,7 +199,10 @@
         }
       },
       "if": {"required": ["draft"]},
-      "then": {"properties": {"base": {"required": ["branch"]}}}
+      "then": {"properties": {"base": {"required": ["branch"]}}},
+      "allOf": [
+        {"if": {"required": ["earlier_commits"]}, "then": {"properties": {"commits": {"minItems": 100}}}}
+      ]
     }
   }
 }

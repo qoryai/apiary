@@ -31,9 +31,8 @@ defmodule ApiaryWeb.TargetLive.BacklogTest do
     view
   end
 
+  # The collection first, so the run's target is the collection's.
   setup %{scope: scope} do
-    started_run(scope, repo("code.example.com", "acme/shop"))
-    shop = Targets.get(scope, "code.example.com", "acme/shop")
     connection = ticket_connection_fixture(scope)
 
     collection =
@@ -41,6 +40,9 @@ defmodule ApiaryWeb.TargetLive.BacklogTest do
         target_system: "code.example.com",
         target_path: "acme/shop"
       })
+
+    started_run(scope, repo("code.example.com", "acme/shop"))
+    shop = Targets.get(scope, "code.example.com", "acme/shop")
 
     %{
       shop: shop,

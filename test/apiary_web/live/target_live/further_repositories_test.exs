@@ -23,7 +23,13 @@ defmodule ApiaryWeb.TargetLive.FurtherRepositoriesTest do
 
   setup %{scope: scope} do
     started_run(scope, %{"forge" => "code.example.com", "repository" => "acme/shop"})
-    shop = Targets.get(scope, "code.example.com", "acme/shop")
+
+    shop =
+      scope
+      |> Targets.get("code.example.com", "acme/shop")
+      |> Apiary.NodesFixtures.further_collections_fixture(
+        ~w(acme/shared-config acme/docs acme/api acme/web)
+      )
 
     %{
       shop: shop,
@@ -73,11 +79,18 @@ defmodule ApiaryWeb.TargetLive.FurtherRepositoriesTest do
     test "after the Backlog and Environment cards, last in the main column", %{
       conn: conn,
       scope: scope,
+      shop: shop,
       path: path
     } do
-      connection = ticket_connection_fixture(scope)
+      # A collection whose target is the shop, by the shop's adapter and collection ref.
+      connection =
+        Apiary.Repo.get_by!(Apiary.Adapters.Connection,
+          organisation_id: shop.organisation_id,
+          adapter_id: shop.adapter_id
+        )
 
       source_collection_fixture(scope, connection, %{
+        target_collection_external_ref: shop.collection_external_ref,
         target_system: "code.example.com",
         target_path: "acme/shop"
       })
@@ -184,6 +197,21 @@ defmodule ApiaryWeb.TargetLive.FurtherRepositoriesTest do
       assert has_element?(form, "#target_further_repositories", ~r"\Aacme/docs\s+other/docs\z")
       refute has_element?(form, "#target_further_repositories-hint")
       assert saved(scope, shop) == []
+    end
+
+    test "a path no collection of the integration has: the error in the software words",
+         %{conn: conn, form_path: form_path} do
+      form = open(conn, form_path)
+
+      form
+      |> form("#further-repositories-form", target: %{further_repositories: "acme/nowhere"})
+      |> render_submit()
+
+      assert has_element?(
+               form,
+               "#target_further_repositories-error",
+               "Line 1: choose a repository this integration lists. acme/nowhere is not one of them."
+             )
     end
 
     test "a list over the joined limit stays too, with its error under the field",

@@ -31,4 +31,7 @@
 # it is fetched, and every bound, those 256 KiB included, in
 # Apiary.Integrations.Description.parse/1, which an adapter's start-up gives the
 # description's value as its body carries it.
-b5ae1a43582ee58a490f17edb0fce2e4c19a6c6d
+#
+# A target in these files is {collection, address?}: the ref of one of the adapter's
+# collections and, when the place has one, its system and path.
+e0d7be154b18fac6df3b637c80486ac1102ce707

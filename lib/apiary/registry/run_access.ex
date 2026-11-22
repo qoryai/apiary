@@ -10,8 +10,10 @@ defmodule Apiary.Registry.RunAccess do
   # the secrets request. Any other run gains nothing, and its tokens grant nothing.
   #
   # **The names.** A run with a target has its target's image name
-  # (`Apiary.Registry.Names.target_name/3`): for a run that registered, the target of
-  # its registration's labels; for any other run, the target its row has. A build is a
+  # (`Apiary.Registry.Names.target_name/3`): for a run of a workspace's queue, its work
+  # item's or its collection's target, by adapter and collection ref; for any other run
+  # that registered, the target of its registration's labels; for any other run, the
+  # target its row has. A build is a
   # run of a workspace's queue for the step `prebuild`
   # (`Apiary.Policy.ComposedConfiguration.prebuild?/1`) whose target is also its
   # collection's target when the run's names are read (`dispatched_target_id/1`). The
@@ -233,10 +235,12 @@ defmodule Apiary.Registry.RunAccess do
   end
 
   # The target row of the collection a run of a workspace's queue for the step
-  # `prebuild` was queued for (`source_collection_id`), by the collection's target system
-  # and path when this function runs, while the collection is assigned to the run's
-  # workspace; whether the collection ended is not read. Nil for any other run, for a
-  # collection without a target, and for a target without a row in the workspace.
+  # `prebuild` was queued for (`source_collection_id`), by the collection's adapter and
+  # target collection ref when this function runs, while the collection is assigned to
+  # the run's workspace and its address is still the row's; whether the collection ended
+  # is not read. Nil for any other run, for a collection without a target, for a target
+  # without a row in the workspace, and once a listing moves the collection to another
+  # address, so the build of the old one pushes nowhere.
   defp dispatched_target_id(%Run{dispatch_run_id: id, workspace_id: workspace_id})
        when is_binary(id) and is_binary(workspace_id) do
     Repo.one(
@@ -245,8 +249,9 @@ defmodule Apiary.Registry.RunAccess do
         on: c.id == d.source_collection_id,
         join: t in Target,
         on:
-          t.workspace_id == c.workspace_id and t.system == c.target_system and
-            t.path == c.target_path,
+          t.workspace_id == c.workspace_id and t.adapter_id == c.adapter_id and
+            t.collection_external_ref == c.target_collection_external_ref and
+            t.system == c.target_system and t.path == c.target_path,
         where: d.id == ^id and d.step == ^DispatchRun.prebuild(),
         where: d.workspace_id == ^workspace_id and c.workspace_id == ^workspace_id,
         select: t.id
@@ -255,17 +260,20 @@ defmodule Apiary.Registry.RunAccess do
 
   defp dispatched_target_id(_run), do: nil
 
-  # The run's target, as `Apiary.Policy.Serving` reads it: for a run that registered,
-  # the target row its registration's labels name by the workspace's domain, whatever its
-  # events say; for any other run, the target its row has. Nil for none.
+  # The run's target, as `Apiary.Policy.Serving` reads it: for a run of a workspace's
+  # queue, its work item's or its collection's target, by adapter and collection ref
+  # (`Apiary.Runs.Target.dispatched_id/2`); for a run that registered, the one target row
+  # at the address as the run's labels contain it, by the workspace's domain
+  # (`Apiary.Runs.Target.id_at/3`), whatever its events say, nil where two targets have
+  # that address; for any other run, the target its row has. Nil for none.
+  defp target_id(%{dispatch_run_id: id, workspace_id: workspace_id})
+       when is_binary(id) and is_binary(workspace_id),
+       do: Target.dispatched_id(workspace_id, id)
+
   defp target_id(%{registration_labels: %{} = labels, workspace_id: workspace_id}) do
     with %Workspace{} = workspace <- Repo.get(Workspace, workspace_id),
          {:ok, %{system: system, path: path}} <- Domain.target(workspace, labels) do
-      Repo.one(
-        from t in Target,
-          where: t.workspace_id == ^workspace_id and t.system == ^system and t.path == ^path,
-          select: t.id
-      )
+      Target.id_at(workspace_id, system, path)
     else
       _none -> nil
     end

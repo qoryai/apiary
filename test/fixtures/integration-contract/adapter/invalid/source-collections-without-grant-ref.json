@@ -8,8 +8,11 @@
       "url": "https://github.com/acme/shop",
       "title": "acme/shop",
       "target": {
-        "system": "github.com",
-        "path": "acme/shop"
+        "collection": "R_1001",
+        "address": {
+          "system": "github.com",
+          "path": "acme/shop"
+        }
       }
     }
   ],

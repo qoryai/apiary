@@ -20,7 +20,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
   alias Apiary.Dispatches.{Dispatch, DispatchRun, RunSettings}
   alias Apiary.Kinds.{Coded, Providers, Runtimes}
   alias Apiary.ModelChoices.{ModelChoice, Resolution}
-  alias Apiary.Runs.{ModelKey, Projector, Run, Target}
+  alias Apiary.Runs.{ModelKey, Projector, Run}
   alias Apiary.Secrets.Value
 
   @moduletag needs: :factory
@@ -205,7 +205,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
     # Changed: the tiers sat on a workspace choice with no provider; now one choice sets all.
     test "of a run with no target reads the workspace and organisation levels alone", ctx do
       scope = with_domain(ctx.scope, "example")
-      target = Repo.insert!(target(scope, "acme/shop"))
+      {target, _of} = target(scope, "acme/shop")
       thinking = List.last(Resolution.tiers())
       # The run's model and effort are those of the thinking tier.
       haiku_tiers =
@@ -237,7 +237,11 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       })
 
       {{:ok, handed}, _queued, _dispatch} =
-        handover!(ctx, %{target_system: nil, target_path: nil})
+        handover!(ctx, %{
+          target_collection_external_ref: nil,
+          target_system: nil,
+          target_path: nil
+        })
 
       assert handed.target == nil
 
@@ -258,7 +262,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
     end
 
     test "of a run with a target reads the target's level first", ctx do
-      target = Repo.insert!(target(ctx.scope, "acme/shop"))
+      {target, of} = target(ctx.scope, "acme/shop")
 
       choose!(ctx.scope, :workspace, %{provider: ctx.provider.public_id, model: "claude-opus-5-5"})
 
@@ -267,7 +271,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
         model: "claude-sonnet-5-5"
       })
 
-      {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
+      {{:ok, handed}, _queued, _dispatch} = handover!(ctx, of)
 
       assert %{"model" => "claude-sonnet-5-5"} = settings(handed)
       assert value_ids(Repo.get!(Run, handed.run.id)) == ["main", "spare"]
@@ -1068,14 +1072,17 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       # A newer run, of another target whose choice has a provider with a free key.
       other = other_provider!(ctx.scope, "Spare keys")
-      target = Repo.insert!(target(ctx.scope, "acme/storefront"))
+      {target, of} = target(ctx.scope, "acme/storefront")
       choose!(ctx.scope, target, %{provider: other.public_id})
 
       newer =
-        work_item_fixture(ctx.scope, %{
-          external_ref: "acme/storefront#1",
-          target_path: "acme/storefront"
-        })
+        work_item_fixture(
+          ctx.scope,
+          Map.merge(of, %{
+            external_ref: "acme/storefront#1",
+            target_path: "acme/storefront"
+          })
+        )
 
       {:ok, newer} = Repo.transact(fn -> Dispatches.queue(newer, 1) end)
       assert newer.model_provider_ids == [other.id]
@@ -1131,10 +1138,10 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       # The target's level, where a choice may map no tier: no thinking tier, and no
       # default model.
-      target = Repo.insert!(target(ctx.scope, "acme/shop"))
+      {target, of} = target(ctx.scope, "acme/shop")
       choose!(ctx.scope, target, %{provider: litellm.public_id})
 
-      {answer, queued, dispatch} = handover!(ctx)
+      {answer, queued, dispatch} = handover!(ctx, of)
       assert answer == {:error, :gone}
       ended!(queued, dispatch, :model_gone)
     end
@@ -1165,10 +1172,10 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
     test "never for a model the description does not list", ctx do
       # The target's level, where a choice may map no tier, so the run takes its model.
-      target = Repo.insert!(target(ctx.scope, "acme/shop"))
+      {target, of} = target(ctx.scope, "acme/shop")
       choose!(ctx.scope, target, %{provider: ctx.provider.public_id, model: "acme-large"})
 
-      {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
+      {{:ok, handed}, _queued, _dispatch} = handover!(ctx, of)
 
       assert %{"model" => "acme-large", "provider_models" => listed} = settings(handed)
       assert List.last(listed) == %{"id" => "acme-large"}
@@ -1500,13 +1507,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
     end
   end
 
-  defp target(scope, path) do
-    %Target{
-      organisation_id: scope.organisation.id,
-      workspace_id: scope.workspace.id,
-      system: "forge.example.com",
-      path: path,
-      first_seen_at: DateTime.utc_now()
-    }
-  end
+  # The target at `path` of the work items of a fresh ticket connection, and the
+  # attributes that give a work item that target.
+  defp target(scope, path), do: ticket_target_fixture(scope, %{path: path})
 end

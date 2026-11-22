@@ -1190,8 +1190,7 @@ defmodule ApiaryWeb.HarnessLiveTest do
       collection
     end
 
-    defp target_of(collection),
-      do: %{system: collection.target_system, path: collection.target_path}
+    defp target_of(collection), do: Apiary.Adapters.Collection.target(collection)
 
     # The options of a destination's Stack select, `{text, value}`.
     defp row_options(view, collection) do

@@ -1,6 +1,7 @@
 defmodule Apiary.Runs.ProjectorTest do
   use Apiary.DataCase, async: true
 
+  import Apiary.NodesFixtures, only: [target_key: 1]
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
   import ExUnit.CaptureLog
@@ -166,6 +167,31 @@ defmodule Apiary.Runs.ProjectorTest do
       assert half.target_path == nil
       assert half.target_id == nil
       assert Repo.aggregate(Target, :count) == 1
+    end
+
+    test "a run outside the queue makes no target: it takes the one at its address, else none",
+         %{scope: scope, run: run} do
+      events_fixture(run, [{1, "run.started", started_data(), target: false}])
+
+      assert {:ok, projected} = Projector.project(run)
+      assert {projected.target_system, projected.target_path} == {"git.example.com", "acme/shop"}
+      assert projected.target_id == nil
+      assert Repo.aggregate(Target, :count) == 0
+
+      at = %{system: "git.example.com", path: "acme/shop"}
+      :ok = Target.insert_new(run.organisation_id, run.workspace_id, [target_key(at)])
+      [one] = Repo.all(Target)
+
+      second = run_fixture(scope)
+      events_fixture(second, [{1, "run.started", started_data(), target: false}])
+      assert {:ok, %Run{target_id: target_id}} = Projector.project(second)
+      assert target_id == one.id
+
+      :ok = Target.insert_new(run.organisation_id, run.workspace_id, [target_key(at)])
+      third = run_fixture(scope)
+      events_fixture(third, [{1, "run.started", started_data(), target: false}])
+      assert {:ok, %Run{target_id: nil}} = Projector.project(third)
+      assert Repo.aggregate(Target, :count) == 2
     end
 
     test "the workspace's stored domain names the target, by its labelling rule",

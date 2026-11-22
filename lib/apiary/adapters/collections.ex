@@ -180,9 +180,9 @@ defmodule Apiary.Adapters.Collections do
   #      part holds makes the new one. A disconnect (`disconnect/2`) holds one row too,
   #      by adapter, connection and ref, and no connection's row, then the feed's
   #      counter;
-  #   4. the targets an assign or a part makes, by workspace, then by system and path: a
-  #      part makes them after every collection it writes, its ends included
-  #      (`finish_part/3`);
+  #   4. the targets an assign or a part makes, by workspace, then by adapter and
+  #      collection ref, each existing row locked: a part makes them after every
+  #      collection it writes, its ends included (`finish_part/3`);
   #   5. the work items, `FOR UPDATE`, by id, where a change holds several
   #      (`Apiary.WorkItems`): a take in holds its ticket's connection and collection
   #      `FOR SHARE` before the work item, and nothing locks a collection or a target after
@@ -261,6 +261,7 @@ defmodule Apiary.Adapters.Collections do
     :workspace_id,
     :backlog,
     :items,
+    :target_collection_external_ref,
     :target_system,
     :target_path,
     :environment_ref,
@@ -653,6 +654,7 @@ defmodule Apiary.Adapters.Collections do
           external_ref: collection.ref,
           url: collection.url,
           title: collection.title,
+          target_collection_external_ref: collection.target && collection.target.collection,
           target_system: collection.target && collection.target.system,
           target_path: collection.target && collection.target.path,
           # The wire always says (`Apiary.Adapters.Wire.listing/1`); said nothing of, a
@@ -683,6 +685,7 @@ defmodule Apiary.Adapters.Collections do
           set: [
             url: fragment("EXCLUDED.url"),
             title: fragment("EXCLUDED.title"),
+            target_collection_external_ref: fragment("EXCLUDED.target_collection_external_ref"),
             target_system: fragment("EXCLUDED.target_system"),
             target_path: fragment("EXCLUDED.target_path"),
             items: fragment("EXCLUDED.items"),
@@ -789,13 +792,19 @@ defmodule Apiary.Adapters.Collections do
         where: c.external_ref in ^refs and not is_nil(c.workspace_id),
         select:
           {c.external_ref,
-           %{listed: {c.workspace_id, c.target_system, c.target_path}, items: c.items}}
+           %{
+             listed:
+               {c.workspace_id, c.target_collection_external_ref, c.target_system, c.target_path},
+             items: c.items
+           }}
     )
     |> Map.new()
   end
 
   defp listed(%Collection{} = collection),
-    do: {collection.workspace_id, collection.target_system, collection.target_path}
+    do:
+      {collection.workspace_id, collection.target_collection_external_ref,
+       collection.target_system, collection.target_path}
 
   # The workspaces of the organisation `organisation_id` among `ids`, by id, each held
   # `FOR SHARE` in order of id, while it is not marked for deletion nor claimed by a purge,
@@ -819,7 +828,7 @@ defmodule Apiary.Adapters.Collections do
 
   # The targets of the collections `put` that `new_target?` picks, each in its workspace
   # among `workspaces`, as an assign makes them (`insert_targets/3`): by workspace id,
-  # then by system and path.
+  # then by adapter and collection ref.
   defp insert_listed_targets(organisation_id, workspaces, put, new_target?) do
     put
     |> Enum.filter(&(Map.has_key?(workspaces, &1.workspace_id) and new_target?.(&1)))
@@ -1787,29 +1796,32 @@ defmodule Apiary.Adapters.Collections do
       else: {:error, :not_found}
   end
 
-  # The targets of `collections` in `workspace`, as a dispatched run of each would name
-  # it: its labels carry the collection's system and path under the labels that name a
-  # target by the workspace's domain, and the domain reads them as the projector does
-  # (`Apiary.Lingo.Domain.target/2`), so the run lands on the target made here. A
-  # collection without a target, or with one no label could name, makes none.
+  # The targets of `collections` in `workspace` (`Apiary.Adapters.Collection.target/1`),
+  # by adapter and collection ref, as a dispatched run of each finds it. A target with an
+  # address is made only where the labels that name a target by the workspace's domain
+  # can carry it (`Apiary.Lingo.Domain.target/2`), as a run's labels carry it. A
+  # collection without a target, or with an address no label could name, makes none.
+  # Nor does a target that fails the domain's check (`Apiary.Lingo.Domain.check_target/2`):
+  # in a software workspace, one without an address, or with one that breaks its rules.
   defp insert_targets(_organisation_id, nil, _collections), do: :ok
 
   defp insert_targets(organisation_id, %Workspace{id: workspace_id} = workspace, collections) do
     targets =
       for collection <- collections,
-          {:ok, target} <- [collection_target(workspace, collection)],
+          %{} = target <- [Collection.target(collection)],
+          labelled?(workspace, target),
+          Domain.check_target(workspace, target) == :ok,
           do: target
 
     Target.insert_new(organisation_id, workspace_id, targets)
   end
 
-  defp collection_target(workspace, %Collection{target_system: system, target_path: path})
-       when is_binary(system) and is_binary(path) do
-    labels = workspace |> Domain.target_labels() |> Enum.zip([system, path]) |> Map.new()
-    Domain.target(workspace, labels)
-  end
+  defp labelled?(_workspace, %{system: nil, path: nil}), do: true
 
-  defp collection_target(_workspace, _collection), do: :none
+  defp labelled?(workspace, %{system: system, path: path}) do
+    labels = workspace |> Domain.target_labels() |> Enum.zip([system, path]) |> Map.new()
+    Domain.target(workspace, labels) == {:ok, %{system: system, path: path}}
+  end
 
   # Links `changed`, held, to `workspace_id`, or to none, with its entry, then the feed's
   # entries, the adapter's feed counter last.
@@ -1962,9 +1974,8 @@ defmodule Apiary.Adapters.Collections do
   defp same_workspace?(_scope, _target), do: false
 
   # The live collections of a connected connection, assigned to the workspace of `target`,
-  # whose target is the target's system and path, that have items, as their adapters do,
-  # by id. Every domain names a target by the system and path its labels carry, as they
-  # are, so a collection's are its target's.
+  # whose target is `target`, by the target's adapter and collection ref, that have items,
+  # as their adapters do, by id.
   defp target_collections(%Target{} = target) do
     from c in Collection,
       join: k in Connection,
@@ -1973,9 +1984,10 @@ defmodule Apiary.Adapters.Collections do
       on: n.id == c.adapter_id,
       where:
         c.organisation_id == ^target.organisation_id and
-          c.workspace_id == ^target.workspace_id and c.target_system == ^target.system and
-          c.target_path == ^target.path and is_nil(c.ended_at) and k.state == :connected and
-          is_nil(k.ended_at) and c.items and n.items,
+          c.workspace_id == ^target.workspace_id and c.adapter_id == ^target.adapter_id and
+          c.target_collection_external_ref == ^target.collection_external_ref and
+          is_nil(c.ended_at) and k.state == :connected and is_nil(k.ended_at) and c.items and
+          n.items,
       order_by: c.id
   end
 
@@ -2003,7 +2015,8 @@ defmodule Apiary.Adapters.Collections do
         from c in Collection,
           where: c.id in ^ids,
           where: c.workspace_id == ^target.workspace_id and is_nil(c.ended_at) and c.items,
-          where: c.target_system == ^target.system and c.target_path == ^target.path,
+          where: c.adapter_id == ^target.adapter_id,
+          where: c.target_collection_external_ref == ^target.collection_external_ref,
           order_by: c.id,
           lock: "FOR NO KEY UPDATE"
       )

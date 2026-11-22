@@ -77,7 +77,7 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
             url: "https://tracker.acme.example/" <> ref,
             title: ref,
             grant_ref: listing_grant(ctx.connection),
-            target: target,
+            target: target && Map.put_new(target, :collection, ref),
             items: items != false
           }
         end,
@@ -104,8 +104,16 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
     Collections.assign_collections(ctx.scope, ctx.connection, ids, workspace)
   end
 
-  defp target(workspace, %{system: system, path: path}),
-    do: Repo.get_by!(Target, workspace_id: workspace.id, system: system, path: path)
+  # The target of `workspace` at the address: of the collection whose ref is last, SHOP
+  # where MIRROR has the same address.
+  defp target(workspace, %{system: system, path: path}) do
+    Repo.one!(
+      from t in Target,
+        where: t.workspace_id == ^workspace.id and t.system == ^system and t.path == ^path,
+        order_by: [desc: t.collection_external_ref],
+        limit: 1
+    )
+  end
 
   defp feed(ctx) do
     for %{kind: "collection", data: %{"collection_ref" => ref, "status" => status}} <-
@@ -299,7 +307,9 @@ defmodule Apiary.Adapters.CollectionsItemsTest do
     end
 
     test "turning its target's switch leaves it as it is, and turns the others", ctx do
-      {:ok, :accepted} = post(ctx, [{"SHOP", @shop, false}, {"MIRROR", @shop, nil}])
+      # MIRROR's target is SHOP, by the adapter's ref of it.
+      mirror = Map.put(@shop, :collection, "SHOP")
+      {:ok, :accepted} = post(ctx, [{"SHOP", @shop, false}, {"MIRROR", mirror, nil}])
       {:ok, 2} = assign(ctx, ["SHOP", "MIRROR"], ctx.workspace)
       target = target(ctx.workspace, @shop)
       assert Collections.backlog_switch(ctx.scope, target) == %{on: true, item_noun: nil}

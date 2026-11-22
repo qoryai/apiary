@@ -3,8 +3,11 @@
   "domain": "software",
   "access": "read",
   "target": {
-    "system": "code.example.com",
-    "path": "acme/shop"
+    "collection": "R_1001",
+    "address": {
+      "system": "code.example.com",
+      "path": "acme/shop"
+    }
   },
   "largest_prebuilt_image_bytes": 5368709120,
   "work_item": {
@@ -64,8 +67,11 @@
     ],
     "comments_omitted": 0,
     "target": {
-      "system": "code.example.com",
-      "path": "acme/shop"
+      "collection": "R_1001",
+      "address": {
+        "system": "code.example.com",
+        "path": "acme/shop"
+      }
     },
     "domain": "software"
   }

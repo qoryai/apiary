@@ -33,6 +33,7 @@ defmodule Apiary.WorkItems.WorkItemTest do
       url: "https://forge.example.com/acme/shop/issues/13",
       title: "The checkout keeps the old price",
       collection_title: "acme/shop",
+      target_collection_external_ref: "acme/shop",
       target_system: "forge.example.com",
       target_path: "acme/shop",
       owner_id: Ecto.UUID.generate()
@@ -665,10 +666,15 @@ defmodule Apiary.WorkItems.WorkItemTest do
       assert %{target_system: ["can't be blank"]} =
                errors_on(WorkItem.take_in_changeset(%WorkItem{}, snapshot(%{target_system: nil})))
 
-      assert {:ok, %WorkItem{target_system: nil, target_path: nil}} =
+      assert {:ok,
+              %WorkItem{target_collection_external_ref: nil, target_system: nil, target_path: nil}} =
                new_work_item(ctx.scope)
                |> WorkItem.take_in_changeset(
-                 fresh_snapshot(ctx, %{target_system: nil, target_path: nil})
+                 fresh_snapshot(ctx, %{
+                   target_collection_external_ref: nil,
+                   target_system: nil,
+                   target_path: nil
+                 })
                )
                |> Repo.insert()
     end

@@ -3,8 +3,11 @@
   "domain": "software",
   "access": "write-no-push",
   "target": {
-    "system": "code.example.com",
-    "path": "acme/shop"
+    "collection": "R_1001",
+    "address": {
+      "system": "code.example.com",
+      "path": "acme/shop"
+    }
   },
   "target_version": "0123456789abcdef0123456789abcdef01234567",
   "work_item": {
@@ -70,8 +73,11 @@
     ],
     "comments_omitted": 0,
     "target": {
-      "system": "code.example.com",
-      "path": "acme/shop"
+      "collection": "R_1001",
+      "address": {
+        "system": "code.example.com",
+        "path": "acme/shop"
+      }
     },
     "domain": "software"
   }

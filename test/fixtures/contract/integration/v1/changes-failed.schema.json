@@ -25,7 +25,7 @@
     },
     "system": {
       "description": "The system of the repository of the submission entry, as the entry has it. Present exactly with submission_id.",
-      "$ref": "definitions.schema.json#/$defs/target/properties/system"
+      "$ref": "definitions.schema.json#/$defs/system"
     },
     "path": {
       "description": "The path of the repository of the submission entry, as the entry has it. Present exactly with submission_id.",

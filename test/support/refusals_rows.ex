@@ -36,7 +36,6 @@ defmodule ApiaryWeb.RefusalsRows do
 
   alias Apiary.{Deletion, Policy, Repo, Secrets, Variables}
   alias Apiary.Organisations.Membership
-  alias Apiary.Runs.Target
   alias ApiaryWeb.RefusalsCase
 
   @impl true
@@ -615,7 +614,7 @@ defmodule ApiaryWeb.RefusalsRows do
       end
 
     target =
-      Repo.insert!(%Target{
+      Apiary.NodesFixtures.target_fixture(%{
         organisation_id: owner.organisation.id,
         workspace_id: owner.workspace.id,
         system: "github.example",
@@ -654,7 +653,7 @@ defmodule ApiaryWeb.RefusalsRows do
     # The same path in the other organisation, whose page its owner names this one's ids
     # from.
     other_target =
-      Repo.insert!(%Target{
+      Apiary.NodesFixtures.target_fixture(%{
         organisation_id: other.organisation.id,
         workspace_id: other.workspace.id,
         system: target.system,

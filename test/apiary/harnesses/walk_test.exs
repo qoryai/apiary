@@ -31,6 +31,7 @@ defmodule Apiary.Harnesses.WalkTest do
   @moduletag :capture_log
 
   @target "https://code.example.com/acme/app"
+  @target_b "https://code.example.com/acme/app-b"
   @harness "https://code.example.com/acme/harness"
   @tools "https://code.example.com/acme/tools"
   @lint "https://code.example.com/acme/lint"
@@ -50,14 +51,19 @@ defmodule Apiary.Harnesses.WalkTest do
   setup do
     scope = scope_fixture()
     run = adapter()
+    # The target's adapter brings in targets, as a code host's description sets it.
+    {1, _} =
+      Repo.update_all(from(n in Node, where: n.id == ^run.adapter.id), set: [targets: true])
+
+    run = %{run | adapter: Repo.get!(Node, run.adapter.id)}
     {connection, _nonce} = connection_fixture(scope, run.adapter, :listed)
     grant = grant(scope.organisation.id, run.adapter, connection, "G_run")
-    collection(scope, run.adapter, connection)
+    collection = collection(scope, run.adapter, connection)
 
     input = %{
       organisation: scope.organisation,
       workspace: scope.workspace,
-      target: %{system: "code.example.com", path: "acme/app"},
+      target: Collection.target(collection),
       workflow: "explore"
     }
 
@@ -122,6 +128,7 @@ defmodule Apiary.Harnesses.WalkTest do
       external_ref: "R_app",
       url: @target,
       title: "acme/app",
+      target_collection_external_ref: "R_app",
       target_system: "code.example.com",
       target_path: "acme/app",
       environment_ref: "env-1",
@@ -2520,6 +2527,129 @@ defmodule Apiary.Harnesses.WalkTest do
       assert calls() == []
     end
 
+    # A second collection at the target's address, `R_b` at `@target_b`, of a fresh adapter
+    # with a call address that brings in targets, on a connected connection under the
+    # grant `G_b`: `{adapter, collection}`.
+    defp second_collection!(ctx) do
+      other = adapter()
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^other.adapter.id), set: [targets: true])
+
+      {connection, _nonce} = connection_fixture(ctx.scope, other.adapter, :listed)
+      grant(ctx.scope.organisation.id, other.adapter, connection, "G_b")
+
+      collection =
+        Repo.insert!(%Collection{
+          public_id: Apiary.PublicId.generate(Collection.prefix()),
+          organisation_id: ctx.scope.organisation.id,
+          adapter_id: other.adapter.id,
+          connection_id: connection.id,
+          workspace_id: ctx.scope.workspace.id,
+          external_ref: "R_b",
+          url: @target_b,
+          title: "acme/app-b",
+          target_collection_external_ref: "R_b",
+          target_system: "code.example.com",
+          target_path: "acme/app",
+          last_listed_at: DateTime.utc_now(:second)
+        })
+
+      {other, collection}
+    end
+
+    # The collection the run's work entry takes (`Apiary.Runs.RunCredentials`).
+    defp credential_collection(run, work_item) do
+      {collection, _connection, _adapter} =
+        Apiary.Runs.RunCredentials.work_collection(
+          Repo.get!(DispatchRun, run.id),
+          work_item,
+          Apiary.WorkItems.WorkItem.target(work_item)
+        )
+
+      collection
+    end
+
+    test "the walk and the work entry take the ticket's collection over an older one", ctx do
+      setting(ctx.scope, @setting)
+      {other, b} = second_collection!(ctx)
+
+      # The ticket is an item of `R_b`, the newer of the two collections at the address.
+      item = source_item_fixture(ctx.scope, collection: b, external_ref: "acme/app-b#7")
+
+      work_item =
+        work_item_fixture(ctx.scope,
+          connection_id: b.connection_id,
+          item_id: item.id,
+          external_ref: "acme/app-b#7",
+          target_system: "code.example.com",
+          target_path: "acme/app"
+        )
+
+      {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+
+      covered =
+        Map.put(covering(ctx, %{@tools => {"G_run", "R_tools"}}), other.adapter.id, %{
+          @target_b => {"G_b", "R_b"}
+        })
+
+      serve([ctx.run, other], covered: covered, files: @base_files)
+      assert :ok = job(run)
+
+      assert Repo.get_by!(RunHarness, dispatch_run_id: run.id).target_version == "c-R_b"
+      assert credential_collection(run, work_item).id == b.id
+    end
+
+    test "the walk and the work entry take an older collection whose adapter has no call address, and the walk reads no file from it",
+         ctx do
+      setting(ctx.scope, @setting)
+
+      # An older collection at the address, of an adapter that brings in targets and
+      # declares no call address.
+      %{adapter: silent} = connectable_adapter_fixture()
+      {1, _} = Repo.update_all(from(n in Node, where: n.id == ^silent.id), set: [targets: true])
+      {connection, _nonce} = connection_fixture(ctx.scope, silent, :listed)
+      older = DateTime.add(DateTime.utc_now(:second), -3600, :second)
+
+      silent_collection =
+        Repo.insert!(%Collection{
+          public_id: Apiary.PublicId.generate(Collection.prefix()),
+          organisation_id: ctx.scope.organisation.id,
+          adapter_id: silent.id,
+          connection_id: connection.id,
+          workspace_id: ctx.scope.workspace.id,
+          external_ref: "R_silent",
+          url: "https://code.example.com/acme/app-silent",
+          title: "acme/app-silent",
+          target_collection_external_ref: "R_silent",
+          target_system: "code.example.com",
+          target_path: "acme/app",
+          last_listed_at: older,
+          inserted_at: DateTime.add(DateTime.utc_now(), -3600, :second),
+          updated_at: DateTime.add(DateTime.utc_now(), -3600, :second)
+        })
+
+      run = queued(ctx)
+
+      work_item =
+        Repo.get!(Apiary.WorkItems.WorkItem, Repo.get!(DispatchRun, run.id).work_item_id)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: @base_files
+      )
+
+      assert :ok = job(run)
+
+      # The walk read no file of the target: a file is read through its adapter's call
+      # address.
+      assert %RunHarness{state: :resolved, origin: :setting, target_version: nil} =
+               Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+
+      refute Enum.any?(reads(calls()), &match?({"R_app", _path, _at}, &1))
+      assert credential_collection(run, work_item).id == silent_collection.id
+    end
+
     test "a base no grant covers, at a full commit id, resolves with its pin and no link",
          ctx do
       setting(ctx.scope, "extends: {git: \"#{@public}\", ref: \"#{@commit}\", stack: web}\n")
@@ -3607,13 +3737,12 @@ defmodule Apiary.Harnesses.WalkTest do
       end
 
       target =
-        Repo.insert!(%Apiary.Runs.Target{
-          organisation_id: ctx.scope.organisation.id,
-          workspace_id: ctx.scope.workspace.id,
-          system: "code.example.com",
-          path: "acme/app",
-          first_seen_at: DateTime.utc_now()
-        })
+        Apiary.NodesFixtures.target_fixture(
+          Map.merge(ctx.input.target, %{
+            organisation_id: ctx.scope.organisation.id,
+            workspace_id: ctx.scope.workspace.id
+          })
+        )
 
       choose = fn place, name, choice ->
         {:ok, row} = Stacks.put_stack(ctx.scope, place, named(name), choice: choice)

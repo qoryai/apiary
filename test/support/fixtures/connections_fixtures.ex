@@ -7,8 +7,7 @@ defmodule Apiary.ConnectionsFixtures do
 
   import Apiary.DescriptionFixtures
 
-  alias Apiary.{Integrations, Repo}
-  alias Apiary.Runs.Target
+  alias Apiary.Integrations
 
   @doc """
   provider_added_with_model_proxies!/3 is a model provider added for `scope` with
@@ -75,7 +74,7 @@ defmodule Apiary.ConnectionsFixtures do
 
   @doc "target!/2 is a repository of the scope's workspace at `path`."
   def target!(scope, path) do
-    Repo.insert!(%Target{
+    Apiary.NodesFixtures.target_fixture(%{
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
       system: "github.example",

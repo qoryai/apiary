@@ -3,8 +3,11 @@
   "domain": "software",
   "access": "read",
   "target": {
-    "system": "code.example.com",
-    "path": "acme/shop"
+    "collection": "R_1001",
+    "address": {
+      "system": "code.example.com",
+      "path": "acme/shop"
+    }
   },
   "image_destination": "registry.example.com/targets/0123456789abcdef",
   "environment_image": "registry.example.com/environments/0123456789abcdef@sha256:3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F3F",

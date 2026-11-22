@@ -3,8 +3,11 @@
   "domain": "software",
   "access": "read",
   "target": {
-    "system": "code.example.com",
-    "path": "acme/shop"
+    "collection": "R_1001",
+    "address": {
+      "system": "code.example.com",
+      "path": "acme/shop"
+    }
   },
   "run_settings": {
     "runtime": "claude"
@@ -58,8 +61,11 @@
     ],
     "comments_omitted": 0,
     "target": {
-      "system": "code.example.com",
-      "path": "acme/shop"
+      "collection": "R_1001",
+      "address": {
+        "system": "code.example.com",
+        "path": "acme/shop"
+      }
     },
     "domain": "software"
   }

@@ -9,7 +9,6 @@ defmodule Apiary.VariablesAboveTest do
 
   alias Apiary.Audit.Entry
   alias Apiary.Policy.Above
-  alias Apiary.Runs.Target
   alias Apiary.Variables
   alias Apiary.Variables.{Resolution, Variable}
 
@@ -40,7 +39,7 @@ defmodule Apiary.VariablesAboveTest do
     scope = sign_up_fixture().scope
 
     site =
-      Repo.insert!(%Target{
+      Apiary.NodesFixtures.target_fixture(%{
         organisation_id: scope.organisation.id,
         workspace_id: scope.workspace.id,
         system: "github.example",

@@ -7,7 +7,6 @@ defmodule Apiary.StacksTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.Edition
-  alias Apiary.Runs.Target
   alias Apiary.Stacks
   alias Apiary.Stacks.{Resolution, Stack}
 
@@ -23,7 +22,7 @@ defmodule Apiary.StacksTest do
   end
 
   defp target!(scope, path) do
-    Repo.insert!(%Target{
+    Apiary.NodesFixtures.target_fixture(%{
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
       system: "system.example",
@@ -51,7 +50,7 @@ defmodule Apiary.StacksTest do
   defp run_harness(ctx, target \\ :target) do
     target =
       case target do
-        :target -> %{system: ctx.target.system, path: ctx.target.path}
+        :target -> Map.take(ctx.target, [:adapter_id, :collection_external_ref, :system, :path])
         other -> other
       end
 
@@ -907,7 +906,7 @@ defmodule Apiary.StacksTest do
   describe "workflow_for/2" do
     test "is the workflow of the one row with a workflow at the run's places", ctx do
       put!(ctx, {:target, ctx.target, "review"}, doc("core"))
-      target = %{system: ctx.target.system, path: ctx.target.path}
+      target = Map.take(ctx.target, [:adapter_id, :collection_external_ref, :system, :path])
 
       assert Stacks.workflow_for(ctx.scope.workspace, target) == "review"
       assert Stacks.workflow_for(ctx.scope.workspace, nil) == nil
@@ -916,7 +915,9 @@ defmodule Apiary.StacksTest do
     test "a target no row of the workspace has counts as none", ctx do
       workflow!(ctx)
       put!(ctx, {:target, ctx.target, "review"}, doc("core"))
-      elsewhere = %{system: "system.example", path: "team/elsewhere"}
+
+      elsewhere =
+        Apiary.NodesFixtures.target_key(%{system: "system.example", path: "team/elsewhere"})
 
       assert Stacks.workflow_for(ctx.scope.workspace, elsewhere) == "explore"
     end
@@ -931,7 +932,8 @@ defmodule Apiary.StacksTest do
         )
     end
 
-    defp target_of(ctx), do: %{system: ctx.target.system, path: ctx.target.path}
+    defp target_of(ctx),
+      do: Map.take(ctx.target, [:adapter_id, :collection_external_ref, :system, :path])
 
     test "an explore run gets the access of its row, nil where the row records none", ctx do
       for access <- [:read, :write, nil] do
@@ -1031,10 +1033,7 @@ defmodule Apiary.StacksTest do
       assert Stacks.shared(ctx.scope.organisation).choice == :repository
       assert Stacks.target_choice(ctx.scope.workspace, ctx.target).choice == :repository
 
-      assert Stacks.target_choice(ctx.scope.workspace, %{
-               system: "system.example",
-               path: "team/place"
-             }).id ==
+      assert Stacks.target_choice(ctx.scope.workspace, target_of(ctx)).id ==
                Stacks.target_choice(ctx.scope.workspace, ctx.target).id
     end
 
@@ -1106,7 +1105,7 @@ defmodule Apiary.StacksTest do
     end
 
     test "the resolution's ref is that of the row's version, nil for a row with none", ctx do
-      target = %{system: ctx.target.system, path: ctx.target.path}
+      target = Map.take(ctx.target, [:adapter_id, :collection_external_ref, :system, :path])
 
       chosen = fn ->
         Stacks.chosen_for(ctx.scope.organisation, ctx.scope.workspace, target, "explore")
@@ -1161,7 +1160,7 @@ defmodule Apiary.StacksTest do
 
     test "the target's resolution has the target's row", ctx do
       stack = choose!(ctx, {:target, ctx.target}, doc("target"))
-      target = %{system: ctx.target.system, path: ctx.target.path}
+      target = Map.take(ctx.target, [:adapter_id, :collection_external_ref, :system, :path])
 
       assert {:chosen, %Resolution{stack_id: stack_id, workflow: "explore"}} =
                Stacks.chosen_for(ctx.scope.organisation, ctx.scope.workspace, target, "explore")
@@ -1182,7 +1181,10 @@ defmodule Apiary.StacksTest do
       choose!(ctx, {:workspace, ctx.scope.workspace}, doc("workspace"))
       choose!(ctx, {:target, ctx.target}, doc("target"))
 
-      for target <- [nil, %{system: "system.example", path: "team/elsewhere"}] do
+      for target <- [
+            nil,
+            Apiary.NodesFixtures.target_key(%{system: "system.example", path: "team/elsewhere"})
+          ] do
         assert {:chosen, %{level: :workspace}} = run_harness(ctx, target)
       end
     end

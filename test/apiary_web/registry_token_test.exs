@@ -34,7 +34,6 @@ defmodule ApiaryWeb.RegistryTokenTest do
   # A run of the workspace's queue with a model key, attached by its gateway, whose
   # target has a row, as a collection's assignment makes it.
   defp reader(%{scope: scope}) do
-    :ok = target_row(scope, "forge.example.com", "acme/shop")
     ctx = sealed_run_fixture(scope)
     Map.merge(ctx, %{target: target_name(scope, "forge.example.com", "acme/shop")})
   end
@@ -44,7 +43,11 @@ defmodule ApiaryWeb.RegistryTokenTest do
   defp build(%{scope: scope}) do
     place = handover_place_fixture(scope)
     collection = Apiary.NodesFixtures.collection_fixture(scope)
-    :ok = target_row(scope, collection.target_system, collection.target_path)
+
+    :ok =
+      Target.insert_new(scope.organisation.id, scope.workspace.id, [
+        Apiary.Adapters.Collection.target(collection)
+      ])
 
     [_queued] = queue_builds!(collection)
 
@@ -99,7 +102,7 @@ defmodule ApiaryWeb.RegistryTokenTest do
   defp target_row(scope, system, path),
     do:
       Target.insert_new(scope.organisation.id, scope.workspace.id, [
-        %{system: system, path: path}
+        Apiary.NodesFixtures.target_key(%{system: system, path: path})
       ])
 
   defp target_name(scope, system, path) do
@@ -647,30 +650,20 @@ defmodule ApiaryWeb.RegistryTokenTest do
                  ]
     end
 
-    test "pushes nowhere without a dispatched target, whatever its labels are", ctx do
+    test "has no target without a dispatched target, whatever its labels are", ctx do
       e = environment(ctx)
       query = scopes(["repository:#{ctx.target}:pull,push", "repository:#{e}:pull,push"])
 
       # The collection has no target any more; the labels are still those of its old target.
       {1, _rows} =
         Repo.update_all(from(c in Collection, where: c.id == ^ctx.collection.id),
-          set: [target_system: nil, target_path: nil]
+          set: [target_collection_external_ref: nil, target_system: nil, target_path: nil]
         )
 
       run = Repo.get!(Run, ctx.run.id)
-      assert RunAccess.rights(run) == %{ctx.target => ["pull"]}
-
-      assert access(token_for(ctx, query)) == [
-               %{"type" => "repository", "name" => ctx.target, "actions" => ["pull"]}
-             ]
-
-      assert RunAccess.member(run).paths ==
-               @base ++
-                 [
-                   "/v2/#{ctx.target}/manifests/sha256:*",
-                   "/v2/#{ctx.target}/blobs/*",
-                   "/v2/#{ctx.target}/referrers/*"
-                 ]
+      assert RunAccess.rights(run) == %{}
+      assert {401, "UNAUTHORIZED", _message} = error(token_for(ctx, query))
+      assert RunAccess.member(run).paths == @base
 
       # A run of no queue with the target's labels, as a registration stores them.
       {1, _rows} =
@@ -941,7 +934,6 @@ defmodule ApiaryWeb.RegistryTokenTest do
     ]
 
     setup %{scope: scope} do
-      :ok = target_row(scope, "forge.example.com", "acme/shop")
       sealed_run_fixture(scope, work: @apply)
     end
 

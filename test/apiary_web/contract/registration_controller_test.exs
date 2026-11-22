@@ -9,7 +9,7 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
   alias Apiary.Policy
   alias Apiary.Policy.{Render, RunConfiguration, Schema}
   alias Apiary.Repo
-  alias Apiary.Runs.{Run, Target}
+  alias Apiary.Runs.Run
   alias ApiaryWeb.Contract.{Configuration, RawBody}
 
   @runs "/v1/runs"
@@ -23,7 +23,7 @@ defmodule ApiaryWeb.Contract.RegistrationControllerTest do
   end
 
   defp target_fixture(scope, system, path) do
-    Repo.insert!(%Target{
+    Apiary.NodesFixtures.target_fixture(%{
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
       system: system,

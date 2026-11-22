@@ -55,7 +55,7 @@ defmodule Apiary.Adapters.Wire do
   # (`source-collections.schema.json`): exactly `version` (1), `time`, `connection_id`
   # (`ac_` and sixteen characters), `collections`, at most 100, each exactly `ref`,
   # `url`, `title` and `grant_ref`, a ref, the grant of the same connection that covers
-  # it, `target` when given, which has exactly `system` and `path`, and
+  # it, `target` when given (`target/1`), and
   # `items` when given, which is `false` (`items: true` when it is not given), and
   # `environment_ref` when given, 1 to 200 characters like a ref (nil when absent: the
   # collection has no environment definition); and `listing`, exactly `id`, `part`,
@@ -116,7 +116,8 @@ defmodule Apiary.Adapters.Wire do
   @listing_body_keys ~w(collections connection_id listing time version)
   @listing_keys ~w(complete id part started_at)
   @collection_keys ~w(grant_ref ref title url)
-  @target_keys ~w(path system)
+  @target_keys ~w(address collection)
+  @address_keys ~w(path system)
   @disconnect_keys ~w(collection_ref connection_id time version)
   @grant_report_keys ~w(account connection_id grant_ref pass_nonce time version)
   @account_keys ~w(ref title)
@@ -127,6 +128,9 @@ defmodule Apiary.Adapters.Wire do
   @max_title 1024
   @max_ref 200
   @system ~r/\A[a-z0-9.-]{1,253}\z/
+  # definitions.schema.json `$defs/address_path`: no control character, U+0000 to U+001F
+  # or U+007F.
+  @path_control ~r/[\x{0}-\x{1F}\x{7F}]/u
   # What an account's title refuses, as `grant.schema.json` writes it: the control
   # characters, so no line feed or carriage return, the bidirectional controls and the
   # format characters that are usually not shown.
@@ -143,7 +147,12 @@ defmodule Apiary.Adapters.Wire do
           description: Apiary.Integrations.Description.t()
         }
 
-  @type target :: %{system: String.t(), path: String.t()}
+  @typedoc """
+  A target as `definitions.schema.json` has it (`$defs/target`): the ref of one of the
+  adapter's collections, and its address, `system` and `path`, both nil for a place with
+  no address.
+  """
+  @type target :: %{collection: String.t(), system: String.t() | nil, path: String.t() | nil}
 
   @type collection :: %{
           ref: String.t(),
@@ -560,15 +569,17 @@ defmodule Apiary.Adapters.Wire do
   defp environment_ref(%{}), do: {:ok, nil}
 
   # The `target` of `item`, a collection or an item (`$defs/target`): `{:ok, target}`,
-  # `{:ok, nil}` when `item` has none, or `:error`.
+  # `{:ok, nil}` when `item` has none, or `:error`. A target has exactly `collection`, a
+  # ref, and `address` when given, which has exactly `system`, a host name, and `path`, 1
+  # to 200 characters with no control character. The collection need not be the one the
+  # target is of: a ticket's changes can go to another collection of the adapter.
   @doc false
   @spec target(map) :: {:ok, target | nil} | :error
-  def target(%{"target" => %{} = target}) do
-    with true <- Enum.sort(Map.keys(target)) == @target_keys,
-         system when is_binary(system) <- target["system"],
-         true <- Regex.match?(@system, system),
-         true <- text?(target["path"], 1, @max_ref) do
-      {:ok, %{system: system, path: target["path"]}}
+  def target(%{"target" => %{} = target}) when map_size(target) <= 2 do
+    with true <- Map.keys(target) -- @target_keys == [],
+         true <- text?(target["collection"], 1, @max_ref),
+         {:ok, address} <- address(target) do
+      {:ok, Map.put(address, :collection, target["collection"])}
     else
       _ -> :error
     end
@@ -576,6 +587,24 @@ defmodule Apiary.Adapters.Wire do
 
   def target(%{"target" => _other}), do: :error
   def target(%{}), do: {:ok, nil}
+
+  # A target's `address`: `{:ok, %{system:, path:}}`, both nil when the target has none,
+  # or `:error`.
+  defp address(%{"address" => %{} = address}) when map_size(address) == 2 do
+    with true <- Enum.sort(Map.keys(address)) == @address_keys,
+         system when is_binary(system) <- address["system"],
+         true <- Regex.match?(@system, system),
+         path when is_binary(path) <- address["path"],
+         true <- text?(path, 1, @max_ref),
+         false <- Regex.match?(@path_control, path) do
+      {:ok, %{system: system, path: path}}
+    else
+      _ -> :error
+    end
+  end
+
+  defp address(%{"address" => _other}), do: :error
+  defp address(%{}), do: {:ok, %{system: nil, path: nil}}
 
   # One part of a listing (`$defs/listing`): `{:ok, part}` or `:error`.
   @doc false

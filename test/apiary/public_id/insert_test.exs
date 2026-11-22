@@ -14,6 +14,15 @@ defmodule Apiary.PublicId.InsertTest do
 
   @taken "0123456789abcdef"
 
+  # The one adapter of the test's targets, made at its first call in the test's process.
+  defp adapter_id(_scope) do
+    with nil <- Process.get(:target_adapter_id) do
+      id = Apiary.NodesFixtures.bare_adapter_fixture().id
+      Process.put(:target_adapter_id, id)
+      id
+    end
+  end
+
   setup do
     %{scope: scope, organisation: organisation} = sign_up_fixture()
     %{scope: scope, organisation: organisation}
@@ -101,6 +110,8 @@ defmodule Apiary.PublicId.InsertTest do
       row = %Target{
         organisation_id: scope.organisation.id,
         workspace_id: scope.workspace.id,
+        adapter_id: adapter_id(scope),
+        collection_external_ref: "C_shop",
         system: "git.example",
         path: "acme/shop",
         first_seen_at: DateTime.utc_now()
@@ -109,10 +120,12 @@ defmodule Apiary.PublicId.InsertTest do
       assert {:ok, target} = Insert.insert(row)
       assert target.public_id =~ ~r/\Atg_/
 
-      # The same system and path: another constraint, so one try.
-      assert_raise Ecto.ConstraintError, ~r/targets_workspace_id_system_path_index/, fn ->
-        Insert.insert(row, &counting/1)
-      end
+      # The same adapter and collection ref: another constraint, so one try.
+      assert_raise Ecto.ConstraintError,
+                   ~r/targets_workspace_id_adapter_id_collection_external_ref_index/,
+                   fn ->
+                     Insert.insert(row, &counting/1)
+                   end
 
       assert tries() == 1
     end
@@ -176,6 +189,8 @@ defmodule Apiary.PublicId.InsertTest do
         public_id: public_id,
         organisation_id: scope.organisation.id,
         workspace_id: scope.workspace.id,
+        adapter_id: adapter_id(scope),
+        collection_external_ref: path,
         system: "git.example",
         path: path,
         first_seen_at: now,
@@ -202,12 +217,17 @@ defmodule Apiary.PublicId.InsertTest do
     test "another constraint raises at the first try", %{scope: scope} do
       {1, _} = Repo.insert_all(Target, [target_row(scope, "acme/shop", "tg_" <> @taken)])
 
-      assert_raise Postgrex.Error, ~r/targets_workspace_id_system_path_index/, fn ->
-        Insert.run("targets", fn number ->
-          send(self(), {:try, number})
-          Repo.insert_all(Target, [target_row(scope, "acme/shop", "tg_ffffffffffffffff")])
-        end)
-      end
+      assert_raise Postgrex.Error,
+                   ~r/targets_workspace_id_adapter_id_collection_external_ref_index/,
+                   fn ->
+                     Insert.run("targets", fn number ->
+                       send(self(), {:try, number})
+
+                       Repo.insert_all(Target, [
+                         target_row(scope, "acme/shop", "tg_ffffffffffffffff")
+                       ])
+                     end)
+                   end
 
       assert_received {:try, 1}
       refute_received {:try, 2}

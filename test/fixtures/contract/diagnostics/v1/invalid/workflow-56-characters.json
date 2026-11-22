@@ -23,8 +23,11 @@
     "workflow": "waaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
     "work_item": "wi_example-1",
     "target": {
-      "system": "forge.example.com",
-      "path": "acme/example"
+      "collection": "R_1001",
+      "address": {
+        "system": "forge.example.com",
+        "path": "acme/example"
+      }
     },
     "gateway": "ng_0123456789abcdef",
     "variables": [

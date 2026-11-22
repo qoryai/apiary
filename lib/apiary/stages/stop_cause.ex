@@ -628,24 +628,50 @@ defmodule Apiary.Stages.StopCause do
 
   defp variables(run, n) do
     case variable_rule(n) do
-      :system_invalid ->
+      {:system_invalid, target} ->
         integration =
           case reach(run, n) do
             {_state, title} -> "the integration " <> title
             nil -> "the integration that brings in target #{n.target}"
           end
 
-        {"The run did not start, because its variable QORY_RUN_SYSTEM, the system #{n.work_item.target_system} of target #{n.target}, is not a host name: a-z, 0-9, dots and dashes, with no dot at either end and no two dots in a row.",
+        {"The run did not start, because its variable QORY_RUN_SYSTEM, the system #{target.system} of target #{target.path}, is not a host name: a-z, 0-9, dots and dashes, with no dot at either end and no two dots in a row.",
          "Owners and admins of #{n.organisation} check #{integration} in Organisation settings › Integrations."}
 
       nil ->
         {"The run did not start, because one of its variables breaks its rule.", support(n)}
 
-      _repositories ->
+      {:not_a_collection, _target} ->
+        {in_domain_words(n, fn ->
+           gettext(
+             "The run did not start, because the runs of target %{target} also read a target that its integration does not list.",
+             target: n.target
+           )
+         end), further_fix(n)}
+
+      {:itself, _target} ->
+        {in_domain_words(n, fn ->
+           gettext(
+             "The run did not start, because target %{target} is among the targets its runs also read.",
+             target: n.target
+           )
+         end), further_fix(n)}
+
+      {_repositories, _target} ->
         {"The run did not start, because its variable QORY_RUN_REPOSITORIES breaks its rule: each entry owner/name, all of the target's owner, none twice, and at most 256 bytes together.",
-         "Owners and admins of #{n.workspace} correct the targets its runs also read, on the page of target #{n.target}, under Targets."}
+         further_fix(n)}
     end
   end
+
+  # `fun` in English, in the words of the domain of the run's workspace: the text is
+  # written once. The software catalogue (`priv/gettext/en@software`) has "repository"
+  # where a source string has "target".
+  defp in_domain_words(n, fun),
+    do: Gettext.with_locale(ApiaryWeb.Gettext, "en@" <> Domain.name(n.workspace_struct), fun)
+
+  defp further_fix(n),
+    do:
+      "Owners and admins of #{n.workspace} correct the targets its runs also read, on the page of target #{n.target}, under Targets."
 
   # The variables of the run's workspace and target that a run takes no more of: the
   # claim kept their count, or their size in bytes, as the end's detail
@@ -670,29 +696,36 @@ defmodule Apiary.Stages.StopCause do
     do:
       "The run did not start: its variables take #{div(bytes + 1023, 1024)} KiB, and a run takes at most #{div(Resolution.max_bytes(), 1024)} KiB."
 
-  defp variable_rule(%{work_item: %WorkItem{target_system: system, target_path: path}} = n)
-       when is_binary(system) do
-    target = %{system: system, path: path}
+  # The rule a run variable of the work item's target breaks, with the target row it was
+  # read from, nil for none: a work item without a target, or whose target has no
+  # address, has no run variables to break one. As the claim does, the further paths are
+  # checked first (`Apiary.Targets.further_collections/2`): `:not_a_collection` or
+  # `:itself` where one of them breaks that check.
+  defp variable_rule(%{work_item: %WorkItem{} = work_item} = n) do
+    with %{} = target <- WorkItem.target(work_item) do
+      found = Repo.one(Target.by_key(n.workspace_struct.id, target))
 
-    found =
-      Repo.one(
-        from t in Target,
-          where: t.workspace_id == ^n.workspace_struct.id,
-          where: t.system == ^system and t.path == ^path
-      )
+      picked =
+        if found && Domain.paths_label(n.workspace_struct),
+          do: Targets.further_repositories(found),
+          else: []
 
-    picked =
-      if found && Domain.paths_label(n.workspace_struct),
-        do: Targets.further_repositories(found),
-        else: []
-
-    case Domain.run_variables(n.workspace_struct, target, picked) do
-      {:error, rule} -> rule
-      _ok -> nil
+      with :ok <- further_collections(found, picked),
+           {:ok, _variables} <- Domain.run_variables(n.workspace_struct, target, picked) do
+        nil
+      else
+        {:error, {rule, _n}} when rule in [:not_a_collection, :itself] -> {rule, target}
+        {:error, rule} -> {rule, target}
+      end
     end
   end
 
   defp variable_rule(_n), do: nil
+
+  defp further_collections(_found, []), do: :ok
+
+  defp further_collections(%Target{} = found, picked),
+    do: Targets.further_collections(found, picked)
 
   # A harness walk that failed: what Qory Apiary could not read, and why, then the fix.
   defp harness(%RunHarness{} = walk, n) do

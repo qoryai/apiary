@@ -49,7 +49,7 @@ defmodule ApiaryPro.OrganisationPolicyShownTest do
   defp fetched(scope) do
     %{access_key: key} = access_key_fixture(scope)
     assert Serving.managed?(key)
-    assert {:ok, configuration} = Serving.fetch(key, %{})
+    assert {:ok, configuration} = Serving.fetch(key, %{}, nil)
     configuration
   end
 

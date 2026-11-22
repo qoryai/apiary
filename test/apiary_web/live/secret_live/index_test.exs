@@ -8,7 +8,6 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
 
   alias Apiary.{Repo, Secrets, Variables}
   alias Apiary.Audit.Entry
-  alias Apiary.Runs.Target
   alias Apiary.Secrets.Value
 
   @moduletag needs: :secrets
@@ -42,7 +41,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
   end
 
   defp target!(scope, path) do
-    Repo.insert!(%Target{
+    Apiary.NodesFixtures.target_fixture(%{
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
       system: "github.example",
@@ -1354,7 +1353,7 @@ defmodule ApiaryWeb.SecretLive.IndexTest do
       billing = target!(scope, "acme/billing")
 
       other =
-        Repo.insert!(%Apiary.Runs.Target{
+        Apiary.NodesFixtures.target_fixture(%{
           organisation_id: scope.organisation.id,
           workspace_id: scope.workspace.id,
           system: "gitlab.example",

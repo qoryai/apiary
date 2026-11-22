@@ -18,8 +18,9 @@ defmodule Apiary.WorkItemsFixtures do
   writes them. `attrs` overrides the snapshot: `connection_id` (else a new connection of
   the scope's organisation, `ticket_connection_fixture/1`), `item_id` (else a new ticket
   of that connection with the work item's ref, `source_item_fixture/2`), `external_ref`,
-  `url`, `title`, `collection_title`, `target_system`, `target_path`, `owner_id` and
-  `first_instruction`. The adapter is the connection's.
+  `url`, `title`, `collection_title`, `target_system`, `target_path`,
+  `target_collection_external_ref` (else the target's path, for a work item with a
+  target), `owner_id` and `first_instruction`. The adapter is the connection's.
   """
   def work_item_fixture(%Scope{workspace: workspace, user: user} = scope, attrs \\ %{}) do
     attrs =
@@ -35,6 +36,7 @@ defmodule Apiary.WorkItemsFixtures do
         target_path: "acme/shop",
         owner_id: user.id
       })
+      |> put_target_ref(:target_path)
 
     connection = Repo.get!(Connection, attrs.connection_id)
 
@@ -84,7 +86,8 @@ defmodule Apiary.WorkItemsFixtures do
   A collection of the connection, of the scope's organisation, linked to the scope's
   workspace, with a ref no other collection has, written straight to the database.
   `attrs` overrides `external_ref`, `url`, `title`, `target_system`, `target_path`,
-  `workspace_id`, `backlog` and `items`.
+  `target_collection_external_ref` (else the collection's `external_ref`, for a collection
+  with a target), `workspace_id`, `backlog` and `items`.
   """
   def source_collection_fixture(%Scope{} = scope, %Connection{} = connection, attrs \\ %{}) do
     unique = System.unique_integer([:positive])
@@ -98,6 +101,7 @@ defmodule Apiary.WorkItemsFixtures do
         target_path: nil,
         workspace_id: scope.workspace && scope.workspace.id
       })
+      |> put_target_ref(:external_ref)
 
     Repo.insert!(
       struct!(
@@ -135,7 +139,11 @@ defmodule Apiary.WorkItemsFixtures do
 
     {1, _rows} =
       Repo.update_all(from(c in Collection, where: c.id == ^collection.id),
-        set: [target_system: work_item.target_system, target_path: work_item.target_path]
+        set: [
+          target_collection_external_ref: work_item.target_collection_external_ref,
+          target_system: work_item.target_system,
+          target_path: work_item.target_path
+        ]
       )
 
     Repo.get!(Collection, collection.id)
@@ -177,6 +185,7 @@ defmodule Apiary.WorkItemsFixtures do
         source_created_at: now,
         source_updated_at: now
       })
+      |> put_target_ref(:target_path)
 
     %Item{
       organisation_id: collection.organisation_id,
@@ -238,6 +247,34 @@ defmodule Apiary.WorkItemsFixtures do
 
     {:ok, moved} = Apiary.WorkItems.take_in_again(there, record.public_id)
     %{work_item: moved, ticket: record}
+  end
+
+  @doc """
+  A target of the scope's workspace (`Apiary.Runs.Target`), at forge.example.com acme/shop
+  unless `attrs` sets them, keyed as `work_item_fixture/2` keys the target of a work item
+  of a fresh ticket connection (`ticket_connection_fixture/1`): its adapter, and its path
+  as the collection ref. `{target, attrs}`, where `attrs` contains that connection's id for
+  `work_item_fixture/2`, for a test that writes a target's settings before its work item. Two work
+  items of one connection need two `external_ref`s.
+  """
+  def ticket_target_fixture(%Scope{} = scope, attrs \\ %{}) do
+    connection = ticket_connection_fixture(scope)
+    attrs = Enum.into(attrs, %{system: "forge.example.com", path: "acme/shop"})
+
+    target =
+      Apiary.NodesFixtures.target_fixture(
+        Map.merge(
+          %{
+            organisation_id: scope.organisation.id,
+            workspace_id: scope.workspace.id,
+            adapter_id: connection.adapter_id,
+            collection_external_ref: attrs.path
+          },
+          attrs
+        )
+      )
+
+    {target, %{connection_id: connection.id}}
   end
 
   @doc """
@@ -659,4 +696,12 @@ defmodule Apiary.WorkItemsFixtures do
 
     %{"version" => 1, "verdict" => "not_understood", "questions" => questions}
   end
+
+  # `fields` with the collection ref of its target, the value of `key` in `fields`, for a
+  # target that has an address and no ref, so that the row keeps the rule that a row
+  # with a target system has a ref.
+  defp put_target_ref(%{target_system: system} = fields, key) when is_binary(system),
+    do: Map.put_new(fields, :target_collection_external_ref, Map.fetch!(fields, key))
+
+  defp put_target_ref(fields, _key), do: fields
 end

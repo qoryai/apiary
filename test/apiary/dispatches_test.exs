@@ -400,7 +400,7 @@ defmodule Apiary.DispatchesTest do
       )
 
       Repo.update_all(from(c in Collection, where: c.id == ^bare.id),
-        set: [target_system: nil, target_path: nil]
+        set: [target_collection_external_ref: nil, target_system: nil, target_path: nil]
       )
 
       Repo.update_all(from(c in Connection, where: c.id == ^cut.connection_id),
@@ -690,7 +690,16 @@ defmodule Apiary.DispatchesTest do
 
     test "takes a run whose work item has no target, in the queue's order", ctx do
       scope = with_domain(ctx.scope, "example")
-      none = scope |> work_item_fixture(%{target_system: nil, target_path: nil}) |> queue!()
+
+      none =
+        scope
+        |> work_item_fixture(%{
+          target_collection_external_ref: nil,
+          target_system: nil,
+          target_path: nil
+        })
+        |> queue!()
+
       next = queued!(scope)
 
       assert {:ok, %{run: %{id: id}, work_item: %WorkItem{target_system: nil}}} =

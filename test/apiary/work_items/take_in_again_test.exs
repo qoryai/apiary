@@ -83,6 +83,7 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
              "taken_in_by_id" => ctx.scope.user.id,
              "taken_in_at" => DateTime.to_iso8601(ctx.work_item.taken_in_at),
              "owner_id" => ctx.scope.user.id,
+             "target_collection_external_ref" => ctx.work_item.target_collection_external_ref,
              "target_system" => ctx.work_item.target_system,
              "target_path" => ctx.work_item.target_path,
              "workspace_id" => closed.workspace_id,
@@ -211,10 +212,21 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
     scope = with_domain(ctx.scope, "example")
 
     Repo.get!(Collection, ctx.ticket.collection_id)
-    |> Ecto.Changeset.change(target_system: nil, target_path: nil)
+    |> Ecto.Changeset.change(
+      target_collection_external_ref: nil,
+      target_system: nil,
+      target_path: nil
+    )
     |> Repo.update!()
 
-    assert {:ok, %WorkItem{state: :exploring, take_in: 2, target_system: nil, target_path: nil}} =
+    assert {:ok,
+            %WorkItem{
+              state: :exploring,
+              take_in: 2,
+              target_collection_external_ref: nil,
+              target_system: nil,
+              target_path: nil
+            }} =
              WorkItems.take_in_again(scope, ctx.ticket.public_id)
 
     assert %{"target_system" => "forge.example.com"} =
@@ -243,7 +255,11 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
                {:error, :owner}
 
       Repo.get!(Collection, ctx.ticket.collection_id)
-      |> Ecto.Changeset.change(target_system: nil, target_path: nil)
+      |> Ecto.Changeset.change(
+        target_collection_external_ref: nil,
+        target_system: nil,
+        target_path: nil
+      )
       |> Repo.update!()
 
       assert WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id) == {:error, :no_target}
@@ -255,7 +271,11 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
             {"forge.example.com", "acme/-rf"}
           ] do
         Repo.get!(Collection, ctx.ticket.collection_id)
-        |> Ecto.Changeset.change(target_system: system, target_path: path)
+        |> Ecto.Changeset.change(
+          target_collection_external_ref: path,
+          target_system: system,
+          target_path: path
+        )
         |> Repo.update!()
 
         assert WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id) ==

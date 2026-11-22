@@ -441,7 +441,7 @@ defmodule Apiary.Dispatches do
   end
 
   # The work item `id` locked `FOR UPDATE`, as the transaction reads it: its id, its
-  # organisation, the workspace it is in now and its target.
+  # organisation, the workspace it is in now and its target (`WorkItem.target/1`).
   defp lock_work_item!(id) do
     Repo.one!(
       from w in WorkItem,
@@ -451,6 +451,8 @@ defmodule Apiary.Dispatches do
           id: w.id,
           organisation_id: w.organisation_id,
           workspace_id: w.workspace_id,
+          adapter_id: w.adapter_id,
+          target_collection_external_ref: w.target_collection_external_ref,
           target_system: w.target_system,
           target_path: w.target_path,
           test: w.test,
@@ -620,13 +622,7 @@ defmodule Apiary.Dispatches do
   # connection, as the database holds them together (`work_items_test_check`), which gets
   # the built-in harness (`Apiary.Harnesses.Builtin`); else the work item's target.
   defp harness_place(%{test: true, connection_id: nil}), do: :test
-  defp harness_place(work_item), do: target(work_item)
-
-  defp target(%{target_system: system, target_path: path})
-       when is_binary(system) and is_binary(path),
-       do: %{system: system, path: path}
-
-  defp target(_work_item), do: nil
+  defp harness_place(work_item), do: WorkItem.target(work_item)
 
   # queue_prebuild/3 writes a run for the step `prebuild` of `collection`, held for the
   # node pool `pool` of the collection's workspace, or the instance's pool, for
@@ -816,6 +812,8 @@ defmodule Apiary.Dispatches do
             id: w.id,
             organisation_id: w.organisation_id,
             workspace_id: w.workspace_id,
+            adapter_id: w.adapter_id,
+            target_collection_external_ref: w.target_collection_external_ref,
             target_system: w.target_system,
             target_path: w.target_path,
             test: w.test,
@@ -873,6 +871,8 @@ defmodule Apiary.Dispatches do
             id: w.id,
             organisation_id: w.organisation_id,
             workspace_id: w.workspace_id,
+            adapter_id: w.adapter_id,
+            target_collection_external_ref: w.target_collection_external_ref,
             target_system: w.target_system,
             target_path: w.target_path,
             test: w.test,

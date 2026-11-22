@@ -43,8 +43,11 @@
   ],
   "comments_omitted": 0,
   "target": {
-    "system": "code.example.com",
-    "path": "example/service"
+    "collection": "R_2001",
+    "address": {
+      "system": "code.example.com",
+      "path": "example/service"
+    }
   },
   "domain": "software"
 }

@@ -77,7 +77,7 @@ defmodule Apiary.Adapters.CollectionsBacklogByIdTest do
             url: "https://tracker.acme.example/" <> ref,
             title: "Title of " <> ref,
             grant_ref: listing_grant(ctx.connection),
-            target: target,
+            target: target && Map.put(target, :collection, ref),
             items: items
           }
         end,

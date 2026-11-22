@@ -1093,9 +1093,7 @@ defmodule Apiary.Stages do
   defp session_answer(work_item, run, pending, spec, entry) do
     workspace = Repo.get!(Workspace, work_item.workspace_id)
 
-    target =
-      if work_item.target_system,
-        do: %{system: work_item.target_system, path: work_item.target_path}
+    target = WorkItem.target(work_item)
 
     stored = %{
       "next" => "session",

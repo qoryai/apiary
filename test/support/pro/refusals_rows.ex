@@ -517,7 +517,7 @@ defmodule ApiaryProWeb.RefusalsRows do
     # The core's target, by its system and path, in the other workspace too: the page the
     # member of that workspace names this one's ids from.
     target_b =
-      Apiary.Repo.insert!(%Apiary.Runs.Target{
+      Apiary.NodesFixtures.target_fixture(%{
         organisation_id: workspace_b.organisation_id,
         workspace_id: workspace_b.id,
         system: target.system,

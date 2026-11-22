@@ -20,7 +20,7 @@ defmodule Apiary.Dispatches.HandoverVariablesTest do
   alias Apiary.{Dispatches, Features, Variables}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Kinds.Placeholders
-  alias Apiary.Runs.{Run, Target}
+  alias Apiary.Runs.Run
   alias Apiary.Stages.StopCause
   alias Apiary.Variables.Variable
   alias ApiaryPro.OrganisationVariables
@@ -35,23 +35,19 @@ defmodule Apiary.Dispatches.HandoverVariablesTest do
   setup do
     %{scope: scope} = sign_up_fixture()
 
-    target =
-      Repo.insert!(%Target{
-        organisation_id: scope.organisation.id,
-        workspace_id: scope.workspace.id,
-        system: "forge.example.com",
-        path: "acme/shop",
-        first_seen_at: DateTime.utc_now()
-      })
+    {target, of} = ticket_target_fixture(scope)
 
-    scope |> handover_place_fixture() |> Map.merge(%{scope: scope, target: target})
+    scope |> handover_place_fixture() |> Map.merge(%{scope: scope, target: target, of: of})
   end
 
   defp queued!(ctx) do
-    work_item = work_item_fixture(ctx.scope)
+    work_item = work_item_fixture(ctx.scope, Map.put(ctx.of, :external_ref, ticket_ref()))
     {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
     {work_item, run}
   end
+
+  # A fresh ticket ref, as two work items of one connection have two.
+  defp ticket_ref, do: "acme/shop##{System.unique_integer([:positive])}"
 
   defp claim(ctx), do: walked_claim(ctx.key, Dispatches.now(), @body)
 

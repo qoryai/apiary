@@ -304,12 +304,12 @@ defmodule Apiary.Integrations.DescriptionTest do
 
   # The files vendored from qoryai/integrations at the commit in `.integration-contract-ref`
   # and in `test/fixtures/contract/integration/v1/.contract-ref`, by their SHA-256 there.
-  @integrations_ref "b5ae1a43582ee58a490f17edb0fce2e4c19a6c6d"
+  @integrations_ref "e0d7be154b18fac6df3b637c80486ac1102ce707"
   @vendored_sha256 %{
+    "priv/contract/integration/definitions.schema.json" =>
+      "1b3988f36e654b599d9ab873dde6b6f8e1a23bea20c3f8fe44973a656b4c1e4e",
     "priv/contract/integration/description.schema.json" =>
       "9ff7010e1c1a11be43e07ee32b0509807931ddca7d537c1fb17207811b5e77b6",
-    "priv/contract/integration/definitions.schema.json" =>
-      "c20092d51508581fc286a635621d7243255726e7307f35b909bb2b45414d5a05",
     "priv/contract/integration/descriptions/anthropic.json" =>
       "c2dd98613aa6adf530e7a8c92b63dfc4bd7aabb9d20635630205492c3cbe9f3f",
     "priv/contract/integration/descriptions/claude-subscription.json" =>
@@ -325,7 +325,7 @@ defmodule Apiary.Integrations.DescriptionTest do
     "priv/contract/integration/descriptions/openrouter.json" =>
       "7f6c61e897edb6ff32cd519e33a49e821398fd27f4a6069fac5fd8499b86758f",
     "test/fixtures/contract/integration/v1/README.md" =>
-      "cb53e4d0520b51990190485c703b85a986bfe6ee05320efa37337d42fa82bae6",
+      "29f300d2648410370ac585db542ef1ade1e6a62f3a3b985aa4d3f4dea3899d1e",
     "test/fixtures/contract/integration/v1/adapter-secrets-answer.schema.json" =>
       "98e3f0b1530be9980bc6ada1f8554fae26755055d598ffbe742e6e1a11112198",
     "test/fixtures/contract/integration/v1/adapter-secrets-plaintext.schema.json" =>
@@ -335,17 +335,17 @@ defmodule Apiary.Integrations.DescriptionTest do
     "test/fixtures/contract/integration/v1/adapter.schema.json" =>
       "8e3978b8cfc732a08572e882877815b8c3e76bd6cb5847d9f7d984b9b0f7ed1e",
     "test/fixtures/contract/integration/v1/changes-failed.schema.json" =>
-      "ed774f53ea456cb07a740ca7c01d1df7fd8e10897bc1a778884a147761d392f7",
+      "ae0fa8dfea7bfe6c8dd45deac427471a7d5a8b1a22058db2f990ddf480f0ea57",
     "test/fixtures/contract/integration/v1/changes-submitted.schema.json" =>
-      "2300b80517fe113deaefd128abd77620f0b6af0910afd6076df2c42441b7486c",
+      "c330b8a61e89bcea7d1d5a3da2bff288aad9cec1889ace0f14d5dcbc4ca73ae0",
     "test/fixtures/contract/integration/v1/changes.schema.json" =>
-      "e14112a6e9eea6c803ae37d1c3ec1ca4b0bb12823142dfc70a1f8bb3eeaa9556",
+      "622721b4f702f7a1959f8cc541da70444d2556aa7e032310c9bfa47cb7083ee6",
     "test/fixtures/contract/integration/v1/connect-pass.schema.json" =>
       "052eca8f4ef9eaf2d6b1eecce7fb9a470df85677a87ca549309e2a0fa1935745",
     "test/fixtures/contract/integration/v1/connections-disconnect.schema.json" =>
       "41d6d5cddbcd834b76eb18a558b708785a664af00de35ad0bb0063cc376e4002",
     "test/fixtures/contract/integration/v1/definitions.schema.json" =>
-      "c20092d51508581fc286a635621d7243255726e7307f35b909bb2b45414d5a05",
+      "1b3988f36e654b599d9ab873dde6b6f8e1a23bea20c3f8fe44973a656b4c1e4e",
     "test/fixtures/contract/integration/v1/grant-end.schema.json" =>
       "7b12fdc44016dc6f0bf6eaccf2bed84db23c48500517c4d9836f4c15415b40d9",
     "test/fixtures/contract/integration/v1/grant.schema.json" =>

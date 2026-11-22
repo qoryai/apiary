@@ -68,6 +68,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
     if ticket_target do
       set!(Collection, collection_of(work_item).id,
+        target_collection_external_ref: ticket_target.path,
         target_system: ticket_target.system,
         target_path: ticket_target.path
       )
@@ -1253,6 +1254,22 @@ defmodule Apiary.Runs.RunCredentialsTest do
                  "Owners and admins of #{org} check #{two.integration} in Organisation settings › Integrations."
 
       refute text(two) =~ two.tracker
+    end
+
+    test "the target's deleted adapter ends the run, and the stop cause shows its integration",
+         ctx do
+      two = two_integrations!(ctx)
+      forge_adapter = Repo.get!(Node, two.forge.adapter_id)
+      {:ok, _} = Apiary.Adapters.delete_adapter(instance_admin_scope(), forge_adapter)
+
+      assert claim(ctx) == {:ok, :none}
+      gone!(two.queued)
+      assert entries() == []
+      org = ctx.scope.organisation.name
+
+      assert text(two) ==
+               "The run did not start, because #{two.integration} no longer reaches target acme/shop.\n" <>
+                 "Owners and admins of #{org} check #{two.integration} in Organisation settings › Integrations."
     end
 
     test "a path the access rules do not take names its first refused part, and links Destinations",

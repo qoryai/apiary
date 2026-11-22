@@ -22,9 +22,10 @@ defmodule Apiary.SealedRunsFixtures do
   A run claimed with an `anthropic` provider of the scope's organisation, whose one key
   is `model_key/0` under the value id `main`, and attached by the gateway of
   `Apiary.DispatchedRunsFixtures.handover_place_fixture/2`, under the gateway's one key,
-  allowed stored secrets. Returns the place's map with `provider`, `run` (as stored after
-  the attach), `attached` (the attach's answer: `settings`, its bytes, and `digest`) and
-  `secrets_key: {key, seed}`.
+  allowed stored secrets. The work item's target, where it has one, has its row, as an
+  assign of its collection makes it (`Apiary.Runs.Target.insert_new/3`). Returns the
+  place's map with `provider`, `run` (as stored after the attach), `attached` (the
+  attach's answer: `settings`, its bytes, and `digest`) and `secrets_key: {key, seed}`.
 
   With `work: apply`, the work item's adapter declares the apply items `apply` before the
   claim, and its ticket's collection can change the work item's target
@@ -81,6 +82,10 @@ defmodule Apiary.SealedRunsFixtures do
 
     work_item =
       Apiary.WorkItemsFixtures.work_item_fixture(scope, Keyword.get(opts, :work_item, %{}))
+
+    if target = Apiary.WorkItems.WorkItem.target(work_item) do
+      :ok = Apiary.Runs.Target.insert_new(scope.organisation.id, scope.workspace.id, [target])
+    end
 
     adapter = if apply = opts[:work], do: callable_adapter_fixture(work_item.adapter_id, apply)
     if opts[:work], do: Apiary.WorkItemsFixtures.target_candidate!(work_item)

@@ -85,6 +85,158 @@ defmodule Apiary.NodesFixtures do
   end
 
   @doc """
+  An adapter of the instance, with no organisation, written straight into the table, so
+  that it needs no feature on: the adapter of a target's collection
+  (`target_fixture/1`).
+  """
+  def bare_adapter_fixture do
+    %Node{
+      kind: :adapter,
+      organisation_id: nil,
+      workspace_id: nil,
+      instance_limit: nil,
+      gateway_choice: :direct
+    }
+    |> Node.adapter_changeset(%{name: unique_node_name()})
+    |> Repo.insert!()
+  end
+
+  @doc """
+  `attrs` as a target (`Apiary.Lingo.Domain.target/0`, `Apiary.Runs.Target.insert_new/3`)
+  has them: of a fresh adapter (`bare_adapter_fixture/0`) and a fresh collection ref,
+  unless `attrs` sets `adapter_id` or `collection_external_ref`. With no `system` and
+  `path` it has no address.
+  """
+  def target_key(attrs \\ %{}) do
+    attrs = Map.new(attrs)
+
+    %{collection_external_ref: "R_#{System.unique_integer([:positive])}", system: nil, path: nil}
+    |> Map.merge(attrs)
+    |> Map.put_new_lazy(:adapter_id, fn -> bare_adapter_fixture().id end)
+  end
+
+  @doc """
+  A target (`Apiary.Runs.Target`) written straight into the table with the fields of
+  `attrs`, which sets its organisation and its workspace: of a fresh adapter and a fresh
+  collection ref (`target_key/1`), first seen now, unless `attrs` sets them.
+  """
+  def target_fixture(attrs) do
+    fields = Map.merge(%{first_seen_at: DateTime.utc_now()}, target_key(attrs))
+    Repo.insert!(struct!(Apiary.Runs.Target, fields))
+  end
+
+  @doc """
+  A live collection of the adapter of `target`, assigned to its workspace, at the target's
+  system and each of `paths`, so that each path can be one of the target's further
+  repositories (`Apiary.Targets.further_collections/2`). The collections are of the
+  organisation's live connection to the adapter, made where it has none. Returns
+  `target`.
+  """
+  def further_collections_fixture(%Apiary.Runs.Target{} = target, paths) do
+    connection = live_connection!(target.organisation_id, target.adapter_id)
+    now = DateTime.utc_now(:second)
+
+    for path <- List.wrap(paths) do
+      ref = "R_#{System.unique_integer([:positive])}"
+
+      Repo.insert!(%Apiary.Adapters.Collection{
+        public_id: Apiary.PublicId.generate(Apiary.Adapters.Collection.prefix()),
+        organisation_id: target.organisation_id,
+        adapter_id: target.adapter_id,
+        connection_id: connection.id,
+        workspace_id: target.workspace_id,
+        external_ref: ref,
+        url: "https://#{target.system}/#{path}",
+        title: path,
+        target_collection_external_ref: ref,
+        target_system: target.system,
+        target_path: path,
+        last_listed_at: now
+      })
+    end
+
+    target
+  end
+
+  defp live_connection!(organisation_id, adapter_id) do
+    alias Apiary.Adapters.Connection
+
+    live =
+      from c in Connection,
+        where: c.organisation_id == ^organisation_id and c.adapter_id == ^adapter_id,
+        where: is_nil(c.ended_at)
+
+    Repo.one(live) ||
+      Repo.insert!(%Connection{
+        public_id: Apiary.PublicId.generate(Connection.prefix()),
+        organisation_id: organisation_id,
+        adapter_id: adapter_id,
+        created_by_id: Apiary.AccountsFixtures.user_fixture().id,
+        state: :connected,
+        pass_nonce: :crypto.strong_rand_bytes(16),
+        connected_at: DateTime.utc_now()
+      })
+  end
+
+  @doc """
+  The target of the workspace `workspace_id` at the address `labels` name by the
+  workspace's domain (`Apiary.Lingo.Domain.target/2`), made where the workspace has no
+  target there (`address_target!/4`). A run's labels take the one target at their address
+  (`Apiary.Runs.Target.id_at/3`), so a test of a run with labels has it first. `:ok`,
+  also for labels that name no address.
+  """
+  def labelled_target!(organisation_id, workspace_id, labels) do
+    workspace = Repo.get!(Apiary.Organisations.Workspace, workspace_id)
+
+    case Apiary.Lingo.Domain.target(workspace, labels || %{}) do
+      {:ok, %{system: system, path: path}} ->
+        %Apiary.Runs.Target{} = address_target!(organisation_id, workspace_id, system, path)
+        :ok
+
+      :none ->
+        :ok
+    end
+  end
+
+  @doc """
+  The one target of the workspace `workspace_id` at `system` and `path`, made where the
+  workspace has none there: of the workspace's collection with that address when it has
+  one (`Apiary.Adapters.Collection.target/1`), else of a fresh adapter and collection ref
+  (`target_key/1`). For a test that reads targets by address, as the pages and
+  environments do.
+  """
+  def address_target!(organisation_id, workspace_id, system, path) do
+    at =
+      from t in Apiary.Runs.Target,
+        where: t.workspace_id == ^workspace_id and t.system == ^system and t.path == ^path
+
+    Repo.one(at) ||
+      (
+        :ok =
+          Apiary.Runs.Target.insert_new(organisation_id, workspace_id, [
+            collection_target(workspace_id, system, path) ||
+              target_key(%{system: system, path: path})
+          ])
+
+        Repo.one!(at)
+      )
+  end
+
+  defp collection_target(workspace_id, system, path) do
+    Repo.one(
+      from c in Apiary.Adapters.Collection,
+        where: c.workspace_id == ^workspace_id and c.target_system == ^system,
+        where: c.target_path == ^path and not is_nil(c.target_collection_external_ref),
+        order_by: c.inserted_at,
+        limit: 1
+    )
+    |> case do
+      nil -> nil
+      collection -> Apiary.Adapters.Collection.target(collection)
+    end
+  end
+
+  @doc """
   The instance's node pool, with no organisation and no workspace, written straight into
   the table, on `:default` unless `attrs` gives its `gateway_choice`. The instance has
   one in use at most, so a test that makes it is not async.
@@ -259,9 +411,9 @@ defmodule Apiary.NodesFixtures do
   A live collection (`Apiary.Adapters.Collection`) of a connection of the scope's
   organisation to a fresh adapter, written as it stands, as nothing in the product does:
   no listing, no feed entry, nothing queued. Linked to the scope's workspace, its target
-  `code.example.com` and `acme/` and its ref, its `environment_ref` `env-1`, unless
-  `attrs` sets `:workspace_id`, `:external_ref`, `:target_system`, `:target_path` or
-  `:environment_ref` (nil for none).
+  `code.example.com` and `acme/` and its ref, of its collection ref, its `environment_ref`
+  `env-1`, unless `attrs` sets `:workspace_id`, `:external_ref`, `:target_system`,
+  `:target_path`, `:target_collection_external_ref` or `:environment_ref` (nil for none).
   """
   def collection_fixture(scope, attrs \\ %{}) do
     attrs = Map.new(attrs)
@@ -278,6 +430,10 @@ defmodule Apiary.NodesFixtures do
       external_ref: ref,
       url: "https://code.example.com/acme/" <> ref,
       title: ref,
+      target_collection_external_ref:
+        Map.get_lazy(attrs, :target_collection_external_ref, fn ->
+          if Map.get(attrs, :target_system, "code.example.com"), do: ref
+        end),
       target_system: Map.get(attrs, :target_system, "code.example.com"),
       target_path: Map.get(attrs, :target_path, "acme/" <> ref),
       environment_ref: Map.get(attrs, :environment_ref, "env-1"),

@@ -121,7 +121,7 @@ defmodule Apiary.TimeLimitsTest do
       other = workspace_fixture(scope.organisation, "Other site")
 
       foreign =
-        Repo.insert!(%Apiary.Runs.Target{
+        Apiary.NodesFixtures.target_fixture(%{
           organisation_id: scope.organisation.id,
           workspace_id: other.id,
           system: "github.example",

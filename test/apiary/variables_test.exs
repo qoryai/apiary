@@ -16,7 +16,7 @@ defmodule Apiary.VariablesTest do
   end
 
   defp target!(scope, path) do
-    Repo.insert!(%Target{
+    Apiary.NodesFixtures.target_fixture(%{
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
       system: "github.example",

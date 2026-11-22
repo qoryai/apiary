@@ -24,8 +24,11 @@
       "created_at": "2026-10-14T16:00:00Z",
       "updated_at": "2026-10-15T11:58:00Z",
       "target": {
-        "system": "github.com",
-        "path": "acme/shop"
+        "collection": "R_1001",
+        "address": {
+          "system": "github.com",
+          "path": "acme/shop"
+        }
       }
     }
   ]

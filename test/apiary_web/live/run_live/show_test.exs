@@ -17,6 +17,15 @@ defmodule ApiaryWeb.RunLive.ShowTest do
   defp demo(scope, name, now \\ DateTime.utc_now()) do
     %{access_key: access_key} = access_key_fixture(scope)
     file = Enum.find(Demo.files(), &(&1 |> Path.dirname() |> Path.basename() == name))
+
+    # The workspace's target at the address the recording's labels name, as a collection
+    # assigned to it would make it.
+    %{"labels" => labels} =
+      file |> Path.dirname() |> Path.join("registration.json") |> File.read!() |> Jason.decode!()
+
+    :ok =
+      Apiary.NodesFixtures.labelled_target!(scope.organisation.id, scope.workspace.id, labels)
+
     {:ok, run} = Demo.replay(access_key, file, now)
     run
   end
