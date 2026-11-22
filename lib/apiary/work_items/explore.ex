@@ -288,8 +288,8 @@ defmodule Apiary.WorkItems.Explore do
   # one column `status`, the status's name as text (`status_name/1`). One `LEFT JOIN
   # LATERAL` per work item: the latest run of the queue of its current take in, its
   # highest `attempt`, read backwards through the unique index on (`work_item_id`,
-  # `take_in`, `attempt`), with its registered run, and whether that take in has a confirmation that counts
-  # (`Apiary.Stages.Withdrawals`).
+  # `take_in`, `attempt`), with its registered run, and whether that take in has a
+  # confirmation that counts (`Apiary.Stages.Withdrawals`).
   # A run reads from what the run of the queue keeps, as `status/2` reads it. The status of
   # an ended work item is that of its last take in, which `status/2` does not give. For example, the live work items
   # of a workspace that wait for a member, with their status:

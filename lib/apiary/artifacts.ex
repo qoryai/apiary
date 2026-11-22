@@ -209,9 +209,9 @@ defmodule Apiary.Artifacts do
   #   - approved by a person: `{:approved, number}`, when a decision of the work item at a
   #     gate, of kind `:approve` and not `automatic`, covers the version (`versions` has its
   #     public id; a member whose account is gone has no `user_id`, and counts) and counts
-  #     (`Apiary.Stages.Withdrawals`): one of an earlier take in, or one a later move
-  #     back withdrew, does not refuse the withdrawal. The check
-  #     comes before the two below;
+  #     (`Apiary.Stages.Withdrawals`): with only an approval of an earlier take in, or one
+  #     a later move back withdrew, the withdrawal goes ahead. The check comes before the
+  #     two below;
   #   - none, as the name has no version outside cancelled runs: `:no_version`;
   #   - a withdrawal: `{:withdrawn, number}`.
   #

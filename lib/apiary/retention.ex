@@ -587,7 +587,8 @@ defmodule Apiary.Retention do
   # that counts (`Apiary.Stages.Withdrawals`); the work item was closed or undone
   # (no longer `:exploring`), or taken in again (its take in is later); or a later run of
   # the take in was queued. A close, an undo, a take in and a run are kept for good once
-  # written, so a result cleared for one of them is never waited for again. One statement over at most `:batch` rows at a time, a short
+  # written, so a result cleared for one of them is never waited for again. One statement
+  # over at most `:batch` rows at a time, a short
   # transaction for each, with no lock on a work item. It locks the runs of the queue it
   # clears, by id, and passes by one another holds (`SKIP LOCKED`): it never waits on a
   # lock, so it never forms a cycle with a path that holds a work item or runs of the
