@@ -571,23 +571,24 @@ defmodule Apiary.Harnesses.WalkTest do
       end
     end
 
-    test "a qory.yaml whose section has workflows, or empty hooks, and neither extends nor modules takes the document",
+    test "a qory.yaml with workflows or empty hooks, or a harness.yaml with hooks, and neither extends nor modules takes the document",
          ctx do
       setting(ctx.scope, @setting)
 
-      for section <- [
-            "workflows:\n    explore: {access: read}\n",
-            "hooks: []\n",
-            "hooks: {}\n",
-            "hooks:\n  name: app\n"
+      for {file, section} <- [
+            {"qory.yaml", "workflows:\n    explore: {access: read}\n"},
+            {"qory.yaml", "hooks: []\n"},
+            {"qory.yaml", "hooks: {}\n"},
+            {"qory.yaml", "hooks:\n  name: app\n"},
+            {"harness.yaml", "hooks: [guard.sh]\n"}
           ] do
         serve([ctx.run],
           covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
-          files: Map.put(@base_files, {"R_app", "qory.yaml"}, "harness:\n  " <> section)
+          files: Map.put(@base_files, {"R_app", file}, "harness:\n  " <> section)
         )
 
         assert {:ok, %{origin: :setting, target_version: "c-R_app"}} = Walk.run(ctx.input),
-               section
+               file <> ": " <> section
       end
     end
 
