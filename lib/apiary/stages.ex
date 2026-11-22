@@ -2561,7 +2561,10 @@ defmodule Apiary.Stages do
   # a person or automatic, and no move to a stage after it (`stage_ids` is the stages of the
   # process in order), made after it. A move with no `to_stage_id` counts as a move back and
   # ends nothing. A move of the stage runner (`runner_move!/4`) is none of them: a return
-  # lists its findings through `returned_inputs/4`, and a take in starts again.
+  # lists its findings through `returned_inputs/4`, and a take in starts again. An approval
+  # ends a departure whether or not it still counts (`Apiary.Stages.Withdrawals`): the
+  # approval resolved the departure for the version it covered, and a later move back that
+  # withdraws the approval does not reopen it.
   defp departures(%WorkItem{id: id, take_in: take_in}, stage_ids) when is_integer(take_in) do
     decisions =
       Repo.all(
@@ -3126,7 +3129,10 @@ defmodule Apiary.Stages do
     |> Enum.sort_by(& &1.inserted_at, DateTime)
   end
 
-  # The time of each stage's newest approval on the work item, by stage id.
+  # The time of each stage's newest approval on the work item, by stage id. Every approval
+  # counts here, also one a later move back withdrew (`Apiary.Stages.Withdrawals`): the
+  # approval resolved the notes before it for the version it covered, and the withdrawal
+  # does not reopen them.
   defp passed_at(work_item_id) do
     Repo.all(
       from d in GateDecision,
