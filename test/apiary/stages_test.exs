@@ -7057,11 +7057,8 @@ defmodule Apiary.StagesTest do
       assert [_verdict, _verification] = from_return(returned)
     end
 
-    test "a work item moved back to Build by a person lists the return's versions again: " <>
-           "the move withdrew the approval that ended them",
-         %{scope: scope} do
+    test "a work item moved to Build by a person lists none through a return", %{scope: scope} do
       work_item = in_verify!(scope) |> returned_by("# Criterion 2 fails")
-      returned = from_return(work_item)
       work_item = end_run!(work_item, verdict("passed"))
       assert from_return(work_item) == []
 
@@ -7069,8 +7066,25 @@ defmodule Apiary.StagesTest do
         Stages.move(scope, work_item, @build, nil, expect_stage: @verify)
 
       assert %WorkItem{stage_id: @build} = moved
-      assert [_verdict, _verification] = from_return(moved)
-      assert from_return(moved) == returned
+      assert from_return(moved) == []
+    end
+
+    test "after Build and Verify pass, a person's move back to Build lists none of the " <>
+           "first return's findings",
+         %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by("# Criterion 2 fails")
+      assert [_verdict, _verification] = from_return(work_item)
+
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
+
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
+
+      # The move withdraws Build's approval, which still ends the return's findings.
+      {:ok, moved} = Stages.move(scope, work_item, @build, nil, expect_stage: @verify)
+      assert %WorkItem{stage_id: @build} = moved
+      assert from_return(moved) == []
     end
 
     test "with no verification, only the verdict is listed", %{scope: scope} do
