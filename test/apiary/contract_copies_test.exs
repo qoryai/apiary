@@ -20,7 +20,7 @@ defmodule Apiary.ContractCopiesTest do
     test/fixtures/integration-contract
   )
 
-  # Each file that names the commit of its copies: `.integration-contract-ref` has comment
+  # Each file that contains the commit of its copies: `.integration-contract-ref` has comment
   # lines, the others one line.
   @ref_files ~w(
     .integration-contract-ref
@@ -84,7 +84,9 @@ defmodule Apiary.ContractCopiesTest do
 
     for path <- present do
       assert Map.has_key?(@manifest, path),
-             "Delete #{path}. Integrations #{@ref} has no such file."
+             "Delete #{path} if integrations #{@ref} has no such file; else write " <>
+               "test/fixtures/contract-copies.sha256 again with the command in " <>
+               ".integration-contract-ref."
     end
   end
 
@@ -99,7 +101,7 @@ defmodule Apiary.ContractCopiesTest do
   end
 
   # The test finds every file whose name ends in `contract-ref`, so a ref file missing from
-  # @ref_files fails too: each names @ref unless @other_ref_files has it.
+  # @ref_files fails too: each contains @ref unless @other_ref_files has it.
   test "every ref file of an integrations copy is listed and contains the commit of the copies" do
     found = @root |> ref_files() |> Enum.reject(&Map.has_key?(@other_ref_files, &1))
 

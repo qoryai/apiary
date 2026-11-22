@@ -2101,12 +2101,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `delivered` or `failed`), the adapter's reply, the reason of a failure, a detail of 1 to
   1000 characters on one line, the target it went to, and the time.
   `previous_address/1` reads the address of the newest reply of the version's artifact,
-  for the `previous.address` of the next entry. Nothing sets `sent` until the entry
-  writer of Q-72 and A-67 exists.
+  for the `previous.address` of the next entry. Nothing sets `sent` until Qory Apiary
+  writes a version's `change_request` entry to an adapter's change feed.
 - `record_invalid/2` stores a failed delivery with the reason `invalid` on a version whose
   entry failed `ChangeRequest.validate/1`, and sends nothing. The detail is the first
   member of the entry that failed, such as `#/title`. A version that has a delivery is
-  left as it is. Nothing calls it until the entry writer of Q-72 and A-67 exists.
+  left as it is. Nothing calls it until Qory Apiary writes a version's `change_request`
+  entry to an adapter's change feed.
 - `ChangeReport.submitted/1` and `failed/1` read an adapter's reply to a change request
   and its report that one failed, by the integrations contract. A reply with a `data` over
   786432 bytes serialized, or an `address.url` off the system of its target, is refused.
@@ -2117,7 +2118,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   report that one failed. Each needs `change_request.report` and answers a signed `204`.
   The result is stored with the version, once: a report for an unknown id, another
   adapter's version, a version not sent or one with a result already changes nothing.
-  Until the entry writer of Q-72 and A-67 sets `sent`, no report finds a version.
+  Until Qory Apiary writes `change_request` entries and sets `sent`, no report finds a
+  version.
 - `change_request.report`, an action of an adapter's key, covers the adapter's report of
   what became of a change request: its reply and its failure.
 

@@ -7,7 +7,7 @@ defmodule Apiary.Artifacts.Delivery do
   # for the version's target.
   #
   # A version's target and type are those of its artifact: an artifact is unique per work
-  # item, type and name, and a delivered output's name is the target's (Q-73), so the
+  # item, type and name, and a delivered output's name is the target's, so the
   # versions of one artifact are the versions for one target and type.
 
   import Ecto.Query, only: [from: 2]

@@ -7,7 +7,7 @@ defmodule ApiaryWeb.Contract.DocumentsCheckTest do
   # them. The vendored run contract (`test/fixtures/contract/run/v1`) is at e0d7be1, whose
   # schema refuses them for their `subject`, and has no `check/` folder. So these three are
   # vendored beside it, by their SHA-256, until the run contract is vendored at a later
-  # commit (A-66, Q-72).
+  # commit.
   use ExUnit.Case, async: true
 
   alias ApiaryWeb.Contract.DocumentsCheck
