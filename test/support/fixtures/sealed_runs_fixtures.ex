@@ -24,8 +24,8 @@ defmodule Apiary.SealedRunsFixtures do
   `Apiary.DispatchedRunsFixtures.handover_place_fixture/2`, under the gateway's one key,
   allowed stored secrets. The work item's target, where it has one, has its row, as an
   assign of its collection makes it (`Apiary.Runs.Target.insert_new/3`). Returns the
-  place's map with `provider`, `run` (as stored after the attach), `attached` (the attach's answer: `settings`, its bytes, and `digest`) and
-  `secrets_key: {key, seed}`.
+  place's map with `provider`, `run` (as stored after the attach), `attached` (the
+  attach's answer: `settings`, its bytes, and `digest`) and `secrets_key: {key, seed}`.
 
   With `work: apply`, the work item's adapter declares the apply items `apply` before the
   claim, and its ticket's collection can change the work item's target
