@@ -3328,14 +3328,14 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                rule: %{"rule" => "both_files", "values" => %{}}
              },
              "Correct https://code.example.com/acme/app, then run Explore again. The source breaks the harness format: it has both harness.yaml and qory.yaml: keep one."},
-            # Hooks with no stack: the sentence alone, with its fix first. Its code font is
+            # Hooks with no extends: the sentence alone, with its fix first. Its code font is
             # checked in the next test.
             {%{
                code: "invalid",
                source: "https://code.example.com/acme/app",
-               rule: %{"rule" => "hooks_without_stack", "values" => %{"file" => "qory.yaml"}}
+               rule: %{"rule" => "hooks_without_extends", "values" => %{"file" => "qory.yaml"}}
              },
-             "Add extends: with the workspace's stack to qory.yaml: hooks run only in a harness file that extends or defines a stack."},
+             "Add extends: with the workspace's stack to qory.yaml: hooks run only in a harness file that extends a stack."},
             {%{code: "invalid", rule: %{"rule" => "size", "values" => %{"n" => 65_536}}},
              "Correct #{setting}, then run Explore again. The source breaks the harness format: it is larger than 65536 bytes as JSON."},
             {%{code: "walk_error"},
@@ -3517,7 +3517,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              ]
     end
 
-    test "a run whose harness file has hooks and no stack: extends: and the file in code font" do
+    test "a run whose harness file has hooks and no extends: extends: and the file in code font" do
       for file <- ["qory.yaml", "harness.yaml"] do
         r =
           run(%{
@@ -3529,7 +3529,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             harness_failure: %{
               code: "invalid",
               source: "https://code.example.com/acme/app",
-              rule: %{"rule" => "hooks_without_stack", "values" => %{"file" => file}},
+              rule: %{"rule" => "hooks_without_extends", "values" => %{"file" => file}},
               adapter: nil
             },
             proposal: nil,
@@ -3542,7 +3542,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
         assert texts(html, "#work-item-explore-none p") == [
                  "The run did not start.",
-                 "Add extends: with the workspace's stack to #{file}: hooks run only in a harness file that extends or defines a stack."
+                 "Add extends: with the workspace's stack to #{file}: hooks run only in a harness file that extends a stack."
                ]
 
         assert texts(html, "#work-item-explore-none p code") == ["extends:", file]

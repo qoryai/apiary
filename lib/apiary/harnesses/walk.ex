@@ -41,12 +41,13 @@ defmodule Apiary.Harnesses.Walk do
   # connection of the run's organisation, else the walk fails `not_covered`. Then
   # `harness.yaml` is read at the target's head (`HEAD`), and `qory.yaml` at the version
   # that read returned, which is the run's `target_version`. Both found fail `invalid`.
-  # A file whose harness section has `extends`, or has no `extends` and lists modules,
-  # applies, origin `:file`. A file whose section has neither and has `hooks` that are not
-  # empty fails `invalid` with the rule `hooks_without_stack` and the file's name: its
-  # hooks would run in no harness. Any other case, a file with no harness section, one with the machine
-  # harness settings alone, one whose section has neither `extends` nor modules, or no
-  # file, takes the next step of the order. A target no collection has, or a domain
+  # A file whose harness section has `extends` applies, origin `:file`. A file whose
+  # section has no `extends` and has `hooks` that are not empty fails `invalid` with the
+  # rule `hooks_without_extends` and the file's name, whether it lists modules or not:
+  # qory composes hooks only on a base stack. A file with no `extends` that lists modules
+  # applies. Any other case, a file with no harness section, one with the machine harness
+  # settings alone, one whose section has neither `extends` nor modules, or no file, takes
+  # the next step of the order. A target no collection has, or a domain
   # without harness files, is not read and has no `target_version`.
   #
   # ## The choice's document
@@ -503,13 +504,14 @@ defmodule Apiary.Harnesses.Walk do
             {:ok, %{"extends" => _base} = section} ->
               {version, {:file, section, Map.put(location, :version, version)}}
 
+            # Hooks run only in a harness file that extends a stack, so a section with hooks
+            # and no base fails, also one that lists modules.
+            {:ok, %{"hooks" => hooks}} when hooks not in [nil, [], %{}] ->
+              fail(:invalid, {:shown, location.label}, rule("hooks_without_extends", file: file))
+
             # A section that defines a stack, with no base.
             {:ok, %{"modules" => [_ | _]} = section} ->
               {version, {:file, section, Map.put(location, :version, version)}}
-
-            # Hooks run only in a harness file that extends a stack.
-            {:ok, %{"hooks" => hooks}} when hooks not in [nil, [], %{}] ->
-              fail(:invalid, {:shown, location.label}, rule("hooks_without_stack", file: file))
 
             {:ok, _no_base} ->
               {version, :absent}

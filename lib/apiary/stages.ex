@@ -4398,11 +4398,9 @@ defmodule Apiary.Stages do
   defp verdict(_none), do: nil
 
   # The point of why `run` stopped, with its fix where it has one
-  # (`Apiary.Stages.StopCause.parts/3`, `Apiary.Stages.Points.run_stopped/2`).
-  defp stopped_points(run, work_item, context) do
-    {cause, fix} = StopCause.parts(run, work_item, context)
-    Points.run_stopped(cause, fix)
-  end
+  # (`Apiary.Stages.StopCause.parts/3`, `Apiary.Stages.Points.stopped/1`).
+  defp stopped_points(run, work_item, context),
+    do: run |> StopCause.parts(work_item, context) |> Points.stopped()
 
   # The questions of a `questions` version that wait for an answer, as the questions a
   # stage waits on show them: the text of each, one after the other.

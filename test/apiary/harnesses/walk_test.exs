@@ -550,7 +550,7 @@ defmodule Apiary.Harnesses.WalkTest do
       end
     end
 
-    test "a harness file whose section has hooks and neither extends nor modules fails invalid, with the file",
+    test "a harness file whose section has hooks and no extends fails invalid, with the file, also one that lists modules",
          ctx do
       setting(ctx.scope, @setting)
 
@@ -558,7 +558,10 @@ defmodule Apiary.Harnesses.WalkTest do
             {"qory.yaml", "hooks: [guard.sh]\n"},
             {"qory.yaml", "hooks:\n    PreToolUse: [guard.sh]\n"},
             {"qory.yaml", "name: app\n  modules: []\n  hooks: [guard.sh]\n"},
-            {"harness.yaml", "hooks: [guard.sh]\n"}
+            {"qory.yaml", "modules:\n    - source: {path: harness/local}\n  hooks: [guard.sh]\n"},
+            {"harness.yaml", "hooks: [guard.sh]\n"},
+            {"harness.yaml",
+             "modules:\n    - source: {path: harness/local}\n  hooks:\n    PreToolUse: [guard.sh]\n"}
           ] do
         serve([ctx.run],
           covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
@@ -569,7 +572,7 @@ defmodule Apiary.Harnesses.WalkTest do
                  Walk.run(ctx.input),
                file <> ": " <> section
 
-        assert rule == %{"rule" => "hooks_without_stack", "values" => %{"file" => file}}
+        assert rule == %{"rule" => "hooks_without_extends", "values" => %{"file" => file}}
       end
     end
 
