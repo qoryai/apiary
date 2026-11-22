@@ -565,12 +565,6 @@ defmodule Apiary.Stages.SharedRunTest do
         ])
       ])
 
-      :ok =
-        Processes.record_declared(scope.workspace, %{
-          "implement-changes" => :write,
-          "review-changes" => :write
-        })
-
       {_work_item, run} = taken_in!(scope, :write)
       assert {:session, %{session: 2, workflow: "review-changes"}} = report(run, 1)
 
@@ -586,8 +580,15 @@ defmodule Apiary.Stages.SharedRunTest do
       assert %DispatchRun{workflow: "review-changes", stage_entry: 0, loop_entry: 1} =
                continuation
 
-      # The walk of review-changes resolves read; the continuation still writes.
+      # The walk of review-changes resolves read, and its harness declares write for
+      # implement-changes: the continuation still writes.
       walk!(continuation, :read)
+
+      {1, _rows} =
+        Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^continuation.id),
+          set: [workflow_levels: %{"implement-changes" => :write, "review-changes" => :write}]
+        )
+
       assert Apiary.Runs.RunCredentials.run_access(continuation) == :write
 
       continuation = claim!(continuation)

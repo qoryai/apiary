@@ -474,6 +474,20 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       ]
     end
 
+    # The levels that the stack file the walk of `work_item`'s run read declares for each
+    # workflow, as the walk records them (`workflow_levels`).
+    defp table!(work_item, levels) do
+      {1, _rows} =
+        Repo.update_all(
+          from(h in Apiary.Harnesses.RunHarness,
+            join: r in Apiary.Dispatches.DispatchRun,
+            on: r.id == h.dispatch_run_id,
+            where: r.work_item_id == ^work_item.id
+          ),
+          set: [workflow_levels: levels]
+        )
+    end
+
     # The run of the queue of `work_item`, its run record and its sessions.
     defp claimed(work_item) do
       run = Repo.get_by!(Apiary.Dispatches.DispatchRun, work_item_id: work_item.id)
@@ -591,14 +605,10 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
         %{"shared_run" => true}
       )
 
-      # An update from the harness sets implement-changes to write-no-push after the save.
-      :ok =
-        Apiary.Processes.record_declared(ctx.scope.workspace, %{
-          "plan-the-build" => :write,
-          "implement-changes" => :write_no_push
-        })
-
+      # The run's harness, read by its walk after the save, sets implement-changes to
+      # write-no-push.
       work_item = walked!(ctx, :write)
+      table!(work_item, %{"plan-the-build" => :write, "implement-changes" => :write_no_push})
       :ok = Apiary.DispatchedRunsFixtures.walks_resolved!()
 
       # The claim ends the run and finds no other: no run to hand over.
@@ -640,13 +650,8 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
         %{"shared_run" => true}
       )
 
-      :ok =
-        Apiary.Processes.record_declared(ctx.scope.workspace, %{
-          "plan-the-build" => :write,
-          "implement-changes" => :write_no_push
-        })
-
       work_item = walked!(ctx, :write)
+      table!(work_item, %{"plan-the-build" => :write, "implement-changes" => :write_no_push})
       :ok = Apiary.DispatchedRunsFixtures.walks_resolved!()
       claim = signed(ctx, "/v1/pools/claim", %{"version" => 1, "wait_seconds" => 0})
       assert claim.status == 204
@@ -673,18 +678,17 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       refute Map.has_key?(review, "access")
     end
 
-    test "with shared_run starts at write where the harness sets review-changes to read after the save",
+    test "with shared_run starts at write where the run's harness sets review-changes to read",
          ctx do
       build!(ctx, build_loop(%{}), %{"shared_run" => true})
+      work_item = walked!(ctx, :write)
 
-      :ok =
-        Apiary.Processes.record_declared(ctx.scope.workspace, %{
-          "plan-the-build" => :write,
-          "implement-changes" => :write,
-          "review-changes" => :read
-        })
+      table!(work_item, %{
+        "plan-the-build" => :write,
+        "implement-changes" => :write,
+        "review-changes" => :read
+      })
 
-      walked!(ctx, :write)
       assert %{"access" => "write", "shared_run" => true} = documents(claim(ctx))
     end
 
@@ -725,6 +729,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       )
 
       work_item = walked!(ctx, :write_no_push)
+      table!(work_item, %{"implement-changes" => :write_no_push})
       documents = documents(claim(ctx))
 
       assert %{"access" => "write-no-push", "shared_run" => true} = documents

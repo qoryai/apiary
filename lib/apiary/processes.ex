@@ -103,9 +103,9 @@ defmodule Apiary.Processes do
   document's, else `default`), and its entries have one access level, or `read` entries
   beside `write` entries, so a save fails when two entries differ in machine type or the
   access levels mix in any other way (`:shared_run_differs`). An entry's level is the
-  lower of its `access` and the level its workflow declares in the workspace's harness
-  (`shared_access/2`). The run's credential is at the highest level of its entries
-  (`shared_level/2`).
+  lower of its `access` and the level its workflow declares in the workspace's harness at
+  a save, and in the run's harness at the claim (`shared_access/2`). The run's credential
+  is at the highest level of its entries (`shared_level/2`).
 
   The run of such a stage takes keys of at most 6 model providers, one provider per
   session, and starts on the provider of its first workflow's model choice. Given the
@@ -794,15 +794,17 @@ defmodule Apiary.Processes do
   shared_access/2 checks that the workflow entries of `stage`, a stage with
   `shared_run: true`, those in a loop's body included, have access levels that one run
   can have: one level, or `read` entries beside `write` entries. An entry's level is the
-  lower of its `access` and the level its workflow declares in `levels`
-  (`declared_access/1`), from lowest to highest `read`, `write-no-push` and `write`. An
+  lower of its `access` and the level its workflow has in `levels`, from lowest to
+  highest `read`, `write-no-push` and `write`: at a save the levels the workspace's
+  harness declares (`declared_access/1`), at the claim the levels the run's harness
+  resolves, as the run's credential takes them. An
   entry with no `access` takes the workflow's level, and a workflow with no level in
   `levels` is lowered by its entry's `access` alone. Every other mix is refused: `read`
   beside `write-no-push`, `write-no-push` beside `write`, and all three. `:ok`, or
   `{:error, detail}` for the first entry that makes such a mix with the entries before
   it, with the detail of `:shared_run_differs` (`validate/2`), its difference from the
-  first entry. The save checks it, and the claim checks it again, as an update from the
-  harness can change a level after the save.
+  first entry. The save checks it, and the claim checks it again, as the run's harness
+  can resolve other levels than the workspace's harness declared at the save.
   """
   @spec shared_access(map, %{String.t() => :read | :write_no_push | :write}) ::
           :ok | {:error, :access | {:access, String.t(), String.t(), String.t()}}

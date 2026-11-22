@@ -785,8 +785,8 @@ defmodule Apiary.Stages.StopCause do
   ## Names
 
   # The name of the stage of `run`, a run whose stage's workflows would run with access
-  # levels that one run cannot have, and the difference as the harness declares the levels
-  # now (`Apiary.Stages.shared_access/1`); nil where the levels now fit one run.
+  # levels that one run cannot have, and the difference as the run's harness resolves the
+  # levels (`Apiary.Stages.shared_access/1`); nil where the levels fit one run.
   defp shared_access(%DispatchRun{} = run) do
     case Apiary.Stages.shared_access(run) do
       {:error, %{stage: stage, detail: detail}} ->

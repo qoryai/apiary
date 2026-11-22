@@ -536,12 +536,13 @@ defmodule Apiary.Stages do
 
   # shared_access/1 checks, at the claim of `run`, a run of the queue, that the workflow
   # entries of its stage, where the stage has `shared_run: true`, have access levels that
-  # one run can have, one level or `read` beside `write`, with the levels the workflows
-  # declare in the workspace's harness now (`Apiary.Processes.declared_access/1`,
-  # `Apiary.Processes.shared_access/2`): an update from the harness can change a level
-  # after the process was saved. `:ok` for any other run; `{:error, detail}` with the
-  # stage's name for a run whose entries mix levels in any other way, which the claim
-  # ends `shared_access_differs` (`Apiary.Dispatches.Handover`).
+  # one run can have, one level or `read` beside `write`
+  # (`Apiary.Processes.shared_access/2`), with the levels the run's harness resolves for
+  # its workflows, as the run's credential takes them (`run_levels/2`): its walk can
+  # resolve other levels than the workspace's harness declared at the process's save.
+  # `:ok` for any other run; `{:error, detail}` with the stage's name for a run whose
+  # entries mix levels in any other way, which the claim ends `shared_access_differs`
+  # (`Apiary.Dispatches.Handover`).
   @doc false
   @spec shared_access(DispatchRun.t()) ::
           :ok
@@ -552,8 +553,7 @@ defmodule Apiary.Stages do
              }}
   def shared_access(%DispatchRun{} = run) do
     with %{} = stage <- shared_stage(run),
-         workspace = Repo.get!(Workspace, run.workspace_id),
-         {:error, detail} <- Processes.shared_access(stage, Processes.declared_access(workspace)) do
+         {:error, detail} <- Processes.shared_access(stage, run_levels(run, stage)) do
       {:error, %{stage: stage["name"], detail: detail}}
     else
       _same -> :ok
@@ -1316,10 +1316,11 @@ defmodule Apiary.Stages do
   # A run of a stage with `shared_run: true` runs every entry of the stage as a session,
   # and the stage may have `read` entries beside `write` entries
   # (`Apiary.Processes.shared_access/2`). Such a run has the highest level of the stage's
-  # entries (`shared_level/3`), on whichever entry it starts or, after a pause, starts
-  # again: a run that starts on `review-changes` (`read`) of a loop with
-  # `implement-changes` (`write`) writes, so the next `implement-changes` session can
-  # push. A run moved onto another workflow's entry, or onto no entry, keeps `:read`.
+  # entries (`shared_level/3`), each as the run's harness resolves it, on whichever entry
+  # it starts or, after a pause, starts again: a run that starts on `review-changes`
+  # (`read`) of a loop with `implement-changes` (`write`) writes, so the next
+  # `implement-changes` session can push. A run moved onto another workflow's entry, or
+  # onto no entry, keeps `:read`.
   #
   # The claim computes the level once: the run's documents and its work credential row
   # keep it (`Apiary.Dispatches.Handover`, `Apiary.Runs.RunCredentials`). A run claimed as
@@ -1361,36 +1362,69 @@ defmodule Apiary.Stages do
   end
 
   # shared_level/3 is the level of `run`, a run of the queue of `stage`, a stage with
-  # `shared_run: true`: the highest level of the stage's entries
-  # (`Apiary.Processes.shared_level/2`), each the lower of its `access` and the level its
-  # workflow resolves. The run's workflow resolves `walk`, the level its harness walk
-  # resolved. Any other workflow resolves as a walk would resolve it: the level it
-  # declares in the workspace's harness (`Apiary.Processes.declared_access/1`), `:read`
-  # for one it does not declare (`Apiary.Harnesses.Reader.workflow_access/2`), and
+  # `shared_run: true`, whose walk resolved `walk`: the highest level of the stage's
+  # entries (`Apiary.Processes.shared_level/2`), each the lower of its `access` and the
+  # level the run's harness resolves for its workflow (`harness_levels/3`).
+  defp shared_level(walk, %DispatchRun{} = run, stage),
+    do: Processes.shared_level(stage, harness_levels(run, stage, walk)) || :read
+
+  # run_levels/2 is the level the harness of `run`, a run of the queue of `stage`, a stage
+  # with `shared_run: true`, resolves for each workflow of the stage, as its credential
+  # takes them (`Apiary.Runs.RunCredentials.run_access/1`): `:read` for each with no walk
+  # or with the built-in harness, which reads for every workflow; else
+  # `harness_levels/3`, the run's workflow at the level its walk resolved.
+  defp run_levels(%DispatchRun{id: id} = run, stage) do
+    walk =
+      Repo.one(
+        from h in Apiary.Harnesses.RunHarness,
+          where: h.dispatch_run_id == ^id,
+          select: %{origin: h.origin, level: h.access_level}
+      )
+
+    case walk do
+      %{origin: origin, level: level} when origin != :builtin ->
+        harness_levels(run, stage, level)
+
+      _harness_read ->
+        for {_place, %{"workflow" => workflow}, _loop_entry} <- workflow_entries(stage),
+            into: %{},
+            do: {workflow, :read}
+    end
+  end
+
+  # harness_levels/3 is the level the harness of `run`, a run of the queue of `stage`, a
+  # stage with `shared_run: true`, resolves for each workflow of the stage, as a walk of
+  # that workflow in that harness would resolve it. The run's workflow has `walk`, the
+  # level its walk resolved. Any other workflow has the level that the stack file the
+  # run's walk read declares for it (`Apiary.Harnesses.RunHarness`, `workflow_levels`),
+  # `:read` for one it does not list and for a walk that kept no levels, lowered to
   # `:read` where the stacks record `read` for it at the run's target
   # (`Apiary.Stacks.recorded_access/3`).
-  defp shared_level(walk, %DispatchRun{workflow: own} = run, stage) do
+  defp harness_levels(%DispatchRun{id: id, workflow: own} = run, stage, walk) do
     workspace = Repo.get!(Workspace, run.workspace_id)
     target = recorded_target(Repo.get!(WorkItem, run.work_item_id))
-    declared = Processes.declared_access(workspace)
 
-    levels =
-      for {_place, %{"workflow" => workflow}, _loop_entry} <- workflow_entries(stage),
-          uniq: true,
-          into: %{} do
-        cond do
-          workflow == own ->
-            {workflow, walk}
+    table =
+      Repo.one(
+        from h in Apiary.Harnesses.RunHarness,
+          where: h.dispatch_run_id == ^id,
+          select: h.workflow_levels
+      ) || %{}
 
-          Apiary.Stacks.recorded_access(workspace, target, {:stage, workflow}) == :read ->
-            {workflow, :read}
+    for {_place, %{"workflow" => workflow}, _loop_entry} <- workflow_entries(stage),
+        uniq: true,
+        into: %{} do
+      cond do
+        workflow == own ->
+          {workflow, walk}
 
-          true ->
-            {workflow, Map.get(declared, workflow, :read)}
-        end
+        Apiary.Stacks.recorded_access(workspace, target, {:stage, workflow}) == :read ->
+          {workflow, :read}
+
+        true ->
+          {workflow, Map.get(table, workflow, :read)}
       end
-
-    Processes.shared_level(stage, levels) || :read
+    end
   end
 
   # A work item's target as `Apiary.Stacks.recorded_access/3` takes it, nil for none.
