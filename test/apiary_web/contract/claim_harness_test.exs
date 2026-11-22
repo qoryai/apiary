@@ -597,7 +597,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       refute Map.has_key?(documents, "shared_run")
     end
 
-    test "with shared_run ends before it starts where the harness changed a workflow's access after the save",
+    test "with shared_run ends before it starts where the run's harness sets write-no-push beside write",
          ctx do
       build!(
         ctx,
