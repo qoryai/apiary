@@ -3,8 +3,8 @@ defmodule ApiaryWeb.Contract.DocumentsCheck do
 
   # The rules of a run's documents that `documents.schema.json` cannot state and that
   # `Documents.Check()` of qoryai/integrations (`contracts/run.go`) states in Go, which
-  # Apiary cannot call. `check/1` reports the first one that the documents break, with the
-  # message of the Go function, in the same order:
+  # Qory Apiary cannot call. `check/1` reports the first one that the documents break,
+  # with the message of the Go function, in the same order:
   #
   #   1. no two entries of `deliver` have the same `type`;
   #   2. no two entries of `further_targets` have the same `collection`, and none has the

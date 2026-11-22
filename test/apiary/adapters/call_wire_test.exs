@@ -160,7 +160,8 @@ defmodule Apiary.Adapters.CallWireTest do
   end
 
   # The contract's reader ignores a member that it does not define, so this fixture is under
-  # `closed/`: only a closed copy of the schema refuses it. Apiary still refuses the member.
+  # `closed/`: it fails only a closed copy of the schema. Qory Apiary still rejects the
+  # member.
   test "a public read with a grant_ref is refused" do
     name = "read-public-with-grant-ref.json"
     refute CallWire.call?(call_path(name), fixture("closed/" <> name))

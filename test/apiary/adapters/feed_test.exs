@@ -28,13 +28,14 @@ defmodule Apiary.Adapters.FeedTest do
     |> Enum.sort()
   end
 
-  # The contract's refused answers whose entries an answer never has: every one but the
-  # one without `revision`, whose entries are good, and the failure reports and replies,
-  # which are no answer.
+  # The contract's answers whose entries an answer never has: every refused answer under
+  # `invalid/` but the one without `revision`, whose entries are good, and the failure
+  # reports and replies, which are no answer; and five answers that the contract's open
+  # schema accepts, as it ignores a member that it does not define:
   # `changes/unknown-kind.json`, `closed/changes-watch-with-ref.json` and the three
-  # `closed/changes-change-request-*.json` are accepted by the contract's open schema,
-  # which ignores a member that it does not define. This writer raises on their entries:
-  # it has no entry kind `settings` or `change_request`, and no `ref` on a `watch` entry.
+  # `closed/changes-change-request-*.json`. This writer raises on the entries of those
+  # five: it has no entry kind `settings` or `change_request`, and no `ref` on a `watch`
+  # entry.
   defp refused_entries do
     Enum.reject(
       fixtures("{closed,invalid}/changes-*.json") ++ ["changes/unknown-kind.json"],
@@ -103,7 +104,7 @@ defmodule Apiary.Adapters.FeedTest do
       end
     end
 
-    test "the change_request entries of changes/ are refused, and nothing is written", %{
+    test "append/2 raises on each change_request entry of changes/, a kind it lacks", %{
       adapter: adapter
     } do
       assert fixtures("changes/change-request-*.json") == @change_requests
@@ -122,6 +123,10 @@ defmodule Apiary.Adapters.FeedTest do
     test "the entries of the refused fixtures are refused, and nothing is written", %{
       adapter: adapter
     } do
+      # shortcut: 31 of these 50 fixtures have change_request entries, 28 under invalid/
+      # that fail the schema and the 3 under closed/. append/2 raises on each of them
+      # because the feed has no entry kind change_request, not for the rule that the
+      # fixture breaks; replace when the feed takes change_request entries.
       paths = refused_entries()
       assert length(paths) == 50
       assert "invalid/changes-comment-author-name-unicode-spaces.json" in paths
