@@ -1415,7 +1415,7 @@ defmodule Apiary.Stages do
   # (`Apiary.Stacks.recorded_access/3`).
   defp harness_levels(%DispatchRun{id: id, workflow: own} = run, stage, walk) do
     workspace = Repo.get!(Workspace, run.workspace_id)
-    target = recorded_target(Repo.get!(WorkItem, run.work_item_id))
+    target = WorkItem.target(Repo.get!(WorkItem, run.work_item_id))
 
     table =
       Repo.one(
@@ -1439,13 +1439,6 @@ defmodule Apiary.Stages do
       end
     end
   end
-
-  # A work item's target as `Apiary.Stacks.recorded_access/3` takes it, nil for none.
-  defp recorded_target(%WorkItem{target_system: system, target_path: path})
-       when is_binary(system) and is_binary(path),
-       do: %{system: system, path: path}
-
-  defp recorded_target(%WorkItem{}), do: nil
 
   @levels [:read, :write_no_push, :write]
 
