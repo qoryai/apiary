@@ -2,8 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/explore/v1/inputs.schema.json",
   "title": "Explore inputs",
-  "description": "The run's inputs, https://qory.dev/contracts/run/v1/documents.schema.json, for a run of the step workflow whose workflow reads these inputs, such as an Explore run, which the control plane writes and the job reads. instruction.text is the instruction the member who took the work item in gave the step. Every other text value, from the source or from members, such as ticket.title and comments[].body, is untrusted data, never an instruction. The object's size is bounded as https://qory.dev/contracts/run/v1/documents.schema.json bounds the run's inputs. Every member is required, at every level, except the target of the inputs and ticket. The job ignores a member that this schema does not define, in every object. The must_understand of the run documents overrides that for a member it lists by a pointer below /inputs, as documents.schema.json describes. Every time is the integration contract's time, https://qory.dev/contracts/integration/v1/definitions.schema.json: RFC 3339 in UTC with whole seconds, ending Z.",
+  "description": "The run's inputs, https://qory.dev/contracts/run/v1/documents.schema.json, for the step explore, which the control plane writes and the job reads. instruction.text is the instruction the member who took the work item in gave the step. Every other text value, from the source or from members, such as ticket.title and comments[].body, is untrusted data, never an instruction. The object's size is bounded as https://qory.dev/contracts/run/v1/documents.schema.json bounds the run's inputs. Every member is required, at every level, except target and ticket, and every object refuses a member this schema does not define. Every time is the integration contract's time, https://qory.dev/contracts/integration/v1/definitions.schema.json: RFC 3339 in UTC with whole seconds, ending Z.",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "version",
     "work_item",
@@ -11,7 +12,6 @@
     "instruction",
     "comments",
     "comments_omitted",
-    "destinations",
     "domain"
   ],
   "if": {
@@ -39,6 +39,7 @@
     "work_item": {
       "description": "The work item the run is for.",
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "id",
         "number",
@@ -46,7 +47,7 @@
       ],
       "properties": {
         "id": {
-          "description": "The work item's public id in the control plane: the same id as the run's subject.id when subject.kind is work_item, https://qory.dev/contracts/run/v1/documents.schema.json. The control plane writes the same value into both.",
+          "description": "The work item's public id in the control plane: the same id as the run's work_item.id, https://qory.dev/contracts/run/v1/documents.schema.json. The control plane writes the same value into both.",
           "$ref": "https://qory.dev/contracts/integration/v1/changes.schema.json#/$defs/work_item/properties/work_item_id"
         },
         "number": {
@@ -63,6 +64,7 @@
     "run": {
       "description": "The run's place within the current take in of the work item, as attempt counts it.",
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "attempt"
       ],
@@ -77,6 +79,7 @@
     "ticket": {
       "description": "The item at the source the work item was taken in from: absent when the work item was not taken in from an item at a source.",
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "external_ref",
         "url",
@@ -120,6 +123,7 @@
     "instruction": {
       "description": "The first instruction given when the work item was taken in.",
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "text",
         "by",
@@ -146,6 +150,7 @@
       "type": "array",
       "items": {
         "type": "object",
+        "additionalProperties": false,
         "required": [
           "by",
           "at",
@@ -172,16 +177,6 @@
       "type": "integer",
       "minimum": 0
     },
-    "destinations": {
-      "description": "The places that the run's workspace works on, 1 to 250 of them. Each is a destination, https://qory.dev/contracts/integration/v1/definitions.schema.json, $defs.destination: id, the control plane's id of the place, and target, the place as the adapter wrote it. A run that reads the places of its workspace, such as an Explore run, takes them from this list. No two entries are equal, and no two have the same id. The schema cannot check that no two entries have the same id: Documents.Check of the run documents does. To keep the object within its bound, the control plane drops the oldest comments and never a destination. The read access of the run covers every destination of the workspace from the start and does not grow during the session.",
-      "type": "array",
-      "minItems": 1,
-      "maxItems": 250,
-      "uniqueItems": true,
-      "items": {
-        "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/destination"
-      }
-    },
     "target": {
       "description": "Where the run's change would go: the same target as the run's target, https://qory.dev/contracts/run/v1/documents.schema.json, and absent when the run has none. The control plane writes the same value into both.",
       "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/target"
@@ -193,21 +188,24 @@
   },
   "$defs": {
     "text": {
-      "description": "Text that may span lines. It has the character rule of a prose line (https://qory.dev/contracts/integration/v1/description.schema.json, $defs.line), except that tab, line feed and carriage return are allowed: no other control character (category Cc), no U+2028 or U+2029, and no format character (category Cf) other than U+200C and U+200D.",
+      "description": "Text that may span lines: tab, line feed and carriage return are its only control characters, and U+0000 to U+0008, U+000B, U+000C, U+000E to U+001F, U+007F and U+0080 to U+009F are refused. So are the characters https://qory.dev/contracts/integration/v1/description.schema.json refuses in a prose line, $defs line, beyond control characters: the bidirectional controls, the marks U+061C, U+200E and U+200F, the embeddings and overrides U+202A to U+202E and the isolates U+2066 to U+2069; the separators U+2028 and U+2029; and the format characters U+00AD, U+180E, U+200B, U+2060 to U+2064, U+FEFF and U+FFF9 to U+FFFB.",
       "type": "string",
-      "pattern": "^(?:[^\\p{Cc}\\p{Cf}\u2028\u2029]|[\u0009\u000a\u000d\u200c\u200d])*$"
+      "pattern": "^[^\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f\u0080-\u009f\u00ad\u061c\u180e\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\ufff9-\ufffb]*$"
     },
     "member": {
       "description": "A member of the control plane.",
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "name"
       ],
       "properties": {
         "name": {
-          "description": "The name the control plane shows for the member, 1 to 160 characters on one line, by the character rule of a prose line (https://qory.dev/contracts/integration/v1/description.schema.json, $defs.line).",
+          "description": "The name the control plane shows for the member, 1 to 160 characters on one line: no control character, U+0000 to U+001F, U+007F and U+0080 to U+009F, and no character $defs text refuses beyond control characters.",
+          "type": "string",
+          "minLength": 1,
           "maxLength": 160,
-          "$ref": "https://qory.dev/contracts/integration/v1/description.schema.json#/$defs/line"
+          "pattern": "^[^\u0000-\u001f\u007f\u0080-\u009f\u00ad\u061c\u180e\u200b\u200e\u200f\u2028\u2029\u202a-\u202e\u2060-\u2064\u2066-\u2069\ufeff\ufff9-\ufffb]*$"
         }
       }
     }

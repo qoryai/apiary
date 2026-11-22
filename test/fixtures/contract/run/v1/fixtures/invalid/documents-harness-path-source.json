@@ -1,12 +1,11 @@
 {
-  "step": "workflow",
+  "step": "explore",
   "domain": "marketing",
   "access": "read",
   "target": {
     "collection": "AP_1234"
   },
-  "subject": {
-    "kind": "work_item",
+  "work_item": {
     "id": "wi_8Kx2mQ4vT9",
     "url": "https://control.example.com/work-items/wi_8Kx2mQ4vT9",
     "title": "The spring campaign spends past its daily budget"
@@ -73,14 +72,6 @@
       }
     ],
     "comments_omitted": 0,
-    "destinations": [
-      {
-        "id": "tg_0123456789abcdef",
-        "target": {
-          "collection": "AP_1234"
-        }
-      }
-    ],
     "target": {
       "collection": "AP_1234"
     },

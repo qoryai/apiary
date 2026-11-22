@@ -47,12 +47,10 @@ defmodule Apiary.Dispatches.WireTest do
   # schema its name starts with, the longest that matches.
   @schemas ~w(claim-answer claim dispatched release machine-log machine-end refusal)
 
-  # A fixture under `invalid/` or `closed/` names its schema at the start of its file name.
-  defp schema_of("invalid/" <> name), do: schema_of_name(name)
-  defp schema_of("closed/" <> name), do: schema_of_name(name)
-  defp schema_of(path), do: path |> Path.split() |> hd()
+  defp schema_of("invalid/" <> name),
+    do: Enum.find(@schemas, &String.starts_with?(name, &1 <> "-"))
 
-  defp schema_of_name(name), do: Enum.find(@schemas, &String.starts_with?(name, &1 <> "-"))
+  defp schema_of(path), do: path |> Path.split() |> hd()
 
   defp validator(schema, contract \\ "provisioner/v1") do
     JSV.build!(%{"$ref" => @base <> "#{contract}/#{schema}.schema.json"},
@@ -107,28 +105,51 @@ defmodule Apiary.Dispatches.WireTest do
     "time" => "2026-10-15T12:02:00Z",
     "reason" => "The job could not start."
   }
+  # The vendored contracts are at three integrations commits. The provisioner contract
+  # is at 8d859a1d, after 6fed8c73, which describes a machine's dispatch as dispatch_id in
+  # place of key, and after 55a22cb8, which adds the access value write-no-push to the run
+  # documents. The run, explore and diagnostics contracts are at e0d7be15, which writes a
+  # target as {collection, address?}: the ref of one of the adapter's collections and, when
+  # the place has one, its system and path. That commit comes after
+  # 8d859a1d, which allows time_limit_minutes from 1 to 1440, after 6fed8c73, which adds
+  # the refusals of the next-session request, plan and tier in place of time_limit on a
+  # workflow of a stack that a harness section defines, and `type` in place of `key` for a
+  # run's machine, and after 283f8809, which adds the next-session request and its
+  # answer, time_limit_minutes, shared_run and full_suite to the documents of a run of a
+  # stage, the tier balanced in place of fast, the outcome of a run with its end codes, a
+  # later session's runtime, run_settings on every explore run, and
+  # model_provider_credential_name in place of model_credential in the next-session
+  # answer. The integration contract is at effc22aa, after e0d7be15:
+  # test/apiary/contract_copies_test.exs checks its copies.
+  test "the vendored contracts are the commits their refs name" do
+    for {dir, ref} <- [
+          {"provisioner/v1", "8d859a1d5bd0693bd647e0543d29aa8651230c3f"},
+          {"run/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"},
+          {"explore/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"},
+          {"diagnostics/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"}
+        ] do
+      assert File.read!(Path.join([@vendored, dir, ".contract-ref"])) == ref <> "\n", dir
+    end
+  end
+
   # The run contract's schemas, each with a fixture directory of its name.
   @run_schemas ~w(documents next-session-request next-session-answer next-session-refusal
                   outcome)
 
-  # A run fixture's schema is its directory's name under `fixtures/`; under `invalid/` and
-  # `closed/`, the run schema its file name starts with; under `check/`, documents. A
-  # fixture under `closed/` or `check/` is valid under the schema: only a closed copy of
-  # the schema, or Documents.Check(), refuses it.
+  # A run fixture's schema is its directory's name under `fixtures/`, or, under
+  # `invalid/`, the run schema its file name starts with.
   @tag :contract
   test "every run fixture is valid under its schema, or refused under it under invalid/" do
     fixtures = Path.join(@vendored, "run/v1/fixtures")
     count = &(fixtures |> Path.join(&1) |> Path.wildcard() |> length())
 
-    assert count.("documents/*.json") == 42
+    assert count.("documents/*.json") == 33
     assert count.("next-session-request/*.json") == 6
-    assert count.("next-session-answer/*.json") == 9
+    assert count.("next-session-answer/*.json") == 7
     assert count.("next-session-refusal/*.json") == 9
     assert count.("outcome/*.json") == 23
-    assert count.("invalid/*.json") == 179
-    assert count.("closed/*.json") == 40
-    assert count.("check/*.json") == 5
-    assert count.("**/*.json") == 42 + 6 + 9 + 9 + 23 + 179 + 40 + 5
+    assert count.("invalid/*.json") == 193
+    assert count.("**/*.json") == 33 + 6 + 7 + 9 + 23 + 193
 
     for path <- Path.wildcard(Path.join(fixtures, "**/*.json")) do
       relative = Path.relative_to(path, fixtures)
@@ -137,12 +158,6 @@ defmodule Apiary.Dispatches.WireTest do
         case Path.split(relative) do
           ["invalid", name] ->
             {Enum.find(@run_schemas, &String.starts_with?(name, &1 <> "-")), false}
-
-          ["closed", name] ->
-            {Enum.find(@run_schemas, &String.starts_with?(name, &1 <> "-")), true}
-
-          ["check", _name] ->
-            {"documents", true}
 
           [dir, _name] ->
             {dir, true}
@@ -178,13 +193,8 @@ defmodule Apiary.Dispatches.WireTest do
 
     assert valid?.(nested)
 
-    for name <- ~w(name-slash role-dot) do
+    for name <- ~w(flat name-slash role-dot unknown-kind) do
       refute valid?.(read.("invalid/documents-harness-bind-#{name}.json")), name
-    end
-
-    # Only a closed copy of the schema refuses a flat bind and a bind of an unknown kind.
-    for name <- ~w(flat unknown-kind) do
-      assert valid?.(read.("closed/documents-harness-bind-#{name}.json")), name
     end
   end
 
@@ -216,25 +226,23 @@ defmodule Apiary.Dispatches.WireTest do
       relative = Path.relative_to(path, @fixtures)
       schema = schema_of(relative)
       assert schema in @schemas, relative
-      # A fixture under `closed/` has a member the schema does not define: only a closed
-      # copy of the schema refuses it, so the vendored schema accepts it.
       expected = not String.starts_with?(relative, "invalid/")
       assert valid?(schema, Jason.decode!(File.read!(path))) == expected, relative
     end
   end
 
   @tag :contract
-  test "a subject's url in a run's documents is https, or http to a loopback address alone" do
+  test "a work item's url in a run's documents is https, or http to a loopback address alone" do
     documents = Path.join(@vendored, "run/v1/fixtures")
     read = &(documents |> Path.join(&1) |> File.read!() |> Jason.decode!())
     valid? = &match?({:ok, _}, JSV.validate(&1, validator("documents", "run/v1")))
 
     loopback = read.("documents/explore-loopback.json")
-    assert loopback["subject"]["url"] == "http://127.0.0.1:8080/work-items/wi_8Kx2mQ4vT9"
+    assert loopback["work_item"]["url"] == "http://127.0.0.1:8080/work-items/wi_8Kx2mQ4vT9"
     assert valid?.(loopback)
 
-    http = read.("invalid/documents-subject-url-http.json")
-    assert http["subject"]["url"] == "http://control.example.com/work-items/wi_8Kx2mQ4vT9"
+    http = read.("invalid/documents-work-item-url-http.json")
+    assert http["work_item"]["url"] == "http://control.example.com/work-items/wi_8Kx2mQ4vT9"
     refute valid?.(http)
 
     for url <- [
@@ -242,7 +250,7 @@ defmodule Apiary.Dispatches.WireTest do
           "http://[::1]:4000/work-items/wi_8Kx2mQ4vT9",
           "https://control.example.com/work-items/wi_8Kx2mQ4vT9"
         ] do
-      assert valid?.(put_in(loopback, ["subject", "url"], url)), url
+      assert valid?.(put_in(loopback, ["work_item", "url"], url)), url
     end
 
     for url <- [
@@ -250,7 +258,7 @@ defmodule Apiary.Dispatches.WireTest do
           "http://127.0.0.2/work-items/wi_8Kx2mQ4vT9",
           "ftp://127.0.0.1/work-items/wi_8Kx2mQ4vT9"
         ] do
-      refute valid?.(put_in(loopback, ["subject", "url"], url)), url
+      refute valid?.(put_in(loopback, ["work_item", "url"], url)), url
     end
   end
 
@@ -277,16 +285,13 @@ defmodule Apiary.Dispatches.WireTest do
           do: path
 
     refusals = for "refusal/" <> _ = path <- all, do: path
-    closed = for "closed/" <> _ = path <- all, do: path
 
-    assert Enum.sort(requests ++ invalid_requests ++ answers ++ refusals ++ closed) ==
-             Enum.sort(all)
+    assert Enum.sort(requests ++ invalid_requests ++ answers ++ refusals) == Enum.sort(all)
 
     assert length(requests) == 16
-    assert length(invalid_requests) == 26
-    assert length(answers) == 18
+    assert length(invalid_requests) == 31
+    assert length(answers) == 19
     assert length(refusals) == 3
-    assert length(closed) == 10
   end
 
   test "each refusal fixture is a code, written as the control plane writes a refusal" do
@@ -424,10 +429,12 @@ defmodule Apiary.Dispatches.WireTest do
                "claim-offers-empty.json",
                "claim-offers-memory-mib-511.json",
                "claim-offers-memory-mib-8388609.json",
+               "claim-offers-undefined-member.json",
                "claim-offers-vcpus-0.json",
                "claim-offers-vcpus-1025.json",
                "claim-offers-without-arch.json",
                "claim-pool-id-node.json",
+               "claim-undefined-member.json",
                "claim-wait-seconds-26.json",
                "dispatched-external-ref-nul.json",
                "dispatched-external-type-upper-case.json",
@@ -436,37 +443,15 @@ defmodule Apiary.Dispatches.WireTest do
                "dispatched-machine-type-empty.json",
                "dispatched-machine-type-non-ascii.json",
                "dispatched-machine-type-space.json",
+               "machine-end-undefined-member.json",
                "machine-end-unknown-state.json",
                "machine-end-version-2.json",
                "machine-end-without-state.json",
                "machine-log-log-nul.json",
+               "machine-log-undefined-member.json",
                "machine-log-version-2.json",
                "machine-log-without-log.json",
-               "release-reason-nul.json"
-             ]
-    end
-
-    # shortcut: the readers refuse a member the schema does not define, which the contract
-    # at effc22aa ignores; replace in A-65, which changes the readers, with the contract's
-    # answer for each request fixture of closed/.
-    test "every request fixture of closed/ is refused" do
-      refused =
-        for path <- Path.wildcard(Path.join([@fixtures, "closed", "*.json"])),
-            name = Path.basename(path),
-            # An answer's fixture is the starter's to refuse, and a refusal has no reader.
-            not String.contains?(name, "-answer-"),
-            kind = Enum.find(Map.keys(@readers), &String.starts_with?(name, &1 <> "-")) do
-          assert read(Map.fetch!(@readers, kind), File.read!(path)) == :error, name
-          name
-        end
-
-      assert Enum.sort(refused) == [
-               "claim-offers-undefined-member.json",
-               "claim-undefined-member.json",
-               "dispatched-external-undefined-member.json",
-               "dispatched-undefined-member.json",
-               "machine-end-undefined-member.json",
-               "machine-log-undefined-member.json",
+               "release-reason-nul.json",
                "release-with-retry.json"
              ]
     end

@@ -2087,11 +2087,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   type or, with `name` alone beside it, a standard type. A run cannot then withdraw a name
   of that type, and it cannot withdraw a name whose newest version a member approved at a
   gate: the run API returns `422` `type_not_withdrawable`.
-- `DocumentsCheck.check/1` checks the three rules of a run's documents that the schema
-  cannot check: no `deliver` type twice; no `collection` twice across `target` and
-  `read_targets`; and no `id` twice among the `destinations` of `inputs`. It returns the
-  message of the integrations' `Documents.Check()`. No code calls it, because no run's
-  documents have `deliver`, `read_targets` or `destinations`.
+- `DocumentsCheck.check/1` states the two rules of a run's documents that
+  the schema cannot state: no `deliver` type twice, and no `collection` twice across `target`
+  and `further_targets`. It returns the message of the integrations' `Documents.Check()`.
+  No code calls it, because no run's documents have `deliver` or `further_targets`.
 - `ChangeRequest.validate/1` checks a `change_request` entry against the
   integrations contract's `changes.schema.json`, vendored under `priv/contract/integration/`.
   It refuses a title that is empty, only spaces, over 256 characters or on more than one
@@ -3089,17 +3088,19 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - `observability` is always on: `QORY_FEATURES` no longer turns it off.
 - A feature that a later release adds starts at its default, even on an instance whose
   features were saved.
-- The integrations contract is vendored at integrations `effc22aa`: the integration, run,
-  explore, diagnostics and provisioner contracts all come from that one commit. Its schemas
-  leave an undefined member open. A description with a `publisher`, or a data description
-  with a `program`, is read. The `document` of the description keeps the member. The
-  adapter declaration, the bodies of calls to an adapter and source items still refuse an
-  undefined member. So do the grant end, the sources disconnect and the feed writer, and
-  their tests keep that. The `openai-subscription` description has the text of `effc22aa`.
-  A description may have `links`, 1 to 16 entries of a `system` and a `template` (a link
-  with placeholders for a path). The schema refuses a template that is not `https`, has a
-  port, a query, a fragment, an unknown placeholder or more than 2048 characters. The
-  `document` of a description keeps `links`. No page reads it yet.
+- The integration contract and the data descriptions are vendored at integrations
+  `effc22aa`. Its schemas leave an undefined member open. A description with a
+  `publisher`, or a data description with a `program`, is read. The `document` of the
+  description keeps the member. The adapter declaration, the bodies of calls to an adapter
+  and source items still refuse an undefined member. So do the grant end, the sources
+  disconnect and the feed writer, and their tests keep that. The `openai-subscription`
+  description has the text of `effc22aa`. A description may have `links`, 1 to 16 entries
+  of a `system` and a `template` (a link with placeholders for a path). The schema refuses
+  a template that is not `https`, has a port, a query, a fragment, an unknown placeholder
+  or more than 2048 characters. The `document` of a description keeps `links`. No page
+  reads it yet. The run, explore and diagnostics contracts and the run documents schema of
+  `Apiary.Stacks.Document` stay at `e0d7be1`, the provisioner contract at `8d859a1`, and
+  the check fixtures of `DocumentsCheck` at `4c788f4`.
 - The reply to a change request (`changes-submitted.schema.json`) and the reports of a
   change request (`changes-failed.schema.json`) are vendored with their fixtures.
   `POST /v1/work-items/changes/submitted` reads the reply.

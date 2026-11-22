@@ -38,14 +38,6 @@
     }
   ],
   "comments_omitted": 12,
-  "destinations": [
-    {
-      "id": "tg_0123456789abcdef",
-      "target": {
-        "collection": "SQ_1001"
-      }
-    }
-  ],
   "target": {
     "collection": "SQ_1001"
   },

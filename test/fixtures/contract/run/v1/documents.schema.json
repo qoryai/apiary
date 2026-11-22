@@ -2,8 +2,9 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/run/v1/documents.schema.json",
   "title": "Run documents",
-  "description": "The run's documents: one object of the members step, domain, inputs, access, target, read_targets, target_version, subject, trigger, run_settings, time_limit_minutes, shared_run, type_settings, workflow, harness_hidden, harness, deliver, image_destination, environment_destination, environment_image and largest_prebuilt_image_bytes, and optionally must_understand, which the control plane writes and the job reads. The object is the documents member of Forager's run answer: the machine receives it, signed, in the 201 of the run code's redemption, https://qory.dev/contracts/forager/v1/enrolment.schema.json, beside the run key. Forager passes it on unread. step, domain and inputs are present for every run. access is present exactly when target is, and target_version only when target is. read_targets is present with or without target, and never for the step prebuild. workflow is present exactly when harness_hidden is, and for every run of the step workflow. A run with workflow has harness, target_version, or both. deliver is present only with workflow and with access write. When the run composes a harness, the harness comes from one of two places. If target_version is present and the read of the harness file of the target returned a file whose harness section extends a stack or defines one, harness is absent. For a target that is a repository, the machine composes that file at target_version, as described there. A harness section extends a stack when it has extends, a base, and defines one when it has no extends and lists at least one module. The run documents contain harness in three cases: target_version is present and the read returned a file whose harness section is absent, or has no extends and lists no module; target_version is present and the read returned found: false; or target_version is absent, because the run has no target or the control plane read no harness file of the target. When harness is present, the machine composes harness instead of the harness section of the harness file of the target. Of that file, the machine applies the qory version that the file requires, the worktree section, and the tiers of the harness section, as described under run_settings.tiers. If the machine's qory version does not meet that requirement, the run stops. It reads none of the other machine harness settings of that file and none of its git and env sections, so the harness file of the target does not set how the run starts. A run of the step workflow has subject, run_settings and workflow, and runs the workflow named in workflow. A run of the step prebuild has access, target, image_destination and exactly one of environment_destination and environment_image, has no read_targets, no target_version, no subject, no run_settings, no time_limit_minutes, no shared_run, no type_settings, no workflow, no harness_hidden, no harness and no deliver, and its inputs are prebuild_inputs. time_limit_minutes, shared_run and type_settings are present only for the step workflow, and image_destination, environment_destination, environment_image and largest_prebuilt_image_bytes only for the step prebuild. The run documents are the documents of session 1: its workflow, its run_settings, its time_limit_minutes, its type_settings and its inputs. With shared_run true, qory asks for each later session after the session before it ends, and the answer, https://qory.dev/contracts/run/v1/next-session-answer.schema.json, sets that session's workflow, model_choice, model_provider_credential_name, time_limit_minutes, type_settings and inputs. A reader ignores a member that this schema does not define, at any depth, unless must_understand lists it. must_understand lists JSON Pointers, such as /run_settings/runtime. A reader refuses a document whose must_understand lists a pointer to a member that it does not define. The values of inputs, of type_settings and of harness.harness.extensions follow the schemas that define them.",
+  "description": "The run's documents: one object of the members step, domain, inputs, access, target, target_version, work_item, run_settings, time_limit_minutes, shared_run, full_suite, workflow, harness_hidden, harness, submit, image_destination, environment_destination, environment_image and largest_prebuilt_image_bytes, which the control plane writes and the job reads. The object is the documents member of Forager's run answer: the machine receives it, signed, in the 201 of the run code's redemption, https://qory.dev/contracts/forager/v1/enrolment.schema.json, beside the run key. Forager passes it on unread. step, domain and inputs are present for every run. access is present exactly when target is, and target_version only when target is. workflow is present exactly when harness_hidden is, and a run with workflow has harness, target_version, or both. submit is present only with workflow and with access write. When the run composes a harness, the harness comes from one of two places. If target_version is present and the read of the harness file of the target returned a file whose harness section extends a stack or defines one, harness is absent. For a target that is a repository, the machine composes that file at target_version, as described there. A harness section extends a stack when it has extends, a base, and defines one when it has no extends and lists at least one module. The run documents contain harness in three cases: target_version is present and the read returned a file whose harness section is absent, or has no extends and lists no module; target_version is present and the read returned found: false; or target_version is absent, because the run has no target or the control plane read no harness file of the target. When harness is present, the machine composes harness instead of the harness section of the harness file of the target. Of that file, the machine applies the qory version that the file requires, the worktree section, and the tiers of the harness section, as described under run_settings.tiers. If the machine's qory version does not meet that requirement, the run stops. It reads none of the other machine harness settings of that file and none of its git and env sections, so the harness file of the target does not set how the run starts. A run of the step explore has work_item and run_settings. A run of the step prebuild has access, target, image_destination and exactly one of environment_destination and environment_image, has no target_version, no work_item, no run_settings, no time_limit_minutes, no shared_run, no full_suite, no workflow, no harness_hidden, no harness and no submit, and its inputs are prebuild_inputs. time_limit_minutes, shared_run and full_suite are present only for the step explore, and image_destination, environment_destination, environment_image and largest_prebuilt_image_bytes only for the step prebuild. The run documents are the documents of session 1: its workflow, its run_settings, its time_limit_minutes, its full_suite and its inputs. With shared_run true, qory asks for each later session after the session before it ends, and the answer, https://qory.dev/contracts/run/v1/next-session-answer.schema.json, sets that session's workflow, model_choice, model_provider_credential_name, time_limit_minutes, full_suite and inputs. A member this schema does not define is refused.",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "step",
     "domain",
@@ -25,17 +26,11 @@
     "target": {
       "$ref": "#/$defs/target"
     },
-    "read_targets": {
-      "$ref": "#/$defs/read_targets"
-    },
     "target_version": {
       "$ref": "#/$defs/target_version"
     },
-    "subject": {
-      "$ref": "#/$defs/subject"
-    },
-    "trigger": {
-      "$ref": "#/$defs/trigger"
+    "work_item": {
+      "$ref": "#/$defs/work_item"
     },
     "run_settings": {
       "$ref": "#/$defs/run_settings"
@@ -46,8 +41,8 @@
     "shared_run": {
       "$ref": "#/$defs/shared_run"
     },
-    "type_settings": {
-      "$ref": "#/$defs/type_settings"
+    "full_suite": {
+      "$ref": "#/$defs/full_suite"
     },
     "workflow": {
       "$ref": "#/$defs/workflow"
@@ -58,8 +53,8 @@
     "harness": {
       "$ref": "#/$defs/harness"
     },
-    "deliver": {
-      "$ref": "#/$defs/deliver"
+    "submit": {
+      "$ref": "#/$defs/submit"
     },
     "image_destination": {
       "$ref": "#/$defs/image_destination"
@@ -72,9 +67,6 @@
     },
     "largest_prebuilt_image_bytes": {
       "$ref": "#/$defs/largest_prebuilt_image_bytes"
-    },
-    "must_understand": {
-      "$ref": "#/$defs/must_understand"
     }
   },
   "allOf": [
@@ -82,7 +74,7 @@
       "if": {
         "properties": {
           "step": {
-            "const": "workflow"
+            "const": "explore"
           }
         },
         "required": [
@@ -91,9 +83,8 @@
       },
       "then": {
         "required": [
-          "subject",
-          "run_settings",
-          "workflow"
+          "work_item",
+          "run_settings"
         ],
         "properties": {
           "image_destination": false
@@ -119,7 +110,7 @@
         ],
         "not": {
           "required": [
-            "subject"
+            "work_item"
           ]
         },
         "oneOf": [
@@ -138,12 +129,11 @@
           "inputs": {
             "$ref": "#/$defs/prebuild_inputs"
           },
-          "read_targets": false,
           "target_version": false,
           "workflow": false,
           "harness_hidden": false,
           "harness": false,
-          "deliver": false
+          "submit": false
         }
       }
     },
@@ -167,7 +157,7 @@
           },
           {
             "required": [
-              "type_settings"
+              "full_suite"
             ]
           }
         ]
@@ -175,7 +165,7 @@
       "then": {
         "properties": {
           "step": {
-            "const": "workflow"
+            "const": "explore"
           }
         }
       }
@@ -216,7 +206,7 @@
     {
       "if": {
         "required": [
-          "deliver"
+          "submit"
         ]
       },
       "then": {
@@ -265,38 +255,23 @@
     "harness_hidden": [
       "workflow"
     ],
-    "deliver": [
+    "submit": [
       "workflow",
       "access"
     ]
   },
   "$defs": {
-    "must_understand": {
-      "description": "The members that the reader must understand. Each is a JSON Pointer (RFC 6901) counted from the document, such as /run_settings/runtime or /subject/kind. List each once, at most 32. Each pointer is to a member that this schema defines. A reader ignores a member that it does not define, unless must_understand lists it. A reader refuses a document whose must_understand lists a pointer to a member that it does not define. A reader also refuses a bad value of a member that it defines. Below inputs, below type_settings and below harness/harness/extensions the schema defines no member, so any pointer there is accepted.",
-      "type": "array",
-      "maxItems": 32,
-      "uniqueItems": true,
-      "items": {
-        "type": "string",
-        "maxLength": 256,
-        "not": {"pattern": "\\n"},
-        "pattern": "^(?:/access|/deliver|/deliver/(?:0|[1-9][0-9]*)|/deliver/(?:0|[1-9][0-9]*)/send|/deliver/(?:0|[1-9][0-9]*)/type|/domain|/environment_destination|/environment_image|/harness|/harness/harness|/harness/harness/bind|/harness/harness/bind/agents|/harness/harness/bind/agents/(?:[^/~]|~[01])+|/harness/harness/bind/agents/(?:[^/~]|~[01])+/(?:0|[1-9][0-9]*)|/harness/harness/bind/commands|/harness/harness/bind/commands/(?:[^/~]|~[01])+|/harness/harness/bind/skills|/harness/harness/bind/skills/(?:[^/~]|~[01])+|/harness/harness/description|/harness/harness/extends|/harness/harness/extends/git|/harness/harness/extends/path|/harness/harness/extends/ref|/harness/harness/extends/stack|/harness/harness/extensions|/harness/harness/extensions(?:/(?:[^/~]|~[01])*)*|/harness/harness/modules|/harness/harness/modules/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/agents|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/agents/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/commands|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/commands/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/env|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/env/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/files|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/files/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/hooks|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/hooks/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/instructions|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/mcp|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/mcp/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/output-styles|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/output-styles/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/settings|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/settings/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/skills|/harness/harness/modules/(?:0|[1-9][0-9]*)/exclude/skills/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/name|/harness/harness/modules/(?:0|[1-9][0-9]*)/only|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/agents|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/agents/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/commands|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/commands/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/env|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/env/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/files|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/files/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/hooks|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/hooks/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/instructions|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/mcp|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/mcp/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/output-styles|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/output-styles/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/settings|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/settings/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/skills|/harness/harness/modules/(?:0|[1-9][0-9]*)/only/skills/(?:0|[1-9][0-9]*)|/harness/harness/modules/(?:0|[1-9][0-9]*)/source|/harness/harness/modules/(?:0|[1-9][0-9]*)/source/git|/harness/harness/modules/(?:0|[1-9][0-9]*)/source/module|/harness/harness/modules/(?:0|[1-9][0-9]*)/source/path|/harness/harness/modules/(?:0|[1-9][0-9]*)/source/ref|/harness/harness/modules/(?:0|[1-9][0-9]*)/variant|/harness/harness/name|/harness/harness/workflows|/harness/harness/workflows/(?:[^/~]|~[01])+|/harness/harness/workflows/(?:[^/~]|~[01])+/access|/harness/harness/workflows/(?:[^/~]|~[01])+/plan|/harness/harness/workflows/(?:[^/~]|~[01])+/tier|/harness_hidden|/image_destination|/inputs|/inputs(?:/(?:[^/~]|~[01])*)*|/largest_prebuilt_image_bytes|/read_targets|/read_targets/(?:0|[1-9][0-9]*)|/read_targets/(?:0|[1-9][0-9]*)/address|/read_targets/(?:0|[1-9][0-9]*)/address/path|/read_targets/(?:0|[1-9][0-9]*)/address/system|/read_targets/(?:0|[1-9][0-9]*)/collection|/run_settings|/run_settings/effort|/run_settings/model|/run_settings/provider_models|/run_settings/provider_models/(?:0|[1-9][0-9]*)|/run_settings/provider_models/(?:0|[1-9][0-9]*)/effort|/run_settings/provider_models/(?:0|[1-9][0-9]*)/effort/(?:0|[1-9][0-9]*)|/run_settings/provider_models/(?:0|[1-9][0-9]*)/id|/run_settings/runtime|/run_settings/tiers|/run_settings/tiers/balanced|/run_settings/tiers/balanced/effort|/run_settings/tiers/balanced/model|/run_settings/tiers/light|/run_settings/tiers/light/effort|/run_settings/tiers/light/model|/run_settings/tiers/thinking|/run_settings/tiers/thinking/effort|/run_settings/tiers/thinking/model|/shared_run|/step|/subject|/subject/id|/subject/kind|/subject/title|/subject/url|/target|/target/address|/target/address/path|/target/address/system|/target/collection|/target_version|/time_limit_minutes|/trigger|/type_settings|/type_settings(?:/(?:[^/~]|~[01])*)*|/workflow)$"
-      }
-    },
     "step": {
-      "description": "The step the run is for, which the control plane sets: workflow or prebuild. A run of the step workflow runs the workflow named in workflow, for the subject. A run of the step prebuild builds the environment of the target and has no subject and no target_version. The job picks what to compose from it. A document with another step fails this schema.",
+      "description": "The step the run is for, which the control plane sets: explore and prebuild are the values known today. A run of the step explore is for a work item. A run of the step prebuild builds the environment of the target and has no work item and no target_version. The job picks what to compose from it, and refuses a step it does not know.",
       "type": "string",
-      "enum": [
-        "workflow",
-        "prebuild"
-      ]
+      "pattern": "^[a-z][a-z_]{0,39}$"
     },
     "domain": {
       "description": "The domain of the workspace the run is for, such as software. Every run has one.",
       "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/domain"
     },
     "inputs": {
-      "description": "The step's input, which the control plane writes and the job reads. At most 768 KiB serialized. Its shape belongs to the step's schema, not to this contract, so for any step but prebuild this object takes any member beside version: inputs is the one document of the contract that does. For the step workflow, the shape belongs to the workflow; the inputs of a run whose workflow reads them, such as an Explore run, have the shape https://qory.dev/contracts/explore/v1/inputs.schema.json. For the step prebuild, the inputs are exactly version, 1, and environment_ref, as prebuild_inputs defines, and this contract closes them. environment_ref is the environment_ref the prebuild was queued for, as https://qory.dev/contracts/integration/v1/definitions.schema.json describes it: a newer environment_ref read for the collection while the run waits replaces it, and one read after the claim does not. The job takes the place from target, and builds the head of that place's default line from the fetch it makes, so environment_ref may predate the head it builds. Every run has inputs.",
+      "description": "The step's input, which the control plane writes and the job reads. At most 768 KiB serialized. Its shape belongs to the step's schema, not to this contract, so for any step but prebuild this object takes any member beside version: inputs is the one document of the contract that does. For the step explore, the shape is https://qory.dev/contracts/explore/v1/inputs.schema.json. For the step prebuild, the inputs are exactly version, 1, and environment_ref, as prebuild_inputs defines, and this contract closes them. environment_ref is the environment_ref the prebuild was queued for, as https://qory.dev/contracts/integration/v1/definitions.schema.json describes it: a newer environment_ref read for the collection while the run waits replaces it, and one read after the claim does not. The job takes the place from target, and builds the head of that place's default line from the fetch it makes, so environment_ref may predate the head it builds. Every run has inputs.",
       "type": "object",
       "additionalProperties": true,
       "required": [
@@ -312,6 +287,7 @@
     "prebuild_inputs": {
       "description": "The inputs of the step prebuild: exactly version, 1, and environment_ref, the environment_ref the prebuild was queued for.",
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "version",
         "environment_ref"
@@ -328,7 +304,7 @@
       }
     },
     "access": {
-      "description": "What the run may do on its target: read, write-no-push or write. With read, the run gets a read credential and works on a copy of the target that the agent cannot change. With write-no-push, the run gets a read credential and a copy that the agent may change, and the run sends nothing back to the target. With write, the run gets a write credential, the run sends the agent's changes to the target, and only a run with write may have deliver. On a target that is a repository, the copy is a checkout and a change is a commit. The machine's credential integration narrows the run's access to it. Present exactly when target is present.",
+      "description": "What the run may do on its target: read, write-no-push or write. With read, the run gets a read credential and works on a copy of the target that the agent cannot change. With write-no-push, the run gets a read credential and a copy that the agent may change, and the run sends nothing back to the target. With write, the run gets a write credential, the run sends the agent's changes to the target, and only a run with write may have submit. On a target that is a repository, the copy is a checkout and a change is a commit. The machine's credential integration narrows the run's access to it. Present exactly when target is present.",
       "type": "string",
       "enum": [
         "read",
@@ -337,77 +313,42 @@
       ]
     },
     "target": {
-      "description": "Where the run's change would go, and absent when the run has no place where a change would go: the ref of one of the adapter's collections, as https://qory.dev/contracts/integration/v1/definitions.schema.json, $defs.target, describes it, and an address, a host name and a path, when the place has one. A run of the step workflow may have none. For a run whose subject has the kind work_item, inputs.target is this target, and is absent when the run has none, inputs.domain is domain, and inputs.work_item.id is subject.id, as described in https://qory.dev/contracts/explore/v1/inputs.schema.json. The step prebuild always has one: the place whose environment the job builds. Present exactly when access is present.",
+      "description": "Where the run's change would go, and absent when the run has no place where a change would go: the ref of one of the adapter's collections, as https://qory.dev/contracts/integration/v1/definitions.schema.json, $defs.target, describes it, and an address, a host name and a path, when the place has one. The step explore may have none. For the step explore, inputs.target is this target, and is absent when the run has none, inputs.domain is domain, and inputs.work_item.id is work_item.id, as described in https://qory.dev/contracts/explore/v1/inputs.schema.json. The step prebuild always has one: the place whose environment the job builds. Present exactly when access is present.",
       "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/target"
-    },
-    "read_targets": {
-      "description": "The places that a run only reads, beside target: a list of 0 to 20 targets, each as https://qory.dev/contracts/integration/v1/definitions.schema.json, $defs.target, describes it. The run only reads a place in read_targets: it changes, pushes and delivers nothing to it. target stays the one place where the run's change would go, and access applies to target only. A run with no place to read leaves read_targets out, or lists none. read_targets is present with or without target, and never for the step prebuild. No two entries have the same collection, and no entry has the collection of target. This schema cannot check that: a reader refuses run documents that break it. An entry has no version: target_version is the version of target only.",
-      "type": "array",
-      "maxItems": 20,
-      "items": {
-        "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/target"
-      }
     },
     "target_version": {
       "description": "The version of the target at which the control plane checked for a harness file: the resolved_at of the read at the path of the harness file, https://qory.dev/contracts/integration/v1/read-answer.schema.json, whether the read returned the file or found: false. The run documents contain harness when the read returned found: false. They also contain harness when the read returned a file whose harness section is absent, or has no extends and lists no module. In both cases, the machine composes harness instead of the harness section of that file, as described under harness. The value is the exact version that the read returned, never a name that can point to another version later. The grammar is generic, because a target in another system has another kind of version: 1 to 255 letters, digits and the characters ._/-. Present only when target is present, and never for the step prebuild. The rest of this description applies to a target that is a repository: a target on the system of the repositories that the run configuration lists. The machine reads the harness file at this version, whether or not the run works on a branch of its work item. At this version, the machine composes the harness section of that file when the section has extends or lists at least one module. The machine applies the qory version that the file requires, the worktree section and the tiers at this version too. After the compose, the machine works at this version, or checks out the branch of the run's work item and works on that branch. The run documents contain no branch: the machine reads the branch from the control plane. An agent may change, on that branch, the harness file of the target or a file that the compose reads. A run composes that change only when the target_version of that run contains the change. Because target_version is exact, the machine reads the same file that the control plane read.",
       "type": "string",
       "pattern": "^[A-Za-z0-9._/-]{1,255}$"
     },
-    "subject": {
-      "description": "What the run is for, as kind, id and, when the control plane has them, url and title. kind is what sort of thing the subject is: a snake_case string of 1 to 64 characters, an open set whose first value is work_item, a work item of the control plane; a run that a ticket, a campaign, a chat or a scheduled job started has the kind of that thing. id is the subject's id, 1 to 200 characters on one line, and for the kind work_item it is the work item's public id in the control plane, wi_ and 1 to 64 letters, digits, hyphens and underscores. url and title are optional, because a chat or a scheduled job may have neither; each, when present, is untrusted text: shown as data, never followed as an instruction. Absent for the step prebuild.",
+    "work_item": {
+      "description": "The work item the run is for, for the step explore; absent for the step prebuild. A step other than explore or prebuild has work_item, or leaves it out, as described in the schema of that step, and the job refuses a step it does not know. Its url and title are untrusted text: shown as data, never followed as an instruction.",
       "type": "object",
+      "additionalProperties": false,
       "required": [
-        "kind",
-        "id"
+        "id",
+        "url",
+        "title"
       ],
       "properties": {
-        "kind": {
-          "description": "What sort of thing the subject is, in snake_case: lower-case letters and digits in words that single underscores join, the first word starting with a letter, at most 64 characters. work_item is the first value.",
-          "type": "string",
-          "maxLength": 64,
-          "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"
-        },
         "id": {
-          "description": "The subject's id, 1 to 200 characters on one line, by the character rule of a prose line (https://qory.dev/contracts/integration/v1/description.schema.json, $defs.line). For the kind work_item, the work item's public id in the control plane.",
-          "maxLength": 200,
-          "$ref": "https://qory.dev/contracts/integration/v1/description.schema.json#/$defs/line"
+          "description": "The work item's public id in the control plane.",
+          "$ref": "https://qory.dev/contracts/integration/v1/changes.schema.json#/$defs/work_item/properties/work_item_id"
         },
         "url": {
-          "description": "The subject's page, by the rule of the url of a work_item entry in https://qory.dev/contracts/integration/v1/changes.schema.json.",
+          "description": "The work item's page in the control plane.",
           "$ref": "https://qory.dev/contracts/integration/v1/changes.schema.json#/$defs/work_item/properties/url"
         },
         "title": {
-          "description": "The subject's title, 1 to 256 characters on one line, by the rule of change_title in https://qory.dev/contracts/integration/v1/definitions.schema.json.",
-          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/change_title"
-        }
-      },
-      "if": {
-        "properties": {
-          "kind": {
-            "const": "work_item"
-          }
-        },
-        "required": [
-          "kind"
-        ]
-      },
-      "then": {
-        "properties": {
-          "id": {
-            "$ref": "https://qory.dev/contracts/integration/v1/changes.schema.json#/$defs/work_item/properties/work_item_id"
-          }
+          "description": "The work item's title.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/title"
         }
       }
     },
-    "trigger": {
-      "description": "What started the run, in snake_case: lower-case letters and digits in words that single underscores join, the first word starting with a letter, at most 64 characters. take_in is the first value: the control plane took in the subject, a work item, and started the first workflow of the first stage of the process. The set is open: this contract lists no other value, and a value it does not list is valid. A run that nothing recorded a trigger for has none.",
-      "type": "string",
-      "maxLength": 64,
-      "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"
-    },
     "run_settings": {
-      "description": "The runtime and model settings the job composes the agent's harness with. The control plane sets run_settings for every run of the step workflow, and a run of the step prebuild has none. run_settings are the settings of session 1: the runtime is the runtime of session 1 and of each later session whose model_choice has no runtime, and model, effort, provider_models and tiers are the model choice of session 1. The model choice of each later session is the model_choice of the answer to the next-session call. run_settings contains no key or secret. With no provider chosen, model, effort, provider_models and tiers are absent: the run uses the run's default model provider credential, a local model provider credential when the run configuration has none, and the runtime's default model. The control plane guarantees four rules that this schema cannot check: the ids in provider_models are unique; effort is listed for model in provider_models; each tier's model is in provider_models; and a tier's effort is listed for that tier's model in provider_models. The job writes the values as given, and maps no model or effort value to another. The control plane keeps the serialized signed 201 of the run code's redemption within 1 MiB. When that 201 with run_settings would exceed it, the control plane drops the oldest comments from inputs and sets comments_omitted, as the 768 KiB rule for inputs does, until the 201 fits.",
+      "description": "The runtime and model settings the job composes the agent's harness with. The control plane sets run_settings for every run of the step explore, and a run of the step prebuild has none. run_settings are the settings of session 1: the runtime is the runtime of session 1 and of each later session whose model_choice has no runtime, and model, effort, provider_models and tiers are the model choice of session 1. The model choice of each later session is the model_choice of the answer to the next-session call. run_settings contains no key or secret. With no provider chosen, model, effort, provider_models and tiers are absent: the run uses the run's default model provider credential, a local model provider credential when the run configuration has none, and the runtime's default model. The control plane guarantees four rules that this schema cannot check: the ids in provider_models are unique; effort is listed for model in provider_models; each tier's model is in provider_models; and a tier's effort is listed for that tier's model in provider_models. The job writes the values as given, and maps no model or effort value to another. The control plane keeps the serialized signed 201 of the run code's redemption within 1 MiB. When that 201 with run_settings would exceed it, the control plane drops the oldest comments from inputs and sets comments_omitted, as the 768 KiB rule for inputs does, until the 201 fits.",
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "runtime"
       ],
@@ -446,6 +387,7 @@
           "items": {
             "description": "One model of the provider.",
             "type": "object",
+            "additionalProperties": false,
             "required": [
               "id"
             ],
@@ -470,6 +412,7 @@
         "tiers": {
           "description": "The tier map the control plane resolved for the run: a model, and optionally an effort value, for each tier it maps. Present only with model. Its only keys are light, balanced and thinking. A tier the control plane does not map is absent. For a run with a target, a tier the control plane maps applies instead of the entry for that tier in the tier map set at the run's target, and the tier map set at the run's target fills only the tiers left absent. A run with no target has no such tier map: only the tiers the control plane maps apply.",
           "type": "object",
+          "additionalProperties": false,
           "properties": {
             "light": {
               "description": "The model of the tier light.",
@@ -490,6 +433,7 @@
     "model_choice": {
       "description": "The model choice of one session after session 1: the members runtime, model, effort, provider_models and tiers of run_settings, with the meaning they have there, except as runtime says here. runtime is the runtime the session runs on. Absent, the session runs on the runtime of run_settings. A session after session 1 may run on a runtime that differs from the runtime of run_settings, and model, effort, provider_models and tiers then apply to that runtime. The schema checks only the pattern of the runtime's name. runtime can be the only member: the session runs on that runtime with no provider chosen. With no provider chosen, model, effort, provider_models and tiers are absent: the session uses the default model of its runtime, with the key of the credential whose name is in model_provider_credential_name or, without one, the key of the run's default model provider credential (the active key of its group when it has a group). The four rules that run_settings lists for the control plane apply to those four members that are present. For a session whose model_choice has runtime, the control plane sets model_provider_credential_name only for a credential of an API whose runtimes, when present, list that runtime and whose format that runtime sends, as the model_provider role of the integration description says. A session whose model_choice has runtime and no model_provider_credential_name joins with the run's default model provider credential (the active key of its group when it has a group), which that runtime must be able to use. model, effort, provider_models and tiers suit that runtime.",
       "type": "object",
+      "additionalProperties": false,
       "dependentRequired": {
         "effort": [
           "model"
@@ -532,12 +476,12 @@
       "description": "Whether qory sends the next-session request after each session, https://qory.dev/contracts/run/v1/next-session-request.schema.json, and runs the session that the answer sets. Absent and false mean the same: qory sends no request, and the run has session 1 only.",
       "type": "boolean"
     },
-    "type_settings": {
-      "description": "The settings that belong to the type of the workspace, as one object whose members this contract does not list. The process of the workspace type registers the schema of type_settings, and the schema of the software factory requires full_suite in it: true runs the full test suite after the agent ends, and false runs none. In the run documents, it is the type_settings of session 1, and the type_settings of each later session is the type_settings of the answer to the next-session call. The run documents have it only for the step workflow. Its schema is not this contract's, so any member is accepted, and a pointer below type_settings in must_understand is accepted.",
-      "type": "object"
+    "full_suite": {
+      "description": "Whether session 1 runs the full test suite after the agent ends: true runs it, and absent and false run none. The flag of each later session is the full_suite of the answer to the next-session call.",
+      "type": "boolean"
     },
     "workflow": {
-      "description": "The workflow of the harness that the run starts, such as hello. qory starts the first of these that the harness has: the skill workflow-hello, the command workflow-hello, the skill hello, the command hello. At most 55 characters, so that workflow-<name> stays within 64. Present for every run of the step workflow, and present exactly when harness_hidden is present. A run of the step prebuild has no workflow.",
+      "description": "The workflow of the harness that the run starts, such as hello. qory starts the first of these that the harness has: the skill workflow-hello, the command workflow-hello, the skill hello, the command hello. At most 55 characters, so that workflow-<name> stays within 64. Present exactly when harness_hidden is present. A run of the step prebuild has no workflow.",
       "type": "string",
       "pattern": "^[a-z][a-z0-9-]{0,54}$"
     },
@@ -546,8 +490,9 @@
       "type": "boolean"
     },
     "harness": {
-      "description": "The harness document of the workspace, in the form of qory.yaml, https://qory.dev/contracts/harness/v1/config.schema.json, which the control plane takes from the settings of the workspace. When the run composes a harness, the harness comes from one of two places. If target_version is present and the read of the harness file of the target returned a file whose harness section extends a stack or defines one, harness is absent. For a target that is a repository, the machine composes that file at target_version, as described there. A harness section extends a stack when it has extends, a base, and defines one when it has no extends and lists at least one module. The run documents contain harness in three cases: target_version is present and the read returned a file whose harness section is absent, or has no extends and lists no module; target_version is present and the read returned found: false; or target_version is absent, because the run has no target or the control plane read no harness file of the target. When harness is present, the machine composes harness instead of the harness section of the harness file of the target. Of that file, the machine applies the qory version that the file requires, the worktree section, and the tiers of the harness section, as described under run_settings.tiers. If the machine's qory version does not meet that requirement, the run stops. It reads none of the other machine harness settings of that file and none of its git and env sections, so the harness file of the target does not set how the run starts. harness has the member harness. That member is the harness section, which extends a stack or defines one, as described under harness_section. Every source is a remote source. A source of the form {path}, alone or with module or stack, is refused, and so is a module given by name alone. The harness section does not define these members: link, git, env, worktree, exports, target, and the machine harness settings runtime, model, effort, tiers, force, update, home, links and launch. A reader ignores such a member and never composes it, unless must_understand lists it, and then the reader refuses the document. A run of the step prebuild has no harness.",
+      "description": "The harness document of the workspace, in the form of qory.yaml, https://qory.dev/contracts/harness/v1/config.schema.json, which the control plane takes from the settings of the workspace. When the run composes a harness, the harness comes from one of two places. If target_version is present and the read of the harness file of the target returned a file whose harness section extends a stack or defines one, harness is absent. For a target that is a repository, the machine composes that file at target_version, as described there. A harness section extends a stack when it has extends, a base, and defines one when it has no extends and lists at least one module. The run documents contain harness in three cases: target_version is present and the read returned a file whose harness section is absent, or has no extends and lists no module; target_version is present and the read returned found: false; or target_version is absent, because the run has no target or the control plane read no harness file of the target. When harness is present, the machine composes harness instead of the harness section of the harness file of the target. Of that file, the machine applies the qory version that the file requires, the worktree section, and the tiers of the harness section, as described under run_settings.tiers. If the machine's qory version does not meet that requirement, the run stops. It reads none of the other machine harness settings of that file and none of its git and env sections, so the harness file of the target does not set how the run starts. harness contains exactly one member, harness, the harness section, which extends a stack or defines one, as described under harness_section. Every source is a remote source. These are refused: a source of the form {path}, alone or with module or stack; a module given by name alone; link; the machine harness settings runtime, model, effort, tiers, force, update, home, links and launch; and the members git, env, worktree, exports and target. A run of the step prebuild has no harness.",
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "harness"
       ],
@@ -558,8 +503,9 @@
       }
     },
     "harness_section": {
-      "description": "The harness section of the harness document. A section extends a stack or defines one. A section with extends extends that stack, the base: it appends its modules to the base, and takes the workflows of the base, so it has no workflows. A section without extends defines a stack: it requires modules, at least 1, and may contain workflows, in which the stack declares the access level of each of its workflows. A section that defines a stack, without extends, takes no target: the machine composes it for the runtime of the session: for session 1, run_settings.runtime; for a later session, the runtime of its model_choice, or run_settings.runtime when that has none. Either kind may contain the bindings of roles, the extensions, and a name and a description. A reader ignores every other key of the harness section of qory.yaml and never composes it.",
+      "description": "The harness section of the harness document. A section extends a stack or defines one. A section with extends extends that stack, the base: it appends its modules to the base, and takes the workflows of the base, so it has no workflows. A section without extends defines a stack: it requires modules, at least 1, and may contain workflows, in which the stack declares the access level of each of its workflows. A section that defines a stack, without extends, takes no target: the machine composes it for the runtime of the session: for session 1, run_settings.runtime; for a later session, the runtime of its model_choice, or run_settings.runtime when that has none. Either kind may contain the bindings of roles, the extensions, and a name and a description. Every other key of the harness section of qory.yaml is refused.",
       "type": "object",
+      "additionalProperties": false,
       "properties": {
         "name": {
           "description": "The name of the harness.",
@@ -583,8 +529,9 @@
           }
         },
         "bind": {
-          "description": "The entry that fills each role a module references, by kind and then by role: agents, commands or skills, each an object of a role to the name of one entry of that kind, or, for a group role of the kind agents, to a list of agents. A module writes ${qory:agents/developer}, and bind: {agents: {developer: web-developer}} sets which agent that is. A reader ignores a bind kind that it does not define. A module role that no bind fills stays unfilled, and the reader must not compose that module role.",
+          "description": "The entry that fills each role a module references, by kind and then by role: agents, commands or skills, each an object of a role to the name of one entry of that kind, or, for a group role of the kind agents, to a list of agents. A module writes ${qory:agents/developer}, and bind: {agents: {developer: web-developer}} sets which agent that is.",
           "type": "object",
+          "additionalProperties": false,
           "properties": {
             "agents": {
               "$ref": "#/$defs/harness_bind_agent_roles"
@@ -631,6 +578,7 @@
     "harness_workflow": {
       "description": "The settings of one workflow of a stack that a harness section defines: access, plan and tier, each optional, with the keys and values of workflows in qory-stack.yaml. A workflow with plan has access write.",
       "type": "object",
+      "additionalProperties": false,
       "if": {
         "required": [
           "plan"
@@ -676,6 +624,7 @@
     "harness_base": {
       "description": "A remote source of a stack: git and ref, with at most one of path, the folder of the stack inside the remote source, and stack, the name of a stack the remote source exports. A source with neither path nor stack is the root of the remote source. A source with both is refused, and so is a source of the form {path}, alone or with stack.",
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "git",
         "ref"
@@ -709,8 +658,9 @@
       }
     },
     "harness_module": {
-      "description": "A module appended to the stack: a remote source, with an optional name, exclude or only, and variant. A module given by name alone is refused. A reader ignores link.",
+      "description": "A module appended to the stack: a remote source, with an optional name, exclude or only, and variant. A module given by name alone, and link, are refused.",
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "source"
       ],
@@ -741,6 +691,7 @@
     "harness_source": {
       "description": "A remote source of a module: git and ref, with at most one of path, the folder of the module inside the remote source, and module, the name of a module the remote source exports. A source with neither path nor module is the root of the remote source. A source with both is refused, and so is a source of the form {path}, alone or with module.",
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "git",
         "ref"
@@ -773,31 +724,23 @@
         ]
       }
     },
-    "deliver": {
-      "description": "The artifacts that the run delivers: a list of 1 to 16 entries, each with type and send, both required. The control plane writes deliver whenever the process version of the workspace has a type to deliver. deliver is present only on a run with workflow and with access write, and never on a run of the step prebuild. A run without deliver delivers nothing. A type appears in at most one entry. This schema cannot check that: a reader refuses run documents whose entries repeat a type. deliver sets the type and the send of each artifact that the run stores. On a run with a run code, qory takes these settings only from deliver of the run documents, never from process.yaml. If the process.yaml of the composed harness has different settings, qory prints one line with both values and uses deliver of the run documents. On that run, the adapter of the forge opens the draft from the change_request entry, and no submit program runs. A run that a person starts with no run code has no run documents, so it has no deliver. That run runs the submit program of the composed harness, which qory finds as submit-program/README.md describes. A run of the step prebuild has no deliver.",
-      "type": "array",
-      "minItems": 1,
-      "maxItems": 16,
-      "items": {
-        "$ref": "#/$defs/deliver_entry"
-      }
-    },
-    "deliver_entry": {
-      "description": "One artifact that the run delivers: type and send, both required.",
+    "submit": {
+      "description": "The settings of the submission of the run: type and send, both required, and no other member. The control plane writes submit whenever the process version of the workspace has one. submit is present only on a run with workflow and with access write. submit sets the type and the send of the submission that the run stores. On a run with a run code, qory takes these two settings only from submit of the run documents, never from process.yaml. If the process.yaml of the composed harness has a different submit, qory prints one line with both values and uses submit of the run documents. On that run, the adapter of the forge opens the draft from the submission entry, and no submit program runs. A run that a person starts with no run code has no run documents, so it has no submit. That run runs the submit program of the composed harness, which qory finds as submit-program/README.md describes. A run of the step prebuild has no submit.",
       "type": "object",
+      "additionalProperties": false,
       "required": [
         "type",
         "send"
       ],
       "properties": {
         "type": {
-          "description": "The artifact type that the run delivers: the name of a structured entry of artifact_types of the process. The name is lower-case letters and digits in groups joined by single hyphens, 1 to 64 bytes. This schema cannot check that artifact_types has that entry.",
+          "description": "The artifact type of the submission: the name of a structured entry of artifact_types of the process. The name is lower-case letters and digits in groups joined by single hyphens, 1 to 64 bytes. This schema cannot check that artifact_types has that entry.",
           "type": "string",
           "maxLength": 64,
           "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
         },
         "send": {
-          "description": "When the control plane writes the change_request entry to the change feed. With end_of_run, it writes the entry at the end of the run. With after_gate, it stores the artifact and writes the entry after the gate of the stage passes.",
+          "description": "When the control plane writes the submission entry to the change feed. With end_of_run, it writes the entry at the end of the run. With after_gate, it stores the submission and writes the entry after the gate of the stage passes.",
           "type": "string",
           "enum": [
             "end_of_run",
@@ -807,8 +750,9 @@
       }
     },
     "harness_selection": {
-      "description": "Parts of a module, by kind: the names of some entries of each kind listed, true for the instructions, and true or some names for the settings and the variables. A selection with only an undefined member, such as {\"zz\": 1}, passes minProperties and lists no part: exclude leaves nothing out, and only takes nothing. Go writes it back as {}, which this schema refuses.",
+      "description": "Parts of a module, by kind: the names of some entries of each kind listed, true for the instructions, and true or some names for the settings and the variables.",
       "type": "object",
+      "additionalProperties": false,
       "minProperties": 1,
       "properties": {
         "skills": {
@@ -1000,6 +944,7 @@
       },
       "else": {
         "type": "object",
+        "additionalProperties": false,
         "required": [
           "model"
         ],
