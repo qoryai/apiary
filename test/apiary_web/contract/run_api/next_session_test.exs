@@ -815,13 +815,16 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       body = json_response(request(ctx, ended(1)), 200)
 
       # Session 2 runs on Checkout keys: the choice's model, on its first key, in the
-      # member of the run contract's answer, whose schema fails a body with the member's
-      # former name.
+      # member of the run contract's answer, and not under the member's former name.
       assert %{"runtime" => "claude", "model" => "claude-sonnet-5-5"} = body["model_choice"]
       assert body["model_provider_credential_name"] == "#{other.public_id}-1"
       refute Map.has_key?(body, "model_credential")
       assert answer_valid?(body)
-      refute answer_valid?(Map.put(body, "model_credential", "#{other.public_id}-1"))
+
+      # The schema at effc22aa leaves an undefined member open, for readers to ignore:
+      # only a closed copy of the schema refuses the former name, as the fixture
+      # closed/next-session-answer-model-credential.json shows.
+      assert answer_valid?(Map.put(body, "model_credential", "#{other.public_id}-1"))
 
       # The run keeps the keys of both providers, the default model provider credential's
       # provider's first.

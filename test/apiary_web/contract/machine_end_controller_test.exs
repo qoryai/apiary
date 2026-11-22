@@ -313,6 +313,18 @@ defmodule ApiaryWeb.Contract.MachineEndControllerTest do
                "invalid/machine-end-without-state.json"
              ]
 
+      # shortcut: the readers refuse a member the schema does not define, which the
+      # contract at effc22aa ignores; replace in A-65, which changes the readers, with the
+      # contract's answer for each fixture of closed/.
+      closed =
+        for path <- Path.wildcard(Path.join([@fixtures, "closed", "machine-end-*.json"])) do
+          name = Path.relative_to(path, @fixtures)
+          assert refused?(report(ctx, dispatch, fixture_body(name)), 400, "invalid_request"), name
+          name
+        end
+
+      assert closed == ["closed/machine-end-undefined-member.json"]
+
       time = now_time()
 
       for raw <- [

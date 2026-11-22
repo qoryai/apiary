@@ -445,6 +445,31 @@ defmodule Apiary.Dispatches.WireTest do
                "release-reason-nul.json"
              ]
     end
+
+    # shortcut: the readers refuse a member the schema does not define, which the contract
+    # at effc22aa ignores; replace in A-65, which changes the readers, with the contract's
+    # answer for each request fixture of closed/.
+    test "every request fixture of closed/ is refused" do
+      refused =
+        for path <- Path.wildcard(Path.join([@fixtures, "closed", "*.json"])),
+            name = Path.basename(path),
+            # An answer's fixture is the starter's to refuse, and a refusal has no reader.
+            not String.contains?(name, "-answer-"),
+            kind = Enum.find(Map.keys(@readers), &String.starts_with?(name, &1 <> "-")) do
+          assert read(Map.fetch!(@readers, kind), File.read!(path)) == :error, name
+          name
+        end
+
+      assert Enum.sort(refused) == [
+               "claim-offers-undefined-member.json",
+               "claim-undefined-member.json",
+               "dispatched-external-undefined-member.json",
+               "dispatched-undefined-member.json",
+               "machine-end-undefined-member.json",
+               "machine-log-undefined-member.json",
+               "release-with-retry.json"
+             ]
+    end
   end
 
   describe "what every body refuses" do

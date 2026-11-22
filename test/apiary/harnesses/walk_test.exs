@@ -1321,7 +1321,7 @@ defmodule Apiary.Harnesses.WalkTest do
       }
 
       base = "extends: {git: \"#{@harness}\", ref: v1}\n"
-      schema = "modules:\n  - source: {git: \"#{@tools}\", ref: v2, bogus: x}\n"
+      schema = "modules:\n  - source: {git: \"#{@tools}\", ref: [v2]}\n"
       repeated = "modules: []\nmodules: []\n"
 
       walk = fn stack ->
@@ -1343,6 +1343,17 @@ defmodule Apiary.Harnesses.WalkTest do
       assert %{"message" => "repeats the key %{key}", "message_values" => %{"key" => "modules"}} =
                walk.(repeated)
 
+      # The schema at effc22aa leaves an undefined member open, so a source with one walks.
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: %{
+          {"R_harness", "qory-stack.yaml"} =>
+            "modules:\n  - source: {git: \"#{@tools}\", ref: v2, bogus: x}\n"
+        }
+      )
+
+      assert {:ok, _walked} = Walk.run(ctx.input)
+
       # Hidden: none of them.
       setting(admin, base)
 
@@ -1354,36 +1365,33 @@ defmodule Apiary.Harnesses.WalkTest do
       assert %{"message" => "repeats a key", "message_values" => %{}} = walk.(repeated)
     end
 
-    test "a stored flat bind fails the walk in the save check's words, hidden or not", ctx do
+    # The schema at effc22aa leaves the kinds of bind open, and a reader ignores a kind it
+    # does not know: only a closed copy of the schema refuses a flat bind, as the fixture
+    # closed/documents-harness-bind-flat.json of the run contract shows.
+    test "a stored flat bind passes the save check, hidden or not", ctx do
       admin = %{
         instance_admin_scope()
         | organisation: ctx.scope.organisation,
           workspace: ctx.scope.workspace
       }
 
-      base = "extends: {git: \"#{@harness}\", ref: v1}\n"
-      flat = base <> "bind: {agents/developer: web-developer}\n"
+      flat = @setting <> "bind: {agents/developer: web-developer}\n"
 
-      # A row saved before bind was nested: the save refuses a flat bind.
+      # A row saved before bind was nested.
       walk = fn scope ->
-        stack = setting(scope, base)
+        stack = setting(scope, @setting)
         Repo.update_all(from(s in Stacks.Stack, where: s.id == ^stack.id), set: [harness: flat])
-        serve([ctx.run], covered: covering(ctx), files: @base_files)
-        assert {:failed, %{failure: :invalid, rule: rule}} = Walk.run(ctx.input)
-        rule
+
+        serve([ctx.run],
+          covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+          files: @base_files
+        )
+
+        Walk.run(ctx.input)
       end
 
-      assert %{
-               "message" =>
-                 "Write bind by kind, then by role, such as " <>
-                   "bind: {agents: {developer: web-developer}}: %{key} is a flat key.",
-               "values" => %{"key" => "agents/developer"}
-             } = walk.(ctx.scope)
-
-      assert walk.(admin) == %{
-               "message" => "has a value the harness format does not take",
-               "values" => %{}
-             }
+      assert {:ok, _walked} = walk.(ctx.scope)
+      assert {:ok, _walked} = walk.(admin)
     end
 
     test "a hidden harness's rule has no path, ref or stack name", ctx do
