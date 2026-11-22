@@ -6568,9 +6568,10 @@ defmodule Apiary.StagesTest do
       %{"text" => "Criterion 2 is not met: the export has no PDF.", "action" => "run_again"}
     ]
 
-    # Build: `first` before a loop of implement-changes and review-changes, gate none.
+    # `before`, stages before Build. Build: `first` before a loop of implement-changes and
+    # review-changes, gate none.
     # Verify: verify-a-ticket, which returns to Build on changes-requested, at most 2 times.
-    defp returning!(scope, first \\ []) do
+    defp returning!(scope, first \\ [], before \\ []) do
       loop = %{
         "loop" => %{
           "rounds" => 3,
@@ -6578,12 +6579,16 @@ defmodule Apiary.StagesTest do
         }
       }
 
-      save!(scope, [
-        stage(@build, "Build", first ++ [loop], %{"gate" => %{"kind" => "none"}}),
-        stage(@verify, "Verify", [
-          %{"workflow" => "verify-a-ticket", "return" => %{"stage" => @build, "limit" => 2}}
-        ])
-      ])
+      save!(
+        scope,
+        before ++
+          [
+            stage(@build, "Build", first ++ [loop], %{"gate" => %{"kind" => "none"}}),
+            stage(@verify, "Verify", [
+              %{"workflow" => "verify-a-ticket", "return" => %{"stage" => @build, "limit" => 2}}
+            ])
+          ]
+      )
     end
 
     # Build's loop passes on its first run, and Verify's run starts.
@@ -8900,6 +8905,30 @@ defmodule Apiary.StagesTest do
     defp gate_approvals(work_item, scope),
       do: Stages.status(reload(work_item), scope).gate.approvals
 
+    # The number of approvals at `stage_id` that count (`Apiary.Stages.Withdrawals`).
+    defp counting(work_item, stage_id) do
+      from(d in GateDecision,
+        as: :decision,
+        where: d.work_item_id == ^work_item.id and d.kind == :approve and d.stage_id == ^stage_id
+      )
+      |> Apiary.Stages.Withdrawals.counted(reload(work_item))
+      |> Repo.aggregate(:count)
+    end
+
+    # Shape with one run and gate none, before Build (`returning!/3`).
+    defp shape_none,
+      do:
+        stage(@shape, "Shape", [%{"workflow" => "shape-a-ticket"}], %{
+          "gate" => %{"kind" => "none"}
+        })
+
+    # Shape's run passes, its gate none approves, and Build's loop starts.
+    defp through_shape!(work_item) do
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
+      work_item
+    end
+
     test "a member's Move back withdraws the approvals of the stage it lands on and of each " <>
            "later one, and a later approval counts again",
          %{scope: scope} do
@@ -9023,8 +9052,8 @@ defmodule Apiary.StagesTest do
     test "a run's return writes a move with no member and withdraws the approvals of the " <>
            "stage it returns to",
          %{scope: scope} do
-      returning!(scope)
-      work_item = take_in!(scope) |> through_build!()
+      returning!(scope, [], [shape_none()])
+      work_item = take_in!(scope) |> through_shape!() |> through_build!()
 
       work_item = end_run!(work_item, verdict("changes-requested", @findings))
       assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
@@ -9039,13 +9068,18 @@ defmodule Apiary.StagesTest do
              } = List.last(decisions(work_item))
 
       assert gate_approvals(work_item, scope) == []
+      # Shape is before Build: its approval still counts.
+      assert counting(work_item, @shape) == 1
     end
 
     test "Request changes with a return writes a move with no member and withdraws the " <>
            "approvals of the stage it returns to",
          %{scope: scope} do
-      returning!(scope)
-      work_item = take_in!(scope) |> through_build!() |> end_run!(verdict("passed"))
+      returning!(scope, [], [shape_none()])
+
+      work_item =
+        take_in!(scope) |> through_shape!() |> through_build!() |> end_run!(verdict("passed"))
+
       assert %WorkItem{stage_id: @verify, stage_state: :at_gate} = work_item
 
       assert {:ok, %WorkItem{stage_id: @build}} =
@@ -9067,6 +9101,8 @@ defmodule Apiary.StagesTest do
              ] = Enum.reject(decisions(work_item), &(&1.kind == :approve))
 
       assert gate_approvals(work_item, scope) == []
+      # Shape is before Build: its approval still counts.
+      assert counting(work_item, @shape) == 1
     end
 
     test "a take in again writes a move with no member, and no approval of an earlier take " <>
@@ -9091,6 +9127,14 @@ defmodule Apiary.StagesTest do
              } = List.last(decisions(work_item))
 
       assert gate_approvals(work_item, scope) == []
+
+      # A take in again lands on the first stage, so no stage before it has an approval
+      # in the new take in. The move withdraws no approval made after it: Build's approval
+      # of take in 2 counts, and the one of take in 1 does not.
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %WorkItem{stage_id: @verify} = work_item
+      assert counting(work_item, @build) == 1
+      assert length(for d <- decisions(work_item), d.kind == :approve, do: d) == 2
     end
 
     test "the notes and a push leave out the move of a return", %{scope: scope} do
@@ -9302,6 +9346,31 @@ defmodule Apiary.StagesTest do
       {:ok, work_item} = Stages.move(scope, work_item, @explore, nil, expect_stage: @shape)
       assert Explore.confirmation(work_item.id, work_item.take_in) == nil
       refute Explore.statuses([work_item.id]) == %{work_item.id => :shape}
+    end
+
+    test "a forward Move withdraws no approval", %{scope: scope} do
+      criteria_process!(scope)
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _work_item} = WorkItems.confirm(scope, work_item, 1)
+
+      work_item =
+        work_item
+        |> reload()
+        |> end_run!(both(pushes_one("acceptance-criteria", "AC-1", []), verdict("passed")))
+
+      {:ok, work_item} = Stages.approve(scope, work_item, nil, expect_stage: @shape)
+      assert %WorkItem{stage_id: @build} = work_item
+      assert counting(work_item, @shape) == 1
+
+      {:ok, work_item} = Stages.move(scope, work_item, @verify, nil, expect_stage: @build)
+
+      assert %GateDecision{kind: :move, stage_id: @build, to_stage_id: @verify} =
+               List.last(decisions(work_item))
+
+      assert counting(work_item, @shape) == 1
+      assert counted(work_item)["acceptance-criteria"] == [1]
+      assert %Confirmation{} = Explore.confirmation(work_item.id, work_item.take_in)
+      assert Explore.statuses([work_item.id]) == %{work_item.id => :shape}
     end
 
     test "a move back to a stage after Explore's leaves the confirmation counting",
