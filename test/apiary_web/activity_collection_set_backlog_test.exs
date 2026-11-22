@@ -83,8 +83,6 @@ defmodule ApiaryWeb.ActivityCollectionSetBacklogTest do
 
     test "the sentence: the target's sources' word, from the names the page reads" do
       %{scope: scope} = sign_up_fixture()
-      started_run(scope, %{"forge" => "code.example.com", "repository" => "acme/shop"})
-      target = Targets.get(scope, "code.example.com", "acme/shop")
       connection = ticket_connection_fixture(scope)
       name(connection.adapter_id, "story", "stories")
 
@@ -92,6 +90,10 @@ defmodule ApiaryWeb.ActivityCollectionSetBacklogTest do
         target_system: "code.example.com",
         target_path: "acme/shop"
       })
+
+      # The collection first, so the run's target is the collection's.
+      started_run(scope, %{"forge" => "code.example.com", "repository" => "acme/shop"})
+      target = Targets.get(scope, "code.example.com", "acme/shop")
 
       on = entry(%{"backlog" => true, "count" => 1}, target.id)
       off = entry(%{"backlog" => false, "count" => 1}, target.id)

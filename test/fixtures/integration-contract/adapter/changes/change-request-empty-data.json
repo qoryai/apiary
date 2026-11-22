@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "revision": 1,
+  "cursor": "c_00000071",
+  "changes": [
+    {
+      "kind": "change_request",
+      "change_request_id": "av_7k2m9q4v1x8z3c5d",
+      "change_kind": "reply",
+      "target": {
+        "collection": "SUPPORT"
+      },
+      "title": "Thanks for the report",
+      "text": "",
+      "data": {}
+    }
+  ]
+}

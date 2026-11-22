@@ -9,8 +9,6 @@ defmodule Apiary.Stacks.QoryVersionMigrationTest do
 
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Runs.Target
-
   @migration {20_261_106_190_100, Apiary.Repo.Migrations.ChooseABranchTagOrCommitOfTheQoryHarness,
               "choose_a_branch_tag_or_commit_of_the_qory_harness"}
 
@@ -53,7 +51,7 @@ defmodule Apiary.Stacks.QoryVersionMigrationTest do
     %{scope: scope} = sign_up_fixture()
 
     target =
-      Repo.insert!(%Target{
+      Apiary.NodesFixtures.target_fixture(%{
         organisation_id: scope.organisation.id,
         workspace_id: scope.workspace.id,
         system: "code.example.com",

@@ -111,6 +111,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
 
   defp delete_adapters(query) do
     ids = Repo.all(select(query, [n], n.id))
+    Repo.delete_all(from t in Target, where: t.adapter_id in ^ids)
     connections = from c in Connection, where: c.adapter_id in ^ids, select: c.id
 
     Repo.delete_all(
@@ -132,7 +133,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
 
   # Each collection's `grant_ref` is the live grant that the setup made for the
   # connection (`listing_grant/1`), written here without a query, as a part runs in a
-  # racing process.
+  # racing process. A target without a `collection` is the collection itself.
   defp part(connection, refs, id, started_at, target \\ nil) do
     %{
       time: DateTime.utc_now(:second),
@@ -145,7 +146,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
             url: "https://t.example/" <> ref,
             title: ref,
             grant_ref: "G_" <> connection.public_id,
-            target: target
+            target: target && Map.put_new(target, :collection, ref)
           }
         ),
       listing: %{id: id, part: 1, started_at: started_at, complete: true}
@@ -426,28 +427,31 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
     end
 
     {:ok, 3} = assign(ctx, ids, ctx.scope.workspace).()
-    :ok = Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [@shop])
     [a, b, c] = ids
 
+    # The assign makes the one target of the three collections, `A` at `@shop`: its
+    # switch turns the three.
     %{
       a: a,
       b: b,
       c: c,
       target:
-        Repo.get_by!(Target,
-          workspace_id: ctx.scope.workspace.id,
-          system: @shop.system,
-          path: @shop.path
+        Repo.one!(
+          from t in Target,
+            where: t.workspace_id == ^ctx.scope.workspace.id,
+            where: t.system == ^@shop.system and t.path == ^@shop.path,
+            order_by: t.collection_external_ref,
+            limit: 1
         )
     }
   end
 
-  # A part naming `A`, `B` and `C` with the target `@shop`, started `started_at`.
+  # A part naming `A`, `B` and `C` with the target `A` at `@shop`, started `started_at`.
   defp targeted(ctx, id, started_at),
     do: fn ->
       Collections.post_listing(
         ctx.key_scope,
-        part(ctx.connection, ["A", "B", "C"], id, started_at, @shop)
+        part(ctx.connection, ["A", "B", "C"], id, started_at, Map.put(@shop, :collection, "A"))
       )
     end
 
@@ -1108,7 +1112,7 @@ defmodule Apiary.Adapters.CollectionsRacesTest do
             url: "https://t.example/" <> ref,
             title: ref,
             grant_ref: "G_" <> ctx.connection.public_id,
-            target: target,
+            target: target && Map.put(target, :collection, ref),
             items: items
           }
         ],

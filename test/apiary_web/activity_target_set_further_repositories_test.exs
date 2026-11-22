@@ -43,7 +43,11 @@ defmodule ApiaryWeb.ActivityTargetSetFurtherRepositoriesTest do
   test "the sentence names the list after the change, or that its runs read no other" do
     %{scope: scope} = sign_up_fixture()
     started_run(scope, %{"forge" => "code.example.com", "repository" => "acme/shop"})
-    target = Targets.get(scope, "code.example.com", "acme/shop")
+
+    target =
+      scope
+      |> Targets.get("code.example.com", "acme/shop")
+      |> Apiary.NodesFixtures.further_collections_fixture(~w(acme/docs acme/api))
 
     {:ok, target} = Targets.set_further_repositories(scope, target, "acme/docs\nacme/api")
     assert shown(last_entry(target)) == "Changed what its runs read: acme/docs, acme/api"

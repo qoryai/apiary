@@ -10,6 +10,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
   import Ecto.Query, only: [from: 2]
   import Apiary.AccountsFixtures, only: [user_fixture: 0]
   import Apiary.DispatchedRunsFixtures
+  import Apiary.NodesFixtures, only: [target_fixture: 1]
   import Apiary.OrganisationsFixtures
   import Apiary.RunEventsFixtures
 
@@ -85,6 +86,15 @@ defmodule Apiary.Runs.DiagnosticsTest do
         {2, "run.exited", %{"exit_code" => 0}}
       ])
 
+      target =
+        target_fixture(%{
+          organisation_id: run.organisation_id,
+          workspace_id: run.workspace_id,
+          collection_external_ref: "R_1001",
+          system: "forge.example.com",
+          path: "acme/example"
+        })
+
       run =
         run
         |> Ecto.Changeset.change(
@@ -92,6 +102,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
           exit_state: "completed",
           exit_code: 0,
           reason: "Not A Code",
+          target_id: target.id,
           target_system: "forge.example.com",
           target_path: "acme/example",
           started_at: at(1),
@@ -121,7 +132,10 @@ defmodule Apiary.Runs.DiagnosticsTest do
                "exited_at" => "2026-09-16T12:00:02Z",
                "organisation" => %{"slug" => scope.organisation.slug},
                "workspace" => %{"id" => scope.workspace.public_id},
-               "target" => %{"system" => "forge.example.com", "path" => "acme/example"}
+               "target" => %{
+                 "collection" => "R_1001",
+                 "address" => %{"system" => "forge.example.com", "path" => "acme/example"}
+               }
              }
 
       assert [%{"sequence" => 1, "type" => "dev.qory.run.started"}, %{"sequence" => 2}] =
@@ -130,6 +144,53 @@ defmodule Apiary.Runs.DiagnosticsTest do
       assert document["events"] |> hd() |> Map.fetch!("time") == "2026-09-16T12:00:01.000000Z"
       assert document["events_omitted"] == 0
       assert document["log"] == %{"text" => "", "truncated" => false}
+    end
+
+    test "has the target's collection, and an address only where it matches the contract",
+         %{schema: schema, run: run} do
+      target =
+        target_fixture(%{
+          organisation_id: run.organisation_id,
+          workspace_id: run.workspace_id,
+          collection_external_ref: "Q_support"
+        })
+
+      target_of = fn system, path ->
+        run
+        |> Ecto.Changeset.change(target_id: target.id, target_system: system, target_path: path)
+        |> Repo.update!()
+        |> then(&valid!(schema, Diagnostics.document(&1, :instance)))
+        |> get_in(["run", "target"])
+      end
+
+      assert target_of.(nil, nil) == %{"collection" => "Q_support"}
+
+      assert target_of.("forge.example.com", String.duplicate("p", 200)) == %{
+               "collection" => "Q_support",
+               "address" => %{
+                 "system" => "forge.example.com",
+                 "path" => String.duplicate("p", 200)
+               }
+             }
+
+      for {system, path} <- [
+            {"Forge.Example.com", "acme/shop"},
+            {"forge.example.com:8443", "acme/shop"},
+            {"forge.example.com", String.duplicate("p", 201)},
+            {"forge.example.com", "acme\tshop"}
+          ] do
+        assert target_of.(system, path) == %{"collection" => "Q_support"}, inspect(path)
+      end
+
+      without =
+        run
+        |> Ecto.Changeset.change(target_id: nil, target_system: "forge.example.com")
+        |> Repo.update!()
+
+      refute Map.has_key?(
+               valid!(schema, Diagnostics.document(without, :instance))["run"],
+               "target"
+             )
     end
 
     test "leaves out the machine logs for a person who is no instance admin",

@@ -2,8 +2,11 @@
   "step": "explore",
   "access": "read",
   "target": {
-    "system": "code.example.com",
-    "path": "acme/shop"
+    "collection": "R_1001",
+    "address": {
+      "system": "code.example.com",
+      "path": "acme/shop"
+    }
   },
   "work_item": {
     "id": "wi_8Kx2mQ4vT9",
@@ -62,8 +65,11 @@
     ],
     "comments_omitted": 0,
     "target": {
-      "system": "code.example.com",
-      "path": "acme/shop"
+      "collection": "R_1001",
+      "address": {
+        "system": "code.example.com",
+        "path": "acme/shop"
+      }
     },
     "domain": "software"
   }

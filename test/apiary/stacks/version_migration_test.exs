@@ -8,8 +8,6 @@ defmodule Apiary.Stacks.VersionMigrationTest do
 
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Runs.Target
-
   @migration {20_261_029_180_000, Apiary.Repo.Migrations.KeepTheVersionOfAHarnessChoice,
               "keep_the_version_of_a_harness_choice"}
 
@@ -52,7 +50,7 @@ defmodule Apiary.Stacks.VersionMigrationTest do
     %{scope: scope} = sign_up_fixture()
 
     target =
-      Repo.insert!(%Target{
+      Apiary.NodesFixtures.target_fixture(%{
         organisation_id: scope.organisation.id,
         workspace_id: scope.workspace.id,
         system: "code.example.com",

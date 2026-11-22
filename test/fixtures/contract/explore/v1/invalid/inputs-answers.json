@@ -59,8 +59,7 @@
     }
   ],
   "target": {
-    "system": "tracker.example.com",
-    "path": "customer-care"
+    "collection": "SQ_1001"
   },
   "domain": "customer-care"
 }

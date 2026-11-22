@@ -74,7 +74,7 @@ defmodule ApiaryProWeb.FeatureVisibilityLiveTest do
     test "the organisation's nodes are still served its policy, and its runs recorded", ctx do
       {key, _secret} = ctx.key
       assert Serving.managed?(key)
-      assert {:ok, configuration} = Serving.fetch(key, %{})
+      assert {:ok, configuration} = Serving.fetch(key, %{}, nil)
       assert configuration.digest == ctx.baseline
 
       Repo.update_all(from(n in Node, where: n.id == ^ctx.node.id),

@@ -2,9 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/integration/v1/connections-disconnect.schema.json",
   "title": "Connection disconnect",
-  "description": "The body of the signed POST /v1/connections/disconnect, application/json: the source no longer grants this connection access. The control plane ends the connection: its collections take no more items, and their assignments to workspaces end. The change feed has an unlinked entry for each of them that was linked (changes.schema.json). After the control plane's answer, the adapter drops that connection's collections from its state, and a request for one of those that ended with it is refused 409 connection_ended, except a sources/disconnect, which is answered with the signed 204 (sources-disconnect.schema.json). The control plane refuses a connection_id that it does not hold for this adapter, 403 connection_unknown (refusal.schema.json), and then a connection that already ended, 409 connection_ended, which an adapter takes as the connection ended, as it takes the 204. A disconnect of a pending connection, its connection not yet made, is answered with the signed 204 and ends it, and so is a disconnect of a suspended one: connection_suspended does not apply to this request, so the order is 403, then 409 connection_ended. On success the control plane answers a signed 204 with no body. It is signed with the adapter's access key as definitions.schema.json describes. The control plane refuses a time more than 300 seconds from its clock, either way, or a request whose signature it has already seen, with an unsigned 401; definitions.schema.json has the replay rule. A member this schema does not define is refused, invalid_request.",
+  "description": "The body of the signed POST /v1/connections/disconnect, application/json: the source no longer grants this connection access. The control plane ends the connection: its collections take no more items, and their assignments to workspaces end. The change feed has an unlinked entry for each of them that was linked (changes.schema.json). After the control plane's answer, the adapter drops that connection's collections from its state, and a request for one of those that ended with it is refused 409 connection_ended, except a sources/disconnect, which is answered with the signed 204 (sources-disconnect.schema.json). The control plane refuses a connection_id that it does not hold for this adapter, 403 connection_unknown (refusal.schema.json), and then a connection that already ended, 409 connection_ended, which an adapter takes as the connection ended, as it takes the 204. A disconnect of a pending connection, its connection not yet made, is answered with the signed 204 and ends it, and so is a disconnect of a suspended one: connection_suspended does not apply to this request, so the order is 403, then 409 connection_ended. On success the control plane answers a signed 204 with no body. It is signed with the adapter's access key as definitions.schema.json describes. The control plane refuses a time more than 300 seconds from its clock, either way, or a request whose signature it has already seen, with an unsigned 401; definitions.schema.json has the replay rule. The control plane ignores a member that this schema does not define, unless the must_understand of the body lists it. It refuses a body whose must_understand lists a pointer that it does not define, 400 invalid_request.",
   "type": "object",
-  "additionalProperties": false,
   "required": ["version", "time", "connection_id"],
   "properties": {
     "version": {
@@ -18,6 +17,18 @@
     "connection_id": {
       "description": "The connection the source no longer grants access to, in the same form as in a listing (source-collections.schema.json).",
       "$ref": "definitions.schema.json#/$defs/connection_id"
+    },
+    "must_understand": {
+      "description": "The members of the document that the reader must understand, each as a JSON Pointer (RFC 6901) counted from the document, such as /connection_id. List each once, at most 32. A pointer has no line feed, and writes ~ only as ~0 or ~1. Each pointer is to a member that this schema defines. The control plane ignores a member that this schema does not define, unless the must_understand of the body lists it. It refuses a body whose must_understand lists a pointer that it does not define, 400 invalid_request.",
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 256,
+        "not": {"pattern": "\\n"},
+        "pattern": "^(?:/connection_id|/time|/version)$"
+      }
     }
   }
 }

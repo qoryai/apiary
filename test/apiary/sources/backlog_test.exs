@@ -1783,7 +1783,11 @@ defmodule Apiary.Sources.BacklogTest do
       refute Backlog.backlog_facts(ctx.scope).take_in?
 
       item
-      |> Ecto.Changeset.change(target_system: "code.example.com", target_path: "acme/shop")
+      |> Ecto.Changeset.change(
+        target_collection_external_ref: "acme/shop",
+        target_system: "code.example.com",
+        target_path: "acme/shop"
+      )
       |> Repo.update!()
 
       assert Backlog.backlog_facts(ctx.scope).take_in?
@@ -1793,7 +1797,11 @@ defmodule Apiary.Sources.BacklogTest do
       refute Backlog.backlog_facts(ctx.scope).take_in?
 
       ctx.collection
-      |> Ecto.Changeset.change(target_system: "code.example.com", target_path: "acme/shop")
+      |> Ecto.Changeset.change(
+        target_collection_external_ref: "acme/shop",
+        target_system: "code.example.com",
+        target_path: "acme/shop"
+      )
       |> Repo.update!()
 
       ticket(ctx.collection)

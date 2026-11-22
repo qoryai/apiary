@@ -15,7 +15,7 @@ defmodule Apiary.Stages.SharedRunTest do
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.RunHarness
   alias Apiary.Runs.Run
-  alias Apiary.Stages.{Escalation, Session}
+  alias Apiary.Stages.{Escalation, GateDecision, Session, Withdrawals}
   alias Apiary.WorkItems.WorkItem
 
   @moduletag needs: [:factory, :workflow_model]
@@ -68,6 +68,16 @@ defmodule Apiary.Stages.SharedRunTest do
 
   defp sessions(run),
     do: Repo.all(from s in Session, where: s.dispatch_run_id == ^run.id, order_by: s.sequence)
+
+  # The number of approvals at `stage_id` that count (`Apiary.Stages.Withdrawals`).
+  defp approvals(work_item, stage_id) do
+    from(d in GateDecision,
+      as: :decision,
+      where: d.work_item_id == ^work_item.id and d.kind == :approve and d.stage_id == ^stage_id
+    )
+    |> Withdrawals.counted(reload(work_item))
+    |> Repo.aggregate(:count)
+  end
 
   defp escalations(work_item),
     do: Repo.all(from e in Escalation, where: e.work_item_id == ^work_item.id)
@@ -1073,6 +1083,65 @@ defmodule Apiary.Stages.SharedRunTest do
       assert [_shared, %DispatchRun{workflow: "implement-changes"}] = runs(ctx.work_item)
       assert escalations(ctx.work_item) == []
     end
+  end
+
+  test "a return in a shared run writes the stage runner's move and withdraws the approvals " <>
+         "of the stage it returns to, not of an earlier one",
+       %{scope: scope} do
+    plan = Processes.new_stage_id()
+    none = %{"gate" => %{"kind" => "none"}}
+
+    save!(scope, [
+      stage(plan, "Plan", workflows(["plan-the-build"]), none),
+      stage(@build, "Build", workflows(["implement-changes"]), none),
+      stage(
+        @verify,
+        "Verify",
+        [%{"workflow" => "verify-a-ticket", "return" => %{"stage" => @build, "limit" => 2}}],
+        %{"shared_run" => true}
+      )
+    ])
+
+    passed = fn run, _registered -> verdict!(run, "passed") end
+    work_item = scope |> taken_in_fixture() |> end_run!(passed) |> end_run!(passed)
+    assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
+    assert approvals(work_item, plan) == 1
+    assert approvals(work_item, @build) == 1
+
+    run = newest_run(work_item)
+    walk!(run, :read)
+    claim!(run)
+
+    {:ok, _version} =
+      Stages.Artifacts.push_json(
+        {:run, run},
+        work_item,
+        "verdict",
+        %{
+          "verdict" => "changes-requested",
+          "points" => [%{"text" => "Criterion 2 fails.", "action" => "run_again"}]
+        },
+        stage_id: @verify
+      )
+
+    report(run, 1)
+    assert %WorkItem{stage_id: @build} = reload(work_item)
+
+    assert [
+             %GateDecision{
+               kind: :move,
+               stage_id: @verify,
+               to_stage_id: @build,
+               automatic: true,
+               user_id: nil
+             }
+           ] =
+             Repo.all(
+               from d in GateDecision, where: d.work_item_id == ^work_item.id and d.kind == :move
+             )
+
+    assert approvals(work_item, plan) == 1
+    assert approvals(work_item, @build) == 0
   end
 
   test "a last stage with gate none closes the work item at the end of the run's last session",

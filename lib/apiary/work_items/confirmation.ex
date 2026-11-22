@@ -1,7 +1,9 @@
 defmodule Apiary.WorkItems.Confirmation do
   # A confirmation: a member's confirmation of the proposal a run of a take in of a work
-  # item made (`Apiary.WorkItems.Moves`), at most one per take in. It makes the work item
-  # ready for Shape.
+  # item made (`Apiary.WorkItems.Moves`). It makes the work item ready for Shape. A move back
+  # to Explore's stage or before it withdraws it, and a member confirms again: a take in
+  # may have several, and the newest that counts is the one read
+  # (`Apiary.Stages.Withdrawals`, `Apiary.WorkItems.Explore.confirmation/2`).
   #
   # `take_in` and `attempt` name the run. `result` is `%{"proposal_version" => n}`, the
   # version of the work item's proposal confirmed; a confirmation written before Explore's

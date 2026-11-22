@@ -82,7 +82,14 @@ defmodule Apiary.Environments.TargetMigrationTest do
     %{scope: scope} = sign_up_fixture()
     pool = pool_fixture(scope)
     shop = collection_fixture(scope, target_path: "acme/shop", environment_ref: nil)
-    bare = collection_fixture(scope, target_system: nil, target_path: nil, environment_ref: nil)
+
+    bare =
+      collection_fixture(scope,
+        target_collection_external_ref: nil,
+        target_system: nil,
+        target_path: nil,
+        environment_ref: nil
+      )
 
     down!(@hold)
     down!(@target)

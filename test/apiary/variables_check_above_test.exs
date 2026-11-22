@@ -10,7 +10,6 @@ defmodule Apiary.VariablesCheckAboveTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{Access, Policy, Variables}
-  alias Apiary.Runs.Target
   alias Apiary.Variables.Variable
 
   setup do
@@ -20,7 +19,7 @@ defmodule Apiary.VariablesCheckAboveTest do
   end
 
   defp target!(scope, path) do
-    Repo.insert!(%Target{
+    Apiary.NodesFixtures.target_fixture(%{
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
       system: "github.example",

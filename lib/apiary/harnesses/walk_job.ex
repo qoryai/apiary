@@ -47,9 +47,9 @@ defmodule Apiary.Harnesses.WalkJob do
   @doc false
   # queue/2 writes the row of `run`, a run of the queue just inserted, and its job where
   # it has a workflow, inside the caller's transaction. `target` is the work item's
-  # `%{system, path}`, nil for none, or `:test` for a test work item's run. `{:ok, row}`
-  # or `{:error, reason}`.
-  @spec queue(DispatchRun.t(), %{system: String.t(), path: String.t()} | nil | :test) ::
+  # (`Apiary.Lingo.Domain.target/0`), nil for none, or `:test` for a test work item's run.
+  # `{:ok, row}` or `{:error, reason}`.
+  @spec queue(DispatchRun.t(), Apiary.Lingo.Domain.target() | nil | :test) ::
           {:ok, RunHarness.t()} | {:error, term}
   def queue(%DispatchRun{} = run, :test),
     do: Repo.insert(struct!(RunHarness, [dispatch_run_id: run.id] ++ Builtin.walked()))
@@ -113,11 +113,12 @@ defmodule Apiary.Harnesses.WalkJob do
       nil ->
         :ok
 
-      {row, run, target} ->
+      {row, run, work_item} ->
         input = %{
           organisation: scope.organisation,
           workspace: scope.workspace,
-          target: target,
+          target: WorkItem.target(work_item),
+          work_item: work_item,
           workflow: row.workflow,
           # Hand-over: with the workflow model, a run that `queue/2` gave its stage entry's
           # workflow (`Apiary.Stages.run_workflow/1`).
@@ -141,8 +142,8 @@ defmodule Apiary.Harnesses.WalkJob do
     end
   end
 
-  # The pending row of the run `id` while the run waits, the run, and its target; nil for
-  # none.
+  # The pending row of the run `id` while the run waits, the run, and its work item; nil
+  # for none.
   defp pending(id) do
     Repo.one(
       from h in RunHarness,
@@ -151,18 +152,11 @@ defmodule Apiary.Harnesses.WalkJob do
         join: w in WorkItem,
         on: w.id == r.work_item_id,
         where: h.dispatch_run_id == ^id and h.state == :pending and r.state == :waiting,
-        select: {h, r, %{system: w.target_system, path: w.target_path}}
+        select: {h, r, w}
     )
     |> case do
-      {row, run, %{system: system, path: path} = target}
-      when is_binary(system) and is_binary(path) ->
-        {row, run, target}
-
-      {row, run, _no_target} ->
-        {row, run, nil}
-
-      nil ->
-        nil
+      {row, run, work_item} -> {row, run, work_item}
+      nil -> nil
     end
   end
 

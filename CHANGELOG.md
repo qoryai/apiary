@@ -12,6 +12,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Added
 
+<!-- feature: factory -->
+- An organisation's connection to an adapter has one external account. The server returns
+  409 `connection_held` for a grant report with another ref than the connection's grant
+  that has not ended, and nothing changes: no grant, no pass spent, no feed entry. A report
+  of the same ref replaces the grant, and once that grant ends, a report of another ref is
+  accepted. The check comes after `pass_unknown` and `grant_taken`. A unique index allows
+  one grant that has not ended per connection; its migration fails on a database where a
+  connection has two. When a connect return has the outcome `refused` and the reason
+  `connection_held`, the page shows: “Disconnect the account that is connected to Acme
+  first, then install again. An organisation connects one account of each integration.”
+<!-- /feature -->
 - Each session of a run has a record, which Qory Apiary keeps when the run's events are
   deleted. The record has the session's work item, target, stage, workflow, attempt,
   session number, start and end, duration, turns, tokens in and out with cache reads and
@@ -2087,6 +2098,41 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   type or, with `name` alone beside it, a standard type. A run cannot then withdraw a name
   of that type, and it cannot withdraw a name whose newest version a member approved at a
   gate: the run API returns `422` `type_not_withdrawable`.
+- `DocumentsCheck.check/1` states the two rules of a run's documents that
+  the schema cannot state: no `deliver` type twice, and no `collection` twice across `target`
+  and `further_targets`. It returns the message of the integrations' `Documents.Check()`.
+  No code calls it, because no run's documents have `deliver` or `further_targets`.
+- `ChangeRequest.validate/1` checks a `change_request` entry against the
+  integrations contract's `changes.schema.json`, vendored under `priv/contract/integration/`.
+  It refuses a title that is empty, only spaces, over 256 characters or on more than one
+  line. It refuses a title with a hidden character, a text with U+0000 or over 20,000
+  characters, and a `data` that is not an object. A text with a `<!-- qory:start -->` line is valid. No code
+  writes the entry, so no entry is checked.
+- A version stores where its delivery to an adapter stands: `delivery` (`sent`,
+  `delivered` or `failed`), the adapter's reply, the reason of a failure, a detail of 1 to
+  1000 characters on one line, the target it went to, and the time.
+  `previous_address/1` reads the address of the newest reply of the version's artifact,
+  for the `previous.address` of the next entry. Nothing sets `sent` until Qory Apiary
+  writes a version's `change_request` entry to an adapter's change feed.
+- `record_invalid/2` stores a failed delivery with the reason `invalid` on a version whose
+  entry failed `ChangeRequest.validate/1`, and sends nothing. The detail is the first
+  member of the entry that failed, such as `#/title`. A version that has a delivery is
+  left as it is. Nothing calls it until Qory Apiary writes a version's `change_request`
+  entry to an adapter's change feed.
+- `ChangeReport.submitted/1` and `failed/1` read an adapter's reply to a change request
+  and its report that one failed, by the integrations contract. A reply with a `data` over
+  786432 bytes serialized, or an `address.url` off the system of its target, is refused.
+  `find_sent/3`, `delivered/2` and `failed/2` find the version that a report is about and
+  store the first result only.
+- `POST /v1/work-items/changes/submitted` takes an adapter's reply to a change request,
+  and `POST /v1/work-items/changes/failed` takes a body with `change_request_id` as its
+  report that one failed. Each needs `change_request.report` and answers a signed `204`.
+  The result is stored with the version, once: a report for an unknown id, another
+  adapter's version, a version not sent or one with a result already changes nothing.
+  Until Qory Apiary writes `change_request` entries and sets `sent`, no report finds a
+  version.
+- `change_request.report`, an action of an adapter's key, covers the adapter's report of
+  what became of a change request: its reply and its failure.
 
 ### Changed
 
@@ -3055,6 +3101,22 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - `observability` is always on: `QORY_FEATURES` no longer turns it off.
 - A feature that a later release adds starts at its default, even on an instance whose
   features were saved.
+- The integration contract and the data descriptions are vendored at integrations
+  `effc22aa`. Its schemas leave an undefined member open. A description with a
+  `publisher`, or a data description with a `program`, is read. The `document` of the
+  description keeps the member. The adapter declaration, the bodies of calls to an adapter
+  and source items still refuse an undefined member. So do the grant end, the sources
+  disconnect and the feed writer, and their tests keep that. The `openai-subscription`
+  description has the text of `effc22aa`. A description may have `links`, 1 to 16 entries
+  of a `system` and a `template` (a link with placeholders for a path). The schema refuses
+  a template that is not `https`, has a port, a query, a fragment, an unknown placeholder
+  or more than 2048 characters. The `document` of a description keeps `links`. No page
+  reads it yet. The run, explore and diagnostics contracts and the run documents schema
+  stay at `e0d7be1`, the provisioner contract at `8d859a1`, and the check fixtures of
+  `DocumentsCheck` at `4c788f4`.
+- The reply to a change request (`changes-submitted.schema.json`) and the reports of a
+  change request (`changes-failed.schema.json`) are vendored with their fixtures.
+  `POST /v1/work-items/changes/submitted` reads the reply.
 
 ### Removed
 
@@ -3967,6 +4029,15 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   built inside the migration, so writes to `work_items` wait until the build ends.
 - Three migrations add the saved features to the instance's settings (20261112120000,
   20261112140000) and the features each run started with (20261112120100).
+<!-- feature: workflow_model -->
+- `artifact_versions` (20261122093000 and 20261122093100): six nullable columns,
+  `delivery`, `delivery_reply`, `delivery_failure`, `delivery_detail`,
+  `delivery_target_id` and `delivery_at`. They have no default, rewrite no row and are
+  empty on every stored version. `delivery_target_id` is a foreign key to `targets` of the
+  same workspace, set to NULL when the target is deleted. Four checks keep their values.
+  The first migration adds them without a scan. The second validates them with a scan that
+  does not block writes. Rolling back drops the columns and what they stored.
+<!-- /feature -->
 
 ## [0.1.0] - 2026-10-13
 

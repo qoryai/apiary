@@ -238,7 +238,7 @@ defmodule Apiary.WorkItems.TakeInTest do
       ticket =
         backlog_ticket_fixture(ctx.scope,
           connection: ctx.connection,
-          collection: %{target_system: nil, target_path: nil}
+          collection: %{target_collection_external_ref: nil, target_system: nil, target_path: nil}
         )
 
       assert WorkItems.take_in(ctx.scope, ticket.public_id) == {:error, :no_target}
@@ -315,13 +315,17 @@ defmodule Apiary.WorkItems.TakeInTest do
       ticket =
         backlog_ticket_fixture(ctx.scope,
           connection: ctx.connection,
-          collection: %{target_system: nil, target_path: nil}
+          collection: %{target_collection_external_ref: nil, target_system: nil, target_path: nil}
         )
 
-      assert {:ok, %WorkItem{target_system: nil, target_path: nil} = work_item} =
+      assert {:ok,
+              %WorkItem{target_collection_external_ref: nil, target_system: nil, target_path: nil} =
+                work_item} =
                WorkItems.take_in(ctx.scope, ticket.public_id)
 
-      assert %WorkItem{target_system: nil, target_path: nil} = Repo.reload!(work_item)
+      assert %WorkItem{target_collection_external_ref: nil, target_system: nil, target_path: nil} =
+               Repo.reload!(work_item)
+
       assert [%DispatchRun{state: :waiting}] = runs(work_item)
     end
 

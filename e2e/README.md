@@ -67,6 +67,11 @@ answers, and the reload a new digest asks for, `GET /v1/runs/<run_id>`.
    `build-01` (`Apiary.Nodes.create_node/2`). It generates a fresh Ed25519 key and adds
    its public key to the node the way the node's Generate a key adds one made in a
    browser (`Apiary.AccessKeys.add_access_key/3`), active as it is added.
+   It makes the workspace's target at the address of the node's origin remote,
+   `git.e2e.test` and `acme/shop`, before the run starts: a run outside the queue makes no
+   target, and takes the one target of its workspace at that address
+   (`Apiary.Runs.Target.id_at/3`). The job runs no adapter, so the target's adapter is
+   written straight into the table.
    The key's `server` lines, the server's `url` and `apiary_public_key` pin
    (`Apiary.AccessKeys.server_lines/2`) and the key's `access_key_id`
    (`Apiary.AccessKeys.key_line/1`), under `gateway:`, the node's policy,
@@ -84,7 +89,8 @@ answers, and the reload a new digest asks for, `GET /v1/runs/<run_id>`.
    where the run's `forge` and `repository` come from, and its harness composed) and starts
    the session (`node/session.sh`: `qory run --headless`).
 3. Waits for a connection row of the workspace for `files.e2e.test` with a denial, and
-   checks that the run has two policy applied events, under the digest in force: one
+   checks that the run took the target and has two policy applied events, under the
+   digest in force: one
    written as the run opens and one as the session joins, the session's in `enforce`.
 4. Allows the host with the two calls the row's popover makes
    (`ApiaryWeb.RunLive.Show`, `ApiaryWeb.ConnectionLive.Index`):

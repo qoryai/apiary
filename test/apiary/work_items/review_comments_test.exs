@@ -113,7 +113,7 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
   # The input of the newest run of `work_item`, as a handover gives it.
   defp input!(work_item) do
     work_item = reload(work_item)
-    run = %{domain: "software", target: %{system: "forge", path: "acme/shop"}}
+    run = %{domain: "software", target: Apiary.WorkItems.WorkItem.target(work_item)}
     {:ok, inputs} = Inputs.explore(work_item, newest_run(work_item), run)
     inputs |> Jason.encode!() |> Jason.decode!()
   end

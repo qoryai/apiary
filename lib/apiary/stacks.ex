@@ -91,9 +91,9 @@ defmodule Apiary.Stacks do
 
   @doc false
   # workflow_for/2 is the workflow of an explore run of `workspace` at `target`, the work
-  # item's `%{system, path}`, nil for none (`workflow/2`). A target no row of the
-  # workspace has counts as none.
-  @spec workflow_for(Workspace.t(), %{system: String.t(), path: String.t()} | nil) ::
+  # item's (`Apiary.Lingo.Domain.target/0`), nil for none (`workflow/2`). A target no row
+  # of the workspace has counts as none.
+  @spec workflow_for(Workspace.t(), Apiary.Lingo.Domain.target() | nil) ::
           String.t() | nil
   def workflow_for(%Workspace{} = workspace, target),
     do: workflow(workspace, target_row(workspace, target))
@@ -113,8 +113,8 @@ defmodule Apiary.Stacks do
 
   @doc false
   # recorded_access/3 is the access level recorded for a run of `workspace` at `target`,
-  # the work item's `%{system, path}`, nil for none. Read without a lock, when the walk
-  # runs.
+  # the work item's (`Apiary.Lingo.Domain.target/0`), nil for none. Read without a lock,
+  # when the walk runs.
   #
   # For a run the stage runner did not queue, `workflow` is the name its walk reads by:
   # the `access` of the row `workflow/2` reads, nil where that row records none. `:read`
@@ -128,7 +128,7 @@ defmodule Apiary.Stacks do
   # (`Apiary.Stages.limits/1`), not here.
   @spec recorded_access(
           Workspace.t(),
-          %{system: String.t(), path: String.t()} | nil,
+          Apiary.Lingo.Domain.target() | nil,
           String.t() | {:stage, String.t()}
         ) :: :read | :write | nil
   def recorded_access(%Workspace{} = workspace, target, {:stage, workflow})
@@ -202,9 +202,9 @@ defmodule Apiary.Stacks do
   end
 
   @doc false
-  # target_choice/2 is the row of the stack chosen for `target` of `workspace`, a
-  # `%{system, path}` or a target row, nil for none. Read without a lock.
-  @spec target_choice(Workspace.t(), Target.t() | %{system: String.t(), path: String.t()}) ::
+  # target_choice/2 is the row of the stack chosen for `target` of `workspace`, a target
+  # (`Apiary.Lingo.Domain.target/0`) or a target row, nil for none. Read without a lock.
+  @spec target_choice(Workspace.t(), Target.t() | Apiary.Lingo.Domain.target()) ::
           Stack.t() | nil
   def target_choice(%Workspace{} = workspace, %Target{id: target_id}) do
     Repo.one(
@@ -215,7 +215,7 @@ defmodule Apiary.Stacks do
     )
   end
 
-  def target_choice(%Workspace{} = workspace, %{system: _system, path: _path} = target) do
+  def target_choice(%Workspace{} = workspace, %{collection_external_ref: _ref} = target) do
     case target_row(workspace, target) do
       %Target{} = row -> target_choice(workspace, row)
       nil -> nil
@@ -224,7 +224,8 @@ defmodule Apiary.Stacks do
 
   @doc false
   # chosen_for/4 is the harness choice an explore run of `workflow` of `workspace` of
-  # `organisation` at `target`, a `%{system, path}` or nil for none, takes, in this order:
+  # `organisation` at `target` (`Apiary.Lingo.Domain.target/0`) or nil for none, takes, in
+  # this order:
   #
   #   * the stack chosen for the target: `{:chosen, resolution}`;
   #   * the workspace's choice, else the organisation's shared one: `{:chosen,
@@ -238,7 +239,7 @@ defmodule Apiary.Stacks do
   @spec chosen_for(
           Organisation.t(),
           Workspace.t(),
-          %{system: String.t(), path: String.t()} | nil,
+          Apiary.Lingo.Domain.target() | nil,
           String.t()
         ) :: {:chosen, Resolution.t()} | :none
   def chosen_for(%Organisation{} = organisation, %Workspace{} = workspace, target, workflow)
@@ -362,14 +363,14 @@ defmodule Apiary.Stacks do
     end
   end
 
-  # The target row of the workspace at `system` and `path`, nil for none.
+  # The target row of the workspace of `target`, by its adapter and collection ref, nil
+  # for none.
   defp target_row(_workspace, nil), do: nil
 
-  defp target_row(%Workspace{} = workspace, %{system: system, path: path}) do
+  defp target_row(%Workspace{} = workspace, %{collection_external_ref: _ref} = target) do
     Repo.one(
-      from t in Target,
-        where: t.organisation_id == ^workspace.organisation_id,
-        where: t.workspace_id == ^workspace.id and t.system == ^system and t.path == ^path
+      from t in Target.by_key(workspace.id, target),
+        where: t.organisation_id == ^workspace.organisation_id
     )
   end
 

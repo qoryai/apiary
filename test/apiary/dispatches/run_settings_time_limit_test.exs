@@ -13,7 +13,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Connections, Dispatches, ModelChoicesFixtures, Stacks, TimeLimits}
-  alias Apiary.Runs.{Run, Target}
+  alias Apiary.Runs.Run
 
   @moduletag needs: :factory
 
@@ -24,9 +24,11 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
   @harness "extends: {git: https://code.example.com/team/stacks, ref: main, path: core}\n"
   @version "0123456789abcdef0123456789abcdef01234567"
 
+  # The work items of the runs claimed here are tickets of one connection, so they share
+  # the target `target!/1` makes.
   setup do
     %{scope: scope} = sign_up_fixture()
-    %{scope: scope}
+    %{scope: scope, connection: ticket_connection_fixture(scope)}
   end
 
   # Stores the workspace's stack row for `workflow`: the run's one row with a workflow.
@@ -37,8 +39,13 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
   # A fresh work item's explore run, queued, its harness walk resolved with `walk`, and
   # claimed under `place`'s pool key: what the run's documents are made from, with the
   # registered run as `run`.
-  defp claim!(%{scope: scope}, place, walk \\ []) do
-    work_item = work_item_fixture(scope)
+  defp claim!(%{scope: scope} = ctx, place, walk \\ []) do
+    work_item =
+      work_item_fixture(scope, %{
+        connection_id: ctx.connection.id,
+        external_ref: "acme/shop##{System.unique_integer([:positive])}"
+      })
+
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
     walk_resolved!(queued, walk)
 
@@ -58,14 +65,15 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     Enum.map(ordered.values, &elem(&1, 0))
   end
 
-  # The work item's target, as the claim finds it by system and path.
-  defp target!(scope) do
-    Repo.insert!(%Target{
+  # The work items' target, as the claim finds it by adapter and collection ref.
+  defp target!(%{scope: scope, connection: connection}) do
+    Apiary.NodesFixtures.target_fixture(%{
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
+      adapter_id: connection.adapter_id,
+      collection_external_ref: "acme/shop",
       system: "forge.example.com",
-      path: "acme/shop",
-      first_seen_at: DateTime.utc_now()
+      path: "acme/shop"
     })
   end
 
@@ -191,7 +199,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     test "sends the target's limit over the workspace's", ctx do
       workflow!(ctx, "explore-a-ticket")
       place = handover_place_fixture(ctx.scope)
-      target = target!(ctx.scope)
+      target = target!(ctx)
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 90)
       {:ok, _} = TimeLimits.put_limit(ctx.scope, target, "explore-a-ticket", 1440)
 
@@ -258,7 +266,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
          ctx do
       workflow!(ctx, "explore-a-ticket")
       place = handover_place_fixture(ctx.scope, allow_secrets: true)
-      target = target!(ctx.scope)
+      target = target!(ctx)
 
       ctx.choose.({:workspace, "review"}, "claude-haiku-5-5")
       assert %{"model" => "claude-opus-5-5"} = settings(claim!(ctx, place))
@@ -309,7 +317,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
   @tag with_features: Apiary.Features.all() -- [:workflow_model]
   test "with two stack rows with a workflow, the member is absent whatever the limits", ctx do
     workflow!(ctx, "hello")
-    {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, target!(ctx.scope), "hello"}, @harness)
+    {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, target!(ctx), "hello"}, @harness)
     place = handover_place_fixture(ctx.scope)
     {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
 

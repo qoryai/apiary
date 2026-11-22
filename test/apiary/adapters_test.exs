@@ -25,6 +25,7 @@ defmodule Apiary.AdaptersTest do
   @adapter_key_actions [
     :"adapter.declare",
     :"source_item.post",
+    :"change_request.report",
     :"work_item.read_changes",
     :"adapter.app_values_set",
     :"adapter.app_values_seal",

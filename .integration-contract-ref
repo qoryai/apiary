@@ -1,34 +1,48 @@
-# The commit of qoryai/integrations whose contracts/integration/v1 fixtures are under
-# test/fixtures/integration-contract/ (its description fixtures, accepted, refused under
-# invalid/ and refused by a reader under refused-by-reader/, and under adapter/ the
-# signed connect pass and return and the signed setup pass, with and without the
-# organisation's slug, with their keys and payloads, setup passes refused, the adapter's
-# declarations, accepted and refused, with a setup_url among them,
-# the change feed's
-# answers, with the submission entries, their replies and their failure reports, accepted
-# and refused, the listings of
-# collections, each collection with the grant_ref of the grant that covers it, and a
-# disconnect of one, accepted and refused, the bodies of a collection's items and of an
-# item's comments, accepted and refused, a grant report with its external account, a
-# grant end, the answer to the read of the grants and the feed's grant entries, accepted
-# and refused, the refusals
-# the control plane answers with, two signed requests, a POST and a GET, with the GET's
-# signed answer, a declaration with a call_url, a signed call with its signed answer, and
-# the bodies of the calls for a run's credential, to resolve addresses and to read a
-# document, with their answers, accepted and refused),
-# and whose connect-return.schema.json and setup-pass.schema.json are under
-# test/fixtures/integration-contract/schema/, and the other schemas of the folder but
-# description.schema.json, with its README.md, are under
-# test/fixtures/contract/integration/v1/: a commit of the integrations, pinned by its id.
+# The commit of qoryai/integrations that the integration contract
+# (contracts/integration/v1) and the data descriptions in this repository are copied
+# from, byte for byte.
+# `test/apiary/contract_copies_test.exs` checks each copy against
+# `test/fixtures/contract-copies.sha256`, the SHA-256 of each file at this commit.
 #
-# contracts/integration/v1/description.schema.json and the definitions.schema.json it
-# refers to are vendored under priv/contract/integration/ from this commit too, and the
-# data descriptions of model providers, descriptions/*.json at the repository's root,
-# under priv/contract/integration/descriptions/. A description of a model provider has
-# `vendor`, its APIs have `runtimes`, `paths`, `oauth_refresh` and `oauth_device`, and its
-# role has `key_lifetime_days`, each optional. A source role may have `submissions`. Qory
-# Apiary holds the bounds of a description: the 256 KiB of a fetched description.json when
-# it is fetched, and every bound, those 256 KiB included, in
-# Apiary.Integrations.Description.parse/1, which an adapter's start-up gives the
-# description's value as its body carries it.
-b5ae1a43582ee58a490f17edb0fce2e4c19a6c6d
+# To vendor another commit: copy every file again from integrations at that commit, write
+# the commit on the last line of this file and in test/fixtures/contract/integration/v1/
+# .contract-ref, and set `@ref` in the test. Then run this command at the repository's
+# root to write the manifest again:
+#
+#   find priv/contract/integration test/fixtures/contract/integration/v1 \
+#       test/fixtures/integration-contract -type f ! -name .contract-ref |
+#     LC_ALL=C sort | xargs shasum -a 256 > test/fixtures/contract-copies.sha256
+#
+# The command hashes the copies here, so it is right only after the copy.
+#
+# contracts/integration/v1 is copied to three places:
+# - its schemas and README.md, to test/fixtures/contract/integration/v1/,
+# - connect-return.schema.json and setup-pass.schema.json, to
+#   test/fixtures/integration-contract/schema/,
+# - its fixtures/ folder, to test/fixtures/integration-contract/: the description
+#   fixtures, accepted, refused under invalid/, refused by a reader under
+#   refused-by-reader/, and the documents that only a closed copy of a schema refuses
+#   under closed/; and under adapter/ the fixtures of each request, answer and report
+#   of the adapter contract.
+#
+# description.schema.json, definitions.schema.json, changes.schema.json (which
+# Apiary.Adapters.ChangeRequest checks an entry against), changes-submitted.schema.json
+# and changes-failed.schema.json (which Apiary.Adapters.ChangeReport checks a report
+# against) are copied to priv/contract/integration/ too, and the data descriptions of
+# model providers, descriptions/*.json at the repository's root, to
+# priv/contract/integration/descriptions/.
+#
+# priv/contract/integration/ has no `.contract-ref`: this file covers it. The run,
+# explore, diagnostics and provisioner contracts, test/fixtures/documents-check/ and
+# the run contract's documents.schema.json in lib/apiary/stacks/ are copied from
+# earlier integrations commits: see `.contract-ref` in
+# test/fixtures/contract/<contract>/v1/, test/fixtures/documents-check/ and
+# lib/apiary/stacks/.
+#
+# Qory Apiary checks the bounds of a description: the 256 KiB of a fetched
+# description.json when it is fetched, and every bound, those 256 KiB included, in
+# Apiary.Integrations.Description.parse/1, which an adapter's start-up calls with the
+# description's value from the body of the start-up. The schema checks the shape of each
+# `links` entry. Qory Apiary does not check that each system is listed once or that the
+# host of a template is its system, which integrations' `contracts.CheckLinks` checks.
+effc22aa2dc85997333918dba64425bdade7f5dc

@@ -9,8 +9,11 @@
       "title": "acme/shop",
       "grant_ref": "G_1",
       "target": {
-        "system": "code.example.com",
-        "path": "acme/shop"
+        "collection": "C_2001",
+        "address": {
+          "system": "code.example.com",
+          "path": "acme/shop"
+        }
       },
       "environment_ref": "env-3f2a91c4"
     },
@@ -20,8 +23,11 @@
       "title": "acme/docs",
       "grant_ref": "G_1",
       "target": {
-        "system": "code.example.com",
-        "path": "acme/docs"
+        "collection": "C_2002",
+        "address": {
+          "system": "code.example.com",
+          "path": "acme/docs"
+        }
       },
       "items": true
     }

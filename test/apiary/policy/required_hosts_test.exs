@@ -153,7 +153,7 @@ defmodule Apiary.Policy.RequiredHostsTest do
 
       :ok =
         Target.insert_new(scope.organisation.id, scope.workspace.id, [
-          %{system: "forge.example.com", path: "acme/shop"}
+          Apiary.NodesFixtures.target_key(%{system: "forge.example.com", path: "acme/shop"})
         ])
 
       target = Apiary.Runs.fetch_target(scope, "forge.example.com", "acme/shop")
@@ -244,7 +244,7 @@ defmodule Apiary.Policy.RequiredHostsTest do
 
       :ok =
         Target.insert_new(scope.organisation.id, scope.workspace.id, [
-          %{system: "forge.example.com", path: "acme/shop"}
+          Apiary.NodesFixtures.target_key(%{system: "forge.example.com", path: "acme/shop"})
         ])
 
       ctx = sealed_run_fixture(scope, work: @apply)

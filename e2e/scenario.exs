@@ -104,6 +104,7 @@ defmodule E2E do
 
     :active = AccessKey.status(access_key)
     write_secret(Path.dirname(forager_file), secret)
+    target = target!(scope)
 
     # The key's server lines: the server's address, the key's id and the server's pin, each
     # indented as it sits under `server:`, and `server:` itself moved under `gateway:`, where
@@ -159,6 +160,10 @@ defmodule E2E do
       end)
 
     run = Repo.get!(Run, connection.run_id)
+
+    unless run.target_id == target.id,
+      do: fail("the run did not take the target #{target.system}/#{target.path}")
+
     # Forager writes a policy applied event as the run opens and one as each session
     # joins, both under the run configuration in force. This run has one session, and its
     # join's event can be stored after the denied connection.
@@ -749,6 +754,30 @@ defmodule E2E do
         order_by: e.sequence,
         limit: ^count
     )
+  end
+
+  # The target of the workspace at the address of the run's labels, the node's origin
+  # remote (`node/prepare.sh`). A run outside the queue makes no target: it takes the one
+  # target of its workspace at that address (`Apiary.Runs.Target.id_at/3`), so the target
+  # exists before the run starts. A target is an adapter's collection, and the job runs no
+  # adapter, so the adapter is written straight into the table, with a collection ref.
+  defp target!(%Scope{organisation: organisation, workspace: workspace}) do
+    {system, path} = {env!("E2E_FORGE"), env!("E2E_REPOSITORY")}
+
+    adapter =
+      %Apiary.Nodes.Node{kind: :adapter, instance_limit: nil, gateway_choice: :direct}
+      |> Apiary.Nodes.Node.adapter_changeset(%{name: "e2e forge"})
+      |> Repo.insert!()
+
+    :ok =
+      Apiary.Runs.Target.insert_new(organisation.id, workspace.id, [
+        %{adapter_id: adapter.id, collection_external_ref: "R_e2e", system: system, path: path}
+      ])
+
+    case Apiary.Runs.Target.id_at(workspace.id, system, path) do
+      id when is_binary(id) -> Repo.get!(Apiary.Runs.Target, id)
+      nil -> fail("the workspace has no target, or two, at #{system}/#{path}")
+    end
   end
 
   defp holder(_scope, _run, :workspace), do: nil

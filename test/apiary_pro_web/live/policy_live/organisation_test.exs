@@ -571,7 +571,7 @@ defmodule ApiaryProWeb.PolicyLive.OrganisationTest do
       # Network access narrowed to a target the workspace has, as the page writes its own
       # address: the target's id alone, the list's other filters left behind.
       target = fn organisation_id, workspace_id, system ->
-        Apiary.Repo.insert!(%Apiary.Runs.Target{
+        Apiary.NodesFixtures.target_fixture(%{
           organisation_id: organisation_id,
           workspace_id: workspace_id,
           system: system,

@@ -258,7 +258,7 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
             url: "https://tracker.acme.example/NEW",
             title: "New",
             grant_ref: listing_grant(connection),
-            target: %{system: "code.example.com", path: "acme/new"}
+            target: %{collection: "NEW", system: "code.example.com", path: "acme/new"}
           }
         ],
         listing: %{
@@ -289,7 +289,7 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
   end
 
   @tag needs: :factory
-  test "a listing that changes an assigned collection's repository lists the new one, which takes the Backlog card",
+  test "a listing that changes an assigned collection's repository moves its one target there",
        %{conn: conn, scope: scope} do
     connectable = connectable_adapter_fixture(%{name: unique_adapter_name("Acme tracker")})
     {connection, _nonce} = connection_fixture(scope, connectable.adapter, :connected)
@@ -306,7 +306,7 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
               url: "https://tracker.acme.example/NEW",
               title: "New",
               grant_ref: listing_grant(connection),
-              target: %{system: "code.example.com", path: path}
+              target: %{collection: "NEW", system: "code.example.com", path: path}
             }
           ],
           listing: %{id: listing, part: 1, started_at: started_at, complete: false}
@@ -323,21 +323,8 @@ defmodule ApiaryWeb.TargetLive.IndexTest do
     post.("acme/moved", "listing-2", DateTime.add(started_at, 60))
 
     view = open(conn, scope, "?view=never")
-    assert Enum.sort(rows(view)) == ["acme/moved", "acme/new"]
-
-    assert %{rows: never} = Targets.page(scope, %{view: :never})
-    assert %{runs: 0} = Enum.find(never, &(&1.target.path == "acme/moved"))
-
-    old = Targets.get(scope, "code.example.com", "acme/new")
-    new = Targets.get(scope, "code.example.com", "acme/moved")
-
-    {:ok, view, _html} = live(conn, workspace_path(scope, "/targets/#{new.public_id}"))
-    render_async(view, 2_000)
-    assert has_element?(view, "#target-backlog")
-
-    {:ok, view, _html} = live(conn, workspace_path(scope, "/targets/#{old.public_id}"))
-    render_async(view, 2_000)
-    refute has_element?(view, "#target-backlog")
+    assert rows(view) == ["acme/moved"]
+    assert Targets.get(scope, "code.example.com", "acme/new") == nil
   end
 
   test "a workspace no run named a target of says what fills the page" do

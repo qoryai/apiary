@@ -55,7 +55,7 @@ defmodule Apiary.Runs.TargetWritesTest do
     } do
       :ok =
         Target.insert_new(scope.organisation.id, scope.workspace.id, [
-          %{system: "git.example", path: "example-org/app"}
+          Apiary.NodesFixtures.target_key(%{system: "git.example", path: "example-org/app"})
         ])
 
       %Target{id: app} = Repo.get_by!(Target, workspace_id: scope.workspace.id)

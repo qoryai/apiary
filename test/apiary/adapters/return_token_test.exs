@@ -113,7 +113,7 @@ defmodule Apiary.Adapters.ReturnTokenTest do
       assert {:ok, %{outcome: :cancelled}} = ReturnToken.verify(token(reversed, secret), [public])
 
       assert ReturnToken.reasons() ==
-               ~w(person_not_permitted grant_taken grant_not_confirmed
+               ~w(person_not_permitted grant_taken connection_held grant_not_confirmed
                   grant_suspended permission_missing pass_expired source_unavailable)a
     end
 

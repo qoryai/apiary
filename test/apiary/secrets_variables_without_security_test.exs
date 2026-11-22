@@ -6,8 +6,7 @@ defmodule Apiary.SecretsVariablesWithoutSecurityTest do
 
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Repo, Secrets, Variables}
-  alias Apiary.Runs.Target
+  alias Apiary.{Secrets, Variables}
 
   @moduletag with_features: [:observability]
 
@@ -15,7 +14,7 @@ defmodule Apiary.SecretsVariablesWithoutSecurityTest do
     scope = sign_up_fixture().scope
 
     site =
-      Repo.insert!(%Target{
+      Apiary.NodesFixtures.target_fixture(%{
         organisation_id: scope.organisation.id,
         workspace_id: scope.workspace.id,
         system: "github.example",

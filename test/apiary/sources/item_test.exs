@@ -258,10 +258,12 @@ defmodule Apiary.Sources.ItemTest do
             {String.duplicate("a", 253), String.duplicate("é", 200)}
           ] do
         assert %{num_rows: 1} =
-                 update!("source_items", item.id, "target_system = $2, target_path = $3", [
-                   system,
-                   path
-                 ])
+                 update!(
+                   "source_items",
+                   item.id,
+                   "target_collection_external_ref = $2, target_system = $3, target_path = $4",
+                   [path && "C_1", system, path]
+                 )
       end
     end
 
@@ -621,7 +623,11 @@ defmodule Apiary.Sources.ItemTest do
 
       assert Item.changeset(
                %Item{},
-               item_attrs(%{target_system: "forge.example.com", target_path: "p"})
+               item_attrs(%{
+                 target_collection_external_ref: String.duplicate("é", 200),
+                 target_system: "forge.example.com",
+                 target_path: "p"
+               })
              ).valid?
     end
 

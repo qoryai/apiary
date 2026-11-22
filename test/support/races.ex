@@ -215,7 +215,11 @@ defmodule Apiary.Races do
               url: collection.url,
               title: collection.title,
               grant_ref: "G_" <> connection.public_id,
-              target: %{system: collection.target_system, path: collection.target_path},
+              target: %{
+                collection: collection.target_collection_external_ref,
+                system: collection.target_system,
+                path: collection.target_path
+              },
               environment_ref: ref
             }
           end,

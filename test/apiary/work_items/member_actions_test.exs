@@ -107,7 +107,7 @@ defmodule Apiary.WorkItems.MemberActionsTest do
   defp run(work_item),
     do: %{
       domain: "software",
-      target: %{system: work_item.target_system, path: work_item.target_path}
+      target: WorkItem.target(work_item)
     }
 
   describe "answer" do

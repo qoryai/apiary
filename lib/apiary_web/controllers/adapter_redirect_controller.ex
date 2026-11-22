@@ -108,6 +108,13 @@ defmodule ApiaryWeb.AdapterRedirectController do
   defp refused(:grant_taken, _name),
     do: gettext("That account is already connected to another organisation.")
 
+  defp refused(:connection_held, name) do
+    gettext(
+      "Disconnect the account that is connected to %{integration} first, then install again. An organisation connects one account of each integration.",
+      integration: name
+    )
+  end
+
   defp refused(:grant_not_confirmed, name) do
     gettext(
       "%{integration} couldn't confirm that installation for you. Install it again from Integrations.",

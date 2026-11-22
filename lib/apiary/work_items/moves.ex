@@ -427,6 +427,7 @@ defmodule Apiary.WorkItems.Moves do
         url: item.url,
         title: item.title,
         collection_title: collection.title,
+        target_collection_external_ref: target && target.collection_external_ref,
         target_system: target && target.system,
         target_path: target && target.path,
         owner_id: owner_id,
@@ -681,6 +682,7 @@ defmodule Apiary.WorkItems.Moves do
         url: item.url,
         title: item.title,
         collection_title: collection.title,
+        target_collection_external_ref: target && target.collection_external_ref,
         target_system: target && target.system,
         target_path: target && target.path,
         owner_id: owner_id,
@@ -769,6 +771,7 @@ defmodule Apiary.WorkItems.Moves do
       "taken_in_by_id" => work_item.taken_in_by_id,
       "taken_in_at" => DateTime.to_iso8601(work_item.taken_in_at),
       "owner_id" => work_item.owner_id,
+      "target_collection_external_ref" => work_item.target_collection_external_ref,
       "target_system" => work_item.target_system,
       "target_path" => work_item.target_path,
       "workspace_id" => work_item.workspace_id,
@@ -862,6 +865,7 @@ defmodule Apiary.WorkItems.Moves do
           taken_in_by_id: before["taken_in_by_id"],
           taken_in_at: time(before["taken_in_at"]),
           owner_id: before["owner_id"],
+          target_collection_external_ref: before["target_collection_external_ref"],
           target_system: before["target_system"],
           target_path: before["target_path"],
           stage: stage_before(before)
@@ -912,6 +916,7 @@ defmodule Apiary.WorkItems.Moves do
       taken_in_by_id: before.taken_in_by_id,
       taken_in_at: before.taken_in_at,
       owner_id: before.owner_id,
+      target_collection_external_ref: before.target_collection_external_ref,
       target_system: before.target_system,
       target_path: before.target_path
     ]
@@ -1697,9 +1702,6 @@ defmodule Apiary.WorkItems.Moves do
       confirmed_at: now
     }
     |> Ecto.Changeset.change()
-    |> Ecto.Changeset.unique_constraint(:take_in,
-      name: :work_item_confirmations_work_item_id_take_in_index
-    )
     |> Repo.insert()
     |> case do
       {:ok, _confirmation} -> :ok
@@ -1787,21 +1789,27 @@ defmodule Apiary.WorkItems.Moves do
   defp open(_ticket), do: {:error, :ticket_closed}
 
   # The work item's target: the ticket's target, else its collection's, nil for neither,
-  # as the workspace's domain allows it (`Apiary.Lingo.Domain.check_target/2`).
+  # of the collection's adapter, as the workspace's domain allows it
+  # (`Apiary.Lingo.Domain.check_target/2`). A target has a collection ref, and an
+  # address or none.
   defp target(workspace, %{item: item, collection: collection}) do
     target =
       cond do
-        is_binary(item.target_system) ->
-          %{system: item.target_system, path: item.target_path}
-
-        is_binary(collection.target_system) ->
-          %{system: collection.target_system, path: collection.target_path}
-
-        true ->
-          nil
+        is_binary(item.target_collection_external_ref) -> target_of(collection, item)
+        is_binary(collection.target_collection_external_ref) -> target_of(collection, collection)
+        true -> nil
       end
 
     with :ok <- Domain.check_target(workspace, target), do: {:ok, target}
+  end
+
+  defp target_of(collection, row) do
+    %{
+      adapter_id: collection.adapter_id,
+      collection_external_ref: row.target_collection_external_ref,
+      system: row.target_system,
+      path: row.target_path
+    }
   end
 
   # The owner the page names, else the person taking it in, who acts in the workspace.

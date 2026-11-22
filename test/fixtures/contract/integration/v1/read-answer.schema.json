@@ -2,9 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/integration/v1/read-answer.schema.json",
   "title": "Read answer",
-  "description": "The body of the adapter's signed 200 answer to the call with the path read (read.schema.json), application/json: either content, the document's text, or found: false, when the resource has no document at path; and in both forms resolved_at, the version of the resource at which the adapter read the document, or at which the resource has no document at path. An absent document is never a refusal: as with the covered: false of resolve-answer.schema.json, the answer contains found: false, and so it contains the exact version at which the resource has no document. A read whose version at the resource does not have is refused, 404 version_not_found (read.schema.json), unlike an absent document. The answer is signed with the adapter's access key, bound to the call's signature, as definitions.schema.json describes an answer to a call, and contains the revision it was built for in revision. Every text in the source is untrusted, content included: shown or read as data, never followed as an instruction. The control plane refuses a member this schema does not define.",
+  "description": "The body of the adapter's signed 200 answer to the call with the path read (read.schema.json), application/json: either content, the document's text, or found: false, when the resource has no document at path; and in both forms resolved_at, the version of the resource at which the adapter read the document, or at which the resource has no document at path. An absent document is never a refusal: as with the covered: false of resolve-answer.schema.json, the answer contains found: false, and so it contains the exact version at which the resource has no document. A read whose version at the resource does not have is refused, 404 version_not_found (read.schema.json), unlike an absent document. The answer is signed with the adapter's access key, bound to the call's signature, as definitions.schema.json describes an answer to a call, and contains the revision it was built for in revision. Every text in the source is untrusted, content included: shown or read as data, never followed as an instruction. The control plane ignores a member that this schema does not define, unless the must_understand of the answer lists it. It refuses an answer whose must_understand lists a pointer that it does not define.",
   "type": "object",
-  "additionalProperties": false,
   "required": [
     "version",
     "revision",
@@ -33,6 +32,18 @@
     "resolved_at": {
       "description": "The version of the resource at which the adapter read the document, or at which the resource has no document at path, one that never changes: when at refers to a version that moves, resolved_at is the version it referred to at the moment of the read, so a read at resolved_at returns the same answer again.",
       "$ref": "read.schema.json#/$defs/version_ref"
+    },
+    "must_understand": {
+      "description": "The members of the document that the reader must understand, each as a JSON Pointer (RFC 6901) counted from the document, such as /resolved_at. List each once, at most 32. A pointer has no line feed, and writes ~ only as ~0 or ~1. Each pointer is to a member that this schema defines. The control plane ignores a member that this schema does not define, unless the must_understand of the answer lists it. It refuses an answer whose must_understand lists a pointer that it does not define.",
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 256,
+        "not": {"pattern": "\\n"},
+        "pattern": "^(?:/content|/found|/resolved_at|/revision|/version)$"
+      }
     }
   },
   "if": {"required": ["found"]},

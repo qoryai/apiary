@@ -493,7 +493,11 @@ defmodule Mix.Tasks.Apiary.Demo.Console.Factory do
 
           if path in @queues,
             do: collection,
-            else: Map.put(collection, "target", %{"system" => @code_host, "path" => path})
+            else:
+              Map.put(collection, "target", %{
+                "collection" => path,
+                "address" => %{"system" => @code_host, "path" => path}
+              })
         end,
       "listing" => %{
         "id" => "collections-#{System.os_time(:second)}",

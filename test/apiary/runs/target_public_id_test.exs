@@ -15,7 +15,7 @@ defmodule Apiary.Runs.TargetPublicIdTest do
   defp repo(system, path), do: %{"forge" => system, "repository" => path}
 
   defp raw_insert!(scope, path) do
-    Repo.insert!(%Target{
+    Apiary.NodesFixtures.target_fixture(%{
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
       system: "github.example",

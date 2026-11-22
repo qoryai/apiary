@@ -179,16 +179,13 @@ defmodule Apiary.Adapters.ItemNounTest do
   end
 
   describe "a target's words" do
-    test "of the sources of the collections with its system and path, by target", ctx do
-      started_run(ctx.scope, %{"forge" => "code.example.com", "repository" => "acme/shop"})
-      started_run(ctx.scope, %{"forge" => "code.example.com", "repository" => "acme/api"})
-      shop = Targets.get(ctx.scope, "code.example.com", "acme/shop")
-      api = Targets.get(ctx.scope, "code.example.com", "acme/api")
+    defp run_target(scope, path) do
+      started_run(scope, %{"forge" => "code.example.com", "repository" => path})
+      Targets.get(scope, "code.example.com", path)
+    end
+
+    test "of the sources of the collections whose target it is, by target", ctx do
       org = ctx.scope.organisation.id
-
-      assert Adapters.target_item_nouns(org, []) == %{}
-      assert Adapters.target_item_nouns(org, [shop.id, api.id]) == %{}
-
       %{connection: tracker} = adapter(ctx.scope, "example-tracker.json")
       %{connection: plain} = adapter(ctx.scope)
       at = fn path -> %{target_system: "code.example.com", target_path: path} end
@@ -201,7 +198,14 @@ defmodule Apiary.Adapters.ItemNounTest do
       )
 
       source_collection_fixture(ctx.scope, plain, at.("acme/api"))
-      assert Adapters.target_item_nouns(org, [shop.id, api.id]) == %{shop.id => @issue}
+
+      # The collections first, so each run's target is its collection's; acme/web has none.
+      shop = run_target(ctx.scope, "acme/shop")
+      api = run_target(ctx.scope, "acme/api")
+      web = run_target(ctx.scope, "acme/web")
+
+      assert Adapters.target_item_nouns(org, []) == %{}
+      assert Adapters.target_item_nouns(org, [shop.id, api.id, web.id]) == %{shop.id => @issue}
 
       # Another organisation's targets are not read.
       %{scope: stranger} = sign_up_fixture()

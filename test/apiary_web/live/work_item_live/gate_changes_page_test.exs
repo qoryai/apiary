@@ -516,7 +516,8 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
     assert_criteria(view, mark)
   end
 
-  test "after a move back, the mark follows the output's check at the earlier gate",
+  test "after a move back to Shape, Shape's approval of v1 no longer counts: the change " <>
+         "keeps its mark, with no approval mark and no list of changes",
        %{conn: conn, scope: scope, sam: sam} do
     work_item = changed!(scope)
     {:ok, moved} = Stages.move(scope, work_item, @shape, nil, expect_stage: @build)
@@ -528,19 +529,15 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
 
     mark = "Changed on your request"
 
-    # Shape's approval listed v1, so today's approval marks follow the change's mark,
-    # each part after " · " (`approval_mark/1`).
+    # The move back withdrew Shape's approval of v1, so no approved version is there to
+    # compare v2 with: no "Approved v1" mark and no list of the changed criteria.
     assert text(view, "#{@card}-output-acceptance-criteria") ==
-             "acceptance criteria v2 · Passed · #{mark} · " <>
-               "Approved v1; v2 is newer · Changed after approval"
+             "acceptance criteria v2 · Passed · #{mark}"
 
     assert has_element?(view, "#{@card}-output-acceptance-criteria-changed.text-warning", mark)
     refute has_element?(view, "#{@card}-recorded")
-
-    assert text(view, "#{@list}-action") ==
-             "Check that these 3 changes to the acceptance criteria match your request, then pick Approve or Request changes."
-
-    assert_criteria(view, mark)
+    refute has_element?(view, "#{@list}-action")
+    refute has_element?(view, "#{@list}-list")
     assert has_element?(view, "#{@card}-approve-go", "Approve")
     assert has_element?(view, "#{@card}-ask-changes", "Request changes")
   end

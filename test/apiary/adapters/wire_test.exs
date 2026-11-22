@@ -963,7 +963,7 @@ defmodule Apiary.Adapters.WireTest do
 
       assert listing("invalid/source-collections-without-grant-ref.json") == :error
 
-      assert source_disconnect("invalid/sources-disconnect-with-reason.json") == :error
+      assert source_disconnect("closed/sources-disconnect-with-reason.json") == :error
       assert source_disconnect("invalid/sources-disconnect-without-connection-id.json") == :error
       assert Wire.listing([]) == :error
       assert Wire.source_disconnect(nil) == :error
@@ -1172,7 +1172,7 @@ defmodule Apiary.Adapters.WireTest do
                 }}
 
       assert grant_end("invalid/grant-end-without-grant-ref.json") == :error
-      assert grant_end("invalid/grant-end-with-pass-nonce.json") == :error
+      assert grant_end("closed/grant-end-with-pass-nonce.json") == :error
       assert Wire.grant_end(nil) == :error
     end
 

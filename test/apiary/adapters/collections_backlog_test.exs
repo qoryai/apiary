@@ -54,7 +54,8 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
         collection_ref: ref
       })
 
-  # One part of a listing naming `collections`, `{ref, target}` each.
+  # One part of a listing with `collections`, `{ref, target}` each. A target without a
+  # `collection` is the collection itself.
   defp post(ctx, collections, opts \\ []) do
     Collections.post_listing(ctx.key_scope, %{
       time: DateTime.utc_now(:second),
@@ -66,7 +67,7 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
             url: "https://tracker.acme.example/" <> ref,
             title: ref,
             grant_ref: listing_grant(ctx.connection),
-            target: target
+            target: target && Map.put_new(target, :collection, ref)
           }
         end,
       listing: %{
@@ -92,8 +93,16 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
     Collections.assign_collections(ctx.scope, ctx.connection, ids, workspace)
   end
 
-  defp target(workspace, %{system: system, path: path}),
-    do: Repo.get_by!(Target, workspace_id: workspace.id, system: system, path: path)
+  # The target of `workspace` at the address: of the collection whose ref is last, SHOP
+  # where MIRROR has the same address.
+  defp target(workspace, %{system: system, path: path}) do
+    Repo.one!(
+      from t in Target,
+        where: t.workspace_id == ^workspace.id and t.system == ^system and t.path == ^path,
+        order_by: [desc: t.collection_external_ref],
+        limit: 1
+    )
+  end
 
   defp scope_in(ctx, workspace), do: workspace_scope(ctx.user, workspace)
 
@@ -156,7 +165,9 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
     end
 
     test "turns every collection of the target in the workspace, and none of another", ctx do
-      {:ok, :accepted} = post(ctx, [{"SHOP", @shop}, {"MIRROR", @shop}, {"API", @api}])
+      # MIRROR's target is SHOP, by the adapter's ref of it.
+      mirror = Map.put(@shop, :collection, "SHOP")
+      {:ok, :accepted} = post(ctx, [{"SHOP", @shop}, {"MIRROR", mirror}, {"API", @api}])
       {:ok, 3} = assign(ctx, ["SHOP", "MIRROR", "API"], ctx.workspace)
       target = target(ctx.workspace, @shop)
 
@@ -307,7 +318,7 @@ defmodule Apiary.Adapters.CollectionsBacklogTest do
 
       # A target with no collection, which a run made, and one whose collection ended.
       lone =
-        Repo.insert!(%Target{
+        Apiary.NodesFixtures.target_fixture(%{
           organisation_id: ctx.scope.organisation.id,
           workspace_id: ctx.workspace.id,
           system: "code.example.com",

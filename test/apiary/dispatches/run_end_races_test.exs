@@ -37,7 +37,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
   import Apiary.RunEventsFixtures, only: [event_fixture: 4]
   import Apiary.WorkItemsFixtures, only: [push_result!: 3, understood_result: 0]
 
-  alias Apiary.{Dispatches, Edition, Environments, Repo, Targets}
+  alias Apiary.{Dispatches, Edition, Environments, Repo}
   alias Apiary.AccessKeys.{AccessKey, EnrolmentCode, PublicKey}
   alias Apiary.Adapters.{Collection, Connection}
   alias Apiary.Audit.Entry
@@ -45,7 +45,7 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
   alias Apiary.Environments.Record
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.Organisation
-  alias Apiary.Runs.{Liveness, Projector, Run, Target}
+  alias Apiary.Runs.{Liveness, Projector, Run}
   alias Apiary.WorkItems.WorkItem
 
   @moduletag needs: :factory
@@ -644,13 +644,17 @@ defmodule Apiary.Dispatches.RunEndRacesTest do
         Ecto.Adapters.SQL.Sandbox.checkin(Repo)
       end)
 
-      :ok =
-        Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [@missing_target])
+      target =
+        Apiary.NodesFixtures.address_target!(
+          ctx.scope.organisation.id,
+          ctx.scope.workspace.id,
+          @missing_target.system,
+          @missing_target.path
+        )
 
-      %{
-        collections_made: made,
-        target: Targets.get(ctx.scope, @missing_target.system, @missing_target.path)
-      }
+      # The target is of a fresh adapter, which the organisation's deletion leaves.
+      Agent.update(made, &[target.adapter_id | &1])
+      %{collections_made: made, target: target}
     end
 
     # A collection of the work items' target with `env-1`, the pool's record of it with a
