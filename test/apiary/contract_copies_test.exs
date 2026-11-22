@@ -4,12 +4,15 @@ defmodule Apiary.ContractCopiesTest do
   # Every copy of a qoryai/integrations contract in this repository is the file at the
   # integrations commit `@ref`. CI has no integrations checkout, so the files are checked
   # against `test/fixtures/contract-copies.sha256`: the SHA-256 and the path here of each
-  # file at that commit, one per line, sorted by path.
+  # file at that commit, one per line, sorted by path. `.integration-contract-ref` has the
+  # command that writes that manifest again after a new copy.
   @ref "effc22aa2dc85997333918dba64425bdade7f5dc"
 
   @root Path.expand("../..", __DIR__)
 
-  # The folders that hold only copies and the `.contract-ref` of the commit they come from.
+  # The folders that contain only copies. Each has a `.contract-ref` with the commit of its
+  # copies, except priv/contract/diagnostics/v1, priv/contract/explore/v1 and
+  # priv/contract/integration: `.integration-contract-ref` covers those three.
   @copied_folders ~w(
     priv/contract/diagnostics/v1
     priv/contract/explore/v1
@@ -22,6 +25,9 @@ defmodule Apiary.ContractCopiesTest do
     test/fixtures/documents-check
     test/fixtures/integration-contract
   )
+
+  # The copies outside the folders of copies.
+  @copied_files ~w(lib/apiary/stacks/documents.schema.json)
 
   # Each file that names the commit of its copies: `.integration-contract-ref` has comment
   # lines, the others one line.
@@ -42,7 +48,7 @@ defmodule Apiary.ContractCopiesTest do
     "priv/contract/harness/v1/.contract-ref" => "qory"
   }
 
-  # The folders that hold no file of this repository's source: the search for ref files
+  # The folders that contain no source file of this repository: the search for ref files
   # skips each folder with one of these names.
   @skipped_folders ~w(.git .elixir_ls _build cover deps node_modules tmp)
 
@@ -57,16 +63,7 @@ defmodule Apiary.ContractCopiesTest do
 
   @external_resource Path.join(@root, "test/fixtures/contract-copies.sha256")
 
-  test "every ref file holds the commit of the copies" do
-    for file <- @ref_files do
-      lines = file |> ref_lines() |> Enum.reject(&String.starts_with?(&1, "#"))
-
-      assert lines == [@ref],
-             "Write #{@ref} in #{file}, after you copy its files again from integrations #{@ref}."
-    end
-  end
-
-  test "every copied file is the bytes of the integrations commit" do
+  test "every copy matches its SHA-256 in contract-copies.sha256" do
     for {path, sha256} <- @manifest do
       bytes =
         case File.read(Path.join(@root, path)) do
@@ -96,13 +93,33 @@ defmodule Apiary.ContractCopiesTest do
     end
   end
 
-  # The first test reads only the files of @ref_files. This one finds every file whose name
-  # ends in `contract-ref`, so a ref file missing from that list fails too: each names @ref
-  # unless @other_ref_files has it.
-  test "every ref file of an integrations copy is listed and holds the commit of the copies" do
+  # With the test above, a row missing from the manifest fails: each copy is in a folder of
+  # copies or in @copied_files, and each of those is in the manifest.
+  test "every row of the manifest is a copy in a folder of copies or in @copied_files" do
+    for path <- Map.keys(@manifest) do
+      assert path in @copied_files or
+               Enum.any?(@copied_folders, &String.starts_with?(path, &1 <> "/")),
+             "Add the folder of #{path} to @copied_folders, or #{path} to @copied_files, in " <>
+               "test/apiary/contract_copies_test.exs."
+    end
+
+    for path <- @copied_files do
+      assert Map.has_key?(@manifest, path),
+             "Write the manifest again with the command in .integration-contract-ref: " <>
+               "test/fixtures/contract-copies.sha256 has no row for #{path}."
+    end
+  end
+
+  # The test finds every file whose name ends in `contract-ref`, so a ref file missing from
+  # @ref_files fails too: each names @ref unless @other_ref_files has it.
+  test "every ref file of an integrations copy is listed and contains the commit of the copies" do
     found = @root |> ref_files() |> Enum.reject(&Map.has_key?(@other_ref_files, &1))
 
-    assert ".integration-contract-ref" in found
+    for file <- @ref_files do
+      assert file in found,
+             "Write #{@ref} in #{file}, after you copy its files again from integrations " <>
+               "#{@ref}. The file is missing."
+    end
 
     for file <- found do
       assert file in @ref_files,
