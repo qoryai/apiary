@@ -204,6 +204,11 @@ msgstr "Line %{line} is not a repository of %{owner}; runs of %{target} read onl
 msgid "Line %{line} repeats line %{first}."
 msgstr ""
 
+#: lib/apiary/targets.ex
+#, elixir-autogen, elixir-format
+msgid "Line %{line}: choose a target this integration lists. %{path} is not one of them."
+msgstr "Line %{line}: choose a repository this integration lists. %{path} is not one of them."
+
 #: lib/apiary/policy/rule.ex
 #, elixir-autogen, elixir-format
 msgid "Name the host."

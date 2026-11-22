@@ -11,7 +11,6 @@ defmodule ApiaryPro.OrganisationVariablesAboveTest do
 
   alias Apiary.{Features, Policy, Variables}
   alias Apiary.Policy.Above
-  alias Apiary.Runs.Target
   alias Apiary.Variables.Resolution
   alias ApiaryPro.{OrganisationPolicy, OrganisationVariables}
 
@@ -23,7 +22,7 @@ defmodule ApiaryPro.OrganisationVariablesAboveTest do
     %{scope: owner, organisation: organisation} = sign_up_fixture()
 
     site =
-      Repo.insert!(%Target{
+      Apiary.NodesFixtures.target_fixture(%{
         organisation_id: organisation.id,
         workspace_id: owner.workspace.id,
         system: "github.example",

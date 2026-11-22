@@ -13,7 +13,6 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
 
   alias Apiary.Policy
   alias Apiary.Policy.{Change, Render, RunConfiguration}
-  alias Apiary.Runs.Target
   alias Mix.Tasks.Apiary.Policy.Rerender
 
   setup do
@@ -24,7 +23,7 @@ defmodule Mix.Tasks.Apiary.Policy.RerenderTest do
   end
 
   defp target_fixture(scope, path \\ "acme/site") do
-    Repo.insert!(%Target{
+    Apiary.NodesFixtures.target_fixture(%{
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
       system: "github.example",

@@ -131,7 +131,7 @@ defmodule ApiaryWeb.Contract.GrantEndControllerTest do
     before = state(ctx)
 
     for path <-
-          ~w(invalid/grant-end-without-grant-ref.json invalid/grant-end-with-pass-nonce.json) do
+          ~w(invalid/grant-end-without-grant-ref.json closed/grant-end-with-pass-nonce.json) do
       written = fixture(path)
 
       body =

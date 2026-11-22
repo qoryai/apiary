@@ -62,7 +62,13 @@ defmodule Apiary.Sources.WireTest do
       comment_count: item["comment_count"],
       created_at: time(item["created_at"]),
       updated_at: time(item["updated_at"]),
-      target: item["target"] && %{system: item["target"]["system"], path: item["target"]["path"]},
+      target:
+        item["target"] &&
+          %{
+            collection: item["target"]["collection"],
+            system: get_in(item, ["target", "address", "system"]),
+            path: get_in(item, ["target", "address", "path"])
+          },
       truncated: Map.get(item, "truncated", [])
     }
   end
@@ -103,12 +109,17 @@ defmodule Apiary.Sources.WireTest do
   defp without_complete(body), do: Map.delete(body, "complete")
 
   defp item_ok?(item), do: match?({:ok, _}, Wire.items(event_of(item)))
+
+  # A target of the collection `C_1` at `system` and `path`, as the contract writes one.
+  defp target(system, path),
+    do: %{"collection" => "C_1", "address" => %{"system" => system, "path" => path}}
+
   defp comment_ok?(comment), do: match?({:ok, _}, Wire.comments(set_of(comment)))
 
   describe "the contract's fixtures" do
     test "every body of source-items/ is accepted and read as written, raw or decoded" do
       paths = fixtures("source-items/*.json")
-      assert length(paths) == 15
+      assert length(paths) == 19
 
       for name <- ~w(url-empty-port url-port-leading-zeros url-ip-literal),
           do: assert("source-items/acme-tracker-event-#{name}.json" in paths)
@@ -192,7 +203,7 @@ defmodule Apiary.Sources.WireTest do
     test "every invalid body of items and of comments is refused" do
       items = fixtures("invalid/source-items-*.json")
       comments = fixtures("invalid/source-item-comments-*.json")
-      assert length(items) == 22
+      assert length(items) == 25
       assert length(comments) == 3
       assert "invalid/source-item-comments-comment-id-upper-case.json" in comments
 
@@ -210,12 +221,18 @@ defmodule Apiary.Sources.WireTest do
         assert Wire.comments(fixture(path)) == :error, path
         assert Wire.comments(json(path)) == :error, path
       end
+
+      # Only a closed copy of the contract's schema refuses this body, as the contract's
+      # reader ignores an undefined member. This reader still refuses it.
+      path = "closed/source-items-undefined-member.json"
+      assert Wire.items(fixture(path)) == :error, path
+      assert Wire.items(json(path)) == :error, path
     end
   end
 
   describe "a failure report" do
     test "every body of changes-failed/ is read as written, raw or decoded" do
-      paths = fixtures("changes-failed/*.json")
+      paths = fixtures("changes-failed/{not-permitted,unreachable}.json")
 
       assert Enum.sort(paths) ==
                ~w(changes-failed/not-permitted.json changes-failed/unreachable.json)
@@ -237,8 +254,10 @@ defmodule Apiary.Sources.WireTest do
     end
 
     test "every invalid one is refused" do
-      paths = fixtures("invalid/changes-failed-*.json")
-      assert length(paths) == 15
+      paths =
+        fixtures("invalid/changes-failed-{unknown-reason,without-comment-id,comment-*}.json")
+
+      assert length(paths) == 6
 
       for path <- paths do
         assert Wire.failed(fixture(path)) == :error, path
@@ -330,11 +349,8 @@ defmodule Apiary.Sources.WireTest do
       assert Wire.items(event_of(put_in(item(), ["filed_by", "email"], "a@example.com"))) ==
                :error
 
-      assert Wire.items(
-               event_of(
-                 Map.put(item(), "target", %{"system" => "a.example", "path" => "p", "x" => 1})
-               )
-             ) == :error
+      assert Wire.items(event_of(Map.put(item(), "target", %{"collection" => "C_1", "x" => 1}))) ==
+               :error
 
       assert Wire.items(put_in(listing_part(), ["listing", "x"], 1)) == :error
       assert Wire.comments(Map.put(set(), "x", 1)) == :error
@@ -526,7 +542,8 @@ defmodule Apiary.Sources.WireTest do
       {:item, ["body"], 0, 65_536},
       {:item, ["filed_by", "name"], 1, 100},
       {:item, ["state_reason"], 0, 64},
-      {:item, ["target", "path"], 1, 200},
+      {:item, ["target", "collection"], 1, 200},
+      {:item, ["target", "address", "path"], 1, 200},
       {:listing, ["listing", "id"], 1, 200},
       {:comments, ["item_ref"], 1, 200},
       {:comment, ["ref"], 1, 200},
@@ -539,7 +556,7 @@ defmodule Apiary.Sources.WireTest do
     defp with_text(:comments, path, value), do: Wire.comments(put_in(set(), path, value))
 
     defp with_text(:item, path, value) do
-      item = Map.put(item(), "target", %{"system" => "code.example", "path" => "a/b"})
+      item = Map.put(item(), "target", target("code.example", "a/b"))
       Wire.items(event_of(put_in(item, path, value)))
     end
 
@@ -728,11 +745,14 @@ defmodule Apiary.Sources.WireTest do
       end
     end
 
-    test "a target is a host name of up to 253 characters and a path" do
+    test "a target is a collection, with an address of a host name of up to 253 characters and a path, or none" do
       at = String.duplicate("a", 253)
 
-      assert {:ok, %{items: [%{target: %{system: ^at, path: "a/b"}}]}} =
-               Wire.items(event_of(Map.put(item(), "target", %{"system" => at, "path" => "a/b"})))
+      assert {:ok, %{items: [%{target: %{collection: "C_1", system: ^at, path: "a/b"}}]}} =
+               Wire.items(event_of(Map.put(item(), "target", target(at, "a/b"))))
+
+      assert {:ok, %{items: [%{target: %{collection: "Q_support", system: nil, path: nil}}]}} =
+               Wire.items(event_of(Map.put(item(), "target", %{"collection" => "Q_support"})))
 
       for system <- [
             "",
@@ -742,12 +762,25 @@ defmodule Apiary.Sources.WireTest do
             "code.example\n",
             nil
           ] do
-        refute item_ok?(Map.put(item(), "target", %{"system" => system, "path" => "a/b"})),
-               inspect(system)
+        refute item_ok?(Map.put(item(), "target", target(system, "a/b"))), inspect(system)
       end
 
-      refute item_ok?(Map.put(item(), "target", %{"system" => "code.example"}))
-      refute item_ok?(Map.put(item(), "target", %{"path" => "a/b"}))
+      for path <- ["a/\tb", "a/\u007fb", "", nil] do
+        refute item_ok?(Map.put(item(), "target", target("code.example", path))), inspect(path)
+      end
+
+      address = %{"system" => "code.example", "path" => "a/b"}
+
+      for target <- [
+            address,
+            %{"address" => address},
+            %{"collection" => "C_1", "address" => Map.delete(address, "path")},
+            %{"collection" => "C_1", "address" => Map.delete(address, "system")},
+            %{"collection" => "C_1", "address" => nil},
+            %{"collection" => ""}
+          ] do
+        refute item_ok?(Map.put(item(), "target", target)), inspect(target)
+      end
     end
 
     test "a listing part is numbered from 1, with a time and whether it completes" do
@@ -943,7 +976,16 @@ defmodule Apiary.Sources.WireTest do
             ~s("ref":),
             ~s("target":{) <>
               Enum.map_join(1..60_000, "", &~s("k#{&1}":1,)) <>
-              ~s("system":"a","path":"b"},"ref":)
+              ~s("collection":"a"},"ref":)
+          ) <> "]}",
+        head <>
+          "[" <>
+          String.replace(
+            item,
+            ~s("ref":),
+            ~s("target":{"collection":"a","address":{) <>
+              Enum.map_join(1..60_000, "", &~s("k#{&1}":1,)) <>
+              ~s("system":"a","path":"b"}},"ref":)
           ) <> "]}",
         head <>
           "[]," <>

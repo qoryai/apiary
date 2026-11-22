@@ -72,6 +72,10 @@ defmodule ApiaryWeb.Contract.SourceCollectionsControllerTest do
 
   defp refusal(name), do: fixture("refusal/#{name}.json")
 
+  # A target of the collection `R_1001` at `system` and `path`, as the contract writes one.
+  defp target(system, path),
+    do: %{"collection" => "R_1001", "address" => %{"system" => system, "path" => path}}
+
   describe "the listing" do
     test "the contract's listing in two parts, and the code host's with its target", ctx do
       for path <- ["acme-tracker-part-1", "acme-tracker-part-2"] do
@@ -147,9 +151,13 @@ defmodule ApiaryWeb.Contract.SourceCollectionsControllerTest do
         collection_with.(%{"url" => "https://" <> String.duplicate("a", 2041)}),
         collection_with.(%{"title" => ""}),
         collection_with.(%{"title" => String.duplicate("t", 1025)}),
-        collection_with.(%{"target" => %{"system" => "GitHub.com", "path" => "acme/shop"}}),
-        collection_with.(%{"target" => %{"system" => "github.com", "path" => ""}}),
-        collection_with.(%{"target" => %{"system" => "github.com"}}),
+        collection_with.(%{"target" => %{"system" => "github.com", "path" => "acme/shop"}}),
+        collection_with.(%{"target" => target("GitHub.com", "acme/shop")}),
+        collection_with.(%{"target" => target("github.com", "")}),
+        collection_with.(%{"target" => target("github.com", "acme/\tshop")}),
+        collection_with.(%{"target" => %{"collection" => "R_1001", "address" => nil}}),
+        collection_with.(%{"target" => %{"collection" => ""}}),
+        collection_with.(%{"target" => %{"address" => %{"system" => "github.com"}}}),
         collection_with.(%{"target" => nil}),
         collection_with.(%{"name" => "x"}),
         Map.put(body, "collections", [Map.delete(collection, "title")]),
@@ -348,7 +356,7 @@ defmodule ApiaryWeb.Contract.SourceCollectionsControllerTest do
       body = fresh("sources-disconnect/code-host.json", ctx)
 
       for bad <- [
-            fresh("invalid/sources-disconnect-with-reason.json", ctx),
+            fresh("closed/sources-disconnect-with-reason.json", ctx),
             fresh("invalid/sources-disconnect-without-connection-id.json", ctx),
             Map.delete(body, "connection_id"),
             Map.put(body, "connection_id", nil),

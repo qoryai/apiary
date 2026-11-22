@@ -145,10 +145,15 @@ defmodule Apiary.Adapters.GrantAccountMigrationTest do
   test "the ended reason of a grant end; down deletes the grants it ended, and keeps the others" do
     %{scope: scope} = sign_up_fixture()
     {connection, grant, _collection} = old_rows(scope)
-    ended_ref = listing_grant(connection, "G_ENDED")
+
+    # A connection has one live grant, so the grant that ends is another connection's.
+    %{scope: other} = sign_up_fixture()
+    adapter = Repo.get!(Apiary.Nodes.Node, connection.adapter_id)
+    {theirs, _nonce} = connection_fixture(other, adapter, :listed)
+    ended_ref = listing_grant(theirs, "G_ENDED")
 
     ended =
-      Repo.get_by!(Apiary.Adapters.Grant, connection_id: connection.id, grant_ref: ended_ref)
+      Repo.get_by!(Apiary.Adapters.Grant, connection_id: theirs.id, grant_ref: ended_ref)
 
     assert %{num_rows: 1} =
              query!(

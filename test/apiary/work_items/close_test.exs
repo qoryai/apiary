@@ -229,6 +229,7 @@ defmodule Apiary.WorkItems.CloseTest do
                  url: old.url,
                  title: old.title,
                  collection_title: old.collection_title,
+                 target_collection_external_ref: old.target_collection_external_ref,
                  target_system: old.target_system,
                  target_path: old.target_path,
                  owner_id: ctx.first.user.id

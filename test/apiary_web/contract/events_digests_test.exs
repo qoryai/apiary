@@ -14,7 +14,7 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
 
   alias Apiary.Policy
   alias Apiary.Repo
-  alias Apiary.Runs.{Delivery, Projector, Target, Run}
+  alias Apiary.Runs.{Delivery, Projector, Run}
   alias ApiaryWeb.Contract.Configuration
 
   setup do
@@ -23,7 +23,7 @@ defmodule ApiaryWeb.Contract.EventsDigestsTest do
 
     # The target of `first_events/1`'s labels, with a rule of its own.
     target =
-      Repo.insert!(%Target{
+      Apiary.NodesFixtures.target_fixture(%{
         organisation_id: scope.organisation.id,
         workspace_id: scope.workspace.id,
         system: "git.example.com",

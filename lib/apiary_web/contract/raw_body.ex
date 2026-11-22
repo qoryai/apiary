@@ -52,7 +52,8 @@ defmodule ApiaryWeb.Contract.RawBody do
   # `served?/1` holds, as below: `POST /v1/adapter`, `POST /v1/source-collections`,
   # `POST /v1/source-items`, `POST /v1/sources/disconnect`,
   # `POST /v1/source-items/comments`, `POST /v1/adapter/secrets`, `POST /v1/grants`,
-  # `POST /v1/grants/end` and `POST /v1/work-items/changes/failed`.
+  # `POST /v1/grants/end`, `POST /v1/work-items/changes/failed` and
+  # `POST /v1/work-items/changes/submitted`.
   @adapter_paths [
     ["v1", "adapter"],
     ["v1", "source-collections"],
@@ -65,7 +66,10 @@ defmodule ApiaryWeb.Contract.RawBody do
     ["v1", "adapter", "secrets"],
     ["v1", "grants", "end"]
   ]
-  @adapter_four_paths [["v1", "work-items", "changes", "failed"]]
+  @adapter_four_paths [
+    ["v1", "work-items", "changes", "failed"],
+    ["v1", "work-items", "changes", "submitted"]
+  ]
   # The provisioner contract's limit, 1 MiB (its `refusal.schema.json`, 413), for its
   # signed paths, a node pool's starter's: `POST /v1/pools/claim` and
   # `POST /v1/dispatches/<dispatch_id>/dispatched`, `/release`, `/machine-log` and

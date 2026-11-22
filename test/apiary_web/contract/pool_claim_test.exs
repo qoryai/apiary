@@ -286,7 +286,14 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
     test "takes an explore run without a target, in the example domain, answered as any other",
          ctx do
       scope = with_domain(ctx.scope, "example")
-      work_item = work_item_fixture(scope, %{target_system: nil, target_path: nil})
+
+      work_item =
+        work_item_fixture(scope, %{
+          target_collection_external_ref: nil,
+          target_system: nil,
+          target_path: nil
+        })
+
       run = queue!(work_item)
 
       conn = claim(ctx, body())

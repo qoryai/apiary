@@ -715,7 +715,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
               url: "https://forge.example.com/" <> ref,
               title: ref,
               grant_ref: listing_grant(connection),
-              target: if(opts[:targets], do: %{system: "code.example.com", path: ref})
+              target:
+                if(opts[:targets],
+                  do: %{collection: ref, system: "code.example.com", path: ref}
+                )
             }
           end,
         listing: %{
@@ -3043,8 +3046,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       collection
     end
 
-    defp target_of(collection),
-      do: %{system: collection.target_system, path: collection.target_path}
+    defp target_of(collection), do: Apiary.Adapters.Collection.target(collection)
 
     # The options of a destination's Stack select, `{text, value}`, and the chosen value.
     defp row_options(lv, collection) do

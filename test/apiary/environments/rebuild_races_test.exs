@@ -88,7 +88,7 @@ defmodule Apiary.Environments.RebuildRacesTest do
 
     :ok =
       Target.insert_new(scope.organisation.id, scope.workspace.id, [
-        %{system: @system, path: @path}
+        Collection.target(collection)
       ])
 
     %{

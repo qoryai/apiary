@@ -9,8 +9,11 @@
       "title": "acme/shop",
       "grant_ref": "G_1",
       "target": {
-        "system": "github.com",
-        "path": "acme/shop"
+        "collection": "R_1001",
+        "address": {
+          "system": "github.com",
+          "path": "acme/shop"
+        }
       }
     }
   ],

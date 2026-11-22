@@ -74,7 +74,7 @@ defmodule Apiary.Lingo.DomainTest do
       assert Software.harness_file?()
     end
 
-    test "a target is a host name and an owner/name path with no segment led by a dash" do
+    test "a target has an address, a host name and an owner/name path with no segment led by a dash" do
       assert Software.check_target(%{system: "git.example.com", path: "acme/shop"}) == :ok
 
       for {system, path} <- [
@@ -90,6 +90,8 @@ defmodule Apiary.Lingo.DomainTest do
         assert Software.check_target(%{system: system, path: path}) == {:error, :target_invalid},
                inspect({system, path})
       end
+
+      assert Software.check_target(%{system: nil, path: nil}) == {:error, :target_invalid}
     end
 
     test "a run gets QORY_RUN_SYSTEM and QORY_RUN_REPOSITORIES, the target first" do
@@ -330,16 +332,37 @@ defmodule Apiary.Lingo.DomainTest do
       assert Domain.check_target(%Workspace{domain: "software"}, nil) == {:error, :no_target}
       assert Domain.check_target(%Workspace{domain: "example"}, nil) == :ok
 
-      target = %{system: "ads.example.com", path: "accounts/1234/campaigns"}
+      target = %{
+        adapter_id: Ecto.UUID.generate(),
+        collection_external_ref: "C_1",
+        system: "ads.example.com",
+        path: "accounts/1234/campaigns"
+      }
 
       assert Domain.check_target(%Workspace{domain: "software"}, target) ==
                {:error, :target_invalid}
 
       assert Domain.check_target(%Workspace{domain: "example"}, target) == :ok
+
+      # A place with no address: a target of the example domain, no repository.
+      no_address = %{target | system: nil, path: nil}
+
+      assert Domain.check_target(%Workspace{domain: "software"}, no_address) ==
+               {:error, :target_invalid}
+
+      assert Domain.check_target(%Workspace{domain: "example"}, no_address) == :ok
     end
 
-    test "run_variables/3 gives none without a target, else asks the workspace's domain" do
+    test "run_variables/3 gives none without a target or an address, else asks the workspace's domain" do
       assert Domain.run_variables(%Workspace{domain: "software"}, nil, []) == {:ok, nil}
+
+      keyed = %{adapter_id: Ecto.UUID.generate(), collection_external_ref: "Q_support"}
+
+      assert Domain.run_variables(
+               %Workspace{domain: "software"},
+               Map.merge(keyed, %{system: nil, path: nil}),
+               []
+             ) == {:ok, nil}
 
       assert {:ok, %{"QORY_RUN_SYSTEM" => "git.example.com"}} =
                Domain.run_variables(

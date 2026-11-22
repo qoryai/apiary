@@ -16,7 +16,8 @@ defmodule ApiaryWeb.Contract.GrantsController do
   # `connection_ended`; `409` `connection_suspended`; `409` `pass_unknown`; then `409`
   # `grant_taken` when the adapter has a grant with the same ref that has not ended under
   # any other connection of the adapter, of any organisation, a connection made but with
-  # no accepted listing yet included; else `204`, signed, with no body.
+  # no accepted listing yet included; then `409` `connection_held` when the connection has
+  # a grant that has not ended with another ref; else `204`, signed, with no body.
   #
   # `GET /v1/grants`, the adapter's read of Qory Apiary's copy: `403` `forbidden` for a
   # key that may not read it (`adapter.read_grants`); else `200`, signed:
@@ -53,6 +54,7 @@ defmodule ApiaryWeb.Contract.GrantsController do
       {:error, :suspended} -> refuse(conn, 409, "connection_suspended")
       {:error, :pass_unknown} -> refuse(conn, 409, "pass_unknown")
       {:error, :grant_taken} -> refuse(conn, 409, "grant_taken")
+      {:error, :connection_held} -> refuse(conn, 409, "connection_held")
     end
   rescue
     exception ->

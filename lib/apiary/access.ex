@@ -707,6 +707,16 @@ defmodule Apiary.Access do
       asked_of: :organisation,
       audited: {:not, "the items an adapter posts are kept as they are, not in the audit trail"}
     ),
+    # An adapter's report of what became of a change request entry: its reply
+    # (`changes-submitted.schema.json`) and its failure (`changes-failed.schema.json`).
+    Action.new(:"change_request.report", "report what became of a change request",
+      feature: :factory,
+      roles: [:adapter_key],
+      asked_of: :organisation,
+      audited:
+        {:not,
+         "an adapter's report is kept on the version it is about, in its delivery columns, not in the audit trail"}
+    ),
     Action.new(:"work_item.read_changes", "read what changed of the work items",
       feature: :factory,
       roles: [:adapter_key],

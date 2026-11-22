@@ -505,7 +505,13 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       assert Domain.check_target(workspace, nil) == :ok
 
       # A path with no owner: the example domain takes it, and the software domain does not.
-      target = %{system: "desk.example.com", path: "account-1"}
+      target = %{
+        adapter_id: Ecto.UUID.generate(),
+        collection_external_ref: "Q_desk",
+        system: "desk.example.com",
+        path: "account-1"
+      }
+
       assert Domain.check_target(workspace, target) == :ok
       assert Domain.Software.check_target(target) == {:error, :target_invalid}
     end

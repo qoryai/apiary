@@ -17,7 +17,6 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
   import ApiaryPro.OperatorsFixtures
 
   alias Apiary.{Features, Repo, Variables}
-  alias Apiary.Runs.Target
   alias ApiaryPro.{OrganisationVariables, Suspensions}
   alias ApiaryPro.OrganisationVariables.Variable
 
@@ -42,7 +41,7 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
   end
 
   defp target!(workspace, path) do
-    Repo.insert!(%Target{
+    Apiary.NodesFixtures.target_fixture(%{
       organisation_id: workspace.organisation_id,
       workspace_id: workspace.id,
       system: "github.example",

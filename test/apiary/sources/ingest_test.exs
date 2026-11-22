@@ -232,7 +232,11 @@ defmodule Apiary.Sources.IngestTest do
 
   describe "items" do
     test "are made with the contract's fields, a tk_ id, and the collection's ids", ctx do
-      target = %{"system" => "code.example.com", "path" => "acme/shop"}
+      target = %{
+        "collection" => "R_shop",
+        "address" => %{"system" => "code.example.com", "path" => "acme/shop"}
+      }
+
       raw = item("R") |> Map.put("key", "#12") |> Map.put("target", target)
       assert post(ctx, "TRK", [raw]) == {:ok, :accepted}
 
@@ -246,6 +250,7 @@ defmodule Apiary.Sources.IngestTest do
                filed_by_kind: :person,
                labels: ["bug"],
                state: :open,
+               target_collection_external_ref: "R_shop",
                target_system: "code.example.com",
                target_path: "acme/shop",
                comment_count: 0,

@@ -61,7 +61,7 @@ defmodule Apiary.Adapters.CollectionsTest do
             url: "https://tracker.acme.example/" <> ref,
             title: Keyword.get(opts, :title, "Title of " <> ref),
             grant_ref: Keyword.get_lazy(opts, :grant_ref, fn -> listing_grant(connection) end),
-            target: Keyword.get(opts, :target),
+            target: (target = Keyword.get(opts, :target)) && Map.put(target, :collection, ref),
             environment_ref: Keyword.get(opts, :environment_ref)
           }
         end,
@@ -506,7 +506,9 @@ defmodule Apiary.Adapters.CollectionsTest do
 
       assert Collections.post_listing(
                ctx.key_scope,
-               part(%{ctx.connection | public_id: "ac_0000000000000000"}, ["A"])
+               part(%{ctx.connection | public_id: "ac_0000000000000000"}, ["A"],
+                 grant_ref: "G_NEVER"
+               )
              ) == {:error, :unknown}
 
       # Suspended.

@@ -138,7 +138,7 @@ defmodule Apiary.Runs.SchemaTest do
     now = DateTime.utc_now()
 
     target =
-      Repo.insert!(%Apiary.Runs.Target{
+      Apiary.NodesFixtures.target_fixture(%{
         organisation_id: other.organisation.id,
         workspace_id: other.workspace.id,
         system: "git.example.com",

@@ -34,7 +34,9 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   are found lost a minute and a half later, as any run that stops talking is; one in two
   hundred writes tens of thousands of lines. The events are written with the times they happened
   and received a moment later, as the receiver would have stored them, and every run is
-  projected by `Apiary.Runs.Projector`, as the receiver's runs are.
+  projected by `Apiary.Runs.Projector`, as the receiver's runs are. Each repository is a
+  target of the workspace first, through a collection of the instance's adapter Example
+  code host, made where the instance has none.
 
   Nodes, keys and people go through the contexts, as the console's pages would, in the
   name of the workspace's first owner, so the audit trail has them: a node per machine
@@ -60,7 +62,7 @@ defmodule Mix.Tasks.Apiary.Demo.History do
   alias Apiary.Accounts.{Scope, User}
   alias Apiary.Organisations.{Invitation, Membership, Organisation, Workspace}
   alias Apiary.Runs.{Event, Liveness, Projector, Run, Target}
-  alias Mix.Tasks.Apiary.Demo.Shell
+  alias Mix.Tasks.Apiary.Demo.{CodeHost, Shell}
 
   @switches [
     workspace: :string,
@@ -313,6 +315,8 @@ defmodule Mix.Tasks.Apiary.Demo.History do
     if !opts[:skip_members], do: people(scope, opts[:passwords])
 
     catalogue = catalogue(repositories, days)
+    # A run whose labels name a repository takes its target (`Apiary.Runs.Target.id_at/3`).
+    :ok = CodeHost.targets!(scope, catalogue)
     plan = plan(runs, days, catalogue, now)
     ctx = %{scope: scope, keys: keys, seed: seed, now: now, days: days}
 

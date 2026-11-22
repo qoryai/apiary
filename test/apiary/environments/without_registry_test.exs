@@ -14,7 +14,6 @@ defmodule Apiary.Environments.WithoutRegistryTest do
   alias Apiary.{Dispatches, Environments}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Environments.Record
-  alias Apiary.Runs.Target
 
   @moduletag needs: :factory
 
@@ -109,8 +108,13 @@ defmodule Apiary.Environments.WithoutRegistryTest do
   end
 
   test "a Rebuild queues no build", ctx do
-    :ok = Target.insert_new(ctx.scope.organisation.id, ctx.scope.workspace.id, [@target])
-    target = Repo.get_by!(Target, workspace_id: ctx.scope.workspace.id, path: @target.path)
+    target =
+      Apiary.NodesFixtures.address_target!(
+        ctx.scope.organisation.id,
+        ctx.scope.workspace.id,
+        @target.system,
+        @target.path
+      )
 
     assert Environments.rebuild(ctx.scope, target) == {:error, :not_found}
     assert prebuilds(ctx) == []

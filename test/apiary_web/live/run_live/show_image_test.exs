@@ -57,7 +57,7 @@ defmodule ApiaryWeb.RunLive.ShowImageTest do
       if run.target_id,
         do: Apiary.Repo.get!(Apiary.Runs.Target, run.target_id),
         else:
-          Apiary.Repo.insert!(%Apiary.Runs.Target{
+          Apiary.NodesFixtures.target_fixture(%{
             organisation_id: scope.organisation.id,
             workspace_id: scope.workspace.id,
             system: "code.example.com",

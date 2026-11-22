@@ -260,7 +260,8 @@ defmodule Apiary.Dispatches.ImageMissingTest do
   # against the explore contract's `inputs.schema.json`.
   defp input!(queued) do
     work_item = Repo.get!(WorkItem, queued.work_item_id)
-    {:ok, inputs} = Inputs.explore(work_item, queued, %{domain: "software", target: @target})
+    target = WorkItem.target(work_item)
+    {:ok, inputs} = Inputs.explore(work_item, queued, %{domain: "software", target: target})
     inputs = inputs |> Jason.encode!() |> Jason.decode!()
     assert ExploreInputsSchema.validate(inputs) == :ok
     inputs

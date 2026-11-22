@@ -3,8 +3,7 @@
   "domain": "marketing",
   "access": "read",
   "target": {
-    "system": "ads.example.com",
-    "path": "accounts/1234"
+    "collection": "AP_1234"
   },
   "work_item": {
     "id": "wi_8Kx2mQ4vT9",
@@ -72,8 +71,7 @@
     ],
     "comments_omitted": 0,
     "target": {
-      "system": "ads.example.com",
-      "path": "accounts/1234"
+      "collection": "AP_1234"
     },
     "domain": "marketing"
   }

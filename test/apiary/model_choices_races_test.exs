@@ -18,6 +18,8 @@ defmodule Apiary.ModelChoicesRacesTest do
   alias Apiary.{Connections, ModelChoicesFixtures, Repo}
   alias Apiary.Connections.Connection
   alias Apiary.ModelChoices.ModelChoice
+  alias Apiary.Nodes.Node
+  alias Apiary.Organisations.Organisation
 
   @moduletag needs: :factory
 
@@ -35,7 +37,18 @@ defmodule Apiary.ModelChoicesRacesTest do
         keys: [%{value_id: "main", value: "x"}]
       })
 
-    %{owner: owner, scope: scope, provider: provider, target: target!(scope, "acme/shop")}
+    target = target!(scope, "acme/shop")
+
+    # The target is of a fresh adapter, which the organisation's deletion leaves: the
+    # organisation goes first, with the target, then the adapter.
+    on_exit(fn ->
+      :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, sandbox: false)
+      Repo.delete_all(from o in Organisation, where: o.id == ^scope.organisation.id)
+      Repo.delete_all(from n in Node, where: n.id == ^target.adapter_id)
+      Ecto.Adapters.SQL.Sandbox.checkin(Repo)
+    end)
+
+    %{owner: owner, scope: scope, provider: provider, target: target}
   end
 
   defp choice(provider, model \\ @model),

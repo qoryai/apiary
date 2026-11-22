@@ -64,11 +64,13 @@ defmodule Apiary.Dispatches.Handover do
   #      its target are read, never its Backlog switch or whether it has items. Run
   #      variables of the target, and of the further paths its runs also read where the
   #      workspace's domain has a label for them (`Apiary.Targets.further_repositories/1`),
-  #      that break the domain's rules (`Apiary.Lingo.Domain.run_variables/3`) end it
-  #      `variables_invalid`, as do the variables of a run that is not a prebuild, from its
-  #      workspace and target (`Apiary.Variables.for_run/2`), when they are more than 126,
-  #      or take more than 64 KiB, with the count or the size kept as `end_detail`; a
-  #      prebuild gets none of them, and no refusal for them; an explore run whose
+  #      that break the domain's rules (`Apiary.Lingo.Domain.run_variables/3`), or a
+  #      further path that is not one of the collections of the target's adapter
+  #      (`Apiary.Targets.further_collections/2`), end it `variables_invalid`. So do the
+  #      variables of a run that is not a prebuild, from its workspace and target
+  #      (`Apiary.Variables.for_run/2`), when they are more than 126, or take more than
+  #      64 KiB, with the count or the size kept as `end_detail`; a prebuild gets none
+  #      of them, and no refusal for them; an explore run whose
   #      work item's ticket is no longer kept, `ticket_gone`; one whose input cannot be
   #      formed (`Apiary.Dispatches.Inputs`), or
   #      whose work item has no target in a domain that requires one
@@ -900,7 +902,7 @@ defmodule Apiary.Dispatches.Handover do
   # limit that the rest of the documents leave.
   defp formed(%{run: %DispatchRun{} = dispatch_run, held: held} = locked, workspace) do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
-    target = target(work_item)
+    target = WorkItem.target(work_item)
 
     with false <- is_nil(target) and not test?(work_item) and Domain.target_required?(workspace),
          :ok <- shared_access(dispatch_run),
@@ -1190,10 +1192,10 @@ defmodule Apiary.Dispatches.Handover do
   # `inputs` is given the name of the workspace's domain. `session` is the members of the
   # documents about the run's first session (`session_members/3`).
   defp formed(dispatch_run, workspace, target, work_item, {settings, session}, harness, inputs) do
-    picked = further_repositories(workspace, target)
     domain = Domain.name(workspace)
 
-    with {:variables, {:ok, own}} <-
+    with {:further, {:ok, picked}} <- {:further, further_repositories(workspace, target)},
+         {:variables, {:ok, own}} <-
            {:variables, Domain.run_variables(workspace, target, picked)},
          {:resolved, {:ok, variables}} <-
            {:resolved, resolved(dispatch_run, workspace, target, own)},
@@ -1221,6 +1223,7 @@ defmodule Apiary.Dispatches.Handover do
          }
        }}
     else
+      {:further, {:error, rule}} -> variables_ended(dispatch_run, work_item, target, rule)
       {:variables, {:error, rule}} -> variables_ended(dispatch_run, work_item, target, rule)
       {:resolved, {:error, refusal}} -> resolved_ended(dispatch_run, work_item, refusal)
       {:inputs, {:error, :answer_too_large}} -> :unavailable
@@ -1297,7 +1300,7 @@ defmodule Apiary.Dispatches.Handover do
       organisation_id: dispatch_run.organisation_id,
       workspace_id: dispatch_run.workspace_id,
       dispatch_run_id: dispatch_run.id,
-      target_id: target_row_id(dispatch_run, target)
+      target_id: Target.id_of(dispatch_run.organisation_id, dispatch_run.workspace_id, target)
     }
 
     case RunAccess.destinations(run) do
@@ -1328,40 +1331,18 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
-  # The id of the row of `target` in the prebuild's workspace, made where there is none.
-  defp target_row_id(%DispatchRun{} = dispatch_run, %{system: system, path: path} = target) do
-    query =
-      from t in Target,
-        where: t.workspace_id == ^dispatch_run.workspace_id,
-        where: t.system == ^system and t.path == ^path,
-        select: t.id
-
-    case Repo.one(query) do
-      nil ->
-        :ok = Target.insert_new(dispatch_run.organisation_id, dispatch_run.workspace_id, [target])
-        Repo.one!(query)
-
-      id ->
-        id
-    end
-  end
-
   # Whether the work item is a test work item: `test` set and no connection, as the
   # database holds them together (`work_items_test_check`).
   defp test?(%WorkItem{test: true, connection_id: nil}), do: true
   defp test?(%WorkItem{}), do: false
 
-  # A work item's target, or nil for one without.
-  defp target(%WorkItem{target_system: nil}), do: nil
-
-  defp target(%WorkItem{target_system: system, target_path: path}),
-    do: %{system: system, path: path}
-
-  # The run's labels: the target's (`Apiary.Lingo.Domain.target_labels/1`) and, where the
-  # domain has one and gives run variables, the label of the run's paths
+  # The run's labels: the target's address (`Apiary.Lingo.Domain.target_labels/1`) and,
+  # where the domain has one and gives run variables, the label of the run's paths
   # (`Apiary.Lingo.Domain.paths_label/1`), whose value is the run variables'
-  # QORY_RUN_REPOSITORIES, the same list in the same order. None without a target.
+  # QORY_RUN_REPOSITORIES, the same list in the same order. None without a target, nor for
+  # a target without an address.
   defp labels(_workspace, nil, _variables), do: %{}
+  defp labels(_workspace, %{system: nil, path: nil}, _variables), do: %{}
 
   defp labels(workspace, target, variables) do
     labels = Map.new(Enum.zip(Domain.target_labels(workspace), [target.system, target.path]))
@@ -1375,35 +1356,41 @@ defmodule Apiary.Dispatches.Handover do
 
   # The further paths the run's target's runs also read, in order
   # (`Apiary.Targets.further_repositories/1`), read without a lock: none where the
-  # workspace has no target of that system and path yet, where the run has no target, or
-  # where the workspace's domain has no label for them (`Apiary.Lingo.Domain.paths_label/1`).
-  defp further_repositories(_workspace, nil), do: []
+  # workspace has no row of the target yet, where the run has no target, or where the
+  # workspace's domain has no label for them (`Apiary.Lingo.Domain.paths_label/1`).
+  # `{:error, :not_a_collection}` where one of them is no longer one of the collections of
+  # the target's adapter, `{:error, :itself}` where one is the target's collection
+  # (`Apiary.Targets.further_collections/2`): the rule is logged.
+  defp further_repositories(_workspace, nil), do: {:ok, []}
 
-  defp further_repositories(workspace, %{system: _system, path: _path} = target) do
+  defp further_repositories(workspace, %{} = target) do
     found = target_row(workspace, target)
 
-    if found && Domain.paths_label(workspace),
-      do: Targets.further_repositories(found),
-      else: []
+    with %Target{} <- found,
+         label when is_binary(label) <- Domain.paths_label(workspace),
+         paths = Targets.further_repositories(found),
+         :ok <- Targets.further_collections(found, paths) do
+      {:ok, paths}
+    else
+      {:error, {rule, _n}} -> {:error, rule}
+      _none -> {:ok, []}
+    end
   end
 
-  # The workspace's row of the run's target, nil where it has none yet: read without a
-  # lock.
-  defp target_row(
-         %Workspace{id: workspace_id, organisation_id: organisation_id},
-         %{system: system, path: path}
-       ) do
+  # The workspace's row of the run's target, by its adapter and collection ref, nil where
+  # it has none yet: read without a lock.
+  defp target_row(%Workspace{id: workspace_id, organisation_id: organisation_id}, target) do
     Repo.one(
-      from t in Target,
-        where: t.organisation_id == ^organisation_id and t.workspace_id == ^workspace_id,
-        where: t.system == ^system and t.path == ^path
+      from t in Target.by_key(workspace_id, target),
+        where: t.organisation_id == ^organisation_id
     )
   end
 
   # A prebuild's collection's target, while the collection is live, assigned to the run's
-  # workspace and has a target: its assignment, its workspace, its end and its target,
-  # read without a lock. Its Backlog switch and whether it has items are not read: neither
-  # ends a prebuild.
+  # workspace and has a target with an address, which a prebuild needs: its assignment,
+  # its workspace, its end and its target, of the collection's adapter, read without a
+  # lock. Its Backlog switch and whether it has items are not read: neither ends a
+  # prebuild.
   defp collection(%DispatchRun{source_collection_id: id, workspace_id: workspace_id}) do
     found =
       Repo.one(
@@ -1412,15 +1399,23 @@ defmodule Apiary.Dispatches.Handover do
           select: %{
             ended_at: c.ended_at,
             workspace_id: c.workspace_id,
+            adapter_id: c.adapter_id,
+            ref: c.target_collection_external_ref,
             system: c.target_system,
             path: c.target_path
           }
       )
 
     case found do
-      %{ended_at: nil, workspace_id: ^workspace_id, system: system, path: path}
+      %{ended_at: nil, workspace_id: ^workspace_id, system: system, path: path} = found
       when is_binary(system) and is_binary(path) ->
-        {:ok, %{system: system, path: path}}
+        {:ok,
+         %{
+           adapter_id: found.adapter_id,
+           collection_external_ref: found.ref,
+           system: system,
+           path: path
+         }}
 
       _ended_moved_or_without_target ->
         :ended

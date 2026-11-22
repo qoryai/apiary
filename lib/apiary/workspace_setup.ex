@@ -374,13 +374,32 @@ defmodule Apiary.WorkspaceSetup do
       where: n.kind == :adapter and is_nil(n.deleted_at),
       where: is_nil(n.domains) or ^name in n.domains
     )
-    |> where_list(list)
+    |> where_list(list, domain)
   end
 
-  defp where_list(query, :sources), do: where(query, [c, _k, n], c.items and n.items)
+  defp where_list(query, :sources, _domain), do: where(query, [c, _k, n], c.items and n.items)
 
-  defp where_list(query, :destinations),
-    do: where(query, [c, _k, n], n.targets == true and not is_nil(c.target_system))
+  defp where_list(query, :destinations, domain) do
+    address? = address?(domain)
+
+    where(
+      query,
+      [c, _k, n],
+      n.targets == true and not is_nil(c.target_collection_external_ref) and
+        (not (^address?) or not is_nil(c.target_system))
+    )
+  end
+
+  # Whether a destination of `domain` needs an address: a target without one fails the
+  # domain's check (`c:Apiary.Lingo.Domain.check_target/1`), as a software target does.
+  # A collection whose target has no address is no destination there.
+  defp address?(domain), do: domain.check_target(%{system: nil, path: nil}) != :ok
+
+  # Whether `collection` is a destination for `domain` (`where_list/3`).
+  defp destination?(domain, adapter, collection),
+    do:
+      adapter.targets == true and is_binary(collection.target_collection_external_ref) and
+        (not address?(domain) or is_binary(collection.target_system))
 
   @doc false
   # ticked?/3 is whether `row` of the tick list `list` is ticked for `workspace`: a work
@@ -431,14 +450,14 @@ defmodule Apiary.WorkspaceSetup do
         {:error, :elsewhere}
 
       {adapter, row} ->
-        toggle(scope, workspace, list, adapter, row)
+        toggle(scope, workspace, domain, list, adapter, row)
     end
   end
 
-  defp toggle(scope, workspace, list, adapter, %{collection: collection} = row) do
+  defp toggle(scope, workspace, domain, list, adapter, %{collection: collection} = row) do
     here? = collection.workspace_id == workspace.id
     switch? = collection.items and Adapters.items?(adapter)
-    destination? = adapter.targets == true and not is_nil(collection.target_system)
+    destination? = destination?(domain, adapter, collection)
 
     case {list, ticked?(list, row, workspace)} do
       {:sources, false} ->
@@ -511,7 +530,7 @@ defmodule Apiary.WorkspaceSetup do
         |> Repo.all()
 
       ids = Enum.map(found, fn {grant, _k, _n} -> grant.id end)
-      counts = card_counts(ids, list, workspace)
+      counts = card_counts(ids, list, workspace, domain)
 
       rules =
         Repo.all(from r in GrantRule, where: r.grant_id in ^ids, preload: :workspace)
@@ -566,9 +585,9 @@ defmodule Apiary.WorkspaceSetup do
 
   # How many live collections of each of the grants `ids` the list `list` has, and how
   # many of them are chosen for `workspace`, by grant id.
-  defp card_counts([], _list, _workspace), do: %{}
+  defp card_counts([], _list, _workspace, _domain), do: %{}
 
-  defp card_counts(ids, list, %Workspace{id: workspace_id}) do
+  defp card_counts(ids, list, %Workspace{id: workspace_id}, domain) do
     query =
       from c in Collection,
         where: c.grant_id in ^ids and is_nil(c.ended_at),
@@ -583,8 +602,11 @@ defmodule Apiary.WorkspaceSetup do
              {count(c.id), filter(count(c.id), c.workspace_id == ^workspace_id and c.backlog)}}
 
       :destinations ->
+        address? = address?(domain)
+
         from c in query,
-          where: not is_nil(c.target_system),
+          where: not is_nil(c.target_collection_external_ref),
+          where: not (^address?) or not is_nil(c.target_system),
           select:
             {c.grant_id, {count(c.id), filter(count(c.id), c.workspace_id == ^workspace_id)}}
     end

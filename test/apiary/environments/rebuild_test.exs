@@ -13,11 +13,10 @@ defmodule Apiary.Environments.RebuildTest do
   import Apiary.NodesFixtures
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Dispatches, Environments, Repo, Targets}
+  alias Apiary.{Dispatches, Environments, Repo}
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Environments.Record
-  alias Apiary.Runs.Target
 
   @moduletag needs: :factory
 
@@ -52,12 +51,12 @@ defmodule Apiary.Environments.RebuildTest do
   end
 
   defp target(scope) do
-    :ok =
-      Target.insert_new(scope.organisation.id, scope.workspace.id, [
-        %{system: @system, path: @path}
-      ])
-
-    Targets.get(scope, @system, @path)
+    Apiary.NodesFixtures.address_target!(
+      scope.organisation.id,
+      scope.workspace.id,
+      @system,
+      @path
+    )
   end
 
   # The prebuilds of `collection` that wait, `{pool_id, environment_ref}` by pool.

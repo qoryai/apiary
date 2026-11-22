@@ -2,9 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/integration/v1/grants.schema.json",
   "title": "Grants",
-  "description": "The body of the signed 200 answer to the signed GET /v1/grants, application/json: the control plane's copy of the grants of the adapter's connections that have not ended, as the adapter reported them (grant.schema.json). A grant end removes a grant from the copy (grant-end.schema.json), and a later accepted report of the same grant_ref adds it again. This copy wins: when the adapter's state and the copy differ, the adapter changes its state to match the copy, dropping a grant the copy does not contain. One exception: until the expires_at of the linked connect return the adapter minted for a grant, the adapter keeps that grant while it sends the grant's report again after 409 pass_unknown or 403 connection_unknown, though the copy does not contain it (grant.schema.json), and never mints a work credential under that grant (run-credential.schema.json). Once that expires_at has passed, the copy wins for that grant too. The adapter reads it when it starts, and follows the grant entries of the change feed after that (changes.schema.json). The GET is signed with the adapter's access key, X-Qory-Timestamp included, and the answer under the control plane's server key, as definitions.schema.json describes; the adapter checks the answer under a server key it pinned at enrolment before using it. The answer contains the revision it was built for in revision, inside the signed body, and the adapter refuses an answer whose revision is not the revision it implements. The adapter refuses a member this schema does not define.",
+  "description": "The body of the signed 200 answer to the signed GET /v1/grants, application/json: the control plane's copy of the grants of the adapter's connections that have not ended, as the adapter reported them (grant.schema.json). A grant end removes a grant from the copy (grant-end.schema.json), and a later accepted report of the same grant_ref adds it again. This copy wins: when the adapter's state and the copy differ, the adapter changes its state to match the copy, dropping a grant the copy does not contain. One exception: until the expires_at of the linked connect return the adapter minted for a grant, the adapter keeps that grant while it sends the grant's report again after an answer that is not final (grant.schema.json), though the copy does not contain it (grant.schema.json), and never mints a work credential under that grant (run-credential.schema.json). Once that expires_at has passed, the copy wins for that grant too. The adapter reads it when it starts, and follows the grant entries of the change feed after that (changes.schema.json). The GET is signed with the adapter's access key, X-Qory-Timestamp included, and the answer under the control plane's server key, as definitions.schema.json describes; the adapter checks the answer under a server key it pinned at enrolment before using it. The answer contains the revision it was built for in revision, inside the signed body, and the adapter refuses an answer whose revision is not the revision it implements. The adapter ignores a member that this schema does not define, unless the must_understand of the answer lists it. It refuses an answer whose must_understand lists a pointer that it does not define.",
   "type": "object",
-  "additionalProperties": false,
   "required": ["version", "revision", "grants"],
   "properties": {
     "version": {
@@ -21,12 +20,23 @@
       "type": "array",
       "items": {
         "type": "object",
-        "additionalProperties": false,
         "required": ["connection_id", "grant_ref"],
         "properties": {
           "connection_id": {"description": "The connection that has the grant.", "$ref": "definitions.schema.json#/$defs/connection_id"},
           "grant_ref": {"description": "The grant's ref, as the adapter reported it.", "$ref": "definitions.schema.json#/$defs/ref"}
         }
+      }
+    },
+    "must_understand": {
+      "description": "The members of the document that the reader must understand, each as a JSON Pointer (RFC 6901) counted from the document, such as /grants. List each once, at most 32. A pointer has no line feed, and writes ~ only as ~0 or ~1. Each pointer is to a member that this schema defines. The adapter ignores a member that this schema does not define, unless the must_understand of the answer lists it. It refuses an answer whose must_understand lists a pointer that it does not define.",
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 256,
+        "not": {"pattern": "\\n"},
+        "pattern": "^(?:/grants|/grants/(?:0|[1-9][0-9]*)|/grants/(?:0|[1-9][0-9]*)/connection_id|/grants/(?:0|[1-9][0-9]*)/grant_ref|/revision|/version)$"
       }
     }
   }

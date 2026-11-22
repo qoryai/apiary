@@ -256,7 +256,9 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
       Repo.all(from n in Node, where: n.kind == :adapter and is_nil(n.deleted_at))
       |> Map.new(&{&1.name, &1})
 
-    assert Map.keys(adapters) == ["Helpdesk", "Tracker"]
+    # Example code host is the adapter of the history's repositories
+    # (`Mix.Tasks.Apiary.Demo.CodeHost`).
+    assert Map.keys(adapters) == ["Example code host", "Helpdesk", "Tracker"]
     %{"Tracker" => tracker, "Helpdesk" => helpdesk} = adapters
     assert tracker.connect_url == "https://tracker.example.com/connect"
     assert Adapters.item_noun(tracker) == %{one: "ticket", other: "tickets"}
@@ -266,7 +268,8 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
     assert Adapters.collection_noun(helpdesk) == %{one: "queue", other: "queues"}
 
     connections = Repo.all(Adapters.Connection) |> Map.new(&{&1.adapter_id, &1})
-    assert map_size(connections) == 2
+    # The third is Example code host's, with the collections of the history's repositories.
+    assert map_size(connections) == 3
 
     for adapter <- [tracker, helpdesk] do
       assert %{state: :connected, listed_at: %DateTime{}} = connection = connections[adapter.id]
@@ -398,12 +401,25 @@ defmodule Mix.Tasks.Apiary.Demo.ConsoleTest do
 
   # Off, the `factory` feature is absent from the fill, which completes all the same.
   @tag with_features: [:observability, :security, :secrets]
-  test "without the factory feature the fill makes no adapter, ticket or work item" do
+  test "without the factory feature the fill makes no adapter but Example code host, ticket or work item" do
     fill()
 
     assert Repo.exists?(from o in Organisation, where: o.slug == "acme")
-    refute Repo.exists?(from n in Node, where: n.kind == :adapter)
-    refute Repo.exists?(Adapters.Collection)
+
+    # Example code host is the adapter of the history's repositories
+    # (`Mix.Tasks.Apiary.Demo.CodeHost`).
+    assert Repo.all(from n in Node, where: n.kind == :adapter, select: n.name) == [
+             "Example code host"
+           ]
+
+    # Its collections are the history's repositories, of no tickets.
+    refute Repo.exists?(
+             from c in Adapters.Collection,
+               join: n in Node,
+               on: n.id == c.adapter_id,
+               where: n.name != "Example code host"
+           )
+
     refute Repo.exists?(Item)
     refute Repo.exists?(WorkItem)
     refute Repo.exists?(Stacks.Stack)

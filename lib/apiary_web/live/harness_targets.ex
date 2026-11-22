@@ -20,6 +20,7 @@ defmodule ApiaryWeb.HarnessTargets do
 
   import Phoenix.LiveView, only: [cancel_async: 2, connected?: 1, put_flash: 3, start_async: 3]
 
+  alias Apiary.Adapters.Collection
   alias Apiary.Harnesses.Qory
   alias Apiary.Stacks.Sources
   alias Apiary.WorkspaceSetup
@@ -37,16 +38,16 @@ defmodule ApiaryWeb.HarnessTargets do
         row <- rows,
         WorkspaceSetup.ticked?(:destinations, row, workspace) do
       %{collection: collection} = row
-      target = %{system: collection.target_system, path: collection.target_path}
+      target = Collection.target(collection)
 
       %{
         id: collection.public_id,
         title: collection.title,
         target: target,
-        chosen: chosen[{target.system, target.path}]
+        chosen: chosen[{target.adapter_id, target.collection_external_ref}]
       }
     end
-    |> Enum.uniq_by(& &1.target)
+    |> Enum.uniq_by(&{&1.target.adapter_id, &1.target.collection_external_ref})
   end
 
   @doc false

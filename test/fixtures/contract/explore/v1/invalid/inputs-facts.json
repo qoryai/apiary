@@ -44,8 +44,7 @@
     "The [late delivery policy](https://help.example.com/policies/late-delivery) covers a delivery more than seven days late."
   ],
   "target": {
-    "system": "tracker.example.com",
-    "path": "customer-care"
+    "collection": "SQ_1001"
   },
   "domain": "customer-care"
 }

@@ -680,7 +680,10 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
           "url" => "#{@host}/#{@repository}",
           "title" => @repository,
           "grant_ref" => @grant_ref,
-          "target" => %{"system" => @code_host, "path" => @repository}
+          "target" => %{
+            "collection" => @repository,
+            "address" => %{"system" => @code_host, "path" => @repository}
+          }
         }
       ],
       "listing" => %{

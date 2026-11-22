@@ -660,6 +660,63 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert body["outputs"] == []
     end
 
+    test "a run with no repository, outside a software factory, has its stage and outputs",
+         ctx do
+      place!(ctx)
+      with_repository = read(ctx, "/work-item")
+
+      %{scope: scope} = sign_up_fixture()
+      scope = with_domain(scope, "example")
+      fixture = sealed_run_fixture(scope, work_item: %{target_system: nil, target_path: nil})
+      dispatch_run = Repo.get!(DispatchRun, fixture.run.dispatch_run_id)
+      work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
+      # A run's repository is its work item's target: `ctx`'s has one, this run none.
+      assert {ctx.work_item.target_system, ctx.work_item.target_path} ==
+               {"forge.example.com", "acme/shop"}
+
+      assert {work_item.target_system, work_item.target_path} == {nil, nil}
+
+      [stage | _later] = Apiary.Processes.version_for(work_item).document["stages"]
+
+      {1, _rows} =
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [stage_id: stage["id"], stage_state: :running, stage_round: 1, stage_entry: 0]
+        )
+
+      conn = read(%{run: fixture.run, key: fixture.secrets_key}, "/work-item")
+      body = json_response(conn, 200)
+
+      assert body["stage"] == %{
+               "id" => stage["id"],
+               "name" => stage["name"],
+               "round" => 1,
+               "rounds" => nil,
+               "state" => "running"
+             }
+
+      assert body["outputs"] ==
+               for(
+                 output <- stage["outputs"],
+                 do: %{
+                   "type" => output["type"],
+                   "required" => output["required"] == true,
+                   "version" => nil,
+                   "check" => "missing"
+                 }
+               )
+
+      assert body["outputs"] != []
+
+      # The same members in the same order as a run with repositories has.
+      members = &Enum.map(&1.values, fn {key, _value} -> key end)
+      ordered = Jason.decode!(conn.resp_body, objects: :ordered_objects)
+      expected = Jason.decode!(with_repository.resp_body, objects: :ordered_objects)
+      assert members.(ordered) == members.(expected)
+      assert members.(ordered["stage"]) == members.(expected["stage"])
+      [expected_output | _more] = expected["outputs"]
+      for output <- ordered["outputs"], do: assert(members.(output) == members.(expected_output))
+    end
+
     test "has the notes, oldest first, each person by name, a failed check by none", ctx do
       place!(ctx)
 

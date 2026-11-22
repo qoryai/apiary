@@ -41,7 +41,7 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   @spec documents(%{
           required(:step) => String.t(),
           required(:domain) => String.t(),
-          required(:target) => %{system: String.t(), path: String.t()} | nil,
+          required(:target) => Apiary.Lingo.Domain.target() | nil,
           required(:work_item) => Apiary.WorkItems.WorkItem.t() | nil,
           required(:run_settings) => Jason.OrderedObject.t() | nil,
           required(:harness) => harness | nil,
@@ -92,18 +92,14 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # reach/2 is the `access` of a run with the harness members `harness` (`access/1`) and
   # its `target`, both present for a run with a target and both left out for one
   # without, as the contract requires them together: `{name, value}` members, in order.
+  # The target is `{collection, address?}` (`Apiary.Runs.Target.document/1`).
   @doc false
-  @spec reach(harness | nil, %{system: String.t(), path: String.t()} | nil) ::
+  @spec reach(harness | nil, Apiary.Lingo.Domain.target() | nil) ::
           [{String.t(), String.t() | Jason.OrderedObject.t()}]
   def reach(_harness, nil), do: []
 
-  def reach(harness, %{system: system, path: path}),
-    do: [{"access", access(harness)}, {"target", target(system, path)}]
-
-  # target/2 is a target of `system` and `path`.
-  @doc false
-  @spec target(String.t(), String.t()) :: Jason.OrderedObject.t()
-  def target(system, path), do: Jason.OrderedObject.new([{"system", system}, {"path", path}])
+  def reach(harness, target),
+    do: [{"access", access(harness)}, {"target", Apiary.Runs.Target.document(target)}]
 
   # work_item/1 is a run's work item: its public id, its address and its title.
   @doc false

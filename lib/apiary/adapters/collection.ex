@@ -4,8 +4,10 @@ defmodule Apiary.Adapters.Collection do
   # table and its rules are `20261017141000_keep_an_adapter_s_collections`'s.
   #
   # `external_ref` is the adapter's ref for it, which the core compares and stores and
-  # never reads meaning into; `url`, `title` and the target (`target_system`,
-  # `target_path`, both or neither) are as the listing last gave them, and
+  # never reads meaning into; `url`, `title` and the target (the ref of one of the
+  # adapter's collections, `target_collection_external_ref`, and its address,
+  # `target_system` and `target_path`, both or neither, or none of the three) are as the
+  # listing last gave them, and
   # `last_listed_at` is the `started_at` of the newest listing that named it.
   # `environment_ref` is the adapter's id of its environment definition, as that listing
   # gave it, compared and stored, never read; nil when that listing named it without one,
@@ -56,6 +58,7 @@ defmodule Apiary.Adapters.Collection do
     field :external_ref, :string
     field :url, :string
     field :title, :string
+    field :target_collection_external_ref, :string
     field :target_system, :string
     field :target_path, :string
     field :environment_ref, :string
@@ -89,6 +92,21 @@ defmodule Apiary.Adapters.Collection do
     do:
       is_binary(collection.workspace_id) and collection.backlog == true and
         collection.items == true and adapter_items == true
+
+  # The collection's target (`Apiary.Lingo.Domain.target/0`), of its adapter: its target
+  # collection ref and its address, both nil for a place with none; nil for a collection
+  # with no target collection ref, which has no target.
+  @doc false
+  @spec target(t) :: Apiary.Lingo.Domain.target() | nil
+  def target(%__MODULE__{target_collection_external_ref: nil}), do: nil
+
+  def target(%__MODULE__{target_collection_external_ref: ref} = collection),
+    do: %{
+      adapter_id: collection.adapter_id,
+      collection_external_ref: ref,
+      system: collection.target_system,
+      path: collection.target_path
+    }
 
   # Whether `id` is a collection's public id, in the shape `Apiary.PublicId` makes.
   @doc false

@@ -191,6 +191,11 @@ msgstr ""
 msgid "Line %{line} repeats line %{first}."
 msgstr ""
 
+#: lib/apiary/targets.ex
+#, elixir-autogen, elixir-format
+msgid "Line %{line}: choose a target this integration lists. %{path} is not one of them."
+msgstr ""
+
 #: lib/apiary/policy/rule.ex
 #, elixir-autogen, elixir-format
 msgid "Name the host."

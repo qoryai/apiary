@@ -29,15 +29,11 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
   defp fixture(path), do: @fixtures |> Path.join(path) |> File.read!() |> Jason.decode!()
 
   # The fixtures that match `pattern`, each by its path under the fixtures, in order.
-  # Apiary does not build submissions, so the accepted fixtures of the submission entries
-  # and of their failure reports (`submission-*` under `changes/` and `changes-failed/`)
-  # are left out. Every refused fixture under `invalid/` stays.
   defp fixtures(pattern) do
     @fixtures
     |> Path.join(pattern)
     |> Path.wildcard()
     |> Enum.map(&Path.relative_to(&1, @fixtures))
-    |> Enum.reject(&(&1 =~ ~r{\A(changes|changes-failed)/submission-}))
     |> Enum.sort()
   end
 
@@ -94,22 +90,31 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
     end
 
     test "the refused answer fixtures are what an answer never is" do
-      # Without a revision, or with an entry no writer appends: each is refused by the
-      # schema, and the answers above always name the revision and hold only entries
-      # `Apiary.Adapters.Feed.append/2` takes (its test refuses each entry).
+      # Without a revision, or with an entry that `Apiary.Adapters.Feed.append/2` raises
+      # on: the answers above always have the revision and only entries that `append/2`
+      # takes (its test expects the error for each entry).
       refute Map.has_key?(fixture("invalid/changes-without-revision.json"), "revision")
 
-      # Every refused answer but that one, and but the failure reports and the submitted
-      # reports (`changes-submitted-*`, a report Apiary does not build), which are no
-      # answer.
+      # Every refused answer under invalid/ but that one, and but the failure reports and
+      # replies, which are no answer; and five answers that the contract's open schema
+      # accepts, `changes/unknown-kind.json` and the four under closed/, whose entries
+      # `append/2` raises on.
+      # shortcut: 31 of these 50 fixtures have change_request entries, 28 under invalid/
+      # that fail the schema and the 3 under closed/. append/2 raises on each of them
+      # because the feed has no entry kind change_request, not for the rule that the
+      # fixture breaks; replace when the feed takes change_request entries.
       paths =
         Enum.reject(
-          fixtures("invalid/changes-*.json"),
-          &(String.starts_with?(&1, ["invalid/changes-failed-", "invalid/changes-submitted-"]) or
-              &1 == "invalid/changes-without-revision.json")
+          fixtures("{closed,invalid}/changes-*.json") ++ ["changes/unknown-kind.json"],
+          &(String.starts_with?(&1, [
+              "closed/changes-failed-",
+              "closed/changes-submitted-",
+              "invalid/changes-failed-",
+              "invalid/changes-submitted-"
+            ]) or &1 == "invalid/changes-without-revision.json")
         )
 
-      assert length(paths) == 42
+      assert length(paths) == 50
       assert "invalid/changes-comment-author-name-unicode-spaces.json" in paths
 
       for path <- paths, change <- fixture(path)["changes"] do

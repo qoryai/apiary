@@ -10,7 +10,7 @@ defmodule Apiary.Runs.RegistrationTest do
   alias Apiary.Nodes.Node
   alias Apiary.Policy
   alias Apiary.Policy.{Render, RunConfiguration, Serving}
-  alias Apiary.Runs.{About, Batch, Ingest, Liveness, Projector, Registration, Run, Target}
+  alias Apiary.Runs.{About, Batch, Ingest, Liveness, Projector, Registration, Run}
 
   @no_policy ~s({"version":1})
   @nul <<0>>
@@ -61,7 +61,7 @@ defmodule Apiary.Runs.RegistrationTest do
   defp runs, do: Repo.all(Run)
 
   defp target_fixture(scope, system, path) do
-    Repo.insert!(%Target{
+    Apiary.NodesFixtures.target_fixture(%{
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
       system: system,

@@ -13,7 +13,6 @@ defmodule ApiaryWeb.Contract.RunVariablesClaimedTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Dispatches, ForagerSchemas, Policy, Repo, Variables}
-  alias Apiary.Runs.Target
   alias ApiaryPro.OrganisationVariables
   alias ApiaryWeb.Contract.SignedRequest
 
@@ -25,19 +24,15 @@ defmodule ApiaryWeb.Contract.RunVariablesClaimedTest do
     {:ok, _rule} = Policy.allow(scope, nil, %{host: "api.example"})
     {:ok, %{digest: digest}} = Policy.current_configuration(scope, nil)
 
-    target =
-      Repo.insert!(%Target{
-        organisation_id: scope.organisation.id,
-        workspace_id: scope.workspace.id,
-        system: "forge.example.com",
-        path: "acme/shop",
-        first_seen_at: DateTime.utc_now()
-      })
+    {target, of} = ticket_target_fixture(scope)
 
     scope
     |> handover_place_fixture()
-    |> Map.merge(%{scope: scope, digest: digest, target: target})
+    |> Map.merge(%{scope: scope, digest: digest, target: target, of: of})
   end
+
+  # A fresh ticket ref, as two work items of one connection have two.
+  defp ticket_ref, do: "acme/shop##{System.unique_integer([:positive])}"
 
   # `earlier` seconds before the clock: two claims signed in one second carry the same body,
   # so the same signature, and the second is refused as a replay (`401`). The test asks for
@@ -91,7 +86,12 @@ defmodule ApiaryWeb.Contract.RunVariablesClaimedTest do
   # A work item queued, claimed through the endpoint, and its run attached: the attach.
   defp attached(ctx, earlier \\ 0) do
     {:ok, queued} =
-      Repo.transact(fn -> Dispatches.queue(work_item_fixture(ctx.scope), 1) end)
+      Repo.transact(fn ->
+        Dispatches.queue(
+          work_item_fixture(ctx.scope, Map.put(ctx.of, :external_ref, ticket_ref())),
+          1
+        )
+      end)
 
     %{"run_code" => code} = claim(ctx, earlier)
     run_key = redeemed_run_key!(code)

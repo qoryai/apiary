@@ -566,8 +566,8 @@ defmodule Apiary.Dispatches.PauseTest do
 
   test "the continuation's input counts the paused run once: attempt 1", ctx do
     %{dispatch_run: dispatch_run, run: run} = handed_over_fixture(ctx.scope, ctx.key, ctx.given)
-    target = %{system: "forge.example.com", path: "acme/shop"}
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
+    target = WorkItem.target(work_item)
 
     attempt = fn queued ->
       {:ok, inputs} =

@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "revision": 1,
+  "cursor": "c_00000071",
+  "changes": [
+    {
+      "kind": "change_request",
+      "change_request_id": "av_7k2m9q4v1x8z3c5d",
+      "change_kind": "reply",
+      "target": {
+        "collection": "SUPPORT"
+      },
+      "ref": "CASE-1042",
+      "title": "Delivery dates in the checkout",
+      "text": "<!-- qory:start -->\nThe checkout page shows the delivery date of each order line.\n<!-- qory:end -->",
+      "data": {
+        "conversation": "cv_1042",
+        "text": "Your order line dates are in the checkout page."
+      }
+    }
+  ]
+}

@@ -166,13 +166,15 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
     first = queued!(scope)
 
     # The second run's target chooses an API provider, whose check fits.
-    target = target!(scope, "acme/site")
+    {target, of} = ticket_target_fixture(scope, %{system: "github.example", path: "acme/site"})
     {:ok, good} = Connections.create_provider(scope, %{provider: "anthropic", keys: [@api_key]})
 
     {:ok, _choice} =
       ModelChoicesFixtures.put_choice(scope, target, %{provider: good.public_id})
 
-    second = queued!(scope, %{target_system: target.system, target_path: target.path})
+    second =
+      queued!(scope, Map.merge(of, %{target_system: target.system, target_path: target.path}))
+
     subscription_stops()
 
     {answer, log} = with_log(fn -> walked_claim(place.key, Dispatches.now(), @body) end)
@@ -308,7 +310,7 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
 
     # The second run's target chooses an API provider, with the stopping one as its
     # fallback.
-    target = target!(scope, "acme/site")
+    {target, of} = ticket_target_fixture(scope, %{system: "github.example", path: "acme/site"})
     {:ok, good} = Connections.create_provider(scope, %{provider: "anthropic", keys: [@api_key]})
 
     {:ok, _choice} =
@@ -317,7 +319,9 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
         fallbacks: [ModelChoicesFixtures.fallback_attrs(stopping)]
       })
 
-    second = queued!(scope, %{target_system: target.system, target_path: target.path})
+    second =
+      queued!(scope, Map.merge(of, %{target_system: target.system, target_path: target.path}))
+
     calls = subscription_stops()
 
     {answer, log} = with_log(fn -> walked_claim(place.key, Dispatches.now(), @body) end)
@@ -378,7 +382,7 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
     second = queued!(scope)
 
     # A choice for the third run's target: an API provider with a key not in cooldown.
-    target = target!(scope, "acme/site")
+    {target, of} = ticket_target_fixture(scope, %{system: "github.example", path: "acme/site"})
 
     {:ok, good} =
       Connections.create_provider(scope, %{
@@ -390,7 +394,9 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
     {:ok, _choice} =
       ModelChoicesFixtures.put_choice(scope, target, %{provider: good.public_id})
 
-    plain = queued!(scope, %{target_system: target.system, target_path: target.path})
+    plain =
+      queued!(scope, Map.merge(of, %{target_system: target.system, target_path: target.path}))
+
     calls = subscription_stops()
 
     claim = fn -> walked_claim(place.key, Dispatches.now(), @body) end

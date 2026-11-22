@@ -17,7 +17,6 @@ defmodule Apiary.Organisations.SoftwareStackMigrationTest do
   alias Apiary.{Processes, Stages}
   alias Apiary.Organisations.Workspace
   alias Apiary.Processes.Version
-  alias Apiary.Runs.Target
   alias Apiary.Stacks.{Sources, Stack}
   alias Apiary.WorkItems.WorkItem
 
@@ -119,7 +118,7 @@ defmodule Apiary.Organisations.SoftwareStackMigrationTest do
   end
 
   defp target!(scope) do
-    Repo.insert!(%Target{
+    Apiary.NodesFixtures.target_fixture(%{
       organisation_id: scope.organisation.id,
       workspace_id: scope.workspace.id,
       system: "system.example",

@@ -69,7 +69,8 @@ defmodule ApiaryWeb.CollectionsLiveTest do
 
   # A configured adapter connected for `scope`'s organisation, and a part of a listing of
   # `refs` under the connection's grant, for the account acme; with `targets: true`, an
-  # adapter with targets, and each collection's target on code.example.com at its ref.
+  # adapter with targets, and each collection's target keyed on its ref, on
+  # code.example.com at that ref.
   defp listed!(scope, refs, opts \\ []) do
     %{adapter: adapter, access_key: key} = connectable_adapter_fixture()
     adapter = if opts[:targets], do: targets!(adapter), else: adapter
@@ -87,7 +88,10 @@ defmodule ApiaryWeb.CollectionsLiveTest do
               url: "https://forge.example.com/" <> ref,
               title: ref,
               grant_ref: listing_grant(connection),
-              target: if(opts[:targets], do: %{system: "code.example.com", path: ref})
+              target:
+                if(opts[:targets],
+                  do: %{collection: ref, system: "code.example.com", path: ref}
+                )
             }
           end,
         listing: %{
