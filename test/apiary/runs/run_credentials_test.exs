@@ -523,6 +523,65 @@ defmodule Apiary.Runs.RunCredentialsTest do
       assert claimed_levels(ctx, queued) == {:read, :read}
     end
 
+    # The work item's target row, by its adapter and its collection ref.
+    defp target_row!(ctx, work_item) do
+      id =
+        Apiary.Runs.Target.id_of(
+          ctx.scope.organisation.id,
+          ctx.scope.workspace.id,
+          WorkItem.target(work_item)
+        )
+
+      Repo.get!(Apiary.Runs.Target, id)
+    end
+
+    # A row for implement-changes at `target`, recording `access`.
+    defp target_stack!(ctx, target, access) do
+      {:ok, stack} =
+        Apiary.Stacks.put_stack(
+          ctx.scope,
+          {:target, target, "implement-changes"},
+          "extends: {git: https://code.example.com/team/stacks, ref: main, path: core}\n"
+        )
+
+      set!(Apiary.Stacks.Stack, stack.id, access: access)
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run of a shared stage reads where the stacks record read for its write workflow at its target",
+         ctx do
+      shared_build!(ctx, [%{"workflow" => "plan-the-build", "access" => "read"}])
+      {work_item, queued} = queued!(ctx)
+      :ok = table!(queued)
+      target_stack!(ctx, target_row!(ctx, work_item), :read)
+
+      assert claimed_levels(ctx, queued) == {:read, :read}
+    end
+
+    @tag needs: [:factory, :workflow_model]
+    test "a run of a shared stage reads the stacks of its target's collection, not of another collection at the same address",
+         ctx do
+      shared_build!(ctx, [%{"workflow" => "plan-the-build", "access" => "read"}])
+      {work_item, queued} = queued!(ctx)
+      :ok = table!(queued)
+      target = target_row!(ctx, work_item)
+
+      # A collection of another adapter at the same address records read.
+      other =
+        target_fixture(%{
+          organisation_id: ctx.scope.organisation.id,
+          workspace_id: ctx.scope.workspace.id,
+          system: target.system,
+          path: target.path
+        })
+
+      assert other.adapter_id != target.adapter_id
+      target_stack!(ctx, target, :write)
+      target_stack!(ctx, other, :read)
+
+      assert claimed_levels(ctx, queued) == {:write, :write}
+    end
+
     @tag needs: [:factory, :workflow_model]
     test "a run of a shared stage moved onto another workflow's entry reads", ctx do
       loop = fn body -> [%{"loop" => %{"rounds" => 3, "body" => body}}] end
