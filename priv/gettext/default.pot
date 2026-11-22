@@ -5146,7 +5146,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Add %{extends} with the workspace's stack to %{file}: hooks run only in a harness file that extends a stack."
+msgid "Add %{extends} with the workspace's stack to %{file}: hooks run only in a harness file that extends or defines a stack."
 msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex

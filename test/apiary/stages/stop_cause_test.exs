@@ -381,6 +381,30 @@ defmodule Apiary.Stages.StopCauseTest do
       assert StopCause.set_up_step(run) == nil
     end
 
+    test "a harness file with hooks and no stack: the run page's sentence as one line; another invalid rule keeps the general line" do
+      %{scope: scope} = sign_up_fixture()
+      source = "https://code.example.com/acme/app"
+
+      for {rule, text} <- [
+            {%{"rule" => "hooks_without_stack", "values" => %{"file" => "harness.yaml"}},
+             "Add extends: with the workspace's stack to harness.yaml: hooks run only in a harness file that extends or defines a stack."},
+            {%{"rule" => "both_files", "values" => %{}},
+             "Qory Apiary could not read the harness #{source} (it breaks the harness format).\n" <>
+               "Whoever maintains the harness corrects it where it is kept."}
+          ] do
+        {run, work_item} = walk_failed(scope, "invalid", source)
+
+        {1, _rows} =
+          Repo.update_all(
+            from(h in Apiary.Harnesses.RunHarness, where: h.dispatch_run_id == ^run.id),
+            set: [failure_rule: rule]
+          )
+
+        assert StopCause.text(run, work_item) == text, rule["rule"]
+        assert StopCause.set_up_step(run) == nil
+      end
+    end
+
     test "with no source shown, the line starts with a capital and the fix does not" do
       %{scope: scope} = sign_up_fixture()
       org = scope.organisation.name

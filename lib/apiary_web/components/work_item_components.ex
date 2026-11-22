@@ -7596,15 +7596,18 @@ defmodule ApiaryWeb.WorkItemComponents do
   # shown as the walk wrote it, or as the workspace's harness setting where the walk
   # wrote none: a harness choice's document, or a hidden harness. A source no connection
   # reaches, and a failed read of a public repository, have the Harness step's words
-  # (`ApiaryWeb.HarnessComponents.public_read_words/2`). A `qory.yaml` with hooks and no
-  # stack to extend has a sentence alone, which starts with its fix.
-  defp harness_failure_words(%{code: "invalid", rule: %{"rule" => "hooks_without_stack"}}),
-    do:
-      rich_gettext(
-        "Add %{extends} with the workspace's stack to %{file}: hooks run only in a harness file that extends a stack.",
-        extends: {:code, "extends:"},
-        file: {:code, "qory.yaml"}
-      )
+  # (`ApiaryWeb.HarnessComponents.public_read_words/2`). A harness file with hooks and no
+  # stack to extend or define has a sentence alone, which starts with its fix.
+  defp harness_failure_words(%{
+         code: "invalid",
+         rule: %{"rule" => "hooks_without_stack", "values" => %{"file" => file}}
+       }),
+       do:
+         rich_gettext(
+           "Add %{extends} with the workspace's stack to %{file}: hooks run only in a harness file that extends or defines a stack.",
+           extends: {:code, "extends:"},
+           file: {:code, file}
+         )
 
   defp harness_failure_words(%{code: code} = failure) do
     source = failure.source || gettext("the workspace's harness setting")

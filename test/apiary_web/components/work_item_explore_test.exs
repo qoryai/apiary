@@ -3333,9 +3333,9 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             {%{
                code: "invalid",
                source: "https://code.example.com/acme/app",
-               rule: %{"rule" => "hooks_without_stack", "values" => %{}}
+               rule: %{"rule" => "hooks_without_stack", "values" => %{"file" => "qory.yaml"}}
              },
-             "Add extends: with the workspace's stack to qory.yaml: hooks run only in a harness file that extends a stack."},
+             "Add extends: with the workspace's stack to qory.yaml: hooks run only in a harness file that extends or defines a stack."},
             {%{code: "invalid", rule: %{"rule" => "size", "values" => %{"n" => 65_536}}},
              "Correct #{setting}, then run Explore again. The source breaks the harness format: it is larger than 65536 bytes as JSON."},
             {%{code: "walk_error"},
@@ -3517,29 +3517,37 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              ]
     end
 
-    test "a run whose qory.yaml has hooks and no stack: extends: and qory.yaml in code font" do
-      r =
-        run(%{
-          id: nil,
-          path: nil,
-          state: :failed,
-          outcome: :error,
-          end_cause: :harness_unresolved,
-          harness_failure: %{
-            code: "invalid",
-            source: "https://code.example.com/acme/app",
-            rule: %{"rule" => "hooks_without_stack", "values" => %{}},
-            adapter: nil
-          },
-          proposal: nil,
-          started_at: nil,
-          ended_at: ago(3600),
-          duration: nil
-        })
+    test "a run whose harness file has hooks and no stack: extends: and the file in code font" do
+      for file <- ["qory.yaml", "harness.yaml"] do
+        r =
+          run(%{
+            id: nil,
+            path: nil,
+            state: :failed,
+            outcome: :error,
+            end_cause: :harness_unresolved,
+            harness_failure: %{
+              code: "invalid",
+              source: "https://code.example.com/acme/app",
+              rule: %{"rule" => "hooks_without_stack", "values" => %{"file" => file}},
+              adapter: nil
+            },
+            proposal: nil,
+            started_at: nil,
+            ended_at: ago(3600),
+            duration: nil
+          })
 
-      html = tab(work_item(%{number: 97, status: :no_result, run: r}))
-      assert texts(html, "#work-item-explore-none p code") == ["extends:", "qory.yaml"]
-      refute html =~ "`"
+        html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+
+        assert texts(html, "#work-item-explore-none p") == [
+                 "The run did not start.",
+                 "Add extends: with the workspace's stack to #{file}: hooks run only in a harness file that extends or defines a stack."
+               ]
+
+        assert texts(html, "#work-item-explore-none p code") == ["extends:", file]
+        refute html =~ "`"
+      end
     end
 
     test "a run whose harness has no skill for its workflow: the workflow and where the harness comes from" do

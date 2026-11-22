@@ -75,7 +75,8 @@ defmodule Apiary.Stages.StopCause do
     end
   end
 
-  # The cause and its fix: `{:one, cause}` with no fix; `{:point, cause, point}` with no
+  # The cause and its fix: `{:one, cause}` with no fix, or with its fix inside the one
+  # sentence, such as a harness file with hooks and no stack; `{:point, cause, point}` with no
   # fix, where a point says the cause in other words after "The run stopped:";
   # `{:then, cause, fix}` for a cause whose second sentence follows on the same line;
   # `{:lines, cause, fix}` for a run that ended before it started; and
@@ -128,8 +129,10 @@ defmodule Apiary.Stages.StopCause do
        "Qory Apiary got no report from it and marked it lost."}
 
   defp stopped_split(%DispatchRun{} = run, %WorkItem{} = work_item, context) do
-    {cause, fix} = lines(run, work_item |> names() |> Map.put(:run, run), context)
-    {:lines, cause, fix}
+    case lines(run, work_item |> names() |> Map.put(:run, run), context) do
+      {:one, line} -> {:one, line}
+      {cause, fix} -> {:lines, cause, fix}
+    end
   end
 
   # no_result/0 is why a run stopped that ended without a result: the cause of a session
@@ -733,6 +736,7 @@ defmodule Apiary.Stages.StopCause do
     source = walk.failed_source || "of #{n.workspace}"
 
     case harness_reason(walk.failure, walk, n) do
+      {:one, line} -> {:one, line}
       {:line, cause, fix} -> {cause, fix}
       {reason, fix} -> {"Qory Apiary could not read the harness #{source} (#{reason}).", fix}
     end
@@ -744,6 +748,19 @@ defmodule Apiary.Stages.StopCause do
     do:
       {"the target has no harness file, and the workspace sets no harness",
        "Owners and admins of #{n.workspace} choose a harness on the set-up step Harness."}
+
+  # A harness file with hooks and no stack to extend or define: the run page's sentence,
+  # with its fix first, as one line of plain text.
+  defp harness_reason(
+         "invalid",
+         %RunHarness{
+           failure_rule: %{"rule" => "hooks_without_stack", "values" => %{"file" => file}}
+         },
+         _n
+       ),
+       do:
+         {:one,
+          "Add extends: with the workspace's stack to #{file}: hooks run only in a harness file that extends or defines a stack."}
 
   defp harness_reason("invalid", _walk, _n),
     do:
