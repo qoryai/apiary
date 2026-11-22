@@ -9195,8 +9195,8 @@ defmodule Apiary.StagesTest do
       assert Explore.current(reload(work_item), DateTime.utc_now()).status == :shape
     end
 
-    test "a process version without the stage a move landed on: the move withdraws every " <>
-           "approval made before it",
+    test "a process version without the stage a move landed on changes no place: each " <>
+           "row's stage is placed in the version it was written under",
          %{scope: scope} do
       work_item = in_verify_with_outputs!(scope)
       {:ok, work_item} = Stages.move(scope, work_item, @build, nil, expect_stage: @verify)
@@ -9209,9 +9209,9 @@ defmodule Apiary.StagesTest do
       assert %WorkItem{stage_id: @verify} = work_item
       assert counted(work_item) == %{"acceptance-criteria" => [1], "walkthrough" => [1, 0]}
 
-      # A version with no Build, assigned to the work item at Verify: the place of the
-      # stage the move landed on is unknown, so the move withdraws Shape's approval too.
-      # Build's approval after the move still counts.
+      # A version with no Build, assigned to the work item at Verify. The move landed on
+      # Build in the version it was written under, so Shape's approval and Build's
+      # approval after the move still count.
       document = Processes.version_for(work_item).document
 
       stages =
@@ -9228,7 +9228,12 @@ defmodule Apiary.StagesTest do
         Processes.save(scope, scope.workspace, %{document | "stages" => stages}, trial: true)
 
       {:ok, work_item} = Processes.assign(scope, work_item, trial)
-      assert counted(work_item) == %{"acceptance-criteria" => [0], "walkthrough" => [1, 0]}
+      assert counted(work_item) == %{"acceptance-criteria" => [1], "walkthrough" => [1, 0]}
+
+      # Explore's confirmation still counts, so Explore's status stays Ready for Shape.
+      assert %Confirmation{} = Explore.confirmation(work_item.id, work_item.take_in)
+      assert Explore.current(work_item, DateTime.utc_now()).status == :shape
+      assert Explore.statuses([work_item.id]) == %{work_item.id => :shape}
     end
 
     test "a confirmation of a run with no stage is Explore's: a move back to Shape keeps it, " <>

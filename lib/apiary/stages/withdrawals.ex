@@ -8,26 +8,25 @@ defmodule Apiary.Stages.Withdrawals do
   # move of that take in made after it lands on its stage or an earlier one. So a move back
   # to Shape withdraws every approval of Shape and of each later stage, and a later
   # approval counts again. A switch sets the track of the gate before the stage it lands
-  # on, so a move withdraws it only when it lands before that stage. The places of stages
-  # are those of the work item's process version, which `Apiary.Processes.assign/3` can
-  # change. Where that version does not have the stage a move lands on, or the stage of a
-  # decision, the place is unknown, and the move withdraws the decision. A move with no
-  # `to_stage_id` withdraws nothing.
+  # on, so a move withdraws it only when it lands before that stage. Each place is read from
+  # the process version the row was written under, its `process_version_id`, so a later
+  # version that `Apiary.Processes.assign/3` puts the work item on changes no place. Where a
+  # row's version does not have its stage, the place is unknown, and the move withdraws the
+  # decision. A move with no `to_stage_id` withdraws nothing.
   #
   # A confirmation of Explore's proposal (`Apiary.WorkItems.Confirmation`) counts when no
   # move of its take in made after it lands on Explore's stage, the stage of the run it
   # confirms, or an earlier one. A run with no stage is Explore's
   # (`Apiary.WorkItems.Explore.at_stage/2`), at the first stage, where a take in starts
-  # (`Apiary.Stages.take_in/2`). An unknown place withdraws the confirmation, as it
-  # withdraws a decision.
+  # (`Apiary.Stages.take_in/2`). The place of the run's stage is read from the run's
+  # process version, else the work item's. An unknown place withdraws the confirmation, as
+  # it withdraws a decision.
   #
   # A withdrawn decision or confirmation stays in its table: nothing deletes or changes it.
   @moduledoc false
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.Processes.Version
-  alias Apiary.Repo
   alias Apiary.WorkItems.{Confirmation, WorkItem}
 
   # The SQL of the place of the stage `stage` in the process version `version`, from 1;
@@ -39,17 +38,16 @@ defmodule Apiary.Stages.Withdrawals do
   end
 
   # Whether a move made after the decision withdraws it. The arguments are the decision's
-  # work item, take in and time, the process version, the decision's `escalation_id`,
-  # the process version with its `stage_id`, and the process version with its
-  # `to_stage_id`. A comparison with an unknown place is NULL, which COALESCE turns into a
-  # withdrawal.
+  # work item, take in and time, its `escalation_id`, its process version with its
+  # `stage_id`, and its process version with its `to_stage_id`. A comparison with an
+  # unknown place is NULL, which COALESCE turns into a withdrawal.
   @withdrawn """
   EXISTS (
     SELECT 1 FROM gate_decisions AS m
     WHERE m.work_item_id = ? AND m.take_in = ? AND m.kind = 'move' AND m.inserted_at > ?
       AND m.to_stage_id IS NOT NULL
       AND COALESCE(
-        #{position.("?", "m.to_stage_id")} <=
+        #{position.("m.process_version_id", "m.to_stage_id")} <=
           CASE WHEN ? IS NULL THEN #{position.("?", "?")} ELSE #{position.("?", "?")} - 1 END,
         true
       )
@@ -57,10 +55,12 @@ defmodule Apiary.Stages.Withdrawals do
   """
 
   # Whether a move made after the confirmation withdraws it, with the confirmation's
-  # columns in place of the marks. A run with no stage is at place 1. A work item with no
-  # process version has the workspace's current one (`Apiary.Processes.version_for/1`).
+  # columns in place of the marks. A run with no stage is at place 1. A run and a work item
+  # with no process version have the workspace's current one
+  # (`Apiary.Processes.version_for/1`).
   version =
-    "COALESCE(ww.process_version_id, (SELECT cv.id FROM process_versions AS cv " <>
+    "COALESCE(wr.process_version_id, ww.process_version_id, " <>
+      "(SELECT cv.id FROM process_versions AS cv " <>
       "WHERE cv.workspace_id = ww.workspace_id AND cv.status = 'current'))"
 
   confirmation = """
@@ -72,7 +72,7 @@ defmodule Apiary.Stages.Withdrawals do
       AND wr.attempt = {attempt} AND wm.kind = 'move' AND wm.inserted_at > {confirmed_at}
       AND wm.to_stage_id IS NOT NULL
       AND COALESCE(
-        #{position.(version, "wm.to_stage_id")} <=
+        #{position.("wm.process_version_id", "wm.to_stage_id")} <=
           CASE WHEN wr.stage_id IS NULL THEN 1 ELSE #{position.(version, "wr.stage_id")} END,
         true
       )
@@ -100,16 +100,12 @@ defmodule Apiary.Stages.Withdrawals do
 
   # counted/2 is `query`, whose gate decisions are bound as `:decision`, with only the
   # decisions of `work_item` that count: made in its take in and withdrawn by no later
-  # move. The take in and the process version are those of `work_item`, with the
-  # workspace's current version for a work item with none (`Apiary.Processes.version_for/1`);
-  # none counts for a work item with no take in.
+  # move. None counts for a work item with no take in.
   @doc false
   @spec counted(Ecto.Queryable.t(), WorkItem.t()) :: Ecto.Query.t()
   def counted(query, %WorkItem{take_in: nil}), do: from(_ in query, where: false)
 
-  def counted(query, %WorkItem{take_in: take_in} = work_item) do
-    version_id = version_id(work_item)
-
+  def counted(query, %WorkItem{take_in: take_in}) do
     from [decision: d] in query,
       where: d.take_in == ^take_in,
       where:
@@ -118,23 +114,12 @@ defmodule Apiary.Stages.Withdrawals do
           d.work_item_id,
           d.take_in,
           d.inserted_at,
-          type(^version_id, :binary_id),
           d.escalation_id,
-          type(^version_id, :binary_id),
+          d.process_version_id,
           d.stage_id,
-          type(^version_id, :binary_id),
+          d.process_version_id,
           d.to_stage_id
         )
-  end
-
-  defp version_id(%WorkItem{process_version_id: id}) when is_binary(id), do: id
-
-  defp version_id(%WorkItem{workspace_id: workspace_id}) do
-    Repo.one(
-      from v in Version,
-        where: v.workspace_id == ^workspace_id and v.status == :current,
-        select: v.id
-    )
   end
 
   # confirmations/0 is the query of the confirmations that count, bound as
