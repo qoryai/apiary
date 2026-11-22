@@ -20,31 +20,44 @@ defmodule Apiary.Adapters.FeedTest do
   defp fixture(path), do: @fixtures |> Path.join(path) |> File.read!() |> Jason.decode!()
 
   # The fixtures that match `pattern`, each by its path under the fixtures, in order.
-  # Apiary does not build submissions, so the accepted fixtures of the submission entries
-  # and of their failure reports (`submission-*` under `changes/` and `changes-failed/`)
-  # are left out. Every refused fixture under `invalid/` stays.
   defp fixtures(pattern) do
     @fixtures
     |> Path.join(pattern)
     |> Path.wildcard()
     |> Enum.map(&Path.relative_to(&1, @fixtures))
-    |> Enum.reject(&(&1 =~ ~r{\A(changes|changes-failed)/submission-}))
     |> Enum.sort()
   end
 
   # The contract's refused answers whose entries an answer never has: every one but the
   # one without `revision`, whose entries are good, and the failure reports and replies,
   # which are no answer.
-  # `changes/unknown-kind.json` and `closed/changes-watch-with-ref.json` are accepted by the
-  # contract's open schema, which ignores a member that it does not define. This writer
-  # refuses their entries: it has no entry kind `settings`, and no `ref` on a `watch` entry.
+  # `changes/unknown-kind.json`, `closed/changes-watch-with-ref.json` and the three
+  # `closed/changes-change-request-*.json` are accepted by the contract's open schema,
+  # which ignores a member that it does not define. This writer raises on their entries:
+  # it has no entry kind `settings` or `change_request`, and no `ref` on a `watch` entry.
   defp refused_entries do
     Enum.reject(
       fixtures("{closed,invalid}/changes-*.json") ++ ["changes/unknown-kind.json"],
-      &(String.starts_with?(&1, ["invalid/changes-failed-", "invalid/changes-submitted-"]) or
-          &1 == "invalid/changes-without-revision.json")
+      &(String.starts_with?(&1, [
+          "closed/changes-failed-",
+          "closed/changes-submitted-",
+          "invalid/changes-failed-",
+          "invalid/changes-submitted-"
+        ]) or &1 == "invalid/changes-without-revision.json")
     )
   end
+
+  # shortcut: the feed has no entry kind `change_request`, so `append/2` raises on the
+  # entries of these fixtures; replace when the feed takes them.
+  @change_requests ~w(changes/change-request-bid-changes.json
+                      changes/change-request-empty-data.json
+                      changes/change-request-pull-request-another-host.json
+                      changes/change-request-pull-request-earlier-commits.json
+                      changes/change-request-pull-request-one-commit.json
+                      changes/change-request-pull-request-two-versions.json
+                      changes/change-request-pull-request.json
+                      changes/change-request-reply-marker-line.json
+                      changes/change-request-reply.json)
 
   # A change as the contract writes it, as `append/2` takes it.
   defp entry(%{} = change), do: Map.new(change, fn {k, v} -> {String.to_existing_atom(k), v} end)
@@ -71,7 +84,7 @@ defmodule Apiary.Adapters.FeedTest do
     test "every change of changes/ is appended and read back as written, in order", %{
       adapter: adapter
     } do
-      paths = fixtures("changes/*.json") -- ["changes/unknown-kind.json"]
+      paths = fixtures("changes/*.json") -- ["changes/unknown-kind.json" | @change_requests]
 
       assert paths ==
                ~w(changes/comment.json changes/empty.json changes/feed-loopback.json
@@ -90,11 +103,27 @@ defmodule Apiary.Adapters.FeedTest do
       end
     end
 
+    test "the change_request entries of changes/ are refused, and nothing is written", %{
+      adapter: adapter
+    } do
+      assert fixtures("changes/change-request-*.json") == @change_requests
+
+      for path <- @change_requests do
+        assert [_ | _] = fixture(path)["changes"], path
+
+        for change <- fixture(path)["changes"] do
+          raises(adapter, Map.new(change, fn {k, v} -> {String.to_atom(k), v} end))
+        end
+      end
+
+      assert Feed.entries(adapter) == []
+    end
+
     test "the entries of the refused fixtures are refused, and nothing is written", %{
       adapter: adapter
     } do
       paths = refused_entries()
-      assert length(paths) == 49
+      assert length(paths) == 50
       assert "invalid/changes-comment-author-name-unicode-spaces.json" in paths
       assert "invalid/changes-watch-work-item-id-wrong-prefix.json" in paths
 

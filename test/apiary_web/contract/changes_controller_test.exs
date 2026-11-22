@@ -29,15 +29,11 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
   defp fixture(path), do: @fixtures |> Path.join(path) |> File.read!() |> Jason.decode!()
 
   # The fixtures that match `pattern`, each by its path under the fixtures, in order.
-  # Apiary does not build submissions, so the accepted fixtures of the submission entries
-  # and of their failure reports (`submission-*` under `changes/` and `changes-failed/`)
-  # are left out. Every refused fixture under `invalid/` stays.
   defp fixtures(pattern) do
     @fixtures
     |> Path.join(pattern)
     |> Path.wildcard()
     |> Enum.map(&Path.relative_to(&1, @fixtures))
-    |> Enum.reject(&(&1 =~ ~r{\A(changes|changes-failed)/submission-}))
     |> Enum.sort()
   end
 
@@ -104,11 +100,15 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
       paths =
         Enum.reject(
           fixtures("{closed,invalid}/changes-*.json") ++ ["changes/unknown-kind.json"],
-          &(String.starts_with?(&1, ["invalid/changes-failed-", "invalid/changes-submitted-"]) or
-              &1 == "invalid/changes-without-revision.json")
+          &(String.starts_with?(&1, [
+              "closed/changes-failed-",
+              "closed/changes-submitted-",
+              "invalid/changes-failed-",
+              "invalid/changes-submitted-"
+            ]) or &1 == "invalid/changes-without-revision.json")
         )
 
-      assert length(paths) == 49
+      assert length(paths) == 50
       assert "invalid/changes-comment-author-name-unicode-spaces.json" in paths
 
       for path <- paths, change <- fixture(path)["changes"] do
