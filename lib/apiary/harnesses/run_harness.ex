@@ -68,6 +68,14 @@ defmodule Apiary.Harnesses.RunHarness do
     # the walk read (`Apiary.Harnesses.Reader.workflow_plan/2`), nil where the stack file
     # sets none or an invalid value, and for a walk that did not read one.
     field :plan_type, :string
+    # The access level that the stack file the walk read declares for each workflow of its
+    # `workflows`, by name (`Apiary.Harnesses.Reader.workflow_access/2`), unlowered by
+    # the stacks' recorded level; nil for a walk made before the column. A run of a stage
+    # whose workflows share one run takes the level of its other workflows from it
+    # (`Apiary.Stages.run_access/2`).
+    field :workflow_levels, {:map, Ecto.Enum},
+      values: [read: "read", write_no_push: "write-no-push", write: "write"]
+
     field :failure, :string
     field :failed_source, :string
     field :failure_rule, :map

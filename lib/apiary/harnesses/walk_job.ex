@@ -178,6 +178,7 @@ defmodule Apiary.Harnesses.WalkJob do
       owner_organisation_id: walked.owner_organisation_id,
       harness_hidden: walked.harness_hidden,
       plan_type: walked.plan_type,
+      workflow_levels: walked.workflow_levels,
       pins: walked.pins,
       harness_links: walked.harness_links,
       attempts: attempt

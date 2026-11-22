@@ -856,6 +856,68 @@ defmodule Apiary.Harnesses.WalkTest do
       end
     end
 
+    # A stack's `workflows`, with a level for each of four workflows: write, read,
+    # write-no-push, and none.
+    @table "  explore: {access: write}\n  review: {access: read}\n" <>
+             "  build: {access: write-no-push}\n  plan: {tier: thinking}\n"
+    @levels %{
+      "explore" => :write,
+      "review" => :read,
+      "build" => :write_no_push,
+      "plan" => :read
+    }
+
+    test "records the level of each workflow of the base's stack for a setting with extends, unlowered by a recorded read",
+         ctx do
+      setting(ctx.scope, @setting)
+      recording(ctx, "review", :read)
+      recording(ctx, "build", :write)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: declaring(@table)
+      )
+
+      assert {:ok, %{origin: :setting, workflow_levels: @levels}} = Walk.run(ctx.input)
+    end
+
+    test "records the level of each workflow of the base's stack for a target's file with extends, not the file's",
+         ctx do
+      section = @file_section <> "  workflows:\n    review: {access: write}\n"
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: @table |> declaring() |> Map.put({"R_app", "harness.yaml"}, section)
+      )
+
+      assert {:ok, %{origin: :file, workflow_levels: @levels}} = Walk.run(ctx.input)
+    end
+
+    test "records the level of each workflow of a target's file with modules and no extends",
+         ctx do
+      table = String.replace(@table, "\n  ", "\n    ")
+
+      section =
+        "harness:\n  modules:\n    - source: {git: \"#{@tools}\", ref: v2}\n" <>
+          "  workflows:\n  " <> table
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: Map.put(@base_files, {"R_app", "harness.yaml"}, section)
+      )
+
+      assert {:ok, %{origin: :file, workflow_levels: @levels}} = Walk.run(ctx.input)
+    end
+
+    test "records no level for a base with no link that is not public, which is not read",
+         ctx do
+      setting(ctx.scope, "extends: {git: \"#{@public}\", ref: \"#{@commit}\", stack: web}\n")
+      serve([ctx.run], covered: covering(ctx), files: @base_files)
+
+      assert {:ok, %{origin: :setting, workflow_levels: levels}} = Walk.run(ctx.input)
+      assert levels == %{}
+    end
+
     test "a run whose workflow no row has any longer gets read", ctx do
       {:ok, _stack} =
         Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @setting,
@@ -2500,6 +2562,24 @@ defmodule Apiary.Harnesses.WalkTest do
       calls()
       assert :ok = job(run)
       assert calls() == []
+    end
+
+    test "stores the level of each workflow of the base's stack", ctx do
+      setting(ctx.scope, @setting)
+      run = queued(ctx)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files:
+          declaring("  implement-changes: {access: write}\n  review-changes: {access: read}\n")
+      )
+
+      assert :ok = job(run)
+
+      assert %RunHarness{state: :resolved, workflow_levels: levels} =
+               Repo.get_by!(RunHarness, dispatch_run_id: run.id)
+
+      assert levels == %{"implement-changes" => :write, "review-changes" => :read}
     end
 
     test "a base no grant covers, at a full commit id, resolves with its pin and no link",
