@@ -233,6 +233,12 @@ defmodule Apiary.Adapters.ContractFixturesTest do
              |> sign(seed)
              |> ReturnToken.verify([public_key])
 
+    assert {:ok, %{outcome: :refused, reason: :connection_held}} =
+             "adapter/connect-return/refused-connection-held.json"
+             |> compact()
+             |> sign(seed)
+             |> ReturnToken.verify([public_key])
+
     assert read("schema/connect-return.schema.json")["properties"]["reason"]["enum"] ==
              Enum.map(ReturnToken.reasons(), &Atom.to_string/1)
   end

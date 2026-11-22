@@ -184,6 +184,7 @@ defmodule Apiary.Harnesses.Walk do
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.Node
   alias Apiary.Organisations.{Organisation, Workspace}
+  alias Apiary.Runs.RunCredentials
   alias Apiary.Stacks.{Document, Resolution}
 
   @time_limit 60_000
@@ -224,7 +225,8 @@ defmodule Apiary.Harnesses.Walk do
   @commit ~r/\A(?:[0-9a-f]{40}|[0-9a-f]{64})\z/
 
   @typedoc """
-  What a walk reads: the run's organisation, workspace, target and workflow, and
+  What a walk reads: the run's organisation, workspace, target and workflow, its work
+  item, whose ticket's collection is the target's first (absent or nil for none), and
   `stage_run?`, true where the workflow is the one of the run's stage entry. Absent is
   false.
   """
@@ -233,6 +235,7 @@ defmodule Apiary.Harnesses.Walk do
           required(:workspace) => Workspace.t(),
           required(:target) => Apiary.Lingo.Domain.target() | nil,
           required(:workflow) => String.t(),
+          optional(:work_item) => Apiary.WorkItems.WorkItem.t() | nil,
           optional(:stage_run?) => boolean
         }
 
@@ -483,9 +486,9 @@ defmodule Apiary.Harnesses.Walk do
   ## The target
 
   # `{target_version, :absent | {:file, section, location}}`.
-  defp target(%{workspace: workspace, organisation: organisation, target: %{} = target}) do
+  defp target(%{workspace: workspace, organisation: organisation, target: %{} = target} = input) do
     with true <- Domain.harness_file?(workspace),
-         {%Collection{} = collection, %Node{} = adapter} <- collection(workspace, target) do
+         {%Collection{} = collection, %Node{} = adapter} <- collection(input, target) do
       location = target_location(organisation, collection, adapter)
       {version, found} = harness_file(location, @head)
 
@@ -519,25 +522,30 @@ defmodule Apiary.Harnesses.Walk do
 
   defp target(_input), do: {nil, :absent}
 
-  # The live collection of `workspace` with `target`'s address, of a connected
-  # connection, and its adapter, which has a `call_url`; the first by when it was made.
-  # Nil for none, and for a target without an address, which has no file to read.
-  defp collection(_workspace, %{system: nil, path: nil}), do: nil
+  # The collection of `workspace` that the run's work entry takes for `target`
+  # (`Apiary.Runs.RunCredentials.target_collection/4`), with the work item's ticket's
+  # collection first, and its adapter; nil for none, for one that ended, whose
+  # connection is not connected or whose adapter has no `call_url`, from which no file
+  # can be read, and for a target without an address, which has no file to read.
+  defp collection(_input, %{system: nil, path: nil}), do: nil
 
-  defp collection(%Workspace{id: workspace_id}, %{system: system, path: path}) do
-    Repo.one(
-      from c in Collection,
-        join: n in Connection,
-        on: n.id == c.connection_id,
-        join: a in Node,
-        on: a.id == c.adapter_id,
-        where: c.workspace_id == ^workspace_id and is_nil(c.ended_at),
-        where: c.target_system == ^system and c.target_path == ^path,
-        where: n.state == :connected and is_nil(a.deleted_at) and not is_nil(a.call_url),
-        order_by: [asc: c.inserted_at, asc: c.id],
-        limit: 1,
-        select: {c, a}
-    )
+  defp collection(%{workspace: %Workspace{} = workspace} = input, target) do
+    work_item = Map.get(input, :work_item)
+
+    case RunCredentials.target_collection(
+           workspace.organisation_id,
+           workspace.id,
+           work_item,
+           target
+         ) do
+      {%Collection{ended_at: nil} = collection, %Connection{state: :connected},
+       %Node{call_url: url} = adapter}
+      when is_binary(url) ->
+        {collection, adapter}
+
+      _none ->
+        nil
+    end
   end
 
   # The target's resource under a grant of the run's organisation, else `not_covered`.

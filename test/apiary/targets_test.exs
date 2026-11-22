@@ -240,6 +240,25 @@ defmodule Apiary.TargetsTest do
   end
 
   describe "a target's page" do
+    test "get/3 is the one target at an address, and nil where two have it" do
+      %{scope: scope} = sign_up_fixture()
+      at = %{system: "code.example.com", path: "acme/shop"}
+      key = Apiary.NodesFixtures.target_key(at)
+      :ok = Apiary.Runs.Target.insert_new(scope.organisation.id, scope.workspace.id, [key])
+
+      assert %Apiary.Runs.Target{collection_external_ref: ref} =
+               Targets.get(scope, at.system, at.path)
+
+      assert ref == key.collection_external_ref
+
+      :ok =
+        Apiary.Runs.Target.insert_new(scope.organisation.id, scope.workspace.id, [
+          Apiary.NodesFixtures.target_key(at)
+        ])
+
+      assert Targets.get(scope, at.system, at.path) == nil
+    end
+
     test "every state counts in its family" do
       %{scope: scope} = sign_up_fixture()
       ended(scope, repo("github.example", "acme/shop"), "succeeded", ago: 60)
@@ -442,7 +461,7 @@ defmodule Apiary.TargetsTest do
       assert set.("other/docs") ==
                ["Line 1 is not a target of acme; runs of acme/shop read only targets of acme."]
 
-      assert set.("ACME/Shop") == ["Line 1 is acme/shop itself."]
+      assert set.("ACME/Shop") == ["Line 1 is ACME/Shop itself."]
       # A blank line counts: the line is the one the person sees.
       assert set.("acme/docs\n\nacme/api\nACME/DOCS") == ["Line 4 repeats line 1."]
       # The first broken rule only.
@@ -469,10 +488,70 @@ defmodule Apiary.TargetsTest do
                Targets.set_further_repositories(scope, shop, "acme/docs\nacme/tools")
              ) ==
                [
-                 "Choose a repository of this integration: acme/tools is not one of its collections."
+                 "Line 2: choose a target this integration lists. acme/tools is not one of them."
                ]
 
       assert saved(scope, shop) == []
+    end
+
+    test "a collection of the target's adapter in another organisation is not one", %{
+      scope: scope,
+      shop: shop
+    } do
+      %{scope: elsewhere} = sign_up_fixture()
+
+      %{
+        organisation_id: elsewhere.organisation.id,
+        workspace_id: elsewhere.workspace.id,
+        adapter_id: shop.adapter_id,
+        system: shop.system,
+        path: "acme/other"
+      }
+      |> Apiary.NodesFixtures.target_fixture()
+      |> Apiary.NodesFixtures.further_collections_fixture("acme/tools")
+
+      assert Targets.further_collections(shop, ["acme/tools"]) ==
+               {:error, {:not_a_collection, 1}}
+
+      assert {:error, %Ecto.Changeset{}} =
+               Targets.set_further_repositories(scope, shop, "acme/tools")
+
+      assert saved(scope, shop) == []
+    end
+
+    test "a target without an address takes no further repository, and saves an empty list",
+         %{scope: scope, shop: shop} do
+      bare =
+        Apiary.NodesFixtures.target_fixture(%{
+          organisation_id: scope.organisation.id,
+          workspace_id: scope.workspace.id,
+          adapter_id: shop.adapter_id
+        })
+
+      assert further_errors(Targets.set_further_repositories(scope, bare, "acme/docs")) == [
+               "Line 1: choose a target this integration lists. acme/docs is not one of them."
+             ]
+
+      assert {:ok, %{further_repositories: []}} =
+               Targets.set_further_repositories(scope, bare, "")
+    end
+
+    test "a collection on a connection that ended is not one", %{shop: shop} do
+      assert Targets.further_collections(shop, ["acme/docs"]) == :ok
+
+      [%{connection_id: id}] =
+        Apiary.Repo.all(
+          from c in Apiary.Adapters.Collection,
+            where: c.adapter_id == ^shop.adapter_id and c.target_path == "acme/docs"
+        )
+
+      {1, _rows} =
+        Apiary.Repo.update_all(from(k in Apiary.Adapters.Connection, where: k.id == ^id),
+          set: [state: :ended, ended_at: DateTime.utc_now(), ended_reason: :adapter_reported]
+        )
+
+      assert Targets.further_collections(shop, ["acme/docs"]) ==
+               {:error, {:not_a_collection, 1}}
     end
 
     test "a path of the target's collection itself is refused, so no collection is read twice",
@@ -493,7 +572,7 @@ defmodule Apiary.TargetsTest do
 
       assert further_errors(
                Targets.set_further_repositories(scope, shop, "acme/docs\nacme/mirror")
-             ) == ["Line 2 is acme/shop itself."]
+             ) == ["Line 2 is acme/mirror itself."]
 
       assert saved(scope, shop) == []
     end

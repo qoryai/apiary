@@ -9479,6 +9479,11 @@ msgstr ""
 msgid "Discard changes"
 msgstr ""
 
+#: lib/apiary_web/controllers/adapter_redirect_controller.ex
+#, elixir-autogen, elixir-format
+msgid "Disconnect the account that is connected to %{integration} first, then install again. An organisation connects one account of each integration."
+msgstr ""
+
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #, elixir-autogen, elixir-format
 msgid "Disk (GiB)"
@@ -22784,6 +22789,16 @@ msgstr ""
 #: lib/apiary_web/live/policy_live/target.ex
 #, elixir-autogen, elixir-format
 msgid "The rules stay as they are, locked ones too."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "The run did not start, because target %{target} is among the targets its runs also read."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "The run did not start, because the runs of target %{target} also read a target that its integration does not list."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

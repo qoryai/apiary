@@ -316,6 +316,22 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       assert inputs["domain"] == "software"
     end
+
+    test "of a target with no address: no labels, and no QORY_RUN_SYSTEM", ctx do
+      {_work_item, queued} =
+        queued!(ctx, %{
+          target_collection_external_ref: "Q_support",
+          target_system: nil,
+          target_path: nil
+        })
+
+      claimed = claimed!(ctx)
+      run = Repo.get!(Run, claimed.registered.id)
+
+      assert run.registration_labels == %{}
+      refute Map.has_key?(run.registration_variables || %{}, "QORY_RUN_SYSTEM")
+      assert queue_run!(queued).state == :claimed
+    end
   end
 
   describe "the run a claim of a prebuild registers" do
@@ -1431,24 +1447,6 @@ defmodule Apiary.Dispatches.HandoverTest do
       assert Jason.decode!(documents)["target"] == %{"collection" => "Q_support"}
       assert inputs(claimed)["target"] == %{"collection" => "Q_support"}
 
-      assert queue_run!(queued).state == :claimed
-    end
-
-    test "of a target with no address: no labels, and no QORY_RUN_SYSTEM", ctx do
-      with_domain(ctx.scope, "example")
-
-      {_work_item, queued} =
-        queued!(ctx, %{
-          target_collection_external_ref: "Q_support",
-          target_system: nil,
-          target_path: nil
-        })
-
-      claimed = claimed!(ctx)
-      run = Repo.get!(Run, claimed.registered.id)
-
-      assert run.registration_labels == %{}
-      refute Map.has_key?(run.registration_variables || %{}, "QORY_RUN_SYSTEM")
       assert queue_run!(queued).state == :claimed
     end
 

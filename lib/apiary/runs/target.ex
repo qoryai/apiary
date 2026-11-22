@@ -58,7 +58,7 @@ defmodule Apiary.Runs.Target do
   @typedoc "A target the workspace's runs named."
   @type t :: %__MODULE__{}
 
-  # Rows of one insert: nine parameters each, well below the 65,535 a query may carry.
+  # Rows of one insert: eleven parameters each, well below the 65,535 a query may carry.
   @insert_chunk 1_000
 
   @doc """
@@ -67,14 +67,18 @@ defmodule Apiary.Runs.Target do
   `organisation_id`, unless the workspace has it already. One seen before keeps its row,
   its public id and its `first_seen_at`, and takes the address given where it differs, so
   a target follows its collection to a new address. A caller passes the collection's
-  address as it is now. A new one is first seen now. The targets are inserted sorted by
+  address as it is now. With `on_conflict: :nothing` one seen before is left as it is,
+  its address too. A new one is first seen now. The targets are inserted sorted by
   adapter and collection ref, once each, so two callers that name the same targets take
   them in the same order. The query is kept out of the query log (`log: false`), since
   the labels may be event data.
   """
-  @spec insert_new(Ecto.UUID.t(), Ecto.UUID.t(), [Apiary.Lingo.Domain.target()]) :: :ok
-  def insert_new(organisation_id, workspace_id, targets) when is_list(targets) do
+  @spec insert_new(Ecto.UUID.t(), Ecto.UUID.t(), [Apiary.Lingo.Domain.target()],
+          on_conflict: :nothing
+        ) :: :ok
+  def insert_new(organisation_id, workspace_id, targets, opts \\ []) when is_list(targets) do
     now = DateTime.utc_now()
+    on_conflict = if opts[:on_conflict] == :nothing, do: :nothing, else: moved()
 
     targets
     |> Enum.map(&{{&1.adapter_id, &1.collection_external_ref}, {&1.system, &1.path}})
@@ -99,7 +103,7 @@ defmodule Apiary.Runs.Target do
             updated_at: now
           }
         end,
-        on_conflict: moved(),
+        on_conflict: on_conflict,
         conflict_target: [:workspace_id, :adapter_id, :collection_external_ref],
         log: false
       )
@@ -152,6 +156,24 @@ defmodule Apiary.Runs.Target do
   end
 
   @doc """
+  The id of the row of `target` in the workspace `workspace_id` of the organisation
+  `organisation_id`, by its adapter and collection ref, made with `insert_new/4` where
+  there is none. A row seen before keeps its address, also one another caller makes
+  between the read and the insert (`on_conflict: :nothing`). Kept out of the query log
+  (`log: false`), since the address may be event data.
+  """
+  @spec id_of(Ecto.UUID.t(), Ecto.UUID.t(), Apiary.Lingo.Domain.target()) :: Ecto.UUID.t()
+  def id_of(organisation_id, workspace_id, %{} = target) do
+    query = from(t in by_key(workspace_id, target), select: t.id)
+
+    Repo.one(query, log: false) ||
+      (
+        :ok = insert_new(organisation_id, workspace_id, [target], on_conflict: :nothing)
+        Repo.one!(query, log: false)
+      )
+  end
+
+  @doc """
   The target of the run of a workspace's queue `dispatch_run_id`: its work item's target,
   else its prebuild's collection's; nil for none. Read without a lock, and kept out of
   the query log (`log: false`), since the address may be event data.
@@ -197,7 +219,7 @@ defmodule Apiary.Runs.Target do
 
   @doc """
   The id of the one target of the workspace `workspace_id` at the address `system` and
-  `path`, as a run's labels name it; nil when no target or more than one has that
+  `path`, as the run's labels contain it; nil when no target or more than one has that
   address, since two targets of two collections can share one.
   """
   @spec id_at(Ecto.UUID.t(), String.t(), String.t()) :: Ecto.UUID.t() | nil

@@ -66,10 +66,11 @@ defmodule Apiary.Dispatches.Handover do
   #      workspace's domain has a label for them (`Apiary.Targets.further_repositories/1`),
   #      that break the domain's rules (`Apiary.Lingo.Domain.run_variables/3`), or a
   #      further path that is not one of the collections of the target's adapter
-  #      (`Apiary.Targets.further_collections/2`), end it `variables_invalid`, as do the variables of a run that is not a prebuild, from its
-  #      workspace and target (`Apiary.Variables.for_run/2`), when they are more than 126,
-  #      or take more than 64 KiB, with the count or the size kept as `end_detail`; a
-  #      prebuild gets none of them, and no refusal for them; an explore run whose
+  #      (`Apiary.Targets.further_collections/2`), end it `variables_invalid`. So do the
+  #      variables of a run that is not a prebuild, from its workspace and target
+  #      (`Apiary.Variables.for_run/2`), when they are more than 126, or take more than
+  #      64 KiB, with the count or the size kept as `end_detail`; a prebuild gets none
+  #      of them, and no refusal for them; an explore run whose
   #      work item's ticket is no longer kept, `ticket_gone`; one whose input cannot be
   #      formed (`Apiary.Dispatches.Inputs`), or
   #      whose work item has no target in a domain that requires one
@@ -1299,7 +1300,7 @@ defmodule Apiary.Dispatches.Handover do
       organisation_id: dispatch_run.organisation_id,
       workspace_id: dispatch_run.workspace_id,
       dispatch_run_id: dispatch_run.id,
-      target_id: target_row_id(dispatch_run, target)
+      target_id: Target.id_of(dispatch_run.organisation_id, dispatch_run.workspace_id, target)
     }
 
     case RunAccess.destinations(run) do
@@ -1327,21 +1328,6 @@ defmodule Apiary.Dispatches.Handover do
     case InstanceConfig.value(:prebuilt_image_max_gb) do
       nil -> []
       gb -> [{"largest_prebuilt_image_bytes", gb * 1_000_000_000}]
-    end
-  end
-
-  # The id of the row of `target` in the prebuild's workspace, by its adapter and
-  # collection ref, made where there is none.
-  defp target_row_id(%DispatchRun{} = dispatch_run, target) do
-    query = from t in Target.by_key(dispatch_run.workspace_id, target), select: t.id
-
-    case Repo.one(query) do
-      nil ->
-        :ok = Target.insert_new(dispatch_run.organisation_id, dispatch_run.workspace_id, [target])
-        Repo.one!(query)
-
-      id ->
-        id
     end
   end
 
@@ -1383,7 +1369,7 @@ defmodule Apiary.Dispatches.Handover do
     with %Target{} <- found,
          label when is_binary(label) <- Domain.paths_label(workspace),
          paths = Targets.further_repositories(found),
-         {:ok, _refs} <- Targets.further_collections(found, paths) do
+         :ok <- Targets.further_collections(found, paths) do
       {:ok, paths}
     else
       {:error, {rule, _n}} -> {:error, rule}

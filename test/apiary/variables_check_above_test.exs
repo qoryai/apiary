@@ -10,7 +10,6 @@ defmodule Apiary.VariablesCheckAboveTest do
   import Apiary.OrganisationsFixtures
 
   alias Apiary.{Access, Policy, Variables}
-  alias Apiary.Runs.Target
   alias Apiary.Variables.Variable
 
   setup do

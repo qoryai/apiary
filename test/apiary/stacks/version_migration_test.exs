@@ -8,8 +8,6 @@ defmodule Apiary.Stacks.VersionMigrationTest do
 
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.Runs.Target
-
   @migration {20_261_029_180_000, Apiary.Repo.Migrations.KeepTheVersionOfAHarnessChoice,
               "keep_the_version_of_a_harness_choice"}
 

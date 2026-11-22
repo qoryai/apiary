@@ -121,12 +121,17 @@ defmodule Apiary.Targets do
   ## One target
 
   @doc """
-  get/3 is the target of the scope's workspace with this system and path, or nil: one
-  indexed read.
+  get/3 is the one target of the scope's workspace with this system and path
+  (`Apiary.Runs.Target.id_at/3`), or nil: nil also where two targets of two collections
+  have that address.
   """
   @spec get(Scope.t(), String.t(), String.t()) :: Target.t() | nil
-  def get(%Scope{} = scope, system, path) when is_binary(system) and is_binary(path) do
-    Repo.one(from t in in_scope(scope), where: t.system == ^system and t.path == ^path)
+  def get(%Scope{workspace: %Workspace{id: workspace_id}} = scope, system, path)
+      when is_binary(system) and is_binary(path) do
+    case Target.id_at(workspace_id, system, path) do
+      nil -> nil
+      id -> Repo.one(from t in in_scope(scope), where: t.id == ^id)
+    end
   end
 
   def get(%Scope{}, _system, _path), do: nil
@@ -794,43 +799,51 @@ defmodule Apiary.Targets do
     )
   end
 
+  defp check_further(%Target{}, []), do: :ok
+
+  # A target without an address is no repository, so it has no further ones.
+  defp check_further(%Target{path: nil} = target, lines),
+    do: {:error, further_error(target, lines, :not_a_collection, 1)}
+
   defp check_further(%Target{} = target, lines) do
     paths = Enum.map(lines, &elem(&1, 0))
 
     with :ok <- RunVariables.check_repositories(target.path, paths),
-         {:ok, _refs} <- further_collections(target, paths) do
+         :ok <- further_collections(target, paths) do
       :ok
     else
       {:error, {reason, n}} -> {:error, further_error(target, lines, reason, n)}
     end
   end
 
-  # further_collections/2 is the collection ref of each of `paths`, in order: of a live
-  # collection of the target's adapter at the target's system and that path, compared
-  # without case. `{:error, {:not_a_collection, n}}` for the first path that is not one,
-  # at place `n`, from 1; a target without an address has no such collection. `{:error,
-  # {:itself, n}}` for the first path whose ref is the target's collection ref, so no
-  # collection is read twice. The claim checks a run's further repositories here too
-  # (`Apiary.Dispatches.Handover`).
+  # further_collections/2 checks that each of `paths` is a live collection of the
+  # target's adapter at the target's system and that path, compared without case: a
+  # collection of the target's organisation, on a connection that is connected and not
+  # ended. `:ok` where each one is. `{:error, {:not_a_collection, n}}` for the first path
+  # that is not one, at place `n`, from 1; a target without an address has no such
+  # collection. `{:error, {:itself, n}}` for the first path whose collection ref is the
+  # target's, so no collection is read twice. The claim checks a run's further
+  # repositories here too (`Apiary.Dispatches.Handover`).
   # Of the `factory` feature, and left out of the module reference.
   @doc false
   @spec further_collections(Target.t(), [String.t()]) ::
-          {:ok, [String.t()]} | {:error, {:not_a_collection | :itself, pos_integer}}
-  def further_collections(%Target{}, []), do: {:ok, []}
+          :ok | {:error, {:not_a_collection | :itself, pos_integer}}
+  def further_collections(%Target{}, []), do: :ok
   def further_collections(%Target{system: nil}, _paths), do: {:error, {:not_a_collection, 1}}
 
-  def further_collections(
-        %Target{adapter_id: adapter_id, collection_external_ref: target_ref, system: system},
-        paths
-      ) do
+  def further_collections(%Target{} = target, paths) do
     lowered = Enum.map(paths, &String.downcase/1)
 
     found =
       Repo.all(
         from c in Collection,
-          where: c.adapter_id == ^adapter_id and c.target_system == ^system,
+          join: k in Apiary.Adapters.Connection,
+          on: k.id == c.connection_id and k.organisation_id == c.organisation_id,
+          where: c.organisation_id == ^target.organisation_id,
+          where: c.adapter_id == ^target.adapter_id and c.target_system == ^target.system,
           where: fragment("lower(?)", c.target_path) in ^lowered,
           where: is_nil(c.ended_at) and not is_nil(c.target_collection_external_ref),
+          where: k.state == :connected and is_nil(k.ended_at),
           group_by: fragment("lower(?)", c.target_path),
           select: {fragment("lower(?)", c.target_path), min(c.target_collection_external_ref)}
       )
@@ -839,9 +852,14 @@ defmodule Apiary.Targets do
     refs = Enum.map(lowered, &Map.get(found, &1))
 
     cond do
-      index = Enum.find_index(refs, &is_nil/1) -> {:error, {:not_a_collection, index + 1}}
-      index = Enum.find_index(refs, &(&1 == target_ref)) -> {:error, {:itself, index + 1}}
-      true -> {:ok, refs}
+      index = Enum.find_index(refs, &is_nil/1) ->
+        {:error, {:not_a_collection, index + 1}}
+
+      index = Enum.find_index(refs, &(&1 == target.collection_external_ref)) ->
+        {:error, {:itself, index + 1}}
+
+      true ->
+        :ok
     end
   end
 
@@ -867,7 +885,7 @@ defmodule Apiary.Targets do
   # the words of a page, on `further_repositories`.
   defp further_error(%Target{path: path} = target, lines, reason, n) do
     {entry, line} = Enum.at(lines, n - 1)
-    owner = owner(path)
+    owner = path && owner(path)
 
     {message, keys} =
       case reason do
@@ -885,13 +903,14 @@ defmodule Apiary.Targets do
            ), line: line, owner: owner, target: path}
 
         :itself ->
-          {dgettext_noop("errors", "Line %{line} is %{target} itself."), line: line, target: path}
+          {dgettext_noop("errors", "Line %{line} is %{target} itself."),
+           line: line, target: entry}
 
         :not_a_collection ->
           {dgettext_noop(
              "errors",
-             "Choose a repository of this integration: %{path} is not one of its collections."
-           ), path: entry}
+             "Line %{line}: choose a target this integration lists. %{path} is not one of them."
+           ), line: line, path: entry}
 
         :repeats ->
           first = first_line(lines, entry)

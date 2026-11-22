@@ -63,6 +63,46 @@ defmodule Apiary.Runs.TargetTest do
     assert {id, public_id, first_seen_at} == {first.id, first.public_id, first.first_seen_at}
   end
 
+  test "with on_conflict: :nothing, a row seen before keeps its address, and a new one is made",
+       ctx do
+    insert_new!(ctx.scope, [target(ctx.adapter, "C_1", "code.example.com", "acme/shop")])
+
+    :ok =
+      Target.insert_new(
+        ctx.scope.organisation.id,
+        ctx.scope.workspace.id,
+        [
+          target(ctx.adapter, "C_1", "code.example.com", "acme/web"),
+          target(ctx.adapter, "C_2", "code.example.com", "acme/api")
+        ],
+        on_conflict: :nothing
+      )
+
+    assert rows(ctx.scope) == [
+             {ctx.adapter.id, "C_1", "code.example.com", "acme/shop"},
+             {ctx.adapter.id, "C_2", "code.example.com", "acme/api"}
+           ]
+  end
+
+  test "id_of/3 reads the row of a target seen before, and makes one where there is none",
+       ctx do
+    insert_new!(ctx.scope, [target(ctx.adapter, "C_1", "code.example.com", "acme/shop")])
+    [%Target{id: id}] = Repo.all(Target)
+    org = ctx.scope.organisation.id
+    ws = ctx.scope.workspace.id
+
+    assert Target.id_of(org, ws, target(ctx.adapter, "C_1", "code.example.com", "acme/web")) ==
+             id
+
+    new = Target.id_of(org, ws, target(ctx.adapter, "C_2", nil, nil))
+    assert new != id
+
+    assert rows(ctx.scope) == [
+             {ctx.adapter.id, "C_1", "code.example.com", "acme/shop"},
+             {ctx.adapter.id, "C_2", nil, nil}
+           ]
+  end
+
   test "the same ref of two adapters is two rows", ctx do
     other = bare_adapter_fixture()
 

@@ -6,8 +6,7 @@ defmodule Apiary.SecretsVariablesWithoutSecurityTest do
 
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Repo, Secrets, Variables}
-  alias Apiary.Runs.Target
+  alias Apiary.{Secrets, Variables}
 
   @moduletag with_features: [:observability]
 

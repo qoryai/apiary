@@ -17,7 +17,6 @@ defmodule ApiaryProWeb.SettingsLive.VariablesTest do
   import ApiaryPro.OperatorsFixtures
 
   alias Apiary.{Features, Repo, Variables}
-  alias Apiary.Runs.Target
   alias ApiaryPro.{OrganisationVariables, Suspensions}
   alias ApiaryPro.OrganisationVariables.Variable
 

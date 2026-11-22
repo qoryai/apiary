@@ -17,8 +17,8 @@ defmodule Apiary.Repo.Migrations.KeyATargetOnItsAdapterSCollection do
   #
   # The migration moves no data. The new columns of `targets` are NOT NULL with no
   # default, and a row with a target system has a ref: on a database with a target, or a
-  # collection, item or work item with a target system, Postgres refuses the migration and
-  # nothing changes.
+  # collection, item or work item with a target system, the migration fails and nothing
+  # changes.
   #
   # Rolled back, the columns go, and a target's system and path are needed again, unique
   # per workspace.

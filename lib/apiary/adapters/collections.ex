@@ -180,9 +180,9 @@ defmodule Apiary.Adapters.Collections do
   #      part holds makes the new one. A disconnect (`disconnect/2`) holds one row too,
   #      by adapter, connection and ref, and no connection's row, then the feed's
   #      counter;
-  #   4. the targets an assign or a part makes, by workspace, then by system and path: a
-  #      part makes them after every collection it writes, its ends included
-  #      (`finish_part/3`);
+  #   4. the targets an assign or a part makes, by workspace, then by adapter and
+  #      collection ref, each existing row locked: a part makes them after every
+  #      collection it writes, its ends included (`finish_part/3`);
   #   5. the work items, `FOR UPDATE`, by id, where a change holds several
   #      (`Apiary.WorkItems`): a take in holds its ticket's connection and collection
   #      `FOR SHARE` before the work item, and nothing locks a collection or a target after
@@ -1801,6 +1801,8 @@ defmodule Apiary.Adapters.Collections do
   # address is made only where the labels that name a target by the workspace's domain
   # can carry it (`Apiary.Lingo.Domain.target/2`), as a run's labels carry it. A
   # collection without a target, or with an address no label could name, makes none.
+  # Nor does a target that fails the domain's check (`Apiary.Lingo.Domain.check_target/2`):
+  # in a software workspace, one without an address, or with one that breaks its rules.
   defp insert_targets(_organisation_id, nil, _collections), do: :ok
 
   defp insert_targets(organisation_id, %Workspace{id: workspace_id} = workspace, collections) do
@@ -1808,6 +1810,7 @@ defmodule Apiary.Adapters.Collections do
       for collection <- collections,
           %{} = target <- [Collection.target(collection)],
           labelled?(workspace, target),
+          Domain.check_target(workspace, target) == :ok,
           do: target
 
     Target.insert_new(organisation_id, workspace_id, targets)

@@ -5,8 +5,8 @@ defmodule Mix.Tasks.Apiary.Demo.CodeHost do
   # make them, for `mix apiary.demo` and `mix apiary.demo.history`: the instance's adapter
   # Example code host, made where the instance has none; the organisation's connection to
   # it, made where it has none; and per repository a collection of that adapter, assigned
-  # to the workspace, whose target has the collection ref `<system>/<path>` and the
-  # repository's address. Rows are written straight into the tables, as a listing and an
+  # to the workspace, whose target has that collection's ref and the repository's
+  # address. Rows are written straight into the tables, as a listing and an
   # assignment would leave them, without the adapter's wire.
 
   import Ecto.Query
@@ -20,17 +20,27 @@ defmodule Mix.Tasks.Apiary.Demo.CodeHost do
   @name "Example code host"
 
   @doc false
-  # The workspace's target of the repository at `system` and `path`, of the adapter, by
-  # adapter and collection ref; nil where the instance has no such adapter or the
-  # workspace no such target.
+  # The workspace's target of the repository at `system` and `path`: the target of the
+  # adapter's live collection there, by adapter and collection ref; nil where the
+  # instance has no such adapter or the workspace no such collection or target.
   @spec target(Ecto.UUID.t(), String.t(), String.t()) :: Target.t() | nil
   def target(workspace_id, system, path) do
-    case adapter() do
-      %Node{id: adapter_id} ->
-        Repo.one(Target.by_key(workspace_id, key(adapter_id, system, path)))
-
-      nil ->
-        nil
+    with %Node{id: adapter_id} <- adapter(),
+         ref when is_binary(ref) <-
+           Repo.one(
+             from c in Collection,
+               where: c.adapter_id == ^adapter_id and c.workspace_id == ^workspace_id,
+               where: c.target_system == ^system and c.target_path == ^path,
+               where: is_nil(c.ended_at),
+               order_by: [c.inserted_at, c.id],
+               limit: 1,
+               select: c.target_collection_external_ref
+           ) do
+      Repo.one(
+        Target.by_key(workspace_id, %{adapter_id: adapter_id, collection_external_ref: ref})
+      )
+    else
+      _none -> nil
     end
   end
 
@@ -47,7 +57,7 @@ defmodule Mix.Tasks.Apiary.Demo.CodeHost do
     collections =
       for %{system: system, path: path} <- Enum.uniq_by(addresses, &{&1.system, &1.path}) do
         # A live collection's ref is unique per adapter on the instance, so it has the
-        # workspace's id; its target's ref is unique per workspace.
+        # workspace's id; its target has the same ref.
         external_ref = "#{workspace.public_id}/#{system}/#{path}"
 
         Repo.one(
@@ -64,7 +74,7 @@ defmodule Mix.Tasks.Apiary.Demo.CodeHost do
             external_ref: external_ref,
             url: "https://#{system}/#{path}",
             title: path,
-            target_collection_external_ref: key(adapter.id, system, path).collection_external_ref,
+            target_collection_external_ref: external_ref,
             target_system: system,
             target_path: path,
             last_listed_at: now
@@ -73,9 +83,6 @@ defmodule Mix.Tasks.Apiary.Demo.CodeHost do
 
     Target.insert_new(organisation.id, workspace.id, Enum.map(collections, &Collection.target/1))
   end
-
-  defp key(adapter_id, system, path),
-    do: %{adapter_id: adapter_id, collection_external_ref: "#{system}/#{path}"}
 
   defp adapter do
     Repo.one(

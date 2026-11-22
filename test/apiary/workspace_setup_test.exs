@@ -756,6 +756,22 @@ defmodule Apiary.WorkspaceSetupTest do
       assert WorkspaceSetup.collections(scope, @software, :sources) == []
     end
 
+    test "collections/3: a collection whose target has no address is a destination only where the domain takes such a target",
+         ctx do
+      bare = collection_fixture(ctx.scope, external_ref: "support-queue")
+      set!(Collection, bare.id, target_system: nil, target_path: nil)
+      targets!(bare.adapter_id)
+
+      ids = fn domain ->
+        for {_adapter, rows} <- WorkspaceSetup.collections(ctx.scope, domain, :destinations),
+            row <- rows,
+            do: row.collection.id
+      end
+
+      assert ids.(@software) == []
+      assert ids.(Apiary.Lingo.Domain.Example) == [bare.id]
+    end
+
     test "tick/5: changes a row of the list as it stands; refuses one elsewhere or gone", ctx do
       %{scope: scope, workspace: main} = ctx
       other = workspace_fixture(scope.organisation, "Other")

@@ -86,8 +86,8 @@ defmodule Apiary.WorkItemsFixtures do
   A collection of the connection, of the scope's organisation, linked to the scope's
   workspace, with a ref no other collection has, written straight to the database.
   `attrs` overrides `external_ref`, `url`, `title`, `target_system`, `target_path`,
-  `target_collection_external_ref` (else the collection's own ref, for a collection with a
-  target), `workspace_id`, `backlog` and `items`.
+  `target_collection_external_ref` (else the collection's `external_ref`, for a collection
+  with a target), `workspace_id`, `backlog` and `items`.
   """
   def source_collection_fixture(%Scope{} = scope, %Connection{} = connection, attrs \\ %{}) do
     unique = System.unique_integer([:positive])
@@ -253,8 +253,8 @@ defmodule Apiary.WorkItemsFixtures do
   A target of the scope's workspace (`Apiary.Runs.Target`), at forge.example.com acme/shop
   unless `attrs` sets them, keyed as `work_item_fixture/2` keys the target of a work item
   of a fresh ticket connection (`ticket_connection_fixture/1`): its adapter, and its path
-  as the collection ref. `{target, attrs}`, where `attrs` gives `work_item_fixture/2` that
-  connection, for a test that writes a target's settings before its work item. Two work
+  as the collection ref. `{target, attrs}`, where `attrs` contains that connection's id for
+  `work_item_fixture/2`, for a test that writes a target's settings before its work item. Two work
   items of one connection need two `external_ref`s.
   """
   def ticket_target_fixture(%Scope{} = scope, attrs \\ %{}) do

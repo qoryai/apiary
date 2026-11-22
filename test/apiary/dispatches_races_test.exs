@@ -184,12 +184,11 @@ defmodule Apiary.DispatchesRacesTest do
     rescued(listing_part(key_scope, connection, collections, ref))
   end
 
-  # The scope workspace's target `path` on `code.example.com`, made where there is none.
+  # The scope workspace's target at `path` on `code.example.com`, made where there is none
+  # (`Apiary.NodesFixtures.address_target!/4`).
   defp target!(ctx, path) do
     %{organisation: %{id: organisation_id}, workspace: %{id: workspace_id}} = ctx.scope
-    target = %{system: "code.example.com", path: path}
-    :ok = Target.insert_new(organisation_id, workspace_id, [target])
-    Repo.get_by!(Target, workspace_id: workspace_id, system: target.system, path: path)
+    address_target!(organisation_id, workspace_id, "code.example.com", path)
   end
 
   # A member's Rebuild of the target `path` (`Apiary.Environments.rebuild/2`): a prebuild
@@ -857,7 +856,8 @@ defmodule Apiary.DispatchesRacesTest do
       keys = [key!(ctx, pool), key!(ctx, pool)]
       first = collection!(ctx, "A")
       on = [connection: Repo.get!(Connection, first.connection_id)]
-      collections = [first, collection!(ctx, "B", "acme/shop", on)]
+      # One target, of `A`, for both collections, as a listing's part makes it.
+      collections = [first, collection!(ctx, "B", "acme/shop", [target_ref: "A"] ++ on)]
       {:ok, 2} = rebuild(ctx, "acme/shop").()
 
       raised =

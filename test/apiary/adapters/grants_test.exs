@@ -113,9 +113,12 @@ defmodule Apiary.Adapters.GrantsTest do
 
       assert {1, _} = insert(base)
 
+      # Ended, as a second live grant of the connection fails first on its own index.
+      ended = %{state: :ended, ended_at: DateTime.utc_now(), ended_reason: :connection_ended}
+
       for change <- [
-            %{organisation_id: other.organisation.id, grant_ref: "G_2"},
-            %{adapter_id: second.id, grant_ref: "G_3"}
+            Map.merge(ended, %{organisation_id: other.organisation.id, grant_ref: "G_2"}),
+            Map.merge(ended, %{adapter_id: second.id, grant_ref: "G_3"})
           ] do
         assert refused(fn -> insert(Map.merge(base, change)) end) ==
                  "adapter_grants_connection_id_fkey"
@@ -148,12 +151,17 @@ defmodule Apiary.Adapters.GrantsTest do
                })
              end) == "adapter_grants_live_index"
 
-      # The same pass for a second grant of the connection.
-      assert refused(fn -> insert(Map.merge(base, %{grant_ref: "G_2", pass_nonce: nonce})) end) ==
-               "adapter_grants_connection_id_pass_nonce_index"
+      # A second grant that has not ended for the connection, as a report cannot add one.
+      assert refused(fn -> insert(Map.put(base, :grant_ref, "G_2")) end) ==
+               "adapter_grants_one_live_per_connection"
 
       now = DateTime.utc_now()
       ended = %{state: :ended, ended_at: now, ended_reason: :connection_ended}
+
+      # The same pass for a second grant of the connection.
+      assert refused(fn ->
+               insert(Map.merge(base, Map.merge(ended, %{grant_ref: "G_2", pass_nonce: nonce})))
+             end) == "adapter_grants_connection_id_pass_nonce_index"
 
       # An ended grant leaves its ref free.
       assert {1, _} = insert(Map.merge(base, ended))
@@ -252,9 +260,67 @@ defmodule Apiary.Adapters.GrantsTest do
       {connection, _nonce} = connection_fixture(ctx.scope, ctx.adapter, :connected)
       second_nonce = linked_pass(ctx, connection)
 
-      assert {:ok, _} = report(ctx, connection, "G_2", second_nonce)
+      assert {:ok, _} = report(ctx, connection, "G_1", second_nonce)
       assert {:ok, _} = report(ctx, connection, "G_1", connection.pass_nonce)
-      assert live(ctx.adapter) == [{connection.id, "G_1"}, {connection.id, "G_2"}]
+      assert live(ctx.adapter) == [{connection.id, "G_1"}]
+    end
+
+    test "of another ref than the connection's live grant is refused, connection_held, and changes nothing",
+         ctx do
+      {connection, _nonce} = connection_fixture(ctx.scope, ctx.adapter, :connected)
+      {:ok, grant} = report(ctx, connection, "G_1", connection.pass_nonce)
+      second_nonce = linked_pass(ctx, connection)
+
+      assert report(ctx, connection, "G_2", second_nonce) == {:error, :connection_held}
+
+      assert Repo.reload!(grant) == grant
+      assert live(ctx.adapter) == [{connection.id, "G_1"}]
+      assert grant_entries(ctx.adapter) == [{connection.public_id, "G_1", "linked"}]
+      assert length(reports()) == 1
+
+      assert [%LinkedPass{reported_at: %DateTime{}}, %LinkedPass{reported_at: nil}] =
+               Repo.all(
+                 from p in LinkedPass,
+                   where: p.connection_id == ^connection.id,
+                   order_by: p.linked_at
+               )
+
+      # The same ref replaces the grant, under the same pass the refusal left unspent.
+      assert {:ok, %Grant{id: id}} = report(ctx, connection, "G_1", second_nonce)
+      assert id == grant.id
+    end
+
+    test "of another ref is accepted after the connection's live grant ends", ctx do
+      {connection, _nonce} = connection_fixture(ctx.scope, ctx.adapter, :connected)
+      {:ok, first} = report(ctx, connection, "G_1", connection.pass_nonce)
+      second_nonce = linked_pass(ctx, connection)
+      assert report(ctx, connection, "G_2", second_nonce) == {:error, :connection_held}
+
+      {:ok, _} =
+        Grants.end_grant(ctx.key_scope, %{connection_id: connection.public_id, grant_ref: "G_1"})
+
+      assert {:ok, %Grant{grant_ref: "G_2"} = second} =
+               report(ctx, connection, "G_2", second_nonce)
+
+      assert second.id != first.id
+      assert live(ctx.adapter) == [{connection.id, "G_2"}]
+    end
+
+    test "after pass_unknown and grant_taken, connection_held comes", ctx do
+      {connection, _nonce} = connection_fixture(ctx.scope, ctx.adapter, :connected)
+      %{scope: other} = sign_up_fixture()
+      {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      {:ok, _} = report(ctx, theirs, "G_9", theirs.pass_nonce)
+      {:ok, _} = report(ctx, connection, "G_1", connection.pass_nonce)
+      second_nonce = linked_pass(ctx, connection)
+
+      # A spent pass is pass_unknown, though the connection has a live grant of G_1.
+      assert report(ctx, connection, "G_2", connection.pass_nonce) == {:error, :pass_unknown}
+
+      # A ref live under another organisation's connection is grant_taken, though the
+      # connection has a live grant of another ref.
+      assert report(ctx, connection, "G_9", second_nonce) == {:error, :grant_taken}
+      assert report(ctx, connection, "G_2", second_nonce) == {:error, :connection_held}
     end
 
     test "under a nonce of no linked pass of the connection is refused, pass_unknown", ctx do
@@ -368,12 +434,13 @@ defmodule Apiary.Adapters.GrantsTest do
   end
 
   describe "a connection's end" do
-    test "ends its grants, writes their unlinked entries after its collections', and frees the refs",
+    test "ends its grant, writes its unlinked entry, and leaves the other connections' grants",
          ctx do
       {connection, _nonce} = connection_fixture(ctx.scope, ctx.adapter, :connected)
-      second_nonce = linked_pass(ctx, connection)
       {:ok, one} = report(ctx, connection, "G_1", connection.pass_nonce)
-      {:ok, _two} = report(ctx, connection, "G_2", second_nonce)
+      %{scope: other} = sign_up_fixture()
+      {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
+      {:ok, _two} = report(ctx, theirs, "G_2", theirs.pass_nonce)
 
       {:ok, :accepted} =
         Apiary.Adapters.Collections.post_listing(ctx.key_scope, %{
@@ -396,17 +463,16 @@ defmodule Apiary.Adapters.GrantsTest do
       assert %Grant{state: :ended, ended_reason: :connection_ended, ended_at: %DateTime{}} =
                Repo.reload!(one)
 
-      assert live(ctx.adapter) == []
+      assert live(ctx.adapter) == [{theirs.id, "G_2"}]
 
       assert grant_entries(ctx.adapter) == [
                {connection.public_id, "G_1", "linked"},
-               {connection.public_id, "G_2", "linked"},
-               {connection.public_id, "G_1", "unlinked"},
-               {connection.public_id, "G_2", "unlinked"}
+               {theirs.public_id, "G_2", "linked"},
+               {connection.public_id, "G_1", "unlinked"}
              ]
 
       kinds = for %{kind: kind} <- Feed.entries(ctx.adapter), do: kind
-      assert Enum.take(kinds, -2) == ["grant", "grant"]
+      assert List.last(kinds) == "grant"
     end
 
     test "an organisation's purge and the adapter's deletion end the grants too", ctx do
@@ -440,13 +506,15 @@ defmodule Apiary.Adapters.GrantsTest do
     test "lists the grants of its connections that have not ended, and no other adapter's",
          ctx do
       {connection, _nonce} = connection_fixture(ctx.scope, ctx.adapter, :connected)
-      second_nonce = linked_pass(ctx, connection)
-      {:ok, _} = report(ctx, connection, "G_2", connection.pass_nonce)
-      {:ok, _} = report(ctx, connection, "G_1", second_nonce)
+      {:ok, _} = report(ctx, connection, "G_1", connection.pass_nonce)
 
       %{scope: other} = sign_up_fixture()
       {theirs, _nonce} = connection_fixture(other, ctx.adapter, :connected)
       {:ok, _} = report(ctx, theirs, "G_3", theirs.pass_nonce)
+
+      %{scope: fourth} = sign_up_fixture()
+      {fourths, _nonce} = connection_fixture(fourth, ctx.adapter, :connected)
+      {:ok, _} = report(ctx, fourths, "G_2", fourths.pass_nonce)
 
       %{scope: third} = sign_up_fixture()
       {ended, _nonce} = connection_fixture(third, ctx.adapter, :connected)
@@ -467,7 +535,7 @@ defmodule Apiary.Adapters.GrantsTest do
       expected =
         Enum.sort([
           {connection.public_id, "G_1"},
-          {connection.public_id, "G_2"},
+          {fourths.public_id, "G_2"},
           {theirs.public_id, "G_3"}
         ])
 
