@@ -22,9 +22,9 @@ defmodule Apiary.SealedRunsFixtures do
   A run claimed with an `anthropic` provider of the scope's organisation, whose one key
   is `model_key/0` under the value id `main`, and attached by the gateway of
   `Apiary.DispatchedRunsFixtures.handover_place_fixture/2`, under the gateway's one key,
-  allowed stored secrets. The work item's target has its row, as an assign of its
-  collection makes it (`Apiary.Runs.Target.insert_new/3`). Returns the place's map with `provider`, `run` (as stored after
-  the attach), `attached` (the attach's answer: `settings`, its bytes, and `digest`) and
+  allowed stored secrets. The work item's target, where it has one, has its row, as an
+  assign of its collection makes it (`Apiary.Runs.Target.insert_new/3`). Returns the
+  place's map with `provider`, `run` (as stored after the attach), `attached` (the attach's answer: `settings`, its bytes, and `digest`) and
   `secrets_key: {key, seed}`.
 
   With `work: apply`, the work item's adapter declares the apply items `apply` before the
@@ -44,6 +44,10 @@ defmodule Apiary.SealedRunsFixtures do
   `choice: attrs`, the workspace's model choice has `attrs` beside the provider; and with
   `before_claim: fun`, `fun` is called with the provider before the claim, to write the
   states of its keys, say.
+
+  With `work_item: attrs`, the work item is made with `attrs`
+  (`Apiary.WorkItemsFixtures.work_item_fixture/2`), such as `target_system: nil` and
+  `target_path: nil` for a run with no repository.
 
   With `attach: false`, the gateway does not attach the run: the map has `run` as the
   claim registered it, `run_key`, the run key its run code was redeemed for, and no
@@ -76,12 +80,12 @@ defmodule Apiary.SealedRunsFixtures do
     place = Apiary.DispatchedRunsFixtures.handover_place_fixture(scope, allow_secrets: true)
     {key, seed} = place.gateway_key
 
-    work_item = Apiary.WorkItemsFixtures.work_item_fixture(scope)
+    work_item =
+      Apiary.WorkItemsFixtures.work_item_fixture(scope, Keyword.get(opts, :work_item, %{}))
 
-    :ok =
-      Apiary.Runs.Target.insert_new(scope.organisation.id, scope.workspace.id, [
-        Apiary.WorkItems.WorkItem.target(work_item)
-      ])
+    if target = Apiary.WorkItems.WorkItem.target(work_item) do
+      :ok = Apiary.Runs.Target.insert_new(scope.organisation.id, scope.workspace.id, [target])
+    end
 
     adapter = if apply = opts[:work], do: callable_adapter_fixture(work_item.adapter_id, apply)
     if opts[:work], do: Apiary.WorkItemsFixtures.target_candidate!(work_item)

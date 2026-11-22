@@ -28,7 +28,8 @@ defmodule Apiary.Adapters.Connection do
   # `validity/0` seconds after it was made, so the adapter can always tell the newer pass.
   # `created_by_id` is the person who pressed Install for the latest pass while the
   # connection is pending, and the person whose pass connected it once it is connected. A
-  # connected connection takes a new pass for each external account a person adds to it:
+  # connected connection takes a new pass for a person who installs again, for the same
+  # account or after disconnecting the account:
   # `pass_nonce`, `pass_nonce_used_at`, `pass_expires_at` and `pass_started_by_id` change
   # with its passes; `created_by_id` and `connected_at` stay as they are.
   #

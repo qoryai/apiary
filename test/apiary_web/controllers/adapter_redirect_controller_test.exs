@@ -113,6 +113,8 @@ defmodule ApiaryWeb.AdapterRedirectControllerTest do
          "#{adapter.name} doesn't confirm that you administer that account. Ask an admin of the account to install it."},
         {[outcome: :refused, reason: :grant_taken], :error,
          "That account is already connected to another organisation."},
+        {[outcome: :refused, reason: :connection_held], :error,
+         "Disconnect the account that is connected to #{adapter.name} first, then install again. An organisation connects one account of each integration."},
         {[outcome: :refused, reason: :grant_not_confirmed], :error,
          "#{adapter.name} couldn't confirm that installation for you. Install it again from Integrations."},
         {[outcome: :refused, reason: :grant_suspended], :error,

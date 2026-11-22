@@ -441,6 +441,44 @@ defmodule Apiary.AdaptersRacesTest do
     end
   end
 
+  describe "two reports of different refs for one connection" do
+    test "the first adds the grant; the second waits on the connection, then is refused" do
+      %{scope: mine} = sign_up()
+      %{adapter: adapter, access_key: key} = adapter()
+      {connection, _nonce} = connection_fixture(mine, adapter, :connected)
+      second_nonce = :crypto.strong_rand_bytes(16)
+
+      {:ok, _pass} =
+        Apiary.Adapters.LinkedPass.insert(connection, second_nonce, DateTime.utc_now())
+
+      report = fn ref, nonce ->
+        fn ->
+          Grants.report(key_scope(key), %{
+            connection_id: connection.public_id,
+            grant_ref: ref,
+            account: %{ref: "1001", title: "acme"},
+            pass_nonce: nonce
+          })
+        end
+      end
+
+      {first, first_pid} = hold(report.("G_first", connection.pass_nonce))
+      assert {:ok, %Grant{}} = first.result
+
+      second = start(report.("G_second", second_nonce))
+      await_blocked(second.backend, first_pid)
+      commit(first)
+
+      assert Task.await(second.task) == {:error, :connection_held}
+
+      assert Repo.all(
+               from g in Grant,
+                 where: g.connection_id == ^connection.id and g.state == :live,
+                 select: g.grant_ref
+             ) == ["G_first"]
+    end
+  end
+
   describe "a grant report and the end of its connection" do
     test "the end first: the report waits on the connection, then finds it ended" do
       %{scope: mine} = sign_up()

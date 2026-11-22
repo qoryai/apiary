@@ -485,8 +485,10 @@ defmodule Apiary.NodesFixtures do
   each collection's `grant_ref`: `ref`, else `G_` and the connection's public id, so that
   the grants of two connections of one adapter differ. The grant is made as an accepted
   report makes one, for the external account `1001`, `acme`, with a nonce of no pass,
-  unless the connection has a live grant with that ref already. It writes no feed entry
-  and no trail entry.
+  unless the connection has a live grant with that ref already. A connection has one live
+  grant: a call with another ref while the connection has a live grant raises the
+  constraint error `adapter_grants_one_live_per_connection`, so end the first grant before.
+  It writes no feed entry and no trail entry.
   """
   def listing_grant(%Apiary.Adapters.Connection{} = connection, ref \\ nil) do
     alias Apiary.Adapters.Grant

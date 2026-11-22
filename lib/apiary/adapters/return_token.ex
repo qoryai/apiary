@@ -38,8 +38,8 @@ defmodule Apiary.Adapters.ReturnToken do
   @validity 300
   @nonce_size 16
   @outcomes %{"linked" => :linked, "refused" => :refused, "cancelled" => :cancelled}
-  @reasons ~w(person_not_permitted grant_taken grant_not_confirmed grant_suspended
-              permission_missing pass_expired source_unavailable)a
+  @reasons ~w(person_not_permitted grant_taken connection_held grant_not_confirmed
+              grant_suspended permission_missing pass_expired source_unavailable)a
   @required ~w(version connection_id nonce outcome expires_at)
 
   @whole_seconds ~r/\A[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z\z/
@@ -48,6 +48,7 @@ defmodule Apiary.Adapters.ReturnToken do
   @type reason ::
           :person_not_permitted
           | :grant_taken
+          | :connection_held
           | :grant_not_confirmed
           | :grant_suspended
           | :permission_missing

@@ -85,6 +85,25 @@ defmodule Apiary.Harnesses.WalkTest do
     %{adapter: Repo.get!(Node, adapter.id), host: host, seed: pair.secret}
   end
 
+  # A connection has one live grant, so each of `sources` is reached by its own adapter's
+  # connection of the scope's organisation: the adapters, and what each covers, as
+  # `{adapter, %{source => {grant_ref, resource_ref}}}`.
+  defp linked(ctx, sources) do
+    for {source, n} <- Enum.with_index(sources, 1) do
+      linked = adapter()
+      {connection, _nonce} = connection_fixture(ctx.scope, linked.adapter, :listed)
+      grant(ctx.scope.organisation.id, linked.adapter, connection, "G_#{n}")
+      {linked, %{source => {"G_#{n}", "R_#{n}"}}}
+    end
+  end
+
+  # What `covering/2` has, and what each of the `linked/2` adapters covers.
+  defp covering_linked(ctx, linked, more \\ %{}) do
+    Enum.reduce(linked, covering(ctx, more), fn {adapter, covers}, covered ->
+      Map.put(covered, adapter.adapter.id, covers)
+    end)
+  end
+
   defp grant(organisation_id, adapter, connection, grant_ref) do
     Repo.insert!(%Grant{
       public_id: Apiary.PublicId.generate(Grant.prefix()),
@@ -1292,13 +1311,13 @@ defmodule Apiary.Harnesses.WalkTest do
 
       setting(ctx.scope, @setting <> "modules:\n" <> modules)
 
-      more =
-        for {source, n} <- Enum.with_index(sources, 1), into: %{} do
-          grant(ctx.scope.organisation.id, ctx.run.adapter, ctx.connection, "G_#{n}")
-          {source, {"G_#{n}", "R_#{n}"}}
-        end
+      linked = linked(ctx, sources)
 
-      serve([ctx.run], covered: covering(ctx, more), files: @base_files)
+      serve([ctx.run | Enum.map(linked, &elem(&1, 0))],
+        covered: covering_linked(ctx, linked),
+        files: @base_files
+      )
+
       assert {:failed, %{failure: :too_many}} = Walk.run(ctx.input)
       assert Walk.max_links() == 5
     end
@@ -2041,14 +2060,13 @@ defmodule Apiary.Harnesses.WalkTest do
       setting(ctx.scope, @setting <> "modules:\n" <> modules)
       public!(Map.new(public, &{&1, {%{"harness.yaml" => "name: m\n"}, branches: ["v1"]}}))
 
-      more =
-        for {source, n} <- Enum.with_index(linked, 1), into: %{} do
-          grant(ctx.scope.organisation.id, ctx.run.adapter, ctx.connection, "G_#{n}")
-          {source, {"G_#{n}", "R_#{n}"}}
-        end
-        |> Map.put(@tools, {"G_run", "R_tools"})
+      adapters = linked(ctx, linked)
 
-      serve([ctx.run], covered: covering(ctx, more), files: @base_files)
+      serve([ctx.run | Enum.map(adapters, &elem(&1, 0))],
+        covered: covering_linked(ctx, adapters, %{@tools => {"G_run", "R_tools"}}),
+        files: @base_files
+      )
+
       assert {:ok, walked} = Walk.run(ctx.input)
       assert length(walked.harness_links) == Walk.max_links()
 
