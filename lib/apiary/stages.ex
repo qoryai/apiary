@@ -1344,7 +1344,23 @@ defmodule Apiary.Stages do
   @spec run_access(:read | :write_no_push | :write, DispatchRun.t()) ::
           :read | :write_no_push | :write
   def run_access(walk, %DispatchRun{stage_id: stage_id} = run) when is_binary(stage_id) do
-    case {limits(run), shared_stage(run)} do
+    # A read walk gives more than `:read` only to a run of a shared stage with the workflow
+    # model on (`limits/1` is nil with it off). Any other read run is `:read` without a
+    # read of its stage's limits, whose queries depend on the workspace's harness.
+    stage = if walk != :read or on?(), do: shared_stage(run)
+
+    case {walk, stage} do
+      {:read, nil} -> :read
+      _other -> entry_access(walk, run, stage)
+    end
+  end
+
+  def run_access(walk, %DispatchRun{}), do: walk
+
+  # entry_access/3 is `run_access/2` with the stage's limits: `stage` is the run's shared
+  # stage (`shared_stage/1`), nil for none.
+  defp entry_access(walk, run, stage) do
+    case {limits(run), stage} do
       {nil, _stage} ->
         :read
 
@@ -1358,8 +1374,6 @@ defmodule Apiary.Stages do
         walk
     end
   end
-
-  def run_access(walk, %DispatchRun{}), do: walk
 
   # Whether the entry of `stage` at the place of `run` is an entry of the run's workflow,
   # as `Runner.limits/4` reads it: false for a run that `Apiary.Processes.assign/3` moved
