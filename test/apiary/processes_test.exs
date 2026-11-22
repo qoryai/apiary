@@ -23,6 +23,7 @@ defmodule Apiary.ProcessesTest do
 
   @explore "st_r79kph11eg"
   @shape "st_p9w5cvh311"
+  @build "st_6ns22c4pav"
 
   defp default, do: Processes.default_document("software")
 
@@ -45,6 +46,21 @@ defmodule Apiary.ProcessesTest do
       version_name: String.duplicate("c3", 20),
       harness: "extends:\n  git: https://code.example.com/acme/harness\n  stack: core\n"
     })
+  end
+
+  # The default document whose Build stage shares one run: `first`, then a loop of
+  # `body`.
+  defp shared_save(first, body) do
+    edit(fn
+      %{"id" => @build} = stage ->
+        Map.merge(stage, %{
+          "shared_run" => true,
+          "sequence" => [first, %{"loop" => %{"rounds" => 3, "body" => body}}]
+        })
+
+      stage ->
+        stage
+    end)
   end
 
   # The default with each stage changed by `fun`, given the stage.
@@ -996,12 +1012,37 @@ defmodule Apiary.ProcessesTest do
                :ok
     end
 
-    test "fails on entries that differ in access level, at the first that differs" do
-      assert shared_errors(shared(%{3 => %{"access" => "read"}})) ==
+    test "accepts read entries beside write entries, as the Build loop has them" do
+      read = %{"access" => "read"}
+
+      # implement-changes writes and review-changes reads, in the loop.
+      assert Processes.validate(shared(%{3 => read})) == :ok
+      assert Processes.validate(shared(%{0 => read, 3 => read})) == :ok
+
+      # The level its harness declares makes review-changes read.
+      assert Processes.validate(shared(), %{"review-changes" => :read}) == :ok
+    end
+
+    # The first three cases guard against a rule that lets every mix share one run; the
+    # last fails under a rule that refuses read beside write.
+    test "fails on any other mix of access levels, at the first entry that makes it" do
+      read = %{"access" => "read"}
+      no_push = %{"access" => "write-no-push"}
+
+      # write-no-push beside write.
+      assert shared_errors(shared(%{3 => no_push})) ==
                [{"#/stages/0/sequence/2/loop/body/1", :shared_run_differs, :access}]
 
-      assert shared_errors(shared(%{0 => %{"access" => "read"}})) ==
+      assert shared_errors(shared(%{0 => no_push})) ==
                [{"#/stages/0/sequence/1", :shared_run_differs, :access}]
+
+      # read beside write-no-push.
+      assert shared_errors(shared(%{0 => read, 1 => no_push, 2 => no_push, 3 => no_push})) ==
+               [{"#/stages/0/sequence/1", :shared_run_differs, :access}]
+
+      # All three: read beside write fits, until write-no-push.
+      assert shared_errors(shared(%{1 => read, 3 => no_push})) ==
+               [{"#/stages/0/sequence/2/loop/body/1", :shared_run_differs, :access}]
     end
 
     test "fails on entries that differ in machine type, the document's included" do
@@ -1015,30 +1056,53 @@ defmodule Apiary.ProcessesTest do
 
     test "compares each entry's access lowered by the level its harness declares" do
       levels = %{
-        "plan-the-build" => :read,
+        "plan-the-build" => :write_no_push,
         "write-acceptance-checks" => :write,
         "implement-changes" => :write,
         "review-changes" => :write
       }
 
-      # plan-the-build runs with read access, as its harness sets: the others write.
+      # plan-the-build runs with write-no-push access, as its harness sets: the others
+      # write.
       {:error, [error]} = Processes.validate(shared(), levels)
 
       assert {error.path, error.detail} ==
-               {"#/stages/0/sequence/1", {:access, "plan-the-build", "read", "write"}}
+               {"#/stages/0/sequence/1", {:access, "plan-the-build", "write-no-push", "write"}}
 
       assert ApiaryWeb.StagesLive.Words.refusal(error, shared()) ==
-               "Move plan-the-build to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access. plan-the-build runs with read access, because its harness sets read."
+               "Move plan-the-build to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access. plan-the-build runs with write-no-push access, because its harness sets write-no-push."
 
-      # The entries' access lowers the others to read: every workflow reads.
-      read = %{"access" => "read"}
-      assert Processes.validate(shared(%{1 => read, 2 => read, 3 => read}), levels) == :ok
+      # The entries' access lowers the others to write-no-push: no workflow pushes.
+      no_push = %{"access" => "write-no-push"}
+
+      assert Processes.validate(shared(%{1 => no_push, 2 => no_push, 3 => no_push}), levels) ==
+               :ok
 
       # A workflow whose harness sets write runs with its entry's lower access.
       {:error, [error]} =
         Processes.validate(shared(%{3 => %{"access" => "write-no-push"}}), %{})
 
       assert error.detail == :access
+
+      # read, write and write-no-push: the harness setting review-changes to write lets
+      # the stage share one run, so the refusal advises write.
+      {:error, [error]} =
+        Processes.validate(shared(%{0 => %{"access" => "read"}}), %{
+          "review-changes" => :write_no_push
+        })
+
+      assert {error.path, error.detail} ==
+               {"#/stages/0/sequence/2/loop/body/1",
+                {:access, "review-changes", "write-no-push", "write"}}
+
+      # read, write-no-push and write, where plan-the-build reads by its harness: no level
+      # of plan-the-build lets the stage share one run, so the refusal advises no level.
+      {:error, [error]} =
+        Processes.validate(shared(%{1 => %{"access" => "write-no-push"}}), %{
+          "plan-the-build" => :read
+        })
+
+      assert {error.path, error.detail} == {"#/stages/0/sequence/1", :access}
 
       # A level of no entry's workflow changes nothing.
       assert Processes.validate(shared(), %{"explore-a-ticket" => :read}) == :ok
@@ -1049,7 +1113,7 @@ defmodule Apiary.ProcessesTest do
     end
 
     test "gives one error for each of the two, and a sentence with the fix first" do
-      differs = %{"access" => "read", "machine" => "large"}
+      differs = %{"access" => "write-no-push", "machine" => "large"}
       document = shared(%{3 => differs})
 
       assert shared_errors(document) == [
@@ -1060,7 +1124,7 @@ defmodule Apiary.ProcessesTest do
       {:error, errors} = Processes.validate(document)
 
       assert Enum.map(errors, &ApiaryWeb.StagesLive.Words.refusal(&1, document)) == [
-               "Give every workflow in Build the same access. The workflows of Build run one after the other on one machine.",
+               "Give the workflows in Build one access level, or only read and write. They run one after the other on one machine.",
                "Give every workflow in Build the same machine type. The workflows of Build run one after the other on one machine."
              ]
     end
@@ -1648,26 +1712,35 @@ defmodule Apiary.ProcessesTest do
              }
     end
 
-    test "a save of a stage with shared_run whose entries differ in access level fails", %{
-      scope: scope
-    } do
-      shared =
-        edit(fn
-          %{"id" => @shape} = stage ->
-            Map.merge(stage, %{
-              "shared_run" => true,
-              "sequence" => [
-                %{"workflow" => "plan-the-build"},
-                %{"workflow" => "write-acceptance-checks", "access" => "read"}
-              ]
-            })
+    test "a save of a stage with shared_run whose loop writes in implement-changes and reads in review-changes succeeds",
+         %{scope: scope} do
+      document =
+        shared_save(%{"workflow" => "plan-the-build"}, [
+          %{"workflow" => "implement-changes"},
+          %{"workflow" => "review-changes", "access" => "read"}
+        ])
 
-          stage ->
-            stage
-        end)
+      assert {:ok, %{number: 2}} = Processes.save(scope, scope.workspace, document)
+    end
 
-      assert {:error, [%{error: :shared_run_differs, detail: :access}]} =
-               Processes.save(scope, scope.workspace, shared)
+    test "a save of a stage with shared_run that mixes write-no-push with another level fails",
+         %{scope: scope} do
+      # An entry with no `access` writes.
+      for {first, second} <- [
+            {%{"access" => "read"}, %{"access" => "write-no-push"}},
+            {%{"access" => "write-no-push"}, %{}}
+          ] do
+        document =
+          shared_save(Map.put(first, "workflow", "plan-the-build"), [
+            Map.put(second, "workflow", "implement-changes"),
+            Map.put(second, "workflow", "review-changes")
+          ])
+
+        assert {:error, [%{error: :shared_run_differs, detail: :access} = error]} =
+                 Processes.save(scope, scope.workspace, document)
+
+        assert error.path == "#/stages/2/sequence/1/loop/body/0"
+      end
 
       assert Enum.map(Processes.list_versions(scope.workspace), & &1.number) == [1]
     end
@@ -1678,7 +1751,7 @@ defmodule Apiary.ProcessesTest do
       :ok =
         Processes.record_declared(scope.workspace, %{
           "plan-the-build" => :write,
-          "write-acceptance-checks" => :read
+          "write-acceptance-checks" => :write_no_push
         })
 
       shared = fn second ->
@@ -1698,7 +1771,7 @@ defmodule Apiary.ProcessesTest do
               [
                 %{
                   error: :shared_run_differs,
-                  detail: {:access, "write-acceptance-checks", "read", "write"}
+                  detail: {:access, "write-acceptance-checks", "write-no-push", "write"}
                 }
               ]} =
                Processes.save(
@@ -1709,11 +1782,11 @@ defmodule Apiary.ProcessesTest do
 
       assert Enum.map(Processes.list_versions(scope.workspace), & &1.number) == [1]
 
-      # The first entry's access lowers it to the second's level: both read.
+      # The first entry's access lowers it to the second's level: neither pushes.
       document =
         edit(shared.(%{"workflow" => "write-acceptance-checks"}), fn
           %{"id" => @shape, "sequence" => [first, second]} = stage ->
-            %{stage | "sequence" => [Map.put(first, "access", "read"), second]}
+            %{stage | "sequence" => [Map.put(first, "access", "write-no-push"), second]}
 
           stage ->
             stage

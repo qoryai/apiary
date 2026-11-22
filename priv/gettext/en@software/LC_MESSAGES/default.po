@@ -11335,17 +11335,17 @@ msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
-msgid "Give every workflow in %{stage} the same access. The workflows of %{stage} run one after the other on one machine."
-msgstr ""
-
-#: lib/apiary_web/live/stages_live/words.ex
-#, elixir-autogen, elixir-format
 msgid "Give every workflow in %{stage} the same machine type. The workflows of %{stage} run one after the other on one machine."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Give the loop 1 to 10 rounds."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Give the workflows in %{stage} one access level, or only read and write. They run one after the other on one machine."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -13944,7 +13944,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Move %{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it %{other} access, then run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."
+msgid "Move %{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it %{other} access, then run the round again. The harness sets one workflow to an access that cannot share one run with the others."
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/words.ex
@@ -19138,7 +19138,7 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."
+msgid "Run the round again. The harness sets access levels that cannot share one run: only read and write can."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex

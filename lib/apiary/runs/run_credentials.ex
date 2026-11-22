@@ -305,19 +305,30 @@ defmodule Apiary.Runs.RunCredentials do
 
   @doc false
   # run_access/1 is the access level of the run of the queue `dispatch_run`: its harness
-  # walk's, `:read` for a prebuild and for a run with no walk. With the workflow model, the
-  # lower of the walk's and the stage entry's (`Apiary.Stages.run_access/2`). The claim
-  # computes it once, for the run's documents and its work entry
-  # (`Apiary.Dispatches.Handover`).
+  # walk's. With the workflow model, the lower of the walk's and the stage entry's, and
+  # for a run of a stage that shares one run, the highest level of the stage's entries,
+  # each no higher than its workflow resolves (`Apiary.Stages.run_access/2`). A harness
+  # that reads for every workflow keeps the run at `:read`, whatever its stage: a
+  # prebuild, a run with no walk, and a run whose walk is the built-in harness of a test
+  # work item (`Apiary.Harnesses.Builtin`), which reads only. The claim computes the level
+  # once, for the run's documents and its work entry (`Apiary.Dispatches.Handover`), and
+  # Cancel run reads it for a run the claim recorded no level for (`Apiary.Runs.Cancel`).
   @spec run_access(DispatchRun.t()) :: :read | :write_no_push | :write
   def run_access(%DispatchRun{step: @prebuild}), do: :read
 
   def run_access(%DispatchRun{id: id} = dispatch_run) do
     walk =
-      Repo.one(from h in RunHarness, where: h.dispatch_run_id == ^id, select: h.access_level) ||
-        :read
+      Repo.one(
+        from h in RunHarness,
+          where: h.dispatch_run_id == ^id,
+          select: %{level: h.access_level, origin: h.origin}
+      )
 
-    Apiary.Stages.run_access(walk, dispatch_run)
+    case walk do
+      nil -> :read
+      %{origin: :builtin} -> :read
+      %{level: level} -> Apiary.Stages.run_access(level, dispatch_run)
+    end
   end
 
   @doc false

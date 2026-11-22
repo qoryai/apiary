@@ -76,8 +76,9 @@ defmodule Apiary.Dispatches.Handover do
   #      whose work item has no target in a domain that requires one
   #      (`Apiary.Lingo.Domain.target_required?/1`) and is no test work item,
   #      `inputs_invalid`; a run of a stage whose workflows share one run, whose
-  #      workflows would run with different access levels with the levels their harness
-  #      declares now (`Apiary.Stages.shared_access/1`), `shared_access_differs`; a run
+  #      workflows would run with access levels that one run cannot have, with the levels
+  #      their harness declares now (`Apiary.Stages.shared_access/1`),
+  #      `shared_access_differs`; a run
   #      of such a stage whose workflows' model choices no longer fit one run
   #      (`Apiary.Stages.shared_models/1`), `too_many_providers`,
   #      `model_choice_missing` or `session_key_missing`; an
@@ -941,8 +942,9 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
-  # A run of a stage whose workflows share one run, whose workflows would run with
-  # different access levels, ends `shared_access_differs` (`Apiary.Stages.shared_access/1`).
+  # A run of a stage whose workflows share one run, whose workflows would run with access
+  # levels that one run cannot have, ends `shared_access_differs`
+  # (`Apiary.Stages.shared_access/1`).
   defp shared_access(dispatch_run) do
     case Apiary.Stages.shared_access(dispatch_run) do
       :ok -> :ok
@@ -1163,7 +1165,9 @@ defmodule Apiary.Dispatches.Handover do
   # Hand-over: the run's documents and its work entry get one access level, read once
   # (`Apiary.Runs.RunCredentials.run_access/1`): the lower of the level its harness walk
   # resolved and its stage entry's, `read` for a run of a stage with no entry for its
-  # workflow. A run with no harness members has no level in its documents (read).
+  # workflow. A run of a stage that shares one run gets the highest level of the stage's
+  # entries, each no higher than its workflow resolves, for every session. A run with no
+  # harness members has no level in its documents (read).
   defp with_level(nil, _level), do: nil
   defp with_level(harness, level), do: %{harness | access: level}
 

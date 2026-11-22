@@ -477,15 +477,15 @@ defmodule Apiary.Stages.StopCause do
 
     case detail do
       {:access, workflow, level, other} ->
-        {"The run did not start, because the workflows of #{stage} would run with different access: #{workflow} runs with #{level} access, because its harness sets #{level}.",
+        {"The run did not start, because the workflows of #{stage} mix access levels that cannot share one run. #{workflow} runs with #{level} access, because its harness sets #{level}.",
          shared_access_fix(workflow, other)}
 
       :access ->
-        {"The run did not start, because the workflows of #{stage} would run with different access.",
+        {"The run did not start, because the workflows of #{stage} mix access levels that cannot share one run.",
          "Move one of the workflows to a separate stage in Workspace settings › Workflows, then run the round again."}
 
       nil ->
-        {"The run did not start, because the workflows of #{stage} would run with different access.",
+        {"The run did not start, because the workflows of #{stage} mix access levels that cannot share one run.",
          "Run the round again."}
     end
   end
@@ -817,9 +817,9 @@ defmodule Apiary.Stages.StopCause do
 
   ## Names
 
-  # The name of the stage of `run`, a run whose stage's workflows would run with different
-  # access levels, and the difference as the harness declares the levels now
-  # (`Apiary.Stages.shared_access/1`); nil where the levels no longer differ.
+  # The name of the stage of `run`, a run whose stage's workflows would run with access
+  # levels that one run cannot have, and the difference as the run's harness resolves the
+  # levels (`Apiary.Stages.shared_access/1`); nil where the levels fit one run.
   defp shared_access(%DispatchRun{} = run) do
     case Apiary.Stages.shared_access(run) do
       {:error, %{stage: stage, detail: detail}} ->
@@ -887,9 +887,9 @@ defmodule Apiary.Stages.StopCause do
 
   defp shared_models_fix(_cause, _fixed_or_other), do: "Run the round again."
 
-  # The fix for a run whose stage's workflows would run with different access, because
-  # the harness sets `workflow` a lower level than `other`, the level the other workflows
-  # of the stage run with.
+  # The fix for a run whose stage's workflows would run with access levels that one run
+  # cannot have, because the harness sets `workflow` a lower level than `other`, the level
+  # another workflow of the stage runs with.
   defp shared_access_fix(workflow, other),
     do:
       "Move #{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it #{other} access, then run the round again."

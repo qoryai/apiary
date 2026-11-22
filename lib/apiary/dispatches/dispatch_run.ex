@@ -95,8 +95,8 @@ defmodule Apiary.Dispatches.DispatchRun do
   # `write_without_work_item`, a claimed run with write access and no work item, so with
   # no branch to limit its push credential to (`Apiary.Runs.RunCredentials`), with the
   # outcome `error`; `shared_access_differs`, a claimed run of a stage whose workflows
-  # share one run, whose workflows would run with different access levels, as an update
-  # from the harness changed a level after the process was saved
+  # share one run, whose workflows would run with access levels that one run cannot have,
+  # as an update from the harness changed a level after the process was saved
   # (`Apiary.Stages.shared_access/1`), with the outcome `error`; `model_choice_missing`
   # and `too_many_providers`, a claimed run of such a stage whose workflows' model
   # choices no longer fit one run, as a choice, a provider or the harness changed after
