@@ -2495,9 +2495,9 @@ defmodule Apiary.Stages do
   # already there) is left out. The entries last until the stage's gate passes again or the
   # work item leaves the stage by a move: an approval of the stage, or a person's move out
   # of it, made after the return (`left_since?/2`). A Request changes at the gate, a move
-  # that the stage runner writes, and a decision in another stage end nothing. A newer return replaces them. They are not the stage's
-  # outputs, so no approval lists them, and they are no person's note (`{feedback: new}`
-  # stays false).
+  # that the stage runner writes, and a decision in another stage end nothing. A newer
+  # return replaces them. They are not the stage's outputs, so no approval lists them, and
+  # they are no person's note (`{feedback: new}` stays false).
   defp returned_inputs(%WorkItem{take_in: take_in} = work_item, stage, artifacts, listed)
        when is_integer(take_in) do
     with %DispatchRun{} = run <- returning_run(work_item, stage),

@@ -8,19 +8,18 @@ defmodule Apiary.Stages.Withdrawals do
   # move of that take in made after it lands on its stage or an earlier one. So a move back
   # to Shape withdraws every approval of Shape and of each later stage, and a later
   # approval counts again. A switch sets the track of the gate before the stage it lands
-  # on, so a move withdraws it only when it lands before that stage. Each place is read from
-  # the process version the row was written under, its `process_version_id`, so a later
-  # version that `Apiary.Processes.assign/3` puts the work item on changes no place. Where a
-  # row's version does not have its stage, the place is unknown, and the move withdraws the
-  # decision. A move with no `to_stage_id` withdraws nothing.
+  # on, so a move withdraws it only when it lands before that stage. Both stages are placed
+  # in the process version the move was written under, its `process_version_id`, so two
+  # versions that order stages differently (`Apiary.Processes.assign/3`) are never
+  # compared. Where the move's version does not have either stage, the place is unknown,
+  # and the move withdraws the decision. A move with no `to_stage_id` withdraws nothing.
   #
   # A confirmation of Explore's proposal (`Apiary.WorkItems.Confirmation`) counts when no
   # move of its take in made after it lands on Explore's stage, the stage of the run it
   # confirms, or an earlier one. A run with no stage is Explore's
   # (`Apiary.WorkItems.Explore.at_stage/2`), at the first stage, where a take in starts
-  # (`Apiary.Stages.take_in/2`). The place of the run's stage is read from the run's
-  # process version, else the work item's. An unknown place withdraws the confirmation, as
-  # it withdraws a decision.
+  # (`Apiary.Stages.take_in/2`). The run's stage is placed in the move's version too, and
+  # an unknown place withdraws the confirmation, as it withdraws a decision.
   #
   # A withdrawn decision or confirmation stays in its table: nothing deletes or changes it.
   @moduledoc false
@@ -38,9 +37,9 @@ defmodule Apiary.Stages.Withdrawals do
   end
 
   # Whether a move made after the decision withdraws it. The arguments are the decision's
-  # work item, take in and time, its `escalation_id`, its process version with its
-  # `stage_id`, and its process version with its `to_stage_id`. A comparison with an
-  # unknown place is NULL, which COALESCE turns into a withdrawal.
+  # work item, take in and time, its `escalation_id`, its `stage_id`, and its
+  # `to_stage_id`. A comparison with an unknown place is NULL, which COALESCE turns into a
+  # withdrawal.
   @withdrawn """
   EXISTS (
     SELECT 1 FROM gate_decisions AS m
@@ -48,32 +47,26 @@ defmodule Apiary.Stages.Withdrawals do
       AND m.to_stage_id IS NOT NULL
       AND COALESCE(
         #{position.("m.process_version_id", "m.to_stage_id")} <=
-          CASE WHEN ? IS NULL THEN #{position.("?", "?")} ELSE #{position.("?", "?")} - 1 END,
+          CASE WHEN ? IS NULL THEN #{position.("m.process_version_id", "?")}
+            ELSE #{position.("m.process_version_id", "?")} - 1 END,
         true
       )
   )
   """
 
   # Whether a move made after the confirmation withdraws it, with the confirmation's
-  # columns in place of the marks. A run with no stage is at place 1. A run and a work item
-  # with no process version have the workspace's current one
-  # (`Apiary.Processes.version_for/1`).
-  version =
-    "COALESCE(wr.process_version_id, ww.process_version_id, " <>
-      "(SELECT cv.id FROM process_versions AS cv " <>
-      "WHERE cv.workspace_id = ww.workspace_id AND cv.status = 'current'))"
-
+  # columns in place of the marks. A run with no stage is at place 1.
   confirmation = """
   EXISTS (
     SELECT 1 FROM dispatch_runs AS wr
-    JOIN work_items AS ww ON ww.id = wr.work_item_id
     JOIN gate_decisions AS wm ON wm.work_item_id = wr.work_item_id AND wm.take_in = wr.take_in
     WHERE wr.work_item_id = {work_item_id} AND wr.take_in = {take_in}
       AND wr.attempt = {attempt} AND wm.kind = 'move' AND wm.inserted_at > {confirmed_at}
       AND wm.to_stage_id IS NOT NULL
       AND COALESCE(
         #{position.("wm.process_version_id", "wm.to_stage_id")} <=
-          CASE WHEN wr.stage_id IS NULL THEN 1 ELSE #{position.(version, "wr.stage_id")} END,
+          CASE WHEN wr.stage_id IS NULL THEN 1
+            ELSE #{position.("wm.process_version_id", "wr.stage_id")} END,
         true
       )
   )
@@ -115,9 +108,7 @@ defmodule Apiary.Stages.Withdrawals do
           d.take_in,
           d.inserted_at,
           d.escalation_id,
-          d.process_version_id,
           d.stage_id,
-          d.process_version_id,
           d.to_stage_id
         )
   end

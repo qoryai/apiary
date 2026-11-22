@@ -9258,6 +9258,25 @@ defmodule Apiary.StagesTest do
       assert %Confirmation{} = Explore.confirmation(work_item.id, work_item.take_in)
       assert Explore.current(work_item, DateTime.utc_now()).status == :shape
       assert Explore.statuses([work_item.id]) == %{work_item.id => :shape}
+
+      # A version with Design before Build: Build is at place 4 there, and was at place 3
+      # where it approved the walkthrough. A move back to Build under that version places
+      # both stages in it, so it withdraws Build's approval and keeps Shape's.
+      design = stage(Processes.new_stage_id(), "Design", [%{"workflow" => "shape-a-ticket"}])
+      [explore, shape | later] = document["stages"]
+
+      {:ok, wider} =
+        Processes.save(
+          scope,
+          scope.workspace,
+          %{document | "stages" => [explore, shape, design | later]},
+          trial: true
+        )
+
+      {:ok, work_item} = Processes.assign(scope, work_item, wider)
+      {:ok, work_item} = Stages.move(scope, work_item, @build, nil, expect_stage: @verify)
+      assert counted(work_item) == %{"acceptance-criteria" => [1], "walkthrough" => [0, 0]}
+      assert Explore.statuses([work_item.id]) == %{work_item.id => :shape}
     end
 
     test "a confirmation of a run with no stage is Explore's: a move back to Shape keeps it, " <>
