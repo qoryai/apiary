@@ -593,7 +593,7 @@ defmodule Apiary.Harnesses.Walk do
         :error ->
           workflows = section_workflows(section)
           put(:declared, Reader.workflow_access(workflows, get(:workflow)))
-          put(:levels, workflow_levels(workflows))
+          put(:levels, Reader.workflow_levels(workflows))
           put(:plan_type, Reader.workflow_plan(workflows, get(:workflow)))
           []
       end
@@ -642,17 +642,6 @@ defmodule Apiary.Harnesses.Walk do
 
   defp section_workflows(%{"workflows" => %{} = workflows}), do: workflows
   defp section_workflows(_section), do: %{}
-
-  # The level `workflows`, a stack's `workflows`, declares for each workflow it lists, by
-  # name (`Reader.workflow_access/2`).
-  defp workflow_levels(workflows),
-    do:
-      for(
-        {name, _entry} <- workflows,
-        is_binary(name),
-        into: %{},
-        do: {name, Reader.workflow_access(workflows, name)}
-      )
 
   # The allowed sources other than a remote base, which `base_modules/3` read and pinned.
   defp tl_or_all(%{"git" => _git}, [_base | rest]), do: rest
@@ -1058,7 +1047,7 @@ defmodule Apiary.Harnesses.Walk do
     case Reader.stack(content) do
       {:ok, %{modules: modules, workflows: workflows}} ->
         put(:declared, Reader.workflow_access(workflows, get(:workflow)))
-        put(:levels, workflow_levels(workflows))
+        put(:levels, Reader.workflow_levels(workflows))
         put(:plan_type, Reader.workflow_plan(workflows, get(:workflow)))
         modules
 
