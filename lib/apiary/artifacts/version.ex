@@ -13,6 +13,15 @@ defmodule Apiary.Artifacts.Version do
   # `decision_id` is the id of the person's note that asked for the version, `gd_…` or
   # `es_…` (`Apiary.Stages.Notes`), nil for none (vault 0261, 624 (a)).
   #
+  # `delivery`, `delivery_reply`, `delivery_failure` and `delivery_at` store where the
+  # delivery of the version to an adapter stands (`Apiary.Artifacts.Delivery`): `delivery`
+  # is `:sent`, `:delivered` or `:failed`, nil for a version with no delivery;
+  # `delivery_reply` is the adapter's reply, nil until one is stored; `delivery_failure`
+  # is a reason in `delivery_failures/0`, nil until a failure is stored; `delivery_detail`
+  # is what failed, 1 to 1000 characters on one line, nil for none; `delivery_at` is when the
+  # last of them was stored, nil until one is; `delivery_target_id` is the workspace's
+  # target the entry went to, nil until it is sent and once the target is gone.
+  #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
   use Ecto.Schema
@@ -21,6 +30,10 @@ defmodule Apiary.Artifacts.Version do
   @type t :: %__MODULE__{}
 
   @prefix "av"
+
+  # The reasons of `changes-failed.schema.json` for a change request, and `invalid`: Qory
+  # Apiary's check of the entry against `changes.schema.json` failed and nothing was sent.
+  @delivery_failures [:not_permitted, :unreachable, :target_gone, :too_long, :refused, :invalid]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -32,6 +45,11 @@ defmodule Apiary.Artifacts.Version do
     field :note, :string
     field :withdrawn, :boolean, default: false
     field :decision_id, :string
+    field :delivery, Ecto.Enum, values: [:sent, :delivered, :failed]
+    field :delivery_reply, :map
+    field :delivery_failure, Ecto.Enum, values: @delivery_failures
+    field :delivery_detail, :string
+    field :delivery_at, :utc_datetime_usec
     field :inserted_at, :utc_datetime_usec
 
     belongs_to :organisation, Apiary.Organisations.Organisation
@@ -39,8 +57,14 @@ defmodule Apiary.Artifacts.Version do
     belongs_to :artifact, Apiary.Artifacts.Artifact
     belongs_to :run, Apiary.Dispatches.DispatchRun
     belongs_to :user, Apiary.Accounts.User
+    belongs_to :delivery_target, Apiary.Runs.Target
     has_many :files, Apiary.Artifacts.ArtifactFile, foreign_key: :version_id
   end
+
+  # delivery_failures/0 is the values of `delivery_failure`.
+  @doc false
+  @spec delivery_failures() :: [atom]
+  def delivery_failures, do: @delivery_failures
 
   # prefix/0 is the prefix of a version's public id, `av`.
   @doc false

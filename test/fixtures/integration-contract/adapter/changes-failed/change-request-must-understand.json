@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "time": "2026-11-19T12:00:00Z",
+  "change_request_id": "av_7k2m9q4v1x8z3c5d",
+  "target": {
+    "collection": "R_1001"
+  },
+  "reason": "refused",
+  "detail": "Use an adapter that defines \"/target/extra\". The entry lists it in must_understand, and this adapter does not define it."
+}

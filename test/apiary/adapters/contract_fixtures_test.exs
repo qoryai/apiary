@@ -10,12 +10,6 @@ defmodule Apiary.Adapters.ContractFixturesTest do
   # schema's, in its order; a call signed under the server key is the fixture's, byte for
   # byte, and the adapter's answer to it verifies under the access key, bound to that
   # call alone.
-  #
-  # shortcut: `schema/connect-return.schema.json`, `adapter/refusal/connection-held.json`,
-  # `adapter/connect-return/refused-connection-held.json`, `adapter/grants/two-grants.json`
-  # and `adapter/changes/grants.json` follow integrations effc22aa (T-30) for
-  # `connection_held` only, on top of `.integration-contract-ref`. The full pin moves in its
-  # own card, which brings integrations #66 to #77.
   use ExUnit.Case, async: true
 
   alias Apiary.Adapters.{Calls, ConnectPass, ReturnToken, SetupPass}
@@ -167,11 +161,13 @@ defmodule Apiary.Adapters.ContractFixturesTest do
 
     names =
       @fixtures
-      |> Path.join("adapter/invalid/setup-pass-*.json")
+      |> Path.join("adapter/{closed,invalid}/setup-pass-*.json")
       |> Path.wildcard()
       |> Enum.map(&Path.relative_to(&1, Path.join(@fixtures, "adapter")))
+      |> Enum.sort()
 
     assert names == [
+             "closed/setup-pass-undefined-member.json",
              "invalid/setup-pass-adapter-id-connection-id.json",
              "invalid/setup-pass-organisation-slug-41-characters.json",
              "invalid/setup-pass-organisation-slug-empty.json",
@@ -179,7 +175,6 @@ defmodule Apiary.Adapters.ContractFixturesTest do
              "invalid/setup-pass-organisation-slug-trailing-hyphen.json",
              "invalid/setup-pass-organisation-slug-underscore.json",
              "invalid/setup-pass-organisation-slug-upper-case.json",
-             "invalid/setup-pass-undefined-member.json",
              "invalid/setup-pass-version-2.json",
              "invalid/setup-pass-without-nonce.json"
            ]

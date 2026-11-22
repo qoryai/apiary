@@ -1,0 +1,12 @@
+{
+  "version": 1,
+  "time": "2026-11-18T12:00:00Z",
+  "change_request_id": "av_7k2m9q4v1x8z3c5d",
+  "target": {
+    "address": {
+      "system": "code.example.com",
+      "path": "acme/shop"
+    }
+  },
+  "reason": "target_gone"
+}

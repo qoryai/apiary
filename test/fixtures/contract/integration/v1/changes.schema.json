@@ -2,9 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/integration/v1/changes.schema.json",
   "title": "Changes",
-  "description": "The body of the signed 200 answer to the signed GET /v1/work-items/changes?after=<cursor>, application/json: the entries of the adapter's change feed after the cursor. The adapter sends the answer's cursor as after on its next request; after absent means from the start. The control plane holds the request up to 25 seconds while the feed has no entry after the cursor. The control plane ends the answer's entries before the answer's body passes 4194304 bytes (4 MiB), and the answer has at least one entry whenever the feed has an entry of a kind that the revision in the request's X-Qory-Contract-Version defines after the cursor; the adapter reads the next entries from the answer's cursor. The feed is one append-only log per adapter. Reading from the start replays every entry in order, so the last entry per collection_ref is the current link state of the live collection with that ref, or unlinked when no collection with that ref is live, the last work_item entry per work_item_id that work item's current status, the last grant entry per connection_id and grant_ref whether the control plane holds that grant, and the last sync entry the current interval. The adapter posts at most one comment per comment_id on the comment's item, however often it reads an entry with that comment_id. After a failure report the adapter has posted no comment for that comment_id, so it posts for a later entry with the same comment_id. Whenever a linked collection ends, by any path (sources/disconnect, a complete listing that leaves it out, the race rule, a grant end or a connection's end), the control plane writes an unlinked entry for it. When a live collection stops being linked, the control plane writes an unlinked entry for it, and a linked entry whenever it becomes linked; a move from one workspace to another while it stays linked writes no entry. When the control plane no longer holds a connection, as after its organisation is removed, the feed has an unlinked entry for each of that connection's collections that was linked, so the adapter stops mirroring them. The control plane writes a grant entry, linked, whenever it accepts a report of a grant (grant.schema.json), a replacement included, and a grant entry, unlinked, whenever a grant leaves its copy: when its connection ends, when the control plane accepts a grant end (grant-end.schema.json), or when the control plane no longer holds the connection. An adapter that lost its store reads from the start. Entries for one item, the work_item and comment entries with the same ref, apply in cursor order. While the adapter retries an entry that failed, it may apply a later entry first when neither entry changes what the other depends on, such as entries for different items, but not a grant entry and an entry for an item that the grant covers. The adapter stores a cursor only when every entry before it is done. An entry is done once the adapter has applied it, or has passed it: after a failure that trying again cannot fix, or when the adapter's retries for it end. A comment entry is passed only once the adapter has also stopped sending its failure report (changes-failed.schema.json). A submission entry is passed only once the adapter has also stopped sending its reply (changes-submitted.schema.json) or its failure report, and the adapter applies the submission entries of one repository in cursor order, each after the reply or the failure report of the one before it. The entries are bounded by the request's X-Qory-Contract-Version: the feed contains only the entry kinds that revision defines, and an entry of a newer kind is skipped, not sent, while the cursor still moves past it, as definitions.schema.json describes. The answer contains that revision in revision, inside the signed body: the adapter refuses an answer whose revision is not the revision it implements, the one it sent in X-Qory-Contract-Version, applies no entry of a refused answer, and neither sends that answer's cursor as after nor stores it. The feed contains only the work items taken in from the adapter's items, the comments a person wrote in the control plane on those work items, the adapter's collections, the grants of the adapter's connections, the adapter's interval, a watch entry and a submission entry for each submission version that a run stores when the run's target collection is one of the adapter's collections. An adapter that does not set comments: true on its source role (description.schema.json) never receives a comment entry. An adapter that does not set targets: true on its source role (description.schema.json) never receives a watch entry. An adapter that does not set submissions: true on its source role never receives a submission entry. The GET is signed with the adapter's access key, X-Qory-Timestamp included, and the answer under the control plane's server key, as definitions.schema.json describes; the adapter checks the answer under a server key it pinned at enrolment before using it. The adapter refuses a member this schema does not define.",
+  "description": "The body of the signed 200 answer to the signed GET /v1/work-items/changes?after=<cursor>, application/json: the entries of the adapter's change feed after the cursor. The adapter sends the answer's cursor as after on its next request; after absent means from the start. The control plane holds the request up to 25 seconds while the feed has no entry after the cursor. The control plane ends the answer's entries before the answer's body passes 4194304 bytes (4 MiB), and the answer has at least one entry whenever the feed has an entry of a kind that the revision in the request's X-Qory-Contract-Version defines after the cursor; the adapter reads the next entries from the answer's cursor. The feed is one append-only log per adapter. Reading from the start replays every entry in order, so the last entry per collection_ref is the current link state of the live collection with that ref, or unlinked when no collection with that ref is live, the last work_item entry per work_item_id that work item's current status, the last grant entry per connection_id and grant_ref whether the control plane holds that grant, and the last sync entry the current interval. The adapter posts at most one comment per comment_id on the comment's item, however often it reads an entry with that comment_id. After a failure report the adapter has posted no comment for that comment_id, so it posts for a later entry with the same comment_id. Whenever a linked collection ends, by any path (sources/disconnect, a complete listing that leaves it out, the race rule, a grant end or a connection's end), the control plane writes an unlinked entry for it. When a live collection stops being linked, the control plane writes an unlinked entry for it, and a linked entry whenever it becomes linked; a move from one workspace to another while it stays linked writes no entry. When the control plane no longer holds a connection, as after its organisation is removed, the feed has an unlinked entry for each of that connection's collections that was linked, so the adapter stops mirroring them. The control plane writes a grant entry, linked, whenever it accepts a report of a grant (grant.schema.json), a replacement included, and a grant entry, unlinked, whenever a grant leaves its copy: when its connection ends, when the control plane accepts a grant end (grant-end.schema.json), or when the control plane no longer holds the connection. An adapter that lost its store reads from the start. Entries for one item, the work_item and comment entries with the same ref, apply in cursor order. While the adapter retries an entry that failed, it may apply a later entry first when neither entry changes what the other depends on, such as entries for different items, but not a grant entry and an entry for an item that the grant covers. The adapter stores a cursor only when every entry before it is done. An entry is done once the adapter has applied it, or has passed it: after a failure that trying again cannot fix, or when the adapter's retries for it end. A comment entry is passed only once the adapter has also stopped sending its failure report (changes-failed.schema.json). A change_request entry is passed only once the adapter has also stopped sending its reply (changes-submitted.schema.json) or its failure report, and the adapter applies the change_request entries with the same target.collection in cursor order, each after the reply or the failure report of the one before it. The entries are bounded by the request's X-Qory-Contract-Version: the feed contains only the entry kinds that revision defines, and an entry of a newer kind is skipped, not sent, while the cursor still moves past it, as definitions.schema.json describes. The answer contains that revision in revision, inside the signed body: the adapter refuses an answer whose revision is not the revision it implements, the one it sent in X-Qory-Contract-Version, applies no entry of a refused answer, and neither sends that answer's cursor as after nor stores it. The feed contains only the work items taken in from the adapter's items, the comments a person wrote in the control plane on those work items, the adapter's collections, the grants of the adapter's connections, the adapter's interval, a watch entry for each change request version that a run stores when the run's target collection is one of the adapter's collections, and a change_request entry for each target of such a version that is in one of the adapter's collections. An adapter that does not set comments: true on its source role (description.schema.json) never receives a comment entry. An adapter that does not set targets: true on its source role (description.schema.json) never receives a watch entry. An adapter whose source role has no change_kinds (description.schema.json), or whose change_kinds lacks the change's kind, never receives a change_request entry. The GET is signed with the adapter's access key, X-Qory-Timestamp included, and the answer under the control plane's server key, as definitions.schema.json describes; the adapter checks the answer under a server key it pinned at enrolment before using it. An adapter ignores an undefined member of the answer. It ignores an undefined member of an entry of a defined kind too, unless the must_understand of the entry lists it. The answer has no must_understand, so a member of the answer never stops the adapter from reading its entries.",
   "type": "object",
-  "additionalProperties": false,
   "required": ["version", "revision", "cursor", "changes"],
   "properties": {
     "version": {
@@ -30,11 +29,12 @@
   },
   "$defs": {
     "change": {
-      "description": "One entry, of the kind set in kind, with the members of that kind. A reader refuses a kind it does not know.",
+      "description": "One entry, of the kind set in kind, with the members of that kind. An adapter skips and acknowledges an entry whose kind its revision does not define: it applies nothing of it, and its cursor moves past it. In the same way, an adapter skips and acknowledges an entry whose must_understand lists a pointer that it does not define. The exception is a change_request entry, which the adapter reports failed with reason refused (changes-failed.schema.json). The control plane sends no entry of a kind that the adapter's revision does not define, so the rule covers an entry that arrives anyway.",
       "type": "object",
+      "additionalProperties": true,
       "required": ["kind"],
       "properties": {
-        "kind": {"description": "The entry's kind.", "type": "string", "enum": ["work_item", "comment", "collection", "grant", "sync", "watch", "submission"]}
+        "kind": {"description": "The entry's kind, in snake_case: work_item, comment, collection, grant, sync, watch or change_request at the revision that this schema describes. An adapter skips and acknowledges an entry of a kind that its revision does not define.", "type": "string", "maxLength": 64, "pattern": "^[a-z][a-z0-9]*(_[a-z0-9]+)*$"}
       },
       "allOf": [
         {"if": {"properties": {"kind": {"const": "work_item"}}}, "then": {"$ref": "#/$defs/work_item"}},
@@ -43,15 +43,26 @@
         {"if": {"properties": {"kind": {"const": "grant"}}}, "then": {"$ref": "#/$defs/grant"}},
         {"if": {"properties": {"kind": {"const": "sync"}}}, "then": {"$ref": "#/$defs/sync"}},
         {"if": {"properties": {"kind": {"const": "watch"}}}, "then": {"$ref": "#/$defs/watch"}},
-        {"if": {"properties": {"kind": {"const": "submission"}}}, "then": {"$ref": "#/$defs/submission"}}
+        {"if": {"properties": {"kind": {"const": "change_request"}}}, "then": {"$ref": "#/$defs/change_request"}}
       ]
     },
     "work_item": {
       "description": "A work item taken in from one of the adapter's items, or undone. On taken_in the adapter writes at the source whatever its words for that are; on undone it takes them back. The control plane sends no text for the source in this entry; only a comment entry contains text for the source, a person's comment.",
       "type": "object",
-      "additionalProperties": false,
       "required": ["kind", "work_item_id", "ref", "status", "url"],
       "properties": {
+      "must_understand": {
+        "description": "The members of the entry that the adapter must understand, each as a JSON Pointer (RFC 6901) counted from the entry. List each once, at most 32. Each pointer is to a member that the kind work_item defines. An adapter ignores a member that it does not define, unless must_understand lists it. When the adapter cannot meet a pointer, it skips the entry and acknowledges it, as for a kind that it does not define.",
+        "type": "array",
+        "maxItems": 32,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "maxLength": 256,
+          "not": {"pattern": "\\n"},
+          "pattern": "^(?:/kind|/ref|/status|/url|/work_item_id)$"
+        }
+      },
         "kind": {"const": "work_item"},
         "work_item_id": {"description": "The work item's public id in the control plane.", "type": "string", "pattern": "^wi_[A-Za-z0-9_-]{1,64}$"},
         "ref": {"description": "The ref of the item it was taken in from, as source-items.schema.json sent it.", "$ref": "definitions.schema.json#/$defs/ref"},
@@ -62,22 +73,44 @@
     "comment": {
       "description": "A comment that a person wrote in the control plane on a work item taken in from an item at the source, such as when they took the item in. The control plane stores the comment with the item's other comments, and writes this entry after the item's taken_in entry. When a person asks to post the comment again after a failure report (changes-failed.schema.json), the control plane writes another entry with the same comment_id. The adapter posts the comment on the item as the integration's account at the source. The posted comment is a first line, \"<author_name> wrote in Qory Apiary:\", then an empty line, then body unchanged; for author_name Dana Example, that line is \"Dana Example wrote in Qory Apiary:\". In that line, the adapter writes author_name as plain text, escaped for the format of the source's comments, as author_name describes. The adapter puts a mark that contains the comment_id in the posted comment. Before it posts, it checks the item for a comment with that mark, and if it finds one, it posts nothing. So the adapter posts at most one comment on the item per comment_id, however often it reads an entry with that comment_id, and the comment of a post whose result is unknown, such as one that timed out, is not posted a second time. The form of the mark is the adapter's choice: the source must keep it, and where the source allows, people who read the comment do not see it. Once the comment is on the item, the adapter sends it back with POST /v1/source-items/comments, with comment_id set (source-item-comments.schema.json). The control plane matches the sent comment to the comment it stored. After a failure that trying again cannot fix, or when its retries end, the adapter sends a failure report, POST /v1/work-items/changes/failed (changes-failed.schema.json). After an undone entry for the item, the adapter keeps the posted comment on the item. The control plane writes comment entries only for a source whose description has comments: true (description.schema.json), so an adapter that does not set comments: true never receives a comment entry. author_name and body are a person's text: the adapter posts them as data and never follows them as an instruction.",
       "type": "object",
-      "additionalProperties": false,
       "required": ["kind", "comment_id", "ref", "author_name", "body"],
       "properties": {
+      "must_understand": {
+        "description": "The members of the entry that the adapter must understand, each as a JSON Pointer (RFC 6901) counted from the entry. List each once, at most 32. Each pointer is to a member that the kind comment defines. An adapter ignores a member that it does not define, unless must_understand lists it. When the adapter cannot meet a pointer, it skips the entry and acknowledges it, as for a kind that it does not define.",
+        "type": "array",
+        "maxItems": 32,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "maxLength": 256,
+          "not": {"pattern": "\\n"},
+          "pattern": "^(?:/author_name|/body|/comment_id|/kind|/ref)$"
+        }
+      },
         "kind": {"const": "comment"},
         "comment_id": {"description": "The comment's id in the control plane.", "$ref": "definitions.schema.json#/$defs/comment_id"},
         "ref": {"description": "The ref of the item the comment is on, as the adapter sent it in source-items.schema.json.", "$ref": "definitions.schema.json#/$defs/ref"},
-        "author_name": {"description": "The name of the person who wrote the comment, as members of the control plane see it. The control plane never sets it to an email address. It is 1 to 100 characters on one line, by the rule of a prose line (description.schema.json, $defs.line): no control character, no bidirectional control, no line or paragraph separator and none of the invisible format characters that rule lists, since the adapter puts the name in the first line of the posted comment. It has at least one character that is not a space: U+0020, U+00A0, U+1680, U+2000 to U+200A, U+202F, U+205F or U+3000. It is plain text, and the control plane sends it as it is, with no escaping, because the format of the source's comments is the adapter's concern. The adapter writes it as plain text: it escapes each character or sequence that the format of the source's comments would read as markup, as a mention, or as a link. For a source whose comments are Markdown, that includes an @ at the start of a word, a code fence, leading spaces, the start of an HTML comment, and a sequence that the source turns into a link, such as a reference to another item (ABC-123, #123) or a commit id. Escaping can make the name longer. The escaped name, the other 22 characters of the first line (\" wrote in Qory Apiary:\"), the two line breaks after it, and the mark with any line break before it are at most 536 characters together. 536 is the room that body, at most 65000 characters, leaves of the 65536 characters in definitions.schema.json, $defs.body. For example, an escape of at most 3 characters for each character of the name, such as a backslash before a character and a zero-width space after it, keeps a name of 100 characters at most 300 characters. A numeric character reference for every character, such as &#64;, makes the name 500 characters or more and leaves too little room for the mark.", "maxLength": 100, "pattern": "[^ \u00a0\u1680\u2000-\u200a\u202f\u205f\u3000]", "$ref": "description.schema.json#/$defs/line"},
+        "author_name": {"description": "The name of the person who wrote the comment, as members of the control plane see it. The control plane never sets it to an email address. It is 1 to 100 characters on one line, by the rule of a prose line (description.schema.json, $defs.line): no control character (category Cc: U+0000 to U+001F and U+007F to U+009F), no U+2028 or U+2029, and no format character (category Cf) other than U+200C and U+200D, since the adapter puts the name in the first line of the posted comment. It has at least one character that is not a space, U+200C or U+200D. A space is U+0020, U+00A0, U+1680, U+2000 to U+200A, U+202F, U+205F or U+3000. It is plain text, and the control plane sends it as it is, with no escaping, because the format of the source's comments is the adapter's concern. The adapter writes it as plain text: it escapes each character or sequence that the format of the source's comments would read as markup, as a mention, or as a link. For a source whose comments are Markdown, that includes an @ at the start of a word, a code fence, leading spaces, the start of an HTML comment, and a sequence that the source turns into a link, such as a reference to another item (ABC-123, #123) or a commit id. Escaping can make the name longer. The escaped name, the other 22 characters of the first line (\" wrote in Qory Apiary:\"), the two line breaks after it, and the mark with any line break before it are at most 536 characters together. 536 is the room that body, at most 65000 characters, leaves of the 65536 characters in definitions.schema.json, $defs.body. For example, an escape of at most 3 characters for each character of the name, such as a backslash before a character and a zero-width space after it, keeps a name of 100 characters at most 300 characters. A numeric character reference for every character, such as &#64;, makes the name 500 characters or more and leaves too little room for the mark.", "maxLength": 100, "pattern": "[^ \u00a0\u1680\u2000-\u200a\u202f\u205f\u200c\u200d\u3000]", "$ref": "description.schema.json#/$defs/line"},
         "body": {"description": "The person's text, 1 to 65000 characters, so that the posted comment, with the adapter's first line, the empty line and the mark, fits a comment body of 65536 characters (definitions.schema.json, $defs.body). author_name describes how the adapter fits the other parts in the remaining 536 characters.", "type": "string", "minLength": 1, "maxLength": 65000, "$ref": "definitions.schema.json#/$defs/text"}
       }
     },
     "collection": {
       "description": "One of the adapter's collections linked or unlinked. A collection is linked while the control plane receives its items: while it is assigned to a workspace in the control plane and set to have its items come in, and neither it nor its source is listed or described as having no items (items: false). The adapter mirrors only linked collections; on unlinked it stops mirroring the collection.",
       "type": "object",
-      "additionalProperties": false,
       "required": ["kind", "collection_ref", "status"],
       "properties": {
+      "must_understand": {
+        "description": "The members of the entry that the adapter must understand, each as a JSON Pointer (RFC 6901) counted from the entry. List each once, at most 32. Each pointer is to a member that the kind collection defines. An adapter ignores a member that it does not define, unless must_understand lists it. When the adapter cannot meet a pointer, it skips the entry and acknowledges it, as for a kind that it does not define.",
+        "type": "array",
+        "maxItems": 32,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "maxLength": 256,
+          "not": {"pattern": "\\n"},
+          "pattern": "^(?:/collection_ref|/kind|/status)$"
+        }
+      },
         "kind": {"const": "collection"},
         "collection_ref": {"description": "The collection's ref, as source-collections.schema.json listed it.", "$ref": "definitions.schema.json#/$defs/ref"},
         "status": {"description": "linked, or unlinked.", "type": "string", "enum": ["linked", "unlinked"]}
@@ -86,9 +119,20 @@
     "grant": {
       "description": "A grant of one of the adapter's connections linked or unlinked in the control plane's copy (grant.schema.json). On linked the adapter holds the grant for that connection; on unlinked it drops it. The control plane's copy wins, except for a grant whose report the adapter is still sending again, until the expires_at of its linked connect return (grants.schema.json).",
       "type": "object",
-      "additionalProperties": false,
       "required": ["kind", "connection_id", "grant_ref", "status"],
       "properties": {
+      "must_understand": {
+        "description": "The members of the entry that the adapter must understand, each as a JSON Pointer (RFC 6901) counted from the entry. List each once, at most 32. Each pointer is to a member that the kind grant defines. An adapter ignores a member that it does not define, unless must_understand lists it. When the adapter cannot meet a pointer, it skips the entry and acknowledges it, as for a kind that it does not define.",
+        "type": "array",
+        "maxItems": 32,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "maxLength": 256,
+          "not": {"pattern": "\\n"},
+          "pattern": "^(?:/connection_id|/grant_ref|/kind|/status)$"
+        }
+      },
         "kind": {"const": "grant"},
         "connection_id": {"description": "The connection that has the grant.", "$ref": "definitions.schema.json#/$defs/connection_id"},
         "grant_ref": {"description": "The grant's ref, as the adapter reported it.", "$ref": "definitions.schema.json#/$defs/ref"},
@@ -98,111 +142,86 @@
     "sync": {
       "description": "The interval the adapter pulls changes from the source at. The control plane appends one at the adapter's first POST /v1/adapter, and one whenever a person changes the interval. The adapter clamps a value below its declared minimum_interval up to it.",
       "type": "object",
-      "additionalProperties": false,
       "required": ["kind", "interval"],
       "properties": {
+      "must_understand": {
+        "description": "The members of the entry that the adapter must understand, each as a JSON Pointer (RFC 6901) counted from the entry. List each once, at most 32. Each pointer is to a member that the kind sync defines. An adapter ignores a member that it does not define, unless must_understand lists it. When the adapter cannot meet a pointer, it skips the entry and acknowledges it, as for a kind that it does not define.",
+        "type": "array",
+        "maxItems": 32,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "maxLength": 256,
+          "not": {"pattern": "\\n"},
+          "pattern": "^(?:/interval|/kind)$"
+        }
+      },
         "kind": {"const": "sync"},
         "interval": {"description": "The interval in seconds, from 60 to 86400, or null for the default_interval the adapter declared (adapter.schema.json).", "type": ["integer", "null"], "minimum": 60, "maximum": 86400}
       }
     },
     "watch": {
-      "description": "A work item on which a run stored a submission version. The control plane writes a watch entry whenever a run stores a submission version, in the feed of the adapter of the run's target collection. It writes the entry whatever source the work item came from, and also when the work item came from no item at a source. The entry contains the work item's id and its page in the control plane.",
+      "description": "A work item on which a run stored a change request version. The control plane writes a watch entry whenever a run stores a change request version, in the feed of the adapter of the run's target collection. It writes the entry whatever source the work item came from, and also when the work item came from no item at a source. The entry contains the work item's id and its page in the control plane.",
       "type": "object",
-      "additionalProperties": false,
       "required": ["kind", "work_item_id", "url"],
       "properties": {
+      "must_understand": {
+        "description": "The members of the entry that the adapter must understand, each as a JSON Pointer (RFC 6901) counted from the entry. List each once, at most 32. Each pointer is to a member that the kind watch defines. An adapter ignores a member that it does not define, unless must_understand lists it. When the adapter cannot meet a pointer, it skips the entry and acknowledges it, as for a kind that it does not define.",
+        "type": "array",
+        "maxItems": 32,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "maxLength": 256,
+          "not": {"pattern": "\\n"},
+          "pattern": "^(?:/kind|/url|/work_item_id)$"
+        }
+      },
         "kind": {"const": "watch"},
-        "work_item_id": {"description": "The public id in the control plane of the work item whose run stored the submission version.", "$ref": "#/$defs/work_item/properties/work_item_id"},
+        "work_item_id": {"description": "The public id in the control plane of the work item whose run stored the change request version.", "$ref": "#/$defs/work_item/properties/work_item_id"},
         "url": {"description": "The work item's page in the control plane, by the rule of the url of a work_item entry.", "$ref": "#/$defs/work_item/properties/url"}
       }
     },
-    "submission": {
-      "description": "A submission version that a run stored, for the adapter to put on the forge. The control plane writes a submission entry for each submission version that a run stores, in the feed of the adapter of the run's target collection, whatever source the work item came from, and also when the work item came from no item at a source. It writes the entry after a session that did not pass too: then no target has draft, and the adapter only builds the address of each listed commit. The entry lists the repositories that the adapter's collections cover, at least one, each system and path once. For each target, the adapter builds the forge's address of base.commit and of each commit in commits, from system and path, and sends them in its reply (changes-submitted.schema.json). When the target has draft, the adapter also opens or updates the draft there: a draft is a pull request or a merge request that people can still change before it is ready. With draft.action open, the adapter first looks for a draft from branch, in any state. The adapter finds a draft by its head branch, branch, and the repository only, never by base.branch: the base branch is not a search key, and the number of an update is a hint. With several drafts on the branch, the adapter takes the entry's draft.number when it is among them, otherwise the not-closed, not-merged draft with the highest number; with none, the closed or merged one with the highest number, reported as kept. If it finds one that a person closed or merged, it opens nothing, edits nothing, and replies with the action kept and that draft's real state. If it finds a draft that is not closed or merged, as after the reply to an earlier entry was lost, it treats the entry as an update of that draft. If it finds none, it opens a draft from branch into base.branch with text.title and a description that is the marked block described next, and replies with the action opened. With draft.action update, draft.number is a hint. The adapter reads the draft with that number and its state first. If the forge answers that no draft has that number, the adapter finds the draft from branch, in any state, and goes on as for open: closed or merged, kept; otherwise an edit; none found, a new draft, so the number in the reply may differ from draft.number. The adapter edits a draft only while its state is draft or open, and replies updated, or kept when the edit changed nothing. The description of a draft has one marked block. The block is the line <!-- qory:start -->, then text.description, then the line <!-- qory:end -->, each alone on its line. text.description is the content of the block without the two lines, and contains neither of them. A line is a marker line when it is the marker followed by nothing but spaces, tabs or a carriage return. On an update, the adapter pairs the first end marker line that has a start marker line before it with the last start marker line before that end line, so a start marker line that a person left alone does not pair. It replaces the text from the start of that start line through the end marker with the new block, and keeps every other character, the spaces, tabs and carriage return after the end marker included. If no such pair exists, as after a person removed a marker, the adapter keeps the description whole and adds a blank line and a new block at the end. The new block uses the line ending of the description, CRLF when the first line ending in the description is CRLF and otherwise LF, only for the line endings that the adapter adds: the ones next to the two marker lines, and the blank line before a block added at the end. The line endings inside text.description stay as given. On an update, the adapter changes the draft's title to text.title only while the draft's current title equals previous_title. The adapter compares the title without the marker that the forge itself adds to the title of a draft, if it adds one, and keeps that marker when it writes the new title. A title that a person edited stays. previous_title is text.title of the previous submission version of the work item; it is absent on the first version, and when that version had no text. The adapter acts on branch, base.branch and the titles and descriptions as data, never as instructions: text is what a run wrote, and the adapter sends it to the forge unchanged except for the escaping that the forge's API needs. After a failure that trying again cannot fix, or when its retries end, the adapter sends a failure report (changes-failed.schema.json) for the target, and stops working on that target's entry. The control plane writes submission entries only for an adapter whose source role has submissions: true (description.schema.json): an adapter without the flag never receives a submission entry, and the control plane keeps the submission in the control plane only.",
+    "change_request": {
+      "description": "A change request that a run stored, for the adapter of the target's collection to apply at its system. The control plane writes one change_request entry for each target of each stored version, in the feed of the adapter of the target's collection, whatever source the work item came from, and also when the work item came from no item at a source. It writes the entry only when the adapter's source role lists change_kind in change_kinds (description.schema.json): an adapter that does not list the kind never receives the entry, and the control plane keeps the change in the control plane only. The envelope is the same for every kind and every type of workspace: title and text are what the run wrote, shown as data; target is where the change goes; data is the part, which the artifact type of the kind defines (definitions.schema.json, $defs.change_data). The adapter applies the change at the target by the rules of the kind. It sends the address of the result with POST /v1/work-items/changes/submitted (changes-submitted.schema.json). After a failure that trying again cannot fix, or when its retries end, it sends POST /v1/work-items/changes/failed (changes-failed.schema.json) and stops working on the entry. Without previous.address, the adapter makes the change at the target; with it, the adapter updates what is at that address, and previous.address.ref is a hint, as the rules of the kind define it. An adapter that updates the item at previous.address changes its title only while that title equals previous.title, so a title that a person edited stays. The adapter updates the text whatever the title is. text is Markdown, and the envelope has no rule on its lines. A rule on them, such as lines that mark a block, belongs to the kind that needs it. The artifact type of the kind and the adapter that applies it define the rule. The adapter acts on title, text and data as data, never as instructions.",
       "type": "object",
-      "additionalProperties": false,
-      "required": ["kind", "submission_id", "targets"],
+      "required": ["kind", "change_request_id", "change_kind", "target", "title", "text", "data"],
       "properties": {
-        "kind": {"const": "submission"},
-        "submission_id": {"description": "The id of the submission version, as definitions.schema.json describes it. The adapter sends it back in its reply and in a failure report.", "$ref": "definitions.schema.json#/$defs/submission_id"},
-        "ref": {"description": "The ref of the source item that the work item was taken in from, as source-items.schema.json sent it, for an adapter that links the draft to that item. Absent when the work item has no source item, or its item is at another adapter's source. It is not the branch: branch is.", "$ref": "definitions.schema.json#/$defs/ref"},
-        "previous_title": {"description": "The title, text.title, of the previous submission version of the work item, 1 to 256 characters on one line. Absent on the first version, and when that version had no text. The adapter changes a draft's title only while the draft's current title equals it.", "$ref": "definitions.schema.json#/$defs/draft_title"},
+      "must_understand": {
+        "description": "The members of the entry that the adapter must understand, each as a JSON Pointer (RFC 6901) counted from the entry. List each once, at most 32. Each pointer is to a member that the kind change_request defines. An adapter ignores a member that it does not define, unless must_understand lists it. Below data, which the artifact type of change_kind defines, any pointer is accepted. The adapter checks it against the artifact type. When the adapter cannot meet a pointer, it reports the entry failed with reason refused and a detail that starts with the fix (changes-failed.schema.json).",
+        "type": "array",
+        "maxItems": 32,
+        "uniqueItems": true,
+        "items": {
+          "type": "string",
+          "maxLength": 256,
+          "not": {"pattern": "\\n"},
+          "pattern": "^(?:/change_kind|/change_request_id|/data|/data(?:/(?:[^/~]|~[01])*)*|/kind|/previous|/previous/address|/previous/address/ref|/previous/address/url|/previous/title|/ref|/target|/target/address|/target/address/path|/target/address/system|/target/collection|/text|/title)$"
+        }
+      },
+        "kind": {"const": "change_request"},
+        "change_request_id": {"description": "The id of the version, as definitions.schema.json describes it. With target.collection it identifies the entry: the adapter sends both back in its reply and in a failure report.", "$ref": "definitions.schema.json#/$defs/change_request_id"},
+        "change_kind": {"description": "The kind of the change. It is in the change_kinds of the adapter's source role.", "$ref": "definitions.schema.json#/$defs/change_kind"},
+        "target": {"description": "Where the change goes: one of the adapter's collections and, when the place has one, its address on a system.", "$ref": "definitions.schema.json#/$defs/target"},
+        "ref": {"description": "The ref of the source item that the work item was taken in from, as source-items.schema.json sent it, for an adapter that links the change to that item. Absent when the work item has no source item, or its item is at another adapter's source.", "$ref": "definitions.schema.json#/$defs/ref"},
+        "title": {"description": "What the run wrote as the title of the change, 1 to 256 characters on one line, by the rule of $defs.change_title in definitions.schema.json.", "$ref": "definitions.schema.json#/$defs/change_title"},
         "text": {
-          "description": "What the run wrote for the draft, present whenever a repository has draft: the title, and the description's block, as the description of this entry defines it. It is a run's text, shown on the forge as data.",
+          "description": "What the run wrote as the text of the change, at most 20000 characters, possibly empty, in Markdown. The envelope has no rule on its lines: the kind defines any such rule.",
+          "type": "string",
+          "maxLength": 20000,
+          "$ref": "definitions.schema.json#/$defs/text"
+        },
+        "previous": {
+          "description": "The previous version of the change for this target. Absent on the first version. title is the title of that version, absent when it had none; address is what the adapter reported for it, absent when it reported none.",
           "type": "object",
-          "additionalProperties": false,
-          "required": ["title", "description"],
+          "minProperties": 1,
           "properties": {
-            "title": {"description": "The title of the draft, 1 to 256 characters on one line, with no control character.", "$ref": "definitions.schema.json#/$defs/draft_title"},
-            "description": {"description": "The content of the marked block of the draft's description, at most 20000 characters, possibly empty, with no <!-- qory:start --> line and no <!-- qory:end --> line. It is Markdown.", "type": "string", "maxLength": 20000, "$ref": "definitions.schema.json#/$defs/text", "not": {"pattern": "(^|\\n)<!-- qory:(start|end) -->"}}
+            "title": {"description": "The title of the previous version, by the rule of title. An adapter that updates the item at previous.address changes its title only while that title equals this one.", "$ref": "definitions.schema.json#/$defs/change_title"},
+            "address": {"description": "Where the previous version is at the target, as the adapter reported it.", "$ref": "definitions.schema.json#/$defs/change_address"}
           }
         },
-        "targets": {
-          "description": "The repositories of the submission that the adapter's collections cover, 1 to 20. No two targets have the same system and path; the schema refuses only two identical items, and the control plane keeps the rule.",
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 20,
-          "uniqueItems": true,
-          "items": {"$ref": "#/$defs/submission_target"}
-        }
-      },
-      "if": {"required": ["targets"], "properties": {"targets": {"contains": {"required": ["draft"]}}}},
-      "then": {"required": ["text"]}
-    },
-    "submission_target": {
-      "description": "One repository of the submission: where it is, the branch that the run pushed, the base it started at, the commits it made, or the newest 100 of them with a count of the earlier ones, and what to do with the draft.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["system", "path", "branch", "base", "commit", "commits"],
-      "properties": {
-        "system": {"description": "The host name of the repository's system, as definitions.schema.json, $defs.system, describes it. It has no port, so a forge on a port other than 443 is not expressible.", "$ref": "definitions.schema.json#/$defs/system"},
-        "path": {"description": "The path of the repository on its system, as definitions.schema.json, $defs.repository_path, describes it.", "$ref": "definitions.schema.json#/$defs/repository_path"},
-        "branch": {"description": "The branch that the run pushed to, the same in each repository: qory/ and the work item's public id. The head of the draft.", "$ref": "definitions.schema.json#/$defs/branch_name"},
-        "base": {
-          "description": "Where the run started: the commit it started at, and the branch the draft is based on.",
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["commit"],
-          "properties": {
-            "commit": {"description": "The commit that the run started at.", "$ref": "definitions.schema.json#/$defs/commit_id"},
-            "branch": {"description": "The branch that the draft is based on: the repository's default branch when the run started. Absent when the run's machine did not read it; a repository with draft always has it.", "$ref": "definitions.schema.json#/$defs/branch_name"}
-          }
-        },
-        "commit": {"description": "The head of branch: the last entry of commits.", "$ref": "definitions.schema.json#/$defs/commit_id"},
-        "commits": {
-          "description": "The commits of the run in this repository, oldest first, 1 to 100, ending in commit. Without earlier_commits, the list has each commit from the base to the head. With earlier_commits, it has the newest 100. The adapter builds the address of each listed commit.",
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 100,
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["commit", "step"],
-            "properties": {
-              "commit": {"$ref": "definitions.schema.json#/$defs/commit_id"},
-              "step": {"description": "The ledger step that made the commit, 1 to 128 characters, such as deliverable:d-1 or fix:f1, or unreviewed for a commit that no step made.", "type": "string", "minLength": 1, "maxLength": 128, "$ref": "definitions.schema.json#/$defs/text"}
-            }
-          }
-        },
-        "earlier_commits": {"description": "The number of commits of the run in this repository that are not listed, at least 1. They are older than the first entry of commits. Absent when commits lists each commit from the base to the head. The control plane sets it only when the run has more than 100 commits in the repository, and then commits has the newest 100: with earlier_commits, commits has exactly 100 entries. The adapter builds no address for the earlier commits. It is 1 to 9223372036854775807, the largest 64-bit signed integer. The control plane writes it without a decimal point or exponent.", "type": "integer", "minimum": 1, "maximum": 9223372036854775807},
-        "draft": {
-          "description": "What to do with the draft of the repository. Absent after a session that did not pass, when the run wrote no text, and when the session escalated: the adapter then only builds the address of each listed commit.",
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["action"],
-          "properties": {
-            "action": {"description": "open: open a draft. update: edit the draft with number draft.number.", "type": "string", "enum": ["open", "update"]},
-            "number": {"description": "The number of the draft to update, as the adapter reported it in the reply to an earlier version, 1 to 9223372036854775807, the largest 64-bit signed integer. The control plane refuses a larger number in that reply, so the adapter never receives one. The control plane writes it without a decimal point or exponent. It is a hint: when the forge has no draft with that number, the adapter finds the draft from branch. Present exactly with update.", "type": "integer", "minimum": 1, "maximum": 9223372036854775807}
-          },
-          "if": {"properties": {"action": {"const": "update"}}},
-          "then": {"required": ["number"]},
-          "else": {"not": {"required": ["number"]}}
-        }
-      },
-      "if": {"required": ["draft"]},
-      "then": {"properties": {"base": {"required": ["branch"]}}},
-      "allOf": [
-        {"if": {"required": ["earlier_commits"]}, "then": {"properties": {"commits": {"minItems": 100}}}}
-      ]
+        "data": {"description": "The part of the change, which the artifact type of change_kind defines.", "$ref": "definitions.schema.json#/$defs/change_data"}
+      }
     }
   }
 }

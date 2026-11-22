@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "revision": 1,
+  "cursor": "c_00000071",
+  "changes": [
+    {
+      "kind": "change_request",
+      "change_request_id": "av_7k2m9q4v1x8z3c5d",
+      "change_kind": "pull-request",
+      "target": {
+        "collection": "R_1001",
+        "address": {
+          "system": "code.example.com",
+          "path": "acme/shop"
+        }
+      },
+      "ref": "acme/shop#12",
+      "title": "Show delivery dates at checkout",
+      "text": "The checkout page shows the delivery date of each order line.\n\nTested with the orders fixture.",
+      "data": []
+    }
+  ]
+}

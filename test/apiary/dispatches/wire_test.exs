@@ -105,12 +105,12 @@ defmodule Apiary.Dispatches.WireTest do
     "time" => "2026-10-15T12:02:00Z",
     "reason" => "The job could not start."
   }
-  # The vendored contracts are at two integrations commits. The provisioner contract
+  # The vendored contracts are at three integrations commits. The provisioner contract
   # is at 8d859a1d, after 6fed8c73, which describes a machine's dispatch as dispatch_id in
   # place of key, and after 55a22cb8, which adds the access value write-no-push to the run
-  # documents. The run, integration, explore and diagnostics contracts are at e0d7be15,
-  # which writes a target as {collection, address?}: the ref of one of the adapter's
-  # collections and, when the place has one, its system and path. That commit comes after
+  # documents. The run, explore and diagnostics contracts are at e0d7be15, which writes a
+  # target as {collection, address?}: the ref of one of the adapter's collections and, when
+  # the place has one, its system and path. That commit comes after
   # 8d859a1d, which allows time_limit_minutes from 1 to 1440, after 6fed8c73, which adds
   # the refusals of the next-session request, plan and tier in place of time_limit on a
   # workflow of a stack that a harness section defines, and `type` in place of `key` for a
@@ -119,14 +119,12 @@ defmodule Apiary.Dispatches.WireTest do
   # stage, the tier balanced in place of fast, the outcome of a run with its end codes, a
   # later session's runtime, run_settings on every explore run, and
   # model_provider_credential_name in place of model_credential in the next-session
-  # answer. e0d7be15 also comes after b5ae1a43, which adds `oauth_device` of an API to
-  # the description of a model provider, `submissions` to the source role, and the
-  # submission entry of the change feed with its reply and its failure report.
+  # answer. The integration contract is at effc22aa, after e0d7be15:
+  # test/apiary/contract_copies_test.exs checks its copies.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "8d859a1d5bd0693bd647e0543d29aa8651230c3f"},
           {"run/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"},
-          {"integration/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"},
           {"explore/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"},
           {"diagnostics/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"}
         ] do

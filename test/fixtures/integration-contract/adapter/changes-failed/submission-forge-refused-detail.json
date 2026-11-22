@@ -1,9 +1,0 @@
-{
-  "version": 1,
-  "time": "2026-11-18T12:00:00Z",
-  "submission_id": "av_7k2m9q4v1x8z3c5d",
-  "system": "code.example.com",
-  "path": "acme/shop",
-  "reason": "forge_refused",
-  "detail": "Shorten the title, then run again. The forge returned 422: title is too long."
-}

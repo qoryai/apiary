@@ -267,13 +267,13 @@ defmodule Apiary.IntegrationsTest do
       end)
     end
 
-    test "is description_invalid for a description with a publisher", %{scope: scope} do
+    test "is ready for a description with a publisher: the schema leaves the member open", %{
+      scope: scope
+    } do
       serve_release(github_description(%{"publisher" => %{"name" => "Qory"}}))
       {:ok, release} = Integrations.request_release(scope, @github)
 
-      capture_log(fn ->
-        assert %Release{failure: "description_invalid"} = fetch!(scope, release)
-      end)
+      assert %Release{state: "ready", failure: nil} = fetch!(scope, release)
     end
 
     test "is description_invalid as the description says", %{scope: scope} do

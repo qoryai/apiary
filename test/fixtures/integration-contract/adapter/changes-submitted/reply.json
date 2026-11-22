@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "time": "2026-11-18T12:00:00Z",
+  "change_request_id": "av_7k2m9q4v1x8z3c5d",
+  "target": {
+    "collection": "SUPPORT"
+  },
+  "action": "created",
+  "address": {
+    "url": "https://support.example.org/cases/CASE-1042/replies/3",
+    "ref": "3"
+  },
+  "data": {
+    "conversation": "cv_1042"
+  }
+}

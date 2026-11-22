@@ -2,9 +2,8 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/integration/v1/resolve.schema.json",
   "title": "Resolve call",
-  "description": "The body of the control plane's call with the path resolve, a POST of application/json to the adapter's call_url followed by resolve (adapter.schema.json), signed as definitions.schema.json describes a call: which grant and which resource at the source cover each of addresses, and whether the source shows that resource to anyone without a credential. An address is written as the document the control plane read it from writes it, such as an https URL or the form user@host:path, so it is a bounded string and not a URL of $defs. The adapter answers a signed 200 with resolve-answer.schema.json. It reads each address itself. A result may contain public: true: an adapter answers public: true only if it serves the call with the path read-public, and only for an address whose resource the source shows to anyone without a credential, decided from the visibility of the resource as a request without a credential sees it, never from a grant it holds; a resource that the source shows only to signed-in users is not public. It answers covered: false for an address it cannot read, or that no grant it holds covers and that it does not answer with public: true; an address that the adapter cannot read is never a refusal. The control plane sends a call with the path read-public only with resource_ref set to the public_ref of a resolve result with public: true, never with the resource_ref of a covered result, and never sends a call with the path run-credential for a resource that it reads with the call with the path read-public: reading a public resource gives the run no credential. The adapter refuses a call whose time is more than 300 seconds from its clock, either way, or whose signature it has already seen, with an unsigned 401; definitions.schema.json has the replay rule. A member this schema does not define is refused, invalid_request.",
+  "description": "The body of the control plane's call with the path resolve, a POST of application/json to the adapter's call_url followed by resolve (adapter.schema.json), signed as definitions.schema.json describes a call: which grant and which resource at the source cover each of addresses, and whether the source shows that resource to anyone without a credential. An address is written as the document the control plane read it from writes it, such as an https URL or the form user@host:path, so it is a bounded string and not a URL of $defs. The adapter answers a signed 200 with resolve-answer.schema.json. It reads each address itself. A result may contain public: true: an adapter answers public: true only if it serves the call with the path read-public, and only for an address whose resource the source shows to anyone without a credential, decided from the visibility of the resource as a request without a credential sees it, never from a grant it holds; a resource that the source shows only to signed-in users is not public. It answers covered: false for an address it cannot read, or that no grant it holds covers and that it does not answer with public: true; an address that the adapter cannot read is never a refusal. The control plane sends a call with the path read-public only with resource_ref set to the public_ref of a resolve result with public: true, never with the resource_ref of a covered result, and never sends a call with the path run-credential for a resource that it reads with the call with the path read-public: reading a public resource gives the run no credential. The adapter refuses a call whose time is more than 300 seconds from its clock, either way, or whose signature it has already seen, with an unsigned 401; definitions.schema.json has the replay rule. The adapter ignores a member that this schema does not define, unless the must_understand of the body lists it. It refuses a call whose must_understand lists a pointer that it does not define, 400 invalid_request.",
   "type": "object",
-  "additionalProperties": false,
   "required": ["version", "time", "addresses"],
   "properties": {
     "version": {
@@ -22,6 +21,18 @@
       "maxItems": 64,
       "uniqueItems": true,
       "items": {"$ref": "#/$defs/address"}
+    },
+    "must_understand": {
+      "description": "The members of the document that the reader must understand, each as a JSON Pointer (RFC 6901) counted from the document, such as /addresses. List each once, at most 32. A pointer has no line feed, and writes ~ only as ~0 or ~1. Each pointer is to a member that this schema defines. The adapter ignores a member that this schema does not define, unless the must_understand of the body lists it. It refuses a call whose must_understand lists a pointer that it does not define, 400 invalid_request.",
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 256,
+        "not": {"pattern": "\\n"},
+        "pattern": "^(?:/addresses|/addresses/(?:0|[1-9][0-9]*)|/time|/version)$"
+      }
     }
   },
   "$defs": {

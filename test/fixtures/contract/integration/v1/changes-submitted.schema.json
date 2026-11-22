@@ -1,74 +1,30 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/integration/v1/changes-submitted.schema.json",
-  "title": "Submission put on the forge",
-  "description": "The body of the signed POST /v1/work-items/changes/submitted, application/json, with which an adapter reports what it put on the forge for a submission entry of the change feed (changes.schema.json): for each target of the entry that it handled, the address of each listed commit and, where the entry's target had draft, the draft. The control plane stores the addresses and the draft with the submission version, so the work item's pages link to them. It stores one reply for each target of a submission_id, identified by system and path, and keeps the first: a second reply for the same target, with the same content or another, is answered with a signed 204 and changes nothing. The adapter sends one reply for each submission entry, with a target for each target of the entry that did not fail, after it has addressed each listed commit and, for a target with draft, opened or updated the draft or left it as it was. It sends commits with every commit that the entry's target lists, and base with the address of base.commit. A target with draft in the entry has draft here: the draft after the adapter's call, with the title and the state that the draft has then. A target without draft in the entry has no draft here. A target that failed goes only to changes/failed (changes-failed.schema.json): it is not in this reply. A draft that a person closed or merged is reported with the action kept and its real state, closed or merged, and the adapter does not edit it. The same holds for an entry with draft.action open when such a draft already exists from the entry's branch: the adapter opens nothing and reports that draft. When the entry's draft.number matches no draft on the forge, the adapter reports the draft that it found from the branch, or the new one that it opened, so number may differ from the entry's. Every address is an https address of at most 2048 characters with no user information, as definitions.schema.json, $defs.url, describes it, on the system of its target, with no port, query or fragment, and with a path that is not empty or / alone, the rule of an address in run/v1/submit-program/README.md. The host of an address, in lower case, equals the system; a bracketed or percent-encoded host equals no system. The schema checks the form of an address and not its system, port, query, fragment or path, and the control plane refuses a reply with an address that breaks the rule, 400 invalid_request. No two targets have the same system and path; the schema refuses only two identical items, and the control plane refuses a reply with a duplicate, 400 invalid_request. The control plane checks permissions first, in the order of refusal.schema.json: it returns 403 forbidden for a request the access key has no permission for. The request has no connection_id and no collection_ref, so connection_unknown, connection_ended, connection_suspended and collection_not_linked do not apply to it. The control plane returns a signed 204 and changes nothing for a submission_id that is not the submission_id of a submission entry in the adapter's change feed, and for a system and path that are not those of a target of that entry, so a repeated or late reply is never an error. A reply is refused 400 invalid_request when it contains a commit that the entry's target does not list or leaves one out, when a target has draft and the entry's target has none, when a target has no draft and the entry's target has one, when it has a duplicate target, and when an address breaks the address rule of this document. On success the control plane returns a signed 204 with no body. The adapter acts on each answer as follows. On the signed 204, it does not send the reply again. On 403 forbidden or 400 invalid_request, it stops sending the reply and logs the submission_id. On a transient failure, no answer, a 5xx or an unsigned answer, it sends the reply again, built anew as definitions.schema.json describes a retry, with backoff, and on a signed 429 it waits the seconds of Retry-After first. It stops sending the reply once its retries end, and logs the submission_id. The adapter logs no title, description or access key. The request is signed with the adapter's access key as definitions.schema.json describes. Set time from the adapter's clock and sign each request anew: the control plane returns an unsigned 401 for a time more than 300 seconds off its clock, either way, and for a request whose signature it has already seen; definitions.schema.json has the replay rule. Send only the members this schema defines: the control plane returns 400 invalid_request for any other member.",
+  "title": "Change applied at its target",
+  "description": "The body of the signed POST /v1/work-items/changes/submitted, application/json, with which an adapter reports what it did at the target for a change_request entry of the change feed (changes.schema.json): where the change is, what the adapter did to it, and the result that the kind defines. The control plane stores the reply with the change request version, so the work item's pages link to the change. It stores one reply for each pair of change_request_id and target.collection, and keeps the first: a second reply for the same pair, with the same content or another, is answered with a signed 204 and changes nothing. The adapter sends one reply for each entry that it applied, after it has made the change at the target or left it as it was. target is the target of the entry, as the entry has it. address and action go together: a reply has both when the adapter made a change at the target or found one there, and neither when the entry asks for no change at the target. data is the result of the kind, such as the addresses of what the adapter made at the target; this contract states no schema for it beyond the limits of definitions.schema.json, $defs.change_data. A change that a person finished at the target, as when a person closed it, is reported with the action kept, and the adapter does not edit it. Where the entry's target has an address, address.url is an https address of at most 2048 characters with no user information, as definitions.schema.json, $defs.url, describes it, on the system of the target: its host, in lower case, equals target.address.system, with no port, query or fragment, and with a path that is not empty or / alone, the rule of an address in run/v1/submit-program/README.md. A bracketed or percent-encoded host equals no system. Where the entry's target has no address, only the form of $defs.url applies. The schema checks the form of an address and not its system, port, query, fragment or path, and the control plane refuses a reply with an address that breaks the rule, 400 invalid_request. The control plane checks permissions first, in the order of refusal.schema.json: it returns 403 forbidden for a request the access key has no permission for. The request has no connection_id and no collection_ref, so connection_unknown, connection_ended, connection_suspended and collection_not_linked do not apply to it. The control plane returns a signed 204 and changes nothing for a change_request_id and target.collection that are not those of a change_request entry in the adapter's change feed, so a repeated or late reply is never an error. A reply is refused 400 invalid_request when it has address without action or action without address, when address.url breaks the address rule of this document, when its data is larger than 786432 bytes serialized, and when an object inside data repeats a member. On success the control plane returns a signed 204 with no body. The adapter acts on each answer as follows. On the signed 204, it does not send the reply again. On 403 forbidden or 400 invalid_request, it stops sending the reply and logs the change_request_id. On a transient failure, no answer, a 5xx or an unsigned answer, it sends the reply again, built anew as definitions.schema.json describes a retry, with backoff, and on a signed 429 it waits the seconds of Retry-After first. It stops sending the reply once its retries end, and logs the change_request_id. The adapter logs no title, text, data or access key. The request is signed with the adapter's access key as definitions.schema.json describes. Set time from the adapter's clock and sign each request anew: the control plane returns an unsigned 401 for a time more than 300 seconds off its clock, either way, and for a request whose signature it has already seen; definitions.schema.json has the replay rule. Send only the members of the revision that the control plane implements. The control plane ignores an undefined member of the body and of target, unless the must_understand of the body lists it.",
   "type": "object",
-  "additionalProperties": false,
-  "required": ["version", "time", "submission_id", "targets"],
+  "required": ["version", "time", "change_request_id", "target"],
   "properties": {
     "version": {"description": "The document format. Set it to 1: the control plane returns 400 invalid_request for any other version.", "const": 1},
     "time": {"description": "When the adapter built the body, RFC 3339 in UTC with whole seconds. Set it from the adapter's clock: the control plane returns an unsigned 401 for a time more than 300 seconds off its clock, either way.", "$ref": "definitions.schema.json#/$defs/time"},
-    "submission_id": {"description": "The submission_id of the submission entry that the adapter is reporting on.", "$ref": "definitions.schema.json#/$defs/submission_id"},
-    "targets": {
-      "description": "The targets of the entry that the adapter handled, 1 to 20. No two targets have the same system and path; the schema refuses only two identical items, and the control plane refuses any other duplicate, 400 invalid_request.",
+    "change_request_id": {"description": "The change_request_id of the change_request entry that the adapter is reporting on.", "$ref": "definitions.schema.json#/$defs/change_request_id"},
+    "target": {"description": "The target of the entry, as the entry has it.", "$ref": "definitions.schema.json#/$defs/target"},
+    "action": {"description": "created: the adapter made the change at the target. updated: it changed what is at previous.address of the entry. kept: it changed nothing, because what is at the address was finished at the target, or already had the entry's text and a title that previous.title of the entry leaves as it is. Present exactly with address.", "type": "string", "enum": ["created", "updated", "kept"]},
+    "address": {"description": "Where the change is at the target after the adapter's call. Absent when the adapter made no change, as for a kind whose entry asks only for the addresses of what it lists. Present exactly with action.", "$ref": "definitions.schema.json#/$defs/change_address"},
+    "data": {"description": "What the adapter reports beside the address: the result that the kind defines, such as the addresses of what the adapter made at the target. Optional.", "$ref": "definitions.schema.json#/$defs/change_data"},
+    "must_understand": {
+      "description": "The members of the document that the reader must understand, each as a JSON Pointer (RFC 6901) counted from the document, such as /action. List each once, at most 32. A pointer has no line feed, and writes ~ only as ~0 or ~1. Each pointer is to a member that this schema defines. The control plane ignores a member that this schema does not define, unless must_understand lists it. It returns 400 invalid_request for a body whose must_understand lists a pointer that it does not define.",
       "type": "array",
-      "minItems": 1,
-      "maxItems": 20,
+      "maxItems": 32,
       "uniqueItems": true,
-      "items": {"$ref": "#/$defs/target"}
+      "items": {
+        "type": "string",
+        "maxLength": 256,
+        "not": {"pattern": "\\n"},
+        "pattern": "^(?:/action|/address|/address/ref|/address/url|/change_request_id|/data|/data(?:/(?:[^/~]|~[01])*)*|/target|/target/address|/target/address/path|/target/address/system|/target/collection|/time|/version)$"
+      }
     }
   },
-  "$defs": {
-    "target": {
-      "description": "What the adapter put on the forge for one repository of the entry.",
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["system", "path", "base", "commits"],
-      "properties": {
-        "system": {"description": "The system of the repository, as the entry has it. It has no port, as the entry's system.", "$ref": "definitions.schema.json#/$defs/system"},
-        "path": {"description": "The path of the repository, as the entry has it.", "$ref": "definitions.schema.json#/$defs/repository_path"},
-        "base": {
-          "description": "The address of the base commit: the commit of base.commit in the entry.",
-          "type": "object",
-          "additionalProperties": false,
-          "required": ["commit", "commit_url"],
-          "properties": {
-            "commit": {"description": "The commit, as the entry lists it.", "$ref": "definitions.schema.json#/$defs/commit_id"},
-            "commit_url": {"description": "The forge's address of the commit.", "$ref": "definitions.schema.json#/$defs/url"}
-          }
-        },
-        "commits": {
-          "description": "One item for each commit that the entry's repository lists, in the entry's order, 1 to 100. The entry's earlier commits have no item.",
-          "type": "array",
-          "minItems": 1,
-          "maxItems": 100,
-          "items": {
-            "type": "object",
-            "additionalProperties": false,
-            "required": ["commit", "commit_url"],
-            "properties": {
-              "commit": {"description": "The commit, as the entry lists it.", "$ref": "definitions.schema.json#/$defs/commit_id"},
-              "commit_url": {"description": "The forge's address of the commit.", "$ref": "definitions.schema.json#/$defs/url"}
-            }
-          }
-        },
-        "draft": {"description": "The draft after the adapter's call. Present exactly when the entry's target has draft.", "$ref": "#/$defs/draft"}
-      }
-    },
-    "draft": {
-      "type": "object",
-      "additionalProperties": false,
-      "required": ["number", "url", "title", "state", "action"],
-      "if": {"properties": {"state": {"enum": ["closed", "merged"]}}, "required": ["state"]},
-      "then": {"properties": {"action": {"const": "kept"}}},
-      "properties": {
-        "number": {"description": "The draft's number on the forge, 1 to 9223372036854775807, the largest 64-bit signed integer. The control plane refuses a larger number, 400 invalid_request. An integer is written without a decimal point or exponent, and the control plane refuses 34.0 with 400 invalid_request. It may differ from the number in the entry, which is a hint: see draft.number in changes.schema.json.", "type": "integer", "minimum": 1, "maximum": 9223372036854775807},
-        "url": {"description": "The draft's address on the forge.", "$ref": "definitions.schema.json#/$defs/url"},
-        "title": {"description": "The draft's title after the call, by the rule of $defs.draft_title in definitions.schema.json: 1 to 256 characters on one line.", "$ref": "definitions.schema.json#/$defs/draft_title"},
-        "state": {"description": "draft: the forge shows the draft as not ready for review. open: it shows it as ready for review. closed: a person closed it without merging it. merged: it was merged. The adapter edits only a draft that is draft or open.", "type": "string", "enum": ["draft", "open", "closed", "merged"]},
-        "action": {"description": "opened: the adapter opened the draft. updated: it changed the draft's title or description. kept: it changed nothing, because the draft was closed or merged, or because it already had the entry's block and a title that the rule of previous_title leaves as it is. A closed or merged draft always has kept.", "type": "string", "enum": ["opened", "updated", "kept"]}
-      }
-    }
-  }
+  "dependentRequired": {"address": ["action"], "action": ["address"]}
 }

@@ -203,7 +203,7 @@ defmodule Apiary.Sources.WireTest do
     test "every invalid body of items and of comments is refused" do
       items = fixtures("invalid/source-items-*.json")
       comments = fixtures("invalid/source-item-comments-*.json")
-      assert length(items) == 26
+      assert length(items) == 25
       assert length(comments) == 3
       assert "invalid/source-item-comments-comment-id-upper-case.json" in comments
 
@@ -221,12 +221,18 @@ defmodule Apiary.Sources.WireTest do
         assert Wire.comments(fixture(path)) == :error, path
         assert Wire.comments(json(path)) == :error, path
       end
+
+      # Only a closed copy of the contract's schema refuses this body, as the contract's
+      # reader ignores an undefined member. This reader still refuses it.
+      path = "closed/source-items-undefined-member.json"
+      assert Wire.items(fixture(path)) == :error, path
+      assert Wire.items(json(path)) == :error, path
     end
   end
 
   describe "a failure report" do
     test "every body of changes-failed/ is read as written, raw or decoded" do
-      paths = fixtures("changes-failed/*.json")
+      paths = fixtures("changes-failed/{not-permitted,unreachable}.json")
 
       assert Enum.sort(paths) ==
                ~w(changes-failed/not-permitted.json changes-failed/unreachable.json)
@@ -248,8 +254,10 @@ defmodule Apiary.Sources.WireTest do
     end
 
     test "every invalid one is refused" do
-      paths = fixtures("invalid/changes-failed-*.json")
-      assert length(paths) == 15
+      paths =
+        fixtures("invalid/changes-failed-{unknown-reason,without-comment-id,comment-*}.json")
+
+      assert length(paths) == 6
 
       for path <- paths do
         assert Wire.failed(fixture(path)) == :error, path

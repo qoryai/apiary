@@ -284,13 +284,15 @@ defmodule ApiaryWeb.Routes do
         get "/runs/:run_id/diagnostics", DiagnosticsController, :show
       end
 
-      # An adapter's read of its change feed, after a cursor, and its report that it
-      # stopped trying to post the comment of one of the feed's entries.
+      # An adapter's read of its change feed, after a cursor, its report that it stopped
+      # trying to post the comment of one of the feed's entries or to apply a change
+      # request, and its reply for a change request.
       scope "/v1", ApiaryWeb.Contract do
         pipe_through :contract_adapter
 
         get "/work-items/changes", ChangesController, :index
         post "/work-items/changes/failed", ChangesFailedController, :create
+        post "/work-items/changes/submitted", ChangesSubmittedController, :create
       end
 
       # An adapter's requests: its declaration as it starts, and the secrets it stores in

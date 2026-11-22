@@ -26,7 +26,8 @@ defmodule ApiaryWeb.Contract.AdapterFeatureOffTest do
     "/v1/source-items/comments",
     "/v1/grants",
     "/v1/grants/end",
-    "/v1/work-items/changes/failed"
+    "/v1/work-items/changes/failed",
+    "/v1/work-items/changes/submitted"
   ]
   # The same routes, a character of each escaped, as the router decodes them, with the
   # route each names.
@@ -42,7 +43,8 @@ defmodule ApiaryWeb.Contract.AdapterFeatureOffTest do
     {"/v1/gr%61nts", "/v1/grants"},
     {"/v1/grants/%65nd", "/v1/grants/end"},
     {"/v1/work-items/changes/%66ailed", "/v1/work-items/changes/failed"},
-    {"/v1/work%2Ditems/changes/failed", "/v1/work-items/changes/failed"}
+    {"/v1/work%2Ditems/changes/failed", "/v1/work-items/changes/failed"},
+    {"/v1/work-items/changes/%73ubmitted", "/v1/work-items/changes/submitted"}
   ]
   # Paths the router does not know, of two segments, of three and of four.
   @unknown_two "/v1/source-unknown"

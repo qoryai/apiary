@@ -1,0 +1,21 @@
+{
+  "version": 1,
+  "time": "2026-11-18T12:00:00Z",
+  "change_request_id": "av_7k2m9q4v1x8z3c5d",
+  "target": {
+    "collection": "CAMPAIGNS"
+  },
+  "action": "updated",
+  "address": {
+    "url": "https://ads.example.org/campaigns/spring-sale"
+  },
+  "data": {
+    "bids": [
+      {
+        "campaign": "spring-sale",
+        "bid": 1.25,
+        "was": 1.5
+      }
+    ]
+  }
+}
