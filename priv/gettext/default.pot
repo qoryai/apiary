@@ -5156,6 +5156,11 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
+msgid "Add `extends:` with the workspace's stack to `qory.yaml`: hooks run only in a harness file that extends a stack."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
 msgid "Add a harness file to the target, or set a harness in the workspace's settings, then run Explore again. The run has neither."
 msgstr ""
 

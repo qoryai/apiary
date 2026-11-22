@@ -42,9 +42,11 @@ defmodule Apiary.Harnesses.Walk do
   # `harness.yaml` is read at the target's head (`HEAD`), and `qory.yaml` at the version
   # that read returned, which is the run's `target_version`. Both found fail `invalid`.
   # A file whose harness section has `extends`, or has no `extends` and lists modules,
-  # applies, origin `:file`. Any other case, a file with no harness section, one with the
-  # machine harness settings alone, one whose section has neither `extends` nor modules,
-  # or no file, takes the next step of the order. A target no collection has, or a domain
+  # applies, origin `:file`. A `qory.yaml` whose section has neither and has `hooks` that
+  # are not empty fails `invalid` with the rule `hooks_without_stack`: its hooks would run
+  # in no harness. Any other case, a file with no harness section, one with the machine
+  # harness settings alone, one whose section has neither `extends` nor modules, or no
+  # file, takes the next step of the order. A target no collection has, or a domain
   # without harness files, is not read and has no `target_version`.
   #
   # ## The choice's document
@@ -504,6 +506,10 @@ defmodule Apiary.Harnesses.Walk do
             # A section that defines a stack, with no base.
             {:ok, %{"modules" => [_ | _]} = section} ->
               {version, {:file, section, Map.put(location, :version, version)}}
+
+            # Hooks run only in a harness file that extends a stack.
+            {:ok, %{"hooks" => hooks}} when file == "qory.yaml" and hooks not in [nil, [], %{}] ->
+              fail(:invalid, {:shown, location.label}, rule("hooks_without_stack"))
 
             {:ok, _no_base} ->
               {version, :absent}

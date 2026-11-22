@@ -3328,6 +3328,13 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                rule: %{"rule" => "both_files", "values" => %{}}
              },
              "Correct https://code.example.com/acme/app, then run Explore again. The source breaks the harness format: it has both harness.yaml and qory.yaml: keep one."},
+            # Hooks with no stack: the sentence alone, with its fix first.
+            {%{
+               code: "invalid",
+               source: "https://code.example.com/acme/app",
+               rule: %{"rule" => "hooks_without_stack", "values" => %{}}
+             },
+             "Add `extends:` with the workspace's stack to `qory.yaml`: hooks run only in a harness file that extends a stack."},
             {%{code: "invalid", rule: %{"rule" => "size", "values" => %{"n" => 65_536}}},
              "Correct #{setting}, then run Explore again. The source breaks the harness format: it is larger than 65536 bytes as JSON."},
             {%{code: "walk_error"},
