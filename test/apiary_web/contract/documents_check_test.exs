@@ -76,6 +76,22 @@ defmodule ApiaryWeb.Contract.DocumentsCheckTest do
       assert DocumentsCheck.check(%{}) == :ok
     end
 
+    # The rule compares the collection alone, as Go does: a repeat of the address is no
+    # repeat.
+    test "is no repeat for the same path under another collection" do
+      address = %{"system" => "code.example.com", "path" => "acme/shop"}
+
+      assert DocumentsCheck.check(%{
+               "target" => @target,
+               "read_targets" => [%{"collection" => "R_2", "address" => address}]
+             }) == :ok
+
+      assert DocumentsCheck.check(%{
+               "target" => Map.put(@target, "address", address),
+               "read_targets" => [%{"collection" => "R_2", "address" => address}]
+             }) == :ok
+    end
+
     test "reports the first entry that the rule refuses, by position" do
       assert DocumentsCheck.check(%{
                "target" => @target,
