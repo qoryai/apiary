@@ -3328,13 +3328,14 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                rule: %{"rule" => "both_files", "values" => %{}}
              },
              "Correct https://code.example.com/acme/app, then run Explore again. The source breaks the harness format: it has both harness.yaml and qory.yaml: keep one."},
-            # Hooks with no stack: the sentence alone, with its fix first.
+            # Hooks with no stack: the sentence alone, with its fix first. Its code font is
+            # checked in the next test.
             {%{
                code: "invalid",
                source: "https://code.example.com/acme/app",
                rule: %{"rule" => "hooks_without_stack", "values" => %{}}
              },
-             "Add `extends:` with the workspace's stack to `qory.yaml`: hooks run only in a harness file that extends a stack."},
+             "Add extends: with the workspace's stack to qory.yaml: hooks run only in a harness file that extends a stack."},
             {%{code: "invalid", rule: %{"rule" => "size", "values" => %{"n" => 65_536}}},
              "Correct #{setting}, then run Explore again. The source breaks the harness format: it is larger than 65536 bytes as JSON."},
             {%{code: "walk_error"},
@@ -3514,6 +3515,31 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                "The run did not start.",
                "Contact support. The run did not start: the call to code-host for the harness sources returned the error bad."
              ]
+    end
+
+    test "a run whose qory.yaml has hooks and no stack: extends: and qory.yaml in code font" do
+      r =
+        run(%{
+          id: nil,
+          path: nil,
+          state: :failed,
+          outcome: :error,
+          end_cause: :harness_unresolved,
+          harness_failure: %{
+            code: "invalid",
+            source: "https://code.example.com/acme/app",
+            rule: %{"rule" => "hooks_without_stack", "values" => %{}},
+            adapter: nil
+          },
+          proposal: nil,
+          started_at: nil,
+          ended_at: ago(3600),
+          duration: nil
+        })
+
+      html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+      assert texts(html, "#work-item-explore-none p code") == ["extends:", "qory.yaml"]
+      refute html =~ "`"
     end
 
     test "a run whose harness has no skill for its workflow: the workflow and where the harness comes from" do

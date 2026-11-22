@@ -550,11 +550,15 @@ defmodule Apiary.Harnesses.WalkTest do
       end
     end
 
-    test "a qory.yaml whose section has hooks and neither extends nor modules fails invalid, with the fix as its words",
+    test "a qory.yaml whose section has hooks and neither extends nor modules fails invalid",
          ctx do
       setting(ctx.scope, @setting)
 
-      for section <- ["hooks: [guard.sh]\n", "name: app\n  modules: []\n  hooks: [guard.sh]\n"] do
+      for section <- [
+            "hooks: [guard.sh]\n",
+            "hooks:\n    PreToolUse: [guard.sh]\n",
+            "name: app\n  modules: []\n  hooks: [guard.sh]\n"
+          ] do
         serve([ctx.run],
           covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
           files: Map.put(@base_files, {"R_app", "qory.yaml"}, "harness:\n  " <> section)
@@ -565,9 +569,6 @@ defmodule Apiary.Harnesses.WalkTest do
                section
 
         assert rule == %{"rule" => "hooks_without_stack", "values" => %{}}
-
-        assert ApiaryWeb.WorkItemComponents.harness_rule_words(rule) ==
-                 "Add `extends:` with the workspace's stack to `qory.yaml`: hooks run only in a harness file that extends a stack."
       end
     end
 
