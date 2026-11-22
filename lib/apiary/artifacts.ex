@@ -208,8 +208,10 @@ defmodule Apiary.Artifacts do
   #
   #   - approved by a person: `{:approved, number}`, when a decision of the work item at a
   #     gate, of kind `:approve` and not `automatic`, covers the version (`versions` has its
-  #     public id; a member whose account is gone has no `user_id`, and counts). The check
-  #     comes before the two below;
+  #     public id; a member whose account is gone has no `user_id`, and counts) and counts
+  #     (`Apiary.Stages.Withdrawals`): with only an approval of an earlier take in, or one
+  #     a later move back withdrew, the withdrawal goes ahead. The check comes before the
+  #     two below;
   #   - none, as the name has no version outside cancelled runs: `:no_version`;
   #   - a withdrawal: `{:withdrawn, number}`.
   #
@@ -255,7 +257,7 @@ defmodule Apiary.Artifacts do
   alias Apiary.Processes
   alias Apiary.Processes.Version, as: ProcessVersion
   alias Apiary.Runs.RunCredentials
-  alias Apiary.Stages.GateDecision
+  alias Apiary.Stages.{GateDecision, Withdrawals}
   alias Apiary.WorkItems.{State, WorkItem}
 
   require Logger
@@ -852,14 +854,18 @@ defmodule Apiary.Artifacts do
   defp with_files(%Version{artifact: artifact}), do: {:ok, artifact}
 
   # Whether a person approved `version` at a gate of the work item: a decision of kind
-  # `:approve` that is not `automatic` and covers the version's public id. A nil `user_id`
-  # is a member whose account is gone (`Apiary.Stages.GateDecision`), and counts.
+  # `:approve` that is not `automatic`, covers the version's public id and counts: made in
+  # the work item's take in and withdrawn by no later move (`Apiary.Stages.Withdrawals`).
+  # A nil `user_id` is a member whose account is gone (`Apiary.Stages.GateDecision`), and
+  # counts.
   defp person_approved?(held, %Version{public_id: public_id}) do
-    Repo.exists?(
-      from d in GateDecision,
-        where: d.work_item_id == ^held.id and d.kind == :approve and d.automatic == false,
-        where: fragment("? @> to_jsonb(?::text)", d.versions, ^public_id)
+    from(d in GateDecision,
+      as: :decision,
+      where: d.work_item_id == ^held.id and d.kind == :approve and d.automatic == false,
+      where: fragment("? @> to_jsonb(?::text)", d.versions, ^public_id)
     )
+    |> Withdrawals.counted(held)
+    |> Repo.exists?()
   end
 
   # The shape of a refusal for the server log, with nothing of a file, a filename or a

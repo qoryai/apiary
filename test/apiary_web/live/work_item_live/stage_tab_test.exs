@@ -3480,14 +3480,16 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
   end
 
   describe "after a move back to Explore" do
-    test "Shape's tab has the artifacts once, above the tabs", %{conn: conn, scope: scope} do
+    test "Shape's tab has the artifacts once, in its record block", %{conn: conn, scope: scope} do
       work_item = decided_at_gate!(scope)
       {:ok, _moved} = Stages.move(scope, work_item, @explore, nil, expect_stage: @shape)
 
+      # The move back withdrew the confirmation, so nothing is above the tabs, as at a
+      # first Explore.
       {:ok, view, _html} = live(conn, stage(scope, work_item.number))
 
-      assert has_element?(view, "#work-item-flow #work-item-artifact-list")
-      refute has_element?(view, "#work-item-record #work-item-artifacts")
+      refute has_element?(view, "#work-item-flow #work-item-artifact-list")
+      assert has_element?(view, "#work-item-record #work-item-artifact-list")
     end
 
     test "the notes above the tabs leave out a comment that Explore's approval closed",

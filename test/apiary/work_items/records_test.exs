@@ -85,15 +85,11 @@ defmodule Apiary.WorkItems.RecordsTest do
                ])
     end
 
-    test "one confirmation of a take in", %{work_item: item} do
+    test "a take in keeps a confirmation again after one a move back withdrew",
+         %{work_item: item} do
       confirmation!(item)
 
-      assert_raise Ecto.ConstraintError,
-                   ~r/work_item_confirmations_work_item_id_take_in_index/,
-                   fn ->
-                     confirmation!(item, %{attempt: 2})
-                   end
-
+      assert confirmation!(item, %{attempt: 2})
       assert confirmation!(item, %{take_in: 2})
     end
 

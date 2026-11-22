@@ -174,7 +174,8 @@ defmodule Apiary.WorkItems.ExploreView do
   alias Apiary.Nodes.Node
   alias Apiary.Runs.{ReadNeeds, WriteNeeds}
   alias Apiary.Explore.{Given, Questions, ReviewComments}
-  alias Apiary.WorkItems.{Confirmation, Explore, Proposal, State, WorkItem}
+  alias Apiary.Stages.Withdrawals
+  alias Apiary.WorkItems.{Explore, Proposal, State, WorkItem}
 
   @ends [:closed, :undone]
 
@@ -930,9 +931,14 @@ defmodule Apiary.WorkItems.ExploreView do
      )}
   end
 
-  # Every confirmation of the work item `id`, by take in, read in one query for the page.
+  # The newest confirmation of each take in of the work item `id` that counts
+  # (`Apiary.WorkItems.Explore.confirmation/2`), by take in, read in one query for the page.
   defp confirmations(id) do
-    Repo.all(from c in Confirmation, where: c.work_item_id == ^id)
+    Repo.all(
+      from [confirmation: c] in Withdrawals.confirmations(),
+        where: c.work_item_id == ^id,
+        order_by: c.confirmed_at
+    )
     |> Map.new(&{&1.take_in, &1})
   end
 

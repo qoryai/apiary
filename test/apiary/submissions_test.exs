@@ -872,10 +872,37 @@ defmodule Apiary.SubmissionsTest do
         stage_id: @build,
         kind: :approve,
         versions: [version.public_id],
+        take_in: ctx.work_item.take_in,
         inserted_at: DateTime.utc_now()
       })
 
       assert [%{approved: true}] = rows(ctx)
+    end
+
+    test "a version whose approval a later move back withdrew has no mark", ctx do
+      version = store!(ctx, ctx.first, submission())
+      now = DateTime.utc_now()
+
+      decision = %GateDecision{
+        organisation_id: ctx.work_item.organisation_id,
+        workspace_id: ctx.work_item.workspace_id,
+        work_item_id: ctx.work_item.id,
+        process_version_id: Apiary.Processes.version_for(ctx.work_item).id,
+        user_id: ctx.scope.user.id,
+        stage_id: @build,
+        take_in: ctx.work_item.take_in
+      }
+
+      Repo.insert!(%{
+        decision
+        | kind: :approve,
+          versions: [version.public_id],
+          inserted_at: DateTime.add(now, -1, :second)
+      })
+
+      Repo.insert!(%{decision | kind: :move, to_stage_id: @build, inserted_at: now})
+
+      assert [%{approved: false}] = rows(ctx)
     end
 
     test "a row has the end of its run", ctx do

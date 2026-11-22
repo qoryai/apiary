@@ -165,6 +165,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
           user_id: ctx.scope.user.id,
           stage_id: @explore,
           kind: kind,
+          take_in: work_item.take_in,
           inserted_at: DateTime.utc_now()
         ] ++ fields
       )
@@ -998,6 +999,30 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                  "at" => at(approval.inserted_at)
                }
              ]
+    end
+
+    test "has no approval that a later move back withdrew", ctx do
+      place!(ctx)
+
+      assert write(
+               ctx,
+               "/artifacts",
+               push_body("screenshot", [{"one.png", "image/png", @png <> "back"}])
+             ).status == 201
+
+      [pushed] = RunApiStubs.pushed()
+      now = DateTime.utc_now()
+
+      decide!(ctx, :approve,
+        versions: [pushed.public_id],
+        inserted_at: DateTime.add(now, -1, :second)
+      )
+
+      decide!(ctx, :move, to_stage_id: @explore, inserted_at: now)
+
+      [artifact] = json_response(read(ctx, "/artifacts"), 200)["artifacts"]
+      assert artifact["approved_version"] == nil
+      assert [%{"approvals" => []}] = artifact["versions"]
     end
 
     test "has an approval a gate none recorded with no member as by null, automatic", ctx do

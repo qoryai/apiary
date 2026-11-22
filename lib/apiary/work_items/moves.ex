@@ -1702,9 +1702,6 @@ defmodule Apiary.WorkItems.Moves do
       confirmed_at: now
     }
     |> Ecto.Changeset.change()
-    |> Ecto.Changeset.unique_constraint(:take_in,
-      name: :work_item_confirmations_work_item_id_take_in_index
-    )
     |> Repo.insert()
     |> case do
       {:ok, _confirmation} -> :ok

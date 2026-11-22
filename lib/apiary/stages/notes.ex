@@ -19,7 +19,8 @@ defmodule Apiary.Stages.Notes do
 
   # gate_decisions/1 is the query of the work item's decisions that are notes: each
   # request for changes and each move, but a move that resolves an escalation (a move back
-  # or a switch of track), which has no note: the escalation stands for it.
+  # or a switch of track), which has no note: the escalation stands for it, and a move the
+  # stage runner wrote (`automatic`: a return, a take in again), which no person made.
   @doc false
   @spec gate_decisions(Ecto.UUID.t()) :: Ecto.Query.t()
   def gate_decisions(work_item_id),
@@ -27,7 +28,7 @@ defmodule Apiary.Stages.Notes do
       from(d in GateDecision,
         where:
           d.work_item_id == ^work_item_id and d.kind in [:request_changes, :move] and
-            is_nil(d.escalation_id)
+            is_nil(d.escalation_id) and not d.automatic
       )
 
   # escalations/1 is the query of the work item's escalations that are notes: each one a
