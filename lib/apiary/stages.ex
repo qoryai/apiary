@@ -2493,9 +2493,9 @@ defmodule Apiary.Stages do
   # `verification` made in the stage that run belongs to, marked `from: :return` and not
   # required; a type with no such version has no entry. A version in `listed` (the entries
   # already there) is left out. The entries last until the stage's gate passes again or the
-  # work item leaves the stage by a move: an approval of the stage, or a move out of it,
-  # made after the return (`left_since?/2`). A Request changes at the gate and a decision
-  # in another stage end nothing. A newer return replaces them. They are not the stage's
+  # work item leaves the stage by a move: an approval of the stage, or a person's move out
+  # of it, made after the return (`left_since?/2`). A Request changes at the gate, a move
+  # that the stage runner writes, and a decision in another stage end nothing. A newer return replaces them. They are not the stage's
   # outputs, so no approval lists them, and they are no person's note (`{feedback: new}`
   # stays false).
   defp returned_inputs(%WorkItem{take_in: take_in} = work_item, stage, artifacts, listed)
@@ -2541,15 +2541,17 @@ defmodule Apiary.Stages do
   end
 
   # Whether the work item's take in has, after the run's return, an approval of the stage
-  # the return entered, or a move out of it. An approval ends the findings whether or not
-  # it still counts (`Apiary.Stages.Withdrawals`): a later move back does not list them
-  # again.
+  # the return entered, or a move out of it that is not the stage runner's
+  # (`runner_move!/4`), as `departures/2` reads moves. An approval ends the findings whether
+  # or not it still counts (`Apiary.Stages.Withdrawals`): a later move back does not list
+  # them again.
   defp left_since?(%WorkItem{id: id, take_in: take_in}, %DispatchRun{} = run) do
     Repo.exists?(
       from d in GateDecision,
         where:
           d.work_item_id == ^id and d.take_in == ^take_in and d.stage_id == ^run.returned_to and
-            d.kind in [:approve, :move] and d.inserted_at > ^run.returned_at
+            d.inserted_at > ^run.returned_at and
+            (d.kind == :approve or (d.kind == :move and not d.automatic))
     )
   end
 

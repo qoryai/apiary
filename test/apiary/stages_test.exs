@@ -7087,6 +7087,30 @@ defmodule Apiary.StagesTest do
       assert from_return(moved) == []
     end
 
+    test "a move the stage runner writes out of Build ends none of the return's findings",
+         %{scope: scope} do
+      work_item = in_verify!(scope) |> returned_by("# Criterion 2 fails")
+      returned = from_return(work_item)
+      assert [_verdict, _verification] = returned
+
+      # A move as `runner_move!/4` writes it for a run's return out of Build.
+      Repo.insert!(%GateDecision{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        process_version_id: work_item.process_version_id,
+        stage_id: @build,
+        to_stage_id: @build,
+        kind: :move,
+        automatic: true,
+        take_in: work_item.take_in,
+        left_stage_entered_at: work_item.stage_entered_at,
+        inserted_at: DateTime.utc_now()
+      })
+
+      assert from_return(reload(work_item)) == returned
+    end
+
     test "with no verification, only the verdict is listed", %{scope: scope} do
       work_item = in_verify!(scope) |> returned_by(nil)
       verdict = newest_id(work_item, "verdict")
