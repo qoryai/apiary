@@ -1265,7 +1265,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       path = fn run -> ~p"/#{scope.organisation}/#{scope.workspace}/runs/#{run.number}" end
 
       # A second take in, with one run of the take in before it.
-      for schema <- [DispatchRun, Confirmation] do
+      for schema <- [DispatchRun, Confirmation, GateDecision] do
         Repo.update_all(from(d in schema, where: d.work_item_id == ^work_item.id),
           inc: [take_in: 1]
         )
@@ -1290,16 +1290,13 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       refute has_element?(view, ~s(#work-item-runs a[href="#{path.(build)}"]))
       refute has_element?(view, ~s(#work-item-runs a[href="#{path.(earlier)}"]))
 
-      # The stage's row and the head link Explore's run, not the newer run of Build.
-      assert has_element?(
-               view,
-               ~s(#work-item-stage-run-link[href="#{path.(explore)}"]),
-               "Run #{explore.number}"
-             )
-
-      refute has_element?(view, "#work-item-stage-line a")
-      assert has_element?(view, ~s(#work-item-head-stage-status a[href="#{path.(explore)}"]))
+      # The move back withdrew the confirmation: Explore's wait block, as at a first
+      # Explore, links Explore's run, not the newer run of Build, and the header has no
+      # stage status.
       assert has_element?(view, ~s(#work-item-explore-wait-h a[href="#{path.(explore)}"]))
+      refute has_element?(view, ~s(#work-item-explore-wait-h a[href="#{path.(build)}"]))
+      refute has_element?(view, "#work-item-stage-run-link")
+      refute has_element?(view, "#work-item-head-stage-status")
     end
 
     test "after a move back, a cancelled run of Build reads Cancelling in the Runs list", %{
