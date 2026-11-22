@@ -111,7 +111,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # only while a note of a gate decision, an escalation or a check exists. A work item at
   # Explore's stage whose status is none of Explore's, moved back or ended, has the
   # artifacts above the tabs (`lists_above?/1`), with every note, and the Runs list there
-  # only while a run is in no tab's runs fold (`runs_above?/4`).
+  # only while a run is in no tab's runs fold (`runs_above?/4`). A work item moved back to
+  # Explore has the Runs list there too while a later stage's run is in no tab's fold.
   # The page reads them again on `{:stage_changed, id}` and `{:artifact_pushed, …, …}` on the
   # work item's topics (`ApiaryWeb.WorkItemLive.Workflow.subscribe/2`), and does
   # Approve, Request changes, the escalation actions and Move back through
@@ -330,6 +331,7 @@ defmodule ApiaryWeb.WorkItemLive.Show do
             :if={
               @flow &&
                 (lists_above?(@flow) or stage_notes(@flow) != [] or
+                   runs_above?(@flow, @item, @earlier_runs, @artifacts) or
                    (!@flow.explore and needs?(@flow)))
             }
             id="work-item-flow"
@@ -3566,14 +3568,21 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # there too while a run of the take in is in no tab's runs fold (`runs_above?/4`).
   defp lists_above?(flow), do: flow.at_explore and not flow.explore
 
-  # Whether the Runs list is above the tabs, with the artifacts (`lists_above?/1`): only
-  # while a run of the take in is in no tab's runs fold (`StageTab.folded?/4`), such as a
-  # later stage's only run, still queued or running, at a stage with no version of an
-  # output, whose tab has no record block. Each run is listed once.
+  # Whether the Runs list is above the tabs: at Explore's stage, only while a run of the
+  # take in is in no tab's runs fold (`StageTab.folded?/4`), such as a later stage's only
+  # run, still queued or running, at a stage with no version of an output, whose tab has no
+  # record block. Moved back or ended, it is there with the artifacts (`lists_above?/1`).
+  # Moved back to Explore, which withdraws the confirmation, the status is one of Explore's
+  # again and the artifacts stay in Explore's fold; the list is there while a run of the
+  # take in is not Explore's, and also lists Explore's runs, which Explore's fold lists too.
   defp runs_above?(flow, item, earlier_runs, artifacts),
     do:
-      lists_above?(flow) and
+      flow.at_explore and (not flow.explore or later_run?(flow)) and
         not StageTab.folded?(flow, item[:run], earlier_runs, artifacts)
+
+  # Whether a run of the take in is of a stage after Explore's.
+  defp later_run?(flow),
+    do: Enum.any?(flow.runs, &((Map.get(&1, :stage_id) || flow.explore_id) != flow.explore_id))
 
   # The record block of a stage after Explore (`foot_record/1`), which the Ticket tab and
   # the Thread have at their foot: the runs Details counts (`ApiaryWeb.WorkItemLive.View`),
