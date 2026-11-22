@@ -9195,6 +9195,67 @@ defmodule Apiary.StagesTest do
       assert Explore.current(reload(work_item), DateTime.utc_now()).status == :shape
     end
 
+    test "a process version without the stage a move landed on: the move withdraws every " <>
+           "approval made before it",
+         %{scope: scope} do
+      work_item = in_verify_with_outputs!(scope)
+      {:ok, work_item} = Stages.move(scope, work_item, @build, nil, expect_stage: @verify)
+
+      work_item =
+        work_item
+        |> end_run!(pushes_one("walkthrough", "# Walkthrough 2", []))
+        |> end_run!(verdict("passed"))
+
+      assert %WorkItem{stage_id: @verify} = work_item
+      assert counted(work_item) == %{"acceptance-criteria" => [1], "walkthrough" => [1, 0]}
+
+      # A version with no Build, assigned to the work item at Verify: the place of the
+      # stage the move landed on is unknown, so the move withdraws Shape's approval too.
+      # Build's approval after the move still counts.
+      document = Processes.version_for(work_item).document
+
+      stages =
+        for stage <- document["stages"], stage["id"] != @build do
+          if stage["id"] == @verify,
+            do: %{
+              stage
+              | "inputs" => Enum.reject(stage["inputs"], &(&1["type"] == "walkthrough"))
+            },
+            else: stage
+        end
+
+      {:ok, trial} =
+        Processes.save(scope, scope.workspace, %{document | "stages" => stages}, trial: true)
+
+      {:ok, work_item} = Processes.assign(scope, work_item, trial)
+      assert counted(work_item) == %{"acceptance-criteria" => [0], "walkthrough" => [1, 0]}
+    end
+
+    test "a confirmation of a run with no stage is Explore's: a move back to Shape keeps it, " <>
+           "a move back to Explore withdraws it",
+         %{scope: scope} do
+      work_item = in_verify_with_outputs!(scope)
+      confirmation = Explore.confirmation(work_item.id, work_item.take_in)
+
+      {1, _rows} =
+        Repo.update_all(
+          from(d in DispatchRun,
+            where:
+              d.work_item_id == ^work_item.id and d.take_in == ^work_item.take_in and
+                d.attempt == ^confirmation.attempt
+          ),
+          set: [stage_id: nil]
+        )
+
+      {:ok, work_item} = Stages.move(scope, work_item, @shape, nil, expect_stage: @verify)
+      assert Explore.confirmation(work_item.id, work_item.take_in).id == confirmation.id
+      assert Explore.statuses([work_item.id]) == %{work_item.id => :shape}
+
+      {:ok, work_item} = Stages.move(scope, work_item, @explore, nil, expect_stage: @shape)
+      assert Explore.confirmation(work_item.id, work_item.take_in) == nil
+      refute Explore.statuses([work_item.id]) == %{work_item.id => :shape}
+    end
+
     test "a move back to a stage after Explore's leaves the confirmation counting",
          %{scope: scope} do
       work_item = in_verify_with_outputs!(scope)
