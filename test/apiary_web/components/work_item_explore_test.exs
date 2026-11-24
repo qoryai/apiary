@@ -2968,11 +2968,11 @@ defmodule ApiaryWeb.WorkItemExploreTest do
     test "a run whose shared stage's workflows would run with different access names the workflow to move" do
       for {detail, body} <- [
             {{:access, "implement-changes", "read", "write"},
-             "Move implement-changes to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access, then run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."},
+             "Move implement-changes to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access, then run the round again. The harness sets one workflow to an access that cannot share one run with the others."},
             {:access,
              "Move one of the workflows to a separate stage in Workspace settings › Workflows, then run the round again."},
             {nil,
-             "Run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."}
+             "Run the round again. The harness sets access levels that cannot share one run: only read and write can."}
           ] do
         r =
           run(%{

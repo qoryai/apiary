@@ -7327,8 +7327,9 @@ defmodule ApiaryWeb.WorkItemComponents do
           gettext("The run ended after session %{number}.", number: session),
           unstarted_words(cause)}
 
-  # A run whose stage's workflows would run with different access, as the harness sets
-  # `workflow` a lower level than `other`, the level the other workflows run with.
+  # A run whose stage's workflows would run with access levels that one run cannot have,
+  # as the harness sets `workflow` a lower level than `other`, the level another workflow
+  # runs with.
   defp no_result_words(
          %{end_cause: :shared_access_differs, shared_access: {:access, workflow, _level, other}},
          _earlier
@@ -7336,7 +7337,7 @@ defmodule ApiaryWeb.WorkItemComponents do
        do:
          {"hero-exclamation-triangle-micro", gettext("The run did not start."),
           gettext(
-            "Move %{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it %{other} access, then run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access.",
+            "Move %{workflow} to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it %{other} access, then run the round again. The harness sets one workflow to an access that cannot share one run with the others.",
             workflow: workflow,
             other: other
           )}
@@ -7403,7 +7404,8 @@ defmodule ApiaryWeb.WorkItemComponents do
        ),
        do: session_key_words(detail)
 
-  # A run whose stage's entries set different access, with no harness level between them.
+  # A run whose stage's entries set access levels that one run cannot have, with no
+  # harness level between them.
   defp no_result_words(%{end_cause: :shared_access_differs, shared_access: :access}, _earlier),
     do:
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),
@@ -7841,7 +7843,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp unstarted_words(:shared_access_differs),
     do:
       gettext(
-        "Run the round again. The harness sets a different access for one of the workflows, so the workflows of the stage would run with different access."
+        "Run the round again. The harness sets access levels that cannot share one run: only read and write can."
       )
 
   defp unstarted_words(:model_choice_missing),

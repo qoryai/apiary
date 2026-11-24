@@ -366,7 +366,8 @@ defmodule ApiaryWeb.HarnessLiveProcessTest do
 
     test "a shared stage whose harness sets its workflows different access shows why, and no save",
          ctx do
-      QoryHarnessFixture.serve!(shared_files("write", "read"))
+      # write-no-push beside write cannot share one run; read beside write can.
+      QoryHarnessFixture.serve!(shared_files("write", "write-no-push"))
       {:ok, _commit} = Qory.read({:branch, "main"})
 
       {:ok, view, _html} = live(ctx.conn, ctx.path)
@@ -374,7 +375,7 @@ defmodule ApiaryWeb.HarnessLiveProcessTest do
       render_async(view)
 
       assert text(view, "#harness-update-refused") ==
-               "Ask whoever keeps the harness to give write-acceptance-checks write access, or to move it to a separate stage. write-acceptance-checks runs with read access, because its harness sets read."
+               "Ask whoever keeps the harness to give write-acceptance-checks write access, or to move it to a separate stage. write-acceptance-checks runs with write-no-push access, because its harness sets write-no-push."
 
       assert has_element?(view, "#harness-update-save[disabled]")
       assert has_element?(view, "#harness-update-try[disabled]")

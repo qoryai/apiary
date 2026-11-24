@@ -97,8 +97,9 @@ defmodule Apiary.Processes.HarnessUpdate do
       commit, none where that read fails;
     * `refused`: the errors of `Apiary.Processes.validate/3` with `levels` and the
       workspace's model choices (`Apiary.Processes.workspace_models/2`) for a stage with
-      `shared_run: true` whose workflows would run with different access, or whose model
-      choices do not fit one run, which a save returns; empty for none.
+      `shared_run: true` whose workflows would run with access levels that one run
+      cannot have, or whose model choices do not fit one run, which a save returns; empty
+      for none.
   """
   @type update :: %{
           source: :qory | :repository,
@@ -431,8 +432,8 @@ defmodule Apiary.Processes.HarnessUpdate do
   # commit the update reads: a second read of the source, as the scope's person, pinned to
   # that commit and narrowed to that stack (`Apiary.Stacks.Sources.read/2`); of every
   # stack for a template with none. A read that fails gives no levels: the update goes on,
-  # and the claim ends a run whose stage's workflows would run with different access
-  # (`Apiary.Dispatches.Handover`).
+  # and the claim ends a run whose stage's workflows would run with access levels that one
+  # run cannot have (`Apiary.Dispatches.Handover`).
   defp levels_at(scope, source, commit, template) do
     stack = Map.get(template, :stack)
     narrowing = if is_binary(stack), do: %{"stack" => stack}, else: %{}
@@ -615,7 +616,7 @@ defmodule Apiary.Processes.HarnessUpdate do
   # save checks the stages with `shared_run: true` against the harness's `levels` and the
   # workspace's model choices, `models`, as the Workflows page's save does; the switch's
   # update checks neither, and the claim ends a run whose stage's workflows would run
-  # with different access, or whose model choices do not fit one run
+  # with access levels that one run cannot have, or whose model choices do not fit one run
   # (`Apiary.Dispatches.Handover`).
   defp save_update(scope, workspace, update, trial?, after_save, checks \\ {%{}, nil}) do
     {levels, models} = checks

@@ -781,8 +781,8 @@ defmodule Apiary.WorkItems.ExploreView do
       # input of its next session could not be formed (`Apiary.Stages.ended_after_session/1`).
       ended_after_session: ended_after_session(step.dispatch_run),
       # For a run that ended before it started as its stage's workflows would run with
-      # different access, the difference as the harness declares the levels now
-      # (`Apiary.Stages.shared_access/1`); nil for none.
+      # access levels that one run cannot have, the difference as the run's harness
+      # resolves the levels (`Apiary.Stages.shared_access/1`); nil for none.
       shared_access: shared_access(step.dispatch_run),
       # For a run that ended before it started as its stage's model choices did not fit
       # the one run, the fault as the choices are now (`Apiary.Stages.shared_models/1`):

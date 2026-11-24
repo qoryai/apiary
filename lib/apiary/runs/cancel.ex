@@ -152,9 +152,11 @@ defmodule Apiary.Runs.Cancel do
   access `write`, which its push entry has, `read` where it has entries and none writes,
   which a run has only where its adapter declares apply items; else the top-level
   `access` of the documents the claim sent the run (`runs.run_documents`); else, for a run
-  with neither,
+  with neither, the level the claim computes (`Apiary.Runs.RunCredentials.run_access/1`):
   the level of its harness walk (`Apiary.Harnesses.RunHarness`) lowered by its stage
-  entry (`Apiary.Stages.run_access/2`), as the claim computes it.
+  entry, or for a run of a stage that shares one run the highest of its entries' levels
+  (`Apiary.Stages.run_access/2`), and `read` for a run with no walk or with the built-in
+  harness.
   """
   @spec write_run?(Apiary.Organisations.Workspace.t(), Run.t()) :: boolean
   def write_run?(%{domain: "software"}, %Run{id: run_id, dispatch_run_id: id})
@@ -201,19 +203,9 @@ defmodule Apiary.Runs.Cancel do
   end
 
   defp computed_access(id) do
-    walk =
-      Repo.one(
-        from h in Apiary.Harnesses.RunHarness,
-          where: h.dispatch_run_id == ^id,
-          select: h.access_level
-      )
-
-    case {walk, Repo.get(DispatchRun, id)} do
-      {walk, %DispatchRun{} = dispatch_run} when not is_nil(walk) ->
-        Apiary.Stages.run_access(walk, dispatch_run)
-
-      _none ->
-        :read
+    case Repo.get(DispatchRun, id) do
+      %DispatchRun{} = dispatch_run -> Apiary.Runs.RunCredentials.run_access(dispatch_run)
+      nil -> :read
     end
   end
 

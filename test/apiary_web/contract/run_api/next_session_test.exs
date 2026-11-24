@@ -645,6 +645,32 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
     end
   end
 
+  describe "a Build loop that writes in implement-changes and reads in review-changes" do
+    setup ctx do
+      body = [
+        %{"workflow" => "implement-changes"},
+        %{"workflow" => "review-changes", "access" => "read"}
+      ]
+
+      shared!(ctx, [
+        stage(@build, "Build", [%{"loop" => %{"rounds" => 3, "body" => body}}], %{
+          "shared_run" => true
+        })
+      ])
+    end
+
+    # The process entry of review-changes sets read. The answer for its session has no
+    # access member: the run has one access level, which only its documents have.
+    @tag :contract
+    test "answers review-changes with no access for the session", ctx do
+      body = json_response(request(ctx, ended(1)), 200)
+
+      assert %{"next" => "session", "session" => 2, "workflow" => "review-changes"} = body
+      refute Map.has_key?(body, "access")
+      assert answer_valid?(body)
+    end
+  end
+
   describe "the model of a later session, as the claim kept it" do
     defp choose!(ctx, place, attrs) do
       {:ok, _choice} =

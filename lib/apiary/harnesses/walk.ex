@@ -152,6 +152,11 @@ defmodule Apiary.Harnesses.Walk do
   #   * recorded: the access level of the stack row with the run's workflow
   #     (`Apiary.Stacks.recorded_access/3`). Nil lowers nothing.
   #
+  # The walk also records the level that the same stack file declares for each workflow
+  # it lists, `workflow_levels`, by the same rule and unlowered by the recorded level. A
+  # run of a stage whose workflows share one run takes the level of its other workflows
+  # from it (`Apiary.Stages.run_access/2`). A base that is not read records none.
+  #
   # ## The plan type
   #
   # `workflows.<workflow>.plan` of the same stack file, read beside the declared level
@@ -256,6 +261,7 @@ defmodule Apiary.Harnesses.Walk do
           required(:owner_organisation_id) => Ecto.UUID.t() | nil,
           required(:harness_hidden) => boolean,
           required(:plan_type) => String.t() | nil,
+          required(:workflow_levels) => %{String.t() => :read | :write_no_push | :write},
           required(:pins) => [map],
           required(:harness_links) => [map]
         }
@@ -337,6 +343,7 @@ defmodule Apiary.Harnesses.Walk do
       label: nil,
       workflow: workflow,
       declared: :read,
+      levels: %{},
       plan_type: nil,
       pins: %{},
       links: %{}
@@ -390,6 +397,7 @@ defmodule Apiary.Harnesses.Walk do
     Map.merge(fields, %{
       harness_hidden: state.hidden,
       plan_type: state.plan_type,
+      workflow_levels: state.levels,
       pins:
         state.pins
         |> Enum.sort()
@@ -604,6 +612,7 @@ defmodule Apiary.Harnesses.Walk do
         :error ->
           workflows = section_workflows(section)
           put(:declared, Reader.workflow_access(workflows, get(:workflow)))
+          put(:levels, Reader.workflow_levels(workflows))
           put(:plan_type, Reader.workflow_plan(workflows, get(:workflow)))
           []
       end
@@ -1057,6 +1066,7 @@ defmodule Apiary.Harnesses.Walk do
     case Reader.stack(content) do
       {:ok, %{modules: modules, workflows: workflows}} ->
         put(:declared, Reader.workflow_access(workflows, get(:workflow)))
+        put(:levels, Reader.workflow_levels(workflows))
         put(:plan_type, Reader.workflow_plan(workflows, get(:workflow)))
         modules
 

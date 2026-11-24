@@ -244,24 +244,31 @@ defmodule Apiary.Processes.HarnessUpdateTest do
 
     test "of a shared stage whose harness sets its workflows different access saves nothing",
          ctx do
-      main_at!(shared_files("write", "read"))
+      main_at!(shared_files("write", "write-no-push"))
 
       assert {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
 
       assert [
                %{
                  error: :shared_run_differs,
-                 detail: {:access, "write-acceptance-checks", "read", "write"}
+                 detail: {:access, "write-acceptance-checks", "write-no-push", "write"}
                } = refused
              ] = update.refused
 
       assert ApiaryWeb.StagesLive.Words.refusal(refused, update.document) ==
-               "Move write-acceptance-checks to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access. write-acceptance-checks runs with read access, because its harness sets read."
+               "Move write-acceptance-checks to a separate stage in Workspace settings › Workflows, or ask whoever keeps the harness to give it write access. write-acceptance-checks runs with write-no-push access, because its harness sets write-no-push."
 
       assert {:error, [%{error: :shared_run_differs, detail: {:access, _, _, _}}]} =
                HarnessUpdate.save(ctx.scope, ctx.workspace, update)
 
       assert Enum.map(versions(ctx.workspace), & &1.number) == [1]
+    end
+
+    test "of a shared stage whose harness sets read beside write saves", ctx do
+      main_at!(shared_files("write", "read"))
+
+      assert {:ok, %{refused: []} = update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      assert {:ok, %{number: 2}} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
     end
 
     test "of a shared stage whose harness sets its workflows one access saves", ctx do
@@ -280,11 +287,11 @@ defmodule Apiary.Processes.HarnessUpdateTest do
           "write-acceptance-checks" => :write
         })
 
-      repository_choice!(ctx.workspace, shared_files("write", "read"))
+      repository_choice!(ctx.workspace, shared_files("write", "write-no-push"))
 
       assert {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
 
-      assert [%{detail: {:access, "write-acceptance-checks", "read", "write"}}] =
+      assert [%{detail: {:access, "write-acceptance-checks", "write-no-push", "write"}}] =
                update.refused
 
       assert {:error, [%{error: :shared_run_differs}]} =
@@ -298,7 +305,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       :ok =
         Processes.record_declared(ctx.workspace, %{
           "plan-the-build" => :write,
-          "write-acceptance-checks" => :read
+          "write-acceptance-checks" => :write_no_push
         })
 
       repository_choice!(ctx.workspace, shared_files("read", "read"))
@@ -315,11 +322,11 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       repository =
         repository_harness!(ctx.workspace, "main", files: shared_files("write", "write"))
 
-      PublicGitServer.commit!(repository.dir, shared_files("write", "read"))
+      PublicGitServer.commit!(repository.dir, shared_files("write", "write-no-push"))
 
       assert {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
 
-      assert [%{detail: {:access, "write-acceptance-checks", "read", "write"}}] =
+      assert [%{detail: {:access, "write-acceptance-checks", "write-no-push", "write"}}] =
                update.refused
 
       assert {:error, [%{error: :shared_run_differs}]} =
@@ -329,11 +336,11 @@ defmodule Apiary.Processes.HarnessUpdateTest do
     end
 
     test "from a harness repository reads the levels of the template's stack only", ctx do
-      # A second stack of the harness sets write-acceptance-checks to read; the template's
-      # stack, software, sets both workflows to write.
+      # A second stack of the harness sets write-acceptance-checks to write-no-push; the
+      # template's stack, software, sets both workflows to write.
       authoring =
         "apiVersion: qory.dev/v1alpha1\nname: authoring\nmodules:\n  - name: core\n" <>
-          "workflows:\n  write-acceptance-checks: {access: read}\n"
+          "workflows:\n  write-acceptance-checks: {access: write-no-push}\n"
 
       files =
         Map.put(shared_files("write", "write"), "stacks/authoring/qory-stack.yaml", authoring)
@@ -358,7 +365,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       # levels do not, and the claim is the check.
       files =
         Map.put(
-          shared_files("write", "read"),
+          shared_files("write", "write-no-push"),
           "stacks/software/qory-stack.yaml",
           "workflows: [\n"
         )
