@@ -576,18 +576,19 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
     }
   end
 
-  # The work item's newest submission, the type the process version's submit step names
-  # (`submit.type` of its harness record, `Processes.harness_template/1`, which a version a
-  # person saved takes from the version it is based on; else `submission`), as the
-  # artifact index has it (`id`, its public id; `files`); nil for none. A withdrawn name and
-  # a version a cancelled run wrote count for none.
+  # The work item's newest submission, of the type in `submit.type` of the process
+  # version's harness record (`Processes.harness_template/1`, which leaves `submit` out
+  # for a version based on the one that has it), as the artifact index has it (`id`, its
+  # public id; `files`); nil for none, as for a version with no submit step. A withdrawn
+  # name and a version a cancelled run wrote count for none.
   defp submission(version, index) do
-    type =
-      case Processes.harness_template(version) do
-        %{"submit" => %{"type" => type}} when is_binary(type) -> type
-        _other -> "submission"
-      end
+    case Processes.harness_template(version) do
+      %{"submit" => %{"type" => type}} when is_binary(type) -> newest_of(index, type)
+      _other -> nil
+    end
+  end
 
+  defp newest_of(index, type) do
     index
     |> Enum.filter(&(&1.type == type and not Artifacts.withdrawn?(&1)))
     |> Enum.map(&Artifacts.newest_counted/1)

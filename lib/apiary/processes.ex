@@ -130,7 +130,7 @@ defmodule Apiary.Processes do
 
   alias Apiary.{Access, Audit, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.Dispatches.{DispatchRun, HarnessReads}
+  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.Qory
   alias Apiary.Kinds.{Bounds, Schema}
   alias Apiary.Lingo.Domain
@@ -1353,76 +1353,40 @@ defmodule Apiary.Processes do
         "type" => template.type,
         "version" => newest.number
       }
-      |> with_submit(template),
+      |> with_delivered(template),
       []
     )
   end
 
   @doc false
-  # with_submit/2 is `record`, the `template` a version keeps, with `submit`, the submit
-  # step of `template`, a template as `Apiary.Harnesses.Reader.template/1` reads it,
-  # where it has one (`Apiary.Processes.Version`). A record of a harness repository also
-  # has `submit_schema`, the JSON Schema of the submit type in `template`, because the
-  # instance keeps no files of a harness repository (`submit_schema/2`).
-  @spec with_submit(map, map) :: map
-  def with_submit(record, template) do
-    case Map.get(template, :submit) do
-      %{} = submit ->
-        record
-        |> Map.put("submit", submit)
-        |> with_submit_schema(submit["type"], template)
-
-      nil ->
-        record
+  # with_delivered/2 is `record`, the `template` a version keeps, with `artifact_types`:
+  # the entries of the template's `artifact_types` that have `deliver`, as the file has
+  # them, where it has any (`Apiary.Processes.Version`). `Apiary.Outputs` reads a map
+  # with `artifact_types`, so it reads the record as it is. `template` is a template as
+  # `Apiary.Harnesses.Reader.template/1` reads it.
+  @spec with_delivered(map, map) :: map
+  def with_delivered(record, %{artifact_types: listed}) when is_list(listed) do
+    case Enum.filter(listed, &is_map(&1["deliver"])) do
+      [] -> record
+      delivered -> Map.put(record, "artifact_types", delivered)
     end
   end
 
-  defp with_submit_schema(%{"source" => "repository"} = record, type, template) do
-    case entry_schema(submit_entry(template.artifact_types, type)) do
-      %{} = schema -> Map.put(record, "submit_schema", schema)
-      nil -> record
-    end
-  end
-
-  defp with_submit_schema(record, _type, _template), do: record
-
-  defp submit_entry(listed, type) when is_list(listed),
-    do: Enum.find(listed, &(&1["name"] == type and &1["base_view"] == "structured"))
-
-  defp submit_entry(_listed, _type), do: nil
-
-  defp entry_schema(%{"json_schema" => %{} = schema}), do: schema
-  defp entry_schema(_entry), do: nil
+  def with_delivered(record, _template), do: record
 
   @doc false
-  # submit_schema/2 is `{:ok, schema}`, the JSON Schema of the type `type` in the harness
-  # commit that the run `run` composes, where `type` is the `submit.type` of its process
-  # version and the run composes that version's commit (`HarnessReads.version_commit/2`).
-  # A Qory harness record reads it from the files kept for the commit
-  # (`Apiary.Harnesses.Qory.template/1`); a harness repository's record keeps it
-  # (`with_submit/2`). `:none` otherwise: the caller then checks the workspace's type.
-  @spec submit_schema(DispatchRun.t(), String.t()) :: {:ok, map} | :none
-  def submit_schema(%DispatchRun{process_version_id: version_id} = run, type) do
-    with %{"submit" => %{"type" => ^type}} = record <- harness_template(version_id),
-         {:ok, commit} <- HarnessReads.version_commit(run, record),
-         %{} = schema <- recorded_schema(record, commit, type) do
-      {:ok, schema}
-    else
-      _none -> :none
-    end
+  # delivered_entries/1 is the entries of `artifact_types` in `record` (`with_delivered/2`)
+  # of the types the process delivers: a structured type whose `deliver` has `send`
+  # `end_of_run` or `after_gate`, the rule that `Apiary.Outputs.delivered_types/1`
+  # applies to a template. [] for a record with none, and for nil.
+  @spec delivered_entries(map | nil) :: [map]
+  def delivered_entries(%{"artifact_types" => listed}) when is_list(listed) do
+    for %{"name" => name, "base_view" => "structured", "deliver" => %{"send" => send}} = entry
+        when is_binary(name) and send in ["end_of_run", "after_gate"] <- listed,
+        do: entry
   end
 
-  defp recorded_schema(%{"source" => "qory"}, commit, type) do
-    case Qory.template(commit) do
-      %{artifact_types: listed} -> entry_schema(submit_entry(listed, type))
-      nil -> nil
-    end
-  end
-
-  defp recorded_schema(%{"source" => "repository", "submit_schema" => schema}, _commit, _type),
-    do: schema
-
-  defp recorded_schema(_record, _commit, _type), do: nil
+  def delivered_entries(_record), do: []
 
   @doc """
   copy_template/4 inserts version 1 of `workspace`, made from a template of a harness
@@ -1606,7 +1570,9 @@ defmodule Apiary.Processes do
   the nearest version it was based on (`based_on_id`, then that version's, and so on)
   that has one. Nil for none, as for a workspace made with no template. A run of a work
   item on `version` composes that commit, where it is the commit of the harness the run
-  takes (Apiary.Dispatches.HarnessReads).
+  takes (Apiary.Dispatches.HarnessReads). A record found on a version it was based on
+  leaves out `submit`, so that only the version saved with the submit step has it
+  (`Apiary.Processes.Version`).
   """
   @spec harness_template(Version.t() | Ecto.UUID.t() | nil) :: map | nil
   def harness_template(nil), do: nil
@@ -1618,8 +1584,9 @@ defmodule Apiary.Processes do
   def harness_template(%Version{id: id}), do: harness_template(id)
 
   def harness_template(id) when is_binary(id) do
-    case harness_origin(id) do
-      %{template: template} -> template
+    case origin(id) do
+      {template, _document, 0} -> template
+      {template, _document, _depth} -> Map.delete(template, "submit")
       nil -> nil
     end
   end
@@ -1638,6 +1605,15 @@ defmodule Apiary.Processes do
   def harness_origin(%Version{id: id}), do: harness_origin(id)
 
   def harness_origin(id) when is_binary(id) do
+    case origin(id) do
+      {template, document, _depth} -> %{template: template, document: document}
+      nil -> nil
+    end
+  end
+
+  # The `template` and `document` of the version `harness_origin/1` finds for the version
+  # `id`, and how many `based_on_id` steps lie between them; nil for none.
+  defp origin(id) do
     {:ok, id} = Ecto.UUID.dump(id)
 
     %{rows: rows} =
@@ -1650,7 +1626,7 @@ defmodule Apiary.Processes do
           FROM process_versions v JOIN chain ON v.id = chain.based_on_id
           WHERE chain.template->>'commit' IS NULL AND chain.depth < 10000
         )
-        SELECT c.template, v.document FROM chain c
+        SELECT c.template, v.document, c.depth FROM chain c
         JOIN process_versions v ON v.id = c.id
         WHERE c.template->>'commit' IS NOT NULL
         ORDER BY c.depth LIMIT 1
@@ -1659,7 +1635,7 @@ defmodule Apiary.Processes do
       )
 
     case rows do
-      [[template, document]] -> %{template: template, document: document}
+      [[template, document, depth]] -> {template, document, depth}
       [] -> nil
     end
   end
@@ -2035,10 +2011,11 @@ defmodule Apiary.Processes do
 
   # The `template` of a version saved from the harness at a commit, which a rekeyed
   # version keeps so that Make current of its trial still copies the template's stack and
-  # turns the switch on (`made_current/3`); nil for any other version.
+  # turns the switch on (`made_current/3`), without `submit` (`Version`); nil for any other
+  # version.
   defp harness_commit_template(%Version{template: %{"commit" => commit} = template})
        when is_binary(commit),
-       do: template
+       do: Map.delete(template, "submit")
 
   defp harness_commit_template(%Version{}), do: nil
 

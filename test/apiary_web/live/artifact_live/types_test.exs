@@ -386,17 +386,24 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
            )
   end
 
-  describe "the type that the process's submit sets" do
-    @line_start "Runs of this workspace store their result as a submission version, checked against the schema in the harness commit that each run uses. So submission cannot be edited or deleted here."
+  describe "the type that the process marks deliver" do
+    @line_start "Runs of this workspace store their result as a submission version, checked against the schema in the harness version that each run uses. So submission cannot be edited or deleted here."
 
-    # The current process version sets `submission`, as the Qory harness's does.
+    # The current process version marks `submission` `deliver`.
     setup ctx do
       version = Processes.current(ctx.scope.workspace)
-      submit = %{"type" => "submission", "send" => "end_of_run"}
+
+      delivered = [
+        %{
+          "name" => "submission",
+          "base_view" => "structured",
+          "deliver" => %{"send" => "end_of_run"}
+        }
+      ]
 
       {1, _rows} =
         Repo.update_all(from(v in Processes.Version, where: v.id == ^version.id),
-          set: [template: Map.put(version.template || %{}, "submit", submit)]
+          set: [template: Map.put(version.template || %{}, "artifact_types", delivered)]
         )
 
       submission =
@@ -443,21 +450,6 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
       assert has_element?(view, ~s(#{line} a[href="#{harness}"]), "Harness settings")
     end
 
-    test "shows no badge and no line where no version sets the type", ctx do
-      {1, _rows} =
-        Repo.update_all(
-          from(v in Processes.Version, where: v.workspace_id == ^ctx.scope.workspace.id),
-          set: [template: nil]
-        )
-
-      {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope))
-      row = "#artifact-type-#{ctx.submission.public_id}"
-
-      assert has_element?(view, "#{row}-menu")
-      refute has_element?(view, row, "Set by the harness")
-      refute has_element?(view, "#artifact-type-submission-set-by-harness")
-    end
-
     test "goes back to the list from the edit and delete paths, and changes nothing", ctx do
       list = types_path(ctx.scope)
 
@@ -482,10 +474,10 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
       assert unchanged?(ctx)
       refute render(view) =~ "That type is no longer here."
 
-      # The type becomes one that the harness sets while its form is open.
+      # The type becomes one that the process delivers while its form is open.
       version = Processes.current(ctx.scope.workspace)
 
-      set_template!(version, Map.delete(version.template, "submit"))
+      set_template!(version, Map.delete(version.template, "artifact_types"))
 
       {:ok, view, _html} =
         live(ctx.conn, types_path(ctx.scope, "/#{ctx.submission.public_id}/edit"))
@@ -514,6 +506,21 @@ defmodule ApiaryWeb.ArtifactLive.TypesTest do
 
       {type.size_limit, type.json_schema} ==
         {ctx.submission.size_limit, ctx.submission.json_schema}
+    end
+
+    test "shows no badge and no line where no version sets the type", ctx do
+      {1, _rows} =
+        Repo.update_all(
+          from(v in Processes.Version, where: v.workspace_id == ^ctx.scope.workspace.id),
+          set: [template: nil]
+        )
+
+      {:ok, view, _html} = live(ctx.conn, types_path(ctx.scope))
+      row = "#artifact-type-#{ctx.submission.public_id}"
+
+      assert has_element?(view, "#{row}-menu")
+      refute has_element?(view, row, "Set by the harness")
+      refute has_element?(view, "#artifact-type-submission-set-by-harness")
     end
   end
 

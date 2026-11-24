@@ -12,16 +12,14 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   The harness members of an explore run's documents, from its harness walk: the target's
   version, nil for none; the workflow and `harness_hidden`; the access level the walk
   resolved, lowered by the run's stage entry; and the harness document the walk took, nil
-  where the target's harness file applies. A run with write access whose process version
-  has a submit step also has `submit` (`Apiary.Dispatches.Handover`).
+  where the target's harness file applies.
   """
   @type harness :: %{
           required(:target_version) => String.t() | nil,
           required(:workflow) => String.t(),
           required(:harness_hidden) => boolean,
           required(:access) => :read | :write_no_push | :write,
-          required(:harness) => map | nil,
-          optional(:submit) => %{type: String.t(), send: String.t()}
+          required(:harness) => map | nil
         }
 
   # documents/1 is a run's documents (the run contract's `documents.schema.json`), in
@@ -31,9 +29,9 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # step explore has them, `Apiary.Dispatches.RunSettings`, and a prebuild none),
   # the members about its first session, `time_limit_minutes`, `shared_run` and
   # `full_suite`, each where present (`:session`, `{name, value}` members, none for a
-  # prebuild), its `workflow`, `harness_hidden`, `harness` and `submit`
-  # (`harness/1`), a prebuild's destinations, `image_destination` and then
-  # `environment_destination` or `environment_image`, and
+  # prebuild), its `workflow`, `harness_hidden` and `harness` (`harness/1`), a
+  # prebuild's destinations, `image_destination` and then `environment_destination` or
+  # `environment_image`, and
   # `largest_prebuilt_image_bytes` where it has one (`:destinations`, `{name, value}`
   # members, none for any other run), and its `inputs`. The claim measures them
   # (`Apiary.Dispatches.Handover`).
@@ -75,19 +73,13 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # `harness`, `{"harness": document}`, where the walk took a document other than the
   # target's harness file: a stack chosen for the target, the workspace's or the
   # organisation's harness choice, or the Qory harness. The machine composes the
-  # target's file at `target_version` where `harness` is absent. Then `submit`, `{type,
-  # send}`, where the run has a submit step.
+  # target's file at `target_version` where `harness` is absent.
   defp harness(nil), do: []
 
-  defp harness(%{workflow: workflow, harness_hidden: hidden, harness: document} = members) do
+  defp harness(%{workflow: workflow, harness_hidden: hidden, harness: document}) do
     harness = if document, do: [{"harness", %{"harness" => document}}], else: []
-    [{"workflow", workflow}, {"harness_hidden", hidden}] ++ harness ++ submit(members)
+    [{"workflow", workflow}, {"harness_hidden", hidden}] ++ harness
   end
-
-  defp submit(%{submit: %{type: type, send: send}}),
-    do: [{"submit", Jason.OrderedObject.new([{"type", type}, {"send", send}])}]
-
-  defp submit(_members), do: []
 
   # reach/2 is the `access` of a run with the harness members `harness` (`access/1`) and
   # its `target`, both present for a run with a target and both left out for one

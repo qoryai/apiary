@@ -42,6 +42,60 @@ defmodule Apiary.Artifacts.CustomSchemaTest do
     end
   end
 
+  describe "the primitives of the harness" do
+    @primitives "https://qory.dev/contracts/harness/v1/primitives.schema.json"
+
+    # A delivered type's schema: an object whose required `target` is the primitive
+    # `reference`.
+    defp target_schema(ref) do
+      %{
+        "$schema" => "https://json-schema.org/draft/2020-12/schema",
+        "type" => "object",
+        "required" => ["target"],
+        "properties" => %{"target" => %{"$ref" => ref}}
+      }
+    end
+
+    test "a reference to them resolves, with a fragment and without" do
+      assert :ok = CustomSchema.check(target_schema(@primitives <> "#/$defs/reference"))
+      assert :ok = CustomSchema.check(%{"$ref" => @primitives})
+
+      left = CustomSchema.total(reductions: 10_000_000, ms: 30_000)
+
+      assert {:ok, _left} =
+               CustomSchema.check_within(target_schema(@primitives <> "#/$defs/reference"), left)
+    end
+
+    test "a push is checked against the primitive" do
+      schema = target_schema(@primitives <> "#/$defs/title")
+
+      assert :ok = CustomSchema.validate(%{"target" => "Keep the sale price"}, schema)
+      assert {:error, {:schema, _detail}} = CustomSchema.validate(%{"target" => 5}, schema)
+      assert {:error, {:schema, _detail}} = CustomSchema.validate(%{}, schema)
+    end
+
+    test "the patterns of the copy end at the end of the string" do
+      schema = %{"$ref" => @primitives <> "#/$defs/link"}
+
+      assert :ok = CustomSchema.validate("https://a.example/b", schema)
+      assert {:error, {:schema, _detail}} = CustomSchema.validate("https://a.example/b\n", schema)
+    end
+
+    test "a reference to a name that they lack, or to another address, cannot be built" do
+      for ref <- [
+            @primitives <> "#/$defs/no-such-name",
+            "https://qory.dev/contracts/harness/v1/process.schema.json",
+            "https://example.com/primitives.schema.json#/$defs/reference"
+          ] do
+        assert {:error, :unbuildable} = CustomSchema.check(target_schema(ref)), ref
+
+        assert {:error, :unbuildable} =
+                 CustomSchema.validate(%{"target" => %{}}, target_schema(ref)),
+               ref
+      end
+    end
+  end
+
   describe "check_within/3" do
     @plenty [reductions: 10_000_000, ms: 30_000]
 

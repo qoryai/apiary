@@ -56,22 +56,21 @@ defmodule Apiary.Processes.HarnessUpdateTest do
     end)
   end
 
+  # The fixture's files with `submission` marked `deliver`, sent at `send`, within the size
+  # limit of a delivered type.
+  defp delivering(send) do
+    files(
+      &String.replace(
+        &1,
+        "    size_limit: 1048576\n    max_files: 1\n    # The same",
+        "    size_limit: 786432\n    max_files: 1\n    deliver: {send: #{send}}\n    # The same"
+      )
+    )
+  end
+
   # `files` with the template's submit step set to `type`, sent after the gate.
   defp submitting(files \\ QoryHarnessFixture.files(), type) do
     Map.update!(files, @process, &(&1 <> "submit:\n  type: #{type}\n  send: after_gate\n"))
-  end
-
-  # The template's submit step, named `type`, as a version's record keeps it.
-  defp submit(type), do: %{"type" => type, "send" => "after_gate"}
-
-  # A template whose submit.type is no structured type of its artifact_types, with the
-  # refusal: a name no entry has, a standard type, and spec, a document type.
-  defp refused_submits do
-    [
-      {submitting("blueprint"), {:submit, "blueprint", :missing}},
-      {submitting("mockup"), {:submit, "mockup", :standard}},
-      {submitting(described(), "spec"), {:submit, "spec", {:base_view, "document"}}}
-    ]
   end
 
   # The fixture's files with Build running plan-the-build and write-acceptance-checks as
@@ -440,30 +439,49 @@ defmodule Apiary.Processes.HarnessUpdateTest do
   end
 
   describe "read/2 of a template's submit" do
-    test "refuses a submit that names no structured type of the template", ctx do
-      for {files, refusal} <- refused_submits() do
-        main_at!(files)
-        assert HarnessUpdate.read(ctx.scope, ctx.workspace) == {:error, {:types, [refusal]}}
-      end
-
-      assert ApiaryWeb.HarnessUpdateComponents.reason_words(
-               {:types, [{:submit, "spec", {:base_view, "document"}}]},
-               nil,
-               nil
-             ) ==
-               "Correct the process.yaml of the harness, then press Update from harness again: " <>
-                 "set submit.type to a type whose base_view is structured, not document."
+    test "drops it, whatever type it sets", ctx do
+      main_at!(submitting("blueprint"))
+      assert {:ok, _update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
     end
+  end
 
-    test "a harness repository refuses it as a template that is not readable", ctx do
-      repository_harness!(ctx.workspace, "main", files: submitting("mockup"))
+  describe "read/2 of a stage's outputs" do
+    test "refuses a stage that lists a type twice", ctx do
+      main_at!(
+        files(
+          &String.replace(
+            &1,
+            "      name: Shape\n      inputs: []\n      sequence: []\n      outputs: []\n",
+            "      name: Shape\n      inputs: []\n      sequence: []\n" <>
+              "      outputs: [{type: mockup}, {type: mockup}]\n"
+          )
+        )
+      )
 
       assert HarnessUpdate.read(ctx.scope, ctx.workspace) ==
-               {:error, {:not_readable, {:types, [{:submit, "mockup", :standard}]}}}
+               {:error, {:types, [{:repeated_output, "Shape", "mockup"}]}}
     end
   end
 
   describe "save/4" do
+    test "keeps the delivered types of the template in the record", ctx do
+      for send <- ["end_of_run", "after_gate"] do
+        main_at!(delivering(send))
+        {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+        assert {:ok, version} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+
+        assert [%{"name" => "submission", "deliver" => %{"send" => ^send}}] =
+                 version.template["artifact_types"]
+      end
+    end
+
+    test "keeps no delivered types where no type of the template has deliver", ctx do
+      main_at!(described())
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      assert {:ok, version} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+      refute Map.has_key?(version.template, "artifact_types")
+    end
+
     test "saves the template as the current version, with its types and its commit", ctx do
       commit = main_at!(described())
       {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
@@ -483,25 +501,6 @@ defmodule Apiary.Processes.HarnessUpdateTest do
                  from e in Entry,
                    where: e.workspace_id == ^ctx.workspace.id and e.action == "process.edit"
                )
-    end
-
-    test "keeps the template's submit in a trial and in the version it saves", ctx do
-      commit = main_at!(submitting("submission"))
-      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
-      assert update.template["submit"] == submit("submission")
-
-      assert {:ok, %Version{status: :trial} = trial} =
-               HarnessUpdate.save(ctx.scope, ctx.workspace, update, trial: true)
-
-      assert trial.template["submit"] == submit("submission")
-
-      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
-
-      assert {:ok, %Version{status: :current} = version} =
-               HarnessUpdate.save(ctx.scope, ctx.workspace, update)
-
-      assert %{"commit" => ^commit, "submit" => %{"type" => "submission"}} = version.template
-      assert Processes.harness_template(Repo.reload!(version))["submit"] == submit("submission")
     end
 
     test "shows a hidden standard type the template lists, with an audit entry", ctx do
@@ -1113,35 +1112,6 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       assert length(versions(ctx.workspace)) == 1
     end
 
-    test "a submit that names no structured type of the template saves nothing", ctx do
-      for {files, refusal} <- refused_submits() do
-        main_at!(files)
-        assert HarnessUpdate.follow(ctx.workspace) == {:error, {:types, [refusal]}}
-        assert :ok = HarnessUpdate.follow_all()
-        assert length(versions(ctx.workspace)) == 1
-      end
-    end
-
-    test "a harness repository's submit that names no structured type saves nothing", ctx do
-      repository = repository_harness!(ctx.workspace, "main")
-      PublicGitServer.commit!(repository.dir, submitting("mockup"))
-
-      assert HarnessUpdate.follow(ctx.workspace) ==
-               {:error, {:not_readable, {:types, [{:submit, "mockup", :standard}]}}}
-
-      assert length(versions(ctx.workspace)) == 1
-    end
-
-    test "the refresh keeps the template's submit in the version it saves", ctx do
-      commit = main_at!(submitting("submission"))
-
-      assert {:ok, %Version{number: 2, author_id: nil} = version} =
-               HarnessUpdate.follow(ctx.workspace)
-
-      assert %{"commit" => ^commit, "submit" => %{"send" => "after_gate"}} = version.template
-      assert version.template["submit"] == submit("submission")
-    end
-
     test "a machine type key the instance does not have is saved as the file has it", ctx do
       # Any key the schema takes reads (Apiary.Harnesses.Reader), and the save keeps it:
       # the workflows run on the workspace's default type until a type has the key.
@@ -1260,6 +1230,43 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       # Made current, it copies the stack and turns the switch on, as the trial before it.
       assert {:ok, %Version{status: :current}} = Processes.make_current(ctx.scope, new_trial)
       assert keep(ctx.workspace) == true
+    end
+
+    # A version saved from the harness, current, with a submit step in its record and the
+    # machine type `machine`: the version and the record.
+    defp submitting!(ctx, machine) do
+      main_at!(described())
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      {:ok, saved} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+      submit = %{"type" => "submission", "send" => "after_gate"}
+      record = Map.put(saved.template, "submit", submit)
+
+      {1, _rows} =
+        Repo.update_all(from(v in Version, where: v.id == ^saved.id),
+          set: [template: record, document: Map.put(saved.document, "machine", machine)]
+        )
+
+      {Repo.get!(Version, saved.id), record}
+    end
+
+    test "a person's version based on one with a submit step finds no step", ctx do
+      {saved, record} = submitting!(ctx, "default")
+      assert Processes.harness_template(saved.id) == record
+
+      document = Map.update!(saved.document, "stages", &Enum.drop(&1, -1))
+      assert {:ok, person} = Processes.save(ctx.scope, ctx.workspace, document)
+      assert person.template == nil
+      assert Processes.harness_template(person) == Map.delete(record, "submit")
+      assert Processes.harness_template(person.id) == Map.delete(record, "submit")
+    end
+
+    test "a rekey of the machine type copies the record without the submit step", ctx do
+      {saved, record} = submitting!(ctx, "browser")
+
+      assert {:ok, _count} = Processes.rekey_machine(ctx.scope, "browser", "x")
+      rekeyed = Repo.one!(from v in Version, where: v.based_on_id == ^saved.id)
+      assert rekeyed.template == Map.delete(record, "submit")
+      assert Repo.get!(Version, saved.id).template == record
     end
   end
 end

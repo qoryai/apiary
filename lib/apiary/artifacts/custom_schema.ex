@@ -29,14 +29,19 @@ defmodule Apiary.Artifacts.CustomSchema do
   # JSV is given it, and JSV builds the schema and validates the document in the budget's
   # process. A `jsv-cast` or `x-jsv-cast` keyword is dropped everywhere before the build,
   # since JSV loads the module in such a keyword; a `jsv:` reference resolves to a
-  # schema no value is valid against (`Apiary.Kinds.SettingsResolver`); no reference is
-  # fetched over the network.
+  # schema no value is valid against (`Apiary.Kinds.SettingsResolver`). A reference to
+  # the primitives of the harness resolves to the copy that Qory Apiary keeps
+  # (`Apiary.Artifacts.HarnessPrimitives`), for `check/1`, `check_within/2` and
+  # `validate/2`. No reference is fetched over the network: a schema with a reference
+  # to another remote address, other than the JSON Schema meta-schemas that JSV has,
+  # cannot be built.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
 
   alias Apiary.Kinds.{Bounds, Budget, CanonicalJSON, PatternMemory, RegexFormat}
   alias Apiary.Artifacts.SchemaError
+  alias Apiary.Artifacts.HarnessPrimitives
   alias Apiary.Kinds.{Schema, SettingsResolver}
 
   @schema_bytes 65_536
@@ -177,7 +182,10 @@ defmodule Apiary.Artifacts.CustomSchema do
     if used <= @pattern_bytes do
       :ok = RegexFormat.pattern_bytes(used, @pattern_bytes)
 
-      case Schema.build(schema, resolver: SettingsResolver, formats: RegexFormat.formats()) do
+      case Schema.build(schema,
+             resolver: [HarnessPrimitives, SettingsResolver],
+             formats: RegexFormat.formats()
+           ) do
         {:ok, root} -> {:ok, root}
         {:error, _reason} -> {:error, :unbuildable}
       end

@@ -32,11 +32,11 @@ defmodule Apiary.Adapters.Feed do
   #     (`Apiary.Sources.Comment.member_name?/1`); `body` 1 to 65,000 characters of valid
   #     UTF-8, with no NUL. Written only for an adapter whose source takes comments
   #     (`Apiary.Nodes.Node`, `comments`).
-  #   * `%{kind: "watch", work_item_id: id, url: url}`: a work item on which a run stored a
-  #     submission version, in the feed of the adapter of the work item's target
-  #     collection (`Apiary.Artifacts.write/5`). Qory Apiary writes one entry per stored
-  #     version, whatever source the work item came from, and also for a work item that
-  #     came from no source. `id` and `url` follow the rules of a `work_item` entry.
+  #   * `%{kind: "watch", work_item_id: id, url: url}`: a kind that the feed's check
+  #     takes, with `id` and `url` under the rules of a `work_item` entry. Qory Apiary
+  #     writes no `watch` entry; entries written earlier stay in the feed.
+  #     shortcut: the feed has no entry for a delivered version, as `watch` was for a
+  #     submission; replace when the writer of `change_request` entries exists.
   #   * `%{kind: "collection", collection_ref: ref, status: status}`: one of the adapter's
   #     collections linked (`"linked"`, `Apiary.Adapters.Collection.linked?/1`), or
   #     unlinked (`"unlinked"`). `ref`

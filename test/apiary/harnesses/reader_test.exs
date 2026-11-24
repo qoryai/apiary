@@ -662,28 +662,74 @@ defmodule Apiary.Harnesses.ReaderTest do
       end
     end
 
-    test "returns nil for submit when the key is absent" do
-      assert {:ok, %{submit: nil}} = Reader.template(source(@template))
-    end
+    # In YAML's double quotes: U+2028, U+202E and U+E0041 (a tag character, past U+FFFF)
+    # break the one-line rule of the schema's `$defs/line`; U+200D, a joiner, and U+1F600,
+    # past U+FFFF too, do not.
+    test "refuses a stage name, a workflow or a stack that is not one line, and takes a joiner" do
+      template = source(@template)
 
-    test "returns submit as written" do
-      for send <- ["end_of_run", "after_gate"] do
-        assert {:ok, %{submit: %{"type" => "customer-facts", "send" => ^send}}} =
-                 read(with_value("submit", "{type: customer-facts, send: #{send}}"))
+      for place <- [
+            &String.replace(template, "name: Answer", ~s|name: "#{&1}"|),
+            &String.replace(template, "workflow: draft-an-answer", ~s|workflow: "#{&1}"|),
+            &String.replace(template, "stack: support", ~s|stack: "#{&1}"|)
+          ] do
+        for value <- ["one\\u2028two", "one\\u202Etwo", "one\\U000E0041two"] do
+          assert read(place.(value)) == {:error, :invalid_template}, value
+        end
+
+        for value <- ["one\\u200Dtwo", "one\\U0001F600two"] do
+          assert {:ok, _template} = read(place.(value)), value
+        end
       end
     end
 
-    test "refuses a submit the schema refuses" do
+    test "returns a type's deliver as written, and refuses a send it does not know" do
+      entry =
+        "{name: facts, base_view: structured, size_limit: 65536, max_files: 1, " <>
+          "json_schema: {type: object}, deliver: {send: "
+
+      for send <- ["end_of_run", "after_gate"] do
+        assert {:ok, %{artifact_types: [%{"deliver" => %{"send" => ^send}}]}} =
+                 read(with_types(entry <> send <> "}}"))
+      end
+
+      assert {:error, _reason} = read(with_types(entry <> "at_once}}"))
+    end
+
+    test "refuses a delivered type over 786432 bytes, and takes one at that size" do
+      entry =
+        &"{name: facts, base_view: structured, size_limit: #{&1}, max_files: 1, json_schema: {type: object}, deliver: {send: end_of_run}}"
+
+      assert {:ok, %{artifact_types: [%{"deliver" => %{"send" => "end_of_run"}}]}} =
+               786_432 |> entry.() |> with_types() |> read()
+
+      assert 786_433 |> entry.() |> with_types() |> read() ==
+               {:error, {:invalid_artifact_type, "facts"}}
+
+      assert {:ok, _template} =
+               "{name: facts, base_view: structured, size_limit: 786433, max_files: 1, json_schema: {type: object}}"
+               |> with_types()
+               |> read()
+    end
+
+    test "drops a submit of any shape, and takes the template" do
+      {:ok, plain} = read(source(@template))
+
       for value <- [
+            "{type: customer-facts, send: end_of_run}",
             "customer-facts",
-            "{type: customer-facts}",
             "{send: end_of_run}",
-            "{type: customer-facts, send: at_once}",
-            "{type: Customer_Facts, send: end_of_run}",
-            "{type: #{String.duplicate("a", 65)}, send: end_of_run}",
-            "{type: customer-facts, send: end_of_run, command: make}"
-          ],
-          do: assert(read(with_value("submit", value)) == {:error, :invalid_template}, value)
+            "{type: Customer_Facts, send: at_once, command: make}",
+            "{type: mockup, send: after_gate}"
+          ] do
+        assert read(with_value("submit", value)) == {:ok, plain}, value
+      end
+    end
+
+    test "ignores submit: null, and takes the template" do
+      {:ok, plain} = read(source(@template))
+      assert read(with_value("submit", "null")) == {:ok, plain}
+      refute Map.has_key?(plain, :submit)
     end
 
     test "refuses an artifact_types that is not a list" do
@@ -695,16 +741,17 @@ defmodule Apiary.Harnesses.ReaderTest do
     end
   end
 
-  # qory's process.schema.json, vendored from the qory commit in the `.contract-ref` file
-  # beside it, by its SHA-256 there.
-  @qory_ref "d295da8c0bdf64e783fa0f76c49fc1db8e4ad7a2"
+  # qory's process.schema.json and primitives.schema.json, vendored from the qory commit
+  # in the `.contract-ref` file beside them, by their SHA-256 there.
+  @qory_ref "cdd21e6e80d3f6594a33157210977600e4e8b1cf"
   @vendored "priv/contract/harness/v1"
   @vendored_sha256 %{
-    "process.schema.json" => "79172443a77211cde7ac1f4f3a8aa00a996dd2bc3ec0979b09d418a0d3ea8872"
+    "process.schema.json" => "7f11ea65aeb6385740f7839e9a8452a34a125cbafd77ac50cf0a2c10332ee498",
+    "primitives.schema.json" => "3afc6bdd78e412b9e6a3fe3d6a0a69a2f3c7032e0236355e17ea7f2f9c2d71ea"
   }
 
-  describe "the file vendored from qory" do
-    test "is the bytes of the pinned commit" do
+  describe "the files vendored from qory" do
+    test "are the bytes of the pinned commit" do
       dir = Path.expand("../../../" <> @vendored, __DIR__)
 
       assert File.read!(Path.join(dir, ".contract-ref")) == @qory_ref <> "\n"

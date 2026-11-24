@@ -8,7 +8,7 @@ defmodule Apiary.ContractCopiesTest do
   # against `test/fixtures/contract-copies.sha256`: the SHA-256 and the path here of each
   # file at that commit, one per line, sorted by path. `.integration-contract-ref` has the
   # command that writes that manifest again after a new copy.
-  @ref "effc22aa2dc85997333918dba64425bdade7f5dc"
+  @ref "7e6cac7e19162fe285259ccb03108f9bc046b5f8"
 
   @root Path.expand("../..", __DIR__)
 

@@ -410,6 +410,65 @@ defmodule Apiary.ArtifactsTest do
       end
     end
 
+    test "takes a schema that refers to the primitives of the harness, not a missing name",
+         %{scope: scope} do
+      primitives = "https://qory.dev/contracts/harness/v1/primitives.schema.json#/$defs/"
+
+      schema = fn name ->
+        %{"type" => "object", "properties" => %{"target" => %{"$ref" => primitives <> name}}}
+      end
+
+      assert {:ok, %Type{}} =
+               Artifacts.create_type(scope, scope.workspace, %{
+                 "name" => "demo-change",
+                 "base_view" => "structured",
+                 "json_schema" => schema.("reference")
+               })
+
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               Artifacts.create_type(scope, scope.workspace, %{
+                 "name" => "demo-change-two",
+                 "base_view" => "structured",
+                 "json_schema" => schema.("no-such-name")
+               })
+
+      assert {"is not a schema Qory Apiary takes", [validation: :unbuildable]} =
+               changeset.errors[:json_schema]
+    end
+
+    test "refuses a schema that refers to another remote address, at a create and an update",
+         %{scope: scope} do
+      other = %{
+        "type" => "object",
+        "properties" => %{
+          "target" => %{"$ref" => "https://example.com/other.schema.json#/$defs/x"}
+        }
+      }
+
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               Artifacts.create_type(scope, scope.workspace, %{
+                 "name" => "demo-change",
+                 "base_view" => "structured",
+                 "json_schema" => other
+               })
+
+      assert {"is not a schema Qory Apiary takes", [validation: :unbuildable]} =
+               changeset.errors[:json_schema]
+
+      {:ok, type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "demo-change",
+          "base_view" => "structured",
+          "json_schema" => %{"type" => "object"}
+        })
+
+      assert {:error, %Ecto.Changeset{} = changeset} =
+               Artifacts.update_type(scope, type, %{"json_schema" => other})
+
+      assert {"is not a schema Qory Apiary takes", [validation: :unbuildable]} =
+               changeset.errors[:json_schema]
+    end
+
     test "takes a structured type's schema as a map or as JSON text", %{scope: scope} do
       schema = %{"type" => "object", "properties" => %{"bid" => %{"type" => "number"}}}
 

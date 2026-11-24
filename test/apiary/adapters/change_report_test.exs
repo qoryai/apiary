@@ -128,9 +128,11 @@ defmodule Apiary.Adapters.ChangeReportTest do
       assert ChangeReport.failed(json("changes-failed/not-permitted.json")) == :error
     end
 
-    test "is refused for the reason invalid, which an adapter never sends" do
-      body = Map.put(json("changes-failed/change-request-refused.json"), "reason", "invalid")
-      assert ChangeReport.failed(body) == :error
+    test "is refused for the reasons invalid and target_removed, which an adapter never sends" do
+      for reason <- ["invalid", "target_removed"] do
+        body = Map.put(json("changes-failed/change-request-refused.json"), "reason", reason)
+        assert ChangeReport.failed(body) == :error, reason
+      end
     end
   end
 end

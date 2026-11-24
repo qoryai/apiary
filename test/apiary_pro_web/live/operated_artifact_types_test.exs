@@ -1,8 +1,8 @@
 defmodule ApiaryProWeb.OperatedArtifactTypesTest do
-  # The line under the Artifact types table for a type that the harness sets, in a
-  # workspace that an operator operates, while `ApiaryPro.Flags.operator_infrastructure?/0`
-  # is on: the organisation's owners and admins read to ask the operator, and the operator's
-  # people read the step in Harness settings.
+  # The line under the Artifact types table for a type that the process marks `deliver`,
+  # in a workspace that an operator operates, while
+  # `ApiaryPro.Flags.operator_infrastructure?/0` is on: the organisation's owners and admins
+  # read to ask the operator, and the operator's people read the step in Harness settings.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -20,8 +20,8 @@ defmodule ApiaryProWeb.OperatedArtifactTypesTest do
   @operator_step "To change the schema, ask the operator of this workspace."
   @harness_step "To change the schema, change it in the harness, then choose Update from harness in Harness settings."
 
-  # The workspace's process sets the type `submission`, as the Qory harness's does, and the
-  # workspace has that type. The flag is on, so the operator's people change the process and
+  # The workspace's process marks the type `submission` `deliver`, and the workspace has
+  # that type. The flag is on, so the operator's people change the process and
   # its artifact types there (`ApiaryPro.Flags.operator_infrastructure?/0`).
   setup do
     Flags.put_operator_infrastructure(false)
@@ -29,11 +29,18 @@ defmodule ApiaryProWeb.OperatedArtifactTypesTest do
     operated = operated_fixture(operator.scope, "Acme")
     owner_scope = operated.owner.scope
     version = Processes.current(operated.workspace)
-    submit = %{"type" => "submission", "send" => "end_of_run"}
+
+    delivered = [
+      %{
+        "name" => "submission",
+        "base_view" => "structured",
+        "deliver" => %{"send" => "end_of_run"}
+      }
+    ]
 
     {1, _rows} =
       Repo.update_all(from(v in Processes.Version, where: v.id == ^version.id),
-        set: [template: Map.put(version.template || %{}, "submit", submit)]
+        set: [template: Map.put(version.template || %{}, "artifact_types", delivered)]
       )
 
     Artifacts.type(operated.workspace, "submission") ||

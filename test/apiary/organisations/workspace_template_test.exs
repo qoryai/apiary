@@ -183,6 +183,25 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       assert Stacks.choice(workspace) == nil
     end
 
+    test "create_workspace_of_kind/3 keeps the template's delivered types in version 1" do
+      QoryHarnessFixture.files()
+      |> Map.update!(
+        "modules/software-factory/process.yaml",
+        &String.replace(
+          &1,
+          "    size_limit: 1048576\n    max_files: 1\n    # The same",
+          "    size_limit: 786432\n    max_files: 1\n    deliver: {send: after_gate}\n    # The same"
+        )
+      )
+      |> QoryHarnessFixture.serve!()
+
+      assert {:ok, workspace} =
+               Organisations.create_workspace_of_kind(scope_fixture(), Domain.Software, :any)
+
+      assert [%{"name" => "submission", "deliver" => %{"send" => "after_gate"}}] =
+               first_version(workspace).template["artifact_types"]
+    end
+
     test "create_workspace_of_kind/3 reads main's commit then, and copies its template" do
       scope = scope_fixture()
       repository = QoryHarnessFixture.serve!(QoryHarnessFixture.explore_named("Discover"))
@@ -196,48 +215,11 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
       assert Qory.current() == repository.commit
     end
 
-    test "create_workspace_of_kind/3 records the template's submit in version 1" do
-      scope = scope_fixture()
-      repository = qory_submitting!("submission")
+    test "a template's submit is dropped, whatever type it sets" do
+      qory_submitting!("blueprint")
 
-      assert {:ok, workspace} =
-               Organisations.create_workspace_of_kind(scope, Domain.Software, :any)
-
-      version = first_version(workspace)
-      assert version.template["commit"] == repository.commit
-      assert version.template["submit"] == %{"type" => "submission", "send" => "end_of_run"}
-    end
-
-    test "a template whose submit.type is no structured type makes nothing" do
-      scope = scope_fixture()
-      before = held(scope)
-
-      for type <- ["blueprint", "mockup"] do
-        qory_submitting!(type)
-
-        assert Organisations.create_workspace_of_kind(scope, Domain.Software, :any) ==
-                 {:error, {:qory, {:unreadable, :invalid, nil}}}
-      end
-
-      assert held(scope) == before
-    end
-
-    test "a template whose submit.type is a listed type with no base view makes nothing" do
-      scope = scope_fixture()
-      before = held(scope)
-      entry = "  - name: decision-record\n"
-      submit = "submit:\n  type: reply-draft\n  send: end_of_run\n"
-
-      QoryHarnessFixture.files()
-      |> Map.update!("modules/software-factory/process.yaml", fn process ->
-        String.replace(process, entry, entry <> "  - name: reply-draft\n") <> submit
-      end)
-      |> QoryHarnessFixture.serve!()
-
-      assert Organisations.create_workspace_of_kind(scope, Domain.Software, :any) ==
-               {:error, {:qory, {:unreadable, :invalid, nil}}}
-
-      assert held(scope) == before
+      assert {:ok, _workspace} =
+               Organisations.create_workspace_of_kind(scope_fixture(), Domain.Software, :any)
     end
 
     test "a failed read of the Qory harness makes nothing" do
@@ -417,6 +399,26 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
 
       assert first_version(workspace).template["commit"] == commit
       assert base(Stacks.choice(workspace))["ref"] == commit
+    end
+
+    test "a start from a source keeps the template's delivered types in the record" do
+      scope = scope_fixture()
+      source = linked!(scope)
+
+      delivered = %{
+        "name" => "reply-facts",
+        "base_view" => "structured",
+        "size_limit" => 65_536,
+        "max_files" => 1,
+        "json_schema" => %{"type" => "object"},
+        "deliver" => %{"send" => "end_of_run"}
+      }
+
+      plain = %{delivered | "name" => "reply-notes"} |> Map.delete("deliver")
+      start = start(source, %{artifact_types: [delivered, plain]})
+
+      assert {:ok, workspace} = Organisations.create_workspace_from_template(scope, start)
+      assert first_version(workspace).template["artifact_types"] == [delivered]
     end
 
     test "an assigned source keeps the assignment's ref for reads and records the commit apart" do
@@ -634,7 +636,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
                first_version(workspace).document["stages"]
     end
 
-    test "a template's submit passes the schema and is recorded in version 1" do
+    test "a template's submit is dropped, and version 1 has no submit" do
       scope = scope_fixture()
       source = linked!(scope)
 
@@ -653,6 +655,7 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
           """
 
       assert {:ok, read} = Reader.template(text)
+      refute Map.has_key?(read, :submit)
       start = %{source: source, commit: @commit, template: Map.put(read, :module, "support-desk")}
 
       assert {:ok, workspace} = Organisations.create_workspace_from_template(scope, start)
@@ -664,35 +667,8 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
                "module" => "support-desk",
                "stack" => "support",
                "type" => read.type,
-               "version" => nil,
-               "submit" => %{"type" => "facts", "send" => "after_gate"},
-               "submit_schema" => %{"type" => "object"}
+               "version" => nil
              }
-    end
-
-    test "a template whose submit.type is no structured type is refused, and nothing is made" do
-      scope = scope_fixture()
-      source = linked!(scope)
-      before = held(scope)
-
-      document = %{
-        "name" => "draft",
-        "base_view" => "document",
-        "size_limit" => 65_536,
-        "max_files" => 1
-      }
-
-      for type <- ["other", "mockup", "draft"] do
-        changes = %{
-          artifact_types: [%{"name" => "mockup"}, document],
-          submit: %{"type" => type, "send" => "end_of_run"}
-        }
-
-        assert Organisations.create_workspace_from_template(scope, start(source, changes)) ==
-                 {:error, :invalid}
-      end
-
-      assert held(scope) == before
     end
 
     test "a process that does not pass the check is refused before the transaction" do

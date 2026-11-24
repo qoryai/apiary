@@ -1,8 +1,9 @@
 defmodule Apiary.Submissions do
-  # The submissions of a work item, one for each run that stored a version of the type in
-  # `submit.type` of the work item's process version, as the Submissions list on a stage's
-  # tab and the Submission block of a run's page show them. Left out of the documentation
-  # at `/docs` (`@moduledoc false`), as the work items are.
+  # The submissions of a work item, one for each run that stored a version of its
+  # submission type, as the Submissions list on a stage's tab and the Submission block of
+  # a run's page show them. No process version sets that type since Qory Apiary stopped
+  # reading `submit`, so `type_cached/2` and `for_run/4` find none. Left out of the
+  # documentation at `/docs` (`@moduledoc false`), as the work items are.
   #
   # A stored submission is a JSON object (`ref`, `repositories`, ...) that the workspace's
   # type for it checks, so every member here is read as untrusted: a member that is not of
@@ -33,10 +34,9 @@ defmodule Apiary.Submissions do
   alias Apiary.{Artifacts, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Adapters.Collection
-  alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.RunHarness
   alias Apiary.Nodes.Node
-  alias Apiary.Runs.{Preparation, Run}
+  alias Apiary.Runs.Run
   alias Apiary.Stages.Artifacts, as: StageArtifacts
   alias Apiary.Stages.{GateDecision, Withdrawals}
   alias Apiary.WorkItems.WorkItem
@@ -66,29 +66,15 @@ defmodule Apiary.Submissions do
   @type step :: {:change, String.t(), String.t() | nil} | {:fix, String.t()} | nil
 
   @doc """
-  The type of the work item's submissions: `submit.type` of its process version's harness
-  template, nil for none.
+  The type of the work item's submissions, as `cache` has it, with `cache`, for any work
+  item. No process sets one and nothing writes it to the cache, so it is nil.
   """
-  @spec type(WorkItem.t()) :: String.t() | nil
-  def type(%WorkItem{} = work_item), do: Artifacts.submit_type(work_item)
-
-  @doc """
-  `type/1`, with the answer kept in `cache` for a work item whose process version is
-  fixed (`process_version_id`), so a page that draws again asks once. `{type, cache}`.
-  """
+  # shortcut: the screen still calls this; delete when the screen reads delivered types.
+  # The cache read, not a literal nil: with a literal nil, the compiler's type check warns
+  # that the screen's `is_binary(type)` never succeeds, and the build fails on warnings.
   @spec type_cached(WorkItem.t(), map) :: {String.t() | nil, map}
-  def type_cached(%WorkItem{process_version_id: id} = work_item, cache) when is_binary(id) do
-    case Map.fetch(cache, {:type, id}) do
-      {:ok, type} ->
-        {type, cache}
-
-      :error ->
-        type = type(work_item)
-        {type, Map.put(cache, {:type, id}, type)}
-    end
-  end
-
-  def type_cached(work_item, cache), do: {type(work_item), cache}
+  def type_cached(%WorkItem{} = work_item, cache),
+    do: {Map.get(cache, {:type, work_item.process_version_id}), cache}
 
   @doc """
   The rows of the work item's submissions of `type`, newest first, from `artifacts`
@@ -191,63 +177,10 @@ defmodule Apiary.Submissions do
 
   def list_cached(_work_item, _type, _artifacts, _only, cache), do: {[], cache}
 
-  @doc """
-  What a run's page shows of its submissions, with the cache of `list_cached/5`:
-  `{shown, cache}`, `shown` `%{type:, rows:, names:}`, the submission type's name, the rows
-  (`list/4`) of the versions of that type the run stored, by the version's public id, and
-  the integration name for each system of a draft (`system_names/2`). Nil for a run no
-  queue started, a run whose process version names no submit type, a run that stored no
-  version of it, and a reader of another workspace. `outputs` is the versions the run
-  pushed (`Apiary.Runs.Preparation`'s `outputs`). A run that stored no version of its work
-  item's submission names costs no query.
-  """
-  @spec for_run(Scope.t(), Run.t(), [map], map) ::
-          {%{type: String.t(), rows: %{String.t() => map}, names: %{String.t() => String.t()}}
-           | nil, map}
-  def for_run(%Scope{} = scope, %Run{dispatch_run_id: id} = run, outputs, cache)
-      when is_binary(id) do
-    if Enum.any?(outputs, &(&1.name == "main")) do
-      {type, cache} = run_type(id, cache)
-      ids = for %{type: ^type, name: "main", public_id: public_id} <- outputs, do: public_id
-
-      with true <- is_binary(type) and ids != [],
-           %WorkItem{} = work_item <- Preparation.work_item(scope, run),
-           {[_row | _more] = rows, reads} <-
-             list_cached(work_item, type, Artifacts.list(work_item), ids, cache) do
-        shown = %{
-          type: type,
-          rows: Map.new(rows, &{&1.id, &1}),
-          names: system_names(work_item, draft_systems(rows))
-        }
-
-        {shown, reads}
-      else
-        _none -> {nil, cache}
-      end
-    else
-      {nil, cache}
-    end
-  end
-
+  @doc "What a run's page shows of its submissions, with `cache`: nil, as no process sets a type."
+  # shortcut: the screen still calls this; delete when the screen reads delivered types.
+  @spec for_run(Scope.t(), Run.t(), [map], map) :: {nil, map}
   def for_run(_scope, _run, _outputs, cache), do: {nil, cache}
-
-  # The submit type of the run of the queue `id`, kept in the cache: a run's process version
-  # does not change.
-  defp run_type(id, cache) do
-    case Map.fetch(cache, {:type, id}) do
-      {:ok, type} ->
-        {type, cache}
-
-      :error ->
-        type =
-          case Repo.get(DispatchRun, id) do
-            %DispatchRun{} = dispatch_run -> Artifacts.submit_type(dispatch_run)
-            nil -> nil
-          end
-
-        {type, Map.put(cache, {:type, id}, type)}
-    end
-  end
 
   @doc """
   The name of the integration that draws each of `systems` (`target_system` of the

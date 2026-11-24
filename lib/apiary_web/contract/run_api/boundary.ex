@@ -106,11 +106,11 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
   @spec withdrawable_type(map) :: :ok | {:error, {:withdraw, :type | :type_off}}
   def withdrawable_type(type), do: Apiary.Artifacts.withdrawable_type(type)
 
-  # withdrawable_type/3 is `withdrawable_type/1`, and the refusal for the type in
-  # `submit.type` of the run's process version or of the work item's
+  # withdrawable_type/3 is `withdrawable_type/1`, and the refusal for a type that the run's
+  # process version or the work item's marks `deliver`
   # (`Apiary.Artifacts.withdrawable_type/3`).
   @spec withdrawable_type(map, struct, struct) ::
-          :ok | {:error, {:withdraw, :type | :type_off | :submit_type}}
+          :ok | {:error, {:withdraw, :type | :type_off | :delivered}}
   def withdrawable_type(type, dispatch_run, work_item),
     do: Apiary.Artifacts.withdrawable_type(type, dispatch_run, work_item)
 
