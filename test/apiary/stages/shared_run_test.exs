@@ -171,7 +171,7 @@ defmodule Apiary.Stages.SharedRunTest do
                  model_choice: nil,
                  model_provider_credential_name: nil,
                  time_limit_minutes: 180,
-                 full_suite: false,
+                 type_settings: %{"full_suite" => false},
                  inputs: next.inputs
                }
 
@@ -265,14 +265,16 @@ defmodule Apiary.Stages.SharedRunTest do
       {work_item, run} = taken_in!(scope, :write)
 
       :ok = verdict!(run, "passed")
-      assert {:session, %{session: 2, full_suite: false}} = report(run, 1)
+      assert {:session, %{session: 2, type_settings: %{"full_suite" => false}}} = report(run, 1)
       :ok = verdict!(run, "passed")
 
-      assert {:session, %{session: 3, workflow: "implement-changes", full_suite: true}} =
+      assert {:session,
+              %{session: 3, workflow: "implement-changes", type_settings: %{"full_suite" => true}}} =
                report(run, 2)
 
       # implement-changes stores no verdict: the ring runs review-changes.
-      assert {:session, %{session: 4, workflow: "review-changes", full_suite: true}} =
+      assert {:session,
+              %{session: 4, workflow: "review-changes", type_settings: %{"full_suite" => true}}} =
                report(run, 3)
 
       for {round, session} <- [{2, 5}, {3, 7}] do
@@ -338,22 +340,22 @@ defmodule Apiary.Stages.SharedRunTest do
                "0" => %{
                  "workflow" => "plan-the-build",
                  "time_limit_minutes" => 180,
-                 "full_suite" => false
+                 "type_settings" => %{"full_suite" => false}
                },
                "1" => %{
                  "workflow" => "implement-changes",
                  "time_limit_minutes" => 60,
-                 "full_suite" => true
+                 "type_settings" => %{"full_suite" => true}
                },
                "2.0" => %{
                  "workflow" => "implement-changes",
                  "time_limit_minutes" => 60,
-                 "full_suite" => true
+                 "type_settings" => %{"full_suite" => true}
                },
                "2.1" => %{
                  "workflow" => "review-changes",
                  "time_limit_minutes" => 180,
-                 "full_suite" => true
+                 "type_settings" => %{"full_suite" => true}
                }
              }
 
@@ -393,7 +395,9 @@ defmodule Apiary.Stages.SharedRunTest do
 
       {_work_item, run} = taken_in!(scope, :write)
       :ok = verdict!(run, "passed")
-      assert {:session, %{workflow: "implement-changes", full_suite: true}} = report(run, 1)
+
+      assert {:session, %{workflow: "implement-changes", type_settings: %{"full_suite" => true}}} =
+               report(run, 1)
     end
 
     test "a run that reads or does not push runs no full suite after any session", %{
@@ -412,12 +416,46 @@ defmodule Apiary.Stages.SharedRunTest do
 
         {_work_item, run} = taken_in!(scope, level)
 
-        assert session_settings(run) |> Map.values() |> Enum.map(& &1["full_suite"]) ==
-                 [false, false, false, false]
+        assert session_settings(run) |> Map.values() |> Enum.map(& &1["type_settings"]) ==
+                 List.duplicate(%{"full_suite" => false}, 4)
 
         :ok = verdict!(run, "passed")
-        assert {:session, %{workflow: "implement-changes", full_suite: false}} = report(run, 1)
+
+        assert {:session,
+                %{workflow: "implement-changes", type_settings: %{"full_suite" => false}}} =
+                 report(run, 1)
       end
+    end
+
+    # A run of the example domain has no type settings, so no session has full_suite, even
+    # where a software factory's run would run the full suite.
+    test "a run of a workspace of another domain has no type settings in any session", %{
+      scope: scope
+    } do
+      scope = with_domain(scope, "example")
+
+      save!(scope, [
+        build([
+          %{"workflow" => "plan-the-build"},
+          %{"workflow" => "implement-changes", "first_attempt" => true},
+          loop(workflows(~w(implement-changes review-changes)))
+        ])
+      ])
+
+      {_work_item, run} = taken_in!(scope, :write)
+
+      assert %{shared_run: true, type_settings: nil} = Stages.session_flags(run, :write)
+      assert map_size(session_settings(run)) == 4
+
+      for {_place, settings} <- session_settings(run) do
+        assert settings["type_settings"] == nil
+        refute Map.has_key?(settings, "full_suite")
+      end
+
+      :ok = verdict!(run, "passed")
+      assert {:session, next} = report(run, 1)
+      assert %{workflow: "implement-changes", type_settings: nil} = next
+      refute Map.has_key?(next, :full_suite)
     end
   end
 

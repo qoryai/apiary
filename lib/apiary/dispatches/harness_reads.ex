@@ -208,6 +208,11 @@ defmodule Apiary.Dispatches.HarnessReads do
   # `{:read, {git, ref}}` for a base of the built-in harness, or of the Qory harness at a
   # branch or a tag; `{:commit, commit}` for one at a full commit id; `:none` for any
   # other walk, whose base is at the commit its pin records.
+  # shortcut: a run whose base is at a tag or a commit composes a commit other than the
+  # one whose schema of type settings the save of its process checked
+  # (`Apiary.Processes.check_type_settings/2`), and qory checks no run's type settings
+  # against a schema; replace when a run's type settings are checked against the schema of
+  # the commit it composes.
   defp read_of(
          %RunHarness{origin: origin, document: %{"extends" => %{"git" => git} = base}} = walk,
          template

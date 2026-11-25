@@ -207,8 +207,9 @@ defmodule Apiary.Runs.Run do
     # For a run of a stage with `shared_run: true`, the settings of each workflow entry of
     # the stage as the claim read them (`Apiary.Stages.claim_sessions!/3`): by the entry's
     # place, `"0"`, or `"2.1"` for an entry of a loop's body, a map of `"workflow"`,
-    # `"time_limit_minutes"`, `"full_suite"`, `"model_choice"` and
-    # `"model_provider_credential_name"` (`Apiary.Dispatches.RunSettings.build/2`).
+    # `"time_limit_minutes"`, `"type_settings"` (nil for a domain whose runs have none),
+    # `"model_choice"` and `"model_provider_credential_name"`
+    # (`Apiary.Dispatches.RunSettings.build/2`).
     # Written by the claim; nil for every other run. Not folded: a rebuild keeps it.
     field :session_settings, :map
 

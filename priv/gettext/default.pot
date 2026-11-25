@@ -7113,6 +7113,11 @@ msgstr ""
 msgid "Change to deny"
 msgstr ""
 
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Change type_settings.json_schema in process.yaml so that it accepts %{value}. The schema fails it: %{error}."
+msgstr ""
+
 #: lib/apiary_web/live/secret_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Change value"
@@ -8411,6 +8416,11 @@ msgstr ""
 #: lib/apiary_web/components/support.ex
 #, elixir-autogen, elixir-format
 msgid "Contact support."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Contact support. The Qory harness has a process that Qory Apiary cannot use, so you cannot save changes until support fixes it."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex

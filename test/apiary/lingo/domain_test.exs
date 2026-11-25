@@ -105,6 +105,25 @@ defmodule Apiary.Lingo.DomainTest do
       assert Software.run_variables(%{system: "git.example.com", path: "-acme/shop"}, []) ==
                {:error, :repositories_invalid}
     end
+
+    test "a session runs the full suite with write access, in a loop or on a first attempt" do
+      workflow = %{"workflow" => "implement-changes"}
+      first = %{"workflow" => "implement-changes", "first_attempt" => true}
+      loop = %{"loop" => %{"rounds" => 3, "body" => [workflow]}}
+
+      for {level, entry, loop_entry, full_suite} <- [
+            {:write, workflow, 0, true},
+            {:write, loop, nil, true},
+            {:write, first, nil, true},
+            {:write, workflow, nil, false},
+            {:write_no_push, first, 0, false},
+            {:read, loop, nil, false}
+          ] do
+        assert Software.type_settings(%{level: level, entry: entry, loop_entry: loop_entry}) ==
+                 %{"full_suite" => full_suite},
+               inspect({level, entry, loop_entry})
+      end
+    end
   end
 
   describe "the registry" do
@@ -326,6 +345,43 @@ defmodule Apiary.Lingo.DomainTest do
       assert Domain.harness_file?(%Workspace{domain: "software"})
       assert Domain.harness_file?(nil)
       refute Domain.harness_file?(%Workspace{domain: "example"})
+    end
+
+    test "type_settings/2 reads the workspace's domain: full_suite in software, none in example" do
+      write = %{level: :write, entry: %{"workflow" => "implement-changes"}, loop_entry: 0}
+
+      assert Domain.type_settings(%Workspace{domain: "software"}, write) == %{
+               "full_suite" => true
+             }
+
+      assert Domain.type_settings(nil, write) == %{"full_suite" => true}
+      assert Domain.type_settings(%Workspace{domain: "example"}, write) == nil
+    end
+
+    test "type_settings_values/1 lists every value a domain's runs can have: both full_suite values in software, none in example" do
+      assert Domain.type_settings_values(Software) == [
+               %{"full_suite" => true},
+               %{"full_suite" => false}
+             ]
+
+      assert Domain.type_settings_values(Example) == []
+    end
+
+    test "software's type_settings_values/0 are the values type_settings/1 returns, each one" do
+      entries = [
+        %{"workflow" => "implement-changes"},
+        %{"workflow" => "implement-changes", "first_attempt" => true},
+        %{"loop" => %{}}
+      ]
+
+      returned =
+        for level <- [:read, :write_no_push, :write],
+            entry <- entries,
+            loop_entry <- [nil, 0],
+            into: MapSet.new(),
+            do: Software.type_settings(%{level: level, entry: entry, loop_entry: loop_entry})
+
+      assert returned == MapSet.new(Software.type_settings_values())
     end
 
     test "pushes?/1, target_noun/1 and copy_noun/1 return the values of the workspace's domain" do

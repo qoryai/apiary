@@ -411,7 +411,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   type.
 - After each session of such a run, its gateway sends `POST /v1/runs/<run_id>/next-session`
   with `{"session", "state", "reason"}`. Qory Apiary steps the stage and returns `200` with
-  the next session's `workflow`, `time_limit_minutes`, `full_suite` and `inputs`, or
+  the next session's `workflow`, `time_limit_minutes`, `type_settings` and `inputs`, or
   `{"next": "end"}`, at most 1 MiB; a repeat for the same session returns the same body.
 - A save of a stage with `shared_run: true` compares the access each workflow runs with:
   the lower of the entry's `access` and the level the workflow's harness sets. When they
@@ -458,9 +458,20 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   save. The claim checks all three again and ends such a run before it starts, with the
   end cause `session_key_missing` and the outcome error. The work item and the stop line
   show the same fix while the fault remains, and "Run the round again." once it is gone.
-- `full_suite` is `true` only for a session of an entry with access `write` that is in a
-  loop or has `first_attempt`, whether the stage has `shared_run` or not. A run with
-  access `read` or `write-no-push`, and a run of Explore, gets `false` for every session.
+- The run documents and the next-session answer have `type_settings`, the type settings
+  of the workspace's domain. Only a software factory has them: `{"full_suite": ...}`,
+  `true` for a run with access `write` of an entry in a loop's body, of a loop, or of an
+  entry with `first_attempt: true`, whether the stage has `shared_run` or not, and `false`
+  for every other run. A run with access `read` or `write-no-push` gets `false` for every
+  session. A workspace of another domain gets no `type_settings`.
+- A save of a process whose `type_settings.json_schema` in process.yaml fails a value the
+  workspace's runs can have is refused: a workspace made from a template, Update from
+  harness of a harness repository, and a save on the Workflows page. The error is
+  "Change type_settings.json_schema in process.yaml so that it accepts {"full_suite":
+  false}. The schema fails it: value should be true.", with the value that failed and
+  why. On the Qory harness, Update from harness and the Workflows page show "Contact
+  support. The Qory harness has a process that Qory Apiary cannot use, so you cannot save
+  changes until support fixes it." A process with no such schema saves.
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - The gate card of a stage starts with the draft of the work item's newest submission,
@@ -2104,17 +2115,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
-- The harness contract's `process.schema.json` is vendored at the qory commit that adds
-  delivered artifact types. An entry of `artifact_types` may have `deliver: {send}`, and
-  only a custom structured type has it; such a type has a `size_limit` of at most 786432
-  bytes. A process version made from such a template keeps the entries that have
-  `deliver`, as the file has them, in its template record (`artifact_types`). The record
-  has no entry of a type without `deliver`, so a read of the record finds no schema of
-  such a type. A stage name, a workflow and `stack` are one line: a template with a
-  control character, U+2028, U+2029 or a format character other than U+200C and U+200D
-  in one of them is refused. An entry of a stage's `outputs` has `type` and, where it has one, a
-  boolean `required`, and no other member: a template with another member, or with a
-  `required` that is not a boolean, is refused.
+- The harness contract's `process.schema.json` is vendored at a qory commit that has
+  delivered artifact types and `type_settings`. An entry of `artifact_types` may have
+  `deliver: {send}`, and only a custom structured type has it; such a type has a
+  `size_limit` of at most 786432 bytes. A process version made from such a template keeps
+  the entries that have `deliver`, as the file has them, in its template record
+  (`artifact_types`). The record has no entry of a type without `deliver`, so a read of
+  the record finds no schema of such a type. A stage name, a workflow and `stack` are one
+  line: a template with a control character, U+2028, U+2029 or a format character other
+  than U+200C and U+200D in one of them is refused. An entry of a stage's `outputs` has
+  `type` and, where it has one, a boolean `required`, and no other member: a template with
+  another member, or with a `required` that is not a boolean, is refused.
 - When Qory Apiary reads a template from a harness source, and at **Update from
   harness**, it refuses a template whose stage lists one type twice in its `outputs`, with
   the fix first: "list each output type of stage Answer once: mockup appears twice". qory
@@ -3089,12 +3100,17 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   a template that is not `https`, has a port, a query, a fragment, an unknown placeholder
   or more than 2048 characters. The `document` of a description keeps `links`. No page
   reads it yet. The contract states that the control plane writes no `watch` entry; the
-  kind stays defined. The run and explore contracts and the run documents schema are at
-  `4ad23d9`. The diagnostics contract stays at `e0d7be1`, the provisioner contract at
-  `8d859a1`, and the check fixtures of `DocumentsCheck` at `4c788f4`.
+  kind stays defined. The run contract is at `da48933`, with the integration definitions
+  that it refers to. The explore contract and the run documents schema that the harness
+  save reads are at `4ad23d9`. The diagnostics contract stays at `e0d7be1`, the provisioner
+  contract at `8d859a1`, and the check fixtures of `DocumentsCheck` at `4c788f4`.
 - The reply to a change request (`changes-submitted.schema.json`) and the reports of a
   change request (`changes-failed.schema.json`) are vendored with their fixtures.
   `POST /v1/work-items/changes/submitted` reads the reply.
+- A `qory.yaml` or `harness.yaml` with `hooks` and no `extends` stops the run, and the run
+  page shows the fix. Before, when the file listed modules, the run stopped later on the
+  machine, where qory refused the hooks; when it listed none, the run took the next
+  harness.
 
 ### Removed
 

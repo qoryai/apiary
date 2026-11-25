@@ -61,6 +61,10 @@ defmodule Apiary.Harnesses.Reader do
 
   The schema also takes an optional `submit`. `template/1` drops it before the check, so
   a `submit` of any shape is neither refused nor returned.
+
+  The schema also takes an optional `type_settings`, with `json_schema`, the JSON Schema
+  of the type settings of a run. `template/1` returns `json_schema` as written, and nil
+  when the key is absent.
   """
 
   alias Apiary.Kinds.{Budget, Schema}
@@ -131,7 +135,9 @@ defmodule Apiary.Harnesses.Reader do
   @typedoc """
   A factory's `process.yaml`: its texts, the workspace type, the stack its workflows run
   on, `process`, the `qory.process/v1` document as written, `artifact_types`, the
-  artifact types its workspaces use as written, nil when the key is absent.
+  artifact types its workspaces use as written, nil when the key is absent, and
+  `type_settings`, the JSON Schema of the type settings of a run as written, nil when the
+  key is absent.
   """
   @type template :: %{
           name: String.t(),
@@ -140,7 +146,8 @@ defmodule Apiary.Harnesses.Reader do
           type: String.t(),
           stack: String.t(),
           process: map,
-          artifact_types: [map] | nil
+          artifact_types: [map] | nil,
+          type_settings: map | nil
         }
 
   # qory's process.schema.json, under the application's priv.
@@ -447,7 +454,8 @@ defmodule Apiary.Harnesses.Reader do
        type: file["type"],
        stack: file["stack"],
        process: Apiary.Processes.with_description_line_breaks(file["process"]),
-       artifact_types: file["artifact_types"]
+       artifact_types: file["artifact_types"],
+       type_settings: get_in(file, ["type_settings", "json_schema"])
      }}
   end
 

@@ -402,12 +402,13 @@ defmodule Apiary.Stages do
   # its stage and its entry (`Apiary.Dispatches.Handover`), for the access level the claim
   # computed for it (`level`, `Apiary.Runs.RunCredentials.run_access/1`): `shared_run`,
   # true where the stage has `shared_run: true`, the rule that `next_session/2` takes
-  # reports by; and `full_suite` (`full_suite?/4`). Both false for a run the stage runner
-  # did not queue.
+  # reports by; and `type_settings`, the type settings of the workspace's domain for the
+  # run's entry (`type_settings/4`), nil for a domain whose runs have none. False and nil
+  # for a run the stage runner did not queue.
   @doc false
   @spec session_flags(DispatchRun.t(), :read | :write_no_push | :write) :: %{
           shared_run: boolean,
-          full_suite: boolean
+          type_settings: map | nil
         }
   def session_flags(
         %DispatchRun{stage_id: stage_id, process_version_id: version_id, stage_entry: entry} =
@@ -417,17 +418,20 @@ defmodule Apiary.Stages do
       when is_binary(stage_id) and is_binary(version_id) and is_integer(entry) do
     case Processes.stage(Processes.get_version!(version_id), stage_id) do
       nil ->
-        %{shared_run: false, full_suite: false}
+        %{shared_run: false, type_settings: nil}
 
       stage ->
+        workspace = Repo.get!(Workspace, run.workspace_id)
+
         %{
           shared_run: shared_stage(run) != nil,
-          full_suite: full_suite?(run, Enum.at(stage["sequence"] || [], entry), nil, level)
+          type_settings:
+            type_settings(workspace, Enum.at(stage["sequence"] || [], entry), nil, level)
         }
     end
   end
 
-  def session_flags(%DispatchRun{}, _level), do: %{shared_run: false, full_suite: false}
+  def session_flags(%DispatchRun{}, _level), do: %{shared_run: false, type_settings: nil}
 
   # claim_sessions!/3 keeps, at the claim of `run`, a run of the queue of a stage with
   # `shared_run: true` (`shared_stage/1`), what its later sessions read, inside the
@@ -438,8 +442,9 @@ defmodule Apiary.Stages do
   #     of the stage, those in a loop's body included, by its place, its `workflow`, its
   #     `time_limit_minutes` (the workflow's minutes in `limits`, the time limits as the
   #     claim read them, `Apiary.Dispatches.RunSettings.hold/1`, else read now; none with
-  #     `factory` off), `full_suite` (`full_suite?/4`, with the run's access level, which
-  #     every session of the run has, a `read` entry's in a `write` run included), and
+  #     `factory` off), `type_settings` (`type_settings/4`, with the run's access level,
+  #     which every session of the run has, a `read` entry's in a `write` run included; nil
+  #     for a domain whose runs have none), and
   #     `model_choice`, the workflow's runtime and
   #     model in `models` as the claim formed them
   #     (`Apiary.Dispatches.RunSettings.build/2`, `sessions`), present for every entry of
@@ -468,6 +473,7 @@ defmodule Apiary.Stages do
 
       stage ->
         level = Apiary.Runs.RunCredentials.run_access(run)
+        workspace = Repo.get!(Workspace, run.workspace_id)
 
         settings =
           Map.new(workflow_entries(stage), fn {place, entry, loop_entry} ->
@@ -483,7 +489,7 @@ defmodule Apiary.Stages do
                %{
                  "workflow" => workflow,
                  "time_limit_minutes" => minutes,
-                 "full_suite" => full_suite?(run, entry, loop_entry, level)
+                 "type_settings" => type_settings(workspace, entry, loop_entry, level)
                },
                Map.take(Map.get(models, workflow, %{}), [
                  "model_choice",
@@ -540,16 +546,20 @@ defmodule Apiary.Stages do
   defp session_place(entry, nil), do: Integer.to_string(entry)
   defp session_place(entry, loop_entry), do: "#{entry}.#{loop_entry}"
 
-  # full_suite?/4: whether a session of `entry`, a workflow entry, or a loop entry for a run
-  # placed at a loop, of the run of the queue `run` with the access level `level`, runs the
-  # full suite after it: for a run with `write` access, an entry of a loop's body
-  # (`loop_entry` an index), a loop, or an entry with `first_attempt: true`. A run that
-  # reads or does not push runs none. A run of Explore follows the same rule.
-  defp full_suite?(_run, _entry, _loop_entry, level) when level != :write, do: false
-  defp full_suite?(_run, _entry, loop_entry, _level) when is_integer(loop_entry), do: true
-  defp full_suite?(_run, %{"loop" => _loop}, nil, _level), do: true
-  defp full_suite?(_run, %{"first_attempt" => true}, nil, _level), do: true
-  defp full_suite?(_run, _entry, nil, _level), do: false
+  # type_settings/4: the type settings of a session of `entry`, a workflow entry, or a loop
+  # entry for a run placed at a loop, of a run of `workspace` with the access level
+  # `level`: those of the workspace's domain (`Apiary.Lingo.Domain.type_settings/2`).
+  # The saves of a process check every value of these against the schema of type settings
+  # the process registers (`Apiary.Processes.check_type_settings/2`).
+  # shortcut: written unchecked for a process that registers no such schema; replace when
+  # the process contract requires the schema.
+  defp type_settings(workspace, entry, loop_entry, level),
+    do:
+      Apiary.Lingo.Domain.type_settings(workspace, %{
+        level: level,
+        entry: entry,
+        loop_entry: loop_entry
+      })
 
   # shared_access/1 checks, at the claim of `run`, a run of the queue, that the workflow
   # entries of its stage, where the stage has `shared_run: true`, have access levels that
@@ -663,7 +673,7 @@ defmodule Apiary.Stages do
   # the same stage, which runs as the run's next session; `:end` where it queues none (an
   # escalation, open questions, the gate, or the next stage, whose run is queued through
   # today's dispatch). `next` has `session`, Qory Apiary's number for it in the run,
-  # `workflow`, `time_limit_minutes` and `full_suite` (the settings of its entry as the
+  # `workflow`, `time_limit_minutes` and `type_settings` (the settings of its entry as the
   # claim kept them, `claim_sessions!/3`), `inputs` (the run's inputs,
   # `Apiary.Dispatches.Inputs.explore/4`), and `model_choice` and
   # `model_provider_credential_name`, the runtime and model of the entry's workflow and
@@ -1099,7 +1109,7 @@ defmodule Apiary.Stages do
   # it does.
   defp entry_settings(settings, spec) do
     case Map.fetch(settings, session_place(spec.entry, spec.loop_entry)) do
-      {:ok, %{"time_limit_minutes" => _minutes, "full_suite" => _full_suite} = entry} ->
+      {:ok, %{"time_limit_minutes" => _minutes} = entry} ->
         {:ok, entry}
 
       _other ->
@@ -1119,7 +1129,7 @@ defmodule Apiary.Stages do
       "model_choice" => entry["model_choice"],
       "model_provider_credential_name" => entry["model_provider_credential_name"],
       "time_limit_minutes" => entry["time_limit_minutes"],
-      "full_suite" => entry["full_suite"],
+      "type_settings" => entry["type_settings"],
       "inputs" => %{}
     }
 
@@ -1161,7 +1171,7 @@ defmodule Apiary.Stages do
        model_choice: stored["model_choice"],
        model_provider_credential_name: stored["model_provider_credential_name"],
        time_limit_minutes: stored["time_limit_minutes"],
-       full_suite: stored["full_suite"],
+       type_settings: stored["type_settings"],
        inputs: stored["inputs"]
      }}
   end

@@ -44,6 +44,12 @@ process:
       sequence: []
       outputs: []
       gate: {kind: person, approvers: members}
+type_settings:
+  json_schema:
+    type: object
+    required: [full_suite]
+    properties:
+      full_suite: {type: boolean}
 artifact_types:
   - name: acceptance-criteria
   - name: verification

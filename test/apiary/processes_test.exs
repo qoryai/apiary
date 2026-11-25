@@ -2116,4 +2116,142 @@ defmodule Apiary.ProcessesTest do
       assert Repo.reload!(trial).status == :trial
     end
   end
+
+  describe "the schema of type settings" do
+    @describetag needs: :workflow_model
+
+    # A schema under which `{"full_suite": true}` is valid and `{"full_suite": false}` is not.
+    @true_only %{"type" => "object", "properties" => %{"full_suite" => %{"const" => true}}}
+    @boolean %{"type" => "object", "properties" => %{"full_suite" => %{"type" => "boolean"}}}
+    @refused [
+      %{
+        path: "#",
+        error: :type_settings_schema,
+        detail: {%{"full_suite" => false}, "value should be true"}
+      }
+    ]
+
+    setup do
+      %{scope: scope} = sign_up_fixture()
+      %{scope: scope}
+    end
+
+    # The versions of the scope's workspace made from a harness repository whose process
+    # registers `schema`, nil for none, as its record keeps it.
+    defp repository_record!(scope, schema) do
+      record =
+        Processes.with_type_settings(
+          %{"source" => "repository", "commit" => String.duplicate("a", 40)},
+          %{type_settings: schema}
+        )
+
+      {_count, _rows} =
+        Repo.update_all(
+          from(v in Version, where: v.workspace_id == ^scope.workspace.id),
+          set: [template: record]
+        )
+
+      record
+    end
+
+    test "check_type_settings/2 checks each value of the domain's runs, and passes no schema" do
+      assert Processes.check_type_settings(Apiary.Lingo.Domain.Software, @true_only) ==
+               {:error, @refused}
+
+      assert Processes.check_type_settings(Apiary.Lingo.Domain.Software, @boolean) == :ok
+      assert Processes.check_type_settings(Apiary.Lingo.Domain.Software, nil) == :ok
+      assert Processes.check_type_settings(Apiary.Lingo.Domain.Example, @true_only) == :ok
+
+      assert Processes.check_type_settings(Apiary.Lingo.Domain.Software, %{"$ref" => "#/none"}) ==
+               {:error,
+                [
+                  %{
+                    path: "#",
+                    error: :type_settings_schema,
+                    detail: {%{"full_suite" => true}, "the JSON Schema cannot be read"}
+                  }
+                ]}
+    end
+
+    test "schema_words/1 is the failing place's message, or the artifact check's words" do
+      assert Processes.schema_words({:schema, %{path: "#", error: "value should be true"}}) ==
+               "value should be true"
+
+      assert Processes.schema_words(:limits) ==
+               "the document has more values, or longer ones, than allowed"
+
+      assert Processes.schema_words(:budget) ==
+               "the check of the document took more time or memory than allowed"
+
+      assert Processes.schema_words(:unbuildable) == "the JSON Schema cannot be read"
+    end
+
+    test "the refusal starts with the fix and shows the value as JSON" do
+      assert ApiaryWeb.StagesLive.Words.refusal(hd(@refused), nil) ==
+               "Change type_settings.json_schema in process.yaml so that it accepts " <>
+                 ~s({"full_suite": false}. The schema fails it: value should be true.)
+    end
+
+    test "type_settings_schema/1 reads the Qory commit's files, or the repository record", %{
+      scope: scope
+    } do
+      qory = Processes.harness_template(Processes.current(scope.workspace))
+
+      assert Processes.type_settings_schema(qory) == %{
+               "type" => "object",
+               "required" => ["full_suite"],
+               "properties" => %{"full_suite" => %{"type" => "boolean"}}
+             }
+
+      assert Processes.type_settings_schema(repository_record!(scope, @true_only)) == @true_only
+      assert Processes.type_settings_schema(repository_record!(scope, nil)) == nil
+      assert Processes.type_settings_schema(nil) == nil
+
+      # A Qory commit whose files are not kept: no template, so no schema.
+      unkept = %{"source" => "qory", "commit" => String.duplicate("0", 40)}
+      assert Qory.template(unkept["commit"]) == nil
+      assert Processes.type_settings_schema(unkept) == nil
+    end
+
+    test "save/4 of a version whose harness registers a schema that fails a value is refused", %{
+      scope: scope
+    } do
+      repository_record!(scope, @true_only)
+
+      assert Processes.save(scope, scope.workspace, rename(@shape, "Plan")) == {:error, @refused}
+      assert [%Version{number: 1}] = Processes.list_versions(scope.workspace)
+    end
+
+    test "save/4 of the document unchanged is unchanged before the schema of type settings", %{
+      scope: scope
+    } do
+      repository_record!(scope, @true_only)
+      document = Processes.current(scope.workspace).document
+
+      assert Processes.save(scope, scope.workspace, document) ==
+               {:error, [%{path: "#", error: :unchanged, detail: nil}]}
+    end
+
+    test "save/4 saves with a schema under which every value is valid, or with no schema", %{
+      scope: scope
+    } do
+      repository_record!(scope, @boolean)
+
+      assert {:ok, %Version{number: 2}} =
+               Processes.save(scope, scope.workspace, rename(@shape, "Plan"))
+
+      repository_record!(scope, nil)
+
+      assert {:ok, %Version{number: 3}} =
+               Processes.save(scope, scope.workspace, rename(@shape, "Shape"))
+    end
+
+    test "save/4 in a workspace of the example domain saves with any schema", %{scope: scope} do
+      scope = with_domain(scope, "example")
+      repository_record!(scope, @true_only)
+
+      assert {:ok, %Version{number: 2}} =
+               Processes.save(scope, scope.workspace, rename(@shape, "Plan"))
+    end
+  end
 end

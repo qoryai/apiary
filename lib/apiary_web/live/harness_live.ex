@@ -548,7 +548,7 @@ defmodule ApiaryWeb.HarnessLive do
     do: gettext("Correct the artifact type %{type} in the harness, then save again.", type: name)
 
   defp save_words(errors, update) when is_list(errors),
-    do: Enum.map_join(errors, " ", &StagesWords.refusal(&1, update.document))
+    do: Enum.map_join(errors, " ", &HarnessUpdateComponents.error_words(&1, update))
 
   defp save_words(:forbidden, _update), do: StagesWords.refusal(:forbidden, nil)
   defp save_words(_reason, _update), do: gettext("Nothing was changed. Try again.")

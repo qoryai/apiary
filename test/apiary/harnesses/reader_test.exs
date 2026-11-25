@@ -732,6 +732,21 @@ defmodule Apiary.Harnesses.ReaderTest do
       refute Map.has_key?(plain, :submit)
     end
 
+    test "returns the JSON Schema of type_settings as written, and nil without the key" do
+      assert {:ok, %{type_settings: nil}} = read(source(@template))
+
+      schema = "{type: object, required: [full_suite], properties: {full_suite: {type: boolean}}}"
+
+      assert {:ok, %{type_settings: %{"required" => ["full_suite"], "type" => "object"}}} =
+               read(with_value("type_settings", "{json_schema: #{schema}}"))
+    end
+
+    test "returns invalid_template for a type_settings that fails the schema" do
+      for value <- ["{}", "{json_schema: true}", "{json_schema: {}, other: 1}", "[]"],
+          do:
+            assert(read(with_value("type_settings", value)) == {:error, :invalid_template}, value)
+    end
+
     test "refuses an artifact_types that is not a list" do
       for value <- ["screenshot", "{name: screenshot}", "null", "1"],
           do:
@@ -743,10 +758,10 @@ defmodule Apiary.Harnesses.ReaderTest do
 
   # qory's process.schema.json and primitives.schema.json, vendored from the qory commit
   # in the `.contract-ref` file beside them, by their SHA-256 there.
-  @qory_ref "cdd21e6e80d3f6594a33157210977600e4e8b1cf"
+  @qory_ref "9b6593f3a72b6fc6ad959016333bab8a4381e593"
   @vendored "priv/contract/harness/v1"
   @vendored_sha256 %{
-    "process.schema.json" => "7f11ea65aeb6385740f7839e9a8452a34a125cbafd77ac50cf0a2c10332ee498",
+    "process.schema.json" => "f0c7c52d95dcb57588adc99e0051ff2042ec3b3d12c41951eacfd5b8ed871bf0",
     "primitives.schema.json" => "3afc6bdd78e412b9e6a3fe3d6a0a69a2f3c7032e0236355e17ea7f2f9c2d71ea"
   }
 

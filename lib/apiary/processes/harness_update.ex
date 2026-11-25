@@ -98,8 +98,9 @@ defmodule Apiary.Processes.HarnessUpdate do
     * `refused`: the errors of `Apiary.Processes.validate/3` with `levels` and the
       workspace's model choices (`Apiary.Processes.workspace_models/2`) for a stage with
       `shared_run: true` whose workflows would run with access levels that one run
-      cannot have, or whose model choices do not fit one run, which a save returns; empty
-      for none.
+      cannot have, or whose model choices do not fit one run, and of a schema of type
+      settings that fails a value the workspace's runs can have
+      (Apiary.Processes.check_type_settings/2), which a save returns; empty for none.
   """
   @type update :: %{
           source: :qory | :repository,
@@ -505,7 +506,9 @@ defmodule Apiary.Processes.HarnessUpdate do
 
     %{
       levels: levels,
-      refused: refused(workspace, template.process, levels),
+      refused:
+        refused(workspace, template.process, levels) ++
+          type_settings_refused(workspace, template),
       source: source,
       git: chosen.git,
       version: version,
@@ -532,7 +535,17 @@ defmodule Apiary.Processes.HarnessUpdate do
           },
           template
         )
+        |> Processes.with_type_settings(template)
     }
+  end
+
+  # The error of a schema of type settings in `template` that fails a value the
+  # workspace's runs can have, which a save returns (`Processes.check_type_settings/2`).
+  defp type_settings_refused(workspace, template) do
+    case Processes.check_type_settings(workspace, Map.get(template, :type_settings)) do
+      :ok -> []
+      {:error, errors} -> errors
+    end
   end
 
   # The access level each workflow of the harness declares (`t:update/0`), where the read

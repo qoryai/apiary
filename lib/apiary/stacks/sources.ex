@@ -2182,7 +2182,9 @@ defmodule Apiary.Stacks.Sources do
   # source that offers no template, a connected or an assigned source that is not the
   # entry of its list, read from the database (`listed?/2`), or a template of a type that
   # is the key of no domain's type, which a page read before can still send
-  # (`Apiary.Lingo.Domain.known_type?/1`); or `{:error, errors}` for a process
+  # (`Apiary.Lingo.Domain.known_type?/1`); or `{:error, errors}` for a schema of type
+  # settings that fails a value the template type's runs can have
+  # (`Apiary.Processes.check_type_settings/2`), or for a process
   # `Apiary.Processes.validate/3` refuses, its stages with `shared_run: true` checked
   # against the organisation's default model choice, the one level a workspace not yet
   # made reaches (`Apiary.ModelChoices.default_models/1`).
@@ -2195,7 +2197,12 @@ defmodule Apiary.Stacks.Sources do
       when is_binary(commit) do
     with :ok <- source_allowed(scope, source),
          true <- listed?(scope, source),
-         true <- not narrowed?(narrowing) and Domain.known_type?(template.type) do
+         true <- not narrowed?(narrowing) and Domain.known_type?(template.type),
+         :ok <-
+           Apiary.Processes.check_type_settings(
+             Domain.for_type(template.type),
+             Map.get(template, :type_settings)
+           ) do
       Apiary.Processes.validate(
         template.process,
         %{},
@@ -2255,18 +2262,17 @@ defmodule Apiary.Stacks.Sources do
              )
            ) do
       {:ok,
-       Apiary.Processes.with_delivered(
-         %{
-           "source" => "repository",
-           "git" => git,
-           "commit" => commit,
-           "module" => template.module,
-           "stack" => template.stack,
-           "type" => template.type,
-           "version" => nil
-         },
-         template
-       )}
+       %{
+         "source" => "repository",
+         "git" => git,
+         "commit" => commit,
+         "module" => template.module,
+         "stack" => template.stack,
+         "type" => template.type,
+         "version" => nil
+       }
+       |> Apiary.Processes.with_delivered(template)
+       |> Apiary.Processes.with_type_settings(template)}
     end
   end
 

@@ -931,6 +931,28 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
       assert workspaces(organisation) == []
     end
 
+    test "a template whose schema of type settings fails a value of the runs shows that line alone",
+         %{conn: conn, user: user, organisation: organisation} = ctx do
+      file =
+        support_desk_file() <>
+          "type_settings:\n  json_schema:\n    type: object\n" <>
+          "    properties:\n      full_suite: {const: true}\n"
+
+      files = Apiary.HarnessReadsFixtures.repository_files("R_harness", %{"support-desk" => file})
+      Apiary.HarnessReadsFixtures.serve_calls([ctx.adapter], covered: ctx.covered, files: files)
+
+      view = open(conn, user, organisation, ctx.collection.public_id <> ".support-desk")
+      view |> element("#workspace-type-create") |> render_click()
+
+      assert flash_error(view) ==
+               squash(
+                 "Change type_settings.json_schema in process.yaml so that it accepts " <>
+                   ~s({"full_suite": false}. The schema fails it: value should be true.)
+               )
+
+      assert workspaces(organisation) == []
+    end
+
     test "a template of a type no domain has is not a template",
          %{
            conn: conn,

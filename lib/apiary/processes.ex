@@ -131,6 +131,7 @@ defmodule Apiary.Processes do
 
   alias Apiary.{Access, Audit, Repo}
   alias Apiary.Accounts.Scope
+  alias Apiary.Artifacts.{CustomSchema, Format}
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Harnesses.Qory
   alias Apiary.Kinds.{Bounds, Schema}
@@ -1338,7 +1339,9 @@ defmodule Apiary.Processes do
   newest version of its type's default process, once a copy of the template at `commit`
   where no instance admin has saved one (Apiary.Processes.TypeTemplates.newest/2), and
   the record of the template (the moduledoc). Called where the workspace is created, in
-  that transaction. `{:ok, version}`.
+  that transaction. `{:ok, version}`, or `{:error, errors}` for a schema of type settings
+  in the template that fails a value the workspace's runs can have
+  (`check_type_settings/2`).
   """
   @spec copy_qory_template(%Workspace{}, String.t()) :: {:ok, Version.t()} | {:error, term}
   def copy_qory_template(%Workspace{} = workspace, commit) when is_binary(commit) do
@@ -1346,21 +1349,23 @@ defmodule Apiary.Processes do
     newest = TypeTemplates.newest(key, commit)
     template = Qory.template(commit)
 
-    insert_first(
-      workspace,
-      newest.document,
-      %{
-        "source" => "qory",
-        "git" => Qory.git(),
-        "commit" => commit,
-        "module" => Qory.template_module(),
-        "stack" => Workspace.qory_stack(workspace),
-        "type" => template.type,
-        "version" => newest.number
-      }
-      |> with_delivered(template),
-      []
-    )
+    with :ok <- check_type_settings(workspace, template.type_settings) do
+      insert_first(
+        workspace,
+        newest.document,
+        %{
+          "source" => "qory",
+          "git" => Qory.git(),
+          "commit" => commit,
+          "module" => Qory.template_module(),
+          "stack" => Workspace.qory_stack(workspace),
+          "type" => template.type,
+          "version" => newest.number
+        }
+        |> with_delivered(template),
+        []
+      )
+    end
   end
 
   @doc false
@@ -1378,6 +1383,74 @@ defmodule Apiary.Processes do
   end
 
   def with_delivered(record, _template), do: record
+
+  @doc false
+  # with_type_settings/2 is `record`, the `template` a version keeps, with
+  # `type_settings_schema`, the JSON Schema of type settings that `template`, a template as
+  # `Apiary.Harnesses.Reader.template/1` reads it, registers, where `record` is of a harness
+  # repository and `template` registers one: the instance keeps no files of a harness
+  # repository (`type_settings_schema/1`).
+  @spec with_type_settings(map, map) :: map
+  def with_type_settings(%{"source" => "repository"} = record, %{type_settings: %{} = schema}),
+    do: Map.put(record, "type_settings_schema", schema)
+
+  def with_type_settings(record, _template), do: record
+
+  @doc false
+  # type_settings_schema/1 is the JSON Schema of type settings that the process of
+  # `record`, the record of a harness commit (`harness_template/1`), registers: for a Qory
+  # harness record, read from the files kept for its commit (`Qory.template/1`); for a
+  # harness repository's record, the schema in the record (`with_type_settings/2`).
+  # Nil for none, and for no record.
+  @spec type_settings_schema(map | nil) :: map | nil
+  def type_settings_schema(%{"source" => "qory", "commit" => commit}) when is_binary(commit) do
+    case Qory.template(commit) do
+      %{type_settings: schema} -> schema
+      nil -> nil
+    end
+  end
+
+  def type_settings_schema(%{"source" => "repository"} = record),
+    do: record["type_settings_schema"]
+
+  def type_settings_schema(_record), do: nil
+
+  @doc false
+  # check_type_settings/2 checks every type settings value a run of a workspace of
+  # `domain_of`, a workspace or a domain module, can have (`Domain.type_settings_values/1`)
+  # against `schema`, the JSON Schema of type settings that a saved process registers
+  # (`CustomSchema.validate/2`): `:ok`, or `{:error, [error]}` for the first value that
+  # fails it, with `detail` `{value, words}`, `words` why the schema fails it.
+  # shortcut: a process that registers no schema of type settings saves, and its runs get
+  # type settings unchecked; replace when the process contract requires the schema.
+  @spec check_type_settings(%Workspace{} | module, map | nil) :: :ok | {:error, [error]}
+  def check_type_settings(_domain_of, nil), do: :ok
+
+  def check_type_settings(%Workspace{} = workspace, %{} = schema),
+    do: check_type_settings(Domain.for_workspace(workspace), schema)
+
+  def check_type_settings(domain, %{} = schema) when is_atom(domain) do
+    domain
+    |> Domain.type_settings_values()
+    |> Enum.find_value(:ok, fn value ->
+      case CustomSchema.validate(value, schema) do
+        :ok ->
+          nil
+
+        {:error, refusal} ->
+          {:error,
+           [%{path: "#", error: :type_settings_schema, detail: {value, schema_words(refusal)}}]}
+      end
+    end)
+  end
+
+  @doc false
+  # schema_words/1 is why `CustomSchema.validate/2` returns `refusal` for a value: the
+  # first failing place's message, or the artifact check's words for `:limits`, `:budget`
+  # and `:unbuildable` (`Apiary.Artifacts.Format.refused/1`).
+  @spec schema_words(CustomSchema.refusal()) :: String.t()
+  def schema_words({:schema, %{error: words}}), do: words
+  def schema_words(refusal), do: Format.refused(refusal).error
 
   @doc false
   # delivered_entries/1 is the entries of `artifact_types` in `record` (`with_delivered/2`)
@@ -1459,7 +1532,10 @@ defmodule Apiary.Processes do
   default. A stage with no `id` is given a new one (`new_stage_id/0`).
 
   `{:ok, version}`; `{:error, errors}` (`t:error/0`) for a document `validate/1` refuses,
-  or one that is the document of the version the save starts from; or a reason of
+  for a schema of type settings, of the harness commit the version the save starts from
+  was made from (`type_settings_schema/1`), that fails a value the workspace's runs can
+  have (`check_type_settings/2`), or for a document that is the document of the version
+  the save starts from; or a reason of
   `Apiary.Access`. A machine type key the instance has no type for is kept: its runs
   start on the workspace's default type (`Apiary.MachineTypes`).
   """
@@ -1474,9 +1550,10 @@ defmodule Apiary.Processes do
            :ok <- Access.check(scope, :"process.edit", workspace),
            :ok <-
              validate(document, declared_access(workspace), workspace_models(workspace, document)),
-           :ok <- Apiary.MachineTypes.hold(),
            {:ok, base} <- base(workspace, Keyword.get(opts, :based_on)),
            :ok <- changed(base, document),
+           :ok <- check_type_settings(workspace, type_settings_schema(harness_template(base))),
+           :ok <- Apiary.MachineTypes.hold(),
            {:ok, version} <- insert_version(scope, workspace, base, document, trial?, nil),
            :ok <- if(trial?, do: :ok, else: put_keep_latest(workspace, false)),
            {:ok, _entry} <-
@@ -1516,6 +1593,8 @@ defmodule Apiary.Processes do
       the stages with `shared_run: true` as `save/4` does (`validate/3`); none by default;
     * `models:`, the workspace's model choices (`workspace_models/2`), checks those
       stages' model providers as `save/4` does; none by default;
+    * the schema of type settings is the one `template` has (`type_settings_schema/1`),
+      checked as `save/4` checks it;
     * for the instance's scope (`Apiary.Accounts.Scope.for_instance/2`), with no person,
       it checks no access: the switch's update, which no person starts. Its version has
       no author.
@@ -1535,6 +1614,7 @@ defmodule Apiary.Processes do
            :ok <- harness_access(scope, workspace),
            :ok <-
              validate(document, Keyword.get(opts, :levels, %{}), Keyword.get(opts, :models)),
+           :ok <- check_type_settings(workspace, type_settings_schema(template)),
            :ok <- Apiary.MachineTypes.hold(),
            {:ok, base} <- base(workspace, Keyword.fetch!(opts, :based_on)),
            :ok <- still_current(workspace, base),

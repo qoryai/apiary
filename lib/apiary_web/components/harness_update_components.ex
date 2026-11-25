@@ -276,7 +276,7 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
       </p>
       <.notice :if={@refused != []} kind={:error}>
         <span id="harness-update-refused">
-          {Enum.map_join(@refused, " ", &refused_words(&1, @update.document))}
+          {Enum.map_join(@refused, " ", &refused_words(&1, @update))}
         </span>
       </.notice>
       <div class="flex flex-wrap gap-2">
@@ -312,7 +312,7 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
   # that one run cannot have; any other error in the save's words.
   defp refused_words(
          %{error: :shared_run_differs, detail: {:access, workflow, level, other}},
-         _document
+         _update
        ),
        do:
          gettext(
@@ -322,7 +322,18 @@ defmodule ApiaryWeb.HarnessUpdateComponents do
            level: level
          )
 
-  defp refused_words(error, document), do: Words.refusal(error, document)
+  defp refused_words(error, update), do: error_words(error, update)
+
+  @doc false
+  # error_words/2 is the words of `error`, an error of a save of `update`
+  # (`t:Apiary.Processes.HarnessUpdate.update/0`). A schema of type settings that fails a
+  # value, in the Qory harness, has a line to contact support: the person cannot change the
+  # Qory harness.
+  @spec error_words(map, map) :: String.t()
+  def error_words(%{error: :type_settings_schema}, %{source: :qory}),
+    do: Words.qory_type_settings()
+
+  def error_words(error, update), do: Words.refusal(error, update.document)
 
   attr :kind, :atom, required: true, values: [:add, :del, :ctx]
   attr :sub, :boolean, default: false, doc: "whether the line is an entry under a change"

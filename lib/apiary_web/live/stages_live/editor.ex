@@ -182,6 +182,9 @@ defmodule ApiaryWeb.StagesLive.Editor do
       end) || if(selected in refused_stages, do: selected) ||
         Enum.find_value(draft["stages"], selected, &(&1["id"] in refused_stages && &1["id"]))
 
+    # Read once per save, and only for a schema of type settings that fails a value.
+    qory? = Enum.any?(rest, &(&1.error == :type_settings_schema)) and qory?(socket)
+
     socket
     |> field_errors_of(first)
     |> assign(
@@ -189,11 +192,23 @@ defmodule ApiaryWeb.StagesLive.Editor do
       refused_machines: refused_machines,
       machine_types: Apiary.MachineTypes.list(),
       save_note: if(unchanged != [], do: Words.refusal(hd(unchanged), draft)),
-      save_errors: rest |> Enum.map(&Words.refusal(&1, draft)) |> Enum.uniq(),
+      save_errors: rest |> Enum.map(&save_words(&1, draft, qory?)) |> Enum.uniq(),
       selected: first
     )
     |> refresh.()
   end
+
+  # A schema of type settings that fails a value, where the version the save starts from
+  # comes from the Qory harness: the person cannot change the Qory harness.
+  defp save_words(%{error: :type_settings_schema}, _draft, true), do: Words.qory_type_settings()
+  defp save_words(error, draft, _qory?), do: Words.refusal(error, draft)
+
+  # The Workspace types page edits a `TypeTemplate`, which no save checks against a schema
+  # of type settings: not the Qory harness.
+  defp qory?(%{assigns: %{base: %Apiary.Processes.Version{} = base}}),
+    do: Apiary.Processes.harness_template(base)["source"] == "qory"
+
+  defp qory?(_socket), do: false
 
   # The error lines above the canvas: those of the last save, then one for each stage whose
   # rows show a refused machine type, so a line goes when its last mark goes.

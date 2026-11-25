@@ -149,6 +149,10 @@ defmodule ApiaryWeb.Contract.RunApi.Body do
   def next_session(raw_body) when byte_size(raw_body) > @next_session_max_bytes,
     do: {:error, :too_large}
 
+  # shortcut: a request member other than session, state and reason is 400
+  # invalid_request: `must_understand`, which the copied request schema defines, and a
+  # member the schema does not define, which a reader ignores under the contract. Replace
+  # when the next-session reader follows the open contract.
   def next_session(raw_body) do
     with {:ok, body} <- object(raw_body),
          :ok <- members(body, ~w(session state reason), :named),

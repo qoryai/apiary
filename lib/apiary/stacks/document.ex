@@ -49,6 +49,10 @@ defmodule Apiary.Stacks.Document do
 
   alias Apiary.Harnesses.Reader
 
+  # shortcut: the harness save reads documents.schema.json at 4ad23d9c, whose harness
+  # section has no member that it does not define. The copy at da48933d accepts such a
+  # member, and the save would accept it. Copy the file at the run contract's commit
+  # when the save checks the harness section closed in another way.
   @schema_path Path.join(__DIR__, "documents.schema.json")
   @external_resource @schema_path
   @schema @schema_path |> File.read!() |> Jason.decode!()

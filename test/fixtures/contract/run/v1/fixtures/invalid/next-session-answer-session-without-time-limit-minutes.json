@@ -27,7 +27,9 @@
     }
   },
   "model_provider_credential_name": "example-provider-1",
-  "full_suite": false,
+  "type_settings": {
+    "full_suite": false
+  },
   "inputs": {
     "version": 1,
     "run": {

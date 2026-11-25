@@ -1019,13 +1019,17 @@ defmodule Apiary.Artifacts.Format do
   defp earlier(id, _index, word), do: "the id #{id} is the id of an earlier #{word}"
 
   # Why a document was refused before JSV found a failing place in it, at its root.
-  defp refused(:limits),
+  @doc false
+  # refused/1 is the place and the words of a document that `CustomSchema.validate/2`
+  # returns `:limits`, `:budget` or `:unbuildable` for.
+  @spec refused(:limits | :budget | :unbuildable) :: SchemaError.t()
+  def refused(:limits),
     do: SchemaError.detail("#", "the document has more values, or longer ones, than allowed")
 
-  defp refused(:budget),
+  def refused(:budget),
     do: SchemaError.detail("#", "the check of the document took more time or memory than allowed")
 
-  defp refused(_unbuildable), do: SchemaError.detail("#", "the JSON Schema cannot be read")
+  def refused(_unbuildable), do: SchemaError.detail("#", "the JSON Schema cannot be read")
 
   ## Reading
 

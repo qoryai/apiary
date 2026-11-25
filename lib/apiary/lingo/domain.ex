@@ -18,6 +18,9 @@ defmodule Apiary.Lingo.Domain do
   environments are prebuilt (`c:prebuilds?/0`), and whether a target may have a harness
   file (`c:harness_file?/0`). Code that applies one of these rules asks here, through the
   workspace (`check_target/2`, `run_variables/3`, `prebuilds?/1`, `harness_file?/1`).
+  A domain also sets the type settings of each session of a stage's run
+  (`c:type_settings/1`, `type_settings/2`), and lists every value they can have
+  (`c:type_settings_values/0`).
 
   A domain is a workspace type, with a definition (`c:definition/0`,
   `Apiary.Lingo.Domain.Definition`). A workspace stores the key of its type's definition
@@ -58,6 +61,17 @@ defmodule Apiary.Lingo.Domain do
 
   @typedoc "Run variables: each variable's name, with its value."
   @type variables :: %{required(String.t()) => String.t()}
+
+  @typedoc """
+  A session of a stage's run, as `c:type_settings/1` reads it: `level`, the run's access
+  level; `entry`, the stage's entry of the session, a workflow entry or a loop; and
+  `loop_entry`, the index of the session's entry in its loop's body, nil outside a loop.
+  """
+  @type session_facts :: %{
+          level: :read | :write_no_push | :write,
+          entry: map,
+          loop_entry: non_neg_integer | nil
+        }
 
   @doc """
   The address of the target a run's labels name, by the domain's labelling rule:
@@ -182,6 +196,21 @@ defmodule Apiary.Lingo.Domain do
   and the harness a workspace of the type starts with.
   """
   @callback definition() :: Definition.t()
+
+  @doc """
+  The type settings of a session of a stage's run (`t:session_facts/0`): the
+  `type_settings` of the run documents and of the next-session answer, or nil for a
+  domain whose runs have none, so `type_settings` is absent from the documents and the
+  answer.
+  """
+  @callback type_settings(session_facts) :: %{String.t() => term} | nil
+
+  @doc """
+  Every value `c:type_settings/1` can return but nil: what a save of a process checks
+  against the schema of type settings that the process registers. Empty for a domain
+  whose runs have none.
+  """
+  @callback type_settings_values() :: [%{String.t() => term}]
 
   @doc "The domains there are, by name."
   @spec domains() :: %{String.t() => module}
@@ -324,6 +353,21 @@ defmodule Apiary.Lingo.Domain do
   @doc "The word for a target's copy in the workspace: `c:copy_noun/0` of its domain."
   @spec copy_noun(%Workspace{} | nil) :: String.t()
   def copy_noun(workspace), do: for_workspace(workspace).copy_noun()
+
+  @doc """
+  The type settings of a session of a stage's run in the workspace: `c:type_settings/1`
+  of its domain, nil for a domain whose runs have none.
+  """
+  @spec type_settings(%Workspace{} | nil, session_facts) :: %{String.t() => term} | nil
+  def type_settings(workspace, %{level: _, entry: _, loop_entry: _} = facts),
+    do: for_workspace(workspace).type_settings(facts)
+
+  @doc """
+  Every type settings value a run of `domain`, one of the modules of `domains/0`, can
+  have: its `c:type_settings_values/0`.
+  """
+  @spec type_settings_values(module) :: [%{String.t() => term}]
+  def type_settings_values(domain) when is_atom(domain), do: domain.type_settings_values()
 
   @doc """
   Whether an adapter that lists `domains` in its description, nil for none, serves the
