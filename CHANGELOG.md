@@ -2082,7 +2082,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   cannot check: no `deliver` type twice, no `collection` twice across `target` and
   `read_targets`, and no destination id twice in `inputs.destinations`. It returns the
   message of the integrations' `Documents.Check()`. The claim calls it on the documents
-  of every run (`Apiary.Dispatches.Handover`).
+  of every run, in `lib/apiary/dispatches/handover.ex`.
 - `ChangeRequest.validate/1` checks a `change_request` entry against the
   integrations contract's `changes.schema.json`, vendored under `priv/contract/integration/`.
   It refuses a title that is empty, only spaces, over 256 characters or on more than one
