@@ -575,7 +575,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         Map.merge(people, %{
           "id" => @explore,
           "name" => "Explore",
-          "gate" => Map.put(gate, "tracks", ["standard", "fast"])
+          "gate" => Map.put(gate, "tracks", ["standard", "fast-track"])
         }),
         Map.merge(people, %{
           "id" => shape,
@@ -591,7 +591,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         "machine" => "default",
         "tracks" => [
           %{"id" => "standard", "name" => "Standard"},
-          %{"id" => "fast", "name" => "Fast track"}
+          %{"id" => "fast-track", "name" => "Fast track"}
         ],
         "stages" => stages
       }
@@ -612,7 +612,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
         )
 
       work_item = Repo.get!(WorkItem, ctx.work_item.id)
-      decide!(ctx, :approve, track: "fast", take_in: work_item.take_in)
+      decide!(ctx, :approve, track: "fast-track", take_in: work_item.take_in)
       now = DateTime.utc_now()
 
       Repo.insert!(%Apiary.Stages.Escalation{

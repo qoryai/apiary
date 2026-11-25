@@ -7624,10 +7624,10 @@ defmodule Apiary.StagesTest do
 
   describe "a first attempt, and Verify with no run" do
     @verify "st_m1mqbeywdg"
-    @on_fast %{"track" => "fast"}
+    @on_fast %{"track" => "fast-track"}
     @tracks_of_process [
       %{"id" => "standard", "name" => "Standard"},
-      %{"id" => "fast", "name" => "Fast track"}
+      %{"id" => "fast-track", "name" => "Fast track"}
     ]
 
     # Explore offering both tracks; Build, whose first attempt runs on Fast track only and
@@ -7640,7 +7640,7 @@ defmodule Apiary.StagesTest do
         "machine" => "default",
         "tracks" => @tracks_of_process,
         "stages" => [
-          explore_stage(offering(["standard", "fast"])),
+          explore_stage(offering(["standard", "fast-track"])),
           stage(@build, "Build", [
             %{"workflow" => "make-a-small-change", "when" => @on_fast, "first_attempt" => true},
             %{"workflow" => "plan-the-build"},
@@ -7682,7 +7682,7 @@ defmodule Apiary.StagesTest do
 
     test "a passed first attempt ends Build's sequence, and Verify's gate opens with no run and no verification",
          %{scope: scope} do
-      work_item = in_build!(scope, "fast")
+      work_item = in_build!(scope, "fast-track")
 
       assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
       assert %DispatchRun{workflow: "make-a-small-change", stage_entry: 0} = newest_run(work_item)
@@ -7717,7 +7717,7 @@ defmodule Apiary.StagesTest do
 
     test "a passed first attempt leaves one skip for each later workflow, until the stage runs again",
          %{scope: scope} do
-      work_item = in_build!(scope, "fast") |> end_run!(verdict("passed"))
+      work_item = in_build!(scope, "fast-track") |> end_run!(verdict("passed"))
 
       assert [
                %{stage_id: @build, workflow: "plan-the-build", reason: "first_attempt_passed"},
@@ -7738,7 +7738,7 @@ defmodule Apiary.StagesTest do
 
     test "Request changes clears the skips of a first attempt, and its next pass writes them again",
          %{scope: scope} do
-      work_item = in_build!(scope, "fast") |> end_run!(verdict("passed"))
+      work_item = in_build!(scope, "fast-track") |> end_run!(verdict("passed"))
       assert length(Stages.skips(work_item)) == 2
       [proposal] = versions(work_item, "proposal")
 
@@ -7761,7 +7761,7 @@ defmodule Apiary.StagesTest do
         "machine" => "default",
         "tracks" => @tracks_of_process,
         "stages" => [
-          explore_stage(offering(["standard", "fast"])),
+          explore_stage(offering(["standard", "fast-track"])),
           stage(
             @build,
             "Build",
@@ -7777,7 +7777,7 @@ defmodule Apiary.StagesTest do
 
       {:ok, _version} = Processes.save(scope, scope.workspace, document)
       work_item = take_in!(scope) |> end_run!(understood_result())
-      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast")
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
 
       # The first attempt passes with no submission: the check fails and the stage escalates.
       work_item = reload(work_item) |> end_run!(verdict("passed"))
@@ -7801,7 +7801,7 @@ defmodule Apiary.StagesTest do
     end
 
     test "a first attempt that ends changes-requested goes on with the sequence", %{scope: scope} do
-      work_item = in_build!(scope, "fast")
+      work_item = in_build!(scope, "fast-track")
       work_item = end_run!(work_item, verdict("changes-requested"))
 
       assert %WorkItem{stage_id: @build, stage_state: :running, stage_entry: 1} = work_item
