@@ -43,7 +43,9 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      `open_blocking_findings`; and a version of
   #      `questions` or `review-comments` whose file is over the size limit as stored,
   #      with each number that is an integer in value written as an integer (`1e3` as
-  #      `1000`), `422` `too_large`;
+  #      `1000`), `422` `too_large`; and a version of a type the run's process version
+  #      delivers whose artifact has an earlier version for a target of another adapter
+  #      with the same collection ref, `409` `collection_clash`;
   #   5. for a withdrawal, a push with `withdraw` true: an unknown type as for a push, then
   #      `questions`, `review-comments`, `verdict` or `proposal`, the types Qory Apiary
   #      reads itself, a type with `withdrawable` false, and a type that the run's process
@@ -904,6 +906,10 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp refused(:run_ended, _push), do: {:error, :run_ended}
   defp refused(:run_cancelled, _push), do: {:error, :run_cancelled}
 
+  # A version of a delivered type for an artifact with a version for another adapter's
+  # target (`Apiary.Artifacts.push/5`).
+  defp refused(:collection_clash, _push), do: {:error, :collection_clash}
+
   defp refused(_refusal, _push), do: {:error, :unavailable}
 
   # The format a refused file is fixed to: for a proposal's sources.json, the proposal
@@ -1233,6 +1239,10 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
         "Leave #{type}/#{name} as it is. Its newest version, v#{number}, is already a " <>
           "withdrawal."
     )
+  end
+
+  defp write_error(conn, {:error, :collection_clash}) do
+    error(conn, 409, "collection_clash", message: "Give the targets different collections.")
   end
 
   defp write_error(conn, {:error, :unknown_decision}) do

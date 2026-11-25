@@ -2712,6 +2712,41 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert RunApiStubs.pushed() == []
     end
 
+    test "answers a push to an artifact with a version for another adapter's target with 409",
+         ctx do
+      delivered_pull_request!(ctx, %{"type" => "object"})
+      body = pull_request_body(~s({"title":"Keep the sale price in the basket"}))
+      assert %{"artifact" => _artifact} = json_response(write(ctx, "/artifacts", body), 201)
+
+      # The run that pushed it is now registered with a target of another adapter, with
+      # the same collection ref.
+      work_item = Repo.get!(WorkItem, ctx.work_item.id)
+      other = Apiary.WorkItemsFixtures.work_item_fixture(ctx.scope)
+      assert other.adapter_id != work_item.adapter_id
+
+      other_target =
+        Apiary.Runs.Target.id_of(
+          work_item.organisation_id,
+          work_item.workspace_id,
+          WorkItem.target(other)
+        )
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+          set: [target_id: other_target]
+        )
+
+      conn = write(ctx, "/artifacts", body)
+      assert signed_answer?(conn)
+
+      assert json_response(conn, 409) == %{
+               "error" => "collection_clash",
+               "message" => "Give the targets different collections."
+             }
+
+      assert length(RunApiStubs.pushed()) == 1
+    end
+
     test "withdraws a name of another custom type when the process delivers a type", ctx do
       file_type!(ctx, "demo-submission", 1000, 2)
       file_type!(ctx, "demo-script", 1000, 2)

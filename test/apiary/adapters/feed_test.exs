@@ -8,7 +8,7 @@ defmodule Apiary.Adapters.FeedTest do
 
   import Apiary.NodesFixtures
 
-  alias Apiary.Adapters.Feed
+  alias Apiary.Adapters.{ChangeRequest, Feed}
   alias Apiary.Repo
 
   @moduletag needs: :factory
@@ -48,8 +48,7 @@ defmodule Apiary.Adapters.FeedTest do
     )
   end
 
-  # shortcut: the feed has no entry kind `change_request`, so `append/2` raises on the
-  # entries of these fixtures; replace when the feed takes them.
+  # The contract's fixtures of change_request entries.
   @change_requests ~w(changes/change-request-bid-changes.json
                       changes/change-request-empty-data.json
                       changes/change-request-pull-request-another-host.json
@@ -85,9 +84,10 @@ defmodule Apiary.Adapters.FeedTest do
     test "every change of changes/ is appended and read back as written, in order", %{
       adapter: adapter
     } do
-      paths = fixtures("changes/*.json") -- ["changes/unknown-kind.json" | @change_requests]
+      assert fixtures("changes/change-request-*.json") == @change_requests
+      paths = fixtures("changes/*.json") -- ["changes/unknown-kind.json"]
 
-      assert paths ==
+      assert paths -- @change_requests ==
                ~w(changes/comment.json changes/empty.json changes/feed-loopback.json
                   changes/feed.json changes/grants.json changes/watch.json)
 
@@ -104,33 +104,21 @@ defmodule Apiary.Adapters.FeedTest do
       end
     end
 
-    test "append/2 raises on each change_request entry of changes/, a kind it lacks", %{
-      adapter: adapter
-    } do
-      assert fixtures("changes/change-request-*.json") == @change_requests
-
-      for path <- @change_requests do
-        assert [_ | _] = fixture(path)["changes"], path
-
-        for change <- fixture(path)["changes"] do
-          raises(adapter, Map.new(change, fn {k, v} -> {String.to_atom(k), v} end))
-        end
-      end
-
-      assert Feed.entries(adapter) == []
-    end
-
     test "the entries of the refused fixtures are refused, and nothing is written", %{
       adapter: adapter
     } do
-      # shortcut: 31 of these 50 fixtures have change_request entries, 28 under invalid/
-      # that fail the schema and the 3 under closed/. append/2 raises on each of them
-      # because the feed has no entry kind change_request, not for the rule that the
-      # fixture breaks; replace when the feed takes change_request entries.
+      # 31 of these 50 fixtures have change_request entries: the 28 under invalid/ fail
+      # the contract's check, and the 3 under closed/ pass it with a member the contract
+      # does not define.
       paths = refused_entries()
       assert length(paths) == 50
       assert "invalid/changes-comment-author-name-unicode-spaces.json" in paths
       assert "invalid/changes-watch-work-item-id-wrong-prefix.json" in paths
+
+      requests =
+        for path <- paths, String.contains?(path, "change-request"), do: path
+
+      assert length(requests) == 31
 
       for path <- paths do
         assert [_ | _] = fixture(path)["changes"], path
@@ -138,6 +126,11 @@ defmodule Apiary.Adapters.FeedTest do
         for change <- fixture(path)["changes"] do
           entry = Map.new(change, fn {k, v} -> {String.to_atom(k), v} end)
           raises(adapter, entry)
+
+          if path in requests do
+            closed? = String.starts_with?(path, "closed/")
+            assert closed? == (ChangeRequest.validate(change) == :ok), path
+          end
         end
       end
 
@@ -335,7 +328,7 @@ defmodule Apiary.Adapters.FeedTest do
       assert Feed.entries(adapter) == []
     end
 
-    test "the table takes a comment entry's data up to 400,000 bytes, any other up to 4,096",
+    test "the table takes a change_request entry's data up to 1,400,000 bytes, a comment's up to 400,000, any other up to 4,096",
          %{adapter: adapter} do
       insert = fn seq, kind, data ->
         Repo.transaction(fn ->
@@ -356,11 +349,55 @@ defmodule Apiary.Adapters.FeedTest do
       assert {:ok, {1, _}} = insert.(1, "comment", %{"b" => String.duplicate("a", 399_991)})
       assert {:ok, {1, _}} = insert.(2, "sync", %{"b" => String.duplicate("a", 4087)})
 
-      for {seq, kind, size} <- [{3, "comment", 399_992}, {4, "sync", 4088}, {5, "note", 1}] do
+      assert {:ok, {1, _}} =
+               insert.(3, "change_request", %{"b" => String.duplicate("a", 1_399_991)})
+
+      for {seq, kind, size} <- [
+            {4, "comment", 399_992},
+            {5, "sync", 4088},
+            {6, "change_request", 1_399_992},
+            {7, "note", 1}
+          ] do
         assert_raise Postgrex.Error, ~r/adapter_feed_(data|kind)_check/, fn ->
           insert.(seq, kind, %{"b" => String.duplicate("a", size)})
         end
       end
+    end
+
+    test "takes a change_request entry with data at the contract's bound, and reads it back",
+         %{adapter: adapter} do
+      %{"changes" => [change]} = fixture("changes/change-request-reply.json")
+
+      # A string inside a part has at most 20,000 characters: 39 of them, and a last member
+      # `"k49":"…"`, 9 bytes with its comma, whose value makes up the rest.
+      full = Map.new(10..48, &{"k#{&1}", String.duplicate("a", 20_000)})
+      rest = ChangeRequest.max_data() - byte_size(Jason.encode!(full)) - 9
+
+      data =
+        Map.put(
+          full,
+          "k49",
+          String.duplicate("é", div(rest, 2)) <> String.duplicate("a", rem(rest, 2))
+        )
+
+      assert byte_size(Jason.encode!(data)) == ChangeRequest.max_data()
+
+      change = %{change | "data" => data}
+      assert append!(adapter, entry(change)) == 1
+      assert read!(adapter, 0).changes == [change]
+
+      over = %{change | "data" => %{data | "k49" => data["k49"] <> "a"}}
+
+      assert ChangeRequest.validate(over) ==
+               {:error,
+                %{
+                  valid: false,
+                  count: 1,
+                  errors: [%{kind: :maxBytes, instanceLocation: "#/data"}]
+                }}
+
+      raises(adapter, entry(over))
+      assert length(Feed.entries(adapter)) == 1
     end
 
     test "writes only inside a transaction, and only to an adapter's feed", %{adapter: adapter} do

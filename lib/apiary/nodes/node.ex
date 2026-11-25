@@ -136,6 +136,13 @@ defmodule Apiary.Nodes.Node do
     # (`source_role_changeset/2`) and never cast. A take in writes a `comment` entry to
     # its feed only where it is true (`Apiary.WorkItems.Moves`).
     field :comments, :boolean
+    # An adapter's alone (`nodes_change_kinds_check`): the kinds of change request it
+    # applies at its system, `change_kinds` in the source role of its latest start's
+    # description, 1 to 16; nil where the description lists none, and on every other
+    # node. Set at each start (`source_role_changeset/2`) and never cast. A run's stored
+    # change gets a `change_request` entry in its feed only when the change's kind is in
+    # the list (`Apiary.Artifacts.Delivery`).
+    field :change_kinds, {:array, :string}
     # An adapter's alone (`nodes_collection_noun_check`): its description's source role's
     # words for one collection and for many, both or neither (nil for the default,
     # "collection" and "collections"), beside `items` false too.
@@ -453,19 +460,21 @@ defmodule Apiary.Nodes.Node do
   # `collection_noun/1` and `access/1`, which the description's schema has checked): its
   # words for one item and for many, or none, whether it reports items, whether its
   # collections can have a target (`Apiary.Integrations.Description.targets?/1`), whether
-  # its source takes members' comments (`Apiary.Integrations.Description.comments?/1`), its
-  # words for one collection and for many, or none, and its line on how to change, at
-  # the source, which collections it reaches, and the names of the secrets it stores in
-  # Qory Apiary
+  # its source takes members' comments (`Apiary.Integrations.Description.comments?/1`), the
+  # kinds of change request it applies (`Apiary.Integrations.Description.change_kinds/1`,
+  # nil for none), its words for one collection and for many, or none, and its line on
+  # how to change, at the source, which collections it reaches, and the names of the
+  # secrets it stores in Qory Apiary
   # (`Apiary.Integrations.Description.source_secrets/1`, nil for none), and the apply
   # items of its work credential with the description's exact `egress_hosts`
   # (`Apiary.Integrations.Description.source_apply/1` and `exact_egress_hosts/1`, nil for
   # none), and its guide (`Apiary.Integrations.Description.source_guide/1`, nil for none).
   # A description with no source role gives the defaults: no words, items, no targets, no
-  # comments, no line, no names, no apply items and no guide. Database checks limit the
-  # words and items to the same (`nodes_items_check`, `nodes_collection_noun_check`), and
-  # the targets, the comments, the line, the names, the apply items and the guide to
-  # adapters (`nodes_targets_check`, `nodes_comments_check`, `nodes_source_access_check`,
+  # comments, no change kinds, no line, no names, no apply items and no guide. Database
+  # checks limit the words and items to the same (`nodes_items_check`,
+  # `nodes_collection_noun_check`), and the targets, the comments, the change kinds, the
+  # line, the names, the apply items and the guide to adapters (`nodes_targets_check`,
+  # `nodes_comments_check`, `nodes_change_kinds_check`, `nodes_source_access_check`,
   # `nodes_secret_names_check`, `nodes_source_apply_check`, `nodes_source_guide_check`).
   # `Apiary.Adapters.declare/2` calls it at each start, on
   # the changeset of the declaration, so the latest start's description replaces what an
@@ -492,6 +501,7 @@ defmodule Apiary.Nodes.Node do
       items: Description.items?(description),
       targets: Description.targets?(description),
       comments: Description.comments?(description),
+      change_kinds: Description.change_kinds(description),
       collection_noun_one: collection_noun && collection_noun.one,
       collection_noun_other: collection_noun && collection_noun.other,
       source_access: Description.access(description),
@@ -503,6 +513,7 @@ defmodule Apiary.Nodes.Node do
     |> check_constraint(:items, name: :nodes_items_check)
     |> check_constraint(:targets, name: :nodes_targets_check)
     |> check_constraint(:comments, name: :nodes_comments_check)
+    |> check_constraint(:change_kinds, name: :nodes_change_kinds_check)
     |> check_constraint(:secret_names, name: :nodes_secret_names_check)
     |> check_constraint(:collection_noun_one, name: :nodes_collection_noun_check)
     |> check_constraint(:source_access, name: :nodes_source_access_check)

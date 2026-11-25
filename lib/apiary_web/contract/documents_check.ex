@@ -7,14 +7,15 @@ defmodule ApiaryWeb.Contract.DocumentsCheck do
   # with the message of the Go function, in the same order:
   #
   #   1. no two entries of `deliver` have the same `type`;
-  #   2. no two entries of `further_targets` have the same `collection`, and none has the
-  #      `collection` of `target`.
+  #   2. no two entries of `read_targets` have the same `collection`, and none has the
+  #      `collection` of `target`;
+  #   3. no two entries of the `destinations` of `inputs` have the same `id`.
   #
   # Call it after the schema has accepted the documents: it reads only the members that the
   # schema defines, and a document the schema refuses has no defined answer here.
   #
-  # At this commit nothing calls it: no run's documents have `deliver` or `further_targets`
-  # until the control plane writes them.
+  # The claim calls it on a run's documents before it keeps them
+  # (`Apiary.Dispatches.Handover`).
 
   @doc """
   check/1 is `:ok` for the decoded run `documents` (a map with string keys), or
@@ -22,41 +23,45 @@ defmodule ApiaryWeb.Contract.DocumentsCheck do
   """
   @spec check(map) :: :ok | {:error, String.t()}
   def check(documents) when is_map(documents) do
-    with :ok <- deliver_types(documents["deliver"]) do
-      further_targets(documents["target"], documents["further_targets"])
+    with :ok <- deliver_types(documents["deliver"]),
+         :ok <- read_targets(documents["target"], documents["read_targets"]) do
+      destination_ids(documents["inputs"])
     end
   end
 
   defp deliver_types(entries) do
     entries
     |> List.wrap()
-    |> Enum.map(& &1["type"])
+    |> Enum.map(&member(&1, "type"))
     |> first_repeat()
     |> case do
-      nil -> :ok
-      type -> {:error, "List each deliver type once: #{quote_string(type)} appears twice."}
+      :none ->
+        :ok
+
+      {:repeat, type} ->
+        {:error, "List each deliver type once: #{quote_string(type)} appears twice."}
     end
   end
 
-  defp further_targets(target, entries) do
-    main = target && target["collection"]
+  defp read_targets(target, entries) do
+    main = target && member(target, "collection")
 
     entries
     |> List.wrap()
-    |> Enum.map(& &1["collection"])
+    |> Enum.map(&member(&1, "collection"))
     |> Enum.with_index()
     |> Enum.reduce_while(MapSet.new(), fn {collection, index}, seen ->
       cond do
         main != nil and collection == main ->
           {:halt,
            {:error,
-            "Remove the collection #{quote_string(collection)} from further_targets " <>
+            "Remove the collection #{quote_string(collection)} from read_targets " <>
               "(index #{index}): target has it."}}
 
         collection in seen ->
           {:halt,
            {:error,
-            "List each collection of further_targets once: " <>
+            "List each collection of read_targets once: " <>
               "#{quote_string(collection)} appears twice."}}
 
         true ->
@@ -69,14 +74,51 @@ defmodule ApiaryWeb.Contract.DocumentsCheck do
     end
   end
 
-  # The first value, in the order of the list, that an earlier entry already has.
+  # Inputs that are not an object, or have no destinations, have no id to check: the
+  # schema does not accept them, or the step has no destinations. Go checks no id either when it
+  # cannot decode the destinations: a list with an entry that is not an object or null, or
+  # with an id that is not a string or null.
+  defp destination_ids(%{"destinations" => destinations}) when is_list(destinations) do
+    if Enum.all?(destinations, &decodable_destination?/1) do
+      destinations
+      |> Enum.map(&member(&1, "id"))
+      |> first_repeat()
+      |> case do
+        :none ->
+          :ok
+
+        {:repeat, id} ->
+          {:error, "List each destination once: #{quote_string(id)} appears twice."}
+      end
+    else
+      :ok
+    end
+  end
+
+  defp destination_ids(_inputs), do: :ok
+
+  defp decodable_destination?(nil), do: true
+  defp decodable_destination?(%{} = entry), do: is_binary(entry["id"]) or entry["id"] == nil
+  defp decodable_destination?(_entry), do: false
+
+  # The member `key` of an entry as Go decodes it into a string field: "" when the entry
+  # or the member is null or absent.
+  defp member(entry, key) do
+    case entry do
+      %{^key => value} when value != nil -> value
+      _ -> ""
+    end
+  end
+
+  # `{:repeat, value}` for the first value, in the order of the list, that an earlier entry
+  # already has, or `:none`.
   defp first_repeat(values) do
     Enum.reduce_while(values, MapSet.new(), fn value, seen ->
       if value in seen, do: {:halt, {:repeat, value}}, else: {:cont, MapSet.put(seen, value)}
     end)
     |> case do
-      {:repeat, value} -> value
-      _seen -> nil
+      {:repeat, _value} = repeat -> repeat
+      _seen -> :none
     end
   end
 

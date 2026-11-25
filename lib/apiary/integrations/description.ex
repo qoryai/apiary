@@ -390,6 +390,15 @@ defmodule Apiary.Integrations.Description do
     do: get_in(document, ["roles", "source", "comments"]) == true
 
   @doc false
+  # change_kinds/1 is the source role's `change_kinds`, the kinds of change request that
+  # the adapter applies at its system, as the description lists them, or nil for a
+  # description with none and for one with no source role. A run's stored change gets a
+  # `change_request` entry in the adapter's feed only when its kind is in the list.
+  @spec change_kinds(t) :: [String.t()] | nil
+  def change_kinds(%__MODULE__{document: document}),
+    do: get_in(document, ["roles", "source", "change_kinds"])
+
+  @doc false
   # source_apply/1 is the source role's `apply` items, the templates of the run's work
   # credential from this adapter, as decoded, or nil for a description with none
   # (`Apiary.Integrations.ApplyTemplates`).

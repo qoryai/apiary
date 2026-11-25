@@ -5,9 +5,10 @@ defmodule Apiary.Adapters.Feed do
   # append-only log per adapter, which the adapter reads back after a cursor, in order
   # (`GET /v1/work-items/changes`, `ApiaryWeb.Contract.ChangesController`). Its entries
   # are the work items taken in from the adapter's items, the comments members wrote on
-  # them for the source, the work items on which a run stored a submission version, the
-  # link state of the adapter's collections, the grants of the adapter's connections, and
-  # the adapter's interval. No entry of another adapter is in it.
+  # them for the source, the changes runs stored for the adapter to apply at a target in
+  # one of its collections, the link state of the adapter's collections, the grants of the
+  # adapter's connections, and the adapter's interval. No entry of another adapter is in
+  # it.
   #
   # ## Writing: `append/2`
   #
@@ -35,8 +36,14 @@ defmodule Apiary.Adapters.Feed do
   #   * `%{kind: "watch", work_item_id: id, url: url}`: a kind that the feed's check
   #     takes, with `id` and `url` under the rules of a `work_item` entry. Qory Apiary
   #     writes no `watch` entry; entries written earlier stay in the feed.
-  #     shortcut: the feed has no entry for a delivered version, as `watch` was for a
-  #     submission; replace when the writer of `change_request` entries exists.
+  #   * `%{kind: "change_request", change_request_id: id, change_kind: kind, target:
+  #     target, title: title, text: text, data: data}`, with `ref: ref` and `previous:
+  #     previous` where they apply: a change a run stored, for the adapter to apply at the
+  #     target (`Apiary.Artifacts.Delivery`). `target`, `previous` and `data` are maps with
+  #     string keys, as the contract writes them. The entry passes
+  #     `Apiary.Adapters.ChangeRequest.validate/1`, and has no member that the contract's
+  #     `$defs.change_request` does not define, at its top, in `target`, `previous` or
+  #     their `address`.
   #   * `%{kind: "collection", collection_ref: ref, status: status}`: one of the adapter's
   #     collections linked (`"linked"`, `Apiary.Adapters.Collection.linked?/1`), or
   #     unlinked (`"unlinked"`). `ref`
@@ -81,9 +88,9 @@ defmodule Apiary.Adapters.Feed do
   # (`definitions.schema.json`), so a replay from the start stays in step. The page ends
   # before an entry that would take the answer's body (`body/2`) past 4,194,304 bytes
   # (4 MiB), counted with the longest cursor, and has at least one entry whenever an
-  # entry the revision defines follows `after`. One entry is at most about 400 KB (a
-  # comment's 65,000 characters, each escaped to six bytes at most), so a page that
-  # stops at the bound has several.
+  # entry the revision defines follows `after`. One entry is at most about 1 MB (a
+  # change request's `data` of 786,432 bytes, with its text and title escaped), so a
+  # page that stops at the bound has several.
   # `{:error, :stale}` when `after` is past the last entry the feed holds: a cursor this
   # feed never gave.
   #
@@ -92,7 +99,7 @@ defmodule Apiary.Adapters.Feed do
 
   import Ecto.Query, only: [from: 2]
 
-  alias Apiary.Adapters.{Connection, Wire}
+  alias Apiary.Adapters.{ChangeRequest, Connection, Wire}
   alias Apiary.Nodes.Node
   alias Apiary.Repo
   alias Apiary.Sources.Comment
@@ -107,7 +114,8 @@ defmodule Apiary.Adapters.Feed do
     "collection" => 1,
     "sync" => 1,
     "grant" => 1,
-    "watch" => 1
+    "watch" => 1,
+    "change_request" => 1
   }
   # The most bytes an answer's body has (`changes.schema.json`).
   @max_body 4_194_304
@@ -126,6 +134,14 @@ defmodule Apiary.Adapters.Feed do
   # A `%` that does not start a percent-encoding.
   @bare_percent ~r/%(?![0-9A-Fa-f]{2})/
   @max_url 2048
+  # The members a `change_request` entry has, in the contract's order, then those of the
+  # objects inside it, as `$defs.change_request` defines them.
+  @change_request_members ~w(change_request_id change_kind target ref title text previous data)a
+  @change_request_required ~w(kind change_request_id change_kind target title text data)a
+  @change_request_objects [
+    {"target", ~w(collection address), ~w(system path)},
+    {"previous", ~w(title address), ~w(url ref)}
+  ]
 
   @typedoc "An entry, as `append/2` takes it."
   @type entry ::
@@ -152,6 +168,17 @@ defmodule Apiary.Adapters.Feed do
               status: String.t()
             }
           | %{kind: String.t(), work_item_id: String.t(), url: String.t()}
+          | %{
+              required(:kind) => String.t(),
+              required(:change_request_id) => String.t(),
+              required(:change_kind) => String.t(),
+              required(:target) => map,
+              required(:title) => String.t(),
+              required(:text) => String.t(),
+              required(:data) => map,
+              optional(:ref) => String.t(),
+              optional(:previous) => map
+            }
 
   @doc false
   @spec append(Node.t(), entry) :: {:ok, pos_integer}
@@ -222,6 +249,10 @@ defmodule Apiary.Adapters.Feed do
       when is_integer(after_seq) and after_seq >= 0 and is_integer(revision) do
     limit = Keyword.get(opts, :limit, @page_size)
 
+    # shortcut: a page loads up to `limit` rows before it cuts the answer at `max_body/0`,
+    # and a change request's row takes up to 1,400,000 bytes, so one page can load about
+    # 140 MB; replace with a read bounded by the rows' stored size when change requests
+    # make up a large part of a feed.
     if after_seq > last_seq(id) do
       {:error, :stale}
     else
@@ -339,6 +370,15 @@ defmodule Apiary.Adapters.Feed do
 
   defp change("watch", data), do: ordered("watch", data, ~w(work_item_id url))
 
+  defp change("change_request", data) do
+    members =
+      for name <- Enum.map(@change_request_members, &Atom.to_string/1),
+          Map.has_key?(data, name),
+          do: {name, Map.fetch!(data, name)}
+
+    Jason.OrderedObject.new([{"kind", "change_request"} | members])
+  end
+
   defp ordered(kind, data, members) do
     Jason.OrderedObject.new([{"kind", kind} | Enum.map(members, &{&1, Map.fetch!(data, &1)})])
   end
@@ -411,6 +451,26 @@ defmodule Apiary.Adapters.Feed do
     {"grant", %{"connection_id" => id, "grant_ref" => ref, "status" => status}}
   end
 
+  defp shape!(%{kind: "change_request"} = entry) do
+    unless Enum.all?(@change_request_required, &Map.has_key?(entry, &1)) and
+             Map.keys(entry) -- [:kind | @change_request_members] == [] do
+      raise ArgumentError, "a change_request entry has the members the contract defines"
+    end
+
+    data = Map.new(Map.delete(entry, :kind), fn {key, value} -> {Atom.to_string(key), value} end)
+
+    for {name, members, address} <- @change_request_objects,
+        not (closed?(data[name], members) and closed?(address(data[name]), address)) do
+      raise ArgumentError, "a change_request entry's #{name} has the members the contract defines"
+    end
+
+    unless ChangeRequest.validate(Map.put(data, "kind", "change_request")) == :ok do
+      raise ArgumentError, "a change_request entry is one that ChangeRequest.validate/1 accepts"
+    end
+
+    {"change_request", data}
+  end
+
   defp shape!(entry) do
     kind = Map.get(entry, :kind)
     kind = if kind in Map.keys(@kind_revision), do: kind, else: "a kind it does not know"
@@ -418,6 +478,14 @@ defmodule Apiary.Adapters.Feed do
     raise ArgumentError,
           "not an entry this feed writes (#{kind}), or not with its kind's members"
   end
+
+  # Whether `object`, where it is a map, has no member but `members`. Anything else is left
+  # to the contract's check.
+  defp closed?(object, members) when is_map(object), do: Map.keys(object) -- members == []
+  defp closed?(_object, _members), do: true
+
+  defp address(%{} = object), do: object["address"]
+  defp address(_object), do: nil
 
   defp work_item_id!(id, what) do
     unless is_binary(id) and Regex.match?(@work_item_id, id) do

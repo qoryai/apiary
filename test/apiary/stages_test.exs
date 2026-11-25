@@ -13,9 +13,12 @@ defmodule Apiary.StagesTest do
   import Apiary.MachineTypesFixtures
 
   alias Apiary.{Artifacts, Processes, Repo, Stages, WorkItems}
+  alias Apiary.Adapters.Feed
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{DispatchRun, Settle}
+  alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
+  alias Apiary.Runs.Target
   alias Apiary.Stages.{Escalation, GateDecision}
   alias Apiary.WorkItems.{Confirmation, Explore, Moves, WorkItem}
 
@@ -9714,6 +9717,176 @@ defmodule Apiary.StagesTest do
       work_item = take_in!(scope)
 
       assert %{accept_entry: nil} = Stages.status(work_item, scope)
+    end
+  end
+
+  describe "a type delivered after the gate" do
+    # A process whose Explore delivers `pull-request` after its gate, with `gate` merged
+    # into the stage; a work item taken in, whose adapter applies the kind and has the row
+    # of the work item's target; and the content a run stores for that target.
+    defp delivered_after_gate!(scope, gate) do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => "pull-request",
+          "base_view" => "structured",
+          "json_schema" => %{"type" => "object"}
+        })
+
+      outputs = %{
+        "outputs" => [
+          %{"type" => "proposal", "required" => true},
+          %{"type" => "pull-request", "required" => false}
+        ]
+      }
+
+      version = save!(scope, [explore_stage(Map.merge(outputs, gate))])
+
+      delivered = %{
+        "name" => "pull-request",
+        "base_view" => "structured",
+        "deliver" => %{"send" => "after_gate"},
+        "json_schema" => %{"type" => "object"}
+      }
+
+      {1, _rows} =
+        Repo.update_all(from(v in Processes.Version, where: v.id == ^version.id),
+          set: [
+            template: %{"commit" => String.duplicate("a", 40), "artifact_types" => [delivered]}
+          ]
+        )
+
+      work_item = take_in!(scope)
+      %{adapter_id: adapter_id} = target = WorkItem.target(work_item)
+      _row = Target.id_of(work_item.organisation_id, work_item.workspace_id, target)
+      _collection = Apiary.WorkItemsFixtures.target_candidate!(work_item)
+
+      {1, _rows} =
+        Repo.update_all(from(n in Node, where: n.id == ^adapter_id),
+          set: [change_kinds: ["pull-request"]]
+        )
+
+      content = %{
+        "target" => %{"collection" => target.collection_external_ref},
+        "title" => "Keep the sale price in the basket"
+      }
+
+      {work_item, Repo.get!(Node, adapter_id), content}
+    end
+
+    # The end of a run that pushes its result and `content` as a `pull-request`, then runs
+    # `after_push` with the version.
+    defp push_change(content, after_push \\ fn _version -> :ok end) do
+      fn run, registered ->
+        Apiary.WorkItemsFixtures.push_result!(run, registered, understood_result())
+
+        {:ok, version} =
+          Stages.Artifacts.push(
+            {:run, run},
+            Repo.get!(WorkItem, run.work_item_id),
+            "pull-request",
+            [
+              %{
+                filename: "pull-request.json",
+                content_type: "application/json",
+                binary: Jason.encode!(content)
+              }
+            ],
+            stage_id: @explore
+          )
+
+        after_push.(version)
+      end
+    end
+
+    # The registered run with the access level `write` in its documents.
+    @write %{run_documents: ~s({"access":"write"})}
+
+    defp changes(adapter),
+      do: for(%{kind: "change_request"} = entry <- Feed.entries(adapter), do: entry.data)
+
+    # The stored file of `version` moved away until the test ends, as a store that cannot
+    # read it.
+    defp hide!(version) do
+      [file] = Repo.preload(version, files: Artifacts.files_query()).files
+      {:ok, path} = Artifacts.open_file(file)
+      File.rename!(path, path <> ".away")
+      on_exit(fn -> File.rename(path <> ".away", path) end)
+    end
+
+    test "an approval at the gate sends the version it covers to the adapter", %{scope: scope} do
+      {work_item, adapter, content} = delivered_after_gate!(scope, %{})
+      work_item = end_run!(work_item, push_change(content), @write)
+
+      [pushed] = versions(work_item, "pull-request")
+      assert pushed.delivery == nil
+      assert changes(adapter) == []
+
+      {:ok, _work_item} =
+        Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id)
+
+      assert %{delivery: :sent} = Repo.get!(Artifacts.Version, pushed.id)
+      assert [%{"change_request_id" => id, "change_kind" => "pull-request"}] = changes(adapter)
+      assert id == pushed.public_id
+    end
+
+    test "an approval whose version's file cannot be read is store_unavailable, and writes nothing",
+         %{scope: scope} do
+      {work_item, adapter, content} = delivered_after_gate!(scope, %{})
+      work_item = end_run!(work_item, push_change(content), @write)
+      [pushed] = versions(work_item, "pull-request")
+      hide!(pushed)
+
+      assert Stages.approve(scope, work_item, nil, expect_stage: reload(work_item).stage_id) ==
+               {:error, :store_unavailable}
+
+      assert decisions(work_item) == []
+      assert %{stage_id: @explore, stage_state: :at_gate} = reload(work_item)
+      assert Repo.get!(Artifacts.Version, pushed.id).delivery == nil
+      assert changes(adapter) == []
+    end
+
+    test "a gate none's approval sends the version it covers", %{scope: scope} do
+      {work_item, adapter, content} =
+        delivered_after_gate!(scope, %{"gate" => %{"kind" => "none"}})
+
+      work_item = end_run!(work_item, push_change(content), @write)
+
+      assert [%GateDecision{automatic: true, versions: covered}] = decisions(work_item)
+      [pushed] = versions(work_item, "pull-request")
+      assert pushed.public_id in covered
+      assert %{delivery: :sent} = Repo.get!(Artifacts.Version, pushed.id)
+      assert [%{"change_request_id" => id}] = changes(adapter)
+      assert id == pushed.public_id
+    end
+
+    test "a gate none's approval raises when the version's file cannot be read, and writes nothing",
+         %{scope: scope} do
+      {work_item, adapter, content} =
+        delivered_after_gate!(scope, %{"gate" => %{"kind" => "none"}})
+
+      assert_raise Apiary.Stages.DeliveryUnreadable, fn ->
+        end_run!(work_item, push_change(content, &hide!/1), @write)
+      end
+
+      assert decisions(work_item) == []
+      assert changes(adapter) == []
+    end
+
+    test "an accept that passes a gate none gets store_unavailable when the file cannot be read",
+         %{scope: scope} do
+      {work_item, adapter, content} =
+        delivered_after_gate!(scope, %{"gate" => %{"kind" => "none"}})
+
+      stopped = Map.merge(@write, %{exit_state: "failed", outcome_state: "failed"})
+      work_item = end_run!(work_item, push_change(content, &hide!/1), stopped)
+      assert %Escalation{cause: :run_stopped} = escalation(work_item)
+
+      assert Stages.resolve_escalation(scope, work_item, :accept, nil, expect_stage: @explore) ==
+               {:error, :store_unavailable}
+
+      assert decisions(work_item) == []
+      assert %Escalation{} = escalation(work_item)
+      assert changes(adapter) == []
     end
   end
 end
