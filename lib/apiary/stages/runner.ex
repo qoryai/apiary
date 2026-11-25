@@ -21,9 +21,10 @@ defmodule Apiary.Stages.Runner do
   #     or a run with no verdict, runs the next workflow of the ring; after the last one the
   #     ring goes back to the first, which starts the next round. At the round limit the
   #     stage escalates, `round_limit`, with a point that says so
-  #     (`Apiary.Stages.Points`). Where the last run of the round ended
-  #     `changes-requested`, the point also has its open findings, the verdict's points:
-  #     their number and the text of each.
+  #     (`Apiary.Stages.Points`). The point also has the open findings of the stage
+  #     (`facts.open_findings`): their number and the text of each. Where the stage has
+  #     none, and the last run of the round ended `changes-requested`, its open findings are
+  #     the verdict's points.
   #   * A workflow entry outside a loop with `first_attempt: true` ends the sequence when its
   #     run ends `passed`: each workflow after it is passed over (`{:skip, spec}` with the
   #     reason `first_attempt_passed`, those in a loop's body included), and the Exists
@@ -35,7 +36,7 @@ defmodule Apiary.Stages.Runner do
   #     The stage's runs of this take in that returned it before count
   #     (`facts.returns`); at the key's `limit`, 2 by default, the stage escalates,
   #     `return_limit`, with a point with the member's action and the count of returns,
-  #     then the verdict's points.
+  #     then a point for each open finding of the stage, else the verdict's points.
   #     A run with no verdict escalates, `run_stopped`, with a point
   #     that says so, on a first run and on a rerun. A test work item's run with no verdict
   #     goes on (`facts.test`): the built-in `hello` writes no verdict
@@ -58,6 +59,10 @@ defmodule Apiary.Stages.Runner do
   #     round counts; at the limit it escalates, `round_limit`, with the point of the
   #     rounds that ran and one point for each failed check. A stage with workflows and no
   #     loop escalates, `check_failed`, with the points of the failed checks.
+  #   * A stage passes only while it owns no open blocking finding (`facts.open_blocking`,
+  #     `Apiary.Findings`). `Apiary.Artifacts` refuses a run's `passed` verdict and
+  #     `Apiary.Stages` a member's approval, accept and move forward; a stage whose sequence
+  #     ends with one open waits at its gate, a gate `none` too.
   #   * A stage with no workflow is worked by people (§ 4): with a required output
   #     missing, it waits at its gate, a gate `none` too, and escalates nothing.
   #   * Request changes runs the sequence again from its first loop, round 1, or from its
@@ -73,9 +78,10 @@ defmodule Apiary.Stages.Runner do
   #     At a gate `none` the accept is the approval: `Apiary.Stages`
   #     records it with the member who accepted. Another round runs
   #     one more round: the same workflow for a stopped run, the loop's first workflow
-  #     otherwise, the last loop for an escalation at the end, or the sequence from its
-  #     start for a stage with no loop. Each reads the condition of the entry it starts
-  #     again.
+  #     for a stopped run in a loop that ran the stage's workflows as sessions of one run
+  #     (`facts.shared_run`) and after any other escalation in a loop, the last loop for
+  #     an escalation at the end, or the sequence from its start for a stage with no
+  #     loop. Each reads the condition of the entry it starts again.
   #   * Feedback starts the stage again at its first entry, round 1, with no check of its
   #     inputs or workflows first, as Request changes does, in a stage with a workflow
   #     entry whose condition is `{feedback: new}` (`feedback_stage?/1`), while
@@ -177,7 +183,10 @@ defmodule Apiary.Stages.Runner do
   questions (`explore_result`), and whether it is a run of Explore that pushed `passed` or
   `changes-requested` (`explore_verdict`); the stages before this one in the document, by
   id with their names (`earlier`), the count of the stage's runs in the work item's take
-  in that returned the work item to an earlier stage (`returns`), and the input types of
+  in that returned the work item to an earlier stage (`returns`), the numbers of the open
+  blocking findings the stage owns (`open_blocking`) and the text of each of its open
+  findings (`open_findings`), whether the stage's newest run ran its workflows as sessions
+  of one run (`shared_run`), and the input types of
   the stage's conditions that count, each whose version the stage reads has a file of
   more than 0 bytes (`counted`); the id of the track the work item is on (`track`, nil for
   none); and, for an entry of a stage that a person moved the work item into, `forced`,
@@ -216,7 +225,10 @@ defmodule Apiary.Stages.Runner do
           optional(:explore_result) => boolean,
           optional(:explore_verdict) => boolean,
           optional(:earlier) => %{String.t() => String.t()},
-          optional(:returns) => non_neg_integer
+          optional(:returns) => non_neg_integer,
+          optional(:open_blocking) => [pos_integer],
+          optional(:open_findings) => [String.t()],
+          optional(:shared_run) => boolean
         }
 
   @typedoc "A version of an input type, for `{input: T, changed: true}`."
@@ -340,7 +352,7 @@ defmodule Apiary.Stages.Runner do
 
   def step(stage, position, {:accept, _cause}, facts) do
     case accepted(stage, position, facts) do
-      {:gate, at} -> gate(stage, at)
+      {:gate, at} -> gate(stage, at, facts)
       {:start, next} -> start(stage, next, facts)
     end
   end
@@ -356,7 +368,7 @@ defmodule Apiary.Stages.Runner do
           index -> start(stage, %{entry: index, loop_entry: 0, round: position.round + 1}, facts)
         end
 
-      in_loop?(position) and cause == :run_stopped ->
+      in_loop?(position) and cause == :run_stopped and not Map.get(facts, :shared_run, false) ->
         start(stage, %{position | round: position.round + 1}, facts)
 
       in_loop?(position) ->
@@ -510,7 +522,10 @@ defmodule Apiary.Stages.Runner do
         skipped(skips, start(stage, next(stage, position, facts), facts))
 
       true ->
-        skipped([skip(stage, position, facts)], ring(stage, position, facts))
+        skipped(
+          [skip(stage, position, facts)],
+          ring(stage, position, facts, findings(nil, nil, facts))
+        )
     end
   end
 
@@ -736,7 +751,7 @@ defmodule Apiary.Stages.Runner do
 
     cond do
       in_loop?(position) ->
-        ring(stage, position, facts, findings(verdict, points))
+        ring(stage, position, facts, findings(verdict, points, facts))
 
       verdict == :changes_requested and key != nil ->
         return_or_escalate(stage, position, key, points, facts)
@@ -771,7 +786,7 @@ defmodule Apiary.Stages.Runner do
   # The next workflow of the loop's ring, or the next round from its first, or the round
   # limit, whose point has `findings`, the open findings of the run that ended the round
   # (`findings/2`).
-  defp ring(stage, position, facts, findings \\ []) do
+  defp ring(stage, position, facts, findings) do
     body = body(stage, position.entry)
     rounds = rounds(stage, position.entry)
 
@@ -787,12 +802,23 @@ defmodule Apiary.Stages.Runner do
     end
   end
 
-  # The open findings of a run that ended `changes-requested`: the text of each point of
-  # its verdict. None for any other verdict.
-  defp findings(:changes_requested, points),
-    do: for(%{"text" => text} <- points || [], is_binary(text), do: text)
+  # The open findings of the stage (`facts.open_findings`). With none, those of a run that
+  # ended `changes-requested`: the text of each point of its verdict. None for any other
+  # verdict.
+  defp findings(verdict, points, facts) do
+    case {open_findings(facts), verdict} do
+      {[_ | _] = open, _verdict} ->
+        open
 
-  defp findings(_verdict, _points), do: []
+      {[], :changes_requested} ->
+        for(%{"text" => text} <- points || [], is_binary(text), do: text)
+
+      _none ->
+        []
+    end
+  end
+
+  defp open_findings(facts), do: Map.get(facts, :open_findings, [])
 
   ## The return to an earlier stage (choice 10)
 
@@ -806,7 +832,14 @@ defmodule Apiary.Stages.Runner do
     else
       to = Map.fetch!(earlier(facts), stage_id)
       limit_point = Points.return_limit(returns, stage["name"], to)
-      escalate(:return_limit, limit_point ++ (points || []), position)
+
+      findings =
+        case open_findings(facts) do
+          [] -> points || []
+          open -> Points.findings(open)
+        end
+
+      escalate(:return_limit, limit_point ++ findings, position)
     end
   end
 
@@ -866,7 +899,7 @@ defmodule Apiary.Stages.Runner do
 
     cond do
       failed == [] ->
-        gate(stage, position)
+        gate(stage, position, facts)
 
       # No run makes the outputs of a stage with no workflow, so it waits at its gate:
       # Approve needs them, and only a workflow's run can write them (`Apiary.Stages`).
@@ -886,7 +919,8 @@ defmodule Apiary.Stages.Runner do
 
               escalate(
                 :round_limit,
-                Points.round_limit(position.round, rounds) ++ Points.check_failed(failed),
+                Points.round_limit(position.round, rounds, open_findings(facts)) ++
+                  Points.check_failed(failed),
                 position
               )
             else
@@ -898,11 +932,15 @@ defmodule Apiary.Stages.Runner do
     end
   end
 
-  defp gate(stage, position) do
-    case get_in(stage, ["gate", "kind"]) do
-      "none" -> %{state: :done, position: position, actions: [:approve, :advance]}
-      _person -> %{state: :at_gate, position: position, actions: []}
-    end
+  # A stage with an open blocking finding waits at its gate, a gate `none` too: it passes
+  # once a run closes its findings and a member approves.
+  # shortcut: a gate `none` with an open blocking finding stays at its gate after a run
+  # closes the finding, until a member approves; step the stage on the close when qory
+  # closes findings outside a round.
+  defp gate(stage, position, facts) do
+    if get_in(stage, ["gate", "kind"]) == "none" and Map.get(facts, :open_blocking, []) == [],
+      do: %{state: :done, position: position, actions: [:approve, :advance]},
+      else: %{state: :at_gate, position: position, actions: []}
   end
 
   defp escalate(cause, points, position),

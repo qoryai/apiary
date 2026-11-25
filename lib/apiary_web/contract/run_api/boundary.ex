@@ -132,6 +132,10 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
   @spec status(WorkItem.t()) :: map | nil
   def status(work_item), do: Apiary.Stages.status(work_item)
 
+  # The document of the process version the work item runs under.
+  @spec process_document(WorkItem.t()) :: map
+  def process_document(work_item), do: Apiary.Processes.version_for(work_item).document
+
   @spec inputs(WorkItem.t()) :: [map]
   def inputs(work_item), do: Apiary.Stages.inputs(work_item)
 

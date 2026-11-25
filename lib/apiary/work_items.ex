@@ -274,9 +274,14 @@ defmodule Apiary.WorkItems do
   # in (`Apiary.WorkItems.Moves`). With the workflow model, `track:` in `opts` is the id of
   # the track the approval of Explore's gate chooses (`Apiary.Stages.approve/4`); with none,
   # the gate's default. A track the gate does not offer is refused,
-  # `{:error, {:track_not_offered, track}}`, and nothing is confirmed.
+  # `{:error, {:track_not_offered, track}}`, and nothing is confirmed. Nor is it while the
+  # stage owns an open blocking finding (`Apiary.Findings.gate/2`).
   @spec confirm(Scope.t(), WorkItem.t(), pos_integer, [{:track, String.t() | nil}]) ::
-          {:ok, WorkItem.t()} | {:error, Moves.step_refusal() | {:track_not_offered, String.t()}}
+          {:ok, WorkItem.t()}
+          | {:error,
+             Moves.step_refusal()
+             | {:track_not_offered, String.t()}
+             | Apiary.Findings.refusal()}
   def confirm(%Scope{} = scope, %WorkItem{} = work_item, attempt, opts \\ []) do
     # Hand-over: with the workflow model, the confirmation approves Explore's gate in the
     # same transaction (`Apiary.Stages.confirmed/3`).

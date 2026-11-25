@@ -1,0 +1,29 @@
+{
+  "events": [
+    {
+      "kind": "raise",
+      "by": "demo-evidence",
+      "ref": "r4",
+      "target": {
+        "collection": "R_1001",
+        "address": {
+          "system": "code.example.com",
+          "path": "acme/shop"
+        }
+      },
+      "stage": "verify",
+      "source": {
+        "kind": "scenario",
+        "name": "empty-cart"
+      },
+      "severity": "blocking",
+      "place": {
+        "quote": "Total 0.00"
+      },
+      "point": "The empty cart page shows a total",
+      "problem": "The page of an empty cart shows a total of 0.00 and no message.",
+      "fix": "Show the empty cart message and no total when the cart has no lines.",
+      "proof": "Open the shop with an empty cart: the page shows Total 0.00."
+    }
+  ]
+}

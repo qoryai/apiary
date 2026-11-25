@@ -430,6 +430,26 @@ defmodule Apiary.Stages.RunnerTest do
     end
   end
 
+  describe "a stage with an open blocking finding" do
+    @none %{"kind" => "none"}
+    @passed {:run, {:verdict, :passed, nil}}
+
+    test "waits at its gate, a gate none too" do
+      for gate <- [@none, @person] do
+        seq = stage([wf("a")], gate: gate)
+
+        assert %{state: :at_gate, actions: []} =
+                 Runner.step(seq, pos(0, nil, 0), @passed, %{open_blocking: [1]})
+      end
+
+      assert %{state: :done, actions: [:approve, :advance]} =
+               Runner.step(stage([wf("a")], gate: @none), pos(0, nil, 0), @passed, %{
+                 open_blocking: [],
+                 open_findings: ["f1: A name is too long."]
+               })
+    end
+  end
+
   describe "a run's end in a loop" do
     test "passed from any workflow leaves the loop at once" do
       assert %{state: :at_gate} =
@@ -651,6 +671,19 @@ defmodule Apiary.Stages.RunnerTest do
              ]
     end
 
+    test "at the limit the stage's open findings take the place of the verdict's points" do
+      open = for i <- 1..25, do: "f#{i}: Point."
+
+      assert %{actions: [{:escalate, :return_limit, [_action | points]}]} =
+               Runner.step(verify(), pos(1, nil, 1), changes([again("Of the verdict.")]), %{
+                 earlier: @earlier,
+                 returns: 2,
+                 open_findings: open
+               })
+
+      assert points == Enum.map(Enum.take(open, 20), &again/1)
+    end
+
     test "the limit is the key's setting" do
       key = %{"stage" => @build_id, "limit" => 1}
       facts = %{earlier: @earlier, returns: 1}
@@ -745,6 +778,52 @@ defmodule Apiary.Stages.RunnerTest do
     test "another round reruns a stopped run's workflow as the next round" do
       assert queued(Runner.step(build(), pos(1, 1, 2), {:another_round, :run_stopped})) ==
                {"fix-demo-findings", 1, 1, 3}
+    end
+
+    test "another round after a stopped run in a shared stage's loop starts the loop's first workflow" do
+      shared = Map.put(build(), "shared_run", true)
+
+      assert queued(
+               Runner.step(shared, pos(1, 1, 2), {:another_round, :run_stopped}, %{
+                 shared_run: true
+               })
+             ) == {"capture-demo", 1, 0, 3}
+    end
+
+    test "another round after a stopped run that ran alone in a shared stage reruns its workflow" do
+      # The stage's newest run ran alone, not as a session of the stage's one run.
+      shared =
+        stage([loop([wf("critique"), wf("explore-a-ticket")])]) |> Map.put("shared_run", true)
+
+      assert queued(
+               Runner.step(shared, pos(0, 1, 2), {:another_round, :run_stopped}, %{
+                 shared_run: false
+               })
+             ) == {"explore-a-ticket", 0, 1, 3}
+    end
+
+    test "another round in a shared stage with unhandled feedback starts its first entry" do
+      shared =
+        stage([
+          wf("triage-review", %{"when" => %{"feedback" => "new"}}),
+          loop([wf("capture-demo"), wf("fix-demo-findings")])
+        ])
+        |> Map.put("shared_run", true)
+
+      facts = %{feedback: true, feedback_noted: true, shared_run: true}
+
+      assert queued(Runner.step(shared, pos(1, 1, 2), {:another_round, :run_stopped}, facts)) ==
+               {"triage-review", 0, nil, 1}
+    end
+
+    test "another round after a stopped run outside a shared stage's loop reruns its workflow" do
+      shared = Map.put(build(), "shared_run", true)
+
+      assert queued(
+               Runner.step(shared, pos(0, nil, 1), {:another_round, :run_stopped}, %{
+                 shared_run: true
+               })
+             ) == {"implement", 0, nil, 1}
     end
 
     test "another round after the limit or an escalate starts the loop's first workflow" do
@@ -1694,6 +1773,42 @@ defmodule Apiary.Stages.RunnerTest do
                   }
                 ]}
              ]
+    end
+
+    test "the stage's open findings take the place of the verdict's points at a limit" do
+      points = [again("The export has no title.")]
+      open = %{open_findings: ["f2: The total is wrong.", "f1: A name is too long."]}
+
+      for verdict <- [:changes_requested, nil] do
+        ended = {:run, {:verdict, verdict, points}}
+        outcome = Runner.step(with_feedback(), pos(2, 1, 3), ended, open)
+        assert [{:escalate, :round_limit, [point]}] = outcome.actions
+
+        assert point["text"] ==
+                 "3 of 3 rounds ran, and 2 review findings are still open. " <>
+                   "f2: The total is wrong. f1: A name is too long."
+      end
+
+      many = %{open_findings: for(i <- 1..25, do: "f#{i}: Point.")}
+
+      outcome =
+        Runner.step(with_feedback(), pos(2, 1, 3), {:run, {:verdict, nil, nil}}, many)
+
+      assert [{:escalate, :round_limit, [point]}] = outcome.actions
+      assert point["open_findings"] == 25
+      assert point["text"] =~ "25 review findings are still open."
+      assert String.ends_with?(point["text"], "f20: Point.")
+    end
+
+    test "the stage's open findings are in the point of a failed check at the round limit" do
+      facts = %{failed_checks: ["criteria"], open_findings: ["f1: The total is wrong."]}
+      ended = {:run, {:verdict, :passed, nil}}
+
+      assert [{:escalate, :round_limit, [point | _checks]}] =
+               Runner.step(build(), pos(1, 1, 3), ended, facts).actions
+
+      assert point["open_findings"] == 1
+      assert String.ends_with?(point["text"], "f1: The total is wrong.")
     end
 
     test "20 findings of 500 characters each are all in the point's text" do

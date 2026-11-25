@@ -159,13 +159,20 @@ defmodule Apiary.Dispatches.WireTest do
 
   # The run contract's schemas, each with a fixture directory of its name.
   @run_schemas ~w(documents next-session-request next-session-answer next-session-refusal
-                  outcome)
+                  outcome findings findings-post findings-post-answer findings-refusal)
+
+  defp run_schema_of(name) do
+    @run_schemas
+    |> Enum.filter(&String.starts_with?(name, &1 <> "-"))
+    |> Enum.max_by(&String.length/1, fn -> nil end)
+  end
 
   # A run fixture's schema is its directory's name under `fixtures/`, or, under
-  # `invalid/` and `closed/`, the run schema its file name starts with. A fixture under
-  # `closed/` has a member that the schema does not define: it is valid under the schema,
-  # as a reader ignores such a member. The contract's closed copy, which this test does not
-  # build, fails it.
+  # `invalid/`, `check/` and `closed/`, the run schema its file name starts with, the
+  # longest that matches. A fixture under `check/` breaks a rule that the schema cannot
+  # state: the schema accepts it. A fixture under `closed/` has a member that the schema
+  # does not define: it is valid under the schema, as a reader ignores such a member. The
+  # contract's closed copy, which this test does not build, fails it.
   @tag :contract
   test "every run fixture is valid under its schema, or refused under it under invalid/" do
     fixtures = Path.join(@vendored, "run/v1/fixtures")
@@ -176,17 +183,24 @@ defmodule Apiary.Dispatches.WireTest do
     assert count.("next-session-answer/*.json") == 9
     assert count.("next-session-refusal/*.json") == 9
     assert count.("outcome/*.json") == 23
-    assert count.("invalid/*.json") == 174
-    assert count.("closed/*.json") == 39
-    assert count.("**/*.json") == 36 + 6 + 9 + 9 + 23 + 174 + 39
+    assert count.("findings/*.json") == 4
+    assert count.("findings-post/*.json") == 10
+    assert count.("findings-post-answer/*.json") == 2
+    assert count.("findings-refusal/*.json") == 5
+    assert count.("check/*.json") == 6
+    assert count.("closed/*.json") == 39 + 3
+    assert count.("invalid/*.json") == 174 + 56
+
+    assert count.("**/*.json") ==
+             36 + 6 + 9 + 9 + 23 + 4 + 10 + 2 + 5 + 6 + 39 + 3 + 174 + 56
 
     for path <- Path.wildcard(Path.join(fixtures, "**/*.json")) do
       relative = Path.relative_to(path, fixtures)
 
       {schema, expected} =
         case Path.split(relative) do
-          [dir, name] when dir in ["invalid", "closed"] ->
-            {Enum.find(@run_schemas, &String.starts_with?(name, &1 <> "-")), dir == "closed"}
+          [folder, name] when folder in ["invalid", "check", "closed"] ->
+            {run_schema_of(name), folder != "invalid"}
 
           [dir, _name] ->
             {dir, true}
@@ -198,6 +212,31 @@ defmodule Apiary.Dispatches.WireTest do
       assert match?({:ok, _}, JSV.validate(document, validator(schema, "run/v1"))) == expected,
              relative
     end
+  end
+
+  # The findings records of the run contract are at 699a22cf, and the other files of
+  # run/v1 at da48933d. The records are the files that `.findings-contract-ref` lists after
+  # its commit: each file whose name, or the name of whose folder, starts with `findings`.
+  test "the findings records of the run contract are the files their ref lists" do
+    run = Path.join(@vendored, "run/v1")
+
+    [ref | listed] =
+      run
+      |> Path.join(".findings-contract-ref")
+      |> File.read!()
+      |> String.split("\n", trim: true)
+      |> Enum.reject(&String.starts_with?(&1, "#"))
+
+    assert ref == "699a22cf96ee3e0e8da5897c5f8835d07f71150c"
+
+    present =
+      for path <- Path.wildcard(Path.join(run, "**/*"), match_dot: true),
+          File.regular?(path),
+          relative = Path.relative_to(path, run),
+          Enum.any?(Path.split(relative), &String.starts_with?(&1, "findings")),
+          do: relative
+
+    assert Enum.sort(present) == Enum.sort(listed)
   end
 
   # shortcut: the harness save reads documents.schema.json at 4ad23d9c, whose harness

@@ -1,0 +1,6 @@
+{
+  "error": "open_blocking_findings",
+  "message": "Send changes-requested in place of passed: build has 1 open blocking finding.\n  The open blocking finding is f1.",
+  "from": "apiary",
+  "stage": "build"
+}

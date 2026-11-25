@@ -1,0 +1,11 @@
+{
+  "events": [
+    {
+      "kind": "reply_fixed",
+      "by": "implement-changes",
+      "id": "f1",
+      "reason": "Subtracted the discount before the tax in total.",
+      "version": "89abcdef0123456789abcdef0123456789abcdef"
+    }
+  ]
+}

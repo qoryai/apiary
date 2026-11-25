@@ -1,0 +1,60 @@
+{
+  "bases": [
+    {
+      "target": {
+        "collection": "R_1001",
+        "address": {
+          "system": "code.example.com",
+          "path": "acme/shop"
+        }
+      },
+      "base": "0123456789abcdef0123456789abcdef01234567"
+    }
+  ],
+  "events": [
+    {
+      "kind": "raise",
+      "by": "code-reviewer",
+      "target": {
+        "collection": "R_1001",
+        "address": {
+          "system": "code.example.com",
+          "path": "acme/shop"
+        }
+      },
+      "stage": "build",
+      "source": {
+        "kind": "reviewer",
+        "name": "code-reviewer"
+      },
+      "severity": "blocking",
+      "place": {
+        "quote": "total = price + tax - discount",
+        "file": "src/cart.go",
+        "line": 42,
+        "version": "0123456789abcdef0123456789abcdef01234567"
+      },
+      "point": "The discount is applied after the tax",
+      "problem": "total adds the tax before it subtracts the discount, so the tax is charged on the full price.",
+      "fix": "Subtract the discount first, then add the tax on the reduced price.",
+      "proof": "An order of 100.00 with a 10.00 discount and 20 percent tax totals 110.00. It should total 108.00."
+    },
+    {
+      "kind": "repeat",
+      "by": "suite",
+      "id": "f2"
+    },
+    {
+      "kind": "reply_fixed",
+      "by": "implement-changes",
+      "id": "f3",
+      "reason": "Wrote shipping with two p."
+    },
+    {
+      "kind": "close_fixed",
+      "by": "hook-1",
+      "id": "f7",
+      "reason": "The hook reports no warning."
+    }
+  ]
+}

@@ -1499,7 +1499,7 @@ defmodule Apiary.WorkItems.Moves do
 
   @doc false
   @spec confirm(Scope.t(), WorkItem.t(), pos_integer) ::
-          {:ok, WorkItem.t()} | {:error, step_refusal}
+          {:ok, WorkItem.t()} | {:error, step_refusal | Apiary.Findings.refusal()}
   def confirm(%Scope{} = scope, %WorkItem{} = work_item, attempt) do
     result =
       Repo.transact(fn ->
@@ -1508,6 +1508,7 @@ defmodule Apiary.WorkItems.Moves do
         with {:ok, held, current} <- hold_step(scope, :"work_item.confirm", work_item, now),
              :ok <- waiting(current, [:confirm], attempt),
              :ok <- not_escalated(held),
+             :ok <- Apiary.Stages.confirmable(held, attempt),
              :ok <- keep_confirmation(held, scope, current.step, now),
              data = %{"take_in" => held.take_in, "attempt" => attempt},
              :ok <- event(held, :confirmed, scope, now, data),

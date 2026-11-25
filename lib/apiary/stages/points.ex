@@ -12,7 +12,7 @@ defmodule Apiary.Stages.Points do
   # run's point has `fix`, the stop cause's fix line, where the cause has one, and the
   # point of a return limit has `fix` with the count of returns. The text of a
   # `round_limit` point with open findings is its sentence followed by the text of each
-  # finding, up to the verdict's 20 points, so it is longer than one sentence. A point of
+  # finding, up to 20, so it is longer than one sentence. A point of
   # a failed check opens with its action, "Run another round:", and has `action_in_text`
   # set to true, so the page adds no action sentence after it, and `missing_type`, the
   # output type that the run stored no version of. A round limit's point with
@@ -38,13 +38,17 @@ defmodule Apiary.Stages.Points do
           required(String.t()) => String.t() | true | pos_integer | %{String.t() => String.t()}
         }
 
+  # The most findings whose text an escalation's points have, as many as a verdict's points.
+  @max_findings 20
+
   # The words that open a stop cause and are written in lower case after "The run
   # stopped:", as in "The run stopped: a read-only run needs a wall".
   @lowered ~w(The A An)
 
   # round_limit/3 is the point of a loop that ran `ran` of its `rounds` rounds, with
-  # `findings`, the text of each review finding still open, in the verdict's order. The
-  # point's text has their number, then each text. Its `fix` is to read them and pick
+  # `findings`, the text of each finding still open: the work item's findings
+  # (`Apiary.Findings.texts/1`), else a verdict's points, in their order. The point's text
+  # has their number, then each text, of at most @max_findings. Its `fix` is to read them and pick
   # Accept as it is or Run another round; its `without_accept` fix is to read them and
   # pick Run another round; `open_findings` is their number. With no open finding, the
   # point has the sentence alone and no `fix`.
@@ -56,7 +60,7 @@ defmodule Apiary.Stages.Points do
     count = length(texts)
     sentence = default(fn -> open_findings(ran, rounds, count) end)
 
-    run_again(Enum.join([sentence | texts], " "))
+    run_again(Enum.join([sentence | Enum.take(texts, @max_findings)], " "))
     |> Map.put("fix", default(fn -> findings_fix(count, true) end))
     |> Map.put("without_accept", %{"fix" => default(fn -> findings_fix(count, false) end)})
     |> Map.put("open_findings", count)
@@ -172,6 +176,12 @@ defmodule Apiary.Stages.Points do
     |> Map.put("return_stage", to)
     |> List.wrap()
   end
+
+  # findings/1 is one point for each of the first @max_findings of `texts`, the open findings
+  # of a stage at its return limit (`Apiary.Findings.texts/1`).
+  @doc false
+  @spec findings([String.t()]) :: [t]
+  def findings(texts), do: texts |> Enum.take(@max_findings) |> Enum.map(&run_again/1)
 
   # return_action/2 is the member's action at a return limit to the stage `to`, for the
   # controls the escalation card shows: Move back and Accept as it is (`:accept`), Move

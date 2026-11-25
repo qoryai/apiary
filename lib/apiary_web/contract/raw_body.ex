@@ -93,15 +93,16 @@ defmodule ApiaryWeb.Contract.RawBody do
   # on or where the request has a signature.
   @secrets_path ["v1", "secrets"]
   @secrets_max_bytes 32 * 1024
-  # The run API's pushes, verdicts, reports of pushed commits and next-session requests,
-  # `POST /v1/runs/<run_id>/artifacts`, `/verdict`, `/pushed-commits` and
-  # `/next-session`, of the `workflow_model` feature: at most 32 MiB, base64 JSON
+  # The run API's pushes, verdicts, reports of pushed commits, findings events and
+  # next-session requests, `POST /v1/runs/<run_id>/artifacts`, `/verdict`,
+  # `/pushed-commits`, `/findings` and `/next-session`, of the `workflow_model` feature: at
+  # most 32 MiB, base64 JSON
   # (`ApiaryWeb.Contract.RunApi.Body.max_bytes(:push)`), read the same way where the
   # feature is on or where the request has a signature. Past the first 64 KiB, only for
   # the key id of an active gateway key.
   @run_api_max_bytes 32 * 1024 * 1024
   @unauthenticated_max_bytes 64 * 1024
-  @run_api_actions ["artifacts", "verdict", "pushed-commits", "next-session"]
+  @run_api_actions ["artifacts", "verdict", "pushed-commits", "findings", "next-session"]
   @events_path ["v1", "events"]
   @registration_path ["v1", "runs"]
   @enrolment_path [".well-known", "qory-enrolment"]

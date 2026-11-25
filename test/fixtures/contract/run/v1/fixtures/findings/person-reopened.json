@@ -1,0 +1,138 @@
+{
+  "bases": [
+    {
+      "target": {
+        "collection": "R_1001",
+        "address": {
+          "system": "code.example.com",
+          "path": "acme/shop"
+        }
+      },
+      "base": "0123456789abcdef0123456789abcdef01234567"
+    }
+  ],
+  "findings": [
+    {
+      "id": "f1",
+      "target": {
+        "collection": "R_1001",
+        "address": {
+          "system": "code.example.com",
+          "path": "acme/shop"
+        }
+      },
+      "stage": "verify",
+      "source": {
+        "kind": "scenario",
+        "name": "empty-cart"
+      },
+      "severity": "blocking",
+      "place": {
+        "quote": "Total 0.00"
+      },
+      "point": "The empty cart page shows a total",
+      "problem": "The page of an empty cart shows a total of 0.00 and no message.",
+      "fix": "Show the empty cart message and no total when the cart has no lines.",
+      "proof": "Open the shop with an empty cart: the page shows Total 0.00.",
+      "state": "open",
+      "disputed": false,
+      "events": [
+        {
+          "kind": "raised",
+          "round": 1,
+          "stage": "verify",
+          "actor": {
+            "kind": "qory",
+            "name": "demo-evidence"
+          }
+        },
+        {
+          "kind": "replied_fixed",
+          "round": 2,
+          "stage": "build",
+          "actor": {
+            "kind": "qory",
+            "name": "implement-changes"
+          },
+          "reason": "Added the empty cart message."
+        },
+        {
+          "kind": "closed_fixed",
+          "round": 2,
+          "stage": "verify",
+          "actor": {
+            "kind": "qory",
+            "name": "demo-evidence"
+          },
+          "reason": "The scenario passes on the new version."
+        },
+        {
+          "kind": "reopened",
+          "round": 2,
+          "stage": "verify",
+          "actor": {
+            "kind": "person"
+          }
+        }
+      ]
+    },
+    {
+      "id": "f2",
+      "target": {
+        "collection": "R_1001",
+        "address": {
+          "system": "code.example.com",
+          "path": "acme/shop"
+        }
+      },
+      "stage": "build",
+      "source": {
+        "kind": "reviewer",
+        "name": "code-reviewer"
+      },
+      "severity": "blocking",
+      "place": {
+        "quote": "Unknown coupon",
+        "file": "src/checkout.go",
+        "line": 88
+      },
+      "point": "The error shows a field that the form lacks",
+      "problem": "The error for a bad code shows the field coupon, and the checkout form has no such field.",
+      "fix": "Name the field promo_code in the message.",
+      "proof": "Submit the checkout form with a bad code: the message shows coupon.",
+      "state": "dismissed",
+      "disputed": false,
+      "events": [
+        {
+          "kind": "raised",
+          "round": 1,
+          "stage": "build",
+          "actor": {
+            "kind": "qory",
+            "name": "code-reviewer"
+          }
+        },
+        {
+          "kind": "replied_disputed",
+          "round": 2,
+          "stage": "build",
+          "actor": {
+            "kind": "qory",
+            "name": "implement-changes"
+          },
+          "reason": "The admin view labels the field coupon."
+        },
+        {
+          "kind": "closed_dismissed",
+          "round": 2,
+          "stage": "build",
+          "actor": {
+            "kind": "qory",
+            "name": "code-reviewer"
+          },
+          "reason": "The admin view shows the field as coupon."
+        }
+      ]
+    }
+  ]
+}

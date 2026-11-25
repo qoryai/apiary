@@ -1,0 +1,9 @@
+{
+  "events": [
+    {
+      "kind": "close_dismissed",
+      "by": "code-reviewer",
+      "id": "f1"
+    }
+  ]
+}
