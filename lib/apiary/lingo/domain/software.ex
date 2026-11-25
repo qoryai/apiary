@@ -14,7 +14,9 @@ defmodule Apiary.Lingo.Domain.Software do
   claim checks them again with the further repositories. A collection's environment
   is prebuilt, and a target may have a harness file at its root.
 
-  Its workspace type is Qory's `qory.software` (`definition/0`).
+  Its workspace type is Qory's `qory.software` (`definition/0`). The type settings of a
+  session of a stage's run have `full_suite`, whether the full test suite runs after the
+  session (`type_settings/1`).
   """
   # Qory adds the `repositories` label to a run a claim registers, with the `factory` feature.
   @behaviour Apiary.Lingo.Domain
@@ -101,4 +103,20 @@ defmodule Apiary.Lingo.Domain.Software do
 
   @impl true
   def definition, do: Definition.qory("qory.software")
+
+  # `full_suite` is true for a run with `write` access, for an entry of a loop's body
+  # (`loop_entry` an index), a loop, or an entry with `first_attempt: true`. A run that
+  # reads or does not push runs none. A run of Explore follows the same rule.
+  @impl true
+  def type_settings(%{level: level, entry: entry, loop_entry: loop_entry}),
+    do: %{"full_suite" => full_suite?(level, entry, loop_entry)}
+
+  @impl true
+  def type_settings_values, do: [%{"full_suite" => true}, %{"full_suite" => false}]
+
+  defp full_suite?(level, _entry, _loop_entry) when level != :write, do: false
+  defp full_suite?(_level, _entry, loop_entry) when is_integer(loop_entry), do: true
+  defp full_suite?(_level, %{"loop" => _loop}, nil), do: true
+  defp full_suite?(_level, %{"first_attempt" => true}, nil), do: true
+  defp full_suite?(_level, _entry, nil), do: false
 end

@@ -843,13 +843,16 @@ of the run contract. A next session of the same stage:
 {"next": "session", "session": 2, "workflow": "write-acceptance-checks",
  "model_choice": {"runtime": "claude", "model": "claude-sonnet-5-5", "effort": "high",
                   "provider_models": [{"id": "claude-sonnet-5-5", "effort": ["low", "medium", "high"]}]},
- "time_limit_minutes": 180, "full_suite": false, "inputs": {"version": 1, "...": "..."}}
+ "time_limit_minutes": 180, "type_settings": {"full_suite": false},
+ "inputs": {"version": 1, "...": "..."}}
 ```
 
 - `session`: Qory Apiary's number of the session in the run, from 1; the claim's session is
   1. It is not Forager's number.
-- `workflow`, `time_limit_minutes` and `full_suite`: the entry's, as the claim kept them,
-  so a time limit saved after the claim changes nothing for the run.
+- `workflow`, `time_limit_minutes` and `type_settings`: the entry's, as the claim kept them,
+  so a time limit saved after the claim changes nothing for the run. `type_settings` are
+  the type settings of the workspace's domain: a software factory's have `full_suite`, and
+  a session of a domain without type settings has no `type_settings`.
 - `inputs`: the input of the session, in the shape of the documents' `inputs`.
 - `model_choice`: the runtime and model of the session's workflow, as `runtime`, `model`,
   `effort`, `provider_models` and `tiers` of the documents' `run_settings`. Every

@@ -155,8 +155,9 @@ defmodule Apiary.Dispatches.Handover do
   # out of time or crashed, `register/2` returns `{:wait, provider_ids}` with the run's
   # `model_provider_ids` as they were, and the run waits again too. After `run_settings`,
   # its documents have the members about its first session (`session_members/3`):
-  # `time_limit_minutes`, its workflow's time limit, and `shared_run` and `full_suite`
-  # where true. For a run of a stage with `shared_run: true`, the claim keeps the settings
+  # `time_limit_minutes`, its workflow's time limit, `shared_run` where true, and
+  # `type_settings`, the type settings of the workspace's domain, where the domain has
+  # type settings. For a run of a stage with `shared_run: true`, the claim keeps the settings
   # of each entry of the stage on the run it registers and writes the run's first session
   # (`Apiary.Stages.claim_sessions!/3`), which each later session reads. Its input is
   # formed with the name of the workspace's domain (`Apiary.Lingo.Domain.name/1`) and the
@@ -967,16 +968,16 @@ defmodule Apiary.Dispatches.Handover do
   # The members of an explore run's documents about its first session, after
   # `run_settings`: `time_limit_minutes`, the time limit of the run's workflow as
   # `RunSettings.hold/1` read it, where the run has a workflow and run settings; then
-  # `shared_run` and `full_suite`, each only where it is true, `full_suite` for the run's
-  # access level `level` (`Apiary.Stages.session_flags/2`). `{name, value}` members, in
-  # order.
+  # `shared_run`, only where it is true, and `type_settings`, only where the workspace's
+  # domain has type settings, for the run's access level `level`
+  # (`Apiary.Stages.session_flags/2`). `{name, value}` members, in order.
   defp session_members(dispatch_run, held, level) do
     flags = Apiary.Stages.session_flags(dispatch_run, level)
 
     [
       {"time_limit_minutes", held && held.time_limit},
       {"shared_run", flags.shared_run || nil},
-      {"full_suite", flags.full_suite || nil}
+      {"type_settings", flags.type_settings}
     ]
     |> Enum.reject(fn {_name, value} -> is_nil(value) end)
   end

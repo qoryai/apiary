@@ -8,7 +8,8 @@ defmodule Apiary.Lingo.Domain.Example do
   A run gets no run variables, no environment is prebuilt, and no target has a harness
   file. A run that writes pushes, as in the software domain. In the texts about why a run
   stopped, a target is an "account" and the copy a run writes to is a "copy". Its
-  workspace type is `qory.example` (`definition/0`).
+  workspace type is `qory.example` (`definition/0`). A session of a stage's run has no
+  type settings.
   """
   @behaviour Apiary.Lingo.Domain
 
@@ -76,4 +77,10 @@ defmodule Apiary.Lingo.Domain.Example do
 
   @impl true
   def definition, do: Definition.qory("qory.example")
+
+  @impl true
+  def type_settings(%{}), do: nil
+
+  @impl true
+  def type_settings_values, do: []
 end

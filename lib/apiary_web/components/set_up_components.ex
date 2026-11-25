@@ -1348,10 +1348,15 @@ defmodule ApiaryWeb.SetUpComponents do
       {:error, errors} when is_list(errors) ->
         case Enum.find(
                errors,
-               &(&1.error in [:model_choice_missing, :too_many_providers, :session_key_missing])
+               &(&1.error in [
+                   :model_choice_missing,
+                   :too_many_providers,
+                   :session_key_missing,
+                   :type_settings_schema
+                 ])
              ) do
-          # The fault is in the organisation's default model choice, not in the
-          # template: its line alone.
+          # The fault is in the organisation's default model choice, or in the schema of
+          # type settings of the template: its line alone.
           %{} = error ->
             Phoenix.LiveView.put_flash(
               socket,

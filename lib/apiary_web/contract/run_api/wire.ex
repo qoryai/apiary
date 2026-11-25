@@ -21,7 +21,7 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   # - `next_session/1`: the result of a next-session request
   #   (`Apiary.Stages.next_session/2`): `next`, then, for a next session, `session`,
   #   `workflow`, `model_choice`, `model_provider_credential_name`, `time_limit_minutes`,
-  #   `full_suite` and `inputs`, each member that is nil left out.
+  #   `type_settings` and `inputs`, each member that is nil left out.
   #
   # A person is written by name, as Explore's input writes a person
   # (`Apiary.Dispatches.Inputs.person_name/1`); a run by its run id.
@@ -318,7 +318,7 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
     members =
       for key <-
             ~w(session workflow model_choice model_provider_credential_name time_limit_minutes
-                    full_suite inputs)a,
+                    type_settings inputs)a,
           (value = Map.fetch!(next, key)) != nil,
           do: {Atom.to_string(key), value}
 

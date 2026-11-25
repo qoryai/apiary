@@ -758,6 +758,60 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert has_element?(view, "#stages-version", "Editing version 1, current.")
     end
 
+    test "a harness whose schema of type settings fails a value shows what to change above the canvas",
+         %{conn: conn, path: path, scope: scope} do
+      schema = %{"type" => "object", "properties" => %{"full_suite" => %{"const" => true}}}
+
+      {1, _rows} =
+        Repo.update_all(
+          from(v in Processes.Version, where: v.workspace_id == ^scope.workspace.id),
+          set: [
+            template: %{
+              "source" => "repository",
+              "commit" => String.duplicate("a", 40),
+              "type_settings_schema" => schema
+            }
+          ]
+        )
+
+      {:ok, view, _html} = live(conn, path)
+      view |> form("#stage-form", stage: %{name: "Discover"}) |> render_change()
+      view |> element("#stages-save") |> render_click()
+
+      assert has_element?(
+               view,
+               "[data-save-error]",
+               "Change type_settings.json_schema in process.yaml so that it accepts " <>
+                 ~s({"full_suite": false}. The schema fails it: value should be true.)
+             )
+
+      assert has_element?(view, "#stages-version", "Editing version 1, current.")
+    end
+
+    test "a Qory harness whose schema of type settings fails a value shows the support line",
+         %{conn: conn, path: path, scope: scope} do
+      Apiary.QoryHarnessFixture.files()
+      |> Map.update!(@harness_process, &String.replace(&1, "{type: boolean}", "{const: true}"))
+      |> Apiary.QoryHarnessFixture.serve!()
+
+      {:ok, commit} = Apiary.Harnesses.Qory.read({:branch, "main"})
+      v1 = Processes.current(scope.workspace)
+      Repo.update!(Ecto.Changeset.change(v1, template: %{v1.template | "commit" => commit}))
+
+      {:ok, view, _html} = live(conn, path)
+      view |> form("#stage-form", stage: %{name: "Discover"}) |> render_change()
+      view |> element("#stages-save") |> render_click()
+
+      assert has_element?(
+               view,
+               "[data-save-error]",
+               "Contact support. The Qory harness has a process that Qory Apiary cannot use, " <>
+                 "so you cannot save changes until support fixes it."
+             )
+
+      refute has_element?(view, "[data-save-error]", "type_settings")
+    end
+
     test "an unchanged document shows next to Save", %{conn: conn, path: path} do
       {:ok, view, _html} = live(conn, path)
       render_hook(view, "save", %{"trial" => "false"})

@@ -2,19 +2,17 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/run/v1/next-session-answer.schema.json",
   "title": "Next-session answer",
-  "description": "The answer to the next-session request, next-session-request.schema.json: either the next session of the run, with next session, or the end of the run, with next end. The next session has session, workflow, time_limit_minutes, full_suite and inputs, and optionally model_choice and model_provider_credential_name; the end has next only. An answer with the members of both shapes is refused. It answers a request that qory sends through Forager's link, which the gateway forwards to the control plane.",
+  "description": "The answer to the next-session request, next-session-request.schema.json: either the next session of the run, with next session, or the end of the run, with next end. The next session has session, workflow, time_limit_minutes and inputs, and optionally type_settings, model_choice and model_provider_credential_name; the end has next only. An answer with the members of both shapes is refused. A reader ignores a member that this schema does not define, at any depth, unless must_understand lists it. must_understand lists JSON Pointers, such as /model_choice/runtime. A reader refuses an answer whose must_understand lists a pointer to a member that it does not define. It answers a request that qory sends through Forager's link, which the gateway forwards to the control plane.",
   "type": "object",
   "oneOf": [
     {
       "description": "The next session of the run: the session that qory starts.",
       "type": "object",
-      "additionalProperties": false,
       "required": [
         "next",
         "session",
         "workflow",
         "time_limit_minutes",
-        "full_suite",
         "inputs"
       ],
       "properties": {
@@ -43,29 +41,60 @@
           "description": "The time limit of the session, in minutes, from 1 to 1440.",
           "$ref": "https://qory.dev/contracts/run/v1/documents.schema.json#/$defs/time_limit_minutes"
         },
-        "full_suite": {
-          "description": "Whether the session runs the full test suite after the agent ends.",
-          "type": "boolean"
+        "type_settings": {
+          "description": "The type settings of the session, as type_settings of the run documents. Absent when the session has none.",
+          "$ref": "https://qory.dev/contracts/run/v1/documents.schema.json#/$defs/type_settings"
         },
         "inputs": {
           "description": "The input of the session, as inputs of the run documents. qory writes it to the inputs file of the session.",
           "$ref": "https://qory.dev/contracts/run/v1/documents.schema.json#/$defs/inputs"
+        },
+        "must_understand": {
+          "$ref": "#/$defs/must_understand"
         }
       }
     },
     {
-      "description": "The end of the run: no session follows, and qory closes the run.",
+      "description": "The end of the run: no session follows, and qory closes the run. A member of the session shape is refused here, since an answer with the members of both shapes is refused.",
       "type": "object",
-      "additionalProperties": false,
       "required": [
         "next"
       ],
+      "not": {
+        "description": "The members of the session shape.",
+        "anyOf": [
+          {"required": ["session"]},
+          {"required": ["workflow"]},
+          {"required": ["model_choice"]},
+          {"required": ["model_provider_credential_name"]},
+          {"required": ["time_limit_minutes"]},
+          {"required": ["type_settings"]},
+          {"required": ["inputs"]}
+        ]
+      },
       "properties": {
         "next": {
           "description": "The kind of the answer: end, no session follows.",
           "const": "end"
+        },
+        "must_understand": {
+          "$ref": "#/$defs/must_understand"
         }
       }
     }
-  ]
+  ],
+  "$defs": {
+    "must_understand": {
+      "description": "The members of the answer that the reader must understand, each as a JSON Pointer (RFC 6901) counted from the answer, such as /model_choice/runtime. List each once, at most 32. Each pointer is to a member that this schema defines. A reader ignores a member that it does not define, unless must_understand lists it. A reader refuses an answer whose must_understand lists a pointer to a member that it does not define. A reader also refuses a bad value of a member that it defines. Below inputs and below type_settings the schema defines no member, so any pointer there is accepted.",
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 256,
+        "not": {"pattern": "\\n"},
+        "pattern": "^(?:/inputs|/inputs(?:/(?:[^/~]|~[01])*)*|/model_choice|/model_choice/effort|/model_choice/model|/model_choice/provider_models|/model_choice/provider_models/(?:0|[1-9][0-9]*)|/model_choice/provider_models/(?:0|[1-9][0-9]*)/effort|/model_choice/provider_models/(?:0|[1-9][0-9]*)/effort/(?:0|[1-9][0-9]*)|/model_choice/provider_models/(?:0|[1-9][0-9]*)/id|/model_choice/runtime|/model_choice/tiers|/model_choice/tiers/balanced|/model_choice/tiers/balanced/effort|/model_choice/tiers/balanced/model|/model_choice/tiers/light|/model_choice/tiers/light/effort|/model_choice/tiers/light/model|/model_choice/tiers/thinking|/model_choice/tiers/thinking/effort|/model_choice/tiers/thinking/model|/model_provider_credential_name|/next|/session|/time_limit_minutes|/type_settings|/type_settings(?:/(?:[^/~]|~[01])*)*|/workflow)$"
+      }
+    }
+  }
 }

@@ -6,7 +6,9 @@
     "runtime": "codex"
   },
   "time_limit_minutes": 30,
-  "full_suite": false,
+  "type_settings": {
+    "full_suite": false
+  },
   "inputs": {
     "version": 1
   }

@@ -30,6 +30,17 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
   @file_path Path.expand("../../fixtures/harness/v1/sources/factory", __DIR__)
              |> Path.join("modules/support-desk/process.yaml")
 
+  # A schema of type settings under which `{"full_suite": true}` is valid and
+  # `{"full_suite": false}` is not, and the refusal of a save of a process that registers it.
+  @true_only %{"type" => "object", "properties" => %{"full_suite" => %{"const" => true}}}
+  @refused [
+    %{
+      path: "#",
+      error: :type_settings_schema,
+      detail: {%{"full_suite" => false}, "value should be true"}
+    }
+  ]
+
   defmodule OneWorkspace do
     def limits, do: %{organisations: :unlimited, workspaces: 1}
   end
@@ -220,6 +231,42 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
 
       assert {:ok, _workspace} =
                Organisations.create_workspace_of_kind(scope_fixture(), Domain.Software, :any)
+    end
+
+    test "a template whose schema of type settings fails a value of the runs makes nothing" do
+      scope = scope_fixture()
+      before = held(scope)
+
+      QoryHarnessFixture.files()
+      |> Map.update!(
+        "modules/software-factory/process.yaml",
+        &String.replace(&1, "full_suite: {type: boolean}", "full_suite: {const: true}")
+      )
+      |> QoryHarnessFixture.serve!()
+
+      assert Organisations.create_workspace_of_kind(scope, Domain.Software, :any) ==
+               {:error, {:qory, {:unreadable, :invalid, nil}}}
+
+      assert held(scope) == before
+    end
+
+    test "copy_qory_template/2 of a template whose schema of type settings fails a value inserts nothing" do
+      %{scope: scope} = sign_up_fixture()
+
+      repository =
+        QoryHarnessFixture.files()
+        |> Map.update!(
+          "modules/software-factory/process.yaml",
+          &String.replace(&1, "full_suite: {type: boolean}", "full_suite: {const: true}")
+        )
+        |> QoryHarnessFixture.serve!()
+
+      # The read that keeps the commit's files, as the create's read does.
+      assert {:ok, commit} = Qory.read({:branch, Qory.default_branch()})
+      assert commit == repository.commit
+      assert Processes.copy_qory_template(scope.workspace, commit) == {:error, @refused}
+
+      assert [%Version{number: 1}] = Processes.list_versions(scope.workspace)
     end
 
     test "a failed read of the Qory harness makes nothing" do
@@ -669,6 +716,33 @@ defmodule Apiary.Organisations.WorkspaceTemplateTest do
                "type" => read.type,
                "version" => nil
              }
+    end
+
+    test "a template's schema of type settings is recorded in version 1" do
+      scope = scope_fixture()
+      source = linked!(scope)
+      schema = %{"type" => "object", "properties" => %{"full_suite" => %{"type" => "boolean"}}}
+
+      assert {:ok, workspace} =
+               Organisations.create_workspace_from_template(
+                 scope,
+                 start(source, %{type_settings: schema})
+               )
+
+      assert first_version(workspace).template["type_settings_schema"] == schema
+    end
+
+    test "a template whose schema of type settings fails a value of the runs is refused, and nothing is made" do
+      scope = scope_fixture()
+      source = linked!(scope)
+      before = held(scope)
+
+      assert Organisations.create_workspace_from_template(
+               scope,
+               start(source, %{type_settings: @true_only})
+             ) == {:error, @refused}
+
+      assert held(scope) == before
     end
 
     test "a process that does not pass the check is refused before the transaction" do

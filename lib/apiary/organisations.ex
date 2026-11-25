@@ -1754,12 +1754,17 @@ defmodule Apiary.Organisations do
   `create_workspace/2`'s answers, `{:error, :exists}` with `:first` where the
   organisation has a workspace in use already, and `{:error, {:qory, failure}}` where the
   read of the Qory harness failed (Apiary.Harnesses.Qory.failure/0), with nothing
-  made.
+  made. A Qory template whose schema of type settings fails a value the domain's runs can
+  have (Apiary.Processes.check_type_settings/2) is
+  `{:error, {:qory, {:unreadable, :invalid, nil}}}`, as a template the reader returns an
+  error for. `{:error, errors}` is a schema of type settings that fails a value where the
+  Qory template is copied (Apiary.Processes.copy_qory_template/2).
   """
   @spec create_workspace_of_kind(Scope.t(), module, :first | :any) ::
           {:ok, %Workspace{}}
           | {:error,
              Ecto.Changeset.t()
+             | [map]
              | :exists
              | :limit
              | Access.reason()
@@ -1802,7 +1807,9 @@ defmodule Apiary.Organisations do
   offers no template, a connected or an assigned source that differs from the
   organisation's list of them, a template whose `type` is the key of no domain's type
   (`Apiary.Lingo.Domain.known_type?/1`), or a row the save rules refuse;
-  `{:error, errors}` for a process Apiary.Processes.validate/1 refuses;
+  `{:error, errors}` for a process Apiary.Processes.validate/1 refuses, or for a schema of
+  type settings that fails a value the template type's runs can have
+  (Apiary.Processes.check_type_settings/2);
   `{:error, {:invalid, type, error}}` for a custom type the database refuses; and
   `{:error, :not_found}` where the feature is off, or the source is the shared harness and
   the organisation no longer shares that repository. Nothing is made on any error.
@@ -1855,7 +1862,7 @@ defmodule Apiary.Organisations do
   defp qory_start_of(%{provided_by: "qory", key: key}) do
     with {:ok, commit} <- Qory.read({:branch, Qory.default_branch()}) |> qory_read() do
       case Qory.template(commit) do
-        %{type: ^key} = template -> {:ok, %{qory: true, template: template, commit: commit}}
+        %{type: ^key} = template -> qory_template_start(template, commit)
         %{} -> {:ok, nil}
         nil -> {:error, {:qory, {:unreadable, :invalid, nil}}}
       end
@@ -1863,6 +1870,19 @@ defmodule Apiary.Organisations do
   end
 
   defp qory_start_of(_definition), do: {:ok, nil}
+
+  # A template whose schema of type settings fails a value the domain's runs can have
+  # (`Apiary.Processes.check_type_settings/2`) is an error as a template the reader returns
+  # an error for: the person who creates the workspace cannot change the Qory harness.
+  defp qory_template_start(template, commit) do
+    case Apiary.Processes.check_type_settings(
+           Domain.for_type(template.type),
+           template.type_settings
+         ) do
+      :ok -> {:ok, %{qory: true, template: template, commit: commit}}
+      {:error, _errors} -> {:error, {:qory, {:unreadable, :invalid, nil}}}
+    end
+  end
 
   defp qory_read({:ok, commit}), do: {:ok, commit}
   defp qory_read({:error, failure}), do: {:error, {:qory, failure}}
@@ -1954,6 +1974,7 @@ defmodule Apiary.Organisations do
           {:ok, %Workspace{}}
           | {:error,
              Ecto.Changeset.t()
+             | [map]
              | :exists
              | :limit
              | Access.reason()

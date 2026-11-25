@@ -60,6 +60,9 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
   # The members of the documents about the run's first session, by name.
   defp session(%{session: members}), do: Map.new(members)
 
+  # The type settings of a software factory's read run of a stage: no full suite.
+  @no_full_suite %{"full_suite" => false}
+
   defp keys(%{run_settings: settings}) do
     ordered = settings |> Jason.encode!() |> Jason.decode!(objects: :ordered_objects)
     Enum.map(ordered.values, &elem(&1, 0))
@@ -181,7 +184,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
              }
 
       assert settings(claimed) == %{"runtime" => @runtime}
-      assert session(claimed) == %{"time_limit_minutes" => 90}
+      assert session(claimed) == %{"time_limit_minutes" => 90, "type_settings" => @no_full_suite}
 
       kept = Repo.get!(Run, claimed.run.id)
       assert kept.run_settings == %{"runtime" => @runtime}
@@ -209,10 +212,18 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
     test "sends 180 minutes with no limit, or a limit of another workflow", ctx do
       workflow!(ctx, "explore-a-ticket")
       place = handover_place_fixture(ctx.scope)
-      assert session(claim!(ctx, place)) == %{"time_limit_minutes" => 180}
+
+      assert session(claim!(ctx, place)) == %{
+               "time_limit_minutes" => 180,
+               "type_settings" => @no_full_suite
+             }
 
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "review", 90)
-      assert session(claim!(ctx, place)) == %{"time_limit_minutes" => 180}
+
+      assert session(claim!(ctx, place)) == %{
+               "time_limit_minutes" => 180,
+               "type_settings" => @no_full_suite
+             }
     end
 
     test "sends the limit beside run_settings, which has the model choice's members alone",
@@ -237,7 +248,7 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       claimed = claim!(ctx, handover_place_fixture(ctx.scope, allow_secrets: true))
 
       assert %{"model" => "claude-opus-5-5"} = settings(claimed)
-      assert session(claimed) == %{"time_limit_minutes" => 45}
+      assert session(claimed) == %{"time_limit_minutes" => 45, "type_settings" => @no_full_suite}
       assert keys(claimed) == ~w(runtime model provider_models tiers)
     end
   end

@@ -35,7 +35,7 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # `run_settings` (a `Jason.OrderedObject`; every run of the step workflow has them,
   # `Apiary.Dispatches.RunSettings`, and a prebuild none),
   # the members about its first session, `time_limit_minutes`, `shared_run` and
-  # `full_suite`, each where present (`:session`, `{name, value}` members, none for a
+  # `type_settings`, each where present (`:session`, `{name, value}` members, none for a
   # prebuild), its `workflow`, `harness_hidden` and `harness` (`harness/1`), a
   # prebuild's destinations, `image_destination` and then `environment_destination` or
   # `environment_image`, and
@@ -51,7 +51,7 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
           required(:run_settings) => Jason.OrderedObject.t() | nil,
           required(:harness) => harness | nil,
           required(:inputs) => Jason.OrderedObject.t(),
-          optional(:session) => [{String.t(), pos_integer | boolean}],
+          optional(:session) => [{String.t(), pos_integer | boolean | map}],
           optional(:destinations) => [{String.t(), String.t() | pos_integer}],
           optional(atom) => term
         }) :: Jason.OrderedObject.t()

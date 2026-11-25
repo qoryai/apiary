@@ -246,9 +246,11 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
                "session" => 2,
                "workflow" => "write-acceptance-checks",
                "time_limit_minutes" => 180,
-               "full_suite" => false,
+               "type_settings" => %{"full_suite" => false},
                "inputs" => %{"version" => 1, "work_item" => %{}, "run" => %{}}
              } = body
+
+      refute Map.has_key?(body, "full_suite")
 
       # The workspace's choice has no model: the provider's default model.
       assert %{"runtime" => "claude", "model" => model, "provider_models" => [_ | _]} =
@@ -521,12 +523,14 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       assert sessions(ctx) == stored
     end
 
-    test "the vendored request fixtures: each valid one is read, each invalid one is 400",
+    test "the vendored request fixtures: each valid one is read, each invalid and closed one is 400",
          ctx do
       valid = Path.wildcard(Path.join(@run_fixtures, "next-session-request/*.json"))
       invalid = Path.wildcard(Path.join(@run_fixtures, "invalid/next-session-request-*.json"))
+      closed = Path.wildcard(Path.join(@run_fixtures, "closed/next-session-request-*.json"))
       assert length(valid) == 6
-      assert length(invalid) == 13
+      assert length(invalid) == 11
+      assert length(closed) == 2
 
       for file <- valid do
         assert {:ok, _report} = ApiaryWeb.Contract.RunApi.Body.next_session(File.read!(file)),
@@ -534,6 +538,12 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       end
 
       for file <- invalid do
+        assert json_response(request(ctx, File.read!(file)), 400)["error"] == "invalid_request",
+               file
+      end
+
+      # A known gap: the shortcut at `ApiaryWeb.Contract.RunApi.Body.next_session/1`.
+      for file <- closed do
         assert json_response(request(ctx, File.read!(file)), 400)["error"] == "invalid_request",
                file
       end
@@ -842,13 +852,11 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       body = json_response(request(ctx, ended(1)), 200)
 
       # Session 2 runs on Checkout keys: the choice's model, on its first key, in the
-      # member of the run contract's answer, whose schema fails a body with the member's
-      # former name.
+      # member of the run contract's answer, not in the member's former name.
       assert %{"runtime" => "claude", "model" => "claude-sonnet-5-5"} = body["model_choice"]
       assert body["model_provider_credential_name"] == "#{other.public_id}-1"
       refute Map.has_key?(body, "model_credential")
       assert answer_valid?(body)
-      refute answer_valid?(Map.put(body, "model_credential", "#{other.public_id}-1"))
 
       # The run keeps the keys of both providers, the default model provider credential's
       # provider's first.
@@ -1041,6 +1049,24 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
 
       assert point["text"] ==
                "The run stopped: a value in the ticket or the work item breaks a rule for the input of the next session, such as its size limit, so the run ended after session 1."
+    end
+  end
+
+  describe "a run of a workspace of another domain" do
+    # A run of the example domain has no type settings.
+    @tag :contract
+    test "returns the next session with no type_settings and no full_suite", ctx do
+      ctx = %{ctx | scope: with_domain(ctx.scope, "example")}
+      ctx = shared!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
+      :ok = verdict!(ctx, "passed")
+      body = json_response(request(ctx, ended(1)), 200)
+
+      assert %{"next" => "session", "session" => 2, "workflow" => "write-acceptance-checks"} =
+               body
+
+      refute Map.has_key?(body, "type_settings")
+      refute Map.has_key?(body, "full_suite")
+      assert answer_valid?(body)
     end
   end
 

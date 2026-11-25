@@ -381,6 +381,64 @@ defmodule ApiaryWeb.HarnessLiveProcessTest do
       assert has_element?(view, "#harness-update-try[disabled]")
     end
 
+    test "a Qory template whose schema of type settings fails a value shows the support line, and no save",
+         ctx do
+      QoryHarnessFixture.files()
+      |> Map.update!(@process, &String.replace(&1, "{type: boolean}", "{const: true}"))
+      |> QoryHarnessFixture.serve!()
+
+      {:ok, _commit} = Qory.read({:branch, "main"})
+
+      {:ok, view, _html} = live(ctx.conn, ctx.path)
+      view |> element("#harness-update") |> render_click()
+      render_async(view)
+
+      line =
+        "Contact support. The Qory harness has a process that Qory Apiary cannot use, " <>
+          "so you cannot save changes until support fixes it."
+
+      assert text(view, "#harness-update-refused") == line
+      assert has_element?(view, "#harness-update-save[disabled]")
+      assert has_element?(view, "#harness-update-try[disabled]")
+
+      # A save that reaches the check, as one sent past the disabled button, shows the same line.
+      render_hook(view, "update_save", %{})
+      assert text(view, "#harness-update-error") == line
+    end
+
+    test "a harness repository whose schema of type settings fails a value shows what to change, and no save",
+         ctx do
+      git = "https://code.example.com/acme/harness"
+
+      files =
+        QoryHarnessFixture.files()
+        |> Map.update!(@process, &String.replace(&1, "{type: boolean}", "{const: true}"))
+        |> Map.put(".test-#{System.unique_integer([:positive])}", "")
+
+      repository = Apiary.PublicGitServer.repository!(files)
+      Apiary.PublicGitServer.serve(%{git => repository.dir})
+
+      Repo.insert!(%Apiary.Stacks.Stack{
+        organisation_id: ctx.scope.organisation.id,
+        workspace_id: ctx.scope.workspace.id,
+        harness: "extends:\n  git: #{git}\n  ref: main\n  stack: software\n",
+        choice: :repository,
+        version_kind: :branch,
+        version_name: "main"
+      })
+
+      {:ok, view, _html} = live(ctx.conn, ctx.path)
+      view |> element("#harness-update") |> render_click()
+      render_async(view)
+
+      assert text(view, "#harness-update-refused") ==
+               "Change type_settings.json_schema in process.yaml so that it accepts " <>
+                 ~s({"full_suite": false}. The schema fails it: value should be true.)
+
+      assert has_element?(view, "#harness-update-save[disabled]")
+      assert has_element?(view, "#harness-update-try[disabled]")
+    end
+
     test "a removed line shows the hint; Try first saves a trial; Cancel closes", ctx do
       # The edit drops Explore's output, which the harness has.
       document = Processes.current(ctx.scope.workspace).document

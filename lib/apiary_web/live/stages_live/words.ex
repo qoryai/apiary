@@ -480,6 +480,17 @@ defmodule ApiaryWeb.StagesLive.Words do
 
   defp name(doc, id), do: (Processes.stage(doc, id) || %{})["name"]
 
+  @doc false
+  # qory_type_settings/0 is the line for a schema of type settings in the Qory harness
+  # that fails a value the workspace's runs can have, on Update from harness and on the
+  # Workflows page: the person cannot change the Qory harness.
+  @spec qory_type_settings() :: String.t()
+  def qory_type_settings,
+    do:
+      gettext(
+        "Contact support. The Qory harness has a process that Qory Apiary cannot use, so you cannot save changes until support fixes it."
+      )
+
   # Why a save was refused: `:forbidden`, or an error of `Apiary.Processes.validate/1`,
   # `%{path, error, detail}`, with the place in the document as JSV writes it.
   @doc false
@@ -742,6 +753,16 @@ defmodule ApiaryWeb.StagesLive.Words do
         )
     end
   end
+
+  # A schema of type settings in process.yaml that fails a value the workspace's runs can
+  # have (`Apiary.Processes.check_type_settings/2`): the value as JSON, and why it fails.
+  def refusal(%{error: :type_settings_schema, detail: {value, words}}, _doc),
+    do:
+      gettext(
+        "Change type_settings.json_schema in process.yaml so that it accepts %{value}. The schema fails it: %{error}.",
+        value: settings_json(value),
+        error: words
+      )
 
   def refusal(%{error: error, path: path} = refused, doc) do
     {stage, field} = place(path, doc)
@@ -1044,5 +1065,18 @@ defmodule ApiaryWeb.StagesLive.Words do
         _other -> {:halt, nil}
       end
     end)
+  end
+
+  # A flat map of type settings as JSON with a space after each colon and comma, as a
+  # person writes it: `{"full_suite": false}`.
+  defp settings_json(value) when is_map(value) do
+    members =
+      value
+      |> Enum.sort()
+      |> Enum.map_join(", ", fn {key, member} ->
+        Jason.encode!(key) <> ": " <> Jason.encode!(member)
+      end)
+
+    "{" <> members <> "}"
   end
 end

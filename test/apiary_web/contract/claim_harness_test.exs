@@ -95,9 +95,9 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
     )
   end
 
-  # shortcut: the run copy at 4ad23d9c refers to draft_title, which the integration copy at
+  # shortcut: the run copy at da48933d refers to draft_title, which the integration copy at
   # 7e6cac7e renamed; every schema here reaches the run documents, so it reads
-  # integration/v1/definitions.schema.json from the copy at 4ad23d9c. Delete that copy
+  # integration/v1/definitions.schema.json from the copy at da48933d. Delete that copy
   # when run and explore are copied at 7e6cac7e.
   @run_integration Path.join(@vendored, "run-integration")
 
@@ -611,7 +611,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       |> Enum.take_while(&(&1 != "workflow"))
     end
 
-    test "with shared_run, of a write run, has the first session's limit, shared_run and full_suite, and the claim keeps each entry's settings and the first session",
+    test "with shared_run, of a write run, has the first session's limit, shared_run and type_settings, and the claim keeps each entry's settings and the first session",
          ctx do
       build!(
         ctx,
@@ -638,11 +638,14 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
                "workflow" => "plan-the-build",
                "time_limit_minutes" => 45,
                "shared_run" => true,
-               "full_suite" => true
+               "type_settings" => %{"full_suite" => true}
              } = documents
 
+      refute Map.has_key?(documents, "full_suite")
       refute Map.has_key?(documents["run_settings"], "time_limit_minutes")
-      assert around_settings(json) == ~w(run_settings time_limit_minutes shared_run full_suite)
+
+      assert around_settings(json) ==
+               ~w(run_settings time_limit_minutes shared_run type_settings)
 
       {run, sessions} = claimed(work_item)
 
@@ -651,19 +654,19 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
                "0" => %{
                  "workflow" => "plan-the-build",
                  "time_limit_minutes" => 45,
-                 "full_suite" => true,
+                 "type_settings" => %{"full_suite" => true},
                  "model_choice" => %{"runtime" => "claude"}
                },
                "1.0" => %{
                  "workflow" => "implement-changes",
                  "time_limit_minutes" => 180,
-                 "full_suite" => true,
+                 "type_settings" => %{"full_suite" => true},
                  "model_choice" => %{"runtime" => "claude"}
                },
                "1.1" => %{
                  "workflow" => "review-changes",
                  "time_limit_minutes" => 90,
-                 "full_suite" => true,
+                 "type_settings" => %{"full_suite" => true},
                  "model_choice" => %{"runtime" => "claude"}
                }
              }
@@ -672,7 +675,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
                sessions
     end
 
-    test "without shared_run has neither member where both are false, and the claim keeps nothing for sessions",
+    test "without shared_run has no shared_run, type_settings with full_suite false, and the claim keeps nothing for sessions",
          ctx do
       build!(ctx, [%{"workflow" => "plan-the-build"}], %{})
       work_item = walked!(ctx, :read)
@@ -680,10 +683,15 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       documents = Jason.decode!(json)
       valid!(documents)
 
-      assert %{"workflow" => "plan-the-build", "time_limit_minutes" => 180} = documents
+      assert %{
+               "workflow" => "plan-the-build",
+               "time_limit_minutes" => 180,
+               "type_settings" => %{"full_suite" => false}
+             } = documents
+
       refute Map.has_key?(documents, "shared_run")
       refute Map.has_key?(documents, "full_suite")
-      assert around_settings(json) == ~w(run_settings time_limit_minutes)
+      assert around_settings(json) == ~w(run_settings time_limit_minutes type_settings)
 
       assert {%{session_settings: nil}, []} = claimed(work_item)
     end
@@ -694,8 +702,38 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       walked!(ctx, :write)
       documents = documents(claim(ctx))
 
-      assert %{"access" => "write", "full_suite" => true} = documents
+      assert %{"access" => "write", "type_settings" => %{"full_suite" => true}} = documents
       refute Map.has_key?(documents, "shared_run")
+      refute Map.has_key?(documents, "full_suite")
+    end
+
+    # A run of the example domain has no type settings: its documents have neither
+    # type_settings nor full_suite, where a software factory's run would run the full suite.
+    test "of a workspace of another domain has no type_settings and no full_suite", ctx do
+      ctx = %{ctx | scope: with_domain(ctx.scope, "example")}
+
+      build!(
+        ctx,
+        [
+          %{"workflow" => "plan-the-build", "first_attempt" => true},
+          %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "implement-changes"}]}}
+        ],
+        %{"shared_run" => true}
+      )
+
+      work_item = walked!(ctx, :write)
+      documents = documents(claim(ctx))
+
+      assert %{"domain" => "example", "access" => "write", "shared_run" => true} = documents
+      refute Map.has_key?(documents, "type_settings")
+      refute Map.has_key?(documents, "full_suite")
+
+      {run, _sessions} = claimed(work_item)
+
+      for {_place, settings} <- run.session_settings do
+        assert settings["type_settings"] == nil
+        refute Map.has_key?(settings, "full_suite")
+      end
     end
 
     test "with shared_run ends before it starts where the run's harness sets write-no-push beside write",
@@ -813,8 +851,11 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       work_item = walked!(ctx, :write)
       documents = documents(claim(ctx))
 
-      assert %{"access" => "write", "workflow" => "explore-a-ticket", "full_suite" => true} =
-               documents
+      assert %{
+               "access" => "write",
+               "workflow" => "explore-a-ticket",
+               "type_settings" => %{"full_suite" => true}
+             } = documents
 
       assert %Apiary.Dispatches.DispatchRun{explore: true} =
                Repo.get_by!(Apiary.Dispatches.DispatchRun, work_item_id: work_item.id)
@@ -844,19 +885,22 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
                "access" => "write",
                "workflow" => "plan-the-build",
                "shared_run" => true,
-               "full_suite" => true
+               "type_settings" => %{"full_suite" => true}
              } = documents
 
       {run, _sessions} = claimed(work_item)
 
-      assert %{"0.0" => %{"full_suite" => true}, "0.1" => %{"full_suite" => true}} =
-               run.session_settings
+      assert %{
+               "0.0" => %{"type_settings" => %{"full_suite" => true}},
+               "0.1" => %{"type_settings" => %{"full_suite" => true}}
+             } = run.session_settings
 
       assert %Apiary.Dispatches.DispatchRun{explore: true} =
                Repo.get_by!(Apiary.Dispatches.DispatchRun, work_item_id: work_item.id)
     end
 
-    test "of a run that reads or does not push has no full_suite, nor does any session", ctx do
+    test "of a run that reads or does not push has full_suite false, as does every session",
+         ctx do
       build!(
         ctx,
         [
@@ -870,12 +914,19 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       table!(work_item, %{"implement-changes" => :write_no_push})
       documents = documents(claim(ctx))
 
-      assert %{"access" => "write-no-push", "shared_run" => true} = documents
+      assert %{
+               "access" => "write-no-push",
+               "shared_run" => true,
+               "type_settings" => %{"full_suite" => false}
+             } = documents
+
       refute Map.has_key?(documents, "full_suite")
       {run, _sessions} = claimed(work_item)
 
-      assert %{"0" => %{"full_suite" => false}, "1.0" => %{"full_suite" => false}} =
-               run.session_settings
+      assert %{
+               "0" => %{"type_settings" => %{"full_suite" => false}},
+               "1.0" => %{"type_settings" => %{"full_suite" => false}}
+             } = run.session_settings
     end
   end
 

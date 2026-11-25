@@ -463,6 +463,107 @@ defmodule Apiary.Processes.HarnessUpdateTest do
     end
   end
 
+  describe "the schema of type settings" do
+    # The template's schema of type settings changed from `full_suite: {type: boolean}`
+    # to `replacement`.
+    defp type_settings(replacement),
+      do: files(&String.replace(&1, "      full_suite: {type: boolean}\n", replacement))
+
+    test "one that fails a value of the runs is refused at the read and at the save", ctx do
+      main_at!(type_settings("      full_suite: {const: true}\n"))
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+
+      refused = [
+        %{
+          path: "#",
+          error: :type_settings_schema,
+          detail: {%{"full_suite" => false}, "value should be true"}
+        }
+      ]
+
+      assert update.refused == refused
+      assert HarnessUpdate.save(ctx.scope, ctx.workspace, update) == {:error, refused}
+      assert [%Version{number: 1}] = versions(ctx.workspace)
+    end
+
+    test "a harness repository's is in the record, and the read and the save stop on it", ctx do
+      schema = %{
+        "type" => "object",
+        "required" => ["full_suite"],
+        "properties" => %{"full_suite" => %{"const" => true}}
+      }
+
+      failing = type_settings("      full_suite: {const: true}\n")
+      repository_choice!(ctx.workspace, failing)
+
+      refused = [
+        %{
+          path: "#",
+          error: :type_settings_schema,
+          detail: {%{"full_suite" => false}, "value should be true"}
+        }
+      ]
+
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      assert update.source == :repository
+      assert update.template["type_settings_schema"] == schema
+      assert update.refused == refused
+      assert HarnessUpdate.save(ctx.scope, ctx.workspace, update) == {:error, refused}
+      assert [%Version{number: 1}] = versions(ctx.workspace)
+    end
+
+    test "the switch's update of the Qory harness stops on it, and saves one valid", ctx do
+      main_at!(type_settings("      full_suite: {const: true}\n"))
+      assert :ok = QoryRefresh.perform(nil, %Oban.Job{args: %{}})
+      assert [%Version{number: 1}] = versions(ctx.workspace)
+
+      commit = main_at!(described())
+      assert :ok = QoryRefresh.perform(nil, %Oban.Job{args: %{}})
+
+      assert [_v1, %Version{number: 2, template: %{"source" => "qory", "commit" => ^commit}}] =
+               versions(ctx.workspace)
+    end
+
+    test "the switch's update of a harness repository stops on it, and saves one valid", ctx do
+      repository = repository_harness!(ctx.workspace, "main")
+
+      PublicGitServer.commit!(repository.dir, type_settings("      full_suite: {const: true}\n"))
+      assert :ok = QoryRefresh.perform(nil, %Oban.Job{args: %{}})
+      assert [%Version{number: 1}] = versions(ctx.workspace)
+
+      PublicGitServer.commit!(repository.dir, described())
+      assert :ok = QoryRefresh.perform(nil, %Oban.Job{args: %{}})
+      assert [_v1, %Version{number: 2, template: template}] = versions(ctx.workspace)
+
+      assert template["type_settings_schema"] == %{
+               "type" => "object",
+               "required" => ["full_suite"],
+               "properties" => %{"full_suite" => %{"type" => "boolean"}}
+             }
+    end
+
+    test "one under which every value is valid, and none, saves", ctx do
+      main_at!(type_settings("      full_suite: {type: boolean}\n      reason: {type: string}\n"))
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      assert update.refused == []
+      assert {:ok, %Version{number: 2}} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+
+      main_at!(
+        files(
+          &String.replace(
+            &1,
+            ~r/type_settings:\n(  .*\n)+/,
+            ""
+          )
+        )
+      )
+
+      {:ok, update} = HarnessUpdate.read(ctx.scope, ctx.workspace)
+      assert update.refused == []
+      assert {:ok, %Version{number: 3}} = HarnessUpdate.save(ctx.scope, ctx.workspace, update)
+    end
+  end
+
   describe "save/4" do
     test "keeps the delivered types of the template in the record", ctx do
       for send <- ["end_of_run", "after_gate"] do

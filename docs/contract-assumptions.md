@@ -381,10 +381,14 @@ run of the step `workflow` have `time_limit_minutes`, an integer from 15 to 1440
 workflow of its stage entry) and `factory` on: the limit set for that workflow at the
 run's target, else the one set at its workspace (`Apiary.TimeLimits`), else 180 minutes.
 A run with no workflow, queued before such runs ended at the queue, has no
-`time_limit_minutes`: Qory Apiary sets no time limit for session 1. After `time_limit_minutes` come `shared_run`, `true` for a run of a stage with
-`shared_run: true`, and `full_suite`, `true` for a run with `write` access of an entry in
-a loop or with `first_attempt: true`, never for a run of Explore; each is absent where it
-would be `false`. The claim registers the run, and the run endpoint refuses, under any
+`time_limit_minutes`: Qory Apiary sets no time limit for session 1. After
+`time_limit_minutes` come `shared_run`, `true` for a run of a stage with `shared_run: true`
+and absent where it would be `false`, and `type_settings`, the type settings of the
+workspace's domain (`Apiary.Lingo.Domain.type_settings/2`). A software factory's run of a
+stage entry of its process has `type_settings` with `full_suite`, `true` for a run with
+`write` access of an entry in a loop or with `first_attempt: true`, else `false`. A run of
+no stage entry, and a run of a domain without type settings, have no `type_settings`. The
+claim registers the run, and the run endpoint refuses, under any
 key, a registration whose `run_id` is that of such a run, waiting, claimed, handed over or
 ended, with the signed `409` `run_id_used`, decided first: before the stored answer to a
 repeat and before the instance limit, the Forager contract giving the other causes and
