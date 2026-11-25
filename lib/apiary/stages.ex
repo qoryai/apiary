@@ -3673,7 +3673,10 @@ defmodule Apiary.Stages do
   # (`track/1`) for a run of any stage but Explore's, nil for a run of Explore's stage,
   # whose input schema has no `track`, and for a work item with no track. A run of
   # Explore's stage is a run of Explore (`explore_run?/1`), which covers a run with no
-  # stage, or a run in Explore's stage (`explore_stage_id/1`), as after a move back.
+  # stage, or a run of a later workflow in the first stage of the process version the run
+  # was queued under (`explore_stage_in/1`), as `explore_at_queue/4` places it, so a
+  # version the work item is placed in later changes nothing for the run. Only a run with
+  # no process version is placed in the work item's version (`explore_stage_id/1`).
   @doc false
   @spec input_track(DispatchRun.t(), WorkItem.t()) :: String.t() | nil
   def input_track(%DispatchRun{} = run, %WorkItem{} = work_item) do
@@ -3681,8 +3684,14 @@ defmodule Apiary.Stages do
   end
 
   defp explore_stage_run?(%DispatchRun{stage_id: stage_id} = run, work_item) do
-    explore_run?(run) or (is_binary(stage_id) and stage_id == explore_stage_id(work_item))
+    explore_run?(run) or
+      (is_binary(stage_id) and stage_id == run_explore_stage_id(run, work_item))
   end
+
+  defp run_explore_stage_id(%DispatchRun{process_version_id: id}, _work_item) when is_binary(id),
+    do: explore_stage_in(Processes.get_version!(id))
+
+  defp run_explore_stage_id(%DispatchRun{}, work_item), do: explore_stage_id(work_item)
 
   # The approvals and moves of the work item that have a track and count
   # (`Apiary.Stages.Withdrawals`), newest first: each `track`, the `stage_id` the decision

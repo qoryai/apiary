@@ -31,7 +31,9 @@ defmodule Apiary.Dispatches.InputsTrackTest do
 
   # Explore, then Build, whose two workflows share one run. With `tracked`, the process
   # declares Standard and Fast track, and both gates offer them; without, it has no tracks.
-  defp process!(scope, tracked) do
+  # `explore` lists Explore's workflows; `build_first: true` leaves Explore out, so Build
+  # is the first stage.
+  defp process!(scope, tracked, opts \\ []) do
     gate = fn ->
       Map.merge(
         %{"kind" => "person", "approvers" => "members"},
@@ -53,22 +55,35 @@ defmodule Apiary.Dispatches.InputsTrackTest do
       )
     end
 
+    explore =
+      stage.(@explore, "Explore", Keyword.get(opts, :explore, ["explore-a-ticket"]), %{
+        "outputs" => [%{"type" => "proposal", "required" => true}]
+      })
+
+    build =
+      stage.(@build, "Build", ["plan-the-build", "implement-changes"], %{"shared_run" => true})
+
     document =
       %{
         "schema" => "qory.process/v1",
         "machine" => "default",
-        "stages" => [
-          stage.(@explore, "Explore", ["explore-a-ticket"], %{
-            "outputs" => [%{"type" => "proposal", "required" => true}]
-          }),
-          stage.(@build, "Build", ["plan-the-build", "implement-changes"], %{
-            "shared_run" => true
-          })
-        ]
+        "stages" => if(opts[:build_first], do: [build], else: [explore, build])
       }
       |> Map.merge(if(tracked, do: %{"tracks" => @tracks}, else: %{}))
 
-    {:ok, _version} = Processes.save(scope, scope.workspace, document)
+    {:ok, version} = Processes.save(scope, scope.workspace, document)
+    version
+  end
+
+  # The work item placed in the process version `version`, as a new version of the
+  # workspace places it.
+  defp place!(work_item, version) do
+    {1, _rows} =
+      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+        set: [process_version_id: version.id]
+      )
+
+    Repo.get!(WorkItem, work_item.id)
   end
 
   # The work item in Build, its proposal confirmed with `track` (none for nil), and its
@@ -150,32 +165,60 @@ defmodule Apiary.Dispatches.InputsTrackTest do
 
   test "an Explore run's inputs have no track and fit Explore's input schema", ctx do
     process!(ctx.scope, true)
-    work_item = taken_in_fixture(ctx.scope)
+    taken_in_fixture(ctx.scope)
 
     {run, inputs} = claimed!(ctx)
     assert %DispatchRun{stage_id: @explore} = run
     refute Map.has_key?(inputs, "track")
     assert ExploreInputsSchema.validate(inputs) == :ok
+  end
 
-    # Once the work item is on a track, a run of Explore's stage still has none: the run of
-    # Explore, and a run of Explore's stage that is not the take in's, as after a move back.
-    work_item = work_item |> end_run!(understood_result())
-    {:ok, _moved} = WorkItems.confirm(ctx.scope, work_item, 1, track: "fast-track")
+  test "a run of a later workflow of Explore's stage gets no track, also once the work item is placed in a version with Build first",
+       ctx do
+    process!(ctx.scope, true, explore: ["explore-a-ticket", "check-the-proposal"])
+    work_item = taken_in_fixture(ctx.scope) |> end_run!(understood_result())
+
+    later = newest_run(work_item)
+
+    assert %DispatchRun{stage_id: @explore, workflow: "check-the-proposal", explore: false} =
+             later
+
+    work_item =
+      end_run!(work_item, fn run, _registered -> verdict!(run, %{"verdict" => "passed"}) end)
+
+    assert %WorkItem{stage_id: @explore, stage_state: :at_gate} = work_item
+
+    {:ok, _moved} =
+      Stages.approve(ctx.scope, work_item, nil, expect_stage: @explore, track: "fast-track")
+
     work_item = Repo.get!(WorkItem, work_item.id)
     assert Stages.track(work_item) == "fast-track"
 
-    explore_run = Repo.get!(DispatchRun, run.id)
-    assert Stages.input_track(explore_run, work_item) == nil
+    assert Stages.input_track(Repo.get!(DispatchRun, later.id), work_item) == nil
 
-    {1, _rows} =
-      Repo.update_all(from(r in DispatchRun, where: r.id == ^run.id),
-        set: [explore: false, workflow: "triage-review"]
-      )
+    build_first = process!(ctx.scope, true, build_first: true)
+    work_item = place!(work_item, build_first)
+    assert Stages.input_track(Repo.get!(DispatchRun, later.id), work_item) == nil
+  end
 
-    assert Stages.input_track(Repo.get!(DispatchRun, run.id), work_item) == nil
+  test "a later session of a shared run keeps the track once the work item is placed in a version with Build first",
+       ctx do
+    process!(ctx.scope, true)
+    work_item = in_build!(ctx.scope, "fast-track")
+    {run, inputs} = claimed!(ctx)
+    assert inputs["track"] == "fast-track"
 
-    build_run = newest_run(work_item)
-    assert %DispatchRun{stage_id: @build} = build_run
-    assert Stages.input_track(build_run, work_item) == "fast-track"
+    place!(work_item, process!(ctx.scope, true, build_first: true))
+
+    assert next_inputs!(run, %{"verdict" => "passed"})["track"] == "fast-track"
+  end
+
+  test "a run with no stage and no process version, queued before the workflow model, gets no track",
+       ctx do
+    process!(ctx.scope, true)
+    work_item = in_build!(ctx.scope, "fast-track")
+
+    old = %DispatchRun{step: "workflow", explore: nil, stage_id: nil, process_version_id: nil}
+    assert Stages.input_track(old, work_item) == nil
   end
 end
