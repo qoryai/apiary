@@ -29,6 +29,21 @@ of the workflow's entry in the stage of `process.yaml`, which may be `read` or
 none declares `read`. A run of a stage whose version has no entry for its workflow has
 `read`.
 
+## The run's track
+
+The `inputs` of a run of any stage but Explore's contain `track`, the id of the work
+item's track, such as `standard` or `fast-track`: in the run's documents, and in the
+answer to `POST next-session` for each later session of a shared run. The track is the
+one of the newest approval, or move forward past a gate, that has a track and still
+counts. Qory Apiary reads it each time it forms the inputs of a session.
+
+- A work item with no track, such as one in a process with no tracks, gets no `track`
+  member, never `null`.
+- A run of Explore's stage has no `track`, also after a move back to Explore: the
+  explore contract's `inputs.schema.json` allows no other member.
+- A run cannot set the track. The `track` of a verdict (`POST verdict`) is a proposal,
+  which counts only once a person approves a gate with it.
+
 ## Requests
 
 Every path is under `/v1/runs/<run_id>/`, where `<run_id>` is the run's id: `run_id` in
@@ -968,7 +983,8 @@ of the run contract. A next session of the same stage:
   so a time limit saved after the claim changes nothing for the run. `type_settings` are
   the type settings of the workspace's domain: a software factory's have `full_suite`, and
   a session of a domain without type settings has no `type_settings`.
-- `inputs`: the input of the session, in the shape of the documents' `inputs`.
+- `inputs`: the input of the session, in the shape of the documents' `inputs`, with
+  the work item's `track` ([The run's track](#the-runs-track)).
 - `model_choice`: the runtime and model of the session's workflow, as `runtime`, `model`,
   `effort`, `provider_models` and `tiers` of the documents' `run_settings`. Every
   `model_choice` has `runtime`: the session runs on the runtime of its workflow, or on the
