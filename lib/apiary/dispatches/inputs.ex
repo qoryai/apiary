@@ -36,14 +36,19 @@ defmodule Apiary.Dispatches.Inputs do
   #     `max_bytes/0`, 768 KiB encoded, 0 for none;
   #   - `target`: the run's target, the documents' `target`, `{collection, address?}`
   #     (`Apiary.Runs.Target.document/1`), left out where the work item has none;
-  #   - `domain`: the name of the workspace's domain, the documents' `domain`.
+  #   - `domain`: the name of the workspace's domain, the documents' `domain`;
+  #   - `track`: the id of the work item's track, for a run of a stage other than
+  #     Explore's (`Apiary.Stages.input_track/2`), left out where the work item has none.
+  #     Explore's `inputs.schema.json` has no `track`, so a run of Explore's stage has
+  #     none. The run cannot write it: a verdict's `track` is only a proposal until a
+  #     person approves a gate with it (`Apiary.Stages.track/1`).
   #
   #   The answers, the proposal and the review comments are not in the input: the run
   #   reads them as artifacts of the work item (`Apiary.Explore.Questions`,
   #   `Apiary.Explore.ReviewComments`) through the run API.
   #
   #   The claim gives the target and the domain (`Apiary.Dispatches.Handover`), the same
-  #   values it writes into the documents.
+  #   values it writes into the documents, and the track.
   #
   #   Every time is in UTC to the whole second, and every length is counted in code
   #   points, as the contract counts it. The answer is `{:ok, inputs}`, a
@@ -98,7 +103,8 @@ defmodule Apiary.Dispatches.Inputs do
     do: Jason.OrderedObject.new([{"version", @version}, {"environment_ref", environment_ref}])
 
   # explore/4 is the input of the explore run `dispatch_run` of `work_item`, for the run's
-  # `target`, nil for none, and the name of its workspace's `domain` (the moduledoc), within
+  # `target`, nil for none, the name of its workspace's `domain`, and the optional
+  # `track`, nil or left out for none (the moduledoc), within
   # `budget` bytes encoded, `max_bytes/0` at most: the claim gives the budget the
   # documents' limit leaves (`Apiary.Dispatches.Handover`). An input that cannot be
   # within a budget below `max_bytes/0`, with every comment left out, is
@@ -108,8 +114,9 @@ defmodule Apiary.Dispatches.Inputs do
           WorkItem.t(),
           DispatchRun.t(),
           %{
-            domain: String.t(),
-            target: Apiary.Lingo.Domain.target() | nil
+            required(:domain) => String.t(),
+            required(:target) => Apiary.Lingo.Domain.target() | nil,
+            optional(:track) => String.t() | nil
           },
           pos_integer
         ) ::
@@ -239,9 +246,12 @@ defmodule Apiary.Dispatches.Inputs do
            ])},
           {"comments", comments},
           {"comments_omitted", omitted}
-        ] ++ target(run.target) ++ [{"domain", run.domain}]
+        ] ++ target(run.target) ++ [{"domain", run.domain}] ++ track(run[:track])
     )
   end
+
+  defp track(nil), do: []
+  defp track(track) when is_binary(track), do: [{"track", track}]
 
   # The `attempt` of `dispatch_run` counted over the runs of its take in that started
   # (the moduledoc): less the runs of the take in up to it that an image requeue queued,

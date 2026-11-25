@@ -901,7 +901,8 @@ defmodule Apiary.Dispatches.Handover do
   # (`Apiary.Dispatches.RunSettings`), which can end it with one of the causes
   # `RunSettings.causes/0` lists, or refuse the claim. The run's documents and the input
   # get the same target and the same domain, and the input the bytes of the documents'
-  # limit that the rest of the documents leave.
+  # limit that the rest of the documents leave. The input of a run of a stage other than
+  # Explore's has the work item's track (`Apiary.Stages.input_track/2`).
   defp formed(%{run: %DispatchRun{} = dispatch_run, held: held} = locked, workspace) do
     work_item = Repo.get!(WorkItem, dispatch_run.work_item_id)
     target = WorkItem.target(work_item)
@@ -929,7 +930,13 @@ defmodule Apiary.Dispatches.Handover do
           harness: harness
         }
 
-        Inputs.explore(work_item, dispatch_run, %{domain: domain, target: target}, budget(rest))
+        run = %{
+          domain: domain,
+          target: target,
+          track: Apiary.Stages.input_track(dispatch_run, work_item)
+        }
+
+        Inputs.explore(work_item, dispatch_run, run, budget(rest))
       end)
       |> answer_level(level)
       |> with_cooling(cooling)
