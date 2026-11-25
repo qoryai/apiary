@@ -574,9 +574,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `run_pushed_commits`.
 - A run of any stage but Explore's has the work item's track in its inputs, such as
   `standard` or `fast-track`, at the claim and in each later session of a shared run. A
-  work item with no track gets no `track` member, and a run of Explore's stage has none. A
-  run cannot set the track: the track in a verdict takes effect only when a person approves
-  a gate with it.
+  work item with no track gets no `track` member, and a run of Explore's stage has none.
+  A run cannot set the track: the track in a verdict takes effect only when a person
+  approves a gate with it.
 <!-- /feature -->
 - A question in a run's questions may have a `criterion`: the id of the acceptance
   criterion it is about, such as `ac-3`. Qory Apiary stores it with the question and
