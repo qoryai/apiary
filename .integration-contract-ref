@@ -32,12 +32,12 @@
 # model providers, descriptions/*.json at the repository's root, to
 # priv/contract/integration/descriptions/.
 #
-# priv/contract/integration/ has no `.contract-ref`: this file covers it. The run,
-# explore, diagnostics and provisioner contracts, test/fixtures/documents-check/ and
-# the run contract's documents.schema.json in lib/apiary/stacks/ are copied from
-# earlier integrations commits: see `.contract-ref` in
-# test/fixtures/contract/<contract>/v1/, test/fixtures/documents-check/ and
-# lib/apiary/stacks/.
+# priv/contract/integration/ has no `.contract-ref`: this file covers it. The run
+# contract is copied from this commit too: see test/fixtures/contract/run/v1/
+# .contract-ref. The explore, diagnostics and provisioner contracts and the run
+# contract's documents.schema.json in lib/apiary/stacks/ are copied from earlier
+# integrations commits: see `.contract-ref` in test/fixtures/contract/<contract>/v1/
+# and lib/apiary/stacks/.
 #
 # Qory Apiary checks the bounds of a description: the 256 KiB of a fetched
 # description.json when it is fetched, and every bound, those 256 KiB included, in
@@ -45,4 +45,4 @@
 # description's value from the body of the start-up. The schema checks the shape of each
 # `links` entry. Qory Apiary does not check that each system is listed once or that the
 # host of a template is its system, which integrations' `contracts.CheckLinks` checks.
-7e6cac7e19162fe285259ccb03108f9bc046b5f8
+699a22cf96ee3e0e8da5897c5f8835d07f71150c

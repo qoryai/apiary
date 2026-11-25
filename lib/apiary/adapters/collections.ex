@@ -192,7 +192,13 @@ defmodule Apiary.Adapters.Collections do
   #      items first, then their work items (`Apiary.Sources.Ingest`);
   #   6. the workspace's counter of work item numbers (`Apiary.WorkItems.Number`), only
   #      right after the work item it numbers;
-  #   7. the adapter's feed counter;
+  #   7. the adapter's feed counter, last: a push of a run's change locks the work item
+  #      `FOR UPDATE`, then its custom type `FOR SHARE` (`Apiary.Artifacts`), and no
+  #      workspace; an approval at a gate that sends one (`Apiary.Stages`) locks the work
+  #      item `FOR UPDATE`. Each then sets the version's `delivery_target_id`, which takes
+  #      the target's row `FOR KEY SHARE` through its foreign key, then takes the counter
+  #      of the adapter of the work item's target (`Apiary.Artifacts.Delivery`); it locks
+  #      no collection;
   #   8. for a work item that moves, the target's counter of run numbers
   #      (`Apiary.Runs.Number.raise_past/2`), last.
   #

@@ -36,12 +36,11 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   # `Apiary.Dispatches.RunSettings`, and a prebuild none),
   # the members about its first session, `time_limit_minutes`, `shared_run` and
   # `type_settings`, each where present (`:session`, `{name, value}` members, none for a
-  # prebuild), its `workflow`, `harness_hidden` and `harness` (`harness/1`), a
-  # prebuild's destinations, `image_destination` and then `environment_destination` or
-  # `environment_image`, and
-  # `largest_prebuilt_image_bytes` where it has one (`:destinations`, `{name, value}`
-  # members, none for any other run), and its `inputs`. The claim measures them
-  # (`Apiary.Dispatches.Handover`).
+  # prebuild), its `workflow`, `harness_hidden` and `harness` (`harness/1`), its
+  # `deliver` (`deliver/1`), a prebuild's destinations, `image_destination` and then
+  # `environment_destination` or `environment_image`, and `largest_prebuilt_image_bytes`
+  # where it has one (`:destinations`, `{name, value}` members, none for any other run),
+  # and its `inputs`. The claim measures them (`Apiary.Dispatches.Handover`).
   @doc false
   @spec documents(%{
           required(:step) => String.t(),
@@ -52,6 +51,7 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
           required(:harness) => harness | nil,
           required(:inputs) => Jason.OrderedObject.t(),
           optional(:session) => [{String.t(), pos_integer | boolean | map}],
+          optional(:deliver) => [Jason.OrderedObject.t()],
           optional(:destinations) => [{String.t(), String.t() | pos_integer}],
           optional(atom) => term
         }) :: Jason.OrderedObject.t()
@@ -68,7 +68,7 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
         trigger(run) ++
         run_settings ++
         Map.get(run, :session, []) ++
-        harness(run.harness) ++ destinations ++ [{"inputs", run.inputs}]
+        harness(run.harness) ++ deliver(run) ++ destinations ++ [{"inputs", run.inputs}]
     )
   end
 
@@ -88,6 +88,23 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
     harness = if document, do: [{"harness", %{"harness" => document}}], else: []
     [{"workflow", workflow}, {"harness_hidden", hidden}] ++ harness
   end
+
+  # The run's `deliver` entries (`:deliver`), where it has any, on a run of the step
+  # workflow with a target and the access `write` alone, as the contract allows them.
+  # shortcut: the contract takes at most 16 entries, and the check of a process's types
+  # bounds no count of delivered types, so a process that delivers 17 gets documents that
+  # the schema does not accept; replace when that check bounds the delivered types.
+  defp deliver(%{
+         step: "workflow",
+         harness: %{} = harness,
+         target: target,
+         deliver: [_ | _] = entries
+       })
+       when not is_nil(target) do
+    if access(harness) == "write", do: [{"deliver", entries}], else: []
+  end
+
+  defp deliver(_run), do: []
 
   # reach/2 is the `access` of a run with the harness members `harness` (`access/1`) and
   # its `target`, both present for a run with a target and both left out for one

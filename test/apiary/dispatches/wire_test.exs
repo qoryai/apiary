@@ -52,17 +52,9 @@ defmodule Apiary.Dispatches.WireTest do
 
   defp schema_of(path), do: path |> Path.split() |> hd()
 
-  # shortcut: the run copy at da48933d refers to draft_title, which the integration copy at
-  # 7e6cac7e renamed; a run schema reads integration/v1/definitions.schema.json from the
-  # copy at da48933d. Delete that copy when run and explore are copied at 7e6cac7e.
-  @run_integration Path.join(@vendored, "run-integration")
-
   defp validator(schema, contract \\ "provisioner/v1") do
-    roots = [@vendored | forager()]
-    roots = if contract == "run/v1", do: [@run_integration | roots], else: roots
-
     JSV.build!(%{"$ref" => @base <> "#{contract}/#{schema}.schema.json"},
-      resolver: {Resolver, roots},
+      resolver: {Resolver, [@vendored | forager()]},
       formats: true
     )
   end
@@ -113,15 +105,20 @@ defmodule Apiary.Dispatches.WireTest do
     "time" => "2026-10-15T12:02:00Z",
     "reason" => "The job could not start."
   }
-  # The vendored contracts are at five integrations commits. The provisioner contract
+  # The vendored contracts are at four integrations commits. The provisioner contract
   # is at 8d859a1d, after 6fed8c73, which describes a machine's dispatch as dispatch_id in
   # place of key, and after 55a22cb8, which adds the access value write-no-push to the run
-  # documents. The run contract is at da48933d, which moves full_suite into type_settings,
-  # after cf5bf94b, under which a reader ignores a member that a schema does not define
-  # unless must_understand lists it. The explore contract, and the run contract's
-  # documents.schema.json that the harness save reads, are at 4ad23d9c. That commit
-  # replaces the step explore with the step workflow, and the work item with a subject and
-  # a trigger.
+  # documents. The run contract is at 699a22cf, the integration contract's commit, which
+  # adds deliver, read_targets, the findings calls, a workflow's review_group and
+  # runs_locked_checks, and the end codes next_session_failed and outputs_invalid. It keeps
+  # type_settings in place of full_suite, and a reader that ignores a member that a schema
+  # does not define unless must_understand lists it. The explore contract, and the run
+  # contract's documents.schema.json that the harness save reads, are at 4ad23d9c. That
+  # commit replaces the step explore with the step workflow, and the work item with a
+  # subject and a trigger.
+  # shortcut: the explore copy stays at 4ad23d9c, because the explore inputs at 699a22cf
+  # require `destinations`, which the claim does not write; copy the explore contract at
+  # the run contract's commit when the claim writes the destinations of a run.
   # The diagnostics contract is at e0d7be15, which writes a target as
   # {collection, address?}: the ref of one of the adapter's collections and, when the
   # place has one, its system and path. That commit comes after 8d859a1d, which allows
@@ -133,28 +130,19 @@ defmodule Apiary.Dispatches.WireTest do
   # the tier balanced in place of fast, the outcome of a run with its end codes, a later
   # session's runtime, run_settings on every explore run, and
   # model_provider_credential_name in place of model_credential in the next-session
-  # answer. The integration contract is at 7e6cac7e, after e0d7be15:
-  # test/apiary/contract_copies_test.exs checks its copies. Its definitions are also at
-  # da48933d, under run-integration/, for the run contract alone.
+  # answer. The integration contract is at 699a22cf too:
+  # test/apiary/contract_copies_test.exs checks its copies, and the run schemas read its
+  # definitions.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "8d859a1d5bd0693bd647e0543d29aa8651230c3f"},
-          {"run/v1", "da48933db8e96b50f888fdd329f30ae4d089a4a6"},
+          {"run/v1", "699a22cf96ee3e0e8da5897c5f8835d07f71150c"},
           {"explore/v1", "4ad23d9c3dac160af283e95c184a1b11db293074"},
           {"diagnostics/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"},
-          {"run-integration/integration/v1", "da48933db8e96b50f888fdd329f30ae4d089a4a6"}
+          {"integration/v1", "699a22cf96ee3e0e8da5897c5f8835d07f71150c"}
         ] do
       assert File.read!(Path.join([@vendored, dir, ".contract-ref"])) == ref <> "\n", dir
     end
-
-    # The SHA-256 of integrations' definitions.schema.json at da48933d.
-    definitions = Path.join(@run_integration, "integration/v1/definitions.schema.json")
-
-    assert :crypto.hash(:sha256, File.read!(definitions)) |> Base.encode16(case: :lower) ==
-             "34f6766282eb171cd5a987e7741da4ec7d3e54e2e52408ad4d57f34a0cc0124e"
-
-    assert File.ls!(Path.dirname(definitions)) |> Enum.sort() ==
-             [".contract-ref", "definitions.schema.json"]
   end
 
   # The run contract's schemas, each with a fixture directory of its name.
@@ -170,29 +158,32 @@ defmodule Apiary.Dispatches.WireTest do
   # A run fixture's schema is its directory's name under `fixtures/`, or, under
   # `invalid/`, `check/` and `closed/`, the run schema its file name starts with, the
   # longest that matches. A fixture under `check/` breaks a rule that the schema cannot
-  # state: the schema accepts it. A fixture under `closed/` has a member that the schema
-  # does not define: it is valid under the schema, as a reader ignores such a member. The
-  # contract's closed copy, which this test does not build, fails it.
+  # state (`ApiaryWeb.Contract.DocumentsCheck` for the documents): the schema accepts it.
+  # A fixture under `closed/` has a member that the schema does not define: it is valid
+  # under the schema, as a reader ignores such a member. The contract's closed copy, which
+  # this test does not build, fails it.
   @tag :contract
   test "every run fixture is valid under its schema, or refused under it under invalid/" do
     fixtures = Path.join(@vendored, "run/v1/fixtures")
     count = &(fixtures |> Path.join(&1) |> Path.wildcard() |> length())
 
-    assert count.("documents/*.json") == 36
-    assert count.("next-session-request/*.json") == 6
-    assert count.("next-session-answer/*.json") == 9
-    assert count.("next-session-refusal/*.json") == 9
-    assert count.("outcome/*.json") == 23
-    assert count.("findings/*.json") == 4
-    assert count.("findings-post/*.json") == 10
-    assert count.("findings-post-answer/*.json") == 2
-    assert count.("findings-refusal/*.json") == 5
-    assert count.("check/*.json") == 6
-    assert count.("closed/*.json") == 39 + 3
-    assert count.("invalid/*.json") == 174 + 56
+    counts = %{
+      "documents" => 43,
+      "next-session-request" => 6,
+      "next-session-answer" => 9,
+      "next-session-refusal" => 9,
+      "outcome" => 25,
+      "findings" => 4,
+      "findings-post" => 10,
+      "findings-post-answer" => 2,
+      "findings-refusal" => 5,
+      "invalid" => 241,
+      "closed" => 43,
+      "check" => 11
+    }
 
-    assert count.("**/*.json") ==
-             36 + 6 + 9 + 9 + 23 + 4 + 10 + 2 + 5 + 6 + 39 + 3 + 174 + 56
+    for {dir, n} <- counts, do: assert(count.("#{dir}/*.json") == n, dir)
+    assert count.("**/*.json") == counts |> Map.values() |> Enum.sum()
 
     for path <- Path.wildcard(Path.join(fixtures, "**/*.json")) do
       relative = Path.relative_to(path, fixtures)
@@ -214,33 +205,8 @@ defmodule Apiary.Dispatches.WireTest do
     end
   end
 
-  # The findings records of the run contract are at 699a22cf, and the other files of
-  # run/v1 at da48933d. The records are the files that `.findings-contract-ref` lists after
-  # its commit: each file whose name, or the name of whose folder, starts with `findings`.
-  test "the findings records of the run contract are the files their ref lists" do
-    run = Path.join(@vendored, "run/v1")
-
-    [ref | listed] =
-      run
-      |> Path.join(".findings-contract-ref")
-      |> File.read!()
-      |> String.split("\n", trim: true)
-      |> Enum.reject(&String.starts_with?(&1, "#"))
-
-    assert ref == "699a22cf96ee3e0e8da5897c5f8835d07f71150c"
-
-    present =
-      for path <- Path.wildcard(Path.join(run, "**/*"), match_dot: true),
-          File.regular?(path),
-          relative = Path.relative_to(path, run),
-          Enum.any?(Path.split(relative), &String.starts_with?(&1, "findings")),
-          do: relative
-
-    assert Enum.sort(present) == Enum.sort(listed)
-  end
-
   # shortcut: the harness save reads documents.schema.json at 4ad23d9c, whose harness
-  # section has no member that it does not define. The copy at da48933d accepts such a
+  # section has no member that it does not define. The copy at 699a22cf accepts such a
   # member, and the save would accept it. Copy the file at the run contract's commit
   # when the save checks the harness section closed in another way.
   test "the run contract that saves a harness document is the copy at 4ad23d9c" do

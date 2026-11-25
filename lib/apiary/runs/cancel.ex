@@ -149,29 +149,37 @@ defmodule Apiary.Runs.Cancel do
 
   @doc """
   Whether `run` writes changes that its end pushes: a run of a workspace (`workspace`)
-  whose domain pushes (`Apiary.Lingo.Domain.pushes?/1`), whose access level is `write`, as
-  its claim recorded it. The level is
-  `write` where one of the run's credential entries (`Apiary.Runs.RunCredential`) has
-  access `write`, which its push entry has, `read` where it has entries and none writes,
-  which a run has only where its adapter declares apply items; else the top-level
-  `access` of the documents the claim sent the run (`runs.run_documents`); else, for a run
-  with neither, the level the claim computes (`Apiary.Runs.RunCredentials.run_access/1`):
-  the level of its harness walk (`Apiary.Harnesses.RunHarness`) lowered by its stage
-  entry, or for a run of a stage that shares one run the highest of its entries' levels
-  (`Apiary.Stages.run_access/2`), and `read` for a run with no walk or with the built-in
-  harness.
+  whose domain pushes (`Apiary.Lingo.Domain.pushes?/1`), whose access level is `write`
+  (`write_access?/1`).
   """
   @spec write_run?(Workspace.t(), Run.t()) :: boolean
-  def write_run?(%Workspace{} = workspace, %Run{id: run_id, dispatch_run_id: id})
-      when is_binary(id) do
-    Domain.pushes?(workspace) and
-      case recorded_access(run_id) do
-        nil -> computed_access(id) == :write
-        access -> access == "write"
-      end
-  end
+  def write_run?(%Workspace{} = workspace, %Run{} = run),
+    do: Domain.pushes?(workspace) and write_access?(run)
 
   def write_run?(_workspace, _run), do: false
+
+  @doc """
+  Whether the access level of `run` is `write`, as its claim recorded it, in a workspace
+  of any domain. The level is `write` where one of the run's credential entries
+  (`Apiary.Runs.RunCredential`) has access `write`, which its push entry has, `read` where
+  it has entries and none writes, which a run has only where its adapter declares apply
+  items; else the top-level `access` of the documents the claim sent the run
+  (`runs.run_documents`); else, for a run with neither, the level the claim computes
+  (`Apiary.Runs.RunCredentials.run_access/1`): the level of its harness walk
+  (`Apiary.Harnesses.RunHarness`) lowered by its stage entry, or for a run of a stage that
+  shares one run the highest of its entries' levels (`Apiary.Stages.run_access/2`), and
+  `read` for a run with no walk or with the built-in harness. False for a run with no
+  dispatch run.
+  """
+  @spec write_access?(Run.t()) :: boolean
+  def write_access?(%Run{id: run_id, dispatch_run_id: id}) when is_binary(id) do
+    case recorded_access(run_id) do
+      nil -> computed_access(id) == :write
+      access -> access == "write"
+    end
+  end
+
+  def write_access?(%Run{}), do: false
 
   # The run's level as its claim recorded it: `write` for a run with an entry whose access
   # is `write`, `read` for one with entries that read, else its documents' `access`; nil

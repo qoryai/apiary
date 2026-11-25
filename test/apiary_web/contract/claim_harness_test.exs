@@ -12,6 +12,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
   use ApiaryWeb.ConnCase, async: false
 
   import Ecto.Query, only: [from: 2]
+  import ExUnit.CaptureLog
   import Apiary.ContractFixtures, only: [signed_post: 5, signed_answer?: 1]
   import Apiary.DispatchedRunsFixtures, only: [handover_place_fixture: 1, walk_resolved!: 2]
   import Apiary.NodesFixtures, only: [collection_fixture: 1]
@@ -95,12 +96,6 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
     )
   end
 
-  # shortcut: the run copy at da48933d refers to draft_title, which the integration copy at
-  # 7e6cac7e renamed; every schema here reaches the run documents, so it reads
-  # integration/v1/definitions.schema.json from the copy at da48933d. Delete that copy
-  # when run and explore are copied at 7e6cac7e.
-  @run_integration Path.join(@vendored, "run-integration")
-
   defp validator(path) do
     forager =
       case Apiary.ContractFixtures.contract_dir() do
@@ -109,7 +104,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       end
 
     JSV.build!(%{"$ref" => @base <> path},
-      resolver: {Resolver, [@run_integration, @vendored | forager]},
+      resolver: {Resolver, [@vendored | forager]},
       formats: true
     )
   end
@@ -522,6 +517,115 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       refute Map.has_key?(documents, "submit")
       refute Map.has_key?(documents, "submit_module")
       valid!(documents)
+    end
+  end
+
+  describe "a run's deliver" do
+    @describetag needs: [:factory, :workflow_model]
+
+    # A structured type of the record whose `deliver` has `send`.
+    defp delivered_type(name, send) do
+      %{
+        "name" => name,
+        "base_view" => "structured",
+        "deliver" => %{"send" => send},
+        "json_schema" => %{"type" => "object"}
+      }
+    end
+
+    # The workspace's process, as `process!/1` saves it, with `types` as the
+    # `artifact_types` of its version's template record.
+    defp delivering!(ctx, types), do: ctx |> process!() |> retyped!(types)
+
+    defp retyped!(version, types) do
+      template = version |> Repo.reload!() |> Map.fetch!(:template)
+
+      {1, _rows} =
+        Repo.update_all(from(v in Version, where: v.id == ^version.id),
+          set: [template: template |> Map.delete("submit") |> Map.put("artifact_types", types)]
+        )
+
+      version
+    end
+
+    test "lists the delivered types of the process version on a write run", ctx do
+      delivering!(ctx, [
+        delivered_type("pull-request", "end_of_run"),
+        %{"name" => "notes", "base_view" => "structured"},
+        delivered_type("reply", "after_gate")
+      ])
+
+      walked!(ctx, :write)
+      documents = documents(claim(ctx))
+
+      assert %{"access" => "write", "workflow" => "explore-a-ticket"} = documents
+
+      assert documents["deliver"] == [
+               %{"type" => "pull-request", "send" => "end_of_run"},
+               %{"type" => "reply", "send" => "after_gate"}
+             ]
+    end
+
+    test "is absent from a read run, and from a write run of a process that delivers none",
+         ctx do
+      version = delivering!(ctx, [delivered_type("pull-request", "end_of_run")])
+      walked!(ctx, :read)
+      documents = documents(claim(ctx))
+      assert documents["access"] == "read"
+      refute Map.has_key?(documents, "deliver")
+
+      retyped!(version, [%{"name" => "notes", "base_view" => "structured"}])
+      walked!(ctx, :write)
+      documents = documents(claim(ctx))
+      assert documents["access"] == "write"
+      refute Map.has_key?(documents, "deliver")
+    end
+
+    test "is absent from a write run with no target", ctx do
+      ctx = %{ctx | scope: with_domain(ctx.scope, "example")}
+      delivering!(ctx, [delivered_type("pull-request", "end_of_run")])
+
+      explore!(ctx, [origin: :setting, document: section(), access_level: :write], %{
+        target_collection_external_ref: nil,
+        target_system: nil,
+        target_path: nil
+      })
+
+      documents = documents(claim(ctx))
+      assert documents["workflow"] == "explore-a-ticket"
+      refute Map.has_key?(documents, "target")
+      refute Map.has_key?(documents, "deliver")
+    end
+
+    # A process that lists a type twice fails the check of its types, so no process version
+    # that passed it gets documents that fail the documents check. A claim of a run of a
+    # record written past that check is refused, 503, and issues no run code.
+    test "fails the documents check only for a record that fails the check of types",
+         ctx do
+      twice = [
+        delivered_type("pull-request", "end_of_run"),
+        delivered_type("pull-request", "after_gate")
+      ]
+
+      assert {:error, refusals} =
+               Apiary.Artifacts.TemplateTypes.check(%{artifact_types: twice, process: nil})
+
+      assert {:invalid, "pull-request", :repeated} in refusals
+
+      delivering!(ctx, twice)
+      walked!(ctx, :write)
+
+      log =
+        capture_log(fn ->
+          :ok = Apiary.DispatchedRunsFixtures.walks_resolved!()
+          claim = signed(ctx, "/v1/pools/claim", %{"version" => 1, "wait_seconds" => 0})
+          assert claim.status == 503
+        end)
+
+      assert log =~
+               ~s|the run's documents fail their check: List each deliver type once: "pull-request" appears twice.|
+
+      refute Repo.exists?(from r in Apiary.Runs.Run, where: not is_nil(r.run_code_sha256))
     end
   end
 

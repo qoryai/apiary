@@ -21,7 +21,7 @@
           "const": "session"
         },
         "session": {
-          "description": "The control plane's sequence number of this session in the run, from 1. It is not Forager's number of the session, which Forager assigns when qory joins the session.",
+          "description": "The control plane's sequence number of this session in the run, from 1. It is not Forager's number of the session, which Forager assigns when qory joins the session. Forager's numbers of the sessions can have gaps; see `session` of the next-session request.",
           "type": "integer",
           "minimum": 1
         },

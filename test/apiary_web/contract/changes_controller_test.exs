@@ -72,14 +72,15 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
 
   describe "the contract's feed fixtures" do
     test "each feed is served as written, from the start", ctx do
-      for {path, adapter_ctx} <- [
-            {"changes/feed.json", ctx},
-            {"changes/feed-loopback.json", fresh()},
-            {"changes/grants.json", fresh()},
-            {"changes/comment.json", fresh()},
-            {"changes/empty.json", fresh()},
-            {"changes/watch.json", fresh()}
-          ] do
+      for {path, adapter_ctx} <-
+            [
+              {"changes/feed.json", ctx},
+              {"changes/feed-loopback.json", fresh()},
+              {"changes/grants.json", fresh()},
+              {"changes/comment.json", fresh()},
+              {"changes/empty.json", fresh()},
+              {"changes/watch.json", fresh()}
+            ] ++ for(path <- fixtures("changes/change-request-*.json"), do: {path, fresh()}) do
         %{"changes" => written} = fixture(path)
         append!(adapter_ctx.adapter, Enum.map(written, &entry/1))
 
@@ -99,10 +100,9 @@ defmodule ApiaryWeb.Contract.ChangesControllerTest do
       # replies, which are no answer; and five answers that the contract's open schema
       # accepts, `changes/unknown-kind.json` and the four under closed/, whose entries
       # `append/2` raises on.
-      # shortcut: 31 of these 50 fixtures have change_request entries, 28 under invalid/
-      # that fail the schema and the 3 under closed/. append/2 raises on each of them
-      # because the feed has no entry kind change_request, not for the rule that the
-      # fixture breaks; replace when the feed takes change_request entries.
+      # 31 of these 50 fixtures have change_request entries: the 28 under invalid/ fail
+      # the contract's check, and the 3 under closed/ have a member the contract does not
+      # define.
       paths =
         Enum.reject(
           fixtures("{closed,invalid}/changes-*.json") ++ ["changes/unknown-kind.json"],

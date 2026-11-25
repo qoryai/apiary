@@ -659,12 +659,27 @@ No version is stored for a refused withdrawal.
 
 A custom structured type whose entry in the template's `artifact_types` has `deliver:
 {send: end_of_run}` or `deliver: {send: after_gate}` is a delivered type. The process
-version keeps the entries that have `deliver` in its record. Qory Apiary sends no version
-of any type to a destination. A run pushes a version of a delivered type as of any custom
-type, but the version's JSON file is checked against the `json_schema` of the type's
-entry in the record of the run's process version, the schema of the harness file that
-version was saved from, not against the workspace's type. A type with no `deliver` is
-checked against the workspace's type.
+version keeps the entries that have `deliver` in its record. A run pushes a version of a
+delivered type as of any custom type, but the version's JSON file is checked against the
+`json_schema` of the type's entry in the record of the run's process version, the schema
+of the harness file that version was saved from, not against the workspace's type. A
+type with no `deliver` is checked against the workspace's type. The documents of a run
+of the step workflow with a target and access `write` list the delivered types and their
+`send` in `deliver`.
+
+Qory Apiary writes a version of a delivered type, pushed by a run whose access level is
+`write`, as a `change_request` entry to the change feed of the adapter of the work item's
+target: with `send: end_of_run` when the run pushes it, and with `send: after_gate` when
+the version is approved at a gate. A version pushed by a run with a lower level gets no
+entry. Qory Apiary writes a version once, and only when the adapter's source role lists
+the type's name in `change_kinds`. The entry's `target` is the run's target. A version
+whose JSON file has another `target.collection` is not sent, and its delivery fails
+with `invalid` at `#/target`. Where no collection of the adapter with the target is live,
+connected and assigned to the workspace, the version's delivery fails with
+`target_removed`. An entry that breaks the integrations contract, such as a title over
+256 characters, is not sent, and the version's delivery fails with `invalid`. A push to
+an artifact that has a version from a run for a target of another adapter is `409`
+`collection_clash`, and no version is stored.
 
 The schema may refer to the primitives of the harness, such as
 `https://qory.dev/contracts/harness/v1/primitives.schema.json#/$defs/reference`. Qory
@@ -1117,6 +1132,7 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 | `409` | `inputs_invalid` | | A ticket value that breaks Explore's input rules |
 | `409` | `no_version` | `type`, `message` | A withdrawal of a name that has no version outside cancelled runs |
 | `409` | `already_withdrawn` | `type`, `message` | A withdrawal of a name whose newest version is a withdrawal |
+| `409` | `collection_clash` | `message` | A push of a delivered type to an artifact that has a version from a run for a target of another adapter |
 | `410` | `ticket_gone` | | The work item's ticket is no longer kept |
 | `413` | `payload_too_large` | | A body over its size |
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type, or hides the standard type |
@@ -1141,6 +1157,7 @@ The messages:
   of its work item is no longer in Qory Apiary, so the run ended." For inputs that cannot
   be formed: "Close the run. The input of its next session breaks a rule for the agent's
   input, such as its size limit, so the run ended."
+- `collection_clash`: "Give the targets different collections."
 - `open_blocking_findings`: "Send changes-requested in place of passed: build has 2 open
   blocking findings.", then the line "  The open blocking findings are f1, f2.", which starts
   with two spaces. For one: "Send changes-requested in place of passed: build has 1 open

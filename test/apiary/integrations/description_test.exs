@@ -178,6 +178,17 @@ defmodule Apiary.Integrations.DescriptionTest do
       end
     end
 
+    test "the change kinds of a source role: its list, or nil where it lists none" do
+      assert {:ok, applying} = parse_fixture("example-source-change-kinds.json")
+      assert Description.change_kinds(applying) == ["pull-request", "reply"]
+
+      for name <- ~w(example-source-targets.json example-source-comments.json
+                     acme-tracker.json unknown-role.json) do
+        assert {:ok, description} = parse_fixture(name)
+        assert Description.change_kinds(description) == nil, name
+      end
+    end
+
     test "whether a source role's collections have targets: true only where it says so" do
       assert {:ok, targeted} = parse_fixture("example-source-targets.json")
       assert Description.targets?(targeted)

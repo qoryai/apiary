@@ -2,13 +2,14 @@ defmodule Apiary.ContractCopiesTest do
   use ExUnit.Case, async: true
 
   # Every copy of the qoryai/integrations integration contract and data descriptions in this
-  # repository is the file at the integrations commit `@ref`. The run, explore, diagnostics
-  # and provisioner contracts are at earlier commits, which other tests check (see
-  # @other_ref_files). CI has no integrations checkout, so the files are checked
-  # against `test/fixtures/contract-copies.sha256`: the SHA-256 and the path here of each
-  # file at that commit, one per line, sorted by path. `.integration-contract-ref` has the
-  # command that writes that manifest again after a new copy.
-  @ref "7e6cac7e19162fe285259ccb03108f9bc046b5f8"
+  # repository is the file at the integrations commit `@ref`. The run contract is at the
+  # same commit, and the explore, diagnostics and provisioner contracts are at earlier
+  # commits; other tests check those copies (see @other_ref_files). CI has no integrations
+  # checkout, so the files are checked against `test/fixtures/contract-copies.sha256`: the
+  # SHA-256 and the path here of each file at that commit, one per line, sorted by path.
+  # `.integration-contract-ref` has the command that writes that manifest again after a
+  # new copy.
+  @ref "699a22cf96ee3e0e8da5897c5f8835d07f71150c"
 
   @root Path.expand("../..", __DIR__)
 
@@ -38,13 +39,7 @@ defmodule Apiary.ContractCopiesTest do
     "test/fixtures/contract/explore/v1/.contract-ref" => "test/apiary/dispatches/wire_test.exs",
     "test/fixtures/contract/provisioner/v1/.contract-ref" =>
       "test/apiary/dispatches/wire_test.exs",
-    "test/fixtures/contract/run/v1/.contract-ref" => "test/apiary/dispatches/wire_test.exs",
-    "test/fixtures/contract/run/v1/.findings-contract-ref" =>
-      "test/apiary/dispatches/wire_test.exs",
-    "test/fixtures/contract/run-integration/integration/v1/.contract-ref" =>
-      "test/apiary/dispatches/wire_test.exs",
-    "test/fixtures/documents-check/.contract-ref" =>
-      "test/apiary_web/contract/documents_check_test.exs"
+    "test/fixtures/contract/run/v1/.contract-ref" => "test/apiary/dispatches/wire_test.exs"
   }
 
   # The folders that contain no source file of this repository: the search for ref files
