@@ -7813,7 +7813,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
   end
 
-  describe "a workflow entry the runner passed over (A-16)" do
+  describe "a workflow entry the runner passed over" do
     # A process whose Verify runs capture-demos only with demo scenarios, and a work item
     # of `ticket` taken in with none: Verify passes over capture-demos, verify-a-ticket
     # passes, and the work item waits at Verify's gate.

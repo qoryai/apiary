@@ -9,7 +9,9 @@ defmodule Apiary.PublicId do
   """
 
   # `cm` names a comment on a work item (`Apiary.WorkItems.Comment`), of the `factory`
-  # feature.
+  # feature. `an` is the prefix of a member's answer to a run's question and `rc` of the
+  # comment of Run another round, both made by `derive/2` from the member's move
+  # (`Apiary.Explore.Given`).
 
   # Crockford base32 without the ambiguous letters i, l, o, u.
   @alphabet ~c"0123456789abcdefghjkmnpqrstvwxyz"
@@ -23,6 +25,18 @@ defmodule Apiary.PublicId do
   def generate(prefix) when is_binary(prefix) do
     random = @random.strong_rand_bytes(10)
     prefix <> "_" <> for(<<chunk::5 <- random>>, into: "", do: <<Enum.at(@alphabet, chunk)>>)
+  end
+
+  @doc """
+  derive/2 is the id with `prefix` made from `seed`: `prefix`, `_`, then the first 80 bits
+  of the SHA-256 of `prefix`, a zero byte and `seed`, in the alphabet of `generate/1`.
+  The same prefix and seed make the same id at every read, for a record that has no
+  stored id.
+  """
+  @spec derive(String.t(), String.t()) :: String.t()
+  def derive(prefix, seed) when is_binary(prefix) and is_binary(seed) do
+    <<bits::binary-size(10), _rest::binary>> = :crypto.hash(:sha256, [prefix, 0, seed])
+    prefix <> "_" <> for(<<chunk::5 <- bits>>, into: "", do: <<Enum.at(@alphabet, chunk)>>)
   end
 
   @doc "valid?/2 says whether `id` is an id with `prefix`, in the shape `generate/1` makes."

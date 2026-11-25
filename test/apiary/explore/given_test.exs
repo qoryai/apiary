@@ -7,18 +7,19 @@ defmodule Apiary.Explore.GivenTest do
   import Apiary.StagesFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Repo, WorkItems}
+  alias Apiary.{Artifacts, Repo, WorkItems}
   alias Apiary.Explore.{Given, Questions, ReviewComments}
-  alias Apiary.WorkItems.{Explore, WorkItem}
+  alias Apiary.Stages.Notes
+  alias Apiary.WorkItems.{Explore, ExploreView, WorkItem}
 
   defp reload(work_item), do: Repo.get!(WorkItem, work_item.id)
 
   defp document({_version, document}), do: document
 
-  describe "from_events/3" do
+  describe "from_events/4" do
     @describetag needs: :factory
 
-    test "gives what from_events/2 gives, from the documents the caller read" do
+    test "is what from_events/2 returns, from the documents the caller read" do
       %{scope: scope} = sign_up_fixture()
 
       work_item =
@@ -182,6 +183,218 @@ defmodule Apiary.Explore.GivenTest do
                {third.id, owner_id, 2, 1, "q1", "The third one."},
                {third.id, owner_id, 2, 1, "q4", "The north shop."}
              ]
+    end
+  end
+
+  describe "the id of an answer" do
+    @describetag needs: :factory
+
+    test "stays when a newer version of the questions reopens it; a new answer has another" do
+      %{scope: scope} = sign_up_fixture()
+      %{scope: member} = member_fixture(scope)
+
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> end_run!(questions_result(["Which basket?", "Which sale?"]))
+
+      {:ok, _} =
+        WorkItems.answer(scope, work_item, 1, [%{"id" => "q1", "note" => "The main one."}])
+
+      # q1 has an id; q2, never answered, has no entry, and the id its move would make for
+      # it is no note.
+      assert [%{id: "q1", note_id: "an_" <> _ = first, at: first_at, event_id: event}] =
+               Given.all(reload(work_item))
+
+      assert Given.all(reload(work_item)) |> Enum.map(& &1.note_id) == [first]
+      assert Notes.find(work_item.id, Apiary.PublicId.derive("an", event <> ":q2")) == nil
+
+      # Run 2 reopens q1, and the member answers it again.
+      work_item = end_run!(reload(work_item), &push_questions!(&1, &2, reopen(["q1"])))
+      assert [%{note_id: ^first}] = Given.all(reload(work_item))
+
+      {:ok, _} =
+        WorkItems.answer(member, work_item, 2, [%{"id" => "q1", "note" => "The other one."}])
+
+      assert [
+               %{note_id: ^first, at: ^first_at, text: "The main one."},
+               %{note_id: "an_" <> _ = second, at: second_at, text: "The other one."}
+             ] = Given.all(reload(work_item))
+
+      refute second == first
+      assert Notes.find(work_item.id, first) == %{id: first, at: first_at}
+      assert Notes.find(work_item.id, second) == %{id: second, at: second_at}
+
+      assert Notes.times(work_item.id, [first, second]) == %{
+               first => first_at,
+               second => second_at
+             }
+
+      assert Notes.writers(work_item.id, [first, second, "an_0000000000000000"]) ==
+               %{first => scope.user.id, second => member.user.id}
+    end
+  end
+
+  describe "the wording of an answer" do
+    @describetag needs: :factory
+
+    # A run's change: the questions `ids` reopened, with `question` and `options` instead
+    # of their wording.
+    defp reword(ids, question, options) do
+      fn question_now, run, at ->
+        reopened = reopen(ids).(question_now, run, at)
+
+        if reopened != question_now,
+          do: Map.merge(reopened, %{"question" => question, "options" => options}),
+          else: question_now
+      end
+    end
+
+    test "is the one the member answered when a run rewords the reopened question" do
+      %{scope: scope} = sign_up_fixture()
+
+      asked = [
+        %{"title" => "The small one", "explanation" => "The checkout.", "recommended" => true}
+      ]
+
+      # The reworded question keeps the title answered, as the history requires, but no
+      # longer recommends it.
+      reworded = [
+        %{"title" => "The small one", "explanation" => "The checkout."},
+        %{"title" => "The large one", "explanation" => "The warehouse."}
+      ]
+
+      work_item =
+        scope
+        |> taken_in_fixture()
+        |> end_run!(
+          questions_result([%{"question" => "Which basket?", "options" => asked}, "Which sale?"])
+        )
+
+      {:ok, _} =
+        WorkItems.answer(scope, work_item, 1, [
+          %{"id" => "q1", "option" => "The small one"},
+          %{"id" => "q2", "note" => "The spring sale."}
+        ])
+
+      [%{data: data}] = for %{kind: :answered} = event <- Explore.events(work_item.id), do: event
+      {version, _document} = Questions.newest(reload(work_item))
+      assert data["questions_version"] == version.number
+
+      # Run 2 reopens q1 and rewords it; q2 stays answered.
+      work_item =
+        end_run!(
+          reload(work_item),
+          &push_questions!(&1, &2, reword(["q1"], "Which basket, by size?", reworded))
+        )
+
+      work_item = reload(work_item)
+      {_version, document} = Questions.newest(work_item)
+      assert %{"question" => "Which basket, by size?"} = Questions.entry(document, "q1")
+
+      # With the reader, as the Explore page reads them, the answer has the wording the
+      # member answered; without it, as for the notes, the newest.
+      events = Explore.events(work_item.id)
+
+      assert [
+               %{id: "q1", note_id: "an_" <> _ = id, question: "Which basket?", options: ^asked},
+               %{id: "q2", question: "Which sale?", options: []}
+             ] = Given.from_events(events, document, nil, Given.reader(work_item))
+
+      assert [%{question: "Which basket, by size?", options: ^reworded}, _q2] =
+               Given.from_events(events, document, nil)
+
+      assert Given.all(work_item) == Given.from_events(events, document, nil)
+      assert %{id: ^id} = Notes.find(work_item.id, id)
+
+      # The Explore page: the Thread's entries of Run 1, Run 1's card, and the history of
+      # q1, whose answer is the recommended option of the version the member answered.
+      thread = ExploreView.thread(work_item, DateTime.utc_now())
+      by_kind = &Enum.find_value(thread, fn entry -> entry.kind == &1 && entry.questions end)
+
+      assert [%{text: "Which basket?", answer: "The small one"}, %{text: "Which sale?"}] =
+               by_kind.(:answered)
+
+      assert [
+               %{text: "Which basket?", answer: "The small one", recommended: true} = first,
+               %{text: "Which sale?"}
+             ] = by_kind.(:asked)
+
+      assert [%{title: "The small one", recommended: true}] = first.options
+
+      view = ExploreView.explore(work_item, DateTime.utc_now())
+
+      assert [%{questions: [%{text: "Which basket?", options: [%{title: "The small one"}]}, _]}] =
+               view.earlier_runs
+
+      assert %{text: "Which basket, by size?", history: [%{recommended: true}]} =
+               Enum.find(view.questions, &(&1.id == "q1"))
+
+      # An event written before the number reads the newest wording.
+      older =
+        for event <- events, do: %{event | data: Map.delete(event.data, "questions_version")}
+
+      assert [%{question: "Which basket, by size?", options: ^reworded}, _q2] =
+               Given.from_events(older, document, nil, Given.reader(work_item))
+
+      # A version the member answered whose file cannot be read: the newest wording, and a
+      # warning with the work item's and the version's ids, without the question.
+      answered = Artifacts.numbered(work_item, "questions", "main", data["questions_version"])
+      {:ok, path} = Artifacts.open_file(hd(answered.files))
+      File.rm!(path)
+
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          assert [%{question: "Which basket, by size?"}, _q2] =
+                   Given.from_events(events, document, nil, Given.reader(work_item))
+        end)
+
+      assert log =~
+               "Restore the file of a questions version: answers to it show the newest " <>
+                 "wording version=#{answered.public_id} number=#{answered.number} " <>
+                 "work_item=#{work_item.public_id}"
+
+      refute log =~ "Which basket"
+
+      # A version that is gone.
+      log =
+        ExUnit.CaptureLog.capture_log(fn ->
+          read = fn _number -> {:unreadable, work_item.public_id, nil} end
+
+          assert [%{question: "Which basket, by size?"}, _q2] =
+                   Given.from_events(events, document, nil, read)
+        end)
+
+      assert log =~
+               "A questions version is gone: answers to it show the newest wording " <>
+                 "number=#{answered.number} work_item=#{work_item.public_id}"
+    end
+  end
+
+  describe "the id of a comment" do
+    defp moved(data),
+      do: %{
+        kind: :answered,
+        id: Ecto.UUID.generate(),
+        actor_id: Ecto.UUID.generate(),
+        at: ~U[2026-11-25 10:00:00.000000Z],
+        data: Map.merge(%{"take_in" => 1, "attempt" => 1, "count" => 1}, data)
+      }
+
+    test "is the round comment's, made from its move; an event written before the mark has none" do
+      comments = %{
+        "review_comments" => [
+          %{"id" => "c1", "on" => %{"run" => 7}, "text" => "Name the file by date."}
+        ]
+      }
+
+      marked = moved(%{"review_comment" => "c1", "round_comment" => true})
+      older = moved(%{"review_comment" => "c1", "comment" => true})
+
+      assert [%{kind: :comment, note_id: id}, %{kind: :comment, note_id: nil}] =
+               Given.from_events([marked, older], nil, comments)
+
+      assert id == Apiary.PublicId.derive("rc", marked.id <> ":c1")
     end
   end
 

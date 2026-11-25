@@ -215,9 +215,16 @@ Returns `200` with the work item snapshot:
   per missing output type in `note`. `by` is the person, null for `check`; `note` is the
   text; `at` is the time it was written, or for an escalation the time it was resolved.
   `id` is the note's id: `gd_` and 16 characters for a request for changes or a move, a
-  decision at a gate; `es_` and 16 characters for an escalation; null for `answer` and
-  `check`. A run sends it as `decision` in `POST artifacts`, for a version that the note
-  asked for.
+  decision at a gate; `es_` and 16 characters for an escalation; `an_` and 16
+  characters for an `answer` to a run's question; `rc_` and 16 characters for the
+  comment that a member gave with **Run another round**, unless it is an escalation's
+  note; null for every other `answer` (a review comment on an output or a reply) and
+  for `check`. A run sends it as `decision` in `POST artifacts`, for a version that the
+  note asked for. An answer's id and a comment's id stay the same at every read, also
+  after the note closes. When a run reopens an answered question and a member answers
+  it again, the new answer is a new note with a new id, and its `at` is the time of the
+  new answer; the earlier answer keeps its id and its `at`. An unanswered question has
+  no note.
   `notes` contains only open notes. A note closes once the stage `stage_id` has an
   approval after `at`, and a `move` once the stage it moved to has one: a member's, or
   the automatic approval of a gate `none`. An `answer` whose `stage_id` is null stays
@@ -309,7 +316,10 @@ and versions by a run a member cancelled, when the stage passes it:
 such a stage, the approval has the member in `by` and `automatic` false. `decision` is
 the id of the person's note that asked for the version (`POST artifacts`), and
 `decision_at` the time of that note, as `at` of the note in `GET work-item`; both are
-null for a version with none. A gate `none` lists no version that has a `decision`.
+null for a version with none. While the newest `questions` file cannot be read,
+`decision_at` of a version whose `decision` is an `an_` id is null, and while the newest
+`review-comments` file cannot be read, that of an `rc_` id; so is the person who wrote
+that note. A gate `none` lists no version that has a `decision`.
 The next approval by a person at a gate lists the newest version of each name of each
 output type made in the stage, or a higher-numbered version of that name that a person's
 approval lists or that is a change, and beside them the change of each type that
@@ -369,9 +379,12 @@ version cannot be pushed through the run API, whatever the type's size limit:
   separator.
 - `decision`: optional, text or null. The `id` of the person's note on the work item that
   asked for this version, from `notes` in `GET work-item`, such as `gd_01jc4t9…`: a
-  request for changes, a move or an escalation. Later runs read a version that has a
-  `decision` in place of the approved one, and the next approval by a person lists it
-  (`inputs` in `GET work-item`). A push with none is stored as before.
+  request for changes, a move, an escalation, an answer to a question (`an_…`) or the
+  comment of **Run another round** (`rc_…`). For an answer or a comment, `decision_at` is
+  the time the member gave it, and the person who wrote the note is that member. Later
+  runs read a version that has a `decision` in place of the approved one, and the next
+  approval by a person lists it (`inputs` in `GET work-item`). A push with none is stored
+  as before.
 - `withdraw`: optional, `true`, `false` or null, `false` by default. With `true`, the push
   is a withdrawal (see [A withdrawal](#a-withdrawal)), and `files` is absent, null or
   `[]`.
@@ -606,7 +619,11 @@ Checks, in order, after the checks of every request:
 8. A `decision` that is not the `id` of a person's note on the run's work item, such as
    an approval's id, another work item's note or an unknown id: `422`
    `unknown_decision`. This check runs under the work item's lock after the rules of
-   check 7 and before the size of `questions` or `review-comments` as stored.
+   check 7 and before the size of `questions` or `review-comments` as stored. For the
+   `an_` or `rc_` id of an answer or a **Run another round** comment that a member gave
+   on the work item, a newest version of `questions` or `review-comments` whose file
+   cannot be read is `503` `unavailable`, and no version is stored. Any other `an_` or
+   `rc_` id gets `422` `unknown_decision`, and no file is read.
 
 ### A withdrawal
 

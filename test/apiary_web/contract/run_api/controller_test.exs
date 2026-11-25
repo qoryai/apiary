@@ -2251,7 +2251,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     end
   end
 
-  describe "POST artifacts with a decision (A-20)" do
+  describe "POST artifacts with a decision" do
     test "stores the id of a person's note; the index has it with the note's time", ctx do
       place!(ctx)
       note = decide!(ctx, :request_changes, note: "Cover the empty cart.")
@@ -2302,6 +2302,106 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       end
 
       assert RunApiStubs.pushed() == []
+    end
+
+    # The work item of `ctx` with what a member's move writes: the questions, with q1
+    # answered, the review comments, with the comment c1 of Run another round, and the
+    # move's event. `{questions, review_comments, answer_id, comment_id}`.
+    defp given!(ctx) do
+      number = ctx.run.number
+      at = "2026-11-25T10:00:00Z"
+
+      question = %{
+        "id" => "q1",
+        "question" => "Which basket?",
+        "options" => [],
+        "state" => "answered",
+        "about" => %{"work_item" => true},
+        "asked" => %{"run" => number, "at" => at},
+        "answer" => %{
+          "option" => nil,
+          "note" => "The main one.",
+          "by" => %{"name" => "ann"},
+          "at" => at
+        }
+      }
+
+      comment = %{
+        "id" => "c1",
+        "on" => %{"run" => number},
+        "text" => "Name the file by date.",
+        "by" => %{"name" => "ann"},
+        "at" => at,
+        "state" => "open"
+      }
+
+      member = {:member_action, ctx.scope}
+      json = &%{filename: &1, content_type: "application/json", binary: Jason.encode!(&2)}
+
+      {:ok, questions} =
+        Apiary.Artifacts.push(member, ctx.work_item, "questions", [
+          json.("questions.json", %{"questions" => [question]})
+        ])
+
+      {:ok, review_comments} =
+        Apiary.Artifacts.push(member, ctx.work_item, "review-comments", [
+          json.("review-comments.json", %{"review_comments" => [comment]})
+        ])
+
+      event =
+        Repo.insert!(%Apiary.WorkItems.WorkItemEvent{
+          organisation_id: ctx.work_item.organisation_id,
+          workspace_id: ctx.work_item.workspace_id,
+          work_item_id: ctx.work_item.id,
+          kind: :answered,
+          actor_kind: :person,
+          actor_id: ctx.scope.user.id,
+          at: DateTime.utc_now(),
+          data: %{
+            "take_in" => ctx.work_item.take_in,
+            "attempt" => ctx.dispatch_run.attempt,
+            "count" => 1,
+            "questions" => ["q1"],
+            "review_comment" => "c1",
+            "round_comment" => true
+          }
+        })
+
+      {questions, review_comments, Apiary.PublicId.derive("an", event.id <> ":q1"),
+       Apiary.PublicId.derive("rc", event.id <> ":c1")}
+    end
+
+    defp unreadable!(%{files: [file]}) do
+      {:ok, path} = Apiary.Artifacts.open_file(file)
+      File.rm!(path)
+    end
+
+    test "stores an answer's and a comment's id; a file that cannot be read is 503", ctx do
+      place!(ctx)
+      {_questions, _review_comments, answer, comment} = given!(ctx)
+
+      for id <- [answer, comment] do
+        body = push_body("screenshot", [{"one.png", "image/png", @png}], %{"decision" => id})
+        assert json_response(write(ctx, "/artifacts", body), 201)
+      end
+
+      assert Enum.map(RunApiStubs.pushed(), & &1.decision_id) == [answer, comment]
+
+      # With the newest review comments, or the newest questions, unreadable, no version
+      # is stored. Each leg writes both documents again first, so only one is unreadable.
+      for leg <- [:review_comments, :questions] do
+        {questions, review_comments, answer, comment} = given!(ctx)
+        unreadable!(if leg == :questions, do: questions, else: review_comments)
+
+        for id <- [answer, comment] do
+          body = push_body("screenshot", [{"one.png", "image/png", @png}], %{"decision" => id})
+          conn = write(ctx, "/artifacts", body)
+          assert signed_answer?(conn)
+          assert %{"error" => "unavailable"} = json_response(conn, 503)
+        end
+      end
+
+      assert length(RunApiStubs.pushed()) == 2
     end
 
     test "a decision that is not text is 400 invalid_request", ctx do
@@ -3257,7 +3357,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
     end
   end
 
-  describe "POST verdict with a track (A-23)" do
+  describe "POST verdict with a track" do
     @tracks [
       %{"id" => "standard", "name" => "Standard"},
       %{"id" => "fast-track", "name" => "Fast track"}

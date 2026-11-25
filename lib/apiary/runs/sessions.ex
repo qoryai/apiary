@@ -19,7 +19,7 @@ defmodule Apiary.Runs.Sessions do
   start, has none.
 
   A launch of Claude Code writes several `dev.qory.runtime.result` lines, and each line's
-  `cost_usd` and `usage` count the launch so far (decision 652 (a)), but its `turns` and
+  `cost_usd` and `usage` count the launch so far, but its `turns` and
   `duration_ms` are those of the line. The lines are in the order of `line`, the number of
   the line of the session's standard output, with the lines that have none after those
   that have one, and lines of the same `line` by event `sequence`. So the session has:

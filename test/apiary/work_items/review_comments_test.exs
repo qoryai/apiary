@@ -1017,7 +1017,9 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
                "attempt" => 2,
                "count" => 1,
                "questions" => ["q1"],
-               "review_comment" => "c3"
+               "questions_version" => 2,
+               "review_comment" => "c3",
+               "round_comment" => true
              }
 
       # The comment is a review comment, open beside the others, and the question not
@@ -1066,7 +1068,8 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
                  "count" => 2,
                  "comment" => true,
                  "review_comment" => "c2",
-                 "review_comments" => ["c1", "c2"]
+                 "review_comments" => ["c1", "c2"],
+                 "round_comment" => true
                }
              ]
 
@@ -1107,7 +1110,8 @@ defmodule Apiary.WorkItems.ReviewCommentsTest do
                  "count" => 1,
                  "comment" => true,
                  "review_comment" => "c1",
-                 "review_comments" => ["c1"]
+                 "review_comments" => ["c1"],
+                 "round_comment" => true
                }
              ]
 

@@ -587,9 +587,14 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   run reads that version in place of the approved one. A run's
   `POST artifacts` takes an optional `decision`: the `id` of the person's note that asked
   for the version, also on a withdrawal. In `notes` of `GET work-item`, a request for
-  changes and a move have an `id` `gd_…`, and an escalation an `id` `es_…`; an answer and
-  a check have `id` null and cannot be a `decision`. A `decision` that is not one of these
-  ids on the run's work item is `422` `unknown_decision`. The next approval by a person at
+  changes and a move have an `id` `gd_…`, an escalation an `id` `es_…`, an answer to a
+  run's question an `id` `an_…`, and the comment of **Run another round** an `id` `rc_…`
+  unless it is an escalation's note; another review comment, a reply and a check have
+  `id` null and cannot be a `decision`. An answer's or a comment's `id` is the same at
+  every read, also after its note closes, and a new answer to a reopened question has a
+  new `id`. For an answer or a comment, `decision_at` is the time the member gave it. A
+  `decision` that is not one of these ids on the run's work item is `422`
+  `unknown_decision`. The next approval by a person at
   a gate lists the new version; a gate `none` lists no version that has a `decision`. Once
   a person's approval lists it, it is the approved version for every later run, also after
   a move back to a stage at or before that approval; the gate of that stage then shows and
@@ -639,6 +644,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   decides, such as "An approver of Build decides: sam and alex.", in place of that line and
   of "Only the members this stage lists can approve." A changed version of any other type
   shows the mark only.
+- The mark of a change reads "Changed after sam's answer" or "Changed after sam's comment"
+  for a version made after a member's answer or **Run another round** comment, and the
+  line above the changed criteria shows the instruction to check that they match "your
+  answer" or "your comment". When the member's account is gone, the mark reads "Changed
+  after a member's answer" or "…comment".
 - Explore's gate lists the tracks it offers above Approve, each with its description, in the
   gate's order, under "Track to run after you approve". The track that the stage's runs
   proposed is selected and has the badge "Proposed by <stage>" and, where the run gave a
@@ -3152,10 +3162,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 - The standard artifact type `change`, with its JSON Schema and its view, which showed a
   change's `url` as a link. The type `submission` of the software factory template
-  replaces it (vault decision 0216). A run's push of `change` now gets `422`
-  `unknown_type`, as any type the workspace does not have, and **Artifact types** no
-  longer lists `change`. Stored versions of `change` stay, and their page has a download
-  link for the file.
+  replaces it. A run's push of `change` now gets `422` `unknown_type`, as any type the
+  workspace does not have, and **Artifact types** no longer lists `change`. Stored
+  versions of `change` stay, and their page has a download link for the file.
 
 <!-- feature: managed_organisations -->
 - An operator relates only to the workspaces it operates (under Changed), not to whole
@@ -4086,6 +4095,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   second validates them with a scan that does not block writes. They rewrite no row.
   Rolling back puts back the earlier checks and fails while the feed has a
   `change_request` entry.
+- `artifact_versions` (20261125120000 and 20261125120100): the check of `decision_id`
+  also takes an answer's id (`an_…`) and the id of the comment of Run another round
+  (`rc_…`). The first migration replaces the check without a scan; the second validates
+  it with a scan that does not block writes. They rewrite no row. Rolling back sets
+  `decision_id` to null on each version that has such an id, then puts back the earlier
+  check, NOT VALID, with no scan.
 <!-- /feature -->
 
 ## [0.1.0] - 2026-10-13

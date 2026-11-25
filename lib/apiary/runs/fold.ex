@@ -52,8 +52,8 @@ defmodule Apiary.Runs.Fold do
 
   A run's cost, `cost_usd`, is the sum, over the run's sessions, of each session's cost,
   and a session's cost is the `cost_usd` of its last `dev.qory.runtime.result` that has
-  one, since each line's cost is the launch's total so far (`Apiary.Runs.Sessions`,
-  decision 652 (a)). It is read from all the run's results, the pass's and the ones
+  one, since each line's cost is the launch's total so far (`Apiary.Runs.Sessions`).
+  It is read from all the run's results, the pass's and the ones
   already projected (`projected`, below), and a pass with no result leaves it as it is.
 
   The steps of the run's host work and joins (`Apiary.Runs.Step`) are folded by `step`,

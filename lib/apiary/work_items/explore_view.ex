@@ -387,10 +387,10 @@ defmodule Apiary.WorkItems.ExploreView do
         stage_id: run && run.stage_id,
         answer: given_answer(question["answer"], Enum.at(moves, length(history)), options),
         history:
-          for(
-            {entry, n} <- Enum.with_index(history),
-            do: given_answer(entry, Enum.at(moves, n), options)
-          ),
+          for {entry, n} <- Enum.with_index(history) do
+            move = Enum.at(moves, n)
+            given_answer(entry, move, as_answered(question, move).options)
+          end,
         follows: for(other <- question["follows"] || [], n = numbers[other], do: n),
         decision: decision(question["decision"])
       }
@@ -634,7 +634,8 @@ defmodule Apiary.WorkItems.ExploreView do
   # questions and review comments, the runs by their registered run's number, the steps of
   # the current take in and their registered runs' numbers (`current_runs`), and
   # `waiting`, the latest run of the current take in where its questions wait, else nil.
-  # The newest questions and review comments are read once, for `given` too.
+  # The newest questions and review comments are read once, for `given` too; `given` reads
+  # an earlier version of the questions only for an answer a run reopened.
   defp context(work_item, steps, events, waiting) do
     {pushed, counted, markdown} = pushed(work_item.id)
     questions = Questions.newest(work_item)
@@ -642,7 +643,8 @@ defmodule Apiary.WorkItems.ExploreView do
     current = Enum.filter(steps, &(&1.take_in == work_item.take_in))
 
     %{
-      given: Given.from_events(events, document(questions), review_comments),
+      given:
+        Given.from_events(events, document(questions), review_comments, Given.reader(work_item)),
       reply_positions:
         for(
           %{kind: :answered, id: id, data: %{"reply" => position}} <- events,
@@ -1103,17 +1105,25 @@ defmodule Apiary.WorkItems.ExploreView do
   end
 
   defp question_view(question, position, given) do
-    %{options: options} = Proposal.question(question)
+    %{question: text, options: options} = as_answered(question, given)
 
     %{
       public_id: Integer.to_string(position),
-      text: question["question"],
+      text: text,
       options: options,
       answer: given && given.text,
       custom: given && given.custom,
       recommended: !!given and given.custom != true and recommended?(options, given.text)
     }
   end
+
+  # The question as the pages draw it (`Proposal.question/1`), with the text and the
+  # options the member answered where `given`, the answer's entry, has them
+  # (`Apiary.Explore.Given`), else those of the newest version.
+  defp as_answered(_question, %{question: text} = given) when is_binary(text),
+    do: Proposal.question(%{"question" => text, "options" => given.options})
+
+  defp as_answered(question, _given), do: Proposal.question(question)
 
   # The stage the end of an ended work item recorded: of its latest event of the kind of
   # its state.

@@ -202,7 +202,8 @@ defmodule Apiary.WorkItems.Moves do
   #     stay open. It queues the take in's next run at any count of runs: at the run limit
   #     the next run's `attempt` and `of` are one more each
   #     (`Apiary.Dispatches.queue_next/3`). Its event, `:answered`, has the take in, the
-  #     attempt answered, the count and the ids of the questions answered (`"questions"`).
+  #     attempt answered, the count, the ids of the questions answered (`"questions"`) and
+  #     the number of the version of the questions it wrote (`"questions_version"`).
   #   * `review_comment/4` writes one review comment and queues no run. No page calls
   #     it: Explore's tab writes a comment with `another_round/4`, and tests call it to
   #     set up a work item. It works wherever no run is running and the take in has a
@@ -265,11 +266,14 @@ defmodule Apiary.WorkItems.Moves do
   #     nothing and is not written (`Apiary.Explore.Questions.same_as_decision?/3`);
   #     `answer/4` with only such answers is `:not_waiting`. Its event, `:answered`, has
   #     the take in, the attempt and the count, and: with answers, the ids of the
-  #     questions answered (`"questions"`) and the comment's id (`"review_comment"`) where
-  #     one is written; without answers, what a send of the review comments has, the
-  #     comment among them, and with a comment, `"comment"` true and its id
-  #     (`"review_comment"`), as a review comment's event has them. Unanswered questions
-  #     stay open.
+  #     questions answered (`"questions"`), the number of the version of the questions it
+  #     wrote (`"questions_version"`) and the comment's id (`"review_comment"`) where one
+  #     is written; without answers, what a send of the review comments has, the comment
+  #     among them, and with a comment, `"comment"` true and its id (`"review_comment"`),
+  #     as a review comment's event has them. With a comment, the event has
+  #     `"round_comment"` true too, and the comment then has an id, also where the round
+  #     resolves an open escalation, whose note stays empty (`Apiary.Explore.Given`).
+  #     Unanswered questions stay open.
   #   * Run another round works at the stage the work item is in. It reads where that
   #     stage stands (`Apiary.WorkItems.Explore.member_view/2`), and opens where Explore's
   #     opens: the stage waits for answers, its proposal waits, or a stage after Explore's
@@ -1188,13 +1192,18 @@ defmodule Apiary.WorkItems.Moves do
   defp round_data(held, attempt, 0, _given, id, stage) do
     with {:ok, ids} <- round_comments(held, stage) do
       data = Map.merge(comment_data(held, attempt, id), %{"count" => length(ids)})
-      {:ok, Map.put(data, "review_comments", ids), true}
+      {:ok, data |> Map.put("review_comments", ids) |> Map.put("round_comment", true), true}
     end
   end
 
   defp round_data(held, attempt, count, given, id, _stage) do
     data = Map.merge(answered(held, attempt, count), given)
-    {:ok, if(id, do: Map.put(data, "review_comment", id), else: data), true}
+
+    {:ok,
+     if(id,
+       do: Map.merge(data, %{"review_comment" => id, "round_comment" => true}),
+       else: data
+     ), true}
   end
 
   # The ids of the open review comments a round carries, in order: those on a version
@@ -1242,7 +1251,8 @@ defmodule Apiary.WorkItems.Moves do
 
   # What the member gave, kept: the answers to the open questions, or a review comment on
   # the proposal. `{:ok, count, data}`, `data` what the event adds: the ids of the
-  # questions answered, or the review comment's id and `"comment"` true.
+  # questions answered and the number of the version of the questions written, or the
+  # review comment's id and `"comment"` true.
   # The answers are checked against the runs of the take in at the current stage
   # (`round_stage/2`), so an answer at a later stage leaves Explore's questions as they are.
   defp keep_given(held, scope, %{status: :questions} = current, answers, now)
@@ -1257,8 +1267,8 @@ defmodule Apiary.WorkItems.Moves do
          given = Enum.map(checked, &option_note(&1, open)),
          {:ok, document} <-
            noted(Questions.answer(document, given, person_name(scope), now), open),
-         {:ok, _version} <- push(held, scope, Questions.type_name(), Questions.file(document)) do
-      {:ok, length(given), %{"questions" => Enum.map(given, &elem(&1, 0))}}
+         {:ok, version} <- push(held, scope, Questions.type_name(), Questions.file(document)) do
+      {:ok, length(given), answered_data(given, version)}
     end
   end
 
@@ -1292,10 +1302,16 @@ defmodule Apiary.WorkItems.Moves do
   defp write_by_id(held, scope, document, given, now) do
     with {:ok, document} <-
            noted_by_id(Questions.answer(document, given, person_name(scope), now)),
-         {:ok, _version} <- push(held, scope, Questions.type_name(), Questions.file(document)) do
-      {:ok, length(given), %{"questions" => Enum.map(given, &elem(&1, 0))}}
+         {:ok, version} <- push(held, scope, Questions.type_name(), Questions.file(document)) do
+      {:ok, length(given), answered_data(given, version)}
     end
   end
+
+  # What the event of a move with answers adds: the ids of the questions answered and the
+  # number of the version of the questions the move wrote, whose wording the member
+  # answered (`Apiary.Explore.Given`).
+  defp answered_data(given, version),
+    do: %{"questions" => Enum.map(given, &elem(&1, 0)), "questions_version" => version.number}
 
   # A new version of the review comments with the member's review comment on the newest
   # version of `type` of the take in: `{:ok, id}`.

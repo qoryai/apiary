@@ -11,7 +11,7 @@ defmodule Apiary.Artifacts.Version do
   # characters. `withdrawn` is true for a withdrawal, a run's version with no files that
   # withdraws its artifact's name (`Apiary.Artifacts.withdraw/4`), false for every other.
   # `decision_id` is the id of the person's note that asked for the version, `gd_…` or
-  # `es_…` (`Apiary.Stages.Notes`), nil for none (vault 0261, 624 (a)).
+  # `es_…` (`Apiary.Stages.Notes`), nil for none.
   #
   # `delivery`, `delivery_reply`, `delivery_failure` and `delivery_at` store where the
   # delivery of the version to an adapter stands (`Apiary.Artifacts.Delivery`): `delivery`

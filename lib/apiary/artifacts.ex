@@ -136,7 +136,11 @@ defmodule Apiary.Artifacts do
   # `{:open_blocking_findings, findings}` (`Apiary.Findings.gate/2`).
   # Then a `decision` that is not the id of a person's note on the held work item
   # (`Apiary.Stages.Notes.find/2`) is `{:unknown_decision, decision}`, checked before the
-  # integers, so a refused decision leaves no staged copy.
+  # integers, so a refused decision leaves no staged copy. For the `an_…` or `rc_…` id of
+  # an answer or a Run another round comment that a member gave on the work item, a newest
+  # questions or review comments file that cannot be read is
+  # `{:error, :store_unavailable}`. A push of any other `an_…` or `rc_…` id gets
+  # `{:unknown_decision, decision}`, and no file is read.
   #
   # Then a version of the questions or the review comments, from any writer, is stored
   # with each number that is an integer in value written as an integer: a file with
@@ -1027,13 +1031,18 @@ defmodule Apiary.Artifacts do
 
   # A version's `decision` is the public id of a person's note on the held work item
   # (`Apiary.Stages.Notes`), or nil. A note is never deleted, so the check stays true once
-  # the version is stored.
+  # the version is stored; for an answer's or a comment's id, only while the newest
+  # questions and review comments can be read. For the id of an answer or a Run another
+  # round comment that a member gave on the work item, a questions or review comments
+  # file that cannot be read is `{:error, :store_unavailable}`. A push of any other
+  # `an_…` or `rc_…` id gets `{:unknown_decision, decision}`, and no file is read.
   defp decision_kept(_held, nil), do: :ok
 
   defp decision_kept(held, decision) do
     case Apiary.Stages.Notes.find(held.id, decision) do
       %{id: ^decision} -> :ok
       nil -> {:error, {:unknown_decision, decision}}
+      {:error, :store_unavailable} = error -> error
     end
   end
 
@@ -1904,6 +1913,22 @@ defmodule Apiary.Artifacts do
           artifact: a,
           files: ^files_query()
         ]
+    )
+  end
+
+  # numbered/4 is the version `number` of the artifact `type` and `name` of the work item,
+  # with its files, nil for none.
+  @doc false
+  @spec numbered(WorkItem.t(), String.t(), String.t(), integer) :: Version.t() | nil
+  def numbered(%WorkItem{id: id, workspace_id: workspace_id}, type, name, number)
+      when is_integer(number) do
+    Repo.one(
+      from v in Version,
+        join: a in assoc(v, :artifact),
+        where:
+          a.work_item_id == ^id and a.workspace_id == ^workspace_id and a.type == ^type and
+            a.name == ^name and v.number == ^number,
+        preload: [files: ^files_query()]
     )
   end
 

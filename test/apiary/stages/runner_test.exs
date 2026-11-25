@@ -483,7 +483,7 @@ defmodule Apiary.Stages.RunnerTest do
         assert Runner.step(seq, position, with_points) == Runner.step(seq, position, without)
       end
 
-      # At the round limit the point's text has the open findings (A-27).
+      # At the round limit the point's text has the open findings.
       limit_with = Runner.step(build(), pos(1, 1, 3), with_points)
       limit_without = Runner.step(build(), pos(1, 1, 3), without)
       assert Map.delete(limit_with, :actions) == Map.delete(limit_without, :actions)
@@ -859,7 +859,7 @@ defmodule Apiary.Stages.RunnerTest do
     end
   end
 
-  describe "the when key (A-16)" do
+  describe "the when key" do
     @demos %{"when" => %{"input" => "demo-scenarios"}}
 
     # Verify: capture-demos only with demo scenarios, then verify-a-ticket.
@@ -1121,7 +1121,7 @@ defmodule Apiary.Stages.RunnerTest do
     end
   end
 
-  describe "tracks and unless (A-23)" do
+  describe "tracks and unless" do
     @fast %{"track" => "fast-track"}
 
     defp track_skip(workflow, track, negated, entry, loop_entry \\ nil),
@@ -1292,14 +1292,14 @@ defmodule Apiary.Stages.RunnerTest do
     end
   end
 
-  describe "the changed key (A-47)" do
+  describe "the changed key" do
     @criteria %{"input" => "acceptance-criteria", "changed" => true}
     @t0 ~U[2026-11-17 10:00:00.000000Z]
     @t1 ~U[2026-11-17 11:00:00.000000Z]
     @t2 ~U[2026-11-17 12:00:00.000000Z]
 
-    # Build's entries, as C-2's template has them: triage-review, then two entries that run
-    # when the criteria changed.
+    # Build's entries in this test: triage-review, then two entries that run when the
+    # criteria changed.
     defp changing do
       stage([
         wf("triage-review"),
@@ -1502,11 +1502,11 @@ defmodule Apiary.Stages.RunnerTest do
     end
   end
 
-  describe "feedback and the open findings (A-27)" do
+  describe "feedback and the open findings" do
     @feedback %{"feedback" => "new"}
 
-    # Build as C-2's template has it, without its other conditions: triage-review on new
-    # feedback, plan-the-build, then a loop of implement-changes and review-changes.
+    # Build in this test, without other conditions: triage-review on new feedback,
+    # plan-the-build, then a loop of implement-changes and review-changes.
     defp with_feedback do
       stage([
         wf("triage-review", %{"when" => @feedback}),
@@ -1635,7 +1635,7 @@ defmodule Apiary.Stages.RunnerTest do
              )
     end
 
-    test "a comment or a reply that no run handled makes answers feedback (A-27 review)" do
+    test "a comment or a reply that no run handled makes answers feedback" do
       position = pos(2, 1, 2)
 
       outcome =

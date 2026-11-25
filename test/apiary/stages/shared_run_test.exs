@@ -1278,7 +1278,7 @@ defmodule Apiary.Stages.SharedRunTest do
     assert length(sessions(run)) == 2
   end
 
-  describe "loops, reruns and feedback in a shared run (A-27)" do
+  describe "loops, reruns and feedback in a shared run" do
     # Build with triage-review on new feedback, plan-the-build, then a loop of
     # implement-changes and review-changes, as one shared run.
     defp feedback_build do

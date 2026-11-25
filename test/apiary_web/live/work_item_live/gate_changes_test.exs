@@ -158,30 +158,30 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesTest do
   defp words(text) when is_binary(text), do: text
 
   test "the line of what to do contains the controls the card shows, and none with no text" do
-    assert words(GateChanges.action(:you, 3, [:approve, :changes])) ==
+    assert words(GateChanges.action(:request, :you, 3, [:approve, :changes])) ==
              "Check that these 3 changes to the acceptance criteria match your request, then pick **Approve** or **Request changes**."
 
-    assert words(GateChanges.action({:name, "sam"}, 3, [:approve, :changes])) ==
+    assert words(GateChanges.action(:request, {:name, "sam"}, 3, [:approve, :changes])) ==
              "Check that these 3 changes to the acceptance criteria match sam's request, then pick **Approve** or **Request changes**."
 
-    assert words(GateChanges.action(:you, 1, [:approve, :changes])) ==
+    assert words(GateChanges.action(:request, :you, 1, [:approve, :changes])) ==
              "Check that this change to the acceptance criteria matches your request, then pick **Approve** or **Request changes**."
 
-    assert words(GateChanges.action({:name, "sam"}, 1, [:approve, :changes])) ==
+    assert words(GateChanges.action(:request, {:name, "sam"}, 1, [:approve, :changes])) ==
              "Check that this change to the acceptance criteria matches sam's request, then pick **Approve** or **Request changes**."
 
-    assert words(GateChanges.action(:member, 3, [:approve, :changes])) ==
+    assert words(GateChanges.action(:request, :member, 3, [:approve, :changes])) ==
              "Check that these 3 changes to the acceptance criteria match a member's request, then pick **Approve** or **Request changes**."
 
-    assert words(GateChanges.action(:you, 3, [:changes])) ==
+    assert words(GateChanges.action(:request, :you, 3, [:changes])) ==
              "Check that these 3 changes to the acceptance criteria match your request. If they do not, pick **Request changes**."
 
-    assert words(GateChanges.action({:name, "sam"}, 1, [:changes])) ==
+    assert words(GateChanges.action(:request, {:name, "sam"}, 1, [:changes])) ==
              "Check that this change to the acceptance criteria matches sam's request. If it does not, pick **Request changes**."
 
-    assert GateChanges.action(:you, 3, [:form]) == nil
-    assert GateChanges.action(:you, 3, [:approve]) == nil
-    assert GateChanges.action(:you, 3, []) == nil
+    assert GateChanges.action(:request, :you, 3, [:form]) == nil
+    assert GateChanges.action(:request, :you, 3, [:approve]) == nil
+    assert GateChanges.action(:request, :you, 3, []) == nil
   end
 
   test "the block of a check that alone changed: the text once, then the two checks" do
@@ -192,11 +192,11 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesTest do
     html =
       render_component(&GateChanges.changes/1,
         id: "gate-criteria",
-        lead: GateChanges.action(:you, length(compared.changes), [:approve, :changes]),
+        lead: GateChanges.action(:request, :you, length(compared.changes), [:approve, :changes]),
         lead_id: "gate-criteria-action",
         changes: compared.changes,
         unchanged: compared.unchanged,
-        mark: GateChanges.mark(:you)
+        mark: GateChanges.mark(:request, :you)
       )
 
     doc = LazyHTML.from_fragment(html)
@@ -248,7 +248,7 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesTest do
         id: "gate-criteria",
         changes: compared.changes,
         unchanged: compared.unchanged,
-        mark: GateChanges.mark(:you)
+        mark: GateChanges.mark(:request, :you)
       )
 
     assert html
@@ -281,7 +281,7 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesTest do
           read: :unread,
           kind: :output,
           source: %{stage: "Build", attempt: 2, run: 7},
-          changed: GateChanges.mark(:you)
+          changed: GateChanges.mark(:request, :you)
         }
       )
 
@@ -311,7 +311,7 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesTest do
         id: "gate-criteria",
         changes: compared.changes,
         unchanged: compared.unchanged,
-        mark: GateChanges.mark(:member)
+        mark: GateChanges.mark(:request, :member)
       )
 
     doc = LazyHTML.from_fragment(html)
@@ -324,8 +324,54 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesTest do
   end
 
   test "the mark for the reader who asked, another reader, and an account that is gone" do
-    assert GateChanges.mark(:you) == "Changed on your request"
-    assert GateChanges.mark({:name, "sam"}) == "Changed on sam's request"
-    assert GateChanges.mark(:member) == "Changed on a member's request"
+    assert GateChanges.mark(:request, :you) == "Changed on your request"
+    assert GateChanges.mark(:request, {:name, "sam"}) == "Changed on sam's request"
+    assert GateChanges.mark(:request, :member) == "Changed on a member's request"
+  end
+
+  test "the mark after an answer or a comment of Run another round, by the decision's id" do
+    assert GateChanges.of("an_0123456789abcdef") == :answer
+    assert GateChanges.of("rc_0123456789abcdef") == :comment
+
+    for id <- ["gd_0123456789abcdef", "es_0123456789abcdef", "an_x", nil],
+        do: assert(GateChanges.of(id) == :request)
+
+    assert GateChanges.mark(:answer, :you) == "Changed after your answer"
+    assert GateChanges.mark(:answer, {:name, "sam"}) == "Changed after sam's answer"
+    assert GateChanges.mark(:comment, :you) == "Changed after your comment"
+    assert GateChanges.mark(:comment, {:name, "sam"}) == "Changed after sam's comment"
+
+    # An account that is gone: a member's answer, comment or request.
+    assert GateChanges.mark(:answer, :member) == "Changed after a member's answer"
+    assert GateChanges.mark(:comment, :member) == "Changed after a member's comment"
+    assert GateChanges.mark(:request, :member) == "Changed on a member's request"
+  end
+
+  test "the line of what to do reads \"your answer\" or \"your comment\" by what asked for the changes" do
+    for {of, word} <- [answer: "answer", comment: "comment"] do
+      assert words(GateChanges.action(of, :you, 3, [:approve, :changes])) ==
+               "Check that these 3 changes to the acceptance criteria match your #{word}, then pick **Approve** or **Request changes**."
+
+      assert words(GateChanges.action(of, {:name, "sam"}, 1, [:approve, :changes])) ==
+               "Check that this change to the acceptance criteria matches sam's #{word}, then pick **Approve** or **Request changes**."
+
+      assert words(GateChanges.action(of, :member, 3, [:approve, :changes])) ==
+               "Check that these 3 changes to the acceptance criteria match a member's #{word}, then pick **Approve** or **Request changes**."
+
+      assert words(GateChanges.action(of, :you, 1, [:changes])) ==
+               "Check that this change to the acceptance criteria matches your #{word}. If it does not, pick **Request changes**."
+
+      assert words(GateChanges.action(of, {:name, "sam"}, 3, [:changes])) ==
+               "Check that these 3 changes to the acceptance criteria match sam's #{word}. If they do not, pick **Request changes**."
+
+      assert words(GateChanges.action(of, :member, 1, [:changes])) ==
+               "Check that this change to the acceptance criteria matches a member's #{word}. If it does not, pick **Request changes**."
+
+      assert GateChanges.action(of, :you, 3, [:approve]) == nil
+    end
+
+    # A request for changes and an escalation keep "request".
+    assert words(GateChanges.action(:request, :member, 1, [:changes])) ==
+             "Check that this change to the acceptance criteria matches a member's request. If it does not, pick **Request changes**."
   end
 end

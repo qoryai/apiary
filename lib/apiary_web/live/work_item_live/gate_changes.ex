@@ -1,15 +1,18 @@
 defmodule ApiaryWeb.WorkItemLive.GateChanges do
-  # A version that a run stored on a person's request, as the work item page shows it until
-  # an approval lists it (`Apiary.Stages.unapproved_changes/2`, vault 0261, 624
-  # (a)): the mark "Changed on your request" on the version's line of the gate card and on
-  # its frame's caption, and, for acceptance criteria, each changed, added or removed
-  # criterion with its earlier and its new text and check, under one line with the next
-  # step, so a person approves without opening another page.
+  # A version that a run stored on a person's request, as the work item page shows it
+  # until an approval lists it (`Apiary.Stages.unapproved_changes/2`): the mark "Changed
+  # on your request" on the version's line of the gate card and on its frame's caption,
+  # and, for acceptance criteria, each changed, added or removed criterion with its
+  # earlier and its new text and check, under one line with the next step, so a person
+  # approves without opening another page.
   #
   # The words that depend on the reader are decided when the page is drawn: "your request"
   # for the person who wrote the note, "sam's request" for anyone else, "a member's
-  # request" where the writer's account is gone. The line with the next step contains only
-  # the controls that the gate card shows (`ApiaryWeb.WorkItemLive.StageComponents`).
+  # request" where the writer's account is gone. A change after a member's answer to a
+  # question reads "your answer", "sam's answer" or "a member's answer", and one after
+  # the comment of Run another round "your comment", "sam's comment" or "a member's
+  # comment". The line with the next step contains only the controls that the gate card
+  # shows (`ApiaryWeb.WorkItemLive.StageComponents`).
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -25,15 +28,42 @@ defmodule ApiaryWeb.WorkItemLive.GateChanges do
   """
   @type whose :: :you | {:name, String.t()} | :member
 
+  @typedoc """
+  What a person wrote that asked for a change, by the kind of the version's `decision`
+  (`of/1`): `:answer`, an answer to a run's question; `:comment`, the comment of Run
+  another round; `:request`, any other note, such as a request for changes.
+  """
+  @type of :: :answer | :comment | :request
+
   ## The mark
 
   @doc false
-  # mark/1 is the mark of a changed version for the reader: "Changed on your request",
-  # "Changed on sam's request" or "Changed on a member's request".
-  @spec mark(whose) :: String.t()
-  def mark(:you), do: gettext("Changed on your request")
-  def mark({:name, name}), do: gettext("Changed on %{name}'s request", name: name)
-  def mark(:member), do: gettext("Changed on a member's request")
+  # of/1 is the kind of note that the `decision` of a changed version is: `:answer` for an
+  # `an_…` id, `:comment` for an `rc_…` id, `:request` for any other.
+  @spec of(String.t() | nil) :: of
+  def of(decision) do
+    cond do
+      Apiary.PublicId.valid?("an", decision) -> :answer
+      Apiary.PublicId.valid?("rc", decision) -> :comment
+      true -> :request
+    end
+  end
+
+  @doc false
+  # mark/2 is the mark of a changed version for the reader, by what asked for it: "Changed
+  # after your answer", "Changed after sam's comment", "Changed on your request", and so
+  # on. Where the writer's account is gone: "Changed after a member's answer", "Changed
+  # after a member's comment" or "Changed on a member's request".
+  @spec mark(of, whose) :: String.t()
+  def mark(:answer, :you), do: gettext("Changed after your answer")
+  def mark(:answer, {:name, name}), do: gettext("Changed after %{name}'s answer", name: name)
+  def mark(:answer, :member), do: gettext("Changed after a member's answer")
+  def mark(:comment, :you), do: gettext("Changed after your comment")
+  def mark(:comment, {:name, name}), do: gettext("Changed after %{name}'s comment", name: name)
+  def mark(:comment, :member), do: gettext("Changed after a member's comment")
+  def mark(_of, :you), do: gettext("Changed on your request")
+  def mark(_of, {:name, name}), do: gettext("Changed on %{name}'s request", name: name)
+  def mark(_of, :member), do: gettext("Changed on a member's request")
 
   ## The comparison
 
@@ -140,16 +170,140 @@ defmodule ApiaryWeb.WorkItemLive.GateChanges do
   ## The lines
 
   @doc false
-  # action/3 is the line above the changes for a reader who may decide, by the controls
+  # action/4 is the line above the changes for a reader who may decide, by the controls
   # the gate card shows (`controls`, `StageComponents`): with Approve and Request changes,
   # "Check that these 3 changes to the acceptance criteria match your request, then pick
   # Approve or Request changes."; with Request changes only, "… match your request. If
   # they do not, pick Request changes."; nil with any other set of controls, which no
-  # line has words for. `count` is the number of changes and `whose` who asked for them.
-  @spec action(whose, pos_integer, [atom]) :: term
-  def action(whose, count, [:approve, :changes]), do: both(whose, count)
-  def action(whose, count, [:changes]), do: changes_only(whose, count)
-  def action(_whose, _count, _controls), do: nil
+  # line has words for. `of` is what asked for the changes (`of/1`): "your answer" for an
+  # answer, "your comment" for a comment, "your request" for any other note. `count` is
+  # the number of changes and `whose` who asked for them.
+  @spec action(of, whose, pos_integer, [atom]) :: term
+  def action(of, whose, count, [:approve, :changes]), do: both(of, whose, count)
+  def action(of, whose, count, [:changes]), do: changes_only(of, whose, count)
+  def action(_of, _whose, _count, _controls), do: nil
+
+  defp both(:answer, :you, count) do
+    rich_ngettext(
+      "Check that this change to the acceptance criteria matches your answer, then pick %{approve} or %{changes}.",
+      "Check that these %{count} changes to the acceptance criteria match your answer, then pick %{approve} or %{changes}.",
+      count,
+      approve: {:b, gettext("Approve")},
+      changes: {:b, gettext("Request changes")}
+    )
+  end
+
+  defp both(:answer, {:name, name}, count) do
+    rich_ngettext(
+      "Check that this change to the acceptance criteria matches %{name}'s answer, then pick %{approve} or %{changes}.",
+      "Check that these %{count} changes to the acceptance criteria match %{name}'s answer, then pick %{approve} or %{changes}.",
+      count,
+      name: name,
+      approve: {:b, gettext("Approve")},
+      changes: {:b, gettext("Request changes")}
+    )
+  end
+
+  defp both(:answer, :member, count) do
+    rich_ngettext(
+      "Check that this change to the acceptance criteria matches a member's answer, then pick %{approve} or %{changes}.",
+      "Check that these %{count} changes to the acceptance criteria match a member's answer, then pick %{approve} or %{changes}.",
+      count,
+      approve: {:b, gettext("Approve")},
+      changes: {:b, gettext("Request changes")}
+    )
+  end
+
+  defp both(:comment, :you, count) do
+    rich_ngettext(
+      "Check that this change to the acceptance criteria matches your comment, then pick %{approve} or %{changes}.",
+      "Check that these %{count} changes to the acceptance criteria match your comment, then pick %{approve} or %{changes}.",
+      count,
+      approve: {:b, gettext("Approve")},
+      changes: {:b, gettext("Request changes")}
+    )
+  end
+
+  defp both(:comment, {:name, name}, count) do
+    rich_ngettext(
+      "Check that this change to the acceptance criteria matches %{name}'s comment, then pick %{approve} or %{changes}.",
+      "Check that these %{count} changes to the acceptance criteria match %{name}'s comment, then pick %{approve} or %{changes}.",
+      count,
+      name: name,
+      approve: {:b, gettext("Approve")},
+      changes: {:b, gettext("Request changes")}
+    )
+  end
+
+  defp both(:comment, :member, count) do
+    rich_ngettext(
+      "Check that this change to the acceptance criteria matches a member's comment, then pick %{approve} or %{changes}.",
+      "Check that these %{count} changes to the acceptance criteria match a member's comment, then pick %{approve} or %{changes}.",
+      count,
+      approve: {:b, gettext("Approve")},
+      changes: {:b, gettext("Request changes")}
+    )
+  end
+
+  defp both(_request, whose, count), do: both(whose, count)
+
+  defp changes_only(:answer, :you, count) do
+    rich_ngettext(
+      "Check that this change to the acceptance criteria matches your answer. If it does not, pick %{changes}.",
+      "Check that these %{count} changes to the acceptance criteria match your answer. If they do not, pick %{changes}.",
+      count,
+      changes: {:b, gettext("Request changes")}
+    )
+  end
+
+  defp changes_only(:answer, {:name, name}, count) do
+    rich_ngettext(
+      "Check that this change to the acceptance criteria matches %{name}'s answer. If it does not, pick %{changes}.",
+      "Check that these %{count} changes to the acceptance criteria match %{name}'s answer. If they do not, pick %{changes}.",
+      count,
+      name: name,
+      changes: {:b, gettext("Request changes")}
+    )
+  end
+
+  defp changes_only(:answer, :member, count) do
+    rich_ngettext(
+      "Check that this change to the acceptance criteria matches a member's answer. If it does not, pick %{changes}.",
+      "Check that these %{count} changes to the acceptance criteria match a member's answer. If they do not, pick %{changes}.",
+      count,
+      changes: {:b, gettext("Request changes")}
+    )
+  end
+
+  defp changes_only(:comment, :you, count) do
+    rich_ngettext(
+      "Check that this change to the acceptance criteria matches your comment. If it does not, pick %{changes}.",
+      "Check that these %{count} changes to the acceptance criteria match your comment. If they do not, pick %{changes}.",
+      count,
+      changes: {:b, gettext("Request changes")}
+    )
+  end
+
+  defp changes_only(:comment, {:name, name}, count) do
+    rich_ngettext(
+      "Check that this change to the acceptance criteria matches %{name}'s comment. If it does not, pick %{changes}.",
+      "Check that these %{count} changes to the acceptance criteria match %{name}'s comment. If they do not, pick %{changes}.",
+      count,
+      name: name,
+      changes: {:b, gettext("Request changes")}
+    )
+  end
+
+  defp changes_only(:comment, :member, count) do
+    rich_ngettext(
+      "Check that this change to the acceptance criteria matches a member's comment. If it does not, pick %{changes}.",
+      "Check that these %{count} changes to the acceptance criteria match a member's comment. If they do not, pick %{changes}.",
+      count,
+      changes: {:b, gettext("Request changes")}
+    )
+  end
+
+  defp changes_only(_request, whose, count), do: changes_only(whose, count)
 
   defp both(:you, count) do
     rich_ngettext(
@@ -217,7 +371,7 @@ defmodule ApiaryWeb.WorkItemLive.GateChanges do
   attr :lead_id, :string, default: nil, doc: "the DOM id of that line"
   attr :changes, :list, required: true, doc: "`compare/2`'s `changes`"
   attr :unchanged, :list, required: true, doc: "`compare/2`'s `unchanged`"
-  attr :mark, :string, required: true, doc: "`mark/1` for the reader"
+  attr :mark, :string, required: true, doc: "`mark/2` for the reader"
 
   @doc false
   # changes/1 is the block of the gate card under its version lines: the line with the

@@ -15,6 +15,16 @@ defmodule Apiary.PublicIdTest do
     assert Apiary.AccessKeys.AccessKey.generate_key_id() =~ ~r/\Aak_[0-9a-hjkmnp-tv-z]{16}\z/
   end
 
+  test "derive/2 makes the same valid id from the same prefix and seed, another from another" do
+    id = PublicId.derive("an", "event:q1")
+
+    assert PublicId.valid?("an", id)
+    assert PublicId.derive("an", "event:q1") == id
+    assert PublicId.derive("an", "event:q2") != id
+    assert "rc_" <> random = PublicId.derive("rc", "event:q1")
+    refute "an_" <> random == id
+  end
+
   test "valid?/2 refuses another prefix, another length and the letters Crockford leaves out" do
     refute PublicId.valid?("ak", "sec_0123456789abcdef")
     refute PublicId.valid?("sec", "sec_0123456789abcde")
