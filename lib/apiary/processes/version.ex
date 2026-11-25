@@ -32,9 +32,6 @@ defmodule Apiary.Processes.Version do
   """
   use Ecto.Schema
 
-  # shortcut: the record keeps the delivered entries of `artifact_types`, but no code sends
-  # a version of a delivered type to a destination; replace when the sender exists.
-
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 

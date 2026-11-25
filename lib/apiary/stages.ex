@@ -163,6 +163,7 @@ defmodule Apiary.Stages do
   }
 
   alias Apiary.Accounts.Scope
+  alias Apiary.Artifacts.Delivery
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.{Cancel, Run, SessionRecord}
@@ -368,7 +369,9 @@ defmodule Apiary.Stages do
   # Where the newest questions of the run's work item cannot be read, it writes nothing,
   # logs one warning with the run's id and gives none: the stage sweep acts on the end
   # later (`sweep/3`). Nothing is written before that read, so the caller's transaction
-  # goes on.
+  # goes on. A gate `none` whose send cannot read a version's file raises
+  # `Apiary.Stages.DeliveryUnreadable` after its approval is written, so that error is not
+  # caught here: the caller's transaction rolls back, as for an unreadable verdict.
   @doc false
   @spec run_ended_or_later(Ecto.UUID.t(), StopCause.context()) ::
           [Apiary.Dispatches.Settle.told()]
@@ -728,7 +731,11 @@ defmodule Apiary.Stages do
       {:error, :invalid_request}
     end
   rescue
-    _unreadable in [Apiary.Stages.VerdictUnreadable, Apiary.Stages.QuestionsUnreadable] ->
+    _unreadable in [
+      Apiary.Stages.VerdictUnreadable,
+      Apiary.Stages.QuestionsUnreadable,
+      Apiary.Stages.DeliveryUnreadable
+    ] ->
       {:error, :unavailable}
   end
 
@@ -1934,7 +1941,9 @@ defmodule Apiary.Stages do
 
   # An approval; `audit?` false where the confirmation of today's proposal wrote the act's
   # one entry in the trail. It covers the versions `recorded_versions/4` gives, which the
-  # work item page frames (`gate_frames/3`).
+  # work item page frames (`gate_frames/3`), and sends those of a type delivered after the
+  # gate (`Apiary.Artifacts.Delivery.approved/2`): a file of one that cannot be read is
+  # `{:error, :store_unavailable}`, and nothing is written.
   defp approve_locked(scope, work_item, version, stage, note, audit?, track) do
     artifacts = Artifacts.list(work_item)
     approvals = approvals_by_version(work_item)
@@ -1944,7 +1953,8 @@ defmodule Apiary.Stages do
     with {:ok, _decision} <-
            decide(scope, work_item, version, stage, :approve, covered, nil, note, track: track),
          {:ok, _entry} <-
-           if(audit?, do: audit(scope, work_item, "approve", details), else: {:ok, nil}) do
+           if(audit?, do: audit(scope, work_item, "approve", details), else: {:ok, nil}),
+         :ok <- Delivery.approved(work_item, covered) do
       {work_item, _run} = advance(work_item, version, stage)
       {:ok, work_item}
     end
@@ -3522,7 +3532,15 @@ defmodule Apiary.Stages do
   # the escalation that ended the stage. The accept approves the newest versions that
   # exist, as the stage's checks did not run. A version with a `decision` is left out: only
   # a person's approval at a gate lists it (vault 0261, 624 (a); C-2 note, section 5).
+  # The versions of a type delivered after the gate are sent
+  # (`Apiary.Artifacts.Delivery.approved/2`); a file of one that cannot be read raises
+  # `Apiary.Stages.DeliveryUnreadable`, and the caller's transaction rolls back.
   defp approve_none!(work_item, version, stage, by) do
+    versions =
+      for v <- newest_outputs(stage, Artifacts.list(work_item)),
+          is_nil(v.decision_id),
+          do: v.public_id
+
     %GateDecision{
       public_id: PublicId.generate(GateDecision.prefix()),
       organisation_id: work_item.organisation_id,
@@ -3534,17 +3552,15 @@ defmodule Apiary.Stages do
       automatic: is_nil(by),
       kind: :approve,
       take_in: work_item.take_in,
-      versions:
-        for(
-          v <- newest_outputs(stage, Artifacts.list(work_item)),
-          is_nil(v.decision_id),
-          do: v.public_id
-        ),
+      versions: versions,
       inserted_at: DateTime.utc_now()
     }
     |> PublicId.Insert.insert!()
 
-    :ok
+    case Delivery.approved(work_item, versions) do
+      :ok -> :ok
+      {:error, :store_unavailable} -> raise Apiary.Stages.DeliveryUnreadable
+    end
   end
 
   # The run whose end returned the work item to the stage `stage_id` keeps it, so the
@@ -6101,6 +6117,10 @@ defmodule Apiary.Stages do
       other ->
         other
     end
+  rescue
+    # A gate `none` that a member's action passes, whose send cannot read a version's file:
+    # nothing is written, and the member gets the store's error.
+    Apiary.Stages.DeliveryUnreadable -> {:error, :store_unavailable}
   end
 
   defp in_transaction! do

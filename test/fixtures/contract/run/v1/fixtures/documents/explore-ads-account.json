@@ -57,6 +57,14 @@
       }
     ],
     "comments_omitted": 0,
+    "destinations": [
+      {
+        "id": "tg_0123456789abcdef",
+        "target": {
+          "collection": "AP_1234"
+        }
+      }
+    ],
     "target": {
       "collection": "AP_1234"
     },

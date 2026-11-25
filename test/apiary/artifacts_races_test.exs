@@ -23,8 +23,11 @@ defmodule Apiary.ArtifactsRacesTest do
   import Apiary.WorkItemsFixtures
 
   alias Apiary.{Artifacts, Processes, Repo}
-  alias Apiary.Artifacts.{Artifact, Type, Version}
+  alias Apiary.Adapters.Feed
+  alias Apiary.Artifacts.{Artifact, Delivery, Type, Version}
+  alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
+  alias Apiary.Runs.Target
   alias Apiary.WorkItems.WorkItem
 
   @moduletag :tmp_dir
@@ -334,5 +337,101 @@ defmodule Apiary.ArtifactsRacesTest do
     commit(held)
 
     assert Task.await(withdrawal.task, 15_000) == {:error, {:withdraw, :delivered}}
+  end
+
+  test "a push and an approval that send a change wait for a collection change's feed counter, each after its work item",
+       %{scope: scope, work_item: work_item, run: run} do
+    for name <- ~w(pull-request reply) do
+      {:ok, _type} =
+        Artifacts.create_type(scope, scope.workspace, %{
+          "name" => name,
+          "base_view" => "structured",
+          "json_schema" => %{"type" => "object"}
+        })
+    end
+
+    version = Processes.version_for(work_item)
+
+    delivered =
+      for {name, send} <- [{"pull-request", "end_of_run"}, {"reply", "after_gate"}],
+          do: %{
+            "name" => name,
+            "base_view" => "structured",
+            "deliver" => %{"send" => send},
+            "json_schema" => %{"type" => "object"}
+          }
+
+    record = %{"commit" => String.duplicate("a", 40), "artifact_types" => delivered}
+
+    Repo.update_all(from(v in Processes.Version, where: v.id == ^version.id),
+      set: [template: record]
+    )
+
+    {1, [run]} =
+      Repo.update_all(from(d in Apiary.Dispatches.DispatchRun, where: d.id == ^run.id, select: d),
+        set: [process_version_id: version.id]
+      )
+
+    Repo.update_all(from(n in Node, where: n.id == ^work_item.adapter_id),
+      set: [change_kinds: ["pull-request", "reply"]]
+    )
+
+    # A run with the access level `write`, whose work item's collection reaches the target.
+    Repo.update_all(from(r in Apiary.Runs.Run, where: r.dispatch_run_id == ^run.id),
+      set: [run_documents: ~s({"access":"write"})]
+    )
+
+    target_candidate!(work_item)
+
+    %{collection_external_ref: collection, system: system, path: path} =
+      WorkItem.target(work_item)
+
+    _target_id =
+      Target.id_of(work_item.organisation_id, work_item.workspace_id, WorkItem.target(work_item))
+
+    target = %{"collection" => collection, "address" => %{"system" => system, "path" => path}}
+
+    change = fn type, title ->
+      Artifacts.push({:run, run}, work_item, type, [
+        %{
+          filename: "#{type}.json",
+          content_type: "application/json",
+          binary: Jason.encode!(%{"target" => target, "title" => title})
+        }
+      ])
+    end
+
+    assert {:ok, %Version{} = waiting} = change.("reply", "Delivery dates")
+    adapter = Repo.get!(Node, work_item.adapter_id)
+
+    # A change of a collection locks the adapter's feed counter last, after its
+    # collections, and locks no work item.
+    {held, holder} =
+      hold(fn ->
+        Feed.append(adapter, %{kind: "collection", collection_ref: collection, status: "linked"})
+      end)
+
+    push = start(fn -> change.("pull-request", "Sale price") end)
+    await_blocked(push.backend, holder)
+
+    approval =
+      start(fn ->
+        Repo.transaction(fn ->
+          held_item =
+            Repo.one!(from w in WorkItem, where: w.id == ^work_item.id, lock: "FOR UPDATE")
+
+          Delivery.approved(held_item, [waiting.public_id])
+        end)
+      end)
+
+    # The approval waits on the work item, which the push has locked.
+    await_blocked(approval.backend, push.backend)
+    commit(held)
+
+    assert {:ok, %Version{}} = Task.await(push.task, 15_000)
+    assert {:ok, :ok} = Task.await(approval.task, 15_000)
+
+    assert adapter |> Feed.entries() |> Enum.map(& &1.kind) ==
+             ~w(collection change_request change_request)
   end
 end

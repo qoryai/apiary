@@ -151,10 +151,13 @@ defmodule Apiary.Artifacts do
   # hidden type `{:unknown_type, name}`; the work item locked `FOR UPDATE`, read again in
   # the workspace it was in, else `{:error, :not_found}`; for a run, its run of the queue
   # read again, one that ended `{:error, :run_ended}`, one a member cancelled
-  # `{:error, :run_cancelled}`; the artifact found or made; the
+  # `{:error, :run_cancelled}`; the artifact found or made; for a run's version of a type
+  # its process version delivers, an earlier version of the artifact by a run whose target
+  # is of another adapter `{:error, :collection_clash}` (`collection_kept/3`); the
   # check of what members wrote and the integers, as above; the next number, one more
-  # than the highest; the version and its audit entry; then every file is kept in the
-  # store, and its row written. The workspace's lock comes first, as in the core's lock
+  # than the highest; the version and its audit entry; its delivery
+  # (`Apiary.Artifacts.Delivery.stored/4`); then every file is kept in the store, and its
+  # row written. The workspace's lock comes first, as in the core's lock
   # order (`Apiary.WorkItems`). An always-on type takes no lock on the workspace:
   # verdicts are the most frequent pushes, and the stage runner pushes them inside
   # transactions that already hold the work item. The work item's lock makes the
@@ -236,7 +239,8 @@ defmodule Apiary.Artifacts do
 
   alias Apiary.{Access, Audit, PublicId, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.Artifacts.{Artifact, ArtifactFile, CustomSchema, Filename, Format, Mockup, Store}
+  alias Apiary.Artifacts.{Artifact, ArtifactFile, CustomSchema, Delivery, Filename, Format}
+  alias Apiary.Artifacts.{Mockup, Store}
   alias Apiary.Artifacts.Type
   alias Apiary.Artifacts.Version
   alias Apiary.Dispatches.DispatchRun
@@ -244,6 +248,7 @@ defmodule Apiary.Artifacts do
   alias Apiary.Organisations.Workspace
   alias Apiary.Processes
   alias Apiary.Processes.Version, as: ProcessVersion
+  alias Apiary.Runs.{Run, Target}
   alias Apiary.Stages.{GateDecision, Withdrawals}
   alias Apiary.WorkItems.{State, WorkItem}
 
@@ -704,7 +709,8 @@ defmodule Apiary.Artifacts do
              | :store_unavailable
              | :stage_changed
              | :run_ended
-             | :run_cancelled}
+             | :run_cancelled
+             | :collection_clash}
   def push(actor, %WorkItem{} = work_item, type_name, files, opts \\ []) do
     with {:ok, work_item} <- current(work_item),
          {:ok, writer} <- writer(actor, work_item, type_name),
@@ -1280,11 +1286,12 @@ defmodule Apiary.Artifacts do
            :ok <- stage_kept(held, fields.expect_stage),
            :ok <- type_kept(type),
            {:ok, artifact} <- artifact(held, type, fields, now),
+           :ok <- collection_kept(writer, type, artifact),
            :ok <- members_kept(writer, artifact, staged),
            :ok <- verdict_kept(held, artifact, fields, staged),
            :ok <- decision_kept(held, fields.decision),
            {:ok, kept} <- integers(type, staged) do
-        keep(writer, held, artifact, fields, kept, now)
+        keep(writer, held, {artifact, type}, fields, kept, now)
       else
         nil -> {:error, :not_found}
         {:error, _reason} = error -> error
@@ -1304,12 +1311,13 @@ defmodule Apiary.Artifacts do
       reraise exception, __STACKTRACE__
   end
 
-  # The version, its audit entry, then the files kept in the store and their rows. A
-  # refusal or an exception drops the staged copies `kept`, which `integers/2` may have
-  # made; the exception is raised again.
-  defp keep(writer, held, artifact, fields, kept, now) do
+  # The version, its audit entry, its delivery (`delivery/5`), then the files kept in the
+  # store and their rows. A refusal or an exception drops the staged copies `kept`, which
+  # `integers/2` may have made; the exception is raised again.
+  defp keep(writer, held, {artifact, type}, fields, kept, now) do
     with {:ok, version} <- version(artifact, writer, fields, now),
          :ok <- audit_push(writer, held, artifact, version),
+         {:ok, version} <- delivery(writer, held, type, version, kept),
          {:ok, stored} <- commit_all(kept),
          :ok <- insert_files(version, stored) do
       {:ok, {Repo.preload(%{version | artifact: artifact}, files: files_query()), held}}
@@ -1323,6 +1331,64 @@ defmodule Apiary.Artifacts do
       discard(kept)
       reraise exception, __STACKTRACE__
   end
+
+  # A run's version of a type that the run's process version delivers is in an artifact
+  # named after the target's collection, so two targets of two adapters with the same
+  # collection ref would share one artifact, and its versions would go to two adapters.
+  # Such a push is `{:error, :collection_clash}`: an earlier version of the artifact by a
+  # run whose target (`Apiary.Runs.Run`, `target_id`) is of another adapter than this
+  # run's target (`Apiary.Runs.Target.dispatched/1`). Read under the work item's lock.
+  #
+  # shortcut: the check reads `runs.target_id`, which the run projector writes again on
+  # each pass and which is nil before its first, and takes this run's adapter from the
+  # work item's target now (`Target.dispatched/1`); replace when a version keeps the
+  # target it was pushed for.
+  defp collection_kept(
+         %{actor: :run, run: %DispatchRun{} = run},
+         %Type{standard: false, base_view: :structured, name: name},
+         %Artifact{id: artifact_id}
+       ) do
+    with true <- name in delivered_names(Processes.harness_template(run.process_version_id)),
+         %{adapter_id: adapter_id} <- Target.dispatched(run.id),
+         true <-
+           Repo.exists?(
+             from v in Version,
+               join: r in Run,
+               on: r.dispatch_run_id == v.run_id,
+               join: t in Target,
+               on: t.id == r.target_id,
+               where: v.artifact_id == ^artifact_id and t.adapter_id != ^adapter_id
+           ) do
+      {:error, :collection_clash}
+    else
+      _no_clash -> :ok
+    end
+  end
+
+  defp collection_kept(_writer, _type, _artifact), do: :ok
+
+  # A run's version of a custom structured type, which a run's process version may
+  # deliver: its entry built and checked, and sent where its `send` is `end_of_run`
+  # (`Apiary.Artifacts.Delivery.stored/4`), from the staged file, under the work item's
+  # lock. A file that is not a JSON object passed no structured check, so it has no
+  # entry. Any other version is as it is.
+  defp delivery(
+         %{actor: :run, run: %DispatchRun{} = run},
+         held,
+         %Type{standard: false, base_view: :structured, name: name},
+         version,
+         [file]
+       ) do
+    content =
+      with {:ok, text} <- File.read(file.staged.path),
+           {:ok, %{} = content} <- Jason.decode(text),
+           do: content,
+           else: (_other -> nil)
+
+    Delivery.stored(version, name, run, {held, content})
+  end
+
+  defp delivery(_writer, _held, _type, version, _kept), do: {:ok, version}
 
   # Drops staged copies; one kept in the store already has no staged copy left.
   defp discard(staged) do
@@ -2045,5 +2111,8 @@ defmodule Apiary.Artifacts do
   end
 
   defp versions_query, do: from(v in Version, order_by: [desc: v.number])
-  defp files_query, do: from(f in ArtifactFile, order_by: f.filename)
+
+  @doc false
+  # The query of a version's file rows, in the order of their names, to preload.
+  def files_query, do: from(f in ArtifactFile, order_by: f.filename)
 end

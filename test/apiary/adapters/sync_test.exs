@@ -505,6 +505,49 @@ defmodule Apiary.Adapters.SyncTest do
       end
     end
 
+    test "stores the change kinds of the adapter's source at each start, on an adapter alone",
+         %{scope: scope, adapter: adapter, key_scope: key_scope} do
+      assert reload(adapter).change_kinds == nil
+
+      # A description with no `change_kinds`: nil.
+      assert {:ok, declared} = Adapters.declare(key_scope, declaration())
+      assert declared.change_kinds == nil
+
+      applying = read_description("example-source-change-kinds.json")
+
+      assert {:ok, declared} =
+               Adapters.declare(key_scope, %{declaration() | description: applying})
+
+      assert declared.change_kinds == ["pull-request", "reply"]
+      assert reload(adapter).change_kinds == ["pull-request", "reply"]
+
+      # The next start replaces it.
+      assert {:ok, _} = Adapters.declare(key_scope, declaration())
+      assert reload(adapter).change_kinds == nil
+
+      # Only an adapter has them (`nodes_change_kinds_check`).
+      for other <- [pool_fixture(scope), node_fixture(scope)] do
+        assert_raise Postgrex.Error, ~r/nodes_change_kinds_check/, fn ->
+          Repo.update_all(from(n in Node, where: n.id == ^other.id),
+            set: [change_kinds: ["reply"]]
+          )
+        end
+      end
+
+      # Only 1 to 16 kinds of the contract's form, each 1 to 64 characters.
+      long = String.duplicate("a", 65)
+
+      for kinds <- [[], ["Reply"], ["pull--request"], ["reply-"], [long], List.duplicate("a", 17)] do
+        assert_raise Postgrex.Error, ~r/nodes_change_kinds_check/, fn ->
+          Repo.update_all(from(n in Node, where: n.id == ^adapter.id), set: [change_kinds: kinds])
+        end
+      end
+
+      kinds = [String.duplicate("a", 64), "pull-request", "a1-b2"]
+      Repo.update_all(from(n in Node, where: n.id == ^adapter.id), set: [change_kinds: kinds])
+      assert reload(adapter).change_kinds == kinds
+    end
+
     test "a start that changes the access line or a word tells each connected organisation once",
          %{scope: scope, adapter: adapter, key_scope: key_scope} do
       %{scope: other} = sign_up_fixture()

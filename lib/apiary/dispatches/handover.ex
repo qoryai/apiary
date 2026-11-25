@@ -180,9 +180,10 @@ defmodule Apiary.Dispatches.Handover do
   # made from (`Apiary.Processes.harness_template/1`), with no read, and its walk's pin
   # records that commit.
   #
-  # shortcut: the run documents have no `deliver` entries of the run's process version, so
-  # a run learns of no delivered type from them; replace when the documents get the
-  # delivered types of the run's process version.
+  # The documents of a run of the step workflow with access `write` have `deliver`: the
+  # types that the run's process version delivers (`delivered/1`). The claim checks the
+  # documents with `ApiaryWeb.Contract.DocumentsCheck.check/1` before it keeps them
+  # (`checked/1`).
   #
   # **The registered run lives as long as the claim.** While its run of the queue is
   # claimed, a registered run has neither attached nor had its code redeemed. When the run
@@ -276,7 +277,7 @@ defmodule Apiary.Dispatches.Handover do
 
   alias Apiary.Stacks.Document
   alias Apiary.WorkItems.WorkItem
-  alias ApiaryWeb.Contract.DispatchAnswer
+  alias ApiaryWeb.Contract.{DispatchAnswer, DocumentsCheck}
 
   @prebuild DispatchRun.prebuild()
   # The causes a claimed run ends for when the claim cannot form what it is made from.
@@ -452,6 +453,7 @@ defmodule Apiary.Dispatches.Handover do
         documents = formed.answer |> DispatchAnswer.documents() |> Jason.encode!()
 
         with {:ok, _given_to_nobody} <- issued,
+             :ok <- checked(documents),
              :ok <- within(documents, locked.documents_limit) do
           %{code: code, through: through} = RunCode.issue(grant, locked.now)
 
@@ -497,6 +499,25 @@ defmodule Apiary.Dispatches.Handover do
   end
 
   defp documents_limit(_dispatch_run, _not_issued), do: answer_limit() - @answer_margin
+
+  # The encoded run documents pass `DocumentsCheck.check/1`, or the claim is refused as
+  # for documents over their limit (`within/2`). A process that lists a type twice fails
+  # the check of its types (`Apiary.Artifacts.TemplateTypes.check/2`), and the claim
+  # writes no `read_targets` and no `destinations`, so documents that fail are a defect
+  # of this writer.
+  defp checked(documents) do
+    case documents |> Jason.decode!() |> DocumentsCheck.check() do
+      :ok ->
+        :ok
+
+      {:error, message} ->
+        Logger.error(
+          "a claim could not be made: the run's documents fail their check: #{message}"
+        )
+
+        {:error, :unavailable}
+    end
+  end
 
   defp within(documents, limit) when byte_size(documents) <= limit, do: :ok
 
@@ -926,7 +947,8 @@ defmodule Apiary.Dispatches.Handover do
           work_item: work_item,
           run_settings: settings && settings.wire,
           session: session,
-          harness: harness
+          harness: harness,
+          deliver: delivered(dispatch_run)
         }
 
         Inputs.explore(work_item, dispatch_run, %{domain: domain, target: target}, budget(rest))
@@ -1009,6 +1031,15 @@ defmodule Apiary.Dispatches.Handover do
     do: {:ok, Map.put(formed, :work_collection, collection)}
 
   defp with_collection(not_formed, _collection), do: not_formed
+
+  # The `deliver` entries of a run's documents, `{type, send}` objects: the types that the
+  # run's process version delivers (`Apiary.Processes.delivered_entries/1`), in the order
+  # of its record. `DispatchAnswer.documents/1` writes them only on a run with access
+  # `write`.
+  defp delivered(%DispatchRun{process_version_id: id}) do
+    for entry <- id |> Apiary.Processes.harness_template() |> Apiary.Processes.delivered_entries(),
+        do: Jason.OrderedObject.new([{"type", entry["name"]}, {"send", entry["deliver"]["send"]}])
+  end
 
   # The bytes of the documents' limit that the rest of the run's documents leave its
   # input: the limit less the documents encoded with an empty input.
@@ -1207,6 +1238,7 @@ defmodule Apiary.Dispatches.Handover do
            run_settings: settings && settings.wire,
            session: session,
            harness: harness,
+           deliver: delivered(dispatch_run),
            inputs: inputs
          }
        }}

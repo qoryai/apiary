@@ -23,8 +23,7 @@
   "harness_hidden": false,
   "submit": {
     "type": "code-change",
-    "send": "after_gate",
-    "gate": "review"
+    "send": "after_gate"
   },
   "inputs": {
     "version": 1,
@@ -74,6 +73,18 @@
       }
     ],
     "comments_omitted": 0,
+    "destinations": [
+      {
+        "id": "tg_0123456789abcdef",
+        "target": {
+          "collection": "R_1001",
+          "address": {
+            "system": "code.example.com",
+            "path": "acme/shop"
+          }
+        }
+      }
+    ],
     "target": {
       "collection": "R_1001",
       "address": {

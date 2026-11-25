@@ -1,0 +1,9 @@
+{
+  "events": [
+    {
+      "kind": "reply_disputed",
+      "id": "f1",
+      "reason": "The shop's rule charges the tax on the full price."
+    }
+  ]
+}
