@@ -6,7 +6,6 @@ defmodule Apiary.Dispatches.InputsTrackTest do
   # Not async: the artifact store is the application's setting.
   use Apiary.DataCase, async: false
 
-  import Ecto.Query, only: [from: 2]
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
   import Apiary.StagesFixtures
@@ -75,15 +74,11 @@ defmodule Apiary.Dispatches.InputsTrackTest do
     version
   end
 
-  # The work item placed in the process version `version`, as a new version of the
-  # workspace places it.
-  defp place!(work_item, version) do
-    {1, _rows} =
-      Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
-        set: [process_version_id: version.id]
-      )
-
-    Repo.get!(WorkItem, work_item.id)
+  # The work item assigned to the process version `version` (`Processes.assign/3`): a run
+  # claimed or later keeps its version.
+  defp place!(scope, work_item, version) do
+    {:ok, placed} = Processes.assign(scope, work_item, version)
+    placed
   end
 
   # The work item in Build, its proposal confirmed with `track` (none for nil), and its
@@ -197,7 +192,7 @@ defmodule Apiary.Dispatches.InputsTrackTest do
     assert Stages.input_track(Repo.get!(DispatchRun, later.id), work_item) == nil
 
     build_first = process!(ctx.scope, true, build_first: true)
-    work_item = place!(work_item, build_first)
+    work_item = place!(ctx.scope, work_item, build_first)
     assert Stages.input_track(Repo.get!(DispatchRun, later.id), work_item) == nil
   end
 
@@ -208,7 +203,7 @@ defmodule Apiary.Dispatches.InputsTrackTest do
     {run, inputs} = claimed!(ctx)
     assert inputs["track"] == "fast-track"
 
-    place!(work_item, process!(ctx.scope, true, build_first: true))
+    place!(ctx.scope, work_item, process!(ctx.scope, true, build_first: true))
 
     assert next_inputs!(run, %{"verdict" => "passed"})["track"] == "fast-track"
   end

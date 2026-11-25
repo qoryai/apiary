@@ -3673,10 +3673,11 @@ defmodule Apiary.Stages do
   # (`track/1`) for a run of any stage but Explore's, nil for a run of Explore's stage,
   # whose input schema has no `track`, and for a work item with no track. A run of
   # Explore's stage is a run of Explore (`explore_run?/1`), which covers a run with no
-  # stage, or a run of a later workflow in the first stage of the process version the run
-  # was queued under (`explore_stage_in/1`), as `explore_at_queue/4` places it, so a
-  # version the work item is placed in later changes nothing for the run. Only a run with
-  # no process version is placed in the work item's version (`explore_stage_id/1`).
+  # stage, or a run of a later workflow in the first stage of the run's process version
+  # (`dispatch_runs.process_version_id`, `explore_stage_in/1`), as `explore_at_queue/4`
+  # places it, so a version the work item is assigned to after the claim
+  # (`Apiary.Processes.assign/3`) changes nothing for the run. Only a run with no process
+  # version is placed in the work item's version (`explore_stage_id/1`).
   @doc false
   @spec input_track(DispatchRun.t(), WorkItem.t()) :: String.t() | nil
   def input_track(%DispatchRun{} = run, %WorkItem{} = work_item) do
