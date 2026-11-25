@@ -38,13 +38,6 @@ defmodule Apiary.Dispatches.HarnessReads do
   #   * a run whose walk the claim did not read before its transaction, queued since:
   #     the run stays queued for the next claim, with no failure recorded.
   #
-  # **No read for a run not known to be a run of Explore.** While no files of the Qory
-  # harness are kept, `prefetch/3` leaves out the walks of runs at the step `explore`
-  # with a workflow whose `explore` is not set: only the kept files tell whether such a
-  # run is a run of Explore, the claim leaves it queued anyway, and a read stores no
-  # files. A run with `explore` not set at another step, or with no workflow, is known
-  # without the files, and is read.
-  #
   # **No read again within 30 seconds.** `prefetch/3` leaves out an address and ref whose
   # walks all have a failed read, the last one less than 30 seconds before: their runs
   # stay queued, as runs the claim did not read.
@@ -87,7 +80,7 @@ defmodule Apiary.Dispatches.HarnessReads do
   def prefetch(query, max, now) do
     walks =
       Repo.all(
-        from [run: r] in known_runs(exclude(exclude(query, :lock), :limit)),
+        from [run: r] in exclude(exclude(query, :lock), :limit),
           join: h in RunHarness,
           on: h.dispatch_run_id == r.id,
           where: h.state == :resolved and h.origin in [:setting, :builtin],
@@ -122,21 +115,6 @@ defmodule Apiary.Dispatches.HarnessReads do
           end
         )
     end
-  end
-
-  # The runs of `query` a claim may take: with no files of the Qory harness kept, a run at
-  # the step `explore` with a workflow and `explore` not set is not known to be a run of
-  # Explore, and stays queued (`Apiary.Stages.known_explore/1`); a read of its walk
-  # stores no files, so the claim leaves its walk out.
-  defp known_runs(query) do
-    git = Qory.git()
-
-    if Repo.exists?(from f in "qory_harness_files", where: f.git == ^git),
-      do: query,
-      else:
-        from([run: r] in query,
-          where: not (is_nil(r.explore) and r.step == "explore" and not is_nil(r.workflow))
-        )
   end
 
   @doc false

@@ -96,7 +96,7 @@ defmodule Apiary.DispatchedRunsFixtures do
       |> Ecto.Changeset.change(run_code_public_key: :binary.copy(<<1>>, 32))
       |> Ecto.Changeset.change(
         backstop_at:
-          DateTime.add(attrs.attached_at, Dispatches.backstop_seconds("explore"), :second)
+          DateTime.add(attrs.attached_at, Dispatches.backstop_seconds("workflow"), :second)
       )
       |> Ecto.Changeset.change(Map.new(run_attrs))
       |> Repo.update!()

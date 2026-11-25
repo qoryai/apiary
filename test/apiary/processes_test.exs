@@ -83,7 +83,7 @@ defmodule Apiary.ProcessesTest do
     }
     |> DispatchRun.queue_changeset(%{
       work_item_id: work_item.id,
-      step: "explore",
+      step: "workflow",
       take_in: 1,
       attempt: attempt,
       of: 3,
@@ -154,17 +154,14 @@ defmodule Apiary.ProcessesTest do
       assert placed -- Processes.qory_workflows(Qory.current()) == []
     end
 
-    # `Apiary.Stages`' explore v1 result and ApiaryWeb.WorkItemLive.Workflow depend on this
-    # name. A harness update that renames the workflow, or that drops it from the stack
+    # A take in starts the first workflow of the first stage (`Apiary.Stages.first_workflow/1`).
+    # A harness update that renames Explore's workflow, or that drops it from the stack
     # while the template still places it, fails here.
-    test "runs the Explore workflow, which the template's stack lists" do
+    test "starts the Explore workflow at take in, which the template's stack lists" do
       %{scope: scope} = sign_up_fixture()
 
-      assert Stages.explore_workflow(scope.workspace) == "explore-a-ticket"
+      assert Stages.first_workflow(Processes.current(scope.workspace)) == "explore-a-ticket"
       assert "explore-a-ticket" in Qory.workflows(Qory.current(), "software")
-
-      [explore | _rest] = default()["stages"]
-      assert Stages.explore_workflow(scope.workspace.id) in Processes.workflows(explore)
     end
 
     test "is the software type's for a domain without a default, and the template names the type" do

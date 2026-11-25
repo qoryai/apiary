@@ -107,6 +107,36 @@ defmodule Apiary.WorkItems.TakeInAgainTest do
     assert entry.details == %{"again" => true, "take_in" => 2}
   end
 
+  @tag needs: [:factory, :workflow_model]
+  test "is refused where the first stage has no workflow, and queues no run", ctx do
+    closed = closed!(ctx)
+    runs = Repo.aggregate(from(r in DispatchRun, where: r.work_item_id == ^closed.id), :count)
+
+    {:ok, _version} =
+      Apiary.Processes.save(ctx.scope, ctx.scope.workspace, %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "stages" => [
+          %{
+            "id" => "st_r79kph11eg",
+            "name" => "Triage",
+            "inputs" => [],
+            "sequence" => [],
+            "outputs" => [],
+            "gate" => %{"kind" => "person", "approvers" => "members"}
+          }
+        ]
+      })
+
+    assert WorkItems.take_in_again(ctx.scope, ctx.ticket.public_id, %{}) ==
+             {:error, {:no_workflow, "Triage"}}
+
+    assert %WorkItem{state: :closed} = Repo.get!(WorkItem, closed.id)
+
+    assert Repo.aggregate(from(r in DispatchRun, where: r.work_item_id == ^closed.id), :count) ==
+             runs
+  end
+
   test "takes the owner and the first instruction under the string keys a form gives", ctx do
     {:ok, closed} = WorkItems.close(ctx.scope, ctx.work_item)
     %{user: member} = member_fixture(ctx.scope)

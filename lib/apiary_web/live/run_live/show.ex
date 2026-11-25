@@ -255,7 +255,7 @@ defmodule ApiaryWeb.RunLive.Show do
                 person={@canceller}
                 reader={@current_scope.user && @current_scope.user.email}
                 pushing={
-                  @current_scope.workspace.domain == "software" and
+                  Domain.pushes?(@current_scope.workspace) and
                     (pushing?(@preparation) or wrote?(@cancel_writes))
                 }
                 writes={@cancel_writes}
@@ -1941,11 +1941,12 @@ defmodule ApiaryWeb.RunLive.Show do
   defp assign_canceller(socket, _run), do: assign(socket, canceller: nil, canceller_of: nil)
 
   # What a run a member cancelled wrote to its targets, read once it has ended, in a
-  # software workspace, where the cancel's line lists what it pushed
-  # (`Apiary.Runs.TargetWrite.writes/2`), without a write to a place that is none of the
-  # run's targets (`Apiary.Runs.TargetWrite.of_run_targets/3`); nil otherwise.
-  defp cancel_writes(%{workspace: %{domain: "software"} = workspace}, %Run{} = run) do
-    if Run.cancel_requested?(run) and ended?(run) do
+  # workspace whose domain pushes (`Apiary.Lingo.Domain.pushes?/1`), where the cancel's
+  # line lists what it pushed (`Apiary.Runs.TargetWrite.writes/2`), without a write to a
+  # place that is none of the run's targets (`Apiary.Runs.TargetWrite.of_run_targets/3`);
+  # nil otherwise.
+  defp cancel_writes(%{workspace: %{} = workspace}, %Run{} = run) do
+    if Domain.pushes?(workspace) and Run.cancel_requested?(run) and ended?(run) do
       run
       |> TargetWrite.of_run()
       |> TargetWrite.writes(true)

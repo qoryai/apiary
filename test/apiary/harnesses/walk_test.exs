@@ -835,6 +835,22 @@ defmodule Apiary.Harnesses.WalkTest do
       level
     end
 
+    # Without the workflow model, a run walks the workflow of the Harness page's row
+    # (`Apiary.Harnesses.WalkJob`, `Apiary.Stages.FeatureOffTest`), and that row's access
+    # applies. The walk reads no feature, so this test runs with the suite's features.
+    test "a run of the Harness page's row for review, recording write, gets write", ctx do
+      recording(ctx, "review", :write)
+      setting(ctx.scope, @setting)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files: declaring("  review: {access: write}\n")
+      )
+
+      assert {:ok, %{origin: :setting, access_level: :write}} =
+               Walk.run(%{ctx.input | workflow: "review"})
+    end
+
     test "declared write, recorded null: write", ctx do
       assert level(ctx, "  explore: {access: write}\n", nil) == :write
     end

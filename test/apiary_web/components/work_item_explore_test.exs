@@ -3468,7 +3468,16 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              },
              "Start the run again later. Reading the harness from #{harness} failed: the repository is larger than 16 MiB, or a harness file is larger than 0.25 MiB. If it fails again, contact support."},
             {%{code: "adapter_unavailable", adapter: "code-host"},
-             "Run Explore again. If the run ends the same way, contact support. Three calls to the adapter code-host failed."}
+             "Run Explore again. If the run ends the same way, contact support. Three calls to the adapter code-host failed."},
+            # A run with no workflow, ended when it was queued.
+            {%{code: "many_stacks"},
+             "No workflow to start: more than one stack has a workflow. Keep the workflow in one stack."},
+            {%{code: "no_stage_run"},
+             "No workflow to start: no stage started this run, and no stack has a workflow. Add a workflow to a stack, or start the work item from a stage."},
+            {%{code: "no_process"},
+             "No workflow to start: the workspace has no process. Set up a process for the workspace."},
+            {%{code: "no_first_workflow"},
+             "No workflow to start: the first stage of the process has no workflow. Add a workflow to that stage."}
           ] do
         r =
           run(%{

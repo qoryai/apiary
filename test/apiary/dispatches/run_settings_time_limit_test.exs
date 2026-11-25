@@ -304,27 +304,45 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
   end
 
   @tag with_features: Apiary.Features.all() -- [:workflow_model]
-  test "without a stack row with a workflow, the member is absent whatever the limits", ctx do
+  # The run has the first workflow of the process's first stage, and that workflow's limit.
+  test "without a stack row with a workflow, the limit is the process's first workflow's",
+       ctx do
+    first = Apiary.Stages.first_workflow(Apiary.Processes.current(ctx.scope.workspace))
     place = handover_place_fixture(ctx.scope)
     {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
+    {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, first, 45)
 
     claimed = claim!(ctx, place)
     assert settings(claimed) == %{"runtime" => @runtime}
-    assert session(claimed) == %{}
-    assert claimed.harness == nil
+    assert session(claimed) == %{"time_limit_minutes" => 45}
   end
 
+  # Two rows give the run no workflow, so it ends when it is queued
+  # (`Apiary.Harnesses.WalkJob.queue/2`), whatever the limits, and no claim takes it.
   @tag with_features: Apiary.Features.all() -- [:workflow_model]
-  test "with two stack rows with a workflow, the member is absent whatever the limits", ctx do
+  test "with two stack rows with a workflow, the run ends at the queue and no claim takes it",
+       ctx do
     workflow!(ctx, "hello")
     {:ok, _stack} = Stacks.put_stack(ctx.scope, {:target, target!(ctx), "hello"}, @harness)
     place = handover_place_fixture(ctx.scope)
     {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "hello", 90)
 
-    claimed = claim!(ctx, place)
-    assert settings(claimed) == %{"runtime" => @runtime}
-    assert session(claimed) == %{}
-    assert claimed.harness == nil
+    work_item =
+      work_item_fixture(ctx.scope, %{
+        connection_id: ctx.connection.id,
+        external_ref: "acme/shop##{System.unique_integer([:positive])}"
+      })
+
+    {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+
+    assert %Apiary.Dispatches.DispatchRun{
+             state: :ended,
+             end_cause: :harness_unresolved,
+             end_detail: "many_stacks"
+           } = Repo.get!(Apiary.Dispatches.DispatchRun, queued.id)
+
+    assert Apiary.DispatchedRunsFixtures.walked_claim(place.key, Dispatches.now(), @body) ==
+             {:ok, :none}
   end
 
   describe "with the feature factory off" do

@@ -92,8 +92,9 @@ defmodule Apiary.Stacks.Sources do
   # `save/3` is `harness.save` (owners and admins): the workspace-level document that
   # extends the chosen stack, `Apiary.Stacks.put_stack/3` at the workspace with the
   # workflow, under `Apiary.Stacks.Document`'s save rules. In the same transaction it
-  # removes the workspace's rows of other workflows with no target, since a run takes the
-  # workflow of the one row with a workflow at its places (`Apiary.Stacks.workflow/2`).
+  # removes the workspace's rows of other workflows with no target, since a run queued
+  # with the workflow model off takes the workflow of the one row with a workflow at its
+  # places (`Apiary.Stacks.workflow/2`).
   # Saves of one workspace take turns on a transaction-level advisory lock keyed by the
   # workspace, so two at the same time leave one row.
   # It writes no audit entry, as `put_stack/3` writes none.

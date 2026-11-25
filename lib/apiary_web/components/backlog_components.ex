@@ -1069,13 +1069,26 @@ defmodule ApiaryWeb.BacklogComponents do
   end
 
   @doc false
+  # no_workflow/1 is the text a page shows when a take in, or Run the test, is refused
+  # because the process's first stage, named `stage`, has no workflow to start
+  # (`Apiary.Stages.take_in_version/1`).
+  @spec no_workflow(String.t()) :: String.t()
+  def no_workflow(stage) do
+    gettext(
+      "Add a workflow to the stage %{stage}. Take in starts the first workflow of the process's first stage.",
+      stage: stage
+    )
+  end
+
+  @doc false
   # take_in_refused/3 is what the page says when `Apiary.WorkItems.take_in/3` refuses a
   # ticket of the scope's workspace, as `refusal`, in its source's words for one of its
   # items (`item_noun`, `SourceComponents.item/1`): the ticket no longer in the Backlog
   # (`:not_found`, `:not_linked`), closed at its source, without a target or with one the
   # domain does not accept, taken in already, a person who may not take one in
-  # (`ApiaryWeb.Access.reads_only/1`, `ApiaryWeb.Access.who_may/3`), or a work item that
-  # was not saved.
+  # (`ApiaryWeb.Access.reads_only/1`, `ApiaryWeb.Access.who_may/3`), a first stage with no
+  # workflow to start (`Apiary.Stages.take_in_version/1`), or a work item that was not
+  # saved.
   @spec take_in_refused(term, Apiary.Accounts.Scope.t(), map) :: String.t()
   def take_in_refused(refusal, scope, %{integration: integration} = facts) do
     item = SourceComponents.item(facts[:item_noun])
@@ -1120,6 +1133,9 @@ defmodule ApiaryWeb.BacklogComponents do
 
       :forbidden ->
         take_in_who_may(scope)
+
+      {:no_workflow, stage} ->
+        no_workflow(stage)
 
       _unsaved ->
         gettext("Qory Apiary could not save the work item, so the %{item} was not taken in.",

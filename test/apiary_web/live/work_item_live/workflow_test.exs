@@ -782,16 +782,15 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       row = Repo.get!(WorkItem, work_item.id)
       read = WorkItems.explore(scope, row, DateTime.utc_now())
 
-      # Explore's stage is read once (`Apiary.Stages.explore_stage_id/1`): the work item's
-      # version, and the workspace's current version for the commit of the Qory harness
-      # in use (`Apiary.Processes.HarnessUpdate.qory_in_use/1`).
+      # Explore's stage is read once (`Apiary.Stages.explore_stage_id/1`): the first stage
+      # of the work item's version.
       {reads, page} =
         version_reads_in(fn -> ApiaryWeb.WorkItemLive.View.page(scope, row, read, [], %{}) end)
 
       other_stage =
         Map.new([page.work_item.run | page.earlier_runs], &{&1.number, &1.other_stage})
 
-      assert reads == 2
+      assert reads == 1
       assert other_stage[build.number] == true
       assert other_stage[explore.number] == false
     end
@@ -4008,7 +4007,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
 
     # Explore's gate `none` passes the proposal on to Shape's gate, which needs an output,
     # so Explore's status stays at Confirm. Shape's gate is `shape_gate`, or the default's.
-    defp left_explore!(scope, shape_gate \\ nil) do
+    defp left_explore!(scope, shape_gate) do
       default = Processes.default_document("software")
 
       stages =
@@ -4088,17 +4087,6 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {:ok, view, _html} = live(member, list(scope) <> "?owner=#{scope.user.id}")
       assert has_element?(view, "#work-items-stages-confirm .q-wl-attn", "1 waits for #{owner}")
       assert has_element?(view, "#work-items-confirm .q-wl-attn", "1 waits for #{owner}")
-    end
-
-    test "the sidebar's count reads Explore's workflow unless the list read it already",
-         %{scope: scope} do
-      left_explore!(scope)
-      explore = Stages.explore_workflow(scope.workspace)
-      read = queries(fn -> Stages.explore_workflow(scope.workspace) end)
-      given = queries(fn -> WorkList.waiting_on(scope, explore_workflow: explore) end)
-
-      assert read > 0
-      assert queries(fn -> WorkList.waiting_on(scope) end) == given + read
     end
 
     test "a listed approver who may not approve: their name is left out, the page says why",
@@ -7734,7 +7722,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       end
     end
 
-    # A process of two stages, Plan and Build, neither of which runs Explore's workflow.
+    # A process of two stages, Plan and Build, whose first stage, Plan, is Explore's.
     defp no_explore_document do
       stage = fn id, name, workflow ->
         %{
@@ -7759,12 +7747,12 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       taken_in = taken_in_fixture(scope)
       version = save!(scope, no_explore_document())
       work_item = place!(taken_in, version, @build, :running, stage_round: 1, stage_entry: 1)
-      assert Stages.explore_stage_id(work_item) == nil
+      assert Stages.explore_stage_id(work_item) == @shape
 
       first =
         work_item
         |> newest_run()
-        |> Ecto.Changeset.change(stage_id: @build, workflow: "capture-demo")
+        |> Ecto.Changeset.change(stage_id: @build, workflow: "capture-demo", explore: false)
         |> Repo.update!()
 
       {failed, _dispatch_run} = settled_run!(work_item, first, "failed")
@@ -7775,7 +7763,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       {work_item, failed, running}
     end
 
-    test "a process with no Explore stage: each staged run has a row, with no fold", %{
+    test "a process whose Explore is Plan: each run at Build has a row, with no fold", %{
       conn: conn,
       scope: scope
     } do
@@ -7801,7 +7789,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       end
     end
 
-    test "a process with no Explore stage: a live run is not Explore's on the tab or the page",
+    test "a process whose Explore is Plan: a live run at Build is not Explore's on the tab or the page",
          %{conn: conn, scope: scope} do
       {work_item, _failed, _running} = no_explore_at_build!(scope)
       to = page(scope, work_item.number)

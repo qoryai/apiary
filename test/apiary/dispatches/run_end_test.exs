@@ -103,8 +103,8 @@ defmodule Apiary.Dispatches.RunEndTest do
   end
 
   describe "backstop_seconds/1" do
-    test "is 87,300 for explore, 4500 for prebuild, and Explore's for a step it does not name" do
-      assert Dispatches.backstop_seconds("explore") == 87_300
+    test "is 87,300 for workflow, 4500 for prebuild, and a workflow's for a step it does not name" do
+      assert Dispatches.backstop_seconds("workflow") == 87_300
       assert Dispatches.backstop_seconds("prebuild") == 4500
       assert Dispatches.backstop_seconds("another_step") == 87_300
       assert Dispatches.backstop_seconds(nil) == 87_300

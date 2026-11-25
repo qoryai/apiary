@@ -29,7 +29,7 @@ defmodule Apiary.Harnesses.BuiltinComposeTest do
 
     documents =
       DispatchAnswer.documents(%{
-        step: "explore",
+        step: "workflow",
         domain: "software",
         target: nil,
         work_item: nil,

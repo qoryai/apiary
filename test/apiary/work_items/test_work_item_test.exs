@@ -265,7 +265,7 @@ defmodule Apiary.WorkItems.TestWorkItemTest do
       assert event.data == %{"take_in" => 1, "before" => nil}
 
       assert [run] = runs(work_item)
-      assert {run.state, run.step, run.take_in, run.attempt} == {:waiting, "explore", 1, 1}
+      assert {run.state, run.step, run.take_in, run.attempt} == {:waiting, "workflow", 1, 1}
       assert run.workspace_id == ctx.scope.workspace.id
 
       assert [entry] = Repo.all(from e in Entry, where: e.action == "work_item.take_in")

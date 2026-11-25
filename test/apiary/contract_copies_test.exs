@@ -39,6 +39,8 @@ defmodule Apiary.ContractCopiesTest do
     "test/fixtures/contract/provisioner/v1/.contract-ref" =>
       "test/apiary/dispatches/wire_test.exs",
     "test/fixtures/contract/run/v1/.contract-ref" => "test/apiary/dispatches/wire_test.exs",
+    "test/fixtures/contract/run-integration/integration/v1/.contract-ref" =>
+      "test/apiary/dispatches/wire_test.exs",
     "test/fixtures/documents-check/.contract-ref" =>
       "test/apiary_web/contract/documents_check_test.exs"
   }

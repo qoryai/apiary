@@ -290,7 +290,7 @@ defmodule Apiary.SecretScanTest do
         }
         |> Apiary.Dispatches.DispatchRun.queue_changeset(%{
           work_item_id: Apiary.WorkItemsFixtures.work_item_fixture(ctx.scope).id,
-          step: "explore",
+          step: "workflow",
           take_in: 1,
           attempt: 1,
           of: 3,

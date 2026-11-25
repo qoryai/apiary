@@ -1,0 +1,38 @@
+{
+  "step": "workflow",
+  "domain": "support",
+  "subject": {
+    "kind": "ticket",
+    "id": "TRK-1",
+    "url": "https://tracker.example.com/items/TRK-1",
+    "title": "Checkout fails on an empty cart"
+  },
+  "trigger": "take_in",
+  "run_settings": {
+    "runtime": "claude"
+  },
+  "workflow": "hello",
+  "harness_hidden": true,
+  "harness": {
+    "harness": {
+      "name": "campaigns",
+      "extends": {
+        "git": "https://code.example.com/team/harness",
+        "ref": "v2.4.0",
+        "stack": "marketing"
+      },
+      "modules": [
+        {
+          "source": {
+            "git": "https://code.example.com/team/harness",
+            "ref": "v2.4.0",
+            "module": "budgets"
+          }
+        }
+      ]
+    }
+  },
+  "inputs": {
+    "version": 1
+  }
+}

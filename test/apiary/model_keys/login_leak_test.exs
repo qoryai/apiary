@@ -13,7 +13,7 @@ defmodule Apiary.ModelKeys.LoginLeakTest do
   import Apiary.OrganisationsFixtures
   import Apiary.WorkItemsFixtures
 
-  alias Apiary.{Connections, Dispatches, ModelChoices, ModelKeys}
+  alias Apiary.{Connections, Dispatches, ModelKeys}
   alias Apiary.Audit.Entry
   alias Apiary.Connections.Connection
   alias Apiary.Dispatches.{DispatchRun, RunSettings}
@@ -138,16 +138,23 @@ defmodule Apiary.ModelKeys.LoginLeakTest do
       assert Map.new(keys, &{&1.value_id, &1.blocked}) == %{"main" => :refreshing}
     end
 
-    test "reads no horizon, and does not raise, for a run whose work item or workspace is gone" do
-      run = %DispatchRun{
-        step: "explore",
-        workspace_id: Ecto.UUID.generate(),
-        work_item_id: Ecto.UUID.generate()
-      }
+    test "reads no horizon, and does not raise, for a run whose work item or workspace is gone",
+         ctx do
+      run = queued!(ctx)
+      assert %DispatchRun{step: "workflow"} = run
+      assert %DateTime{} = RunSettings.horizon_for(run, DateTime.utc_now())
 
-      assert RunSettings.horizon_for(run, DateTime.utc_now()) == nil
-      assert RunSettings.horizon_for(%{run | work_item_id: nil}, DateTime.utc_now()) == nil
-      assert RunSettings.horizon_for(%{run | step: "other"}, DateTime.utc_now()) == nil
+      for gone <- [
+            %{run | workspace_id: Ecto.UUID.generate()},
+            %{run | work_item_id: nil},
+            %{run | step: "other"}
+          ] do
+        {horizon, log} =
+          with_debug_log(fn -> RunSettings.horizon_for(gone, DateTime.utc_now()) end)
+
+        assert horizon == nil
+        refute log =~ "could not be read"
+      end
     end
   end
 end

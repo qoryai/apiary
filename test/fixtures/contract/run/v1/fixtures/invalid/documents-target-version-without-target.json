@@ -1,8 +1,9 @@
 {
-  "step": "explore",
+  "step": "workflow",
   "domain": "marketing",
   "target_version": "0123456789abcdef0123456789abcdef01234567",
-  "work_item": {
+  "subject": {
+    "kind": "work_item",
     "id": "wi_8Kx2mQ4vT9",
     "url": "https://control.example.com/work-items/wi_8Kx2mQ4vT9",
     "title": "The spring campaign spends past its daily budget"
@@ -10,6 +11,8 @@
   "run_settings": {
     "runtime": "claude"
   },
+  "workflow": "hello",
+  "harness_hidden": true,
   "inputs": {
     "version": 1,
     "work_item": {

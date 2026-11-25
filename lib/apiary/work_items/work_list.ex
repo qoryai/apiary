@@ -17,7 +17,7 @@ defmodule Apiary.WorkItems.WorkList do
   # proposal waits to be approved, Shape once approved, Explore otherwise.
   #
   # **Views:** `:open`, the live work items, of one stage with `stage:`; `:you`, those that
-  # wait for the reader, as the sidebar counts them (`waiting_on/2`); `:closed`, those
+  # wait for the reader, as the sidebar counts them (`waiting_on/1`); `:closed`, those
   # closed or undone. The counts of each view and each stage come from one grouped query,
   # under the same search and filters as the page, without its view and stage.
   #
@@ -29,7 +29,7 @@ defmodule Apiary.WorkItems.WorkList do
   # the process versions once, and checks with `Apiary.Access` whether the reader may
   # confirm, and may resolve an escalation, at each gate that lists approvers;
   # `waits_for_reader/2` and `for_reader/3` apply the results in the query, so the count,
-  # the view and the row (`ApiaryWeb.WorkItemLive.Workflow.row_confirmers/3`) follow one
+  # the view and the row (`ApiaryWeb.WorkItemLive.Workflow.row_confirmers/2`) follow one
   # rule, with no query per work item.
   #
   # **A row** is a plain map: the work item's public id (`id`), its number in the
@@ -56,7 +56,7 @@ defmodule Apiary.WorkItems.WorkList do
   # matches nothing. `next` is the cursor of the page after, nil for the last, and `prev`
   # that of the page before, nil for the first.
   #
-  # **The bands** (`bands/4`) are the Open view by stage: at most `band_size/0` rows of
+  # **The bands** (`bands/3`) are the Open view by stage: at most `band_size/0` rows of
   # each stage, those that wait for the reader first, then by the sort.
   #
   # Every input a person gives (a search, a filter value, a cursor) is bounded and checked
@@ -303,10 +303,8 @@ defmodule Apiary.WorkItems.WorkList do
   @spec band_size() :: pos_integer
   def band_size, do: @band_size
 
-  # list/4 is a page of the list of the scope's workspace, to a person who may read its
-  # work items, and an empty page to anyone else. `opts` may have `explore_workflow:`,
-  # Explore's workflow (`Apiary.Stages.explore_workflow/1`) where the caller read it
-  # already, so that a page load reads it once. `params`, a map or a keyword list, with
+  # list/3 is a page of the list of the scope's workspace, to a person who may read its
+  # work items, and an empty page to anyone else. `params`, a map or a keyword list, with
   # atom keys or their strings:
   #
   #   * `view:` one of `t:view/0` (`:open` by default), or its string;
@@ -331,15 +329,15 @@ defmodule Apiary.WorkItems.WorkList do
   # or an empty cursor is none. A view it does not know is `:open`, and a sort it does not
   # know `:updated`.
   @doc false
-  @spec list(Scope.t(), map | keyword, DateTime.t(), keyword) :: page
-  def list(scope, params, now \\ DateTime.utc_now(), opts \\ [])
+  @spec list(Scope.t(), map | keyword, DateTime.t()) :: page
+  def list(scope, params, now \\ DateTime.utc_now())
 
-  def list(%Scope{} = scope, params, %DateTime{} = now, opts)
+  def list(%Scope{} = scope, params, %DateTime{} = now)
       when is_map(params) or is_list(params) do
     case workspace(scope) do
       {:ok, organisation_id, workspace_id} ->
         params = normalise(params)
-        gates = gates(scope, organisation_id, opts)
+        gates = gates(scope, organisation_id)
         filtered = filtered(organisation_id, workspace_id, params, now)
 
         filtered
@@ -353,23 +351,23 @@ defmodule Apiary.WorkItems.WorkList do
     end
   end
 
-  def list(%Scope{}, _params, _now, _opts), do: @no_page
+  def list(%Scope{}, _params, _now), do: @no_page
 
-  # bands/4 is the Open view of the scope's workspace by stage, to a person who may read
-  # its work items, under the search, the filters and `opts` as `list/4` reads them
+  # bands/3 is the Open view of the scope's workspace by stage, to a person who may read
+  # its work items, under the search and the filters as `list/3` reads them
   # (its view, stage and cursors aside): each stage's first `band_size/0` rows, the work
   # items that wait for the reader first, then by its sort; with the counts of the views
   # and the stages. Nothing to anyone else.
   @doc false
-  @spec bands(Scope.t(), map | keyword, DateTime.t(), keyword) :: bands
-  def bands(scope, params, now \\ DateTime.utc_now(), opts \\ [])
+  @spec bands(Scope.t(), map | keyword, DateTime.t()) :: bands
+  def bands(scope, params, now \\ DateTime.utc_now())
 
-  def bands(%Scope{} = scope, params, %DateTime{} = now, opts)
+  def bands(%Scope{} = scope, params, %DateTime{} = now)
       when is_map(params) or is_list(params) do
     case workspace(scope) do
       {:ok, organisation_id, workspace_id} ->
         params = normalise(params)
-        gates = gates(scope, organisation_id, opts)
+        gates = gates(scope, organisation_id)
         filtered = filtered(organisation_id, workspace_id, params, now)
         open = view(filtered, :open, gates)
 
@@ -391,11 +389,11 @@ defmodule Apiary.WorkItems.WorkList do
     end
   end
 
-  def bands(%Scope{}, _params, _now, _opts), do: @no_bands
+  def bands(%Scope{}, _params, _now), do: @no_bands
 
   # stage_counts/3 is how many live work items of the scope's workspace are at each stage
   # of the workflow model, on each process version, to a person who may read its work
-  # items, under the search and the filters of `params` as `list/4` reads them (its view,
+  # items, under the search and the filters of `params` as `list/3` reads them (its view,
   # stage and cursors aside). Nothing to anyone else.
   @doc false
   @spec stage_counts(Scope.t(), map | keyword, DateTime.t()) :: [stage_count]
@@ -424,17 +422,17 @@ defmodule Apiary.WorkItems.WorkList do
 
   def stage_counts(%Scope{}, _params, _now), do: []
 
-  # waiting_on/2 is how many live work items of the scope's workspace wait for the scope's
+  # waiting_on/1 is how many live work items of the scope's workspace wait for the scope's
   # person, the view `:you` with no search and no filter. 0 to a person who may not read
-  # its work items. `opts` as `list/4` reads them.
+  # its work items.
   @doc false
-  @spec waiting_on(Scope.t(), keyword) :: non_neg_integer
-  def waiting_on(%Scope{} = scope, opts \\ []) do
+  @spec waiting_on(Scope.t()) :: non_neg_integer
+  def waiting_on(%Scope{} = scope) do
     case workspace(scope) do
       {:ok, organisation_id, workspace_id} ->
         organisation_id
         |> work_items(workspace_id)
-        |> view(:you, gates(scope, organisation_id, opts))
+        |> view(:you, gates(scope, organisation_id))
         |> select([work_item: w], count(w.id))
         |> Repo.one()
 
@@ -577,18 +575,13 @@ defmodule Apiary.WorkItems.WorkList do
   # `listed`, all of them; `you`, those where `Apiary.Access` allows the reader
   # `work_item.confirm` on a work item at that gate; `resolve`, those where it allows the
   # reader `gate.approve`, which resolves an escalation; `explore`, Explore's stage of each
-  # version (`Apiary.Stages.explore_stage_in/2`), from `opts` as `list/4` reads them;
+  # version (`Apiary.Stages.explore_stage_in/1`);
   # `current`, the id of the current version; `reader`, the reader's account id.
   # A gate with an empty list stays with the owner, as the row does. None with the workflow
   # model off, where `Apiary.Stages.Approvers.allows?/2` lists no one, and `explore` nil.
-  defp gates(%Scope{workspace: workspace} = scope, organisation_id, opts) do
+  defp gates(%Scope{workspace: workspace} = scope, organisation_id) do
     on = Features.on?(:workflow_model)
     versions = if on, do: Processes.list_versions(workspace), else: []
-
-    explore =
-      if versions != [],
-        do:
-          Keyword.get_lazy(opts, :explore_workflow, fn -> Stages.explore_workflow(workspace) end)
 
     listed =
       for version <- versions,
@@ -610,7 +603,7 @@ defmodule Apiary.WorkItems.WorkList do
       explore:
         if on do
           for version <- versions,
-              id when is_binary(id) <- [Stages.explore_stage_in(version, explore)],
+              id when is_binary(id) <- [Stages.explore_stage_in(version)],
               do: "#{version.id}:#{id}"
         end,
       you: for({key, at} <- listed, Access.can?(scope, :"work_item.confirm", at), do: key),

@@ -320,22 +320,6 @@ defmodule Apiary.Harnesses.Qory do
   def current, do: head({:branch, @default_branch})
 
   @doc false
-  # newest/0 is the commit whose files a read kept last, nil before any read: what a
-  # reader takes where the commit it wants has no files kept.
-  @spec newest() :: String.t() | nil
-  def newest do
-    git = git()
-
-    Repo.one(
-      from f in "qory_harness_files",
-        where: f.git == ^git and f.path == @root,
-        order_by: [desc: f.inserted_at, desc: f.commit],
-        limit: 1,
-        select: f.commit
-    )
-  end
-
-  @doc false
   # version_commit/1 is the stored commit of `version` (`head/1`), nil for none.
   @spec version_commit(version | nil) :: String.t() | nil
   def version_commit({kind, name} = version)
@@ -382,8 +366,7 @@ defmodule Apiary.Harnesses.Qory do
   # workspace_commit/1 is the stored commit of the Qory harness that `workspace`'s
   # harness settings choose, as the organisation shares them where the workspace sets
   # none (`Apiary.Stacks.workspace_harness/2`), `main`'s with neither. A workspace on a
-  # harness repository reads `main`'s. Nil where that commit's files are not kept: a
-  # reader that must have a commit then takes `newest/0`.
+  # harness repository reads `main`'s. Nil where that commit's files are not kept.
   @spec workspace_commit(Workspace.t() | Ecto.UUID.t()) :: String.t() | nil
   def workspace_commit(%Workspace{} = workspace) do
     organisation = %Organisation{id: workspace.organisation_id}

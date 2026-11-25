@@ -211,7 +211,7 @@ defmodule Apiary.Dispatches.HandoverTest do
              }
 
       assert run.registration_about == %{
-               "kind" => "explore",
+               "kind" => "explore-a-ticket",
                "subjects" => [%{"type" => "work_item", "ref" => work_item.public_id}]
              }
 
@@ -1234,8 +1234,8 @@ defmodule Apiary.Dispatches.HandoverTest do
       queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
       QoryHarnessFixture.serve!()
 
-      # Queued before the first read of the Qory harness, at a step other than explore: it
-      # is known not to be a run of Explore without the files.
+      # Queued before the first read of the Qory harness, with the column NULL: the claim
+      # reads the harness once, and keeps no files.
       {1, _rows} =
         Repo.update_all(from(r in DispatchRun, where: r.id == ^queued.id),
           set: [explore: nil, step: "build", workflow: "explore-a-ticket"]
@@ -1246,40 +1246,6 @@ defmodule Apiary.Dispatches.HandoverTest do
 
       assert claimed!(ctx).run.id == queued.id
       assert ref_reads() == 1
-      assert %DispatchRun{explore: false} = queue_run!(queued)
-    end
-
-    test "a run not known to be a run of Explore stays queued, with no read, and is claimed once it is known",
-         ctx do
-      queued = walked!(ctx, Qory.git(), "main", QoryHarnessFixture.commit())
-      QoryHarnessFixture.serve!()
-
-      # Queued before the first read of the Qory harness: no files kept, the column NULL,
-      # and a process version made from no commit of the harness.
-      {1, _rows} =
-        Repo.update_all(from(r in DispatchRun, where: r.id == ^queued.id),
-          set: [explore: nil, workflow: "explore-a-ticket"]
-        )
-
-      {_count, _rows} =
-        Repo.update_all(
-          from(v in Apiary.Processes.Version, where: v.workspace_id == ^queued.workspace_id),
-          set: [template: %{"type" => "qory.software", "version" => 1}]
-        )
-
-      {_count, _rows} = Repo.delete_all("qory_harness_heads")
-      {_count, _rows} = Repo.delete_all("qory_harness_files")
-
-      # A read of its walk stores no files, so the claim reads nothing.
-      assert claim(ctx) == {:ok, :none}
-      assert ref_reads() == 0
-      assert %DispatchRun{state: :waiting, explore: nil} = queue_run!(queued)
-
-      # The first read keeps the files: the next claim sets the column and takes the run.
-      {:ok, _commit} = Qory.read({:branch, "main"})
-
-      assert claimed!(ctx).run.id == queued.id
-      assert %DispatchRun{explore: true} = queue_run!(queued)
     end
   end
 

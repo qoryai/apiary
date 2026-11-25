@@ -1,13 +1,35 @@
 {
-  "step": "explore",
+  "step": "workflow",
   "domain": "marketing",
-  "work_item": {
+  "subject": {
+    "kind": "work_item",
     "id": "wi_8Kx2mQ4vT9",
     "url": "https://control.example.com/work-items/wi_8Kx2mQ4vT9",
     "title": "The spring campaign spends past its daily budget"
   },
   "run_settings": {
     "runtime": "claude"
+  },
+  "workflow": "hello",
+  "harness_hidden": true,
+  "harness": {
+    "harness": {
+      "name": "campaigns",
+      "extends": {
+        "git": "https://code.example.com/team/harness",
+        "ref": "v2.4.0",
+        "stack": "marketing"
+      },
+      "modules": [
+        {
+          "source": {
+            "git": "https://code.example.com/team/harness",
+            "ref": "v2.4.0",
+            "module": "budgets"
+          }
+        }
+      ]
+    }
   },
   "inputs": {
     "version": 1,

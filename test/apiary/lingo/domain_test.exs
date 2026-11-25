@@ -328,6 +328,15 @@ defmodule Apiary.Lingo.DomainTest do
       refute Domain.harness_file?(%Workspace{domain: "example"})
     end
 
+    test "pushes?/1, target_noun/1 and copy_noun/1 return the values of the workspace's domain" do
+      assert Domain.pushes?(%Workspace{domain: "software"})
+      assert Domain.pushes?(%Workspace{domain: "example"})
+      assert Domain.target_noun(%Workspace{domain: "software"}) == "repository"
+      assert Domain.target_noun(%Workspace{domain: "example"}) == "account"
+      assert Domain.copy_noun(nil) == "checkout"
+      assert Domain.copy_noun(%Workspace{domain: "example"}) == "copy"
+    end
+
     test "check_target/2 refuses no target only where the domain needs one" do
       assert Domain.check_target(%Workspace{domain: "software"}, nil) == {:error, :no_target}
       assert Domain.check_target(%Workspace{domain: "example"}, nil) == :ok

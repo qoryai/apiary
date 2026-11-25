@@ -56,9 +56,10 @@ defmodule Apiary.Harnesses.Walk do
   # is read once and checked again by the save rules (`Apiary.Stacks.Document.check/1`),
   # else `invalid`. A row with a version has its base's `ref` replaced by the `ref` of
   # that version (`Apiary.Stacks.version_ref/3`), which the run's document then has. The
-  # `ref` is checked as any source's below. The walk reads no document of a row with a workflow: Workspace
-  # settings › Harness sets the runs' workflow there (`Apiary.Stacks.workflow/2`) and
-  # the access level it records (`Apiary.Stacks.recorded_access/3`).
+  # `ref` is checked as any source's below. The walk reads no document of a row with a
+  # workflow. With the workflow model off, Workspace settings › Harness sets the runs'
+  # workflow there (`Apiary.Stacks.workflow/2`). With it or without, the row records the
+  # access level of the runs of its workflow (`Apiary.Stacks.recorded_access/3`).
   #
   # ## The sources, two levels
   #
@@ -225,7 +226,13 @@ defmodule Apiary.Harnesses.Walk do
     # it reads live (`Apiary.Dispatches.Handover`): a ref the repository does not have,
     # and a read that failed.
     :ref_missing,
-    :harness_unreadable
+    :harness_unreadable,
+    # Only the queue fails these four, for a run with no workflow
+    # (`Apiary.Harnesses.WalkJob.queue/2`, `Apiary.Stacks.workflow_or_cause/2`).
+    :many_stacks,
+    :no_stage_run,
+    :no_process,
+    :no_first_workflow
   ]
 
   # The form `<user>@<host>:<path>`: no scheme, a user, a host, a colon.

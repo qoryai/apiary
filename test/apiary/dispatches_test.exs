@@ -58,7 +58,7 @@ defmodule Apiary.DispatchesTest do
 
       assert %DispatchRun{
                state: :waiting,
-               step: "explore",
+               step: "workflow",
                take_in: 1,
                attempt: 1,
                of: 3,
@@ -69,7 +69,7 @@ defmodule Apiary.DispatchesTest do
       assert run.workspace_id == ctx.scope.workspace.id
       assert run.organisation_id == ctx.scope.organisation.id
       assert {:ok, _uuid} = Ecto.UUID.cast(run.run_id)
-      assert Dispatches.step() == "explore" and Dispatches.of() == 3
+      assert Dispatches.step() == "workflow" and Dispatches.of() == 3
     end
 
     test "queues in the workspace the work item is in now, not the one the caller loaded",
@@ -136,7 +136,7 @@ defmodule Apiary.DispatchesTest do
 
       assert %DispatchRun{
                state: :waiting,
-               step: "explore",
+               step: "workflow",
                take_in: 1,
                attempt: 2,
                of: 3,
@@ -169,10 +169,18 @@ defmodule Apiary.DispatchesTest do
       work_item |> queue!() |> set_run!(state: :ended, end_cause: :lost, of: 2)
 
       # With the workflow model, the stage runner counts the runs of a work item it placed
-      # by the rounds of the stage's loop; this work item is one it did not place.
+      # by the rounds of the stage's loop; this work item is one it did not place. Its next
+      # run has the workflow of the workspace's stack row, or ends when it is queued.
       Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
         set: [process_version_id: nil, stage_id: nil, stage_state: nil]
       )
+
+      {:ok, _stack} =
+        Apiary.Stacks.put_stack(
+          ctx.scope,
+          {:workspace, ctx.scope.workspace, "explore-a-ticket"},
+          "extends: {git: https://code.example.com/team/stacks, ref: main, path: core}\n"
+        )
 
       second = queued_next!(work_item)
       assert %DispatchRun{attempt: 2, of: 2} = run!(second)

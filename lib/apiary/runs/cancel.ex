@@ -36,6 +36,8 @@ defmodule Apiary.Runs.Cancel do
   alias Apiary.{Access, Audit, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Dispatches.{DispatchRun, RunEnd}
+  alias Apiary.Lingo.Domain
+  alias Apiary.Organisations.Workspace
   alias Apiary.Runs.Run
 
   @typedoc "Why a cancel fails."
@@ -146,8 +148,9 @@ defmodule Apiary.Runs.Cancel do
   def ended?(run, at), do: Run.ended?(run, at)
 
   @doc """
-  Whether `run` writes changes that its end pushes: a run of a software workspace
-  (`workspace`) whose access level is `write`, as its claim recorded it. The level is
+  Whether `run` writes changes that its end pushes: a run of a workspace (`workspace`)
+  whose domain pushes (`Apiary.Lingo.Domain.pushes?/1`), whose access level is `write`, as
+  its claim recorded it. The level is
   `write` where one of the run's credential entries (`Apiary.Runs.RunCredential`) has
   access `write`, which its push entry has, `read` where it has entries and none writes,
   which a run has only where its adapter declares apply items; else the top-level
@@ -158,13 +161,14 @@ defmodule Apiary.Runs.Cancel do
   (`Apiary.Stages.run_access/2`), and `read` for a run with no walk or with the built-in
   harness.
   """
-  @spec write_run?(Apiary.Organisations.Workspace.t(), Run.t()) :: boolean
-  def write_run?(%{domain: "software"}, %Run{id: run_id, dispatch_run_id: id})
+  @spec write_run?(Workspace.t(), Run.t()) :: boolean
+  def write_run?(%Workspace{} = workspace, %Run{id: run_id, dispatch_run_id: id})
       when is_binary(id) do
-    case recorded_access(run_id) do
-      nil -> computed_access(id) == :write
-      access -> access == "write"
-    end
+    Domain.pushes?(workspace) and
+      case recorded_access(run_id) do
+        nil -> computed_access(id) == :write
+        access -> access == "write"
+      end
   end
 
   def write_run?(_workspace, _run), do: false

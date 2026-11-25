@@ -758,7 +758,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
         }
         |> DispatchRun.queue_changeset(%{
           work_item_id: work_item_fixture(ctx.scope).id,
-          step: "explore",
+          step: "workflow",
           take_in: 1,
           attempt: 1,
           of: 3,

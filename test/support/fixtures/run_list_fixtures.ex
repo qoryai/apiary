@@ -72,7 +72,7 @@ defmodule Apiary.RunListFixtures do
 
   @doc """
   Makes `run`, a run of the scope's workspace, a run of its queue, as a claim registers
-  one, and returns the run of the queue. Options: `step:` ("explore" unless set;
+  one, and returns the run of the queue. Options: `step:` ("workflow" unless set;
   "prebuild" makes a prebuild of a fresh collection and pool, with no work item),
   `work_item:` (a fresh work item of the workspace unless given), `take_in:` (1),
   `attempt:` (1) of `of:` (3), `walk:` its harness walk, `%{state:, origin:, workflow:}`
@@ -82,7 +82,7 @@ defmodule Apiary.RunListFixtures do
   """
   def queue_run!(%Scope{} = scope, %Run{} = run, opts \\ []) do
     queued =
-      case Keyword.get(opts, :step, "explore") do
+      case Keyword.get(opts, :step, "workflow") do
         "prebuild" ->
           collection =
             Apiary.WorkItemsFixtures.source_collection_fixture(

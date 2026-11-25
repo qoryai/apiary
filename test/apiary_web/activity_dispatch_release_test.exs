@@ -19,7 +19,7 @@ defmodule ApiaryWeb.ActivityDispatchReleaseTest do
       actor_kind: :access_key,
       details: %{
         "dispatch_id" => "dp_0123456789abcdef",
-        "step" => "explore",
+        "step" => "workflow",
         "handed_over" => handed_over,
         "waits" => true,
         "reason" => @reason

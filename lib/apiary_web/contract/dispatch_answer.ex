@@ -2,11 +2,17 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   @moduledoc false
 
   # The parts of the answers of the provisioner contract: a run's documents, with its
-  # target and its work item, as `definitions.schema.json` has them, what a run may do on
+  # target and its subject, as `definitions.schema.json` has them, what a run may do on
   # its target, present together with the target or left out with it, and the run's
   # harness members (`Apiary.Harnesses.WalkJob`); and a time in UTC to the whole second.
 
   alias Apiary.WorkItems
+
+  # The characters a prose line of the integration contract refuses
+  # (`description.schema.json`, `$defs.line`).
+  @not_in_line ~r/[\x{0}-\x{1F}\x{7F}-\x{9F}\x{AD}\x{61C}\x{180E}\x{200B}\x{200E}\x{200F}\x{2028}\x{2029}\x{202A}-\x{202E}\x{2060}-\x{2064}\x{2066}-\x{2069}\x{FEFF}\x{FFF9}-\x{FFFB}]/u
+  # A title of spaces alone, or empty, which `draft_title` refuses.
+  @blank ~r/\A[\x{20}\x{A0}\x{1680}\x{2000}-\x{200A}\x{202F}\x{205F}\x{3000}]*\z/u
 
   @typedoc """
   The harness members of an explore run's documents, from its harness walk: the target's
@@ -24,9 +30,10 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
 
   # documents/1 is a run's documents (the run contract's `documents.schema.json`), in
   # this order: the run's `step`, the workspace's `domain`, the run's `access` and
-  # `target` (none for a run without a target), its `target_version`, its `work_item`
-  # (none for a prebuild), its `run_settings` (a `Jason.OrderedObject`; every run of the
-  # step explore has them, `Apiary.Dispatches.RunSettings`, and a prebuild none),
+  # `target` (none for a run without a target), its `target_version`, its `subject`, the
+  # run's work item (none for a prebuild), its `trigger` (`trigger/1`), its
+  # `run_settings` (a `Jason.OrderedObject`; every run of the step workflow has them,
+  # `Apiary.Dispatches.RunSettings`, and a prebuild none),
   # the members about its first session, `time_limit_minutes`, `shared_run` and
   # `full_suite`, each where present (`:session`, `{name, value}` members, none for a
   # prebuild), its `workflow`, `harness_hidden` and `harness` (`harness/1`), a
@@ -49,7 +56,7 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
           optional(atom) => term
         }) :: Jason.OrderedObject.t()
   def documents(%{step: step} = run) do
-    work_item = if run.work_item, do: [{"work_item", work_item(run.work_item)}], else: []
+    subject = if run.work_item, do: [{"subject", subject(run.work_item)}], else: []
     run_settings = if run.run_settings, do: [{"run_settings", run.run_settings}], else: []
     destinations = Map.get(run, :destinations, [])
 
@@ -57,7 +64,8 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
       [{"step", step}, {"domain", run.domain}] ++
         reach(run.harness, run.target) ++
         target_version(run.harness) ++
-        work_item ++
+        subject ++
+        trigger(run) ++
         run_settings ++
         Map.get(run, :session, []) ++
         harness(run.harness) ++ destinations ++ [{"inputs", run.inputs}]
@@ -93,16 +101,39 @@ defmodule ApiaryWeb.Contract.DispatchAnswer do
   def reach(harness, target),
     do: [{"access", access(harness)}, {"target", Apiary.Runs.Target.document(target)}]
 
-  # work_item/1 is a run's work item: its public id, its address and its title.
+  # subject/1 is a run's subject, its work item: the kind `work_item`, its public id, its
+  # address and its title. A title that the contract's `draft_title` refuses is left out.
   @doc false
-  @spec work_item(Apiary.WorkItems.WorkItem.t()) :: Jason.OrderedObject.t()
-  def work_item(work_item) do
-    Jason.OrderedObject.new([
-      {"id", work_item.public_id},
-      {"url", WorkItems.stable_url(work_item)},
-      {"title", work_item.title}
-    ])
+  @spec subject(Apiary.WorkItems.WorkItem.t()) :: Jason.OrderedObject.t()
+  def subject(work_item) do
+    title = if draft_title?(work_item.title), do: [{"title", work_item.title}], else: []
+
+    Jason.OrderedObject.new(
+      [
+        {"kind", "work_item"},
+        {"id", work_item.public_id},
+        {"url", WorkItems.stable_url(work_item)}
+      ] ++ title
+    )
   end
+
+  # Whether `title` fits the integration contract's `draft_title`: 1 to 256 characters on
+  # one line, none of them a character that a prose line refuses, and one not a space.
+  defp draft_title?(title) when is_binary(title) do
+    length(String.codepoints(title)) <= 256 and not Regex.match?(@not_in_line, title) and
+      not Regex.match?(@blank, title)
+  end
+
+  defp draft_title?(_title), do: false
+
+  # The trigger of the run that a take in starts: `take_in`, on each of its attempts
+  # (`Apiary.Dispatches.take_in_run?/1`): its first, and each requeue of it after a missing
+  # image or a pause. A later round, a retry and a return to the first stage have none.
+  defp trigger(%{dispatch_run: %{explore: true} = dispatch_run, work_item: %{}}) do
+    if Apiary.Dispatches.take_in_run?(dispatch_run), do: [{"trigger", "take_in"}], else: []
+  end
+
+  defp trigger(_run), do: []
 
   # access/1 is what a run with the harness members `harness` may do on its target: the
   # level its harness walk resolved, lowered by its stage entry: `read`, `write-no-push`

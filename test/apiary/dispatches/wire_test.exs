@@ -52,9 +52,17 @@ defmodule Apiary.Dispatches.WireTest do
 
   defp schema_of(path), do: path |> Path.split() |> hd()
 
+  # shortcut: the run copy at 4ad23d9c refers to draft_title, which the integration copy at
+  # 7e6cac7e renamed; a run schema reads integration/v1/definitions.schema.json from the
+  # copy at 4ad23d9c. Delete that copy when run and explore are copied at 7e6cac7e.
+  @run_integration Path.join(@vendored, "run-integration")
+
   defp validator(schema, contract \\ "provisioner/v1") do
+    roots = [@vendored | forager()]
+    roots = if contract == "run/v1", do: [@run_integration | roots], else: roots
+
     JSV.build!(%{"$ref" => @base <> "#{contract}/#{schema}.schema.json"},
-      resolver: {Resolver, [@vendored | forager()]},
+      resolver: {Resolver, roots},
       formats: true
     )
   end
@@ -105,31 +113,44 @@ defmodule Apiary.Dispatches.WireTest do
     "time" => "2026-10-15T12:02:00Z",
     "reason" => "The job could not start."
   }
-  # The vendored contracts are at three integrations commits. The provisioner contract
+  # The vendored contracts are at four integrations commits. The provisioner contract
   # is at 8d859a1d, after 6fed8c73, which describes a machine's dispatch as dispatch_id in
   # place of key, and after 55a22cb8, which adds the access value write-no-push to the run
-  # documents. The run, explore and diagnostics contracts are at e0d7be15, which writes a
-  # target as {collection, address?}: the ref of one of the adapter's collections and, when
-  # the place has one, its system and path. That commit comes after
-  # 8d859a1d, which allows time_limit_minutes from 1 to 1440, after 6fed8c73, which adds
-  # the refusals of the next-session request, plan and tier in place of time_limit on a
-  # workflow of a stack that a harness section defines, and `type` in place of `key` for a
-  # run's machine, and after 283f8809, which adds the next-session request and its
-  # answer, time_limit_minutes, shared_run and full_suite to the documents of a run of a
-  # stage, the tier balanced in place of fast, the outcome of a run with its end codes, a
-  # later session's runtime, run_settings on every explore run, and
+  # documents. The run and explore contracts are at 4ad23d9c. That commit replaces the
+  # step explore with the step workflow, and the work item with a subject and a trigger.
+  # The diagnostics contract is at e0d7be15, which writes a target as
+  # {collection, address?}: the ref of one of the adapter's collections and, when the
+  # place has one, its system and path. That commit comes after 8d859a1d, which allows
+  # time_limit_minutes from 1 to 1440, after 6fed8c73, which adds the refusals of the
+  # next-session request, plan and tier in place of time_limit on a workflow of a stack
+  # that a harness section defines, and `type` in place of `key` for a run's machine, and
+  # after 283f8809, which adds the next-session request and its answer,
+  # time_limit_minutes, shared_run and full_suite to the documents of a run of a stage,
+  # the tier balanced in place of fast, the outcome of a run with its end codes, a later
+  # session's runtime, run_settings on every explore run, and
   # model_provider_credential_name in place of model_credential in the next-session
   # answer. The integration contract is at 7e6cac7e, after e0d7be15:
-  # test/apiary/contract_copies_test.exs checks its copies.
+  # test/apiary/contract_copies_test.exs checks its copies. Its definitions are also at
+  # 4ad23d9c, under run-integration/, for the run contract alone.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "8d859a1d5bd0693bd647e0543d29aa8651230c3f"},
-          {"run/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"},
-          {"explore/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"},
-          {"diagnostics/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"}
+          {"run/v1", "4ad23d9c3dac160af283e95c184a1b11db293074"},
+          {"explore/v1", "4ad23d9c3dac160af283e95c184a1b11db293074"},
+          {"diagnostics/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"},
+          {"run-integration/integration/v1", "4ad23d9c3dac160af283e95c184a1b11db293074"}
         ] do
       assert File.read!(Path.join([@vendored, dir, ".contract-ref"])) == ref <> "\n", dir
     end
+
+    # The SHA-256 of integrations' definitions.schema.json at 4ad23d9c.
+    definitions = Path.join(@run_integration, "integration/v1/definitions.schema.json")
+
+    assert :crypto.hash(:sha256, File.read!(definitions)) |> Base.encode16(case: :lower) ==
+             "1b3988f36e654b599d9ab873dde6b6f8e1a23bea20c3f8fe44973a656b4c1e4e"
+
+    assert File.ls!(Path.dirname(definitions)) |> Enum.sort() ==
+             [".contract-ref", "definitions.schema.json"]
   end
 
   # The run contract's schemas, each with a fixture directory of its name.
@@ -143,13 +164,13 @@ defmodule Apiary.Dispatches.WireTest do
     fixtures = Path.join(@vendored, "run/v1/fixtures")
     count = &(fixtures |> Path.join(&1) |> Path.wildcard() |> length())
 
-    assert count.("documents/*.json") == 33
+    assert count.("documents/*.json") == 36
     assert count.("next-session-request/*.json") == 6
     assert count.("next-session-answer/*.json") == 7
     assert count.("next-session-refusal/*.json") == 9
     assert count.("outcome/*.json") == 23
-    assert count.("invalid/*.json") == 193
-    assert count.("**/*.json") == 33 + 6 + 7 + 9 + 23 + 193
+    assert count.("invalid/*.json") == 210
+    assert count.("**/*.json") == 36 + 6 + 7 + 9 + 23 + 210
 
     for path <- Path.wildcard(Path.join(fixtures, "**/*.json")) do
       relative = Path.relative_to(path, fixtures)
@@ -232,17 +253,17 @@ defmodule Apiary.Dispatches.WireTest do
   end
 
   @tag :contract
-  test "a work item's url in a run's documents is https, or http to a loopback address alone" do
+  test "a subject's url in a run's documents is https, or http to a loopback address alone" do
     documents = Path.join(@vendored, "run/v1/fixtures")
     read = &(documents |> Path.join(&1) |> File.read!() |> Jason.decode!())
     valid? = &match?({:ok, _}, JSV.validate(&1, validator("documents", "run/v1")))
 
     loopback = read.("documents/explore-loopback.json")
-    assert loopback["work_item"]["url"] == "http://127.0.0.1:8080/work-items/wi_8Kx2mQ4vT9"
+    assert loopback["subject"]["url"] == "http://127.0.0.1:8080/work-items/wi_8Kx2mQ4vT9"
     assert valid?.(loopback)
 
-    http = read.("invalid/documents-work-item-url-http.json")
-    assert http["work_item"]["url"] == "http://control.example.com/work-items/wi_8Kx2mQ4vT9"
+    http = read.("invalid/documents-subject-url-http.json")
+    assert http["subject"]["url"] == "http://control.example.com/work-items/wi_8Kx2mQ4vT9"
     refute valid?.(http)
 
     for url <- [
@@ -250,7 +271,7 @@ defmodule Apiary.Dispatches.WireTest do
           "http://[::1]:4000/work-items/wi_8Kx2mQ4vT9",
           "https://control.example.com/work-items/wi_8Kx2mQ4vT9"
         ] do
-      assert valid?.(put_in(loopback, ["work_item", "url"], url)), url
+      assert valid?.(put_in(loopback, ["subject", "url"], url)), url
     end
 
     for url <- [
@@ -258,7 +279,7 @@ defmodule Apiary.Dispatches.WireTest do
           "http://127.0.0.2/work-items/wi_8Kx2mQ4vT9",
           "ftp://127.0.0.1/work-items/wi_8Kx2mQ4vT9"
         ] do
-      refute valid?.(put_in(loopback, ["work_item", "url"], url)), url
+      refute valid?.(put_in(loopback, ["subject", "url"], url)), url
     end
   end
 

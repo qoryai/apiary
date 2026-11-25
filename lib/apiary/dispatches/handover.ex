@@ -1036,8 +1036,9 @@ defmodule Apiary.Dispatches.Handover do
   # target; `workflow` and `harness_hidden`; `access`, the level the walk resolved; and
   # `harness`, the document of a harness choice or of the Qory harness, for a walk of the
   # origin `:setting`, or the built-in one of a test work item's run (`:builtin`), at the
-  # commit the claim read (`at_claim/4`). `{:ok, nil}` for a run with no workflow, and
-  # for a run with no walk, queued before walks were kept: such a run reads
+  # commit the claim read (`at_claim/4`). `{:ok, nil}` for a run with no workflow, queued
+  # before such a run ended at its queue (`Apiary.Harnesses.WalkJob.queue/2`), and for a
+  # run with no walk, queued before walks were kept: such a run reads
   # (`ApiaryWeb.Contract.DispatchAnswer.access/1`). `{:end, cause}` where the claim's
   # read failed. `read` is that read (`Apiary.Dispatches.HarnessReads.at_claim/3`).
   defp harness(%DispatchRun{id: id}, target, read, now) do
@@ -1186,7 +1187,7 @@ defmodule Apiary.Dispatches.Handover do
          {:resolved, {:ok, variables}} <-
            {:resolved, resolved(dispatch_run, workspace, target, own)},
          {:inputs, {:ok, inputs}} <- {:inputs, inputs.(domain)} do
-      about = about(dispatch_run, work_item)
+      about = about(dispatch_run, harness, work_item)
       :ok = About.validate(about)
 
       {:ok,
@@ -1408,12 +1409,25 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
-  # The step, and for an explore run its work item by its public id: nothing of its
-  # ticket's text.
-  defp about(%DispatchRun{step: step}, nil), do: %{"kind" => step}
+  # The run's kind, and for a run of a work item its work item by its public id: nothing
+  # of its ticket's text. The kind is the workflow the run runs, the one its documents
+  # have (`harness`, else its stage entry's), which the run page shows; for a run with no
+  # workflow, such as a prebuild, its step (`about_kind/2`).
+  defp about(%DispatchRun{} = dispatch_run, harness, nil),
+    do: %{"kind" => about_kind(dispatch_run, harness)}
 
-  defp about(%DispatchRun{step: step}, %WorkItem{public_id: public_id}),
-    do: %{"kind" => step, "subjects" => [%{"type" => "work_item", "ref" => public_id}]}
+  defp about(%DispatchRun{} = dispatch_run, harness, %WorkItem{public_id: public_id}),
+    do: %{
+      "kind" => about_kind(dispatch_run, harness),
+      "subjects" => [%{"type" => "work_item", "ref" => public_id}]
+    }
+
+  defp about_kind(_dispatch_run, %{workflow: workflow}) when is_binary(workflow), do: workflow
+
+  defp about_kind(%DispatchRun{workflow: workflow}, _harness) when is_binary(workflow),
+    do: workflow
+
+  defp about_kind(%DispatchRun{step: step}, _harness), do: step
 
   # end_claimed/3 ends the run of the queue, claimed, and its dispatch with `cause`; a
   # stale dispatch of it `run_ended`; the slot freed once. A run that is not a prebuild,

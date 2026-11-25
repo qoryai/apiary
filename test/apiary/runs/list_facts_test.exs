@@ -198,8 +198,9 @@ defmodule Apiary.Runs.ListFactsTest do
     @tag needs: [:observability, :factory, :workflow_model]
     test "a later stage's first run, attempt 1 where the first stage queued none, is the process's",
          %{scope: scope} do
-      # The first stage has no workflow and waits at a person's gate: the take in queues
-      # no run, and Build's run after the approval is attempt 1.
+      # The first stage's one entry runs only on a member's new feedback, and the stage
+      # waits at a person's gate: the take in queues no run, and Build's run after the
+      # approval is attempt 1.
       gate = %{"kind" => "person", "approvers" => "members"}
 
       document = %{
@@ -210,7 +211,7 @@ defmodule Apiary.Runs.ListFactsTest do
             "id" => "st_p9w5cvh311",
             "name" => "Shape",
             "inputs" => [],
-            "sequence" => [],
+            "sequence" => [%{"workflow" => "triage-review", "when" => %{"feedback" => "new"}}],
             "outputs" => [],
             "gate" => gate
           },

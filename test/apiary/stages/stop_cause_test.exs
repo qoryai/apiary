@@ -502,7 +502,7 @@ defmodule Apiary.Stages.StopCauseTest do
       end
     end
 
-    test "a target is a repository only in a software workspace" do
+    test "a target has its workspace's domain's word: repository, or account" do
       %{scope: scope} = sign_up_fixture()
       docker = "read_needs_no_nested_docker"
 
@@ -516,7 +516,7 @@ defmodule Apiary.Stages.StopCauseTest do
         )
 
       assert words(scope, docker, nil) ==
-               "Choose an image without nested Docker in the target's environment, then start the run again. A read-only run cannot use an image with nested Docker."
+               "Choose an image without nested Docker in the account's environment, then start the run again. A read-only run cannot use an image with nested Docker."
     end
   end
 
@@ -544,7 +544,7 @@ defmodule Apiary.Stages.StopCauseTest do
                 @fix}
     end
 
-    test "says checkout only in a software workspace" do
+    test "calls the copy by its workspace's domain's word: checkout, or copy" do
       %{scope: scope} = sign_up_fixture()
       pool = Apiary.NodesFixtures.pool_fixture(scope)
 
@@ -555,7 +555,7 @@ defmodule Apiary.Stages.StopCauseTest do
         )
 
       assert words(scope, "write_needs_wall", pool) ==
-               @fix <> " A run that writes needs a wall, and this machine has none."
+               @fix <> " A run that writes to the copy needs a wall, and this machine has none."
     end
 
     test "a read-only reason is not one: a run with another reason ends without a result" do
@@ -714,7 +714,7 @@ defmodule Apiary.Stages.StopCauseTest do
       assert StopCause.text(run, work_item) == missing
     end
 
-    test "a target is a repository only in a software workspace" do
+    test "a target has its workspace's domain's word: account in the example domain" do
       %{scope: scope} = sign_up_fixture()
 
       {1, _rows} =
@@ -726,7 +726,7 @@ defmodule Apiary.Stages.StopCauseTest do
       {run, work_item} = gap(scope, origin: :file)
 
       assert StopCause.text(run, work_item) ==
-               "The run's harness has no skill for the workflow explore-a-ticket. The harness comes from the harness file at the root of target acme/web-shop."
+               "The run's harness has no skill for the workflow explore-a-ticket. The harness comes from the harness file at the root of account acme/web-shop."
     end
 
     test "any other reason is a run that ended without a result" do

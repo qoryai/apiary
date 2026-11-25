@@ -3773,6 +3773,51 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert Repo.aggregate(WorkItem, :count) == 1
     end
 
+    @tag needs: [:factory, :workflow_model]
+    test "a first stage with no workflow queues no test run, and shows the text to add one", %{
+      conn: conn,
+      scope: scope
+    } do
+      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
+
+      stage = fn id, name, sequence ->
+        %{
+          "id" => id,
+          "name" => name,
+          "inputs" => [],
+          "sequence" => sequence,
+          "outputs" => [],
+          "gate" => %{"kind" => "none"}
+        }
+      end
+
+      document = %{
+        "schema" => "qory.process/v1",
+        "machine" => "default",
+        "stages" => [
+          stage.("st_aaaaaaaaaa", "Intake", []),
+          stage.("st_bbbbbbbbbb", "Explore", [%{"workflow" => "explore-a-ticket"}])
+        ]
+      }
+
+      {:ok, _version} = Apiary.Processes.save(scope, scope.workspace, document)
+      {:ok, lv, _html} = live(conn, test_path(scope))
+      lv |> form("#set-up-test-form", test: %{line: @line}) |> render_submit()
+      lv |> form("#spend-dialog-form") |> render_submit()
+
+      # The flash shows the first sentence as its title and the second as its text.
+      assert has_element?(lv, "#flash-error", "Add a workflow to the stage Intake.")
+
+      assert has_element?(
+               lv,
+               "#flash-error",
+               "Take in starts the first workflow of the process's first stage."
+             )
+
+      refute Repo.exists?(WorkItem)
+      refute Repo.exists?(DispatchRun)
+    end
+
     test "a line the work item refuses is the field's error", %{conn: conn, scope: scope} do
       :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.SetupReady)
       {:ok, lv, _html} = live(conn, test_path(scope))

@@ -497,6 +497,14 @@ defmodule Apiary.Dispatches.SettleTest do
               "id" => "st_r79kph11eg",
               "name" => "Explore",
               "inputs" => [],
+              "sequence" => [%{"workflow" => "triage-review", "when" => %{"feedback" => "new"}}],
+              "outputs" => [],
+              "gate" => %{"kind" => "none"}
+            },
+            %{
+              "id" => "st_6ns22c4pav",
+              "name" => "Build",
+              "inputs" => [],
               "sequence" => [%{"workflow" => "capture-demo"}],
               "outputs" => [],
               "gate" => %{"kind" => "person", "approvers" => "members"}
@@ -573,6 +581,14 @@ defmodule Apiary.Dispatches.SettleTest do
             %{
               "id" => "st_r79kph11eg",
               "name" => "Explore",
+              "inputs" => [],
+              "sequence" => [%{"workflow" => "triage-review", "when" => %{"feedback" => "new"}}],
+              "outputs" => [],
+              "gate" => %{"kind" => "none"}
+            },
+            %{
+              "id" => "st_6ns22c4pav",
+              "name" => "Build",
               "inputs" => [],
               "sequence" => [%{"workflow" => "capture-demo"}],
               "outputs" => [],

@@ -18,7 +18,7 @@ defmodule Apiary.Stages.Withdrawals do
   # move of its take in made after it lands on Explore's stage, the stage of the run it
   # confirms, or an earlier one. A run with no stage is Explore's
   # (`Apiary.WorkItems.Explore.at_stage/2`), at the first stage, where a take in starts
-  # (`Apiary.Stages.take_in/2`). The run's stage is placed in the move's version too, and
+  # (`Apiary.Stages.take_in/3`). The run's stage is placed in the move's version too, and
   # an unknown place withdraws the confirmation, as it withdraws a decision.
   #
   # A withdrawn decision or confirmation stays in its table: nothing deletes or changes it.

@@ -944,37 +944,30 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   end
 
   @doc false
-  # row_confirmers/3 is, for the Work items list's rows (`Apiary.WorkItems.WorkList`) whose
+  # row_confirmers/2 is, for the Work items list's rows (`Apiary.WorkItems.WorkList`) whose
   # proposal waits at Explore's gate, who confirms next where the stage the work item is
   # in lists its approvers, by the row's id: `:you` where the reader may confirm
   # (`work_item.confirm`, `Apiary.Access`), else the listed account ids, in the gate's
   # order. `:left_explore` for a work item at a later stage, as the work item page reads
   # it (`Apiary.Stages.explore_stage_id/1`): no one confirms there. A row whose stage
   # lists no one, or that the stage runner did not place, is left out, and keeps the
-  # owner rule. The same queries for any number of rows (`placed/2`). `opts` as
-  # `Apiary.WorkItems.WorkList.list/4` reads them.
-  @spec row_confirmers(Scope.t(), [map], keyword) ::
+  # owner rule. The same queries for any number of rows (`placed/2`).
+  @spec row_confirmers(Scope.t(), [map]) ::
           %{String.t() => :you | [Ecto.UUID.t()] | :left_explore}
-  def row_confirmers(%Scope{workspace: workspace} = scope, rows, opts \\ []) do
+  def row_confirmers(%Scope{workspace: workspace} = scope, rows) do
     ids = for %{id: id, state: :exploring, status: :confirm} <- rows, do: id
-    placed = placed(workspace, ids)
 
-    explore =
-      if placed != %{},
-        do:
-          Keyword.get_lazy(opts, :explore_workflow, fn -> Stages.explore_workflow(workspace) end)
-
-    for {id, work_item} <- placed,
-        confirmers when not is_nil(confirmers) <- [row_confirmer(scope, work_item, explore)],
+    for {id, work_item} <- placed(workspace, ids),
+        confirmers when not is_nil(confirmers) <- [row_confirmer(scope, work_item)],
         into: %{},
         do: {id, confirmers}
   end
 
-  defp row_confirmer(scope, work_item, explore) do
+  defp row_confirmer(scope, work_item) do
     listed = listed(placed_stage(work_item))
 
     cond do
-      work_item.stage_id != Stages.explore_stage_in(work_item.process_version, explore) ->
+      work_item.stage_id != Stages.explore_stage_in(work_item.process_version) ->
         :left_explore
 
       not match?([_ | _], listed) ->

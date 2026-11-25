@@ -726,6 +726,22 @@ defmodule Apiary.Runs.RunCredentialsTest do
       refute Apiary.Runs.Cancel.write_run?(ctx.scope.workspace, run)
     end
 
+    # The example domain pushes, as the software domain does (`Apiary.Lingo.Domain.pushes?/1`).
+    @tag needs: [:factory, :workflow_model]
+    test "Cancel run reads a write run as one that pushes in any domain that pushes", ctx do
+      process!(ctx, [%{"workflow" => "build", "access" => "read"}])
+      {_work_item, queued} = queued!(ctx)
+      claimed_levels(ctx, queued)
+      run = Repo.get_by!(Run, dispatch_run_id: queued.id)
+
+      {1, _rows} =
+        Repo.update_all(from(c in RunCredential, where: c.run_id == ^run.id),
+          set: [access: :write]
+        )
+
+      assert Apiary.Runs.Cancel.write_run?(%{ctx.scope.workspace | domain: "example"}, run)
+    end
+
     # A text of the documents may have a NUL, which JSON writes as an escape.
     @tag needs: [:factory, :workflow_model]
     test "Cancel run reads the access of documents with a NUL in a text", ctx do
@@ -738,7 +754,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
       documents!(run, fn documents ->
         documents
         |> Map.put("access", "write")
-        |> put_in(["work_item", "title"], "Checkout \u0000 storefront")
+        |> put_in(["subject", "title"], "Checkout \u0000 storefront")
       end)
 
       assert Repo.get!(Run, run.id).run_documents =~ "\\u0000"

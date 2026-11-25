@@ -45,7 +45,7 @@ defmodule Apiary.Artifacts do
   #      after a close, and a claimed run stays on its version after `Processes.assign/3`
   #      or `Processes.drop_trial/2`. Once its runs end, a work item that ended has none
   #      left, and a take in again places it under the current version
-  #      (`Apiary.Stages.take_in/2`).
+  #      (`Apiary.Stages.take_in/3`).
   #
   # A switch holds the scope's places and the workspace's row as `Apiary.Processes` holds
   # them, `FOR NO KEY UPDATE`, and reads the list and the scope again under that lock. So

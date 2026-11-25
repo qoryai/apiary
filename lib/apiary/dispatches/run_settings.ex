@@ -12,7 +12,7 @@ defmodule Apiary.Dispatches.RunSettings do
   # dispatch it inserted, in that order; then `Apiary.Dispatches.Handover.register/2` calls
   # `hold/1`, and `build/1` with what `hold/1` returned.
   #
-  # Every run of the step `explore`, the runs of the stage runner among them, has
+  # Every run of the step `workflow`, the runs of the stage runner among them, has
   # `run_settings`, whatever the features; a prebuild has none. The choice in effect is the
   # first in the order of `Apiary.ModelChoices.Resolution`: a locked choice of the
   # workspace, then the workflow's at the target (level 2), the target's (3), the
@@ -162,7 +162,7 @@ defmodule Apiary.Dispatches.RunSettings do
   alias Apiary.WorkItems.WorkItem
 
   # The step of the queue whose runs have `run_settings`.
-  @step "explore"
+  @step "workflow"
   # The most bytes the run settings take, encoded: the column's check.
   @max_bytes 65_536
   # The most times `hold/1` locks providers: after each of the first three reads of the
@@ -344,8 +344,9 @@ defmodule Apiary.Dispatches.RunSettings do
   def target_of(%DispatchRun{workspace_id: workspace_id, work_item_id: id}),
     do: target(Repo.get!(Workspace, workspace_id), id)
 
-  # The run's workflow: with the workflow model, the one its stage entry names
-  # (`Apiary.Stages.run_workflow/1`); else the one the Harness page saved.
+  # The run's workflow: with the workflow model, the workflow of its stage entry
+  # (`Apiary.Stages.run_workflow/1`); else the one the Harness page saved, or the first
+  # workflow of the current process version (`Apiary.Stacks.workflow/2`).
   defp workflow(dispatch_run, workspace, target),
     do: Apiary.Stages.run_workflow(dispatch_run) || Stacks.workflow(workspace, target)
 

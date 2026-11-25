@@ -7689,6 +7689,28 @@ defmodule ApiaryWeb.WorkItemComponents do
           contact_support: ApiaryWeb.Support.rich(mid_sentence: true)
         )
 
+      # A run with no workflow, ended when it was queued
+      # (`Apiary.Harnesses.WalkJob.queue/2`).
+      "many_stacks" ->
+        gettext(
+          "No workflow to start: more than one stack has a workflow. Keep the workflow in one stack."
+        )
+
+      "no_stage_run" ->
+        gettext(
+          "No workflow to start: no stage started this run, and no stack has a workflow. Add a workflow to a stack, or start the work item from a stage."
+        )
+
+      "no_process" ->
+        gettext(
+          "No workflow to start: the workspace has no process. Set up a process for the workspace."
+        )
+
+      "no_first_workflow" ->
+        gettext(
+          "No workflow to start: the first stage of the process has no workflow. Add a workflow to that stage."
+        )
+
       _adapter_failed ->
         nil
     end

@@ -681,7 +681,7 @@ defmodule Apiary.Processes.HarnessUpdateTest do
       assert Stacks.Sources.chosen_workflows(ctx.scope, ctx.workspace) ==
                {:ok, ["explore-a-ticket", "plan-a-ticket"]}
 
-      assert Apiary.Stages.explore_workflow(ctx.workspace) == "explore-a-ticket"
+      assert Apiary.Stages.first_workflow(Processes.current(ctx.workspace)) == "explore-a-ticket"
     end
 
     test "a harness repository's branch is read at the commit in use", ctx do

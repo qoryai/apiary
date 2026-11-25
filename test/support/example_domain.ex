@@ -4,9 +4,11 @@ defmodule Apiary.Lingo.Domain.Example do
   its target is named by the `account` label in the system the `platform` label names. It
   has no catalogue, so its locales fall back to the language's. A work item needs no
   target. A target it has may have no address; an address it has is a host name
-  (`Apiary.Lingo.Domain.host?/1`) and a path of 1 to 200 characters that can be a label. A run gets no run variables, no environment is
-  prebuilt, and no target has a harness file. Its workspace type is `qory.example`
-  (`definition/0`).
+  (`Apiary.Lingo.Domain.host?/1`) and a path of 1 to 200 characters that can be a label.
+  A run gets no run variables, no environment is prebuilt, and no target has a harness
+  file. A run that writes pushes, as in the software domain. In the texts about why a run
+  stopped, a target is an "account" and the copy a run writes to is a "copy". Its
+  workspace type is `qory.example` (`definition/0`).
   """
   @behaviour Apiary.Lingo.Domain
 
@@ -62,6 +64,15 @@ defmodule Apiary.Lingo.Domain.Example do
 
   @impl true
   def harness_file?, do: false
+
+  @impl true
+  def pushes?, do: true
+
+  @impl true
+  def target_noun, do: "account"
+
+  @impl true
+  def copy_noun, do: "copy"
 
   @impl true
   def definition, do: Definition.qory("qory.example")
