@@ -45,7 +45,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   alias Apiary.Stages.{Approvers, Points, Runner}
   alias Apiary.WorkItems.WorkItem
   alias ApiaryWeb.{People, SourceComponents}
-  alias ApiaryWeb.WorkItemLive.{StageComponents, View}
+  alias ApiaryWeb.WorkItemLive.{GateChanges, StageComponents, View}
 
   @states Apiary.Processes.Version.stage_states()
   @checks [:passed, :missing, :not_checked]
@@ -246,8 +246,9 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
   end
 
   # The versions of `artifacts` that a person's change made and no person's approval
-  # lists yet (`Apiary.Stages.unapproved_changes/2`), each with `whose`, who asked for it,
-  # for the reader of `scope`, as the type `whose` of
+  # lists yet (`Apiary.Stages.unapproved_changes/2`), each with `of`, the kind of note
+  # that asked for it (`ApiaryWeb.WorkItemLive.GateChanges.of/1`), and `whose`, who asked
+  # for it, for the reader of `scope`, as the type `whose` of
   # `ApiaryWeb.WorkItemLive.GateChanges` has it: `:you` where the reader wrote the note,
   # else `{:name, name}`, the writer's short name, or `:member` where the writer's account
   # is gone.
@@ -274,7 +275,7 @@ defmodule ApiaryWeb.WorkItemLive.Workflow do
               true -> :member
             end
 
-          {id, Map.put(change, :whose, whose)}
+          {id, Map.merge(change, %{whose: whose, of: GateChanges.of(change.version.decision_id)})}
         end)
     end
   end

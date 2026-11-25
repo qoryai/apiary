@@ -270,8 +270,10 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   # notes/1 is the open notes of the work item (`Apiary.Stages.notes/1`), oldest first: a
   # request for changes, an escalation resolved with a note, a move, what a member gave
   # Explore (an answer, a review comment or a reply) and the gaps of failed checks that
-  # started a round. `id` is the public id of the first three (`gd_…`, `es_…`), which a
-  # run sends as `decision` in a push; null for the others.
+  # started a round. `id` is the public id of the first three (`gd_…`, `es_…`), of an
+  # answer to a question (`an_…`) and of the comment of Run another round that is not
+  # an escalation's note (`rc_…`), which a run sends as `decision` in a push; null for the
+  # others.
   @spec notes([map]) :: [Jason.OrderedObject.t()]
   def notes(notes) do
     context = %{names: names(Enum.map(notes, &get(&1, :user_id)))}

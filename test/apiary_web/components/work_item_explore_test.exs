@@ -636,7 +636,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
 
   ## The step card
 
-  describe "step_card/1, a take in again's undo (V-652)" do
+  describe "step_card/1, a take in again's undo" do
     defp again(by, extra) do
       w =
         work_item(%{
@@ -1525,7 +1525,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
         |> List.flatten()
         |> Enum.map(&squish/1)
 
-      # A stage tab's frame spans its table and scrolls the text instead (A-24).
+      # A stage tab's frame spans its table and scrolls the text instead.
       assert framed == [
                ".q-xp-md table, .q-art-cols .q-ticket-formatted table",
                ".q-xp-stage .q-xp-prop .q-ticket-formatted table"

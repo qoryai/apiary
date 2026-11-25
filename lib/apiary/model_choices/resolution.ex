@@ -60,7 +60,7 @@ defmodule Apiary.ModelChoices.Resolution do
   alias Apiary.ModelChoices.{Fallback, ModelChoice}
 
   @tiers ~w(light balanced thinking)
-  # The tier whose model and effort are the run's (767 (a)).
+  # The tier whose model and effort are the run's.
   @run_tier "thinking"
   # The levels of a workflow's override.
   @override_levels [2, 4]

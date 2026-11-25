@@ -923,21 +923,20 @@ for each other and never on each other at once:
    entry of a sign-in whose `at` is before `model_key_copies.login_sealed_at`, the
    database's `clock_timestamp()` at the request that sealed the run's current token, is
    for an earlier token (a report sent again after a renewal, a 401 of a request in flight
-   before it, or a report repeated because the renewal's answer was lost) and marks
-   nothing. That is the narrow rule: a report that names the token the gateway sent would
-   decide it exactly, and it is a change of the contract with Forager, which A-51 does not
-   make. An entry whose `at` is more than 5 minutes before the run was
-   registered is left out. A run's gateway can mark any key of the run, and a key belongs
-   to the whole organisation or the provider, so one run marks the key for every run that
-   uses it.
+   before it, or a report repeated because the response to the renewal was lost) and marks
+   nothing. That is the narrow rule. The exact rule needs the token the gateway sent in
+   each entry, and the contract with Forager has no field for it. An entry whose `at` is
+   more than 5 minutes before the run was registered is left out. A run's gateway can mark
+   any key of the run, and a key belongs to the whole organisation or the provider, so one
+   run marks the key for every run that uses it.
    A secrets request reveals every model key through one function,
    `Apiary.ModelKeys.reveal_for_sealing/4`. For a key whose provider has an
-   `oauth_refresh` it reads no stored value: it asks `Apiary.ModelKeys.Login` for the
-   access token, which takes the lease of the sign-in as a refresh does (above) with no
-   transaction open, waits for another caller's refresh until 2 seconds before the request's
-   deadline (the work credential's call and the answer need that time), and then decrypts the token,
-   so the copy of the key keeps the `value_set_at` and the sign-in time (`login_at`). The
-   gate reads both first (`Apiary.ModelKeys.Login.seal_times/2`), then the token
+   `oauth_refresh` it reads no stored value: it gets the access token from
+   `Apiary.ModelKeys.Login`, which takes the lease of the sign-in as a refresh does (above)
+   with no transaction open, waits for another caller's refresh until 2 seconds before the
+   request's deadline (the work credential's call and the response need that time), and then
+   decrypts the token, so the copy of the key keeps the `value_set_at` and the sign-in time
+   (`login_at`). The gate reads both first (`Apiary.ModelKeys.Login.seal_times/2`), then the token
    (`access_token/3`), then the sign-in time again with the token it sealed
    (`time_of_token/3`): when the stored token is still the one sealed, the copy keeps
    that second time, so a run whose request made the refresh has the refresh's time; when

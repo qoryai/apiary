@@ -179,7 +179,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
   end
 
   # A person's change at Build, whose sequence runs build-it, to an output of an earlier
-  # stage (vault 0261, 624 (a)): Build's running run ends, a person requests changes with a
+  # stage: Build's running run ends, a person requests changes with a
   # note at Build's gate, and the next run pushes `text` as a new version of `type` with
   # that note as its `decision`, then passes. The work item at Build's gate, and the
   # version.
@@ -857,7 +857,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
   end
 
-  describe "the approval of a gate none (vault 0252)" do
+  describe "the approval of a gate none" do
     setup %{scope: scope} do
       process!(scope, %{"gate" => %{"kind" => "none"}})
       :ok
@@ -1454,7 +1454,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
   end
 
-  describe "a skip inside a shared run (A-12)" do
+  describe "a skip inside a shared run" do
     # The rows of the fold of the shared run `number`, as `fold_rows/1` joins them, each skip
     # row followed by its reason.
     defp run_rows(view, number) do
@@ -1528,7 +1528,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
                run_rows(view, registered.number)
     end
 
-    test "an entry passed over before the run started is a row in the run (PIC-1 04)", %{
+    test "an entry passed over before the run started is a row in the run", %{
       conn: conn,
       scope: scope
     } do
@@ -1936,7 +1936,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
   end
 
-  describe "the outputs list's round of a shared run (A-12)" do
+  describe "the outputs list's round of a shared run" do
     @outputs %{
       "outputs" => [
         %{"type" => "spec", "required" => false},
@@ -2078,7 +2078,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
   end
 
-  describe "the artifact page of a shared run's version (A-12)" do
+  describe "the artifact page of a shared run's version" do
     test "shows the run and the round of the session that wrote the version", %{
       conn: conn,
       scope: scope
@@ -2145,7 +2145,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
   end
 
-  describe "the capture-demos row of a shared run (A-12)" do
+  describe "the capture-demos row of a shared run" do
     @media %{
       "outputs" => [
         %{"type" => "demo-video", "required" => false},
@@ -3575,7 +3575,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
   end
 
-  describe "a stage passed over whole by a track (A-23)" do
+  describe "a stage passed over whole by a track" do
     # Explore's gate offers Standard and Fast track; Shape runs shape-a-ticket on Standard
     # only.
     defp tracked!(scope) do
@@ -3763,7 +3763,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
         end
       end
 
-      # The same two records, now passed over for the condition {feedback: new} (A-27).
+      # The same two records, now passed over for the condition {feedback: new}.
       for {negated, words} <- [
             {false, "did not run: no member wrote new feedback."},
             {true, "did not run: a member wrote new feedback."}
@@ -4062,7 +4062,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
   end
 
-  describe "an approval with a track (A-23)" do
+  describe "an approval with a track" do
     test "the gate takes the track through the page's action, and says what a refusal needs" do
       flow = %{stage: %{name: "Shape"}}
 
@@ -4153,7 +4153,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
   end
 
-  describe "a gate after a move back (A-20)" do
+  describe "a gate after a move back" do
     test "Shape's tab and gate show the spec that a person's approval at Build listed",
          %{conn: conn, scope: scope} do
       # Shape's run pushes spec 1, and a person approves it.
@@ -4214,7 +4214,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
   end
 
-  describe "every version an approval records has a frame (A-20)" do
+  describe "every version an approval records has a frame" do
     # The public ids of the versions whose frames the page draws on the tab.
     defp drawn(view, work_item) do
       frames = :sys.get_state(view.pid).socket.assigns.frames
@@ -6067,7 +6067,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
     end
   end
 
-  describe "the person's gate's blocks (A-24)" do
+  describe "the person's gate's blocks" do
     @verify "st_m1mqbeywdg"
 
     defp track_flow(track, sequence),

@@ -1,7 +1,7 @@
 defmodule Apiary.Repo.Migrations.KeepTheDecisionThatAskedForAVersion do
   use Ecto.Migration
 
-  # A person's change to an approved output (vault 0261, 624 (a)): a run stores a new
+  # A person's change to an approved output: a run stores a new
   # version of it with the id of the person's note that asked for it.
   #
   # `gate_decisions.public_id` (`gd_…`) and `escalations.public_id` (`es_…`) are the ids of

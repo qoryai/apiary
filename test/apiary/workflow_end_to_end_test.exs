@@ -26,7 +26,7 @@ defmodule Apiary.WorkflowEndToEndTest do
   # capture-demo once, outside a loop. Build's run pushes a walkthrough and ends with no
   # verdict; Build escalates (`run_stopped`), and Dana accepts the walkthrough as it is.
   #
-  # Test 8 drives steps 1 and 2, then step 8 (decision 838 (a)): Dana saves version 2, in
+  # Test 8 drives steps 1 and 2, then step 8: Dana saves version 2, in
   # which Shape runs shape-a-ticket and requires a spec and acceptance criteria. Shape's
   # run pushes a spec alone and passes; Shape escalates with the point "Run another round:
   # the run stored no acceptance criteria.", and the page shows no Accept as it is. Run

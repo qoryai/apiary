@@ -1908,7 +1908,7 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   they are totals and not parts: Forager's descriptor sums `usage` from `modelUsage`, and
   `cost_usd` is `total_cost_usd`. `dev.qory.runtime.subagent_finished` carries no cost. So
   Qory Apiary takes a session's cost and tokens from the last line that has them, and never
-  adds those of the lines of one session together (decision 652 (a)). The last line is the
+  adds those of the lines of one session together. The last line is the
   one with the highest `line`, the number of the line of the session's standard output; the
   lines with no `line` come after those with one, and lines with the same `line`, or none,
   are ordered by event sequence. A session is a `session` number, from 1; a result with no
@@ -1922,8 +1922,8 @@ The contract has not fixed these; Qory Apiary chose, and Forager should match:
   absurd (a billion dollars or more) is read as absent, and so is a count that is not an
   integer of 0 or more. The fold reads all the run's results again at each pass that has
   one, the ones already projected included, so a rebuild and a run projected in many passes
-  have the same cost (`Apiary.Runs.Sessions`). Runs projected before decision 652 (a) keep
-  the cost they were given, the sum of their lines, until they are rebuilt.
+  have the same cost (`Apiary.Runs.Sessions`). Runs projected while the fold still summed
+  the lines of a session keep that sum as their cost until they are rebuilt.
 - A session's record (`session_records`, `Apiary.Runs.SessionRecord`) is written, one for
   each session number of a run, after the pass that projected one of the session's
   `dev.qory.session.started`, `dev.qory.runtime.started`, `dev.qory.runtime.result` or

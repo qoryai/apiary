@@ -288,7 +288,7 @@ defmodule Apiary.ProcessesTest do
       end
     end
 
-    test "takes changed: true on a workflow entry, in when and unless, in a loop's body too (A-47)" do
+    test "takes changed: true on a workflow entry, in when and unless, in a loop's body too" do
       changed = %{"input" => "proposal", "changed" => true}
 
       document =
@@ -309,7 +309,7 @@ defmodule Apiary.ProcessesTest do
       assert Processes.validate(document) == :ok
     end
 
-    test "takes feedback: new on a workflow entry, in when and unless, in a loop's body too, the first stage's too (A-27)" do
+    test "takes feedback: new on a workflow entry, in when and unless, in a loop's body too, the first stage's too" do
       feedback = %{"feedback" => "new"}
 
       document =
@@ -336,7 +336,7 @@ defmodule Apiary.ProcessesTest do
       assert Processes.validate(on_first) == :ok
     end
 
-    test "refuses feedback: new on a stage, a loop, an input and an output, and any other value (A-27)" do
+    test "refuses feedback: new on a stage, a loop, an input and an output, and any other value" do
       feedback = %{"feedback" => "new"}
 
       for key <- ["when", "unless"] do
@@ -381,7 +381,7 @@ defmodule Apiary.ProcessesTest do
       end
     end
 
-    test "refuses changed: true on a stage, a loop, an input and an output (:condition_changed_entry_only) (A-47)" do
+    test "refuses changed: true on a stage, a loop, an input and an output (:condition_changed_entry_only)" do
       changed = %{"input" => "proposal", "changed" => true}
 
       for key <- ["when", "unless"] do
@@ -410,7 +410,7 @@ defmodule Apiary.ProcessesTest do
       end
     end
 
-    test "a workflow key on a stage, an input or an output does not make it an entry (A-47)" do
+    test "a workflow key on a stage, an input or an output does not make it an entry" do
       changed = %{"input" => "proposal", "changed" => true}
 
       on_stage =
@@ -429,7 +429,7 @@ defmodule Apiary.ProcessesTest do
                [{"#/stages/1/outputs/0/when/changed", :condition_changed_entry_only}]
     end
 
-    test "refuses changed: true on an unknown type and a non-entry with both errors, the type first (A-47)" do
+    test "refuses changed: true on an unknown type and a non-entry with both errors, the type first" do
       on = %{"input" => "demo-scenarios", "changed" => true}
       loop = %{"loop" => %{"rounds" => 2, "body" => [%{"workflow" => "fix"}]}, "when" => on}
 
@@ -439,7 +439,7 @@ defmodule Apiary.ProcessesTest do
              ]
     end
 
-    test "refuses a changed key that is not true, and one beside no input (A-47)" do
+    test "refuses a changed key that is not true, and one beside no input" do
       for value <- [false, "true", nil, 1] do
         for key <- ["when", "unless"] do
           entry = %{
@@ -463,7 +463,7 @@ defmodule Apiary.ProcessesTest do
       end
     end
 
-    test "refuses changed: true on an input that no earlier stage outputs (:condition_input) (A-47)" do
+    test "refuses changed: true on an input that no earlier stage outputs (:condition_input)" do
       changed = &%{"workflow" => &1, "when" => %{"input" => &2, "changed" => true}}
 
       assert errors(put_sequence(default(), @explore, [changed.("explore-a-ticket", "proposal")])) ==

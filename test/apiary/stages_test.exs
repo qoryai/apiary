@@ -2186,7 +2186,7 @@ defmodule Apiary.StagesTest do
       assert %DispatchRun{round: 2} = newest_run(work_item)
       assert %{gaps: ^gaps, escalation: nil} = Stages.status(work_item)
 
-      assert [%{kind: :check, stage_id: @build, user_id: nil, note: ^gaps}] =
+      assert [%{id: nil, kind: :check, stage_id: @build, user_id: nil, note: ^gaps}] =
                Stages.notes(work_item)
 
       work_item = work_item |> end_run!(verdict("passed")) |> end_run!(verdict("passed"))
@@ -2885,7 +2885,7 @@ defmodule Apiary.StagesTest do
     end
   end
 
-  describe "the when key (A-16)" do
+  describe "the when key" do
     @verify "st_m1mqbeywdg"
     @demos %{"input" => "demo-scenarios"}
     @optional_scenarios %{"outputs" => [%{"type" => "demo-scenarios", "required" => false}]}
@@ -3087,7 +3087,7 @@ defmodule Apiary.StagesTest do
     end
   end
 
-  describe "the changed key (A-47)" do
+  describe "the changed key" do
     @new_scenarios %{"input" => "demo-scenarios", "changed" => true}
 
     # Explore; Shape, which runs shape-a-ticket and whose demo scenarios are optional;
@@ -3408,13 +3408,13 @@ defmodule Apiary.StagesTest do
     end
   end
 
-  describe "feedback and the changed key in Build (A-27)" do
+  describe "feedback and the changed key in Build" do
     @changed_criteria %{"input" => "acceptance-criteria", "changed" => true}
 
-    # Explore; Shape, which runs shape-a-ticket and whose acceptance criteria are optional;
-    # Build as C-2's template has it, with no `value` condition, which this base has not yet:
-    # triage-review on new feedback, plan-the-build and write-acceptance-checks when the
-    # criteria changed, then a loop of implement-changes and review-changes.
+    # Explore; Shape, which runs shape-a-ticket and whose acceptance criteria are
+    # optional; Build with these entries, none with a `value` condition: triage-review on
+    # new feedback, plan-the-build and write-acceptance-checks when the criteria changed,
+    # then a loop of implement-changes and review-changes.
     defp feedback_process!(scope) do
       save!(scope, [
         explore_stage(),
@@ -3550,7 +3550,7 @@ defmodule Apiary.StagesTest do
     end
   end
 
-  describe "feedback that no run handled, moves and Request changes (A-27)" do
+  describe "feedback that no run handled, moves and Request changes" do
     # Build in the form of the earlier describe, at its round limit: plan-the-build and
     # write-acceptance-checks passed, then three rounds whose review requested changes.
     defp at_round_limit!(scope) do
@@ -3937,7 +3937,315 @@ defmodule Apiary.StagesTest do
     end
   end
 
-  describe "the track of an approval (A-23)" do
+  describe "the ids of answers and of the comment of Run another round" do
+    # A version of the walkthrough that the newest run of the work item pushes with
+    # `decision`, as the run API does.
+    defp push_with(work_item, decision) do
+      work_item = reload(work_item)
+
+      Stages.Artifacts.push(
+        {:run, newest_run(work_item)},
+        work_item,
+        "walkthrough",
+        [file_of("walkthrough", "# Walkthrough")],
+        stage_id: work_item.stage_id,
+        decision: decision
+      )
+    end
+
+    defp walkthroughs(work_item),
+      do: Enum.filter(Stages.artifact_index(reload(work_item)), &(&1.type == "walkthrough"))
+
+    # The id `Apiary.Explore.Given` would make for the comment of the newest move, had it
+    # one.
+    defp comment_id_of_newest_move(work_item) do
+      %{id: event, data: %{"review_comment" => comment}} =
+        work_item.id |> Explore.events() |> Enum.filter(&(&1.kind == :answered)) |> List.last()
+
+      Apiary.PublicId.derive("rc", event <> ":" <> comment)
+    end
+
+    test "an answer has an id, the same at every read, that a push takes as its decision",
+         %{scope: scope} do
+      feedback_process!(scope)
+      %{scope: member} = member_fixture(scope)
+      work_item = in_build!(scope) |> end_run!(asking("Which export format?", false))
+
+      {:ok, _} =
+        WorkItems.answer(member, work_item, newest_run(work_item).attempt, %{"1" => "PDF."})
+
+      member_id = member.user.id
+
+      assert [%{kind: :answer, id: "an_" <> _ = id, user_id: ^member_id, inserted_at: at}] =
+               Stages.notes(reload(work_item))
+
+      assert Apiary.PublicId.valid?("an", id)
+      assert [%{id: ^id}] = Stages.notes(reload(work_item))
+
+      # The version has the answer as its decision, at the answer's time, by the member.
+      assert {:ok, %{decision_id: ^id}} = push_with(work_item, id)
+      assert [%{versions: [%{decision: ^id, decision_at: ^at}]}] = walkthroughs(work_item)
+      assert Stages.Notes.writers(work_item.id, [id]) == %{id => member_id}
+    end
+
+    test "a withdrawal takes an answer's id as its decision", %{scope: scope} do
+      feedback_process!(scope)
+      work_item = in_build!(scope) |> end_run!(asking("Which export format?", false))
+
+      {:ok, _} =
+        WorkItems.answer(scope, work_item, newest_run(work_item).attempt, %{"1" => "PDF."})
+
+      assert [%{id: "an_" <> _ = id, inserted_at: at}] = Stages.notes(reload(work_item))
+      {:ok, _version} = push_with(work_item, nil)
+      work_item = reload(work_item)
+
+      assert Artifacts.withdraw({:run, newest_run(work_item)}, work_item, "walkthrough",
+               stage_id: work_item.stage_id,
+               decision: "an_0000000000000000"
+             ) == {:error, {:unknown_decision, "an_0000000000000000"}}
+
+      assert {:ok, %{withdrawn: true, decision_id: ^id}} =
+               Artifacts.withdraw({:run, newest_run(work_item)}, work_item, "walkthrough",
+                 stage_id: work_item.stage_id,
+                 decision: id
+               )
+
+      assert [%{versions: [%{withdrawn: true, decision: ^id, decision_at: ^at}, %{number: 1}]}] =
+               walkthroughs(work_item)
+    end
+
+    test "the check of an answer's id on a work item with no answer reads no file", %{
+      scope: scope
+    } do
+      feedback_process!(scope)
+      work_item = in_build!(scope) |> end_run!(asking("Which export format?", false))
+      refute Enum.any?(Explore.events(work_item.id), &(&1.kind == :answered))
+
+      {%{files: [file]}, _document} = Apiary.Explore.Questions.newest(reload(work_item))
+      {:ok, path} = Artifacts.open_file(file)
+      File.rm!(path)
+
+      # The questions file is not read, so its loss is no 503: the check of a push
+      # (`Notes.find/2`) finds no note.
+      for id <- ["an_0123456789abcdef", "rc_0123456789abcdef"] do
+        assert Stages.Notes.find(work_item.id, id) == nil
+      end
+    end
+
+    test "a push with an answer's id is store_unavailable when the questions cannot be read",
+         %{scope: scope} do
+      feedback_process!(scope)
+      work_item = in_build!(scope) |> end_run!(asking("Which export format?", false))
+
+      {:ok, _} =
+        WorkItems.answer(scope, work_item, newest_run(work_item).attempt, %{"1" => "PDF."})
+
+      assert [%{id: "an_" <> _ = id}] = Stages.notes(reload(work_item))
+
+      {%{files: [file]}, _document} = Apiary.Explore.Questions.newest(reload(work_item))
+      {:ok, path} = Artifacts.open_file(file)
+      File.rm!(path)
+
+      assert push_with(work_item, id) == {:error, :store_unavailable}
+      assert walkthroughs(work_item) == []
+    end
+
+    test "a push with a comment's id is store_unavailable when the review comments cannot " <>
+           "be read",
+         %{scope: scope} do
+      work_item = at_build_gate!(scope)
+
+      {:ok, _} =
+        WorkItems.another_round(scope, work_item, newest_run(work_item).attempt, %{
+          comment: "Rename the export button."
+        })
+
+      assert [%{id: "rc_" <> _ = id}] = Stages.notes(reload(work_item))
+
+      {%{files: [file]}, _document} = Apiary.Explore.ReviewComments.newest(reload(work_item))
+      {:ok, path} = Artifacts.open_file(file)
+      File.rm!(path)
+
+      assert push_with(work_item, id) == {:error, :store_unavailable}
+      assert walkthroughs(work_item) == []
+    end
+
+    test "the check of a made-up answer's id on a work item with an answer reads no file",
+         %{scope: scope} do
+      feedback_process!(scope)
+      work_item = in_build!(scope) |> end_run!(asking("Which export format?", false))
+
+      {:ok, _} =
+        WorkItems.answer(scope, work_item, newest_run(work_item).attempt, %{"1" => "PDF."})
+
+      assert [%{id: "an_" <> _ = id}] = Stages.notes(reload(work_item))
+      [event] = for %{kind: :answered} = event <- Explore.events(work_item.id), do: event
+
+      {%{files: [file]}, _document} = Apiary.Explore.Questions.newest(reload(work_item))
+      {:ok, path} = Artifacts.open_file(file)
+      File.rm!(path)
+
+      # No move's event makes these ids: an unknown id, the id of a question the move did
+      # not answer, and a comment's id from a move with no comment. The files are not
+      # read, so their loss is no 503.
+      for made_up <- [
+            "an_0123456789abcdef",
+            Apiary.PublicId.derive("an", event.id <> ":q9"),
+            Apiary.PublicId.derive("rc", event.id <> ":c1")
+          ] do
+        assert Stages.Notes.find(work_item.id, made_up) == nil
+      end
+
+      # The answer's id is one, so the check reads the files.
+      assert Stages.Notes.find(work_item.id, id) == {:error, :store_unavailable}
+    end
+
+    test "the comment of Run another round with no escalation open has an id that a push takes",
+         %{scope: scope} do
+      work_item = at_build_gate!(scope)
+
+      {:ok, _} =
+        WorkItems.another_round(scope, work_item, newest_run(work_item).attempt, %{
+          comment: "Rename the export button."
+        })
+
+      user_id = scope.user.id
+
+      assert [
+               %{
+                 kind: :answer,
+                 comment: true,
+                 id: "rc_" <> _ = id,
+                 user_id: ^user_id,
+                 inserted_at: at
+               }
+             ] = Stages.notes(reload(work_item))
+
+      assert Apiary.PublicId.valid?("rc", id)
+      assert [%{id: ^id}] = Stages.notes(reload(work_item))
+      assert {:ok, %{decision_id: ^id}} = push_with(work_item, id)
+      assert [%{versions: [%{decision: ^id, decision_at: ^at}]}] = walkthroughs(work_item)
+      assert Stages.Notes.writers(work_item.id, [id]) == %{id => user_id}
+    end
+
+    test "an answer and a comment in one move are two notes with two ids; another work " <>
+           "item's are refused",
+         %{scope: scope} do
+      feedback_process!(scope)
+      other = in_build!(scope) |> end_run!(asking("Which export format?", false))
+      refute escalation(other)
+
+      {:ok, _} =
+        WorkItems.another_round(scope, other, newest_run(other).attempt, %{
+          answers: [%{"id" => "q1", "option" => nil, "note" => "PDF."}],
+          comment: "Name the file by date."
+        })
+
+      assert [
+               %{kind: :answer, comment: false, id: "an_" <> _ = answer, note: "PDF."},
+               %{kind: :answer, comment: true, id: "rc_" <> _ = comment}
+             ] = Stages.notes(reload(other))
+
+      # The work item's run may not send the other work item's answer or comment.
+      work_item = in_build!(scope)
+
+      for id <- [answer, comment, "an_0000000000000000", "rc_0000000000000000", "an_x"] do
+        assert push_with(work_item, id) == {:error, {:unknown_decision, id}}
+      end
+
+      assert walkthroughs(work_item) == []
+    end
+
+    test "the comment of a round that resolves an open escalation has an id too",
+         %{scope: scope} do
+      feedback_process!(scope)
+      work_item = in_build!(scope) |> end_run!(asking("Which export format?", true))
+      assert %Escalation{resolved_at: nil} = open = escalation(work_item)
+
+      {:ok, _} =
+        WorkItems.another_round(scope, work_item, newest_run(work_item).attempt, %{
+          answers: [%{"id" => "q1", "option" => nil, "note" => "PDF."}],
+          comment: "Name the file by date."
+        })
+
+      # The round resolves the escalation with no note, so the comment is no escalation's
+      # note: it has its id.
+      assert %Escalation{resolution: :another_round, note: nil} = Repo.get!(Escalation, open.id)
+
+      assert [
+               %{comment: false, id: "an_" <> _},
+               %{comment: true, id: "rc_" <> _ = id, note: "Name the file by date."}
+             ] = Stages.notes(reload(work_item))
+
+      assert {:ok, %{decision_id: ^id}} = push_with(work_item, id)
+    end
+
+    test "at an escalated stage, Run another round's text is the escalation's note, es_",
+         %{scope: scope} do
+      feedback_process!(scope)
+      at_limit = round_limit_item!(scope)
+
+      stopped =
+        in_build!(scope) |> end_run!(nil, %{exit_state: "failed", outcome_state: "failed"})
+
+      for work_item <- [at_limit, stopped] do
+        assert %WorkItem{stage_state: :escalated} = reload(work_item)
+
+        # The Explore tab's round is not open there: the escalation's round is.
+        assert WorkItems.another_round(scope, work_item, newest_run(work_item).attempt, %{
+                 comment: "Keep the title short."
+               }) == {:error, :not_waiting}
+
+        work_item = round!(scope, work_item, "Keep the title short.")
+
+        assert [%{kind: :escalation, id: "es_" <> _, note: "Keep the title short."}] =
+                 Stages.notes(reload(work_item))
+      end
+    end
+
+    test "a review comment on an output and a reply have no id", %{scope: scope} do
+      work_item = take_in!(scope) |> end_run!(understood_result())
+      {:ok, _} = WorkItems.review_comment(scope, work_item, 1, "Offer a replacement first.")
+      comment = comment_id_of_newest_move(work_item)
+      {:ok, _} = WorkItems.send_review_comments(scope, work_item, 1)
+      work_item = end_run!(work_item, questions_result(["Which refund?"]))
+      {:ok, _} = WorkItems.reply(scope, work_item, 2, "c1", "And name the rule.")
+      reply = comment_id_of_newest_move(work_item)
+
+      assert [
+               %{comment: true, id: nil, note: "Offer a replacement first."},
+               %{comment: true, id: nil, note: "And name the rule."}
+             ] = Enum.filter(Stages.notes(reload(work_item)), & &1.comment)
+
+      # The id each would have is no note, so a push refuses it (`Notes.find/2`).
+      for id <- [comment, reply], do: assert(Stages.Notes.find(work_item.id, id) == nil)
+    end
+
+    test "the database takes an answer's and a comment's id as a version's decision, and no " <>
+           "other prefix",
+         %{scope: scope} do
+      feedback_process!(scope)
+      work_item = in_build!(scope)
+      {:ok, version} = push_with(work_item, nil)
+
+      set = fn id ->
+        Repo.query!("UPDATE artifact_versions SET decision_id = $2 WHERE id = $1", [
+          Ecto.UUID.dump!(version.id),
+          id
+        ])
+      end
+
+      for id <- ["an_0123456789abcdef", "rc_0123456789abcdef", "gd_0123456789abcdef", nil] do
+        assert %{num_rows: 1} = set.(id)
+      end
+
+      for id <- ["cm_0123456789abcdef", "an_0123456789abcde", "rc_0123456789abcdeu", "an"] do
+        assert_raise Postgrex.Error, ~r/artifact_versions_decision_id_check/, fn -> set.(id) end
+      end
+    end
+  end
+
+  describe "the track of an approval" do
     @tracks [
       %{"id" => "standard", "name" => "Standard"},
       %{"id" => "fast-track", "name" => "Fast track", "description" => "Skips shaping."}
@@ -4599,7 +4907,7 @@ defmodule Apiary.StagesTest do
     end
   end
 
-  describe "the record of a track (A-23 review)" do
+  describe "the record of a track" do
     # `@tracks`, `offering/1`, `tracked_process!/3` and `proposing/1` are the ones of "the
     # track of an approval".
 
@@ -4956,7 +5264,7 @@ defmodule Apiary.StagesTest do
     end
   end
 
-  describe "the runner on tracks (A-23)" do
+  describe "the runner on tracks" do
     @fast_track %{"track" => "fast-track"}
     @standard_track %{"track" => "standard"}
 
@@ -5125,7 +5433,7 @@ defmodule Apiary.StagesTest do
     end
   end
 
-  describe "a gate none (vault 0252)" do
+  describe "a gate none" do
     # A stage with a loop of two workflows and a gate none, as Build, then a stage that
     # reads its outputs, as Verify. `walkthrough` stands for Build's submission.
     defp build_then_verify!(scope, rounds \\ 3) do
@@ -5368,8 +5676,7 @@ defmodule Apiary.StagesTest do
       assert id == proposal.public_id
 
       # A handed-over run at Explore (`live_stage_run!/2`) pushes a newer version with no
-      # decision. It is no change (vault 0261, 624 (a)): the next stage still reads the
-      # approved one.
+      # decision. It is no change: the next stage still reads the approved one.
       stage_version!(work_item, "proposal", a_proposal(), @explore)
 
       assert [%{id: ^id, decision: nil}] = Enum.map(Stages.inputs(work_item), & &1.version)
@@ -5848,13 +6155,13 @@ defmodule Apiary.StagesTest do
 
       assert [
                %{
-                 id: nil,
+                 id: "an_" <> _price,
                  kind: :answer,
                  stage_id: @explore,
                  user_id: ^user_id,
                  note: "The sale price"
                },
-               %{id: nil, kind: :answer, note: "Yes"},
+               %{id: "an_" <> _yes, kind: :answer, note: "Yes"},
                %{
                  id: "es_" <> _escalation,
                  kind: :escalation,
@@ -5872,11 +6179,14 @@ defmodule Apiary.StagesTest do
                %{id: "gd_" <> _move, kind: :move, stage_id: @explore, note: "Shaped enough"}
              ] = notes = Stages.notes(work_item)
 
-      # Each id is the row's public id, in the shape `Apiary.PublicId` makes.
+      # Each id is the row's public id, or for an answer the id made from the member's move,
+      # in the shape `Apiary.PublicId` makes, and each note has another.
       for %{id: id} when is_binary(id) <- notes do
         [prefix, _random] = String.split(id, "_")
         assert Apiary.PublicId.valid?(prefix, id)
       end
+
+      assert length(Enum.uniq_by(notes, & &1.id)) == length(notes)
     end
 
     # Explore, then Shape, Build and Verify, three stages with no workflow, each at a
@@ -6114,13 +6424,20 @@ defmodule Apiary.StagesTest do
       {:ok, _} = WorkItems.answer(scope, work_item, 1, %{"1" => "The sale price", "2" => "Yes"})
       work_item = end_run!(work_item, understood_result())
 
-      assert [%{kind: :answer, stage_id: @explore}, %{kind: :answer}] = Stages.notes(work_item)
+      assert [%{kind: :answer, stage_id: @explore}, %{kind: :answer}] =
+               answers = Stages.notes(work_item)
+
       assert texts(work_item) == ["The sale price", "Yes"]
 
       {:ok, _} = Stages.approve(scope, work_item, nil, expect_stage: @explore)
 
       assert %{stage_id: @shape} = reload(work_item)
       assert Stages.notes(work_item) == []
+
+      # A closed answer keeps its id, which a push may still send as its decision.
+      for %{id: "an_" <> _ = id, inserted_at: at} <- answers do
+        assert Stages.Notes.find(work_item.id, id) == %{id: id, at: at}
+      end
     end
 
     test "a move that resolves an open escalation is one note, the move's", %{scope: scope} do
@@ -8210,7 +8527,7 @@ defmodule Apiary.StagesTest do
     end
   end
 
-  describe "a person's change to an approved output (A-20)" do
+  describe "a person's change to an approved output" do
     @verify "st_m1mqbeywdg"
     @release "st_q4ncz8w2xe"
 

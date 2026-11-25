@@ -325,6 +325,86 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
     work_item
   end
 
+  # `work_item`, from `changed!/2`, with the decision of its acceptance criteria v2 set to
+  # a note of `kind` by the person of `scope`: an answer to a run's question (`:answer`,
+  # `an_…`) or the comment of Run another round (`:comment`, `rc_…`). The documents and the
+  # event are those a member's move writes.
+  defp linked!(work_item, kind, scope) do
+    at = "2026-11-25T10:00:00Z"
+    by = %{"name" => "sam"}
+    member = {:member_action, scope}
+    json = &%{filename: &1, content_type: "application/json", binary: Jason.encode!(&2)}
+
+    {:ok, _questions} =
+      Artifacts.push(member, work_item, "questions", [
+        json.("questions.json", %{
+          "questions" => [
+            %{
+              "id" => "q1",
+              "question" => "Which cancel rule?",
+              "options" => [],
+              "state" => "answered",
+              "about" => %{"work_item" => true},
+              "asked" => %{"run" => 1, "at" => at},
+              "answer" => %{"option" => nil, "note" => "12 hours.", "by" => by, "at" => at}
+            }
+          ]
+        })
+      ])
+
+    {:ok, _comments} =
+      Artifacts.push(member, work_item, "review-comments", [
+        json.("review-comments.json", %{
+          "review_comments" => [
+            %{
+              "id" => "c1",
+              "on" => %{"run" => 1},
+              "text" => "Use 12 hours.",
+              "by" => by,
+              "at" => at,
+              "state" => "open"
+            }
+          ]
+        })
+      ])
+
+    data =
+      case kind do
+        :answer -> %{"questions" => ["q1"]}
+        :comment -> %{"review_comment" => "c1", "round_comment" => true}
+      end
+
+    event =
+      Repo.insert!(%Apiary.WorkItems.WorkItemEvent{
+        organisation_id: work_item.organisation_id,
+        workspace_id: work_item.workspace_id,
+        work_item_id: work_item.id,
+        kind: :answered,
+        actor_kind: :person,
+        actor_id: scope.user.id,
+        at: DateTime.utc_now(),
+        data: Map.merge(%{"take_in" => work_item.take_in, "attempt" => 1, "count" => 1}, data)
+      })
+
+    id =
+      case kind do
+        :answer -> Apiary.PublicId.derive("an", event.id <> ":q1")
+        :comment -> Apiary.PublicId.derive("rc", event.id <> ":c1")
+      end
+
+    {1, _rows} =
+      Repo.update_all(
+        from(v in Artifacts.Version,
+          join: a in assoc(v, :artifact),
+          where: a.work_item_id == ^work_item.id and a.type == "acceptance-criteria",
+          where: v.number == 2
+        ),
+        set: [decision_id: id]
+      )
+
+    work_item
+  end
+
   # The text of `selector` on the page, its white space as one space each.
   defp text(view, selector) do
     view
@@ -458,6 +538,33 @@ defmodule ApiaryWeb.WorkItemLive.GateChangesPageTest do
     refute has_element?(view, "#{@card}-ask-changes")
     refute has_element?(view, "#{@list}-action")
     assert_criteria(view, mark)
+  end
+
+  test "a change after a member's answer or comment: the mark and the line of what to do read \"answer\" or \"comment\"",
+       %{conn: conn, scope: scope, sam: sam, alex: alex, names: names} do
+    for {kind, word} <- [answer: "answer", comment: "comment"] do
+      work_item = scope |> changed!() |> linked!(kind, scope)
+
+      {:ok, view, _html} =
+        conn |> log_in_user(sam) |> live(page(scope, work_item.number, "/stages/#{@build}"))
+
+      assert_marks(view, "Changed after your #{word}")
+
+      assert text(view, "#{@list}-action") ==
+               "Check that these 3 changes to the acceptance criteria match your #{word}, then pick Approve or Request changes."
+
+      {:ok, view, _html} =
+        build_conn()
+        |> log_in_user(alex)
+        |> live(page(scope, work_item.number, "/stages/#{@build}"))
+
+      assert_marks(view, "Changed after #{names.sam}'s #{word}")
+
+      assert text(view, "#{@list}-action") ==
+               "Check that these 3 changes to the acceptance criteria match #{names.sam}'s #{word}, then pick Approve or Request changes."
+
+      assert_criteria(view, "Changed after #{names.sam}'s #{word}")
+    end
   end
 
   test "another approver: the person's name in every mark and in the line of what to do",

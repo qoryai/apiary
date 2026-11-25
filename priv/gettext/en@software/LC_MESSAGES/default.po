@@ -7271,9 +7271,39 @@ msgstr ""
 msgid "Changed above the workspace"
 msgstr ""
 
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Changed after %{name}'s answer"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Changed after %{name}'s comment"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Changed after a member's answer"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Changed after a member's comment"
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "Changed after approval"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Changed after your answer"
+msgstr ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Changed after your comment"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -7519,6 +7549,34 @@ msgstr ""
 
 #: lib/apiary_web/live/work_item_live/gate_changes.ex
 #, elixir-autogen, elixir-format
+msgid "Check that this change to the acceptance criteria matches %{name}'s answer, then pick %{approve} or %{changes}."
+msgid_plural "Check that these %{count} changes to the acceptance criteria match %{name}'s answer, then pick %{approve} or %{changes}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Check that this change to the acceptance criteria matches %{name}'s answer. If it does not, pick %{changes}."
+msgid_plural "Check that these %{count} changes to the acceptance criteria match %{name}'s answer. If they do not, pick %{changes}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Check that this change to the acceptance criteria matches %{name}'s comment, then pick %{approve} or %{changes}."
+msgid_plural "Check that these %{count} changes to the acceptance criteria match %{name}'s comment, then pick %{approve} or %{changes}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Check that this change to the acceptance criteria matches %{name}'s comment. If it does not, pick %{changes}."
+msgid_plural "Check that these %{count} changes to the acceptance criteria match %{name}'s comment. If they do not, pick %{changes}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
 msgid "Check that this change to the acceptance criteria matches %{name}'s request, then pick %{approve} or %{changes}."
 msgid_plural "Check that these %{count} changes to the acceptance criteria match %{name}'s request, then pick %{approve} or %{changes}."
 msgstr[0] ""
@@ -7533,6 +7591,34 @@ msgstr[1] ""
 
 #: lib/apiary_web/live/work_item_live/gate_changes.ex
 #, elixir-autogen, elixir-format
+msgid "Check that this change to the acceptance criteria matches a member's answer, then pick %{approve} or %{changes}."
+msgid_plural "Check that these %{count} changes to the acceptance criteria match a member's answer, then pick %{approve} or %{changes}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Check that this change to the acceptance criteria matches a member's answer. If it does not, pick %{changes}."
+msgid_plural "Check that these %{count} changes to the acceptance criteria match a member's answer. If they do not, pick %{changes}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Check that this change to the acceptance criteria matches a member's comment, then pick %{approve} or %{changes}."
+msgid_plural "Check that these %{count} changes to the acceptance criteria match a member's comment, then pick %{approve} or %{changes}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Check that this change to the acceptance criteria matches a member's comment. If it does not, pick %{changes}."
+msgid_plural "Check that these %{count} changes to the acceptance criteria match a member's comment. If they do not, pick %{changes}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
 msgid "Check that this change to the acceptance criteria matches a member's request, then pick %{approve} or %{changes}."
 msgid_plural "Check that these %{count} changes to the acceptance criteria match a member's request, then pick %{approve} or %{changes}."
 msgstr[0] ""
@@ -7542,6 +7628,34 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "Check that this change to the acceptance criteria matches a member's request. If it does not, pick %{changes}."
 msgid_plural "Check that these %{count} changes to the acceptance criteria match a member's request. If they do not, pick %{changes}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Check that this change to the acceptance criteria matches your answer, then pick %{approve} or %{changes}."
+msgid_plural "Check that these %{count} changes to the acceptance criteria match your answer, then pick %{approve} or %{changes}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Check that this change to the acceptance criteria matches your answer. If it does not, pick %{changes}."
+msgid_plural "Check that these %{count} changes to the acceptance criteria match your answer. If they do not, pick %{changes}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Check that this change to the acceptance criteria matches your comment, then pick %{approve} or %{changes}."
+msgid_plural "Check that these %{count} changes to the acceptance criteria match your comment, then pick %{approve} or %{changes}."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary_web/live/work_item_live/gate_changes.ex
+#, elixir-autogen, elixir-format
+msgid "Check that this change to the acceptance criteria matches your comment. If it does not, pick %{changes}."
+msgid_plural "Check that these %{count} changes to the acceptance criteria match your comment. If they do not, pick %{changes}."
 msgstr[0] ""
 msgstr[1] ""
 

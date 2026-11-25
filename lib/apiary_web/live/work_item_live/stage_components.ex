@@ -587,8 +587,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
     criteria =
       Enum.find_value(ids, fn id ->
         case changes[id] do
-          %{type: "acceptance-criteria", criteria: {:ok, compared}, whose: whose} ->
-            Map.merge(compared, %{whose: whose, mark: GateChanges.mark(whose)})
+          %{type: "acceptance-criteria", criteria: {:ok, compared}, whose: whose, of: of} ->
+            Map.merge(compared, %{whose: whose, of: of, mark: GateChanges.mark(of, whose)})
 
           _other ->
             nil
@@ -601,7 +601,12 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
           nil
 
         controls != [] ->
-          case GateChanges.action(criteria.whose, length(criteria.changes), controls) do
+          case GateChanges.action(
+                 criteria.of,
+                 criteria.whose,
+                 length(criteria.changes),
+                 controls
+               ) do
             nil -> nil
             text -> {:action, text}
           end
@@ -616,7 +621,8 @@ defmodule ApiaryWeb.WorkItemLive.StageComponents do
 
     assign(assigns,
       controls: controls,
-      changed: Map.new(changes, fn {id, change} -> {id, GateChanges.mark(change.whose)} end),
+      changed:
+        Map.new(changes, fn {id, change} -> {id, GateChanges.mark(change.of, change.whose)} end),
       criteria: criteria,
       lead: lead
     )

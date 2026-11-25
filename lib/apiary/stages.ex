@@ -34,20 +34,20 @@ defmodule Apiary.Stages do
   # ## A gate `none`
   #
   # A gate `none` records the approval of the stage's newest outputs, then the work item
-  # enters the next stage (vault 0252), so a later stage reads those versions as its
-  # inputs. The approval has no member and is `automatic` when the stage passed its gate;
-  # it has the member who accepted the escalation that ended the stage otherwise. It
-  # writes no entry in the audit trail: no person acted, or the accept wrote its entry.
+  # enters the next stage, so a later stage reads those versions as its inputs. The
+  # approval has no member and is `automatic` when the stage passed its gate; it has the
+  # member who accepted the escalation that ended the stage otherwise. It writes no entry
+  # in the audit trail: no person acted, or the accept wrote its entry.
   #
   # ## A person's change to an approved output
   #
-  # A run of a later stage stores a new version of an approved output (vault 0261, 624
-  # (a)). The version links to a person's note, its `decision` (`Apiary.Stages.Notes`),
-  # which contains the change the person asked for. Every later
-  # run reads that version in place of the approved one (`read_version/6`), and the next
-  # approval by a person at a gate lists it (`approve/4`). A gate `none` lists no version
-  # with a `decision`. The work item page marks the version until an approval lists it
-  # or a later version of its artifact (`unapproved_changes/2`).
+  # A run of a later stage stores a new version of an approved output. The version links
+  # to a person's note, its `decision` (`Apiary.Stages.Notes`), which contains the change
+  # the person asked for. Every later run reads that version in place of the approved one
+  # (`read_version/6`), and the next approval by a person at a gate lists it
+  # (`approve/4`). A gate `none` lists no version with a `decision`. The work item page
+  # marks the version until an approval lists it or a later version of its artifact
+  # (`unapproved_changes/2`).
   #
   # ## A move back
   #
@@ -3279,9 +3279,10 @@ defmodule Apiary.Stages do
   # (`:check`, with no person). What members gave Explore (`Apiary.Explore.Given`) are
   # notes of kind `:answer`: an answer, a review comment or a reply, the last two with
   # `comment` true. The page labels a comment by it; the run API sends no `comment`. A
-  # request for changes, a move and an escalation have `id`, their public id (`gd_…`,
-  # `es_…`); a run sends it as `decision` in a push (`Apiary.Stages.Notes`). An answer
-  # and a check have `id` nil.
+  # request for changes, a move, an escalation, an answer to a question and the comment of
+  # Run another round have `id`, their public id (`gd_…`, `es_…`, `an_…`, `rc_…`); a run
+  # sends it as `decision` in a push (`Apiary.Stages.Notes`). Every other review comment,
+  # a reply and a check have `id` nil.
   #
   # Only open notes are listed. A note closes once its stage has an approval after it,
   # and a move once the stage it went to has one: a person's, or the automatic approval
@@ -3400,7 +3401,7 @@ defmodule Apiary.Stages do
 
         for entry <- given do
           %{
-            id: nil,
+            id: entry.note_id,
             kind: :answer,
             comment: entry.kind != :answer,
             stage_id: Map.get(stages, {entry.take_in, entry.attempt}),
@@ -3586,14 +3587,13 @@ defmodule Apiary.Stages do
     end)
   end
 
-  # A gate `none` records the approval of the stage's newest outputs (vault 0252): with no
-  # member, `automatic`, when the stage passed its gate; with the member `by` who accepted
-  # the escalation that ended the stage. The accept approves the newest versions that
-  # exist, as the stage's checks did not run. A version with a `decision` is left out: only
-  # a person's approval at a gate lists it (vault 0261, 624 (a); C-2 note, section 5).
-  # The versions of a type delivered after the gate are sent
-  # (`Apiary.Artifacts.Delivery.approved/2`); a file of one that cannot be read raises
-  # `Apiary.Stages.DeliveryUnreadable`, and the caller's transaction rolls back.
+  # A gate `none` records the approval of the stage's newest outputs: with no member,
+  # `automatic`, when the stage passed its gate; with the member `by` who accepted the
+  # escalation that ended the stage. The accept approves the newest versions that exist,
+  # as the stage's checks did not run. A version with a `decision` is left out: only a
+  # person's approval at a gate lists it. The versions of a type delivered after the gate
+  # are sent (`Apiary.Artifacts.Delivery.approved/2`); a file of one that cannot be read
+  # raises `Apiary.Stages.DeliveryUnreadable`, and the caller's transaction rolls back.
   defp approve_none!(work_item, version, stage, by) do
     versions =
       for v <- newest_outputs(stage, Artifacts.list(work_item)),
@@ -5230,10 +5230,10 @@ defmodule Apiary.Stages do
   # The versions an approval of `stage` records, in the order the gate shows them: the
   # versions its gate shows (`gate_versions/3`), then, with `changes?`, each version a
   # person's change made that no approval lists yet (`changed_versions/2`), as a person's
-  # approval is the one that lists such a version (vault 0261, 624 (a)). An approval is
-  # made only at the work item's stage, so only there are the changes the gate's. Of two
-  # versions of one artifact, such as a run's version at the gate and a change after it,
-  # the higher-numbered one is taken, in the place of the first.
+  # approval is the one that lists such a version. An approval is made only at the work
+  # item's stage, so only there are the changes the gate's. Of two versions of one
+  # artifact, such as a run's version at the gate and a change after it, the
+  # higher-numbered one is taken, in the place of the first.
   defp recorded_versions(stage, artifacts, approvals, changes?) do
     changed = if changes?, do: changed_versions(artifacts, listed(approvals)), else: []
     versions = gate_versions(stage, artifacts, approvals) ++ changed
@@ -5624,15 +5624,15 @@ defmodule Apiary.Stages do
     |> Enum.max_by(&{DateTime.to_unix(&1.inserted_at, :microsecond), &1.number}, fn -> nil end)
   end
 
-  # A person's change to an output (vault 0261, 624 (a)): a version that has a `decision`,
-  # a person's note that contains the change asked for, in any stage, that no approval
-  # lists (`listed`), and whose number is higher than that of every version of its
-  # artifact that an approval lists. A push numbers its version under the work item's
-  # lock, as an approval reads the versions it lists, so the numbers order the two where a
-  # time taken before the lock would not. A version of a withdrawn name, a withdrawal and a
-  # version by a run a member cancelled are never one. Nor is a version of the questions or
-  # the review comments, which a person writes as an answer or a review comment
-  # (`Artifacts.member_types/0`), not as a change.
+  # A person's change to an output: a version that has a `decision`, a person's note that
+  # contains the change asked for, in any stage, that no approval lists (`listed`), and
+  # whose number is higher than that of every version of its artifact that an approval
+  # lists. A push numbers its version under the work item's lock, as an approval reads the
+  # versions it lists, so the numbers order the two where a time taken before the lock
+  # would not. A version of a withdrawn name, a withdrawal and a version by a run a member
+  # cancelled are never one. Nor is a version of the questions or the review comments,
+  # which a person writes as an answer or a review comment (`Artifacts.member_types/0`),
+  # not as a change.
   #
   # Each artifact's change is its highest-numbered one (`artifact_change/2`). The version of
   # `type` that every later run reads is the newest of those changes by time, across the

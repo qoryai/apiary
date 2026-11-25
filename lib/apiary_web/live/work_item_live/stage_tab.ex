@@ -718,7 +718,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTab do
   # approved/3 is `frames` of `stage`, each with the approval it shows (`approval`), nil for
   # none, from `index`, the approval marks (`flow.index`). Only the first frame shows an
   # approval: the newest approval of its version, where the gate of `stage`
-  # recorded it as a gate `none` (vault 0252), with no member (`automatic`) or with the
+  # recorded it as a gate `none`, with no member (`automatic`) or with the
   # member who accepted the escalation that ended the stage (`by`). The gate is read from
   # the approval, not from the stage today: a later process version may change it. A
   # person gate's approval shows none.

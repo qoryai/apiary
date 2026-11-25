@@ -497,7 +497,7 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert card(view, "Explore")["gate"] == "No gate"
       refute has_element?(view, "#stage-gate-named")
 
-      # Under No gate, how a gate none approves (vault 0252).
+      # Under No gate, how a gate none approves.
       assert has_element?(
                view,
                "#stage-gate-none-line",
@@ -1012,7 +1012,7 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
   end
 
-  describe "the when key (A-16)" do
+  describe "the when key" do
     @when_proposal %{"input" => "proposal"}
 
     test "survives an edit of the entry and of the output, a rename of its workflow included",
@@ -1054,7 +1054,7 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
   end
 
-  describe "a refused when key (A-16)" do
+  describe "a refused when key" do
     test "the refusal names the entry or the output, the stage and the input type" do
       on = %{"input" => "demo-scenarios"}
 
@@ -1078,7 +1078,7 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
   end
 
-  describe "the changed key (A-47)" do
+  describe "the changed key" do
     @changed %{"input" => "proposal", "changed" => true}
 
     test "survives an edit of the entries, in a loop's body too, a rename included",
@@ -1146,7 +1146,7 @@ defmodule ApiaryWeb.StagesLiveTest do
                Processes.save(scope, scope.workspace, document)
     end
 
-    test "a save with feedback: new off a workflow entry says to move it (A-27)", %{scope: scope} do
+    test "a save with feedback: new off a workflow entry says to move it", %{scope: scope} do
       document =
         Draft.update_stage(Processes.default_document("software"), id_of("Build"), fn stage ->
           Map.put(stage, "unless", %{"feedback" => "new"})
@@ -1178,7 +1178,7 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
   end
 
-  describe "tracks, when and unless (A-23)" do
+  describe "tracks, when and unless" do
     @fast %{"track" => "fast-track"}
 
     defp tracked_document do
@@ -1338,7 +1338,7 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
   end
 
-  describe "tracks and conditions on the page, read-only (A-23)" do
+  describe "tracks and conditions on the page, read-only" do
     @on_fast %{"track" => "fast-track"}
 
     # Explore offers both tracks; Shape is skipped on Fast track; Build has an entry that
@@ -1658,7 +1658,7 @@ defmodule ApiaryWeb.StagesLiveTest do
     end
   end
 
-  describe "a refused track or condition (A-23)" do
+  describe "a refused track or condition" do
     defp refusals(document) do
       assert {:error, errors} = Processes.validate(document)
       Enum.map(errors, &Words.refusal(&1, document))

@@ -5601,7 +5601,7 @@ defmodule ApiaryWeb.RunLive.ShowTest do
     end
   end
 
-  describe "how a run ended, on its page (decision 216)" do
+  describe "how a run ended, on its page" do
     defp session_run(scope, exit) do
       projected(scope, [{1, "run.started", started_data()}, {2, "run.exited", exit}])
     end

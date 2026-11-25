@@ -138,7 +138,15 @@ defmodule Apiary.WorkItems.MemberActionsTest do
 
       assert at =~ ~r/\A\d{4}-\d\d-\d\dT\d\d:\d\d:\d\dZ\z/
       assert runs(ctx.work_item) == [{1, 1, :ended}, {1, 2, :waiting}]
-      data = %{"take_in" => 1, "attempt" => 1, "count" => 2, "questions" => ["q1", "q2"]}
+
+      data = %{
+        "take_in" => 1,
+        "attempt" => 1,
+        "count" => 2,
+        "questions" => ["q1", "q2"],
+        "questions_version" => 2
+      }
+
       assert [{:taken_in, _}, {:answered, ^data}] = kinds(ctx.work_item)
       assert entry("work_item.answer", ctx.work_item).details == data
 
@@ -435,7 +443,14 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       assert %{"option" => nil, "note" => "The spring sale."} = third
       refute Map.has_key?(second, "answer")
 
-      data = %{"take_in" => 1, "attempt" => 1, "count" => 2, "questions" => ["q1", "q3"]}
+      data = %{
+        "take_in" => 1,
+        "attempt" => 1,
+        "count" => 2,
+        "questions" => ["q1", "q3"],
+        "questions_version" => 2
+      }
+
       assert [{:taken_in, _}, {:answered, ^data}] = kinds(ctx.work_item)
       assert entry("work_item.answer", ctx.work_item).details == data
       assert runs(ctx.work_item) == [{1, 1, :ended}, {1, 2, :waiting}]
@@ -616,7 +631,14 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       assert %{"option" => "Postgres", "by" => %{"name" => _name}} = answer
       assert decision == decided["decision"]
 
-      data = %{"take_in" => 1, "attempt" => 1, "count" => 1, "questions" => ["q1"]}
+      data = %{
+        "take_in" => 1,
+        "attempt" => 1,
+        "count" => 1,
+        "questions" => ["q1"],
+        "questions_version" => 2
+      }
+
       assert [{:taken_in, _}, {:answered, ^data}] = kinds(ctx.work_item)
       assert runs(ctx.work_item) == [{1, 1, :ended}, {1, 2, :waiting}]
 
@@ -653,7 +675,14 @@ defmodule Apiary.WorkItems.MemberActionsTest do
       assert %{"option" => "Redis", "note" => "Only for baskets."} = answer
       assert decision == decided["decision"]
 
-      data = %{"take_in" => 1, "attempt" => 1, "count" => 1, "questions" => ["q1"]}
+      data = %{
+        "take_in" => 1,
+        "attempt" => 1,
+        "count" => 1,
+        "questions" => ["q1"],
+        "questions_version" => 2
+      }
+
       assert entry("work_item.answer", ctx.work_item).details == data
       assert count_entries("artifact.write", ctx.work_item) == writes + 1
       assert runs(ctx.work_item) == [{1, 1, :ended}, {1, 2, :waiting}]

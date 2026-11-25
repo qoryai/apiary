@@ -2507,12 +2507,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   # The frames, each whose version is a change no person's approval lists yet
   # (`flow.changes`, `Workflow.page/2`) with `changed`, its mark for the reader
-  # (`GateChanges.mark/1`), which the frame's caption shows after the version.
+  # (`GateChanges.mark/2`), which the frame's caption shows after the version.
   defp marked(%{assigns: %{frames: [_ | _] = frames, flow: %{changes: changes}}} = socket)
        when changes != %{} do
     marks =
       Map.new(changes, fn {_id, change} ->
-        {{change.type, change.name, change.version.number}, GateChanges.mark(change.whose)}
+        {{change.type, change.name, change.version.number},
+         GateChanges.mark(change.of, change.whose)}
       end)
 
     frames =

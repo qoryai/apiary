@@ -869,7 +869,7 @@ defmodule ApiaryWeb.ArtifactLive.ShowTest do
                ~r/\.q-art-cols \.q-ticket-formatted table::-webkit-scrollbar-track \{\s*background-color: var\(--color-base-200\);\s*\}/
 
       # The text of a stage tab's frame (`.q-xp-stage .q-xp-prop`) scrolls a table that is
-      # too wide, and keeps its table a table (A-24).
+      # too wide, and keeps its table a table.
       assert css =~
                ~r/\.q-xp-stage \.q-xp-prop \.q-ticket-formatted \{\s*overflow-x: auto;\s*contain: inline-size;/
 

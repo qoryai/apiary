@@ -14,7 +14,7 @@ defmodule Apiary.Adapters.Grants do
   # an external account to an organisation. Each such nonce is accepted once. The grant
   # keeps the report's external account, its id at the source and its display name. A
   # report of a ref the connection has a grant for replaces that grant in place, its
-  # account included. A connection has one external account (decision 901 (a)). The
+  # account included. A connection has one external account. The
   # checks run in this order: the pass check (`pass_unknown`); then `grant_taken`, when the
   # adapter has a grant with the same ref that has not ended under any other connection of
   # the adapter, of any organisation, a connection made but with no accepted listing yet
