@@ -3125,22 +3125,21 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A feature that a later release adds starts at its default, even on an instance whose
   features were saved.
 - The integration contract and the data descriptions are vendored at integrations
-  `699a22c` (byte for byte as at `7e6cac7`). Its schemas leave an undefined member open.
-  A description with a `publisher`, or a data description with a `program`, is read. The
-  `document` of the
-  description keeps the member. The adapter declaration, the bodies of calls to an adapter
-  and source items still refuse an undefined member. So do the grant end, the sources
-  disconnect and the feed writer, and their tests keep that. The `openai-subscription`
-  description has the text of `699a22c`. A description may have `links`, 1 to 16 entries
-  of a `system` and a `template` (a link with placeholders for a path). The schema refuses
-  a template that is not `https`, has a port, a query, a fragment, an unknown placeholder
-  or more than 2048 characters. The `document` of a description keeps `links`. No page
-  reads it yet. The contract states that the control plane writes no `watch` entry; the
-  kind stays defined. The run contract, with its findings records and the check fixtures
-  of `DocumentsCheck`, and the integration definitions that it refers to are at `699a22c`.
-  The explore contract and the run documents schema that the harness save reads are at
-  `4ad23d9`. The diagnostics contract stays at `e0d7be1` and the provisioner contract at
-  `8d859a1`.
+  `699a22c` (byte for byte as at `7e6cac7`). Its schemas leave an undefined member open. A
+  description with a `publisher`, or a data description with a `program`, is read. The
+  `document` of the description keeps the member. The adapter declaration, the bodies of
+  calls to an adapter and source items still refuse an undefined member. So do the grant
+  end, the sources disconnect and the feed writer, and their tests keep that. The
+  `openai-subscription` description has the text of `699a22c`. A description may have
+  `links`, 1 to 16 entries of a `system` and a `template` (a link with placeholders for a
+  path). The schema refuses a template that is not `https`, has a port, a query, a
+  fragment, an unknown placeholder or more than 2048 characters. The `document` of a
+  description keeps `links`. No page reads it yet. The contract states that the control
+  plane writes no `watch` entry; the kind stays defined. The run contract, with its
+  findings records and the check fixtures of `DocumentsCheck`, and the integration
+  definitions that it refers to are at `699a22c`. The explore contract and the run
+  documents schema that the harness save reads are at `4ad23d9`. The diagnostics contract
+  stays at `e0d7be1` and the provisioner contract at `8d859a1`.
 - The reply to a change request (`changes-submitted.schema.json`) and the reports of a
   change request (`changes-failed.schema.json`) are vendored with their fixtures.
   `POST /v1/work-items/changes/submitted` reads the reply.
