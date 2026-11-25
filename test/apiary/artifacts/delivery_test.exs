@@ -117,12 +117,12 @@ defmodule Apiary.Artifacts.DeliveryTest do
       assert work_item.workspace_id != other.workspace_id
     end
 
-    test "list the failure reasons of a change request in changes-failed.schema.json, and invalid" do
+    test "list the failure reasons of a change request in changes-failed.schema.json, invalid and target_removed" do
       schema = @failed_schema |> File.read!() |> Jason.decode!()
       reasons = get_in(schema, ["then", "properties", "reason", "enum"])
 
       assert Enum.sort(Version.delivery_failures()) ==
-               Enum.sort(Enum.map(["invalid" | reasons], &String.to_atom/1))
+               Enum.sort(Enum.map(["invalid", "target_removed" | reasons], &String.to_atom/1))
     end
   end
 

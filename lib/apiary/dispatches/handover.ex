@@ -179,8 +179,9 @@ defmodule Apiary.Dispatches.Handover do
   # made from (`Apiary.Processes.harness_template/1`), with no read, and its walk's pin
   # records that commit.
   #
-  # A run with a workflow, a target and write access, once lowered, whose process version
-  # has a submit step has `submit` in its documents (`submitted/3`).
+  # shortcut: the run documents have no `deliver` entries of the run's process version, so
+  # a run learns of no delivered type from them; replace when the documents get the
+  # delivered types of the run's process version.
   #
   # **The registered run lives as long as the claim.** While its run of the queue is
   # claimed, a registered run has neither attached nor had its code redeemed. When the run
@@ -233,7 +234,6 @@ defmodule Apiary.Dispatches.Handover do
     Gateways,
     InstanceConfig,
     Nodes,
-    Processes,
     Repo,
     Runs,
     Targets,
@@ -911,7 +911,7 @@ defmodule Apiary.Dispatches.Handover do
          {:ok, harness} <- harness(dispatch_run, target, locked.harness_read, locked.now),
          level = RunCredentials.run_access(dispatch_run),
          collection = RunCredentials.work_collection(dispatch_run, work_item, target),
-         harness = harness |> with_level(level) |> submitted(dispatch_run, target),
+         harness = with_level(harness, level),
          {:ok, settings, cooling} <- cooling(RunSettings.build(held, locked.now)) do
       session = session_members(dispatch_run, held, level)
 
@@ -1173,24 +1173,6 @@ defmodule Apiary.Dispatches.Handover do
 
   defp answer_level({:ok, formed}, level), do: {:ok, put_in(formed, [:answer, :access], level)}
   defp answer_level(not_formed, _level), do: not_formed
-
-  # The submit step of a run with a workflow, a target and the access level `write`, once
-  # lowered (`with_level/2`): `submit`, `%{type:, send:}`, from the template record of
-  # the run's process version (`Apiary.Processes.harness_template/1`), where it has one.
-  # Any other run, a run lowered to `read` and a run whose process version has no submit
-  # get none.
-  defp submitted(%{workflow: workflow, access: :write} = harness, dispatch_run, target)
-       when is_binary(workflow) and is_map(target) do
-    case Processes.harness_template(dispatch_run.process_version_id) do
-      %{"submit" => %{"type" => type, "send" => send}} ->
-        Map.put(harness, :submit, %{type: type, send: send})
-
-      _none ->
-        harness
-    end
-  end
-
-  defp submitted(harness, _dispatch_run, _target), do: harness
 
   # `target` is nil for a run without one: no run variables, labels or further paths.
   # `inputs` is given the name of the workspace's domain. `session` is the members of the

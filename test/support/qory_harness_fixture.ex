@@ -63,6 +63,40 @@ defmodule Apiary.QoryHarnessFixture do
     end)
   end
 
+  # The JSON Schema of the type `pull-request` of the Qory harness at commit e4adcbda
+  # (`modules/software-factory/skills/running-a-software-workflow/schemas/`), the same as
+  # its entry in that commit's `process.yaml`: it refers to the primitives of the harness.
+  @pull_request Path.expand("../fixtures/harness/pull-request.schema.json", __DIR__)
+  @external_resource @pull_request
+
+  @doc "pull_request_schema/0 is the JSON Schema of the harness's `pull-request` type."
+  @spec pull_request_schema() :: map
+  def pull_request_schema, do: @pull_request |> File.read!() |> Jason.decode!()
+
+  @doc """
+  pull_request_entry/0 is the entry of `pull-request` in `artifact_types` as the harness
+  has it, delivered after the gate: lines of a YAML list, the schema as one line of JSON.
+  """
+  @spec pull_request_entry() :: String.t()
+  def pull_request_entry do
+    "  - name: pull-request\n    base_view: structured\n    size_limit: 786432\n" <>
+      "    max_files: 1\n    deliver: {send: after_gate}\n" <>
+      "    json_schema: #{Jason.encode!(pull_request_schema(), escape: :unicode_safe)}\n"
+  end
+
+  @doc """
+  with_pull_request/0 is the fixture's files with `pull_request_entry/0` in the
+  template's `artifact_types`.
+  """
+  @spec with_pull_request() :: %{String.t() => binary}
+  def with_pull_request do
+    submission = "  - name: submission\n"
+
+    Map.update!(files(), "modules/software-factory/process.yaml", fn process ->
+      String.replace(process, submission, pull_request_entry() <> submission, global: false)
+    end)
+  end
+
   @doc """
   serve!/2 is a repository of `files` (`Apiary.PublicGitServer.repository!/2`, with
   `opts`) served at the Qory harness's address for the calling test, in place of the

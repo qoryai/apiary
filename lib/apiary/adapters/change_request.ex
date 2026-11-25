@@ -12,8 +12,10 @@ defmodule Apiary.Adapters.ChangeRequest do
   # `data` that is a JSON object. A text with a `<!-- qory:start -->` line is valid: the
   # kind that needs the marker rule states it, not the envelope.
   #
-  # At this commit no code writes a `change_request` entry. The writer calls `validate/1`
-  # before it writes one, and sends nothing when the check fails.
+  # The writer calls `validate/1` before it writes an entry, and sends nothing when the
+  # check fails.
+  # shortcut: no code writes a `change_request` entry; replace when the entry writer
+  # exists.
 
   alias Apiary.Kinds.Schema
 

@@ -2708,8 +2708,33 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
       end
     end
 
-    test "the submission's draft, linked, above the outputs", %{conn: conn, scope: scope} do
+    # `work_item`, whose process version has the submit step of `submission` in its harness
+    # record, as a version saved before Qory Apiary dropped that step has it.
+    defp submitting!(work_item) do
+      submit = %{"type" => "submission", "send" => "after_gate"}
+      template = %{"commit" => String.duplicate("a", 40), "submit" => submit}
+
+      {1, _rows} =
+        Repo.update_all(
+          from(v in Processes.Version, where: v.id == ^work_item.process_version_id),
+          set: [template: template]
+        )
+
+      work_item
+    end
+
+    test "a submission shows no line where the process version has no submit step",
+         %{conn: conn, scope: scope} do
       work_item = at_build(scope, :at_gate)
+      push!({:run, build_run!(work_item)}, work_item, "submission", @build)
+      {:ok, view, _html} = live(conn, page(scope, work_item.number))
+
+      assert has_element?(view, "#work-item-stage-gate-outputs")
+      refute has_element?(view, "#work-item-stage-gate-draft-0")
+    end
+
+    test "the submission's draft, linked, above the outputs", %{conn: conn, scope: scope} do
+      work_item = scope |> at_build(:at_gate) |> submitting!()
       push!({:run, build_run!(work_item)}, work_item, "submission", @build)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
@@ -2723,7 +2748,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
 
     test "a submission with no draft shows no line", %{conn: conn, scope: scope} do
-      work_item = at_build(scope, :at_gate)
+      work_item = scope |> at_build(:at_gate) |> submitting!()
 
       submission =
         json("submission.json", %{
@@ -2749,7 +2774,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
 
     test "a withdrawn submission shows no line", %{conn: conn, scope: scope} do
-      work_item = at_build(scope, :at_gate)
+      work_item = scope |> at_build(:at_gate) |> submitting!()
       run = build_run!(work_item)
       push!({:run, run}, work_item, "submission", @build)
 
@@ -2763,7 +2788,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
 
     test "a submission of a run a member cancelled shows no line", %{conn: conn, scope: scope} do
-      work_item = at_build(scope, :at_gate)
+      work_item = scope |> at_build(:at_gate) |> submitting!()
       dispatch_run = build_run!(work_item)
       push!({:run, dispatch_run}, work_item, "submission", @build)
       {run, _dispatch_run} = registered!(work_item, dispatch_run, :handed_over)
@@ -2783,7 +2808,7 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
     end
 
     test "the submission is read once, not again on each refresh", %{conn: conn, scope: scope} do
-      work_item = at_build(scope, :at_gate)
+      work_item = scope |> at_build(:at_gate) |> submitting!()
       submission = push!({:run, build_run!(work_item)}, work_item, "submission", @build)
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 

@@ -45,4 +45,4 @@
 # description's value from the body of the start-up. The schema checks the shape of each
 # `links` entry. Qory Apiary does not check that each system is listed once or that the
 # host of a template is its system, which integrations' `contracts.CheckLinks` checks.
-effc22aa2dc85997333918dba64425bdade7f5dc
+7e6cac7e19162fe285259ccb03108f9bc046b5f8

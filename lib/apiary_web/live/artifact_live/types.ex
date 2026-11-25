@@ -11,12 +11,14 @@ defmodule ApiaryWeb.ArtifactLive.Types do
   # is kept, and a line under the table says why (`:in_use`). A type in use stays on, and
   # a line under the standard types shows why.
   #
-  # The type that the process's `submit` sets (`Apiary.Artifacts.submit_types/1`) shows the
-  # mark Set by the harness and has no Edit and no Delete: the harness sets its schema. The
-  # page shows a line under the table with the reason and one of two endings. The step in
-  # Harness settings, as a link, is the usual one. In a workspace that an operator operates,
-  # the organisation's owners and admins read to ask the operator. The edit and delete
-  # routes and events of such a type go back to the list.
+  # A type that the current process version, or a version in use, marks `deliver`
+  # (`Apiary.Artifacts.submit_types/1`) shows the mark Set by the harness and has no Edit
+  # and no Delete: a run's version of it is checked against the schema in the harness
+  # record of the run's process version. The page shows a line under the table with the
+  # reason and one of two endings. The step in Harness settings, as a link, is the usual
+  # one. In a workspace that an operator operates, the organisation's owners and admins
+  # read to ask the operator. The edit and delete routes and events of such a type go back
+  # to the list.
   #
   # A custom type's workflows, the ones that write or read it, come from the harness's
   # declarations, which have none yet, so the list shows no workflows.

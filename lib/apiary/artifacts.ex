@@ -154,16 +154,7 @@ defmodule Apiary.Artifacts do
   # `{:error, :run_cancelled}`; the artifact found or made; the
   # check of what members wrote and the integers, as above; the next number, one more
   # than the highest; the version and its audit entry; then every file is kept in the
-  # store, and its row written; then, for a run's version of the submission type in
-  # `submit.type` of the run's process version, a `watch` entry in the feed of the
-  # adapter of the work item's target collection (`Apiary.Adapters.Feed`), one per
-  # version. A work item with no target, or a target that no collection matches
-  # (`Apiary.Runs.RunCredentials.work_collection/3`), gets no entry, and the version is
-  # stored all the same. A push of a standard type reads nothing for the entry. Where the
-  # instance's public address is not one the entry takes (plain http to a host that is
-  # not `localhost`, `127.0.0.1` or `[::1]`), the push is `{:error, :public_url}` before
-  # any file is kept, with a log line that starts with the fix: set `PUBLIC_URL`. A
-  # withdrawal writes no entry. The workspace's lock comes first, as in the core's lock
+  # store, and its row written. The workspace's lock comes first, as in the core's lock
   # order (`Apiary.WorkItems`). An always-on type takes no lock on the workspace:
   # verdicts are the most frequent pushes, and the stage runner pushes them inside
   # transactions that already hold the work item. The work item's lock makes the
@@ -198,11 +189,10 @@ defmodule Apiary.Artifacts do
   # those of a push, 1 to 3. A type Qory Apiary reads itself, `questions`,
   # `review-comments`, `verdict` or `proposal` (`withdrawable_type/1`), is
   # `{:error, {:withdraw, :type}}`, a type with `withdrawable` false is
-  # `{:error, {:withdraw, :type_off}}`, and the type in `submit.type` of the run's process
-  # version or of the work item's is `{:error, {:withdraw, :submit_type}}`
-  # (`withdrawable_type/3`). Then, in the
-  # transaction, with the locks and the
-  # reads of a push's transaction, the artifact's newest version, leaving out versions by a
+  # `{:error, {:withdraw, :type_off}}`. Then, in the transaction, with the locks and the
+  # reads of a push's transaction, a type that the run's process version or the held work
+  # item's marks `deliver` is `{:error, {:withdraw, :delivered}}` (`withdrawable_type/3`),
+  # and the artifact's newest version, leaving out versions by a
   # run a member cancelled, is read, and the withdrawal is refused, as
   # `{:error, {:withdraw, reason}}`, when it is:
   #
@@ -244,19 +234,16 @@ defmodule Apiary.Artifacts do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Audit, PublicId, Repo, WorkItems}
+  alias Apiary.{Access, Audit, PublicId, Repo}
   alias Apiary.Accounts.Scope
-  alias Apiary.Adapters.Feed
   alias Apiary.Artifacts.{Artifact, ArtifactFile, CustomSchema, Filename, Format, Mockup, Store}
   alias Apiary.Artifacts.Type
   alias Apiary.Artifacts.Version
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Explore.{Questions, ReviewComments}
-  alias Apiary.Nodes.Node
   alias Apiary.Organisations.Workspace
   alias Apiary.Processes
   alias Apiary.Processes.Version, as: ProcessVersion
-  alias Apiary.Runs.RunCredentials
   alias Apiary.Stages.{GateDecision, Withdrawals}
   alias Apiary.WorkItems.{State, WorkItem}
 
@@ -318,10 +305,13 @@ defmodule Apiary.Artifacts do
   @spec member_types() :: [String.t()]
   def member_types, do: @member_types
 
-  # submit_types/1 is the names of the types that the process of `workspace` sets as the
-  # result of a run (`submit.type` of the harness record, `Processes.harness_template/1`):
-  # those of its current version and of each version in use (`switch_type/4`). The harness
-  # sets their schemas: no one edits or deletes them.
+  # submit_types/1 is the names of the types that the process of `workspace` marks
+  # `deliver` (`artifact_types` of the harness record, `Processes.harness_template/1`):
+  # those of its current version and of each version in use (`switch_type/4`). The
+  # harness sets the schema of a type it marks for delivery, and a run's version of it is
+  # checked against the schema in the record of the run's process version
+  # (`checked_type/3`), so no one edits or deletes such a type here.
+  # shortcut: name kept because the screens call it; rename with the screen work.
   @doc false
   @spec submit_types(Workspace.t()) :: [String.t()]
   def submit_types(%Workspace{id: workspace_id}) do
@@ -332,14 +322,13 @@ defmodule Apiary.Artifacts do
 
     (Repo.all(from v in current, select: v.id) ++ Repo.all(from v in in_use, select: v.id))
     |> Enum.uniq()
-    |> Enum.flat_map(fn id ->
-      case Processes.harness_template(id) do
-        %{"submit" => %{"type" => type}} when is_binary(type) -> [type]
-        _none -> []
-      end
-    end)
+    |> Enum.flat_map(&delivered_names(Processes.harness_template(&1)))
     |> Enum.uniq()
   end
+
+  # The names of the delivered types in a harness record (`Processes.delivered_entries/1`).
+  defp delivered_names(record),
+    do: for(%{"name" => name} <- Processes.delivered_entries(record), do: name)
 
   @doc false
   @spec all_types(Workspace.t()) :: [Type.t()]
@@ -436,8 +425,8 @@ defmodule Apiary.Artifacts do
 
   # update_type/3 changes a custom type's size limit, most files and JSON Schema. It and
   # delete_type/2 hold the scope's places, the workspace `FOR NO KEY UPDATE` and the type's
-  # row, in that order, so a change of the process that makes the type one that its
-  # `submit` sets (`submit_types/1`) takes turns with them.
+  # row, in that order, so a process save that marks the type `deliver`
+  # (`submit_types/1`) takes turns with them.
   @doc false
   @spec update_type(Scope.t(), Type.t(), map) ::
           {:ok, Type.t()}
@@ -715,8 +704,7 @@ defmodule Apiary.Artifacts do
              | :store_unavailable
              | :stage_changed
              | :run_ended
-             | :run_cancelled
-             | :public_url}
+             | :run_cancelled}
   def push(actor, %WorkItem{} = work_item, type_name, files, opts \\ []) do
     with {:ok, work_item} <- current(work_item),
          {:ok, writer} <- writer(actor, work_item, type_name),
@@ -741,7 +729,7 @@ defmodule Apiary.Artifacts do
              | {:withdraw,
                 :type
                 | :type_off
-                | :submit_type
+                | :delivered
                 | {:approved, pos_integer}
                 | :no_version
                 | {:withdrawn, pos_integer}}
@@ -761,10 +749,10 @@ defmodule Apiary.Artifacts do
          {:ok, writer} <- writer(actor, work_item, type_name),
          {:ok, type} <- push_type(work_item, type_name),
          :ok <- actor_type(writer, type),
-         :ok <- withdrawable_type(type, dispatch_run, work_item),
+         :ok <- withdrawable_type(type),
          {:ok, fields} <- fields(opts),
          :ok <- member_name(type, fields) do
-      writer |> write_withdrawal(work_item, type, fields) |> broadcast()
+      writer |> write_withdrawal(dispatch_run, work_item, type, fields) |> broadcast()
     end
   end
 
@@ -784,30 +772,42 @@ defmodule Apiary.Artifacts do
   def withdrawable_type(%Type{withdrawable: false}), do: {:error, {:withdraw, :type_off}}
   def withdrawable_type(%Type{}), do: :ok
 
-  # withdrawable_type/2 is `withdrawable_type/1`, and `{:error, {:withdraw, :submit_type}}`
-  # for the type in `submit.type` of the run's process version and for the one in
-  # `submit.type` of the work item's process version, which the Submissions list reads
-  # (`Apiary.Submissions`): Qory Apiary reads the newest version of that type as the run's
-  # submission, so a withdrawal would leave it with none. Versions stored earlier stay.
+  # withdrawable_type/3 is `withdrawable_type/1`, and `{:error, {:withdraw, :delivered}}`
+  # for a type that the run's process version or the work item's marks `deliver`: the
+  # process marks the type for delivery of its newest version, so a withdrawal would
+  # leave the work item with none. Versions stored earlier stay. The run API checks it
+  # before the files; `withdraw/4` checks it again under the work item's lock.
   @doc false
   @spec withdrawable_type(Type.t(), DispatchRun.t(), WorkItem.t()) ::
-          :ok | {:error, {:withdraw, :type | :type_off | :submit_type}}
-  def withdrawable_type(%Type{name: name} = type, %DispatchRun{} = dispatch_run, work_item) do
-    with :ok <- withdrawable_type(type) do
-      if name in [submit_type(dispatch_run), submit_type(work_item)],
-        do: {:error, {:withdraw, :submit_type}},
-        else: :ok
-    end
+          :ok | {:error, {:withdraw, :type | :type_off | :delivered}}
+  def withdrawable_type(%Type{} = type, %DispatchRun{} = dispatch_run, work_item) do
+    with :ok <- withdrawable_type(type), do: not_delivered(type, dispatch_run, work_item)
+  end
+
+  # `{:error, {:withdraw, :delivered}}` where the process version of `dispatch_run` or of
+  # `work_item` (`Processes.version_for/1`) marks `type` `deliver`.
+  # shortcut: under the work item's lock, a move of the work item to another version
+  # takes turns with this read, but Make current of a workspace does not, for a work item
+  # with no process version, which reads the current version; hold the workspace here
+  # if such a run comes to withdraw delivered types.
+  defp not_delivered(%Type{name: name}, dispatch_run, work_item) do
+    delivered =
+      delivered_names(Processes.harness_template(dispatch_run.process_version_id)) ++
+        delivered_names(work_item |> Processes.version_for() |> Processes.harness_template())
+
+    if name in delivered, do: {:error, {:withdraw, :delivered}}, else: :ok
   end
 
   # The withdrawal's row, under the locks and reads of a push's transaction (`write/5`),
-  # when the artifact's newest version has files (`withdrawable/3`).
-  defp write_withdrawal(writer, work_item, type, fields) do
+  # when the type is not delivered for the held work item and the artifact's newest
+  # version has files (`withdrawable/3`).
+  defp write_withdrawal(writer, dispatch_run, work_item, type, fields) do
     Repo.transact(fn ->
       now = DateTime.utc_now()
 
       with :ok <- shown_kept(work_item, type),
            %WorkItem{} = held <- held_work_item(work_item),
+           :ok <- not_delivered(type, dispatch_run, held),
            :ok <- run_live(writer),
            :ok <- stage_kept(held, fields.expect_stage),
            :ok <- type_kept(type),
@@ -1149,17 +1149,24 @@ defmodule Apiary.Artifacts do
       else: type
   end
 
-  # A run's version of its submit type is checked against the schema in the harness commit
-  # the run composes where `Processes.submit_schema/2` finds it, else against the
-  # workspace's type.
+  # A run's version of a type that the run's process version marks `deliver` is checked
+  # against the `json_schema` of that type's entry in the version's record
+  # (`Processes.delivered_entries/1`), the schema the harness file had when the version
+  # was saved; a version of any other type, against the workspace's type.
   defp checked_type(
-         %{actor: :run, run: %DispatchRun{} = run},
-         %Type{standard: false, base_view: :structured} = type,
+         %{actor: :run, run: %DispatchRun{process_version_id: version_id}},
+         %Type{standard: false, base_view: :structured, name: name} = type,
          _files
        ) do
-    case Processes.submit_schema(run, type.name) do
-      {:ok, schema} -> %Type{type | json_schema: schema}
-      :none -> type
+    entry =
+      version_id
+      |> Processes.harness_template()
+      |> Processes.delivered_entries()
+      |> Enum.find(&(&1["name"] == name))
+
+    case entry do
+      %{"json_schema" => %{} = schema} -> %Type{type | json_schema: schema}
+      _none -> type
     end
   end
 
@@ -1260,10 +1267,9 @@ defmodule Apiary.Artifacts do
   end
 
   # The rows, with the staged files kept in the store after every check passed, last
-  # before the file rows. The checks include the run's watch entry (`watch_entry/3`), formed
-  # before `keep/6` and written after it. On a refusal, or an exception, which is raised
-  # again, every staged copy is dropped, those `integers/2` made included (`keep/6`), so a
-  # refused push keeps no file in the store.
+  # before the file rows. On a refusal, or an exception, which is raised again, every
+  # staged copy is dropped, those `integers/2` made included (`keep/6`), so a refused push
+  # keeps no file in the store.
   defp write(writer, work_item, type, fields, staged) do
     Repo.transact(fn ->
       now = DateTime.utc_now()
@@ -1277,11 +1283,8 @@ defmodule Apiary.Artifacts do
            :ok <- members_kept(writer, artifact, staged),
            :ok <- verdict_kept(held, artifact, fields, staged),
            :ok <- decision_kept(held, fields.decision),
-           {:ok, watched} <- watch_entry(writer, held, type),
-           {:ok, kept} <- integers(type, staged),
-           {:ok, _written} = written <- keep(writer, held, artifact, fields, kept, now) do
-        :ok = append_watch(watched)
-        written
+           {:ok, kept} <- integers(type, staged) do
+        keep(writer, held, artifact, fields, kept, now)
       else
         nil -> {:error, :not_found}
         {:error, _reason} = error -> error
@@ -1320,80 +1323,6 @@ defmodule Apiary.Artifacts do
       discard(kept)
       reraise exception, __STACKTRACE__
   end
-
-  # The `watch` entry for the version a run stores of its submission type: the type in
-  # `submit.type` of the run's process version (`Processes.harness_template/1`). The entry
-  # goes to the feed of the adapter of the work item's target collection, the collection
-  # the run's work entry comes from (`RunCredentials.work_collection/3`), and contains the
-  # work item's public id and its stable url. `{:ok, {adapter, entry}}` for an entry,
-  # `{:ok, nil}` for none: a member action's version, a version of another type, a run
-  # whose process version has no submit, a work item with no target, or a target that no
-  # collection matches.
-  #
-  # The entry is formed before `keep/6`, and `append_watch/1` writes it after, in the
-  # push's transaction, so the version and its entry commit together or not at all. The
-  # work item's lock is held for both, and the feed's counter is taken last, as in the
-  # core's lock order (`Apiary.Adapters.Collections`).
-  #
-  # A standard type is never a submission type: a template's `submit.type` is a custom
-  # type with `base_view: structured` (`Apiary.Artifacts.TemplateTypes`). A push of a
-  # standard type, the verdict of every stage among them, returns before it reads the
-  # run or its process version. A withdrawal has no entry (`write_withdrawal/4`).
-  #
-  # The lookup and `Processes.harness_template/1` only read the database: no message is
-  # sent and no other system is called inside the transaction. `Feed.append/2` takes only
-  # an adapter with no organisation, which the `nodes` check keeps true of every adapter;
-  # any other node gets no entry.
-  #
-  # `{:error, :public_url}` where the stable url is not one a watch entry takes: the
-  # instance's `PUBLIC_URL` is plain http to a host other than `localhost`, `127.0.0.1`
-  # or `[::1]`, or has a character outside RFC 3986, such as a host in Unicode. The boot
-  # accepts both (`config/runtime.exs`), and the error is logged with the fix. It comes
-  # before `keep/6`, so a refused push keeps no file in the store.
-  defp watch_entry(%{actor: :run, run_id: run_id}, held, %Type{standard: false, name: name}) do
-    with %DispatchRun{} = dispatch_run <- Repo.get(DispatchRun, run_id),
-         ^name <- submit_type(dispatch_run),
-         %{} = target <- WorkItem.target(held),
-         {_collection, _connection, %Node{kind: :adapter, organisation_id: nil} = adapter} <-
-           RunCredentials.work_collection(dispatch_run, held, target) do
-      url = WorkItems.stable_url(held)
-
-      if Feed.work_item_url?(url) do
-        {:ok, {adapter, %{kind: "watch", work_item_id: held.public_id, url: url}}}
-      else
-        Logger.error(
-          "Set PUBLIC_URL to an https:// address: a run cannot store its submission with this one."
-        )
-
-        {:error, :public_url}
-      end
-    else
-      _no_entry -> {:ok, nil}
-    end
-  end
-
-  defp watch_entry(_writer, _held, _type), do: {:ok, nil}
-
-  defp append_watch(nil), do: :ok
-
-  defp append_watch({adapter, entry}) do
-    {:ok, _seq} = Feed.append(adapter, entry)
-    :ok
-  end
-
-  # submit_type/1 is the type in `submit.type` of the run's process version, or of the
-  # process version the work item runs under (`Processes.version_for/1`), which is what the
-  # Submissions list reads; nil for none.
-  @doc false
-  @spec submit_type(DispatchRun.t() | WorkItem.t()) :: String.t() | nil
-  def submit_type(%DispatchRun{process_version_id: id}),
-    do: submit_of(Processes.harness_template(id))
-
-  def submit_type(%WorkItem{} = work_item),
-    do: work_item |> Processes.version_for() |> Processes.harness_template() |> submit_of()
-
-  defp submit_of(%{"submit" => %{"type" => type}}) when is_binary(type), do: type
-  defp submit_of(_template), do: nil
 
   # Drops staged copies; one kept in the store already has no staged copy left.
   defp discard(staged) do

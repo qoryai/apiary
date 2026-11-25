@@ -357,15 +357,17 @@ pointer of an entry is counted from the entry, such as `/target/collection`.
 - The `target` and the `address` in a reply are shared with the entries. They ignore an
   undefined member.
 
-The control plane writes a `watch` entry, with `work_item_id` and `url`, whenever a run
-stores a change request version, and a `change_request` entry for each target of that
-version, as [Change requests](#change-requests) describes. It writes both entries in the
-feed of the adapter of the target's collection, whatever source the work item came from,
-and also when the work item came from no item at a source. It writes a `watch` entry only
-for an adapter whose `source` role has `targets: true`, and a `change_request` entry only
-for an adapter whose `source` role lists the change's kind in `change_kinds`. An adapter
-without `change_kinds`, or without that kind in it, never receives a `change_request`
-entry.
+The control plane writes a `change_request` entry for each target of a change request
+version that a run stores, as [Change requests](#change-requests) describes. It writes
+the entry in the feed of the adapter of the target's collection, whatever source the work
+item came from, and also when the work item came from no item at a source. It writes the
+entry only for an adapter whose `source` role lists the change's kind in `change_kinds`.
+An adapter without `change_kinds`, or without that kind in it, never receives a
+`change_request` entry.
+
+The control plane writes no `watch` entry. The kind `watch`, with `work_item_id` and
+`url`, and its rules are defined in `changes.schema.json`. An adapter that reads a
+`watch` entry treats it as an entry of a defined kind.
 
 ## Change requests
 

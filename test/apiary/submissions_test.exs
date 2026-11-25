@@ -1,6 +1,6 @@
 defmodule Apiary.SubmissionsTest do
   # The rows of a work item's submissions (`Apiary.Submissions`): one for each version of
-  # the type in `submit.type` of the process version, with the commits of the run, the
+  # the type `submission`, with the commits of the run, the
   # `Base` line from the earlier submissions, the text of each change from the plan of
   # the type the run's walk recorded (`run_harnesses.plan_type`), and every stored member
   # read as untrusted. Not async: the store's root is the application's setting.
@@ -154,36 +154,6 @@ defmodule Apiary.SubmissionsTest do
     %{ctx | first: Repo.reload!(first), second: Repo.reload!(second)}
   end
 
-  # A new current version of the workspace's process, with `submit` in its template (nil for
-  # none), under another name of Build so that the save is a change.
-  defp version!(%{scope: scope}, name, submit) do
-    {:ok, version} =
-      Apiary.Processes.save(scope, scope.workspace, %{
-        "schema" => "qory.process/v1",
-        "machine" => "default",
-        "stages" => [
-          %{
-            "id" => @build,
-            "name" => name,
-            "inputs" => [],
-            "sequence" => [%{"workflow" => "build-it"}],
-            "outputs" => [],
-            "gate" => %{"kind" => "person", "approvers" => "members"}
-          }
-        ]
-      })
-
-    template = %{"commit" => String.duplicate("a", 40)}
-    template = if submit, do: Map.put(template, "submit", submit), else: template
-
-    {1, _rows} =
-      Repo.update_all(from(v in ProcessVersion, where: v.id == ^version.id),
-        set: [template: template]
-      )
-
-    version
-  end
-
   defp json(value),
     do: [
       %{
@@ -265,20 +235,18 @@ defmodule Apiary.SubmissionsTest do
     }
 
   defp rows(ctx, only \\ nil) do
-    type = Submissions.type(ctx.work_item)
-    Submissions.list(ctx.work_item, type, Artifacts.list(ctx.work_item), only)
+    Submissions.list(ctx.work_item, "submission", Artifacts.list(ctx.work_item), only)
   end
 
   defp repository_of(row), do: hd(row.repositories)
 
-  describe "type/1" do
-    test "is the type in submit.type of the work item's process version", ctx do
-      assert Submissions.type(ctx.work_item) == "submission"
-    end
+  describe "type_cached/2 and for_run/4" do
+    test "find no type, though the process version's template record has submit", ctx do
+      store!(ctx, ctx.first, submission())
+      run = Repo.reload!(ctx.first_run)
 
-    test "is nil for a process version with no submit", ctx do
-      ctx = submits!(ctx, nil)
-      assert Submissions.type(ctx.work_item) == nil
+      assert Submissions.type_cached(ctx.work_item, %{}) == {nil, %{}}
+      assert Submissions.for_run(ctx.scope, run, [], %{}) == {nil, %{}}
     end
   end
 
@@ -603,18 +571,10 @@ defmodule Apiary.SubmissionsTest do
     end
   end
 
-  describe "for_run/4, the run page's rows" do
-    defp outputs_of(version),
-      do: [%{name: "main", type: "submission", public_id: version.public_id}]
-
+  describe "the change text of a run's plan" do
     defp run_change(ctx, version) do
-      run = Repo.reload!(ctx.first_run)
-
-      assert {%{rows: rows}, _cache} =
-               Submissions.for_run(ctx.scope, run, outputs_of(version), %{})
-
-      assert %{repositories: [%{commits: [%{step: {:change, "d-2", text}} | _]}]} =
-               rows[version.public_id]
+      assert [%{repositories: [%{commits: [%{step: {:change, "d-2", text}} | _]}]}] =
+               rows(ctx, [version.public_id])
 
       text
     end
@@ -1295,7 +1255,7 @@ defmodule Apiary.SubmissionsTest do
       store!(ctx, ctx.first, submission())
       store!(ctx, ctx.second, submission())
 
-      type = Submissions.type(ctx.work_item)
+      type = "submission"
       artifacts = Artifacts.list(ctx.work_item)
 
       {{rows, cache}, first} =
@@ -1320,7 +1280,7 @@ defmodule Apiary.SubmissionsTest do
       commits = [%{"commit" => @head, "step" => "fix:f1"}]
       store!(ctx, ctx.first, submission(repository(%{"commits" => commits})))
 
-      type = Submissions.type(ctx.work_item)
+      type = "submission"
       artifacts = Artifacts.list(ctx.work_item)
 
       {{[_row], _cache}, count} =
@@ -1332,7 +1292,7 @@ defmodule Apiary.SubmissionsTest do
     test "a cache keeps only the versions it used", ctx do
       first = store!(ctx, ctx.first, submission())
       second = store!(ctx, ctx.second, submission())
-      type = Submissions.type(ctx.work_item)
+      type = "submission"
       artifacts = Artifacts.list(ctx.work_item)
 
       {_rows, cache} = Submissions.list_cached(ctx.work_item, type, artifacts, nil, %{})
@@ -1347,7 +1307,7 @@ defmodule Apiary.SubmissionsTest do
     test "reads only the wanted version where it has no base", ctx do
       first = store!(ctx, ctx.first, submission(repository(%{"base" => nil, "commits" => []})))
       second = store!(ctx, ctx.second, submission(repository(%{"base" => nil, "commits" => []})))
-      type = Submissions.type(ctx.work_item)
+      type = "submission"
       artifacts = Artifacts.list(ctx.work_item)
 
       {{[row], _cache}, count} =
@@ -1358,20 +1318,6 @@ defmodule Apiary.SubmissionsTest do
       assert row.id == second.public_id
       assert count == 1
       refute first.public_id == second.public_id
-    end
-
-    test "a type is asked once for a work item whose process version is fixed", ctx do
-      {:ok, work_item} =
-        {:ok,
-         Repo.update!(
-           Ecto.Changeset.change(ctx.work_item,
-             process_version_id: Apiary.Processes.version_for(ctx.work_item).id
-           )
-         )}
-
-      {"submission", cache} = Submissions.type_cached(work_item, %{})
-      assert cache == %{{:type, work_item.process_version_id} => "submission"}
-      assert {"submission", ^cache} = Submissions.type_cached(work_item, cache)
     end
   end
 
@@ -1433,62 +1379,7 @@ defmodule Apiary.SubmissionsTest do
   end
 
   describe "a run's withdrawal of the submission type" do
-    test "is refused, and a withdrawal of another custom type passes", ctx do
-      store!(ctx, ctx.first, submission())
-
-      assert {:error, {:withdraw, :submit_type}} =
-               Artifacts.withdraw({:run, ctx.first}, ctx.work_item, "submission", name: "main")
-
-      {:ok, _type} =
-        Artifacts.create_type(ctx.scope, ctx.scope.workspace, %{
-          "name" => "demo-script",
-          "base_view" => "file",
-          "size_limit" => 1000,
-          "max_files" => 1
-        })
-
-      {:ok, _version} =
-        Artifacts.push(
-          {:run, ctx.first},
-          ctx.work_item,
-          "demo-script",
-          [%{filename: "a.txt", content_type: "text/plain", binary: "a"}],
-          stage_id: @build
-        )
-
-      assert {:ok, %{withdrawn: true}} =
-               Artifacts.withdraw({:run, ctx.first}, ctx.work_item, "demo-script", name: "main")
-    end
-
-    test "is refused for the type of the run's process version after the work item's changed",
-         ctx do
-      store!(ctx, ctx.first, submission())
-      version!(ctx, "Build 2", nil)
-      assert Submissions.type(ctx.work_item) == nil
-
-      assert {:error, {:withdraw, :submit_type}} =
-               Artifacts.withdraw({:run, ctx.first}, ctx.work_item, "submission", name: "main")
-    end
-
-    test "is refused for the type of the work item's process version", ctx do
-      store!(ctx, ctx.first, submission())
-      none = version!(ctx, "Build 2", nil)
-
-      {1, _rows} =
-        Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.first.id),
-          set: [process_version_id: none.id]
-        )
-
-      version!(ctx, "Build 3", @submit)
-      first = Repo.reload!(ctx.first)
-      assert Submissions.type(ctx.work_item) == "submission"
-
-      assert {:error, {:withdraw, :submit_type}} =
-               Artifacts.withdraw({:run, first}, ctx.work_item, "submission", name: "main")
-    end
-
-    test "passes where the run's process version has no submit", ctx do
-      ctx = submits!(ctx, nil)
+    test "passes, though the run's process version has submit", ctx do
       store!(ctx, ctx.first, submission())
 
       assert {:ok, %{withdrawn: true}} =

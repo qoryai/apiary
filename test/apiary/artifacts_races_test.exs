@@ -14,7 +14,7 @@ defmodule Apiary.ArtifactsRacesTest do
   # process.
   #
   # `update_type/3` and `delete_type/2` take the same lock before the type's row, so a
-  # change of the process that makes the type one that its `submit` sets
+  # change of the process that marks the type `deliver`
   # (`Apiary.Artifacts.submit_types/1`) takes turns with them.
   use ExUnit.Case, async: false
 
@@ -223,9 +223,9 @@ defmodule Apiary.ArtifactsRacesTest do
     assert {:error, :current_process} = Task.await(switch.task, 15_000)
   end
 
-  # A process save that sets `submission` as the version's submit type, held open with the
-  # workspace, and a change of the type that starts after it: the change waits for the
-  # save, then finds the type set by the harness. Without the workspace lock the change
+  # A process save that marks `submission` `deliver`, held open with the workspace, and a
+  # change of the type that starts after it: the change waits for the save, then finds the
+  # type locked. Without the workspace lock the change
   # does not wait, and `await_blocked/2` fails.
   defp change_type(:delete, scope, type), do: Artifacts.delete_type(scope, type)
 
@@ -234,7 +234,7 @@ defmodule Apiary.ArtifactsRacesTest do
 
   for name <- [:delete, :update] do
     @tag needs: :workflow_model
-    test "a #{name} of the type that the process's submit sets waits for a process save, and is then refused",
+    test "a #{name} of the type that the process delivers waits for a process save, and is then refused",
          %{scope: scope} do
       type =
         Artifacts.type(scope.workspace, "submission") ||
@@ -262,8 +262,19 @@ defmodule Apiary.ArtifactsRacesTest do
       change = start(fn -> change_type(unquote(name), scope, type) end)
       await_blocked(change.backend, holder)
 
-      submit = %{"type" => "submission", "send" => "end_of_run"}
-      record = %{"source" => "qory", "commit" => String.duplicate("a", 40), "submit" => submit}
+      delivered = [
+        %{
+          "name" => "submission",
+          "base_view" => "structured",
+          "deliver" => %{"send" => "end_of_run"}
+        }
+      ]
+
+      record = %{
+        "source" => "qory",
+        "commit" => String.duplicate("a", 40),
+        "artifact_types" => delivered
+      }
 
       assert {1, _rows} =
                continue(held, fn ->
@@ -277,5 +288,51 @@ defmodule Apiary.ArtifactsRacesTest do
       assert {:error, :set_by_harness} = Task.await(change.task, 15_000)
       assert %Type{} = Repo.get!(Type, type.id)
     end
+  end
+
+  # A move of the work item to a process version that marks `submission` `deliver`, held
+  # open with the work item's row, and a run's withdrawal that starts after it: the
+  # withdrawal waits for the move, then finds the type delivered. A check before the work
+  # item's lock reads the version before the move and lets the withdrawal through.
+  @tag needs: :workflow_model
+  test "a withdrawal waits for a move of the work item, and reads the version it moved to",
+       %{scope: scope, work_item: work_item, run: run} do
+    {:ok, _type} =
+      Artifacts.create_type(scope, scope.workspace, %{
+        "name" => "findings",
+        "base_view" => "structured",
+        "json_schema" => %{"type" => "object"}
+      })
+
+    version = Processes.current(scope.workspace)
+
+    delivered = [
+      %{"name" => "findings", "base_view" => "structured", "deliver" => %{"send" => "end_of_run"}}
+    ]
+
+    {held, holder} =
+      hold(fn ->
+        Repo.update_all(from(w in WorkItem, where: w.id == ^work_item.id),
+          set: [process_version_id: version.id]
+        )
+      end)
+
+    withdrawal =
+      start(fn -> Artifacts.withdraw({:run, run}, work_item, "findings", name: "main") end)
+
+    await_blocked(withdrawal.backend, holder)
+
+    record = %{"commit" => String.duplicate("a", 40), "artifact_types" => delivered}
+
+    assert {1, _rows} =
+             continue(held, fn ->
+               Repo.update_all(from(v in Processes.Version, where: v.id == ^version.id),
+                 set: [template: record]
+               )
+             end)
+
+    commit(held)
+
+    assert Task.await(withdrawal.task, 15_000) == {:error, {:withdraw, :delivered}}
   end
 end

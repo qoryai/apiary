@@ -19322,7 +19322,7 @@ msgstr "Runs of this repository start in the pool's default image."
 #: lib/apiary_web/live/artifact_live/types.ex
 #, elixir-autogen, elixir-format
 msgid "Runs of this workspace store their result as a %{name} version, checked against the schema in the harness version that each run uses. So %{name} cannot be edited or deleted here."
-msgstr "Runs of this workspace store their result as a %{name} version, checked against the schema in the harness commit that each run uses. So %{name} cannot be edited or deleted here."
+msgstr "Runs of this workspace store their result as a %{name} version, checked against the schema in the harness version that each run uses. So %{name} cannot be edited or deleted here."
 
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
@@ -26613,11 +26613,6 @@ msgstr ""
 msgid "activity history"
 msgstr ""
 
-#: lib/apiary/artifacts/template_types.ex
-#, elixir-autogen, elixir-format
-msgid "add %{type} to artifact_types as structured"
-msgstr ""
-
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "alive"
@@ -27382,6 +27377,16 @@ msgstr ""
 msgid "list %{type} once in artifact_types"
 msgstr ""
 
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "list each output type of stage %{stage} once: %{type} appears twice"
+msgstr ""
+
+#: lib/apiary/artifacts/template_types.ex
+#, elixir-autogen, elixir-format
+msgid "list each output type of the stage once"
+msgstr ""
+
 #: lib/apiary_web/live/run_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "longest first"
@@ -27873,16 +27878,6 @@ msgstr ""
 #: lib/apiary_web/live/node_live/access_key.ex
 #, elixir-autogen, elixir-format
 msgid "secret · shown once"
-msgstr ""
-
-#: lib/apiary/artifacts/template_types.ex
-#, elixir-autogen, elixir-format
-msgid "set submit.type to a structured type of artifact_types: %{type} is a standard type"
-msgstr ""
-
-#: lib/apiary/artifacts/template_types.ex
-#, elixir-autogen, elixir-format
-msgid "set submit.type to a type whose base_view is structured, not %{view}"
 msgstr ""
 
 #: lib/apiary_web/components/run_components.ex

@@ -44,7 +44,7 @@ defmodule Apiary.Processes.HarnessUpdate do
   adapters that link it to the organisation, or as public, as a person's read is
   (`read/2`). No version is saved where the template fails a check: no template of the
   workspace's type, a process that fails `Apiary.Processes.validate/1`, artifact types or
-  a `submit` that fail the template check, or a stack that cannot be copied. Where the
+  stage outputs that fail the template check, or a stack that cannot be copied. Where the
   workspace takes the harness its organisation shares, a changed stack is not copied: the
   version is saved with the stack kept, and the log has one line for the workspace. A
   workspace whose current version has no harness commit, as one made with no template, is
@@ -132,7 +132,7 @@ defmodule Apiary.Processes.HarnessUpdate do
       (Apiary.Stacks.Sources.templates/2);
     * `{:not_readable, reason}`: a module whose template failed the checks of the read,
       with the reason (Apiary.Stacks.Sources);
-    * `{:types, refusals}`: artifact types, or a `submit`, that fail the template check
+    * `{:types, refusals}`: artifact types, or stage outputs, that fail the template check
       (Apiary.Artifacts.TemplateTypes);
     * `[error]`: a process that fails `Apiary.Processes.validate/1`;
     * a reason of `Apiary.Access`.
@@ -519,7 +519,7 @@ defmodule Apiary.Processes.HarnessUpdate do
       stack: if(chosen.stack != template.stack, do: %{from: chosen.stack, to: template.stack}),
       artifact_types: template.artifact_types,
       template:
-        Processes.with_submit(
+        Processes.with_delivered(
           %{
             "source" => Atom.to_string(source),
             "git" => if(source == :qory, do: Qory.git(), else: chosen.git),

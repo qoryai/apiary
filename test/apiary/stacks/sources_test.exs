@@ -890,6 +890,26 @@ defmodule Apiary.Stacks.SourcesTest do
                "list mockup once in artifact_types"
     end
 
+    test "a stage that lists a type twice in its outputs is not readable, with the fix", ctx do
+      file =
+        String.replace(
+          template_file(),
+          "      name: Answer\n",
+          "      name: Answer\n      outputs: [{type: mockup, required: false}, " <>
+            "{type: mockup, required: true}]\n"
+        ) <> "artifact_types:\n  - name: mockup\n"
+
+      source = template_source(ctx, root("[a]"), %{"a" => file})
+
+      assert {:ok, %{templates: [], not_readable: [%{module: "a", reason: {:types, [refusal]}}]}} =
+               Sources.templates(ctx.scope, source)
+
+      assert refusal == {:repeated_output, "Answer", "mockup"}
+
+      assert TemplateTypes.message(refusal) ==
+               "list each output type of stage Answer once: mockup appears twice"
+    end
+
     test "an entry of artifact_types the schema refuses is not readable, with the type's name",
          ctx do
       file = template_file() <> "artifact_types:\n  - {name: reply-draft, base_view: document}\n"
@@ -950,61 +970,14 @@ defmodule Apiary.Stacks.SourcesTest do
                Sources.templates(ctx.scope, source)
     end
 
-    test "a submit that names a structured type of the file reaches the template", ctx do
-      file = template_file() <> submit_types() <> "submit:\n  type: facts\n  send: after_gate\n"
-      source = template_source(ctx, root("[a, b]"), %{"a" => file, "b" => template_file()})
-
-      assert {:ok, %{templates: [a, b], not_readable: []}} = Sources.templates(ctx.scope, source)
-      assert a.submit == %{"type" => "facts", "send" => "after_gate"}
-      assert b.submit == nil
-    end
-
-    test "a submit that names no structured type of the file is not readable", ctx do
-      for {type, refusal, text} <- [
-            {"other", {:submit, "other", :missing}, "add other to artifact_types as structured"},
-            {"mockup", {:submit, "mockup", :standard},
-             "set submit.type to a structured type of artifact_types: mockup is a standard type"},
-            {"draft", {:submit, "draft", {:base_view, "document"}},
-             "set submit.type to a type whose base_view is structured, not document"}
-          ] do
-        file =
-          template_file() <> submit_types() <> "submit:\n  type: #{type}\n  send: end_of_run\n"
-
-        source = template_source(ctx, root("[a, b]"), %{"a" => file, "b" => template_file()})
-
-        assert {:ok, read} = Sources.templates(ctx.scope, source)
-        assert [%{module: "b"}] = read.templates
-        assert read.not_readable == [%{module: "a", reason: {:types, [refusal]}}]
-
-        assert TemplateTypes.message(refusal) == text
-      end
-    end
-
-    test "a submit with no artifact_types is not readable", ctx do
-      file = template_file() <> "submit:\n  type: facts\n  send: end_of_run\n"
+    test "a submit is dropped, whatever type it sets", ctx do
+      file = template_file() <> "submit:\n  type: other\n  send: end_of_run\n"
       source = template_source(ctx, root("[a]"), %{"a" => file})
 
-      assert {:ok, %{templates: [], not_readable: [%{module: "a", reason: reason}]}} =
+      assert {:ok, %{templates: [template], not_readable: []}} =
                Sources.templates(ctx.scope, source)
 
-      assert reason == {:types, [{:submit, "facts", :missing}]}
-    end
-
-    # An artifact_types of a standard type, a document type and a structured type.
-    defp submit_types do
-      """
-      artifact_types:
-        - name: mockup
-        - name: draft
-          base_view: document
-          size_limit: 65536
-          max_files: 1
-        - name: facts
-          base_view: structured
-          size_limit: 65536
-          max_files: 1
-          json_schema: {type: object}
-      """
+      refute Map.has_key?(template, :submit)
     end
 
     # A clock of the read's checks, on time for the first `on_time` reads and 60 s past the
@@ -1051,6 +1024,33 @@ defmodule Apiary.Stacks.SourcesTest do
             max_files: 1
             json_schema: #{json_schema}
         """
+    end
+
+    test "a module whose delivered type refers to the primitives of the harness is readable",
+         ctx do
+      file = template_file() <> "artifact_types:\n" <> QoryHarnessFixture.pull_request_entry()
+      source = template_source(ctx, root("[a]"), %{"a" => file})
+
+      assert {:ok, %{templates: [template], not_readable: []}} =
+               Sources.templates(ctx.scope, source)
+
+      schema = QoryHarnessFixture.pull_request_schema()
+      assert [%{"name" => "pull-request", "json_schema" => ^schema}] = template.artifact_types
+    end
+
+    test "a module whose type refers to another remote address is not readable", ctx do
+      schema =
+        ~s({type: object, properties: {target: {"$ref": "https://example.com/other.schema.json#/$defs/x"}}})
+
+      source = template_source(ctx, root("[a]"), %{"a" => typed_file(schema)})
+
+      assert {:ok, %{templates: [], not_readable: [not_readable]}} =
+               Sources.templates(ctx.scope, source)
+
+      assert not_readable == %{
+               module: "a",
+               reason: {:types, [{:invalid, "customer-facts", :json_schema}]}
+             }
     end
 
     test "a check of a module's types out of time fails as a late read fails", ctx do

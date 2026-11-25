@@ -2547,13 +2547,31 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert RunApiStubs.pushed() == []
     end
 
-    # The run's process version has the submit step `submit`, as a template's does.
-    defp submits!(ctx, submit) do
+    # The run's process version has the submit step `submit`, as a version saved before
+    # Qory Apiary dropped the step has it.
+    defp submits!(ctx, submit), do: record!(ctx, %{"submit" => submit})
+
+    # The run's process version marks the type `name` `deliver`, with `schema` in the
+    # type's entry where it is given.
+    defp delivers!(ctx, name, schema \\ nil) do
+      entry = %{
+        "name" => name,
+        "base_view" => "structured",
+        "deliver" => %{"send" => "end_of_run"}
+      }
+
+      entry = if schema, do: Map.put(entry, "json_schema", schema), else: entry
+      record!(ctx, %{"artifact_types" => [entry]})
+    end
+
+    # The run's process version, with `fields` in its harness record.
+    defp record!(ctx, fields) do
       version = Apiary.Processes.version_for(ctx.work_item)
+      template = Map.put(fields, "commit", String.duplicate("a", 40))
 
       {1, _rows} =
         Repo.update_all(from(v in Apiary.Processes.Version, where: v.id == ^version.id),
-          set: [template: %{"commit" => String.duplicate("a", 40), "submit" => submit}]
+          set: [template: template]
         )
 
       {1, _rows} =
@@ -2564,10 +2582,10 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       :ok
     end
 
-    test "refuses the type in submit.type of the run's process version, before the files",
+    test "refuses a type that the run's process version marks deliver, before the files",
          ctx do
       file_type!(ctx, "demo-submission", 1000, 2)
-      submits!(ctx, %{"type" => "demo-submission", "send" => "end_of_run"})
+      delivers!(ctx, "demo-submission")
 
       store!(ctx, "demo-submission", [file("one.txt", "text/plain", "a")], name: "main")
 
@@ -2585,22 +2603,133 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                  "error" => "type_not_withdrawable",
                  "type" => "demo-submission",
                  "message" =>
-                   "Push a new version of demo-submission instead. Qory Apiary reads its " <>
-                     "newest version as the run's submission, so a run cannot withdraw it."
+                   "Push a new version of demo-submission instead. The process marks " <>
+                     "demo-submission for delivery, so a run cannot withdraw it."
                }
       end
 
       assert RunApiStubs.pushed() == []
     end
 
-    test "withdraws a name of another custom type when the process has a submit type", ctx do
+    test "checks a delivered type against its schema in the record, with the same refusal",
+         ctx do
+      owner = %{"type" => "object", "required" => ["owner"]}
+
+      {:ok, type} =
+        Apiary.Artifacts.create_type(ctx.scope, ctx.work_item_workspace, %{
+          "name" => "demo-submission",
+          "base_view" => "structured",
+          "json_schema" => owner
+        })
+
+      body =
+        push_body("demo-submission", [{"submission.json", "application/json", ~s({"a":1})}])
+
+      # The workspace's type refuses the document; the refusal is the one a delivered type
+      # gets from the schema in the record.
+      refusal = json_response(write(ctx, "/artifacts", body), 422)
+
+      {1, _rows} =
+        Repo.update_all(from(t in Apiary.Artifacts.Type, where: t.id == ^type.id),
+          set: [json_schema: %{"type" => "object"}]
+        )
+
+      delivers!(ctx, "demo-submission", owner)
+      assert json_response(write(ctx, "/artifacts", body), 422) == refusal
+      assert refusal["error"] == "invalid_artifact"
+      assert RunApiStubs.pushed() == []
+    end
+
+    # The harness's `pull-request` type, delivered by the run's process version with
+    # `schema` in the record; the workspace's type takes any object.
+    defp delivered_pull_request!(ctx, schema) do
+      {:ok, _type} =
+        Apiary.Artifacts.create_type(ctx.scope, ctx.work_item_workspace, %{
+          "name" => "pull-request",
+          "base_view" => "structured",
+          "json_schema" => %{"type" => "object"}
+        })
+
+      delivers!(ctx, "pull-request", schema)
+    end
+
+    defp pull_request_body(document),
+      do: push_body("pull-request", [{"pull-request.json", "application/json", document}])
+
+    test "checks a delivered type against a record schema with the harness primitives", ctx do
+      delivered_pull_request!(ctx, Apiary.QoryHarnessFixture.pull_request_schema())
+
+      commit = %{
+        "collection" => "example/shop",
+        "address" => %{"system" => "forge.example.com", "path" => String.duplicate("a1", 20)}
+      }
+
+      document = %{
+        "target" => %{"collection" => "example/shop"},
+        "title" => "Keep the sale price in the basket",
+        "text" => "The basket keeps the sale price.",
+        "commits" => [commit],
+        "head" => commit,
+        "base" => commit,
+        "branch" => "sale-price",
+        "base_branch" => "main",
+        "steps" => [],
+        "draft" => true
+      }
+
+      conn = write(ctx, "/artifacts", pull_request_body(Jason.encode!(document)))
+      assert %{"artifact" => %{"type" => "pull-request"}} = json_response(conn, 201)
+
+      broken = Jason.encode!(%{document | "target" => %{"kind" => "branch"}})
+
+      assert json_response(write(ctx, "/artifacts", pull_request_body(broken)), 422) == %{
+               "error" => "invalid_artifact",
+               "names" => ["files[0]"],
+               "message" =>
+                 "Fix pull-request.json to match the format of pull-request: at #/target, " <>
+                   "additional properties are not allowed but found property 'kind'."
+             }
+
+      assert length(RunApiStubs.pushed()) == 1
+    end
+
+    test "refuses a delivered type whose record schema refers to another address", ctx do
+      delivered_pull_request!(ctx, %{
+        "type" => "object",
+        "properties" => %{"target" => %{"$ref" => "https://example.com/primitives.schema.json"}}
+      })
+
+      body = pull_request_body(~s({"target":{"collection":"example/shop"}}))
+
+      assert json_response(write(ctx, "/artifacts", body), 422) == %{
+               "error" => "invalid_artifact",
+               "names" => ["files[0]"],
+               "message" =>
+                 "Fix pull-request.json to match the format of pull-request: " <>
+                   "at #, the JSON Schema cannot be read."
+             }
+
+      assert RunApiStubs.pushed() == []
+    end
+
+    test "withdraws a name of another custom type when the process delivers a type", ctx do
       file_type!(ctx, "demo-submission", 1000, 2)
       file_type!(ctx, "demo-script", 1000, 2)
-      submits!(ctx, %{"type" => "demo-submission", "send" => "end_of_run"})
+      delivers!(ctx, "demo-submission")
 
       store!(ctx, "demo-script", [file("one.txt", "text/plain", "a")], name: "scenario-2")
 
       conn = write(ctx, "/artifacts", withdrawal("demo-script", "scenario-2"))
+      assert %{"artifact" => %{"version" => %{"number" => 2}}} = json_response(conn, 201)
+    end
+
+    test "withdraws a name of the type that its process version's submit sets", ctx do
+      file_type!(ctx, "demo-submission", 1000, 2)
+      submits!(ctx, %{"type" => "demo-submission", "send" => "end_of_run"})
+
+      store!(ctx, "demo-submission", [file("one.txt", "text/plain", "a")], name: "main")
+
+      conn = write(ctx, "/artifacts", withdrawal("demo-submission", "main"))
       assert %{"artifact" => %{"version" => %{"number" => 2}}} = json_response(conn, 201)
     end
 

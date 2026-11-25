@@ -45,8 +45,8 @@ defmodule Apiary.Stacks.Sources do
   # (`Apiary.Harnesses.Reader.module_file/3`). A module with no such file is in neither of
   # the result's lists. A module whose file has a `stack` the `exports` do not list, a
   # `type` that is the key of no domain's type (`Apiary.Lingo.Domain.known_type?/1`), a
-  # `process` that does not pass `Apiary.Processes.validate/1` or an `artifact_types` or a
-  # `submit` that does not pass `Apiary.Artifacts.TemplateTypes.check/2`, and a module
+  # `process` that does not pass `Apiary.Processes.validate/1` or an `artifact_types` that
+  # does not pass `Apiary.Artifacts.TemplateTypes.check/2`, and a module
   # whose file is not read, is in `not_readable` with the reason (`t:not_readable/0`), and
   # the other modules are read. The file's checks run in that order, the costly check of
   # the types last. The schema of the file comes before them, so an entry of
@@ -240,8 +240,7 @@ defmodule Apiary.Stacks.Sources do
           type: String.t(),
           stack: String.t(),
           process: map,
-          artifact_types: [map] | nil,
-          submit: %{String.t() => String.t()} | nil
+          artifact_types: [map] | nil
         }
 
   @typedoc """
@@ -252,8 +251,9 @@ defmodule Apiary.Stacks.Sources do
     * `{:unknown_type, type}`: the file's `type` is the key of no domain's workspace type
       (`Apiary.Lingo.Domain.known_type?/1`), so a workspace cannot be made from it;
     * `{:invalid, errors}`: its `process` does not pass `Apiary.Processes.validate/1`;
-    * `{:types, refusals}`: its `artifact_types` or its `submit` do not pass the check of
-      a template's types, or the schema refuses an entry with a name (`{:schema, type}`);
+    * `{:types, refusals}`: its `artifact_types` or its stages' `outputs` do not pass the
+      check of a template's types, or the schema refuses an entry with a name
+      (`{:schema, type}`);
       `TemplateTypes.message/1` returns each refusal's text;
     * `:unreadable`: the module's folder is at no path a read takes, a read of the file
       failed, or the file does not pass `Apiary.Harnesses.Reader.template/1` for a reason
@@ -2181,11 +2181,10 @@ defmodule Apiary.Stacks.Sources do
   # source that offers no template, a connected or an assigned source that is not the
   # entry of its list, read from the database (`listed?/2`), or a template of a type that
   # is the key of no domain's type, which a page read before can still send
-  # (`Apiary.Lingo.Domain.known_type?/1`), or whose `submit` names no structured entry of
-  # its `artifact_types` (`Apiary.Artifacts.TemplateTypes.check_submit/1`); or `{:error,
-  # errors}` for a process `Apiary.Processes.validate/3` refuses, its stages with
-  # `shared_run: true` checked against the organisation's default model choice, the one
-  # level a workspace not yet made reaches (`Apiary.ModelChoices.default_models/1`).
+  # (`Apiary.Lingo.Domain.known_type?/1`); or `{:error, errors}` for a process
+  # `Apiary.Processes.validate/3` refuses, its stages with `shared_run: true` checked
+  # against the organisation's default model choice, the one level a workspace not yet
+  # made reaches (`Apiary.ModelChoices.default_models/1`).
   @spec check_start(Scope.t(), start) ::
           :ok | {:error, Access.reason() | :invalid | [Apiary.Processes.error()]}
   def check_start(
@@ -2195,8 +2194,7 @@ defmodule Apiary.Stacks.Sources do
       when is_binary(commit) do
     with :ok <- source_allowed(scope, source),
          true <- listed?(scope, source),
-         true <- not narrowed?(narrowing) and Domain.known_type?(template.type),
-         {:submit, :ok} <- {:submit, TemplateTypes.check_submit(template)} do
+         true <- not narrowed?(narrowing) and Domain.known_type?(template.type) do
       Apiary.Processes.validate(
         template.process,
         %{},
@@ -2204,7 +2202,6 @@ defmodule Apiary.Stacks.Sources do
       )
     else
       false -> {:error, :invalid}
-      {:submit, {:error, _refusals}} -> {:error, :invalid}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -2257,7 +2254,7 @@ defmodule Apiary.Stacks.Sources do
              )
            ) do
       {:ok,
-       Apiary.Processes.with_submit(
+       Apiary.Processes.with_delivered(
          %{
            "source" => "repository",
            "git" => git,

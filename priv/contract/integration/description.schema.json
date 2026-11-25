@@ -123,7 +123,7 @@
               "items": {"$ref": "definitions.schema.json#/$defs/change_kind"}
             },
             "targets": {
-              "description": "true: the adapter's collections can have a target, a place where a run's changes go (source-collections.schema.json). An adapter with targets handles a run-credential call with purpose work for any of its collections that has a target, under the rules of run-credential.schema.json. This applies whatever source the run's work item came from, and also when the work item came from no item at a source. The control plane offers the collections of an adapter with targets as places for a run's changes, and writes a watch entry (changes.schema.json) only for such an adapter. A change_request entry needs change_kinds as well. Absent: the control plane does not offer them. In both cases, the control plane accepts the target of each collection in a listing.",
+              "description": "true: the adapter's collections can have a target, a place where a run's changes go (source-collections.schema.json). An adapter with targets handles a run-credential call with purpose work for any of its collections that has a target, under the rules of run-credential.schema.json. This applies whatever source the run's work item came from, and also when the work item came from no item at a source. The control plane offers the collections of an adapter with targets as places for a run's changes. A change_request entry (changes.schema.json) needs change_kinds as well. Absent: the control plane does not offer them. In both cases, the control plane accepts the target of each collection in a listing.",
               "const": true
             },
             "secrets": {

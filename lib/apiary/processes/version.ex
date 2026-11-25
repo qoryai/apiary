@@ -19,12 +19,21 @@ defmodule Apiary.Processes.Version do
     file's `type`, the same value as `workspaces.type`. A version made from the harness
     also has `ref_kind` (`branch`, `tag` or `commit`) and `ref`, the version of the
     harness it was read at, `version` nil, and `added_types`, the names of the artifact
-    types its save added, where it added any. A template's record also has `submit`,
-    `%{"type" => type, "send" => send}`, where its `process.yaml` declares the submit
-    step of a run (`Apiary.Harnesses.Reader.template/1`).
+    types its save added, where it added any. A template's record also has
+    `artifact_types`, only the entries of the template's `artifact_types` that have
+    `deliver` (`%{"send" => send}`, `end_of_run` or `after_gate`), as the file has them,
+    where it has any. A version saved before Qory Apiary dropped the submit step may also
+    have `submit`, `%{"type" => type, "send" => send}`, and `submit_schema`; only the stage
+    tab and the Workflow tab of a work item on that version read `submit`. A version based
+    on it does not get `submit`: the copy of the record that
+    `Apiary.Processes.rekey_machine/3` saves leaves it out, and so does
+    `Apiary.Processes.harness_template/1` for a version whose `template` is nil.
   - `public_id`: `pv_` and 16 characters (`Apiary.PublicId`).
   """
   use Ecto.Schema
+
+  # shortcut: the record keeps the delivered entries of `artifact_types`, but no code sends
+  # a version of a delivered type to a destination; replace when the sender exists.
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id

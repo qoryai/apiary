@@ -42,23 +42,32 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   decide which key a run uses are as before.
 <!-- /feature -->
 <!-- feature: workflow_model -->
-- The harness sets the schema of the type that the process's `submit` is set to,
-  `submission` in the Qory harness. Qory Apiary checks a run's version of that type against
-  the schema in the harness commit that the run uses: for the Qory harness from the harness
-  files it stores for that commit, for a harness repository from `submit_schema` in the
-  process version's template record, which a save from a harness repository now writes. It
-  checks against the workspace's type, as before, where it cannot find that schema: a
-  version saved from a harness repository before this change, a Qory harness commit whose
-  files it does not store, and a run whose base is pinned to a tag or a commit, whose
-  base comes from a file or from the built-in harness, whose record is of another
-  harness, or that has no record.
-- On **Workspace settings › Artifact types**, that type has the mark **Set by the harness**
-  and no **Edit** and no **Delete**. The page shows a line under the table with the reason
-  and the step to change the schema, which is a link to **Harness settings**. With the
-  `operator_infrastructure` flag on, the step for the organisation's owners and admins in a
-  workspace that an operator operates is to ask the operator. With the flag off, the link
-  shows. The change and the delete are refused on the server too. A type that an older
-  process version in use sets stays set.
+- On **Workspace settings › Artifact types**, a type that the process marks `deliver` has
+  the mark **Set by the harness** and no **Edit** and no **Delete**. The page shows a line
+  under the table with the reason and the step to change the schema, which is a link to
+  **Harness settings**. With the `operator_infrastructure` flag on, the step for the
+  organisation's owners and admins in a workspace that an operator operates is to ask the
+  operator. With the flag off, the link shows. The change and the delete are refused on
+  the server too. A type that an older process version in use marks `deliver` stays
+  locked. A run cannot withdraw a name of a type that its process version or the work
+  item's marks `deliver`: the run API returns `422` `type_not_withdrawable`. No version
+  saved earlier is changed: a version saved before this change has `submit` and no
+  delivered entries in its template record, so it locks no type. A type is locked only
+  by a version saved later from a template whose entry of that type has `deliver`. A
+  run's version of a delivered type is checked against the `json_schema` of the type's
+  entry in the record of the run's process version, not against the workspace's type, so
+  two runs on two process versions each use their version's schema.
+- The JSON Schema of a custom structured type may refer to the primitives of the harness,
+  `https://qory.dev/contracts/harness/v1/primitives.schema.json#/$defs/<name>`, as the
+  type `pull-request` of the Qory harness does. Qory Apiary keeps a copy of qory's
+  `primitives.schema.json` in `priv/contract/harness/v1/`, at the qory commit of its copy
+  of `process.schema.json`, and resolves that address from the copy: at **Update from
+  harness**, at a start from a harness source, on the Artifact types page and at each
+  push. No schema is fetched over the network. A `$ref` to a name that the primitives
+  lack, or to another remote address, other than the JSON Schema meta-schemas that JSV
+  has, cannot be built. A template with such a type is refused at **Update from
+  harness** and at a start from a harness source; the Qory start at sign-up saves the
+  types of the Qory template without that check.
 <!-- /feature -->
 <!-- feature: factory -->
 - **OpenAI API key** and **OpenAI subscription** are model providers, and **Codex** is a
@@ -455,9 +464,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 <!-- /feature -->
 <!-- feature: workflow_model -->
 - The gate card of a stage starts with the draft of the work item's newest submission,
-  one line per repository that has one: “Submission: the draft in example/shop”, a link
-  that opens the draft in a new tab. A submission with no draft, a draft with no number or
-  a link that is not `https` shows no line.
+  the type in `submit.type` of a process version saved with a submit step, one line per
+  repository that has one: “Submission: the draft in example/shop”, a link that opens
+  the draft in a new tab. A submission with no draft, a draft with no number or a link
+  that is not `https` shows no line.
 - The tab of a stage with a `verification` output, such as Verify, shows the run's
   verification as a table of the acceptance criteria with the columns Criterion, State
   and Evidence and the states Met and Not met, another state as the run wrote it; the
@@ -552,39 +562,6 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   it ended at its time limit, was released or lost its machine. The migration adds the table
   `run_pushed_commits`.
 <!-- /feature -->
-<!-- feature: workflow_model -->
-- On the tab of a stage whose outputs include the submission type (`submit.type` of the
-  work item's process version), one frame, Submissions, captioned "Newest first", replaces
-  that type's frame. It has a row for each run that stored a version, newest first: the run
-  as a link to its page, the stage and the time the run ended, the badge Approved where a
-  gate approved the version, then for each repository the Branch (the branch and the head
-  commit), Commits and Draft. The record fold of the stage and the run's Timeline name the
-  type as before.
-- A run's page has the same row under the version list of Save the outputs, for the version
-  of the submission type that the run stored, headed "Submission v<number>". The block
-  shows only to a reader who may read the run.
-- Commits: where a stored submission lists the run's commits (`repositories[].base`,
-  `{commit, commit_url}`, and `repositories[].commits`, `[{commit, step, commit_url}]`, in
-  the order the run made them), the row has a fold, "<n> commits", with the base first
-  ("Base: the head of Run <n>", "Base: the result of Run <n>" outside a software
-  workspace, where an earlier submission of the work item ends at that commit in the
-  same repository; "Base: where the branch starts" where no earlier
-  submission can; the commit alone where a version that is not listed may), then each commit:
-  its short id, a link where the submission has an `https` address for it, the step ("d-2
-  · <text of the change>" for a deliverable of the build plan, read from the Change column
-  of the plan's Deliverables table, or "d-2" alone where the plan has no such row; "Fix of
-  review finding f1" for a fix; nothing for any other step) and the badge Head (Latest outside a software workspace)
-  on the repository's head commit. The newest row's fold is open. A submission with no list shows
-  no Commits line. A fold lists at most 100 commits, the first 100 or the first 99 and the head
-  where the head is a later one, and its count has them all. A commit with another step shows its short id
-  alone. The page reads the newest 50 versions; a stored text is cut to 200 characters, and
-  a submission over 1 MiB shows its row with no repository. A stored value that is not of the form the contract has is left out:
-  a commit that is not 40 or 64 lowercase hex characters, a link that is not `https`.
-- A draft shows its number beside its system's mark, the integration of the workspace's
-  collection for that system, with its title as a link: `#34 “Show delivery dates”`. A
-  submission that records why it sent no draft shows "The run sent no draft to the
-  destination."
-<!-- /feature -->
 - A question in a run's questions may have a `criterion`: the id of the acceptance
   criterion it is about, such as `ac-3`. Qory Apiary stores it with the question and
   refuses a value that is not such an id. A run can change the criterion of an open
@@ -614,12 +591,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   An input version that a run made has the caption "Version <n> · from <stage>, Attempt <a>
   (Run <r>)", or "Version <n> · from <stage>, Attempt <a>" when the run has no registered
   number; another input version has "Version <n>".
-  When another input remains, the version of the harness's submission type
-  (`submit.type`) has no frame in this tab; it stays in the stage's artifacts. Where it is
-  the only input, it has the frame. On the stage card, each output's version at the gate
-  links to that version's page, and the gate also links every further version that an
-  approval would record. In `GET artifacts`, each version has `decision` and
-  `decision_at`, the time of that note.
+  When another input remains, the version of the type in `submit.type` of a process
+  version saved with a submit step has no frame in this tab; it stays in the stage's
+  artifacts. Where it is the only input, it has the frame. On the stage card, each
+  output's version at the gate links to that version's page, and the gate also links
+  every further version that an approval would record. In `GET artifacts`, each version
+  has `decision` and `decision_at`, the time of that note.
 - The work item page marks a version that a run stored with a `decision` until a person's
   approval lists it: "Changed on your request" for the person who wrote the note, "Changed
   on sam's request" for any other reader, with the part of the writer's email before "@",
@@ -2076,24 +2053,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   saves its features.
 - A switch on that page, off by default: **Features by person**. Where the server's
   config turned it on, the first start after the upgrade saves it on.
-- A template's `process.yaml` may declare the submit step of a run, `submit: {type,
-  send}`, as qory's harness contract v1 has it since qory `c0184bd`. A process version
-  made from the template keeps it in its template record. Qory Apiary refuses a template
-  whose `submit.type` is not a structured type that its `artifact_types` defines, with
-  the fix first: "set submit.type to a structured type of artifact_types: mockup is a
-  standard type".
-- A run that runs a workflow with write access has `submit: {type, send}` in its run
-  documents, from its process version, where the version has one.
-- A run that stores a version of its submission type, `submit.type` of its process
-  version, adds a `watch` entry to the change feed of the adapter of the work item's
-  target collection: the work item's public id and its page, `url`, as in a `work_item`
-  entry. Each stored version adds one entry, whatever source the work item came from.
-  A work item with no target, or a target that no collection matches, gets no entry, and
-  the version is stored all the same. Where `PUBLIC_URL` is plain http to a host other
-  than `localhost`, `127.0.0.1` or `[::1]`, or has a character outside RFC 3986, such as
-  a host in Unicode, the push of such a version is refused: the run API returns `503`
-  `unavailable`, no version and no file is stored, and the log line starts with "Set
-  PUBLIC_URL to an https:// address".
+- A template's `process.yaml` may have the submit step of a run, `submit: {type, send}`,
+  as qory's harness contract v1 has it since qory `c0184bd`. Qory Apiary reads the
+  template without it: it checks no part of it, and keeps none. A run's documents have no
+  `submit`, and storing a version adds no `watch` entry to an adapter's change feed. The
+  work item's pages have no Submissions list, and a run's page has no Submission block.
 - An entry of a template's `artifact_types` may set `withdrawable: false`, for a custom
   type or, with `name` alone beside it, a standard type. A run cannot then withdraw a name
   of that type, and it cannot withdraw a name whose newest version a member approved at a
@@ -2114,6 +2078,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `previous_address/1` reads the address of the newest reply of the version's artifact,
   for the `previous.address` of the next entry. Nothing sets `sent` until Qory Apiary
   writes a version's `change_request` entry to an adapter's change feed.
+- A delivery may fail with a second reason of Qory Apiary beside `invalid`:
+  `target_removed`, when the version's target row is deleted before its entry is sent.
+  No code sets it until Qory Apiary writes a version's `change_request` entry to an
+  adapter's change feed. An adapter's report with that reason is refused.
 - `record_invalid/2` stores a failed delivery with the reason `invalid` on a version whose
   entry failed `ChangeRequest.validate/1`, and sends nothing. The detail is the first
   member of the entry that failed, such as `#/title`. A version that has a delivery is
@@ -2136,6 +2104,22 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+- The harness contract's `process.schema.json` is vendored at the qory commit that adds
+  delivered artifact types. An entry of `artifact_types` may have `deliver: {send}`, and
+  only a custom structured type has it; such a type has a `size_limit` of at most 786432
+  bytes. A process version made from such a template keeps the entries that have
+  `deliver`, as the file has them, in its template record (`artifact_types`). The record
+  has no entry of a type without `deliver`, so a read of the record finds no schema of
+  such a type. A stage name, a workflow and `stack` are one line: a template with a
+  control character, U+2028, U+2029 or a format character other than U+200C and U+200D
+  in one of them is refused. An entry of a stage's `outputs` has `type` and, where it has one, a
+  boolean `required`, and no other member: a template with another member, or with a
+  `required` that is not a boolean, is refused.
+- When Qory Apiary reads a template from a harness source, and at **Update from
+  harness**, it refuses a template whose stage lists one type twice in its `outputs`, with
+  the fix first: "list each output type of stage Answer once: mockup appears twice". qory
+  refuses such a template too. No JSON Schema keyword expresses this rule. A workspace
+  made from the Qory harness's template does not get this check.
 - Each value once called "machine key" or "start key" is renamed for what it is. The key
   that `qory access-key enrol` makes is a machine's access key; a setting of the harness
   section of a machine's `qory.yaml`, such as `runtime` or `model`, is a machine harness
@@ -2206,12 +2190,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   session joins the group of the run's default model provider credential.
 <!-- /feature -->
 <!-- feature: workflow_model -->
-- The Submissions list reads the text of each change from the plan type that the stack
-  entry of the run's workflow sets (`plan`, under `workflows` in `qory-stack.yaml`), and
-  no longer from the type `build-plan`. A run whose stack entry sets none, or whose plan
-  has no Deliverables table, shows no change text. The walk records the type in the
-  column `run_harnesses.plan_type`, which migration 20261119162000 adds. A run walked
-  before the change has no plan type, so its submissions show no change text.
+- The walk of a run records the plan type that the stack entry of the run's workflow sets
+  (`plan`, under `workflows` in `qory-stack.yaml`) in the column
+  `run_harnesses.plan_type`, which migration 20261119162000 adds. A run walked before the
+  change, or whose stack entry sets none, has no plan type.
 - **Accept as it is** and **Approve** need every required output. Where an accept takes
   the stage to its gate, after the last entry of its sequence, **Accept as it is**
   shows, and works, only while every required output of the stage has a version. An
@@ -2414,11 +2396,6 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A workflow's model choice needs a provider and a model for each tier, as the workspace's
   does, and has no fallbacks. While every key of a workflow's choice is in cooldown, the
   run uses the workspace's choice, then that choice's fallbacks.
-- A run cannot withdraw a name of the type in `submit.type` of its process version or of
-  its work item's process version: the run API returns `422` `type_not_withdrawable`, with
-  "Push a new version of <type> instead. Qory Apiary reads its newest version as the run's
-  submission, so a run cannot withdraw it.", and stores nothing. Versions stored earlier
-  stay listed. A withdrawal of another custom type is as before.
 <!-- /feature -->
 <!-- feature: factory -->
 - The run configuration of a run with `write` access has two credentials for its target:
@@ -3102,18 +3079,19 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A feature that a later release adds starts at its default, even on an instance whose
   features were saved.
 - The integration contract and the data descriptions are vendored at integrations
-  `effc22aa`. Its schemas leave an undefined member open. A description with a
+  `7e6cac7`. Its schemas leave an undefined member open. A description with a
   `publisher`, or a data description with a `program`, is read. The `document` of the
   description keeps the member. The adapter declaration, the bodies of calls to an adapter
   and source items still refuse an undefined member. So do the grant end, the sources
   disconnect and the feed writer, and their tests keep that. The `openai-subscription`
-  description has the text of `effc22aa`. A description may have `links`, 1 to 16 entries
+  description has the text of `7e6cac7`. A description may have `links`, 1 to 16 entries
   of a `system` and a `template` (a link with placeholders for a path). The schema refuses
   a template that is not `https`, has a port, a query, a fragment, an unknown placeholder
   or more than 2048 characters. The `document` of a description keeps `links`. No page
-  reads it yet. The run, explore and diagnostics contracts and the run documents schema
-  stay at `e0d7be1`, the provisioner contract at `8d859a1`, and the check fixtures of
-  `DocumentsCheck` at `4c788f4`.
+  reads it yet. The contract states that the control plane writes no `watch` entry; the
+  kind stays defined. The run, explore and diagnostics contracts and the run documents
+  schema stay at `e0d7be1`, the provisioner contract at `8d859a1`, and the check fixtures
+  of `DocumentsCheck` at `4c788f4`.
 - The reply to a change request (`changes-submitted.schema.json`) and the reports of a
   change request (`changes-failed.schema.json`) are vendored with their fixtures.
   `POST /v1/work-items/changes/submitted` reads the reply.
@@ -4037,6 +4015,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   same workspace, set to NULL when the target is deleted. Four checks keep their values.
   The first migration adds them without a scan. The second validates them with a scan that
   does not block writes. Rolling back drops the columns and what they stored.
+- `artifact_versions` (20261122120000 and 20261122120100): the check of
+  `delivery_failure` also takes `target_removed`. The first migration replaces the check
+  without a scan; the second validates it with a scan that does not block writes. They
+  rewrite no row. Rolling back puts back the earlier check, NOT VALID, with no scan. A
+  version that has `target_removed` keeps it and stays readable, but every write that
+  changes that row, whatever column it sets, then fails the check, until the value is
+  cleared or the migrations run again.
 <!-- /feature -->
 
 ## [0.1.0] - 2026-10-13

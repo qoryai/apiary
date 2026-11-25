@@ -31,9 +31,19 @@ defmodule Apiary.Artifacts.Version do
 
   @prefix "av"
 
-  # The reasons of `changes-failed.schema.json` for a change request, and `invalid`: Qory
-  # Apiary's check of the entry against `changes.schema.json` failed and nothing was sent.
-  @delivery_failures [:not_permitted, :unreachable, :target_gone, :too_long, :refused, :invalid]
+  # The reasons of `changes-failed.schema.json` for a change request, and two of Qory
+  # Apiary: `invalid`, its check of the entry against `changes.schema.json` failed and
+  # nothing was sent, and `target_removed`, the version's target row was deleted before the
+  # entry was sent, so nothing was sent.
+  @delivery_failures [
+    :not_permitted,
+    :unreachable,
+    :target_gone,
+    :too_long,
+    :refused,
+    :invalid,
+    :target_removed
+  ]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id

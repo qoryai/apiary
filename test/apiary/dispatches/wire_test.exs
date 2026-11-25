@@ -119,7 +119,7 @@ defmodule Apiary.Dispatches.WireTest do
   # stage, the tier balanced in place of fast, the outcome of a run with its end codes, a
   # later session's runtime, run_settings on every explore run, and
   # model_provider_credential_name in place of model_credential in the next-session
-  # answer. The integration contract is at effc22aa, after e0d7be15:
+  # answer. The integration contract is at 7e6cac7e, after e0d7be15:
   # test/apiary/contract_copies_test.exs checks its copies.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [

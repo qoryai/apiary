@@ -9,7 +9,6 @@ defmodule ApiaryWeb.RunLive.ShowSubmissionTest do
 
   import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
-  import Apiary.OrganisationsFixtures, only: [with_domain: 2]
   import Apiary.RunEventsFixtures
 
   alias Apiary.{Artifacts, Repo}
@@ -122,39 +121,6 @@ defmodule ApiaryWeb.RunLive.ShowSubmissionTest do
     }
   end
 
-  test "Save the outputs has the Submission block under the version list", ctx do
-    submit = %{"type" => "submission", "send" => "end_of_run"}
-    run_ctx = handed_over!(ctx, submit)
-    store!(run_ctx, submission())
-
-    {:ok, lv, _html} = live(ctx.conn, run_path(ctx.scope, run_ctx.run))
-
-    block = "#prepare-machine-session-outputs-submission-1"
-    assert has_element?(lv, "#prepare-machine-session-outputs dd", "Version 1")
-    assert has_element?(lv, "#{block}-row", "Submission v1")
-    assert has_element?(lv, "#{block}-row-r0-branch", "qory/wi_qk5p97dt9vdq39a2")
-    assert has_element?(lv, "#{block}-row-r0-branch a", "a1a1a1a")
-    assert has_element?(lv, "#{block}-row-r0-base", "9f9f9f9")
-    assert has_element?(lv, "#{block}-row-r0-base", "Base: where the branch starts")
-    assert has_element?(lv, "#{block}-row-r0-c0", "4c4c4c4")
-    assert has_element?(lv, "#{block}-row-r0-c1", "Fix of review finding f1")
-    assert has_element?(lv, "#{block}-row-r0-c1 .badge", "Head")
-    assert has_element?(lv, "#{block}-row-r0-draft", "#34 “Show delivery dates at checkout”")
-    assert has_element?(lv, "#{block}-row-r0-fold[open]")
-  end
-
-  test "a version the run stores while the page is open reaches the block at once", ctx do
-    submit = %{"type" => "submission", "send" => "end_of_run"}
-    run_ctx = handed_over!(ctx, submit)
-
-    {:ok, lv, _html} = live(ctx.conn, run_path(ctx.scope, run_ctx.run))
-    refute has_element?(lv, "#prepare-machine-session-outputs")
-
-    store!(run_ctx, submission())
-
-    assert has_element?(lv, "#prepare-machine-session-outputs-submission-1-row", "Submission v1")
-  end
-
   test "a run whose process version has no submit type has no block", ctx do
     run_ctx = handed_over!(ctx, nil)
     store!(run_ctx, submission())
@@ -186,85 +152,5 @@ defmodule ApiaryWeb.RunLive.ShowSubmissionTest do
 
     assert has_element?(lv, "#prepare-machine-session-outputs dd", "Version 1")
     refute has_element?(lv, "#prepare-machine-session-outputs-submission-1")
-  end
-
-  test "a stored string is shown as text", ctx do
-    submit = %{"type" => "submission", "send" => "end_of_run"}
-    run_ctx = handed_over!(ctx, submit)
-
-    value =
-      update_in(submission(), ["repositories", Access.at(0), "draft", "title"], fn _title ->
-        "<script>alert(1)</script>"
-      end)
-
-    store!(run_ctx, value)
-
-    {:ok, lv, html} = live(ctx.conn, run_path(ctx.scope, run_ctx.run))
-
-    assert has_element?(
-             lv,
-             "#prepare-machine-session-outputs-submission-1-row-r0-draft",
-             "<script>"
-           )
-
-    refute html =~ "<script>alert(1)"
-  end
-
-  # A second version of the same run, whose base is the first version's head.
-  defp second_version(value) do
-    update_in(value, ["repositories", Access.at(0)], fn repository ->
-      %{repository | "base" => %{"commit" => @head}}
-    end)
-  end
-
-  defp block_words(lv, number) do
-    lv
-    |> element("#prepare-machine-session-outputs-submission-#{number}-row")
-    |> render()
-    |> LazyHTML.from_fragment()
-    |> LazyHTML.text()
-    |> String.replace(~r/\s+/, " ")
-  end
-
-  test "a software workspace reads Branch, Commits, Head and the head of the run", ctx do
-    submit = %{"type" => "submission", "send" => "end_of_run"}
-    run_ctx = handed_over!(ctx, submit)
-    store!(run_ctx, submission())
-    store!(run_ctx, second_version(submission()))
-
-    {:ok, lv, _html} = live(ctx.conn, run_path(ctx.scope, run_ctx.run))
-
-    words = block_words(lv, 2)
-    assert words =~ "Branch"
-    assert words =~ "Commits"
-    assert words =~ "Base: the head of Run #{run_ctx.run.number}"
-    assert words =~ "Head"
-    refute words =~ "Latest"
-    refute words =~ "Reference"
-    refute words =~ "Revisions"
-    refute words =~ "the result of Run"
-  end
-
-  test "a workspace that is not a software factory reads the engine's words", ctx do
-    submit = %{"type" => "submission", "send" => "end_of_run"}
-    run_ctx = handed_over!(ctx, submit)
-    store!(run_ctx, submission())
-    store!(run_ctx, second_version(submission()))
-    scope = with_domain(ctx.scope, "example")
-
-    {:ok, lv, _html} = live(ctx.conn, run_path(scope, run_ctx.run))
-
-    words = block_words(lv, 2)
-    assert words =~ "Reference"
-    assert words =~ "Revisions"
-    assert words =~ "Base: the result of Run #{run_ctx.run.number}"
-    assert words =~ "Latest"
-    refute words =~ "Branch"
-    refute words =~ "Commits"
-    refute words =~ "Head"
-    refute words =~ "the head of Run"
-    refute words =~ "commit"
-
-    assert block_words(lv, 1) =~ "Base: where the work starts"
   end
 end

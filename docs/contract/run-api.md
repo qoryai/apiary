@@ -18,8 +18,7 @@ The `access` of the run's documents is `read`, `write-no-push` or `write`
 (`documents.schema.json` of the run contract). It sets what the run may do on its target,
 not what it may do through the run API: a run of any level reads its work item and pushes
 artifacts and a verdict. A run with `write-no-push` has a writable checkout and a work
-credential with read access, so its credential cannot push to the target; only a
-run with `write` has `submit`.
+credential with read access, so its credential cannot push to the target.
 
 Qory Apiary computes the level once, when it claims the run. The level is the lower of two
 levels, from lowest to highest `read`, `write-no-push` and `write`: the level the run's
@@ -612,11 +611,13 @@ Apiary reads them itself, and a run pushes a new version of them instead. It can
 withdraw a name of a type whose entry in the template's `artifact_types` sets
 `withdrawable: false`, a standard type with an entry of `name` and `withdrawable` alone or
 a custom type (`withdrawable` is true when the entry has none). It cannot withdraw a name
-of the type in `submit.type` of its process version or of its work item's process
-version: Qory Apiary reads the newest version of that type as the run's submission.
-Versions stored earlier stay listed. It cannot withdraw a name whose newest version a member approved at a
-gate, and pushes a new version instead. An approval that the runner recorded for a gate
-`none` does not count, and neither does an approval of an older version.
+of a type that its process version or its work item's process version marks `deliver`
+(the type's entry in the template's `artifact_types` has `deliver: {send: end_of_run}`
+or `deliver: {send: after_gate}`): the process marks the type for delivery of its newest
+version. Versions stored earlier stay listed. It cannot withdraw a name
+whose newest version a member approved at a gate, and pushes a new version instead. An
+approval that the runner recorded for a gate `none` does not count, and neither does an
+approval of an older version.
 
 Checks, in order, after the checks of every request:
 
@@ -624,8 +625,8 @@ Checks, in order, after the checks of every request:
 2. A type the workspace does not have, or a standard type it hides: `422`
    `unknown_type`.
 3. `questions`, `review-comments`, `verdict` or `proposal`, a type with
-   `withdrawable: false`, or the type in `submit.type` of the run's process version or of
-   the work item's: `422` `type_not_withdrawable`.
+   `withdrawable: false`, or a type that the run's process version or the work item's
+   marks `deliver`: `422` `type_not_withdrawable`.
 4. A `files` list with one file or more: `422` `withdrawal_with_files`.
 5. Under the work item's lock, with the check of a run that ended, by the newest version
    of the name, leaving out versions by a run a member cancelled: one that a member
@@ -635,44 +636,42 @@ Checks, in order, after the checks of every request:
 
 No version is stored for a refused withdrawal.
 
-## The submission the pages list
+## Delivered types
 
-Qory Apiary lists the versions of the type in `submit.type` of the work item's process
-version on the work item's pages (the Submissions list and a run's Submission block). It
-reads these members of a version's JSON file, at most 1 MiB, and leaves out any value that
-is not of the form below. A stored text is cut to its first 200 characters.
+A custom structured type whose entry in the template's `artifact_types` has `deliver:
+{send: end_of_run}` or `deliver: {send: after_gate}` is a delivered type. The process
+version keeps the entries that have `deliver` in its record. Qory Apiary sends no version
+of any type to a destination. A run pushes a version of a delivered type as of any custom
+type, but the version's JSON file is checked against the `json_schema` of the type's
+entry in the record of the run's process version, the schema of the harness file that
+version was saved from, not against the workspace's type. A type with no `deliver` is
+checked against the workspace's type.
 
-- `ref`: the branch, a string.
-- `repositories`: at most 20 objects, each with `system`, `path`, `commit` (the head, 40 or
-  64 lowercase hex characters) and, optionally:
-  - `commit_url`: an `https` address of the head commit, at most 2048 characters.
-  - `base`: `{commit, commit_url}`, the commit the run started at.
-  - `commits`: `[{commit, step, commit_url}]`, the run's commits in the order it made
-    them, the last the head. `step` is `deliverable:<id>`, the id in the first cell of
-    a row of the plan's Deliverables table, or `fix:<finding id>`; an entry whose `commit`
-    is not a full hex id is left out. The head is marked on the last entry whose `commit`
-    is the repository's `commit`; where no entry is, none is marked and the list is shown as
-    read. A page lists at most 100 entries of a repository: the first 100, or the first 99
-    and the head where the head is a later entry; the count has every entry.
-  - `draft`: `{number, url, title}` for a draft sent to the destination, or `{none: <reason>}`.
+The schema may refer to the primitives of the harness, such as
+`https://qory.dev/contracts/harness/v1/primitives.schema.json#/$defs/reference`. Qory
+Apiary resolves that address from the copy of `primitives.schema.json` that it keeps, at
+the qory commit of its copy of `process.schema.json`, when a template is read from the
+harness and when a run pushes a version. It fetches no schema over the network. A schema
+with a `$ref` to another remote address, other than the JSON Schema meta-schemas that JSV
+has, cannot be built. A template with such a type is refused at Update from harness, of
+the Qory harness or of a harness repository, and at a start from a harness source the
+template is shown as not readable. The Qory start at sign-up saves the types of the Qory
+template without that check, and a push checked against such a schema gets `422`
+`invalid_artifact`, "Fix pull-request.json to match the format of pull-request: at #, the
+JSON Schema cannot be read."
 
-A link that is not `https` is not shown as a link. The Base line says "the head of Run <n>" ("the result of Run <n>" outside a software workspace)
-where an earlier submission of the work item, among the newest 50 versions, ends at the base
-commit in the same repository. Where a version that is not listed (older than those, or
-written by a run a member cancelled) may end at it, the line shows the commit alone.
+A run cannot withdraw a name of a delivered type, and no one edits or deletes the type on
+the Artifact types page while the current process version, or a version in use, marks it
+`deliver`.
 
-The text of a change comes from the plan's Deliverables table: the table under the
-`## Deliverables` heading, up to the next `## ` heading. The plan is the work item's
-artifact named `main` of the run's plan type, which the run's stack entry sets in
-`workflows.<workflow>.plan`, in the newest version stored at or before the time the
-submission was stored. The first table row is the header and is skipped by its
-position, whatever its text, as is the separator row (`|---|---|`) right after it; a table
-with no separator row keeps its second row. A later row counts when its first cell is an id
-(1 to 64 characters: letters, digits, `.`, `_` and `-`, starting with a letter or digit)
-and its second cell is not empty. The page reads the first 200 rows that have an id and a
-change text, taking the first two cells by position, and cuts each text to its first 200
-characters. A run with no plan type shows no change text. A plan over 256 KiB shows no
-change texts, and a stored submission over 1 MiB lists no repository.
+## The drafts the pages show
+
+The gate card and the Workflow tab of a work item whose process version has a `submit`
+step, saved before Qory Apiary dropped that step, show the drafts of the newest version
+of the type in `submit.type`. They read each entry of its `repositories`, at most 20, with
+`system`, `path`, `commit` (40 or 64 lowercase hex characters) and `draft`: `{number, url,
+title}`, with `number` a positive integer and `url` an `https` address. They show no draft
+for any other form.
 
 ## POST verdict
 
@@ -986,7 +985,7 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 | `422` | `unknown_type` | `type`, `message` | The workspace has no such artifact type, or hides the standard type |
 | `422` | `too_many_files` | `type`, `limit`, `message` | More files than the type's maximum |
 | `422` | `too_large` | `type`, `limit`, `message` | Files over the type's size limit together, in bytes; for `questions` and `review-comments`, as stored, with each number that is an integer in value written as an integer |
-| `422` | `type_not_withdrawable` | `type`, `message` | A withdrawal of `questions`, `review-comments`, `verdict` or `proposal`, of a name of a type with `withdrawable: false`, of a name of the type in `submit.type` of the run's process version or the work item's, or of a name whose newest version a member approved at a gate |
+| `422` | `type_not_withdrawable` | `type`, `message` | A withdrawal of `questions`, `review-comments`, `verdict` or `proposal`, of a name of a type with `withdrawable: false`, of a name of a type that the run's process version or the work item's marks `deliver`, or of a name whose newest version a member approved at a gate |
 | `422` | `withdrawal_with_files` | `type`, `message` | A withdrawal with one file or more |
 | `422` | `unknown_decision` | `message` | A push's `decision` is not the id of a person's note on the run's work item |
 | `422` | `invalid_artifact` | `names`, `message` | A file does not match the type's format, a video version has no video, a `proposal` version has no Markdown file or more than one, a run's version of `questions` or `review-comments` breaks a rule of check 7, such as a change to what members wrote or to a `decision`, a verdict's `answer` point is about a question that is not open, a verdict's `track.id` is a track the gate of the run's stage does not offer (`names` is `["track"]`), or a version of `acceptance-criteria` has a name other than `main` (`names` is `["name"]`) |
@@ -1027,9 +1026,10 @@ The messages:
 - `type_not_withdrawable`, for a type with `withdrawable: false`: "Push a new
   version of demo-script instead. The artifact type demo-script has withdrawable set to
   false, so a run cannot withdraw its names."
-- `type_not_withdrawable`, for the type in `submit.type` of the run's process version:
-  "Push a new version of submission instead. Qory Apiary reads its newest version as the
-  run's submission, so a run cannot withdraw it."
+- `type_not_withdrawable`, for a type that the run's process version or the work item's
+  marks `deliver`:
+  "Push a new version of submission instead. The process marks submission for delivery,
+  so a run cannot withdraw it."
 - `type_not_withdrawable`, for a name whose newest version a member approved: "Push a new
   version of demo-script/scenario-2 instead. A member approved its newest version, v3, so
   a run cannot withdraw the name."

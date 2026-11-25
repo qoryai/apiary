@@ -44,8 +44,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      `1000`), `422` `too_large`;
   #   5. for a withdrawal, a push with `withdraw` true: an unknown type as for a push, then
   #      `questions`, `review-comments`, `verdict` or `proposal`, the types Qory Apiary
-  #      reads itself, a type with `withdrawable` false, and the type in `submit.type` of
-  #      the run's process version or of the work item's, `422` `type_not_withdrawable`,
+  #      reads itself, a type with `withdrawable` false, and a type that the run's process
+  #      version or the work item's marks `deliver`, `422` `type_not_withdrawable`,
   #      then files with it `422` `withdrawal_with_files`, then what
   #      `Apiary.Artifacts.withdraw/4` returns under the work item's lock: a name whose
   #      newest version a person approved at a gate `422` `type_not_withdrawable`, a name
@@ -1008,12 +1008,12 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     )
   end
 
-  defp write_error(conn, {:error, {:withdraw, :submit_type, type, _name}}) do
+  defp write_error(conn, {:error, {:withdraw, :delivered, type, _name}}) do
     error(conn, 422, "type_not_withdrawable",
       type: type,
       message:
-        "Push a new version of #{type} instead. Qory Apiary reads its newest version as " <>
-          "the run's submission, so a run cannot withdraw it."
+        "Push a new version of #{type} instead. The process marks #{type} for delivery, " <>
+          "so a run cannot withdraw it."
     )
   end
 
