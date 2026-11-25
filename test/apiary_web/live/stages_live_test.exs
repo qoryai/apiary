@@ -1772,7 +1772,11 @@ defmodule ApiaryWeb.StagesLiveTest do
       assert "Keep at most 10 tracks in the process." in refusals(Map.put(doc, "tracks", eleven))
 
       long = [
-        %{"id" => "fast", "name" => "Fast track", "description" => String.duplicate("a", 501)}
+        %{
+          "id" => "fast-track",
+          "name" => "Fast track",
+          "description" => String.duplicate("a", 501)
+        }
       ]
 
       assert "Shorten the description of Fast track to at most 500 characters." in refusals(

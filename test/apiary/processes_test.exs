@@ -524,9 +524,12 @@ defmodule Apiary.ProcessesTest do
             {%{"id" => "fast-", "name" => "Fast track"}, "#/tracks/0/id"},
             {%{"id" => String.duplicate("a", 41), "name" => "Fast track"}, "#/tracks/0/id"},
             # An empty name breaks minLength and the pattern: two errors at its place.
-            {%{"id" => "fast", "name" => ""}, ["#/tracks/0/name", "#/tracks/0/name"]},
-            {%{"id" => "fast", "name" => "Fast", "description" => String.duplicate("a", 501)},
-             "#/tracks/0/description"},
+            {%{"id" => "fast-track", "name" => ""}, ["#/tracks/0/name", "#/tracks/0/name"]},
+            {%{
+               "id" => "fast-track",
+               "name" => "Fast",
+               "description" => String.duplicate("a", 501)
+             }, "#/tracks/0/description"},
             {%{"name" => "Fast track"}, "#/tracks/0"}
           ] do
         assert errors(Map.put(default(), "tracks", [track])) == expected(path)
@@ -718,9 +721,9 @@ defmodule Apiary.ProcessesTest do
         tracked()
         |> Map.put("tracks", [
           %{"id" => "standard", "name" => "Standard"},
-          %{"id" => "fast", "name" => "Fast track"}
+          %{"id" => "fast-track", "name" => "Fast track"}
         ])
-        |> with_gate_tracks(@explore, ["standard", "fast"])
+        |> with_gate_tracks(@explore, ["standard", "fast-track"])
 
       put =
         &edit(document, fn s ->
@@ -729,7 +732,7 @@ defmodule Apiary.ProcessesTest do
 
       for condition <- [
             %{"when" => %{"track" => "standard"}},
-            %{"unless" => %{"track" => "fast"}},
+            %{"unless" => %{"track" => "fast-track"}},
             %{"when" => %{"input" => "proposal"}},
             %{"unless" => %{"input" => "proposal"}}
           ] do
@@ -745,11 +748,11 @@ defmodule Apiary.ProcessesTest do
       assert errors(put.(output.(%{"unless" => %{"input" => "mockup"}}))) ==
                [{"#/stages/1/outputs/0/unless/input", :condition_input}]
 
-      both = %{"when" => %{"track" => "standard"}, "unless" => %{"track" => "fast"}}
+      both = %{"when" => %{"track" => "standard"}, "unless" => %{"track" => "fast-track"}}
       assert errors(put.(output.(both))) == [{"#/stages/1/outputs/0", :condition_both}]
 
-      assert errors(put.(output.(%{"unless" => %{"track" => "fast", "input" => "proposal"}}))) !=
-               []
+      two_tests = %{"unless" => %{"track" => "fast-track", "input" => "proposal"}}
+      assert errors(put.(output.(two_tests))) != []
     end
 
     test "takes first_attempt on a workflow entry outside a loop, and refuses it in a loop body" do
@@ -1252,8 +1255,11 @@ defmodule Apiary.ProcessesTest do
   end
 
   describe "diff/2 of tracks and conditions" do
-    @fast %{"track" => "fast"}
-    @tracks [%{"id" => "standard", "name" => "Standard"}, %{"id" => "fast", "name" => "Fast"}]
+    @fast %{"track" => "fast-track"}
+    @tracks [
+      %{"id" => "standard", "name" => "Standard"},
+      %{"id" => "fast-track", "name" => "Fast"}
+    ]
 
     test "lists a change of the tracks once, and none for the first version or none against []" do
       tracked = Map.put(default(), "tracks", @tracks)
@@ -1337,11 +1343,11 @@ defmodule Apiary.ProcessesTest do
         end)
       end
 
-      assert [{:gate_changed, "st_r79kph11eg", %{to: %{"tracks" => ["fast"]}}}] =
-               Processes.diff(default(), offering.(["fast"]))
+      assert [{:gate_changed, "st_r79kph11eg", %{to: %{"tracks" => ["fast-track"]}}}] =
+               Processes.diff(default(), offering.(["fast-track"]))
 
       assert [{:gate_changed, "st_r79kph11eg", _}] =
-               Processes.diff(offering.(["fast"]), offering.(["standard", "fast"]))
+               Processes.diff(offering.(["fast-track"]), offering.(["standard", "fast-track"]))
     end
 
     test "lists no condition for a change that touches none" do

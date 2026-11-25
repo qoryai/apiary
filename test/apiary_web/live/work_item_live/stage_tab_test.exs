@@ -3686,7 +3686,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       stages =
         Enum.map(document["stages"], fn
           %{"id" => @explore, "gate" => gate} = stage ->
-            %{stage | "gate" => Map.put(gate, "tracks", ["standard", "fast"])}
+            %{stage | "gate" => Map.put(gate, "tracks", ["standard", "fast-track"])}
 
           %{"id" => @shape} = stage ->
             Map.put(stage, "when", %{"track" => "standard"})
@@ -3710,7 +3710,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
         |> Map.put("stages", stages)
         |> Map.put("tracks", [
           %{"id" => "standard", "name" => "Standard"},
-          %{"id" => "fast", "name" => "Fast track"}
+          %{"id" => "fast-track", "name" => "Fast track"}
         ])
 
       {:ok, _version} = Processes.save(scope, scope.workspace, document)
@@ -3720,7 +3720,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
         |> taken_in_fixture()
         |> end_run!(understood_result())
 
-      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast")
+      {:ok, _moved} = WorkItems.confirm(scope, work_item, 1, track: "fast-track")
 
       work_item = work_item |> reload() |> end_run!(fn run, _registered -> passed!(run) end)
       assert %WorkItem{stage_id: @build, stage_state: :at_gate} = work_item

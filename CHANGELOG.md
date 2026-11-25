@@ -572,6 +572,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `cancelled` and `at`. `cancelled` is true only when a member cancelled that run, not when
   it ended at its time limit, was released or lost its machine. The migration adds the table
   `run_pushed_commits`.
+- A run of any stage but Explore's has the work item's track in its inputs, such as
+  `standard` or `fast-track`, at the claim and in each later session of a shared run. A
+  work item with no track gets no `track` member, and a run of Explore's stage has none.
+  A run cannot set the track: the track in a verdict takes effect only when a person
+  approves a gate with it.
 <!-- /feature -->
 - A question in a run's questions may have a `criterion`: the id of the acceptance
   criterion it is about, such as `ac-3`. Qory Apiary stores it with the question and
@@ -2073,10 +2078,11 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   type or, with `name` alone beside it, a standard type. A run cannot then withdraw a name
   of that type, and it cannot withdraw a name whose newest version a member approved at a
   gate: the run API returns `422` `type_not_withdrawable`.
-- `DocumentsCheck.check/1` states the two rules of a run's documents that
-  the schema cannot state: no `deliver` type twice, and no `collection` twice across `target`
-  and `further_targets`. It returns the message of the integrations' `Documents.Check()`.
-  No code calls it, because no run's documents have `deliver` or `further_targets`.
+- `DocumentsCheck.check/1` checks the three rules of a run's documents that the schema
+  cannot check: no `deliver` type twice, no `collection` twice across `target` and
+  `read_targets`, and no destination id twice in `inputs.destinations`. It returns the
+  message of the integrations' `Documents.Check()`. The claim calls it on the documents
+  of every run, in `lib/apiary/dispatches/handover.ex`.
 - `ChangeRequest.validate/1` checks a `change_request` entry against the
   integrations contract's `changes.schema.json`, vendored under `priv/contract/integration/`.
   It refuses a title that is empty, only spaces, over 256 characters or on more than one
@@ -3119,20 +3125,21 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A feature that a later release adds starts at its default, even on an instance whose
   features were saved.
 - The integration contract and the data descriptions are vendored at integrations
-  `7e6cac7`. Its schemas leave an undefined member open. A description with a
-  `publisher`, or a data description with a `program`, is read. The `document` of the
-  description keeps the member. The adapter declaration, the bodies of calls to an adapter
-  and source items still refuse an undefined member. So do the grant end, the sources
-  disconnect and the feed writer, and their tests keep that. The `openai-subscription`
-  description has the text of `7e6cac7`. A description may have `links`, 1 to 16 entries
-  of a `system` and a `template` (a link with placeholders for a path). The schema refuses
-  a template that is not `https`, has a port, a query, a fragment, an unknown placeholder
-  or more than 2048 characters. The `document` of a description keeps `links`. No page
-  reads it yet. The contract states that the control plane writes no `watch` entry; the
-  kind stays defined. The run contract is at `da48933`, with the integration definitions
-  that it refers to. The explore contract and the run documents schema that the harness
-  save reads are at `4ad23d9`. The diagnostics contract stays at `e0d7be1`, the provisioner
-  contract at `8d859a1`, and the check fixtures of `DocumentsCheck` at `4c788f4`.
+  `699a22c` (byte for byte as at `7e6cac7`). Its schemas leave an undefined member open. A
+  description with a `publisher`, or a data description with a `program`, is read. The
+  `document` of the description keeps the member. The adapter declaration, the bodies of
+  calls to an adapter and source items still refuse an undefined member. So do the grant
+  end, the sources disconnect and the feed writer, and their tests keep that. The
+  `openai-subscription` description has the text of `699a22c`. A description may have
+  `links`, 1 to 16 entries of a `system` and a `template` (a link with placeholders for a
+  path). The schema refuses a template that is not `https`, has a port, a query, a
+  fragment, an unknown placeholder or more than 2048 characters. The `document` of a
+  description keeps `links`. No page reads it yet. The contract states that the control
+  plane writes no `watch` entry; the kind stays defined. The run contract, with its
+  findings records and the check fixtures of `DocumentsCheck`, and the integration
+  definitions that it refers to are at `699a22c`. The explore contract and the run
+  documents schema that the harness save reads are at `4ad23d9`. The diagnostics contract
+  stays at `e0d7be1` and the provisioner contract at `8d859a1`.
 - The reply to a change request (`changes-submitted.schema.json`) and the reports of a
   change request (`changes-failed.schema.json`) are vendored with their fixtures.
   `POST /v1/work-items/changes/submitted` reads the reply.

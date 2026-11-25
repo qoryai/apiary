@@ -680,7 +680,8 @@ defmodule Apiary.Stages do
   # today's dispatch). `next` has `session`, Qory Apiary's number for it in the run,
   # `workflow`, `time_limit_minutes` and `type_settings` (the settings of its entry as the
   # claim kept them, `claim_sessions!/3`), `inputs` (the run's inputs,
-  # `Apiary.Dispatches.Inputs.explore/4`), and `model_choice` and
+  # `Apiary.Dispatches.Inputs.explore/4`, with the work item's track at the step,
+  # `input_track/2`), and `model_choice` and
   # `model_provider_credential_name`, the runtime and model of the entry's workflow and
   # the credential the session joins with, as the claim kept them (`claim_sessions!/3`);
   # each nil where the claim kept none. With no `model_provider_credential_name`, the
@@ -1147,7 +1148,11 @@ defmodule Apiary.Stages do
     case Apiary.Dispatches.Inputs.explore(
            work_item,
            run,
-           %{domain: Apiary.Lingo.Domain.name(workspace), target: target},
+           %{
+             domain: Apiary.Lingo.Domain.name(workspace),
+             target: target,
+             track: input_track(run, work_item)
+           },
            max(session_answer_limit() - rest, 1)
          ) do
       {:ok, inputs} ->
@@ -3678,6 +3683,32 @@ defmodule Apiary.Stages do
       [] -> nil
     end
   end
+
+  # input_track/2 is the `track` of the inputs of the run of the queue `run` of
+  # `work_item` (`Apiary.Dispatches.Inputs.explore/4`): the work item's track
+  # (`track/1`) for a run of any stage but Explore's, nil for a run of Explore's stage,
+  # whose input schema has no `track`, and for a work item with no track. A run of
+  # Explore's stage is a run of Explore (`explore_run?/1`), which covers a run with no
+  # stage, or a run of a later workflow in the first stage of the run's process version
+  # (`dispatch_runs.process_version_id`, `explore_stage_in/1`), as `explore_at_queue/4`
+  # places it, so a version the work item is assigned to after the claim
+  # (`Apiary.Processes.assign/3`) changes nothing for the run. Only a run with no process
+  # version is placed in the work item's version (`explore_stage_id/1`).
+  @doc false
+  @spec input_track(DispatchRun.t(), WorkItem.t()) :: String.t() | nil
+  def input_track(%DispatchRun{} = run, %WorkItem{} = work_item) do
+    if explore_stage_run?(run, work_item), do: nil, else: track(work_item)
+  end
+
+  defp explore_stage_run?(%DispatchRun{stage_id: stage_id} = run, work_item) do
+    explore_run?(run) or
+      (is_binary(stage_id) and stage_id == run_explore_stage_id(run, work_item))
+  end
+
+  defp run_explore_stage_id(%DispatchRun{process_version_id: id}, _work_item) when is_binary(id),
+    do: explore_stage_in(Processes.get_version!(id))
+
+  defp run_explore_stage_id(%DispatchRun{}, work_item), do: explore_stage_id(work_item)
 
   # The approvals and moves of the work item that have a track and count
   # (`Apiary.Stages.Withdrawals`), newest first: each `track`, the `stage_id` the decision
