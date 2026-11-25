@@ -6,8 +6,9 @@ defmodule Apiary.Dispatches.Inputs do
   #
   # - `prebuild/1`: exactly `{"version": 1, "environment_ref": ref}`, as the contract closes
   #   it, the ref the run of the queue was queued for (`dispatch_runs.environment_ref`).
-  # - `explore/3`: the explore contract's `inputs.schema.json`, version 1, every member in
-  #   the schema's order, from the rows Qory keeps and nothing the starter sent:
+  # - `explore/4`: the explore contract's `inputs.schema.json`, version 1, every member in
+  #   the schema's order, and for a run of a stage other than Explore's one more member,
+  #   `track`, from the rows Qory keeps and nothing the starter sent:
   #   - `work_item`: its public id, its number and its address (`Apiary.WorkItems.stable_url/1`);
   #   - `run`: the run's `attempt`, counted over the runs of its take in that started: a
   #     run that ended before it started because its image was missing from the registry,
