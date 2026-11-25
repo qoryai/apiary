@@ -9,9 +9,11 @@ defmodule Apiary.Stacks do
   #
   # An explore run the stage runner did not queue has the workflow of the one row with a
   # workflow at the run's places, its workspace and its target (`workflow_for/2`). With no
-  # such row, or two or more, the run has no workflow and no harness, whatever the levels
-  # have. A stage's run has its stage entry's workflow (`Apiary.Stages.run_workflow/1`),
-  # with or without a row. The walk reads no document of a row with a workflow.
+  # such row and the workflow model off, it has the first workflow of the first stage of
+  # the workspace's current process version. With two or more rows, or with no row and
+  # no version, the run has no workflow and no harness, whatever the levels have. A
+  # stage's run has its stage entry's workflow (`Apiary.Stages.run_workflow/1`), with or
+  # without a row. The walk reads no document of a row with a workflow.
   #
   # ## The harness choices
   #
@@ -101,13 +103,56 @@ defmodule Apiary.Stacks do
   @doc false
   # workflow/2 is the workflow of the runs of `workspace` at `target`, a target row of
   # the workspace or nil for none: the workflow of the one row with a workflow at the
-  # workspace level and, for a run with a target, the target level. Nil for no such row,
-  # and for two or more, whatever their workflows. Read without a lock.
+  # workspace level and, for a run with a target, the target level. With no such row and
+  # the workflow model off, the first workflow of the first stage of the workspace's
+  # current version (`Apiary.Stages.first_workflow/1`), read without inserting a version;
+  # nil for a workspace with no version, and nil with the model on. Nil for two or more
+  # rows, whatever their workflows. Read without a lock.
   @spec workflow(Workspace.t(), Target.t() | nil) :: String.t() | nil
   def workflow(%Workspace{} = workspace, target) do
-    case workflow_row(workspace, target) do
-      %{workflow: workflow} -> workflow
-      nil -> nil
+    case resolve_workflow(workspace, target) do
+      {:ok, workflow} -> workflow
+      {:none, _cause} -> nil
+    end
+  end
+
+  @doc false
+  # workflow_or_cause/2 is `workflow_for/2` with the cause where it is nil: `{:ok,
+  # workflow}`, or `{:none, cause}`, with `:many_stacks` for two or more rows with a
+  # workflow at the run's places; `:no_stage_run` for no such row with the workflow model
+  # on, where the stage runner did not queue the run; `:no_process` for no such row and no
+  # current version with the model off; and `:no_first_workflow` for no such row and a
+  # current version whose first stage has no workflow. Read without a lock.
+  @spec workflow_or_cause(Workspace.t(), Apiary.Lingo.Domain.target() | nil) ::
+          {:ok, String.t()}
+          | {:none, :many_stacks | :no_stage_run | :no_process | :no_first_workflow}
+  def workflow_or_cause(%Workspace{} = workspace, target),
+    do: resolve_workflow(workspace, target_row(workspace, target))
+
+  defp resolve_workflow(workspace, target) do
+    case workflow_rows(workspace, target) do
+      [%{workflow: workflow}] -> {:ok, workflow}
+      [] -> first_workflow(workspace)
+      _two_or_more -> {:none, :many_stacks}
+    end
+  end
+
+  # With no row with a workflow: the first workflow of the first stage of the workspace's
+  # current version, read without inserting a version, with the workflow model off.
+  defp first_workflow(workspace) do
+    if Apiary.Stages.on?() do
+      {:none, :no_stage_run}
+    else
+      case Apiary.Processes.current_or_nil(workspace) do
+        nil ->
+          {:none, :no_process}
+
+        version ->
+          case Apiary.Stages.first_workflow(version) do
+            nil -> {:none, :no_first_workflow}
+            workflow -> {:ok, workflow}
+          end
+      end
     end
   end
 
@@ -159,6 +204,14 @@ defmodule Apiary.Stacks do
   # The workflow and the access level of the one row with a workflow at the run's
   # places (`workflow/2`), nil for none or for two or more.
   defp workflow_row(%Workspace{} = workspace, target) do
+    case workflow_rows(workspace, target) do
+      [row] -> row
+      _none_or_several -> nil
+    end
+  end
+
+  # At most two of the rows with a workflow at the run's places.
+  defp workflow_rows(%Workspace{} = workspace, target) do
     Repo.all(
       from s in Stack,
         where: s.organisation_id == ^workspace.organisation_id,
@@ -167,10 +220,6 @@ defmodule Apiary.Stacks do
         select: %{workflow: s.workflow, access: s.access},
         limit: 2
     )
-    |> case do
-      [row] -> row
-      _none_or_several -> nil
-    end
   end
 
   # The rows at a run's places: its workspace and `target`, a target row or nil for none.

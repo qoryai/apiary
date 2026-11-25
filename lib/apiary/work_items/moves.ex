@@ -42,7 +42,10 @@ defmodule Apiary.WorkItems.Moves do
   # needs a target, else a work item without one; one that breaks the domain's rules,
   # `:target_invalid`. Its owner is the person the page names, the one taking it in
   # unless named, who must act in the workspace
-  # (`Apiary.Organisations.list_workspace_members/1`), else `:owner`.
+  # (`Apiary.Organisations.list_workspace_members/1`), else `:owner`. With the workflow
+  # model, a take in where the first stage of the current process version has no workflow
+  # is `{:no_workflow, stage_name}` (`Apiary.Stages.take_in_version/1`). The take in
+  # enters the version that check read.
   # The page gives the owner and the first instruction under atom keys or their strings.
   # Its first instruction is the one the page gives, empty for none, within the bounds of
   # `Apiary.WorkItems.WorkItem.take_in_changeset/2`, else the changeset.
@@ -96,7 +99,7 @@ defmodule Apiary.WorkItems.Moves do
   # A first take in finds no work item of the ticket in the organisation, by its adapter
   # and its ref, live or not. It makes one, `:exploring`, numbered next in the workspace,
   # take in 1, taken in by the person now, with its `:taken_in` event (`data`
-  # `{"take_in": 1, "before": null}`), queues its first run (`Apiary.Dispatches.queue/2`),
+  # `{"take_in": 1, "before": null}`), queues its first run (`Apiary.Dispatches.queue/3`),
   # and tells the adapter `taken_in` (`Apiary.Adapters.Feed`). A work item of the ticket
   # that exists, in any workspace and any state, is `{:error, {:taken, work_item}}`; so is
   # a take in that loses the race to another: the unique index on (`organisation_id`,
@@ -112,9 +115,10 @@ defmodule Apiary.WorkItems.Moves do
   # a test work item of the line the person typed
   # (`Apiary.WorkItems.WorkItem.test_changeset/2`), `:exploring`, owned by the person,
   # numbered next in the workspace, take in 1, with its `:taken_in` event, as a first take
-  # in has, its first run queued (`Apiary.Dispatches.queue/2`), and its entry in the trail,
+  # in has, its first run queued (`Apiary.Dispatches.queue/3`), and its entry in the trail,
   # `details` `test: true`. No adapter is told, as none is behind it. A line the changeset
-  # refuses is the changeset.
+  # refuses is the changeset. With the workflow model, a first stage with no workflow is
+  # refused before anything is written, `{:no_workflow, stage_name}`, as for a take in.
   #
   # A workspace has one live test work item at most, and a run's end leaves it live. So a
   # take in of a test first holds the live one, if there is one, `FOR UPDATE`, then its
@@ -358,6 +362,7 @@ defmodule Apiary.WorkItems.Moves do
           | :owner
           | :not_taken
           | :comment_too_long
+          | {:no_workflow, String.t()}
           | {:taken, WorkItem.t()}
           | Ecto.Changeset.t()
 
@@ -386,9 +391,10 @@ defmodule Apiary.WorkItems.Moves do
              :ok <- none_yet(scope, ticket),
              :ok <- open(ticket),
              {:ok, target} <- target(workspace, ticket),
+             {:ok, version} <- Apiary.Stages.take_in_version(workspace),
              {:ok, owner_id} <- owner(scope, attrs),
              {:ok, comment} <- take_in_comment(attrs) do
-          make(scope, workspace, ticket, target, owner_id, attrs, comment)
+          make(scope, workspace, ticket, target, owner_id, attrs, comment, version)
         end
       end)
 
@@ -407,7 +413,7 @@ defmodule Apiary.WorkItems.Moves do
 
   # A new work item of the ticket, its event, its first run, its feed entry and its entry
   # in the trail.
-  defp make(scope, workspace, ticket, target, owner_id, attrs, comment) do
+  defp make(scope, workspace, ticket, target, owner_id, attrs, comment, version) do
     %{item: item, collection: collection, adapter: adapter} = ticket
     now = DateTime.utc_now()
 
@@ -444,7 +450,7 @@ defmodule Apiary.WorkItems.Moves do
              after: %{state: :exploring},
              details: %{"take_in" => 1}
            }),
-         {:ok, _run} <- Dispatches.queue(work_item, 1) do
+         {:ok, _run} <- Dispatches.queue(work_item, 1, version) do
       {:ok,
        {work_item,
         %{
@@ -483,15 +489,21 @@ defmodule Apiary.WorkItems.Moves do
   @doc false
   @spec take_in_test(Scope.t(), term) ::
           {:ok, WorkItem.t()}
-          | {:error, :not_found | :forbidden | :test_running | Ecto.Changeset.t()}
+          | {:error,
+             :not_found
+             | :forbidden
+             | :test_running
+             | {:no_workflow, String.t()}
+             | Ecto.Changeset.t()}
   def take_in_test(%Scope{} = scope, line) do
     result =
       Repo.transact(fn ->
         with {:ok, workspace} <- workspace(scope),
              :ok <- Access.authorize(scope, :"work_item.take_in", workspace),
              :ok <- MachineTypes.hold(),
+             {:ok, version} <- Apiary.Stages.take_in_version(workspace),
              {:ok, closed} <- close_last_test(scope, workspace),
-             {:ok, {work_item, told}} <- make_test(scope, workspace, line) do
+             {:ok, {work_item, told}} <- make_test(scope, workspace, line, version) do
           {:ok, {work_item, with_closed(told, closed)}}
         end
       end)
@@ -500,7 +512,7 @@ defmodule Apiary.WorkItems.Moves do
   end
 
   # A new test work item of the line, its event, its first run and its entry in the trail.
-  defp make_test(scope, workspace, line) do
+  defp make_test(scope, workspace, line, version) do
     now = DateTime.utc_now()
 
     changeset =
@@ -521,7 +533,7 @@ defmodule Apiary.WorkItems.Moves do
              after: %{state: :exploring},
              details: %{"take_in" => 1, "test" => true}
            }),
-         {:ok, _run} <- Dispatches.queue(work_item, 1) do
+         {:ok, _run} <- Dispatches.queue(work_item, 1, version) do
       {:ok,
        {work_item,
         %{
@@ -631,9 +643,10 @@ defmodule Apiary.WorkItems.Moves do
              :ok <- open(ticket),
              :ok <- not_finished(scope, ended, ticket),
              {:ok, target} <- target(workspace, ticket),
+             {:ok, version} <- Apiary.Stages.take_in_version(workspace),
              {:ok, owner_id} <- owner(scope, attrs),
              {:ok, comment} <- take_in_comment(attrs) do
-          again(scope, workspace, ended, ticket, target, owner_id, attrs, comment)
+          again(scope, workspace, ended, ticket, target, owner_id, attrs, comment, version)
         end
       end)
 
@@ -669,7 +682,7 @@ defmodule Apiary.WorkItems.Moves do
       else: :ok
   end
 
-  defp again(scope, workspace, ended, ticket, target, owner_id, attrs, comment) do
+  defp again(scope, workspace, ended, ticket, target, owner_id, attrs, comment, version) do
     %{item: item, collection: collection, adapter: adapter} = ticket
     now = DateTime.utc_now()
     take_in = ended.take_in + 1
@@ -712,7 +725,7 @@ defmodule Apiary.WorkItems.Moves do
              details: %{"again" => true, "take_in" => take_in}
            }),
          :ok <- raise_run_numbers(ended, workspace),
-         {:ok, _run} <- Dispatches.queue(work_item, take_in) do
+         {:ok, _run} <- Dispatches.queue(work_item, take_in, version) do
       {:ok,
        {work_item,
         %{

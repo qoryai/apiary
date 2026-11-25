@@ -201,9 +201,9 @@ defmodule Apiary.Dispatches.DispatchRun do
     field :machine_type, :string
     field :machine_spec, :map
     field :machine_type_was_default, :boolean, default: false
-    # Whether the run is a run of Explore, as it was when the run was queued, or when a
-    # claim or the stage runner first read it (`Apiary.Stages.known_explore/1`); nil while
-    # that is not known: the run is not claimed, and its end waits.
+    # Whether the run is a run of Explore, as it was when the run was queued: whether it
+    # starts the first workflow of the first stage of its process version
+    # (`Apiary.Stages.explore_at_queue/4`).
     field :explore, :boolean
     # The model providers of the run's model choice when the run was queued: the choice's
     # provider, then its fallbacks in their order; empty for a run with none. A claim

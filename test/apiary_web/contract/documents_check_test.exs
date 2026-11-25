@@ -4,10 +4,10 @@ defmodule ApiaryWeb.Contract.DocumentsCheckTest do
   # `contracts/run/v1/fixtures/check/` at the commit in
   # `test/fixtures/documents-check/.contract-ref` are replayed and return the message of the
   # Go test `TestCheckRefusesWhatTheSchemaCannotSay`. The run schema at that commit accepts
-  # them. The vendored run contract (`test/fixtures/contract/run/v1`) is at e0d7be1, whose
-  # schema refuses them for their `subject`, and has no `check/` folder. So these three are
-  # vendored beside it, by their SHA-256, until the run contract is vendored at a later
-  # commit.
+  # them. The vendored run contract (`test/fixtures/contract/run/v1`) is at 4ad23d9c, whose
+  # schema has no `deliver` and no `further_targets`, so it refuses them, and has no
+  # `check/` folder. So these three are vendored beside it, by their SHA-256, until the run
+  # contract is vendored at a later commit.
   use ExUnit.Case, async: true
 
   alias ApiaryWeb.Contract.DocumentsCheck

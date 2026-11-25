@@ -32,7 +32,7 @@ defmodule ApiaryWeb.Contract.QueuedRunIdTest do
     %DispatchRun{organisation_id: workspace.organisation_id, workspace_id: workspace.id}
     |> DispatchRun.queue_changeset(%{
       work_item_id: work_item_fixture(scope).id,
-      step: "explore",
+      step: "workflow",
       take_in: 1,
       attempt: 1,
       of: 3,

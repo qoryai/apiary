@@ -17,8 +17,9 @@ defmodule Apiary.Stacks.Stack do
   # | `:organisation` | the organisation's default | none of them |
   #
   # `workflow` is a workflow name: a lower-case letter, then up to 54 lower-case letters,
-  # digits and hyphens. A run's workflow is read from these rows
-  # (`Apiary.Stacks.workflow/2`).
+  # digits and hyphens. With the workflow model off, a run's workflow is read from these
+  # rows, else from the current process version (`Apiary.Stacks.workflow/2`); with it, a
+  # run has its stage entry's.
   #
   # `access` is the access level recorded for the runs of the row's workflow, `:read` or
   # `:write`, nil for none, and only on a row with a workflow. It only lowers the level

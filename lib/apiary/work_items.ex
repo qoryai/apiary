@@ -62,7 +62,7 @@ defmodule Apiary.WorkItems do
   #
   # ## Reading: the list and the lookups
   #
-  # `list_work_items(scope, params)` is a page of the Work items list, `list_bands/4` its
+  # `list_work_items(scope, params)` is a page of the Work items list, `list_bands/3` its
   # Open view by stage, `list_stage_counts/3` how many live work items are at each stage
   # of the workflow model and `list_filter_values/3` what its Filter menu offers
   # (`Apiary.WorkItems.WorkList`); `get_by_number/2`, `get_by_public_id/2` and
@@ -151,10 +151,9 @@ defmodule Apiary.WorkItems do
   # How many of the scope's workspace's work items wait on the scope's person: the count
   # beside the sidebar's Work items, and the Work items list's Waiting on you. They are the
   # live work items the person owns whose proposal waits at Confirm
-  # (`Apiary.WorkItems.WorkList.waiting_on/2`, with its `opts`); 0 to a person who may not
-  # read them.
-  @spec count_waiting_on(Scope.t(), keyword) :: non_neg_integer
-  def count_waiting_on(%Scope{} = scope, opts \\ []), do: WorkList.waiting_on(scope, opts)
+  # (`Apiary.WorkItems.WorkList.waiting_on/1`); 0 to a person who may not read them.
+  @spec count_waiting_on(Scope.t()) :: non_neg_integer
+  def count_waiting_on(%Scope{} = scope), do: WorkList.waiting_on(scope)
 
   ## What a person does
 
@@ -172,7 +171,12 @@ defmodule Apiary.WorkItems do
   # (`Apiary.WorkItems.Moves`): `{:ok, work_item}`, or a refusal.
   @spec take_in_test(Scope.t(), term) ::
           {:ok, WorkItem.t()}
-          | {:error, :not_found | :forbidden | :test_running | Ecto.Changeset.t()}
+          | {:error,
+             :not_found
+             | :forbidden
+             | :test_running
+             | {:no_workflow, String.t()}
+             | Ecto.Changeset.t()}
   defdelegate take_in_test(scope, line), to: Moves
 
   @doc false
@@ -458,18 +462,18 @@ defmodule Apiary.WorkItems do
   ## Reading
 
   @doc false
-  # list_work_items/4 is a page of the Work items list of the scope's workspace
-  # (`Apiary.WorkItems.WorkList.list/4`, with its `opts`).
-  @spec list_work_items(Scope.t(), map | keyword, DateTime.t(), keyword) :: WorkList.page()
-  def list_work_items(%Scope{} = scope, params \\ %{}, now \\ DateTime.utc_now(), opts \\ []),
-    do: WorkList.list(scope, params, now, opts)
+  # list_work_items/3 is a page of the Work items list of the scope's workspace
+  # (`Apiary.WorkItems.WorkList.list/3`).
+  @spec list_work_items(Scope.t(), map | keyword, DateTime.t()) :: WorkList.page()
+  def list_work_items(%Scope{} = scope, params \\ %{}, now \\ DateTime.utc_now()),
+    do: WorkList.list(scope, params, now)
 
   @doc false
-  # list_bands/4 is the Work items list's Open view of the scope's workspace by stage
-  # (`Apiary.WorkItems.WorkList.bands/4`, with its `opts`).
-  @spec list_bands(Scope.t(), map | keyword, DateTime.t(), keyword) :: WorkList.bands()
-  def list_bands(%Scope{} = scope, params \\ %{}, now \\ DateTime.utc_now(), opts \\ []),
-    do: WorkList.bands(scope, params, now, opts)
+  # list_bands/3 is the Work items list's Open view of the scope's workspace by stage
+  # (`Apiary.WorkItems.WorkList.bands/3`).
+  @spec list_bands(Scope.t(), map | keyword, DateTime.t()) :: WorkList.bands()
+  def list_bands(%Scope{} = scope, params \\ %{}, now \\ DateTime.utc_now()),
+    do: WorkList.bands(scope, params, now)
 
   @doc false
   # list_stage_counts/3 is how many live work items of the scope's workspace are at each

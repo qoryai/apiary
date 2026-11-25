@@ -211,6 +211,39 @@ defmodule ApiaryWeb.BacklogLive.TakeInTest do
       refute has_element?(view, "#backlog-ticket")
     end
 
+    @tag needs: [:factory, :workflow_model]
+    test "a first stage with no workflow: queues no run, and the flash shows that stage", ctx do
+      {:ok, _version} =
+        Apiary.Processes.save(ctx.scope, ctx.scope.workspace, %{
+          "schema" => "qory.process/v1",
+          "machine" => "default",
+          "stages" => [
+            %{
+              "id" => "st_r79kph11eg",
+              "name" => "Triage",
+              "inputs" => [],
+              "sequence" => [],
+              "outputs" => [],
+              "gate" => %{"kind" => "person", "approvers" => "members"}
+            }
+          ]
+        })
+
+      {:ok, view, _html} = live(ctx.conn, open(ctx.scope, ctx.ticket))
+      view |> element("#backlog-ticket-take-in-button") |> render_click()
+      confirm_take_in(view)
+
+      assert flash(view) =~
+               "Add a workflow to the stage Triage. Take in starts the first workflow of the " <>
+                 "process's first stage."
+
+      refute Repo.get_by(WorkItem, item_id: ctx.ticket.id)
+      assert Repo.aggregate(Apiary.Dispatches.DispatchRun, :count) == 0
+
+      assert WorkItems.take_in(ctx.scope, ctx.ticket.public_id) ==
+               {:error, {:no_workflow, "Triage"}}
+    end
+
     test "a ticket closed at its source: says so", ctx do
       {:ok, view, _html} = live(ctx.conn, open(ctx.scope, ctx.ticket))
 

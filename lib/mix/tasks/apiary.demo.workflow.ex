@@ -1098,14 +1098,10 @@ defmodule Mix.Tasks.Apiary.Demo.Workflow do
 
   # The run's harness walk as the walk's job leaves it for a target with a root harness
   # file: resolved, from that file. The preview runs no walk job.
-  defp walked_file!(%DispatchRun{id: id, workspace_id: workspace_id}) do
+  defp walked_file!(%DispatchRun{id: id, workflow: workflow}) do
     {1, _rows} =
       Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^id),
-        set: [
-          state: :resolved,
-          origin: :file,
-          workflow: Stages.explore_workflow(workspace_id)
-        ]
+        set: [state: :resolved, origin: :file, workflow: workflow]
       )
   end
 

@@ -68,8 +68,9 @@ defmodule Apiary.Processes do
       item's row or the run's, which come after the workspace's in the lock order
       (docs/access.md).
 
-  With the feature `workflow_model` off, a run reads the workflow the Harness page saved,
-  whatever the process has, so no override is a leftover and none of these deletes runs.
+  With the feature `workflow_model` off, a run reads the workflow of the one row with a
+  workflow at its places, the row Workspace settings › Harness saves, whatever the
+  process has. So no override is a leftover, and none of these deletes runs.
 
   Each delete leaves the audit entry of a removal, `choice_removed`
   (`model_choice.write`) or `time_limit_removed` (`time_limit.edit`), with
@@ -304,10 +305,8 @@ defmodule Apiary.Processes do
   @doc """
   qory_workflows/1 is the workflows the stack of the template of the Qory harness lists
   at `commit` (Apiary.Harnesses.Qory.workflows/2), as the stored files have it: for what
-  has no workspace, at the commit of `main`, and for the name that makes a run Explore
-  (Apiary.Stages.explore_workflow/1), at the workspace's commit. Empty for a commit whose
-  files are not kept. A workspace's marks read `qory_workflows/2` with its harness
-  choice.
+  has no workspace, at the commit of `main`. Empty for a commit whose files are not kept.
+  A workspace's marks read `qory_workflows/2` with its harness choice.
 
   Given the harness as Apiary.Stacks.Sources.chosen/1 returns it, it is the workflows the
   stack of a workspace on the Qory harness lists, at the version the choice has: the
@@ -1299,6 +1298,12 @@ defmodule Apiary.Processes do
         current_row(workspace) || raise(Ecto.NoResultsError, queryable: Version)
     end
   end
+
+  @doc false
+  # current_or_nil/1 is the workspace's current version, nil for a workspace with none.
+  # Unlike `current/1`, it inserts no version.
+  @spec current_or_nil(%Workspace{}) :: Version.t() | nil
+  def current_or_nil(%Workspace{} = workspace), do: current_row(workspace)
 
   defp current_row(%Workspace{id: id}, lock \\ nil) do
     query = from v in Version, where: v.workspace_id == ^id and v.status == :current

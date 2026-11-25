@@ -219,6 +219,17 @@ defmodule Apiary.StagesTest do
     end
   end
 
+  # Explore whose one entry runs only on a member's new feedback, with the gate none: a take
+  # in passes it to the next stage, whose runs are not runs of Explore.
+  defp passed_explore,
+    do:
+      stage(
+        @explore,
+        "Explore",
+        [%{"workflow" => "triage-review", "when" => %{"feedback" => "new"}}],
+        %{"gate" => %{"kind" => "none"}}
+      )
+
   # Explore as the default process has it: explore-a-ticket, with no loop.
   defp explore_stage(extra \\ %{}) do
     stage(
@@ -251,7 +262,7 @@ defmodule Apiary.StagesTest do
       assert [run] = runs(work_item)
 
       assert %DispatchRun{
-               step: "explore",
+               step: "workflow",
                take_in: 1,
                attempt: 1,
                of: 3,
@@ -426,15 +437,70 @@ defmodule Apiary.StagesTest do
       assert %{names: ["explore-a-ticket"]} = Processes.declared_snapshot(scope.workspace)
     end
 
-    test "passes through a stage with no workflow and no gate", %{scope: scope} do
+    test "is refused where the first stage has no workflow", %{scope: scope} do
       save!(scope, [
         stage("st_aaaaaaaaaa", "Intake", [], %{"gate" => %{"kind" => "none"}}),
         explore_stage()
       ])
 
+      ticket = backlog_ticket_fixture(scope)
+
+      assert WorkItems.take_in(scope, ticket.public_id) ==
+               {:error, {:no_workflow, "Intake"}}
+
+      assert Stages.take_in_version(scope.workspace) == {:error, {:no_workflow, "Intake"}}
+    end
+
+    test "passes through a first stage whose one entry's condition fails, with no gate", %{
+      scope: scope
+    } do
+      intake = [%{"workflow" => "triage-review", "when" => %{"feedback" => "new"}}]
+
+      save!(scope, [
+        stage("st_aaaaaaaaaa", "Intake", intake, %{"gate" => %{"kind" => "none"}}),
+        explore_stage()
+      ])
+
+      assert {:ok, %Processes.Version{}} = Stages.take_in_version(scope.workspace)
       work_item = take_in!(scope)
       assert work_item.stage_id == @explore
       assert [%DispatchRun{stage_id: @explore}] = runs(work_item)
+    end
+
+    # A take in enters the first stage of a version (`Stages.take_in/3`), so every saved
+    # version has one: the process schema's `stages` has `minItems: 1`.
+    test "has a first stage in every version: a process with no stage is not saved", %{
+      scope: scope
+    } do
+      current = Processes.current(scope.workspace)
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => []}
+
+      assert {:error, [_ | _]} = Processes.save(scope, scope.workspace, document)
+      assert Processes.current(scope.workspace).id == current.id
+    end
+
+    # A take in enters the version its check read (`Stages.take_in_version/1`), which it
+    # passes on, so a version saved after the check is not the one it enters.
+    test "enters the version the check read, not one saved after it", %{scope: scope} do
+      checked = save!(scope, [explore_stage()])
+      assert {:ok, %Processes.Version{id: id}} = Stages.take_in_version(scope.workspace)
+      assert id == checked.id
+
+      # Saved between the check and the take in: a first stage with no workflow.
+      newer =
+        save!(scope, [
+          stage("st_aaaaaaaaaa", "Intake", [], %{"gate" => %{"kind" => "none"}}),
+          explore_stage()
+        ])
+
+      assert Processes.current(scope.workspace).id == newer.id
+      work_item = work_item_fixture(scope)
+
+      {:ok, run} = Repo.transact(fn -> Apiary.Dispatches.queue(work_item, 1, checked) end)
+
+      assert %WorkItem{stage_id: @explore} = work_item = Repo.get!(WorkItem, work_item.id)
+      assert work_item.process_version_id == checked.id
+      assert %DispatchRun{stage_id: @explore, workflow: "explore-a-ticket"} = run
     end
 
     test "take_in_starts/2 reads the run a take in would queue, by the take in's rule", %{
@@ -520,9 +586,72 @@ defmodule Apiary.StagesTest do
     end
   end
 
+  describe "the workflow a take in starts" do
+    test "is the first workflow of the first stage, Triage's draft-reply here",
+         %{scope: scope} do
+      version =
+        save!(scope, [
+          stage(@explore, "Triage", [%{"workflow" => "draft-reply"}, %{"workflow" => "classify"}]),
+          stage(@build, "Reply", [%{"workflow" => "send-reply"}])
+        ])
+
+      assert Stages.first_workflow(version) == "draft-reply"
+
+      work_item = take_in!(scope)
+
+      assert [%DispatchRun{step: "workflow", workflow: "draft-reply", explore: true}] =
+               runs(work_item)
+
+      assert Stages.explore_stage_id(reload(work_item)) == @explore
+    end
+
+    # The case of a later stage that starts the first stage's first workflow: Verify's
+    # triage-review is no run of Explore, so it gets no trigger and its verdict counts.
+    test "a later stage's run of the first stage's first workflow is no run of Explore",
+         %{scope: scope} do
+      loop = %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "implement-changes"}]}}
+
+      save!(scope, [
+        stage(@build, "Build", [%{"workflow" => "triage-review"}, loop], %{
+          "gate" => %{"kind" => "none"}
+        }),
+        stage(@verify, "Verify", [
+          %{"workflow" => "triage-review"},
+          %{"workflow" => "verify-a-ticket"}
+        ])
+      ])
+
+      work_item = take_in!(scope)
+
+      assert %DispatchRun{workflow: "triage-review", stage_id: @build, explore: true} =
+               newest_run(work_item)
+
+      work_item = work_item |> end_run!(understood_result()) |> end_run!(verdict("passed"))
+      assert %WorkItem{stage_id: @verify, stage_state: :running} = work_item
+
+      assert %DispatchRun{workflow: "triage-review", stage_id: @verify, explore: false} =
+               run = newest_run(work_item)
+
+      refute Stages.explore_run?(%{run | explore: nil})
+
+      # Its verdict passed counts: Verify goes on to verify-a-ticket.
+      work_item = end_run!(work_item, verdict("passed"))
+      assert %DispatchRun{workflow: "verify-a-ticket", stage_id: @verify} = newest_run(work_item)
+    end
+
+    test "in the software factory's process, is Explore's first workflow, as before",
+         %{scope: scope} do
+      work_item = take_in!(scope)
+
+      assert [%DispatchRun{step: "workflow", workflow: "explore-a-ticket", explore: true}] =
+               runs(work_item)
+
+      assert Stages.explore_stage_id(reload(work_item)) == @explore
+    end
+  end
+
   describe "whether a run is a run of Explore" do
-    # No commit or file of the Qory harness kept, as before its first read, and so no
-    # process version made from a commit of it.
+    # No commit or file of the Qory harness kept, as before its first read.
     defp no_harness_kept! do
       {_count, _rows} = Repo.delete_all("qory_harness_heads")
       {_count, _rows} = Repo.delete_all("qory_harness_files")
@@ -537,7 +666,6 @@ defmodule Apiary.StagesTest do
 
       # The window before the first read of the Qory harness: no files are kept.
       no_harness_kept!()
-      assert Stages.explore_workflow(scope.workspace) == nil
       assert Stages.explore_run?(newest_run(work_item))
 
       work_item = end_run!(work_item, understood_result())
@@ -545,77 +673,32 @@ defmodule Apiary.StagesTest do
       assert [%{stage_id: @explore}] = versions(work_item, "proposal")
     end
 
-    test "is not known at the queue before the first read, nor after it while none is kept",
+    test "is whether the run starts its version's first workflow, with no harness files kept",
          %{scope: scope} do
       no_harness_kept!()
 
-      assert Stages.explore_at_queue("explore", "explore-a-ticket", scope.workspace.id) == nil
-      assert Stages.explore_at_queue("explore", nil, scope.workspace.id)
-      refute Stages.explore_at_queue("build", "explore-a-ticket", scope.workspace.id)
+      version =
+        save!(scope, [
+          stage(@explore, "Triage", [%{"workflow" => "draft-reply"}]),
+          stage(@build, "Reply", [%{"workflow" => "send-reply"}])
+        ])
+
+      assert Stages.explore_at_queue("workflow", @explore, "draft-reply", version)
+      refute Stages.explore_at_queue("workflow", @explore, "send-reply", version)
+      refute Stages.explore_at_queue("workflow", @build, "draft-reply", version)
+      refute Stages.explore_at_queue("prebuild", @explore, "draft-reply", version)
+      refute Stages.explore_at_queue("workflow", @explore, nil, version)
 
       run = %DispatchRun{
-        step: "explore",
-        workflow: "explore-a-ticket",
-        workspace_id: scope.workspace.id
+        step: "workflow",
+        stage_id: @build,
+        workflow: "send-reply",
+        process_version_id: version.id
       }
 
-      assert Stages.explore_run?(run) == nil
-      assert Stages.known_explore(run) == nil
-    end
-
-    test "not known, leaves the end of the run for later, and is read once the files are kept",
-         %{scope: scope} do
-      work_item = take_in!(scope)
-      run = newest_run(work_item)
-      no_harness_kept!()
-
-      # A run queued before the first read, its record with no answer, which ended lost.
-      {1, _rows} =
-        Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id),
-          set: [explore: nil, state: :ended, end_cause: :lost]
-        )
-
-      assert {:ok, []} = Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
-      assert %WorkItem{stage_state: :running} = reload(work_item)
-      refute escalation(work_item)
-      assert %DispatchRun{explore: nil} = Repo.get!(DispatchRun, run.id)
-
-      # The first read keeps the files: the end is read as a run of Explore that stopped.
-      {:ok, _commit} = Apiary.Harnesses.Qory.read({:branch, "main"})
-
-      assert {:ok, [_told]} = Repo.transact(fn -> {:ok, Stages.run_ended(run.id)} end)
-      assert %DispatchRun{explore: true} = Repo.get!(DispatchRun, run.id)
-      assert %Escalation{cause: :run_stopped} = escalation(work_item)
-    end
-
-    test "reads the commit the workspace's harness settings choose, not main's",
-         %{scope: scope} do
-      files =
-        Map.new(Apiary.QoryHarnessFixture.files(), fn {path, content} ->
-          {path, String.replace(content, "explore-a-ticket", "explore-v2")}
-        end)
-
-      Apiary.QoryHarnessFixture.serve!(files, tags: ["v2"])
-      {:ok, _row} = Apiary.Stacks.Sources.choose(scope, {:qory, {:tag, "v2"}})
-
-      assert Stages.explore_workflow(scope.workspace) == "explore-v2"
-      assert Processes.qory_workflows(Apiary.Harnesses.Qory.current()) == ["explore-a-ticket"]
-    end
-
-    test "reads the newest commit kept where the chosen commit's files are not kept",
-         %{scope: scope} do
-      {:ok, row} =
-        Apiary.Stacks.Sources.choose(
-          scope,
-          {:qory, {:commit, Apiary.QoryHarnessFixture.commit()}}
-        )
-
-      row
-      |> Ecto.Changeset.change(version_name: String.duplicate("ab", 20))
-      |> Repo.update!()
-
-      assert Apiary.Harnesses.Qory.workspace_commit(scope.workspace) == nil
-      assert Stages.explore_workflow(scope.workspace) == "explore-a-ticket"
+      refute Stages.explore_run?(run)
+      refute Stages.explore_run?(%{run | workflow: "draft-reply"})
+      assert Stages.explore_run?(%{run | stage_id: @explore, workflow: "draft-reply"})
     end
   end
 
@@ -2084,12 +2167,13 @@ defmodule Apiary.StagesTest do
     test "start the next round with their gaps, which status, notes and the escalation show",
          %{scope: scope} do
       save!(scope, [
-        explore_stage(%{
-          "sequence" => [
-            %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "capture-demo"}]}}
-          ],
-          "outputs" => [%{"type" => "mockup", "required" => true}]
-        })
+        passed_explore(),
+        stage(
+          @build,
+          "Build",
+          [%{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "capture-demo"}]}}],
+          %{"outputs" => [%{"type" => "mockup", "required" => true}]}
+        )
       ])
 
       gaps = "No mockup was stored in this stage."
@@ -2099,7 +2183,7 @@ defmodule Apiary.StagesTest do
       assert %DispatchRun{round: 2} = newest_run(work_item)
       assert %{gaps: ^gaps, escalation: nil} = Stages.status(work_item)
 
-      assert [%{kind: :check, stage_id: @explore, user_id: nil, note: ^gaps}] =
+      assert [%{kind: :check, stage_id: @build, user_id: nil, note: ^gaps}] =
                Stages.notes(work_item)
 
       work_item = work_item |> end_run!(verdict("passed")) |> end_run!(verdict("passed"))
@@ -2118,12 +2202,13 @@ defmodule Apiary.StagesTest do
 
     test "a workflow's report reads the questions named main alone", %{scope: scope} do
       save!(scope, [
-        explore_stage(%{
-          "sequence" => [
-            %{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "capture-demo"}]}}
-          ],
-          "outputs" => [%{"type" => "mockup", "required" => true}]
-        })
+        passed_explore(),
+        stage(
+          @build,
+          "Build",
+          [%{"loop" => %{"rounds" => 3, "body" => [%{"workflow" => "capture-demo"}]}}],
+          %{"outputs" => [%{"type" => "mockup", "required" => true}]}
+        )
       ])
 
       work_item =
@@ -2148,7 +2233,7 @@ defmodule Apiary.StagesTest do
 
   describe "the end of a run of a workflow other than Explore" do
     test "the verdict escalate escalates with its points", %{scope: scope} do
-      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+      save!(scope, [passed_explore(), stage(@build, "Build", [%{"workflow" => "capture-demo"}])])
       points = [%{"text" => "The demo needs a login.", "action" => "run_again"}]
       work_item = take_in!(scope) |> end_run!(verdict("escalate", points))
 
@@ -2162,7 +2247,7 @@ defmodule Apiary.StagesTest do
     # Settle leaves one it cannot settle yet, then its settle.
     test "an exit stored with no outcome: an unreadable verdict raises, the sweep settles it",
          %{scope: scope} do
-      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+      save!(scope, [passed_explore(), stage(@build, "Build", [%{"workflow" => "capture-demo"}])])
       # A point no other test writes, so no other test stores the same file.
       points = [again("The demo skips step #{System.unique_integer([:positive])}.")]
       work_item = take_in!(scope)
@@ -2198,7 +2283,7 @@ defmodule Apiary.StagesTest do
     test "open questions with escalate wait for answers and keep the escalation", %{
       scope: scope
     } do
-      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+      save!(scope, [passed_explore(), stage(@build, "Build", [%{"workflow" => "capture-demo"}])])
       points = [%{"text" => "The demo needs a login.", "action" => "run_again"}]
 
       work_item =
@@ -2223,7 +2308,7 @@ defmodule Apiary.StagesTest do
 
     test "with a verdict alone, waits for a question an earlier run of the take in left open",
          %{scope: scope} do
-      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+      save!(scope, [passed_explore(), stage(@build, "Build", [%{"workflow" => "capture-demo"}])])
       work_item = take_in!(scope) |> end_run!(questions_result(["Which basket?"]))
       assert work_item.stage_state == :waiting_answers
 
@@ -2241,7 +2326,7 @@ defmodule Apiary.StagesTest do
     test "with a verdict, does not wait for a question an earlier take in left open", %{
       scope: scope
     } do
-      save!(scope, [stage(@explore, "Explore", [%{"workflow" => "capture-demo"}])])
+      save!(scope, [passed_explore(), stage(@build, "Build", [%{"workflow" => "capture-demo"}])])
       ticket = backlog_ticket_fixture(scope)
       {:ok, work_item} = WorkItems.take_in(scope, ticket.public_id)
       work_item = work_item |> reload() |> end_run!(questions_result(["Which basket?"]))
@@ -6568,10 +6653,10 @@ defmodule Apiary.StagesTest do
       %{"text" => "Criterion 2 is not met: the export has no PDF.", "action" => "run_again"}
     ]
 
-    # `before`, stages before Build. Build: `first` before a loop of implement-changes and
-    # review-changes, gate none.
+    # `before`, stages before Build, Explore passed over unless given. Build: `first` before
+    # a loop of implement-changes and review-changes, gate none.
     # Verify: verify-a-ticket, which returns to Build on changes-requested, at most 2 times.
-    defp returning!(scope, first \\ [], before \\ []) do
+    defp returning!(scope, first \\ [], before \\ [passed_explore()]) do
       loop = %{
         "loop" => %{
           "rounds" => 3,
@@ -6682,6 +6767,7 @@ defmodule Apiary.StagesTest do
       }
 
       save!(scope, [
+        passed_explore(),
         stage(@build, "Build", [feedback, loop], %{"gate" => %{"kind" => "none"}}),
         stage(@verify, "Verify", [
           feedback,
@@ -6817,11 +6903,12 @@ defmodule Apiary.StagesTest do
 
       # Version 2 keeps Build and puts check-a-ticket before verify-a-ticket, whose entry
       # is then 1, not 0.
-      %{document: %{"stages" => [build, verify]}} = Processes.current(scope.workspace)
+      %{document: %{"stages" => [explore, build, verify]}} = Processes.current(scope.workspace)
       [entry] = verify["sequence"]
 
       version =
         save!(scope, [
+          explore,
           build,
           %{verify | "sequence" => [%{"workflow" => "check-a-ticket"}, entry]}
         ])
@@ -6942,6 +7029,7 @@ defmodule Apiary.StagesTest do
       }
 
       save!(scope, [
+        passed_explore(),
         stage(@build, "Build", [loop], %{"gate" => %{"kind" => "none"}}),
         stage(@verify, "Verify", [
           %{"workflow" => "verify-a-ticket", "return" => %{"stage" => @build, "limit" => 5}}
@@ -7214,9 +7302,9 @@ defmodule Apiary.StagesTest do
       assert from_return(work_item) == []
     end
 
-    # Build reads `inputs` and Verify makes a verdict and a verification, the two types that
-    # a return lists. `first` is a stage before Build (gate none), or nil for none.
-    defp ordered_process!(scope, first, inputs) do
+    # Explore with no workflow and the gate none, then Build, which reads `inputs`, then
+    # Verify, which makes a verdict and a verification, the two types that a return lists.
+    defp ordered_process!(scope, inputs) do
       {:ok, _type} =
         Artifacts.create_type(scope, scope.workspace, %{
           "name" => "brief",
@@ -7238,17 +7326,11 @@ defmodule Apiary.StagesTest do
           }
         )
 
-      before_build =
-        if first, do: [stage(@explore, "Explore", [], %{"gate" => %{"kind" => "none"}})], else: []
-
-      save!(
-        scope,
-        before_build ++
-          [
-            stage(@build, "Build", [loop], %{"gate" => %{"kind" => "none"}, "inputs" => inputs}),
-            verify
-          ]
-      )
+      save!(scope, [
+        passed_explore(),
+        stage(@build, "Build", [loop], %{"gate" => %{"kind" => "none"}, "inputs" => inputs}),
+        verify
+      ])
     end
 
     # What Verify's run pushes when it passes: a verification, then a `passed` verdict.
@@ -7272,7 +7354,7 @@ defmodule Apiary.StagesTest do
       do: for(input <- Stages.inputs(work_item), do: {input.type, Map.get(input, :from)})
 
     test "the inputs list read, then moved, then returned, each version once", %{scope: scope} do
-      ordered_process!(scope, false, [%{"type" => "brief", "required" => false}])
+      ordered_process!(scope, [%{"type" => "brief", "required" => false}])
       work_item = take_in!(scope)
       assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
 
@@ -7305,7 +7387,7 @@ defmodule Apiary.StagesTest do
     end
 
     test "a version that Build already reads is listed once, from the read", %{scope: scope} do
-      ordered_process!(scope, true, [%{"type" => "verification", "required" => false}])
+      ordered_process!(scope, [%{"type" => "verification", "required" => false}])
       work_item = take_in!(scope)
       assert %WorkItem{stage_id: @build, stage_state: :running} = work_item
       work_item = work_item |> in_verify_again!() |> returned_by("# Criterion 2 fails")
@@ -7335,7 +7417,7 @@ defmodule Apiary.StagesTest do
 
     test "a verification that a move back already lists is not listed again by a return",
          %{scope: scope} do
-      ordered_process!(scope, false, [])
+      ordered_process!(scope, [])
       work_item = take_in!(scope)
       work_item = end_run!(work_item, verdict("passed"))
       work_item = end_run!(work_item, passing("# First"))
@@ -9052,7 +9134,7 @@ defmodule Apiary.StagesTest do
     test "a run's return writes a move with no member and withdraws the approvals of the " <>
            "stage it returns to",
          %{scope: scope} do
-      returning!(scope, [], [shape_none()])
+      returning!(scope, [], [passed_explore(), shape_none()])
       work_item = take_in!(scope) |> through_shape!() |> through_build!()
 
       work_item = end_run!(work_item, verdict("changes-requested", @findings))
@@ -9075,7 +9157,7 @@ defmodule Apiary.StagesTest do
     test "Request changes with a return writes a move with no member and withdraws the " <>
            "approvals of the stage it returns to",
          %{scope: scope} do
-      returning!(scope, [], [shape_none()])
+      returning!(scope, [], [passed_explore(), shape_none()])
 
       work_item =
         take_in!(scope) |> through_shape!() |> through_build!() |> end_run!(verdict("passed"))
@@ -9108,7 +9190,8 @@ defmodule Apiary.StagesTest do
     test "a take in again writes a move with no member, and no approval of an earlier take " <>
            "in counts",
          %{scope: scope} do
-      returning!(scope)
+      # Build is the first stage. Its first workflow is skipped, so no run is of Explore.
+      returning!(scope, [%{"workflow" => "triage-review", "when" => %{"feedback" => "new"}}], [])
       work_item = take_in!(scope) |> through_build!()
       assert [%GateDecision{kind: :approve, stage_id: @build, take_in: 1}] = decisions(work_item)
 
@@ -9159,6 +9242,7 @@ defmodule Apiary.StagesTest do
       }
 
       save!(scope, [
+        passed_explore(),
         stage(@build, "Build", [loop], %{"gate" => %{"kind" => "none"}}),
         stage(
           @verify,

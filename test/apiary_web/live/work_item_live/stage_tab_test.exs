@@ -2915,7 +2915,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert {:ok, _work_item} =
                WorkItems.another_round(scope, work_item, attempt(work_item), round)
 
-      assert %DispatchRun{state: :waiting, step: "explore", stage_id: @shape} =
+      assert %DispatchRun{state: :waiting, step: "workflow", stage_id: @shape} =
                run = newest_run(work_item)
 
       assert run.workflow == "shape-a-ticket"
@@ -2931,7 +2931,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert {:ok, _work_item} =
                WorkItems.another_round(scope, work_item, attempt(work_item), round)
 
-      assert %DispatchRun{state: :waiting, step: "explore", stage_id: @shape} =
+      assert %DispatchRun{state: :waiting, step: "workflow", stage_id: @shape} =
                run = newest_run(work_item)
 
       assert run.workflow == "shape-a-ticket"
@@ -3068,7 +3068,7 @@ defmodule ApiaryWeb.WorkItemLive.StageTabTest do
       assert {:ok, _work_item} =
                WorkItems.another_round(scope, work_item, attempt(work_item), round)
 
-      assert %DispatchRun{state: :waiting, step: "explore", stage_id: @explore} =
+      assert %DispatchRun{state: :waiting, step: "workflow", stage_id: @explore} =
                run = newest_run(work_item)
 
       assert run.workflow == first_workflow(work_item)

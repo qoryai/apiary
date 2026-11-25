@@ -91,5 +91,14 @@ defmodule Apiary.Lingo.Domain.Software do
   def harness_file?, do: true
 
   @impl true
+  def pushes?, do: true
+
+  @impl true
+  def target_noun, do: "repository"
+
+  @impl true
+  def copy_noun, do: "checkout"
+
+  @impl true
   def definition, do: Definition.qory("qory.software")
 end

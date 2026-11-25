@@ -35,6 +35,18 @@ defmodule Apiary.Dispatches.QueuedTest do
 
   defp queued!(scope), do: scope |> work_item_fixture() |> queue!()
 
+  # A stack row of the workspace with the workflow `explore-a-ticket`, the workflow of a
+  # run that the stage runner queues with no stage entry, so the run waits: with no
+  # workflow, it ends when it is queued (`Apiary.Harnesses.WalkJob.queue/2`).
+  defp workflow_stack!(scope) do
+    {:ok, _stack} =
+      Apiary.Stacks.put_stack(
+        scope,
+        {:workspace, scope.workspace, "explore-a-ticket"},
+        "extends: {git: https://code.example.com/team/stacks, ref: main, path: core}\n"
+      )
+  end
+
   defp record(%DispatchRun{id: id}), do: Repo.one(from r in Run, where: r.dispatch_run_id == ^id)
 
   defp records(scope),
@@ -87,6 +99,7 @@ defmodule Apiary.Dispatches.QueuedTest do
 
     @tag needs: [:factory, :workflow_model]
     test "queue_stage/3 writes the stage's run with its record", ctx do
+      workflow_stack!(ctx.scope)
       work_item = work_item_fixture(ctx.scope)
 
       {:ok, run} =
@@ -336,6 +349,8 @@ defmodule Apiary.Dispatches.QueuedTest do
 
   # A second run of the take in, waiting, beside the claimed first.
   defp queue_next_waiting!(ctx, work_item) do
+    workflow_stack!(ctx.scope)
+
     {:ok, run} =
       Repo.transact(fn ->
         Dispatches.queue_stage(work_item.id, 1, %{rounds_left: 0, stage: %{}})

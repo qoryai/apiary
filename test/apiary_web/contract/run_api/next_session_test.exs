@@ -332,10 +332,11 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       end
     end
 
-    test "checks a run of Explore before the body: 404 for a body over 4 KiB", ctx do
+    test "checks a run the stage runner did not queue before the body: 404 for a long body",
+         ctx do
       {1, _rows} =
         Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
-          set: [explore: true]
+          set: [stage_id: nil]
         )
 
       conn = request(ctx, Jason.encode!(ended(1)) <> String.duplicate(" ", 4 * 1024))

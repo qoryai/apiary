@@ -138,7 +138,7 @@ defmodule ApiaryWeb.Contract.ClaimAttachTest do
            }
 
     assert answer["about"] == %{
-             "kind" => "explore",
+             "kind" => "explore-a-ticket",
              "subjects" => [%{"type" => "work_item", "ref" => work_item.public_id}]
            }
 

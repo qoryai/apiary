@@ -3089,9 +3089,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   a template that is not `https`, has a port, a query, a fragment, an unknown placeholder
   or more than 2048 characters. The `document` of a description keeps `links`. No page
   reads it yet. The contract states that the control plane writes no `watch` entry; the
-  kind stays defined. The run, explore and diagnostics contracts and the run documents
-  schema stay at `e0d7be1`, the provisioner contract at `8d859a1`, and the check fixtures
-  of `DocumentsCheck` at `4c788f4`.
+  kind stays defined. The run and explore contracts and the run documents schema are at
+  `4ad23d9`. The diagnostics contract stays at `e0d7be1`, the provisioner contract at
+  `8d859a1`, and the check fixtures of `DocumentsCheck` at `4c788f4`.
 - The reply to a change request (`changes-submitted.schema.json`) and the reports of a
   change request (`changes-failed.schema.json`) are vendored with their fixtures.
   `POST /v1/work-items/changes/submitted` reads the reply.

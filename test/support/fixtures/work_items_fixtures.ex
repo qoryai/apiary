@@ -310,6 +310,33 @@ defmodule Apiary.WorkItemsFixtures do
     })
   end
 
+  # The run this fixture writes places the work item in no stage. With the workflow model
+  # on, the next run of such a work item has the workflow of the workspace's stack row
+  # with a workflow, and with none it ends when it is queued
+  # (`Apiary.Harnesses.WalkJob.queue/2`). So a workspace with no such row gets one, for
+  # `explore-a-ticket`, so the next run of the work item waits for its walk.
+  defp explore_workflow!(%WorkItem{organisation_id: organisation_id, workspace_id: id}) do
+    workflow? =
+      Repo.exists?(
+        from s in Apiary.Stacks.Stack,
+          where: s.workspace_id == ^id and not is_nil(s.workflow)
+      )
+
+    if Apiary.Stages.on?() and not workflow? do
+      Repo.insert!(
+        %Apiary.Stacks.Stack{
+          organisation_id: organisation_id,
+          workspace_id: id,
+          owner_organisation_id: organisation_id,
+          workflow: "explore-a-ticket"
+        },
+        on_conflict: :nothing
+      )
+    end
+
+    :ok
+  end
+
   @doc """
   A run of the queue of `work_item`, of its current take in unless `take_in:` says,
   `attempt:` one past the highest of that take in unless given, of 3, written straight to
@@ -326,9 +353,12 @@ defmodule Apiary.WorkItemsFixtures do
   ended for a cause its handover gives (`variables_invalid`, `ticket_gone`,
   `inputs_invalid`, `target_access_gone`, `write_without_work_item`,
   `shared_access_differs`) has the outcome `:error`, as the handover writes
-  it. Returns `%{dispatch_run: dispatch_run, run: run_or_nil}`.
+  it. With the workflow model on, a workspace with no stack row with a workflow first gets
+  one for `explore-a-ticket` (`explore_workflow!/1`). Returns `%{dispatch_run:
+  dispatch_run, run: run_or_nil}`.
   """
   def explore_run_fixture(%WorkItem{} = work_item, opts \\ []) do
+    :ok = explore_workflow!(work_item)
     take_in = Keyword.get(opts, :take_in, work_item.take_in)
     state = Keyword.get(opts, :state, :ended)
     end_cause = if state == :ended, do: Keyword.get(opts, :end_cause, :run_ended)
@@ -360,7 +390,7 @@ defmodule Apiary.WorkItemsFixtures do
       }
       |> DispatchRun.queue_changeset(%{
         work_item_id: work_item.id,
-        step: "explore",
+        step: "workflow",
         take_in: take_in,
         attempt: attempt,
         of: 3,

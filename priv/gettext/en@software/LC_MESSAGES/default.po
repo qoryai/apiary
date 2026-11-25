@@ -5288,6 +5288,11 @@ msgstr ""
 msgid "Add a value to %{name}"
 msgstr ""
 
+#: lib/apiary_web/components/backlog_components.ex
+#, elixir-autogen, elixir-format
+msgid "Add a workflow to the stage %{stage}. Take in starts the first workflow of the process's first stage."
+msgstr ""
+
 #: lib/apiary_web/live/adapter_live/index.ex
 #: lib/apiary_web/live/integration_live/index.ex
 #, elixir-autogen, elixir-format
@@ -15097,6 +15102,26 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "No workflow"
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "No workflow to start: more than one stack has a workflow. Keep the workflow in one stack."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "No workflow to start: no stage started this run, and no stack has a workflow. Add a workflow to a stack, or start the work item from a stage."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "No workflow to start: the first stage of the process has no workflow. Add a workflow to that stage."
+msgstr ""
+
+#: lib/apiary_web/components/work_item_components.ex
+#, elixir-autogen, elixir-format
+msgid "No workflow to start: the workspace has no process. Set up a process for the workspace."
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex

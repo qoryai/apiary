@@ -11,7 +11,8 @@
   },
   "image_destination": "registry.example.com/targets/0123456789abcdef",
   "environment_destination": "registry.example.com/environments/0123456789abcdef",
-  "work_item": {
+  "subject": {
+    "kind": "work_item",
     "id": "wi_8Kx2mQ4vT9",
     "url": "https://control.example.com/work-items/wi_8Kx2mQ4vT9",
     "title": "Checkout fails on an empty cart"

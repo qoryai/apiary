@@ -40,7 +40,7 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
   defp of_work_item(scope, work_item, subjects) do
     run =
       started(scope, %{
-        "kind" => "explore",
+        "kind" => "explore-a-ticket",
         "subjects" => [%{"type" => "work_item", "ref" => work_item.public_id} | subjects]
       })
 
@@ -290,7 +290,7 @@ defmodule ApiaryWeb.RunLive.ShowAboutTest do
 
       assert has_element?(lv, "#{link} > span.hero-rectangle-stack-micro")
       assert texts(lv, link) == [label]
-      assert has_element?(lv, "#run-work-item + #run-about-kind", "explore")
+      assert has_element?(lv, "#run-work-item + #run-about-kind", "explore-a-ticket")
     end
 
     test "a run with no work item has none", %{conn: conn, scope: scope} do

@@ -3,8 +3,10 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
   # harness members of the run's documents, from the run's harness walk
   # (`Apiary.Harnesses.WalkJob`): `target_version`, `workflow`, `harness_hidden` and,
   # for a walk whose document came from the stacks or is a test work item's built-in
-  # one, `harness`. None of the four for a run with no workflow and for a prebuild. The run's `access` is the level its walk
-  # resolved, and `read` for a run with no workflow and for a prebuild. Each answer and
+  # one, `harness`. None of the four for a prebuild, and for a run with no workflow only
+  # where its walk is a row from before such runs ended at the queue: a run with no
+  # workflow ends when it is queued, and no claim takes it. The run's `access` is the
+  # level its walk resolved, and `read` for a prebuild and for such a row. Each answer and
   # each documents object is valid under the vendored schemas, so the module is tagged
   # `:contract`. Not async: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
@@ -93,6 +95,12 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
     )
   end
 
+  # shortcut: the run copy at 4ad23d9c refers to draft_title, which the integration copy at
+  # 7e6cac7e renamed; every schema here reaches the run documents, so it reads
+  # integration/v1/definitions.schema.json from the copy at 4ad23d9c. Delete that copy
+  # when run and explore are copied at 7e6cac7e.
+  @run_integration Path.join(@vendored, "run-integration")
+
   defp validator(path) do
     forager =
       case Apiary.ContractFixtures.contract_dir() do
@@ -101,7 +109,7 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       end
 
     JSV.build!(%{"$ref" => @base <> path},
-      resolver: {Resolver, [@vendored | forager]},
+      resolver: {Resolver, [@run_integration, @vendored | forager]},
       formats: true
     )
   end
@@ -128,6 +136,12 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
     [head, _fingerprint] = String.split(code, ".")
     hash = Apiary.AccessKeys.EnrolmentCode.hash(head)
     Repo.get_by!(Apiary.Runs.Run, run_code_sha256: hash).run_documents
+  end
+
+  # The SHA-256 of the run code of the run the claim registered.
+  defp code_hash(claim) do
+    [head, _fingerprint] = String.split(Jason.decode!(claim)["run_code"], ".")
+    Apiary.AccessKeys.EnrolmentCode.hash(head)
   end
 
   # The documents the claim stored, each checked against the run contract's schema.
@@ -180,6 +194,163 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
   @harness ~w(target_version workflow harness_hidden harness)
 
   describe "an explore run" do
+    test "has the step workflow, its work item as subject, and the trigger take_in", ctx do
+      workflow!(ctx)
+      work_item = explore!(ctx, origin: :file, target_version: @version)
+      documents = documents(claim(ctx))
+
+      assert documents["step"] == "workflow"
+
+      assert documents["subject"] == %{
+               "kind" => "work_item",
+               "id" => work_item.public_id,
+               "url" => Apiary.WorkItems.stable_url(work_item),
+               "title" => work_item.title
+             }
+
+      assert documents["trigger"] == "take_in"
+      refute Map.has_key?(documents, "work_item")
+    end
+
+    test "leaves out of its subject a title the contract's draft_title refuses", ctx do
+      workflow!(ctx)
+      title = String.duplicate("a", 300)
+      work_item = explore!(ctx, [origin: :file, target_version: @version], %{title: title})
+      assert work_item.title == title
+      documents = documents(claim(ctx))
+
+      assert documents["subject"] == %{
+               "kind" => "work_item",
+               "id" => work_item.public_id,
+               "url" => Apiary.WorkItems.stable_url(work_item)
+             }
+    end
+
+    # A later round, a retry or a return to the first stage is a later attempt of the take
+    # in: the run that take in starts is attempt 1 alone.
+    test "has no trigger at a later attempt of its take in", ctx do
+      workflow!(ctx)
+      work_item = explore!(ctx, origin: :file, target_version: @version)
+
+      {1, _rows} =
+        Repo.update_all(
+          from(r in Apiary.Dispatches.DispatchRun, where: r.work_item_id == ^work_item.id),
+          set: [attempt: 2]
+        )
+
+      documents = documents(claim(ctx))
+      assert documents["step"] == "workflow"
+      refute Map.has_key?(documents, "trigger")
+      valid!(documents)
+    end
+
+    # A requeue after a missing image is the same run of the take in, one attempt later.
+    test "keeps the trigger on the run that requeues it after a missing image", ctx do
+      workflow!(ctx)
+      work_item = explore!(ctx, origin: :file, target_version: @version)
+      first = Repo.get_by!(Apiary.Dispatches.DispatchRun, work_item_id: work_item.id)
+
+      first =
+        first
+        |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended)
+        |> Repo.update!()
+
+      {:ok, requeued} = Repo.transact(fn -> Dispatches.requeue_for_image(first) end)
+      assert %{attempt: 2, image_requeue: true, explore: true} = requeued
+      walk_resolved!(requeued, origin: :file, target_version: @version)
+
+      documents = documents(claim(ctx))
+      assert documents["trigger"] == "take_in"
+      assert documents["subject"]["id"] == work_item.public_id
+
+      # A run after a later round of the same take in is not a requeue: no trigger.
+      {1, _rows} =
+        Repo.update_all(
+          from(r in Apiary.Dispatches.DispatchRun, where: r.id == ^requeued.id),
+          set: [image_requeue: false]
+        )
+
+      refute Dispatches.take_in_run?(Repo.get!(Apiary.Dispatches.DispatchRun, requeued.id))
+    end
+
+    # A run that paused and continues is the same run of the take in, one attempt later. A
+    # continuation at a later round of a shared loop has none, in
+    # Apiary.Stages.SharedRunTest.
+    test "keeps the trigger on the run that continues it after a pause", ctx do
+      workflow!(ctx)
+      work_item = explore!(ctx, origin: :file, target_version: @version)
+      first = Repo.get_by!(Apiary.Dispatches.DispatchRun, work_item_id: work_item.id)
+
+      {:ok, continuation} =
+        Repo.transact(fn ->
+          first
+          |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended)
+          |> Repo.update!()
+          |> Dispatches.requeue_for_pause(nil, nil)
+        end)
+
+      assert %{attempt: 2, image_requeue: false, explore: true} = continuation
+      assert continuation.continues_id == first.id
+      walk_resolved!(continuation, origin: :file, target_version: @version)
+
+      documents = documents(claim(ctx))
+      assert documents["trigger"] == "take_in"
+      assert documents["subject"]["id"] == work_item.public_id
+    end
+
+    # The run's kind in what it is about is its workflow, which the run page shows.
+    test "registers its workflow as its kind: explore-a-ticket in a software factory", ctx do
+      workflow!(ctx)
+      work_item = explore!(ctx, origin: :file, target_version: @version)
+
+      about =
+        Repo.get_by!(Apiary.Runs.Run, run_code_sha256: code_hash(claim(ctx))).registration_about
+
+      assert about == %{
+               "kind" => "explore-a-ticket",
+               "subjects" => [%{"type" => "work_item", "ref" => work_item.public_id}]
+             }
+    end
+
+    test "registers its workflow as its kind: draft-reply for a first stage Triage", ctx do
+      stage = %{
+        "id" => "st_r79kph11eg",
+        "name" => "Triage",
+        "inputs" => [],
+        "sequence" => [%{"workflow" => "draft-reply"}],
+        "outputs" => [],
+        "gate" => %{"kind" => "person", "approvers" => "members"}
+      }
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => [stage]}
+      {:ok, _version} = Apiary.Processes.save(ctx.scope, ctx.scope.workspace, document)
+      explore!(ctx, origin: :file, target_version: @version)
+      claim = claim(ctx)
+      about = Repo.get_by!(Apiary.Runs.Run, run_code_sha256: code_hash(claim)).registration_about
+
+      assert about["kind"] == "draft-reply"
+      assert documents(claim)["workflow"] == "draft-reply"
+    end
+
+    test "leaves out of its subject a title with a line break, a format character or spaces alone",
+         ctx do
+      workflow!(ctx)
+
+      for title <- ["The basket\nempties", "The basket\u200Bempties", "   "] do
+        work_item = explore!(ctx, origin: :file, target_version: @version)
+
+        {1, _rows} =
+          Repo.update_all(from(w in Apiary.WorkItems.WorkItem, where: w.id == ^work_item.id),
+            set: [title: title]
+          )
+
+        documents = documents(claim(ctx))
+        refute Map.has_key?(documents["subject"], "title"), inspect(title)
+        assert documents["subject"]["id"] == work_item.public_id
+        valid!(documents)
+      end
+    end
+
     test "whose target's harness file applies has its version and no harness", ctx do
       workflow!(ctx)
       explore!(ctx, origin: :file, target_version: @version)
@@ -257,15 +428,19 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       refute Map.has_key?(documents(claim(ctx)), "largest_prebuilt_image_bytes")
     end
 
-    test "with no workflow has none of the harness members, and no machine", ctx do
+    # Without the workflow model, a run of a workspace with no Harness page row with a
+    # workflow walks the first workflow of the first stage of the process's current version.
+    @tag with_features: Apiary.Features.all() -- [:workflow_model]
+    test "with no Harness page row has the process's first workflow", ctx do
       {:ok, _stack} = Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @document)
-
-      explore!(ctx, [])
+      first = Apiary.Stages.first_workflow(Apiary.Processes.current(ctx.scope.workspace))
+      assert is_binary(first)
+      explore!(ctx, origin: :setting, document: section(), target_version: @version)
       claim = claim(ctx)
       assert members(claim) == @claim ++ @code
       documents = documents(claim)
-      assert Map.take(documents, @harness) == %{}
-      assert documents["access"] == "read"
+
+      assert %{"step" => "workflow", "workflow" => ^first, "access" => "read"} = documents
       valid!(documents)
     end
   end
@@ -618,7 +793,8 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       assert %{"access" => "write", "shared_run" => true} = documents(claim(ctx))
     end
 
-    test "of Explore, whose entry is a loop, has no full_suite with write access", ctx do
+    # Explore follows the rule of any stage (`Apiary.Stages.session_flags/2`).
+    test "of Explore, whose entry is a loop, has full_suite with write access", ctx do
       workflow!(ctx)
 
       stage = %{
@@ -637,8 +813,44 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       work_item = walked!(ctx, :write)
       documents = documents(claim(ctx))
 
-      assert %{"access" => "write", "workflow" => "explore-a-ticket"} = documents
-      refute Map.has_key?(documents, "full_suite")
+      assert %{"access" => "write", "workflow" => "explore-a-ticket", "full_suite" => true} =
+               documents
+
+      assert %Apiary.Dispatches.DispatchRun{explore: true} =
+               Repo.get_by!(Apiary.Dispatches.DispatchRun, work_item_id: work_item.id)
+    end
+
+    # Explore is the first stage. Its run shares one run and runs the full suite after
+    # each session of its loop, as a later stage's would.
+    test "of a shared first stage whose entry is a loop, has full_suite with write access",
+         ctx do
+      build!(
+        ctx,
+        [
+          %{
+            "loop" => %{
+              "rounds" => 2,
+              "body" => [%{"workflow" => "plan-the-build"}, %{"workflow" => "implement-changes"}]
+            }
+          }
+        ],
+        %{"shared_run" => true}
+      )
+
+      work_item = walked!(ctx, :write)
+      documents = documents(claim(ctx))
+
+      assert %{
+               "access" => "write",
+               "workflow" => "plan-the-build",
+               "shared_run" => true,
+               "full_suite" => true
+             } = documents
+
+      {run, _sessions} = claimed(work_item)
+
+      assert %{"0.0" => %{"full_suite" => true}, "0.1" => %{"full_suite" => true}} =
+               run.session_settings
 
       assert %Apiary.Dispatches.DispatchRun{explore: true} =
                Repo.get_by!(Apiary.Dispatches.DispatchRun, work_item_id: work_item.id)
@@ -673,6 +885,19 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
       code = Jason.decode!(claim)["run_code"]
       [head, _fingerprint] = String.split(code, ".")
       Repo.get_by!(Apiary.Runs.Run, run_code_sha256: Apiary.AccessKeys.EnrolmentCode.hash(head))
+    end
+
+    # The run's kind is the workflow its walk resolved, which its documents have, not the
+    # workflow of its stage entry.
+    test "registers the walk's workflow hello as its kind, not its stage entry's", ctx do
+      {:ok, work_item} = WorkItems.take_in_test(ctx.scope, "Hello! Where are you running?")
+
+      run = Repo.get_by!(Apiary.Dispatches.DispatchRun, work_item_id: work_item.id)
+      assert is_binary(run.workflow) and run.workflow != Builtin.workflow()
+
+      claim = claim(ctx)
+      assert documents(claim)["workflow"] == "hello"
+      assert registered(claim).registration_about["kind"] == "hello"
     end
 
     test "has the built-in harness and workflow, no target and no access, in a software and an example workspace",
@@ -853,6 +1078,64 @@ defmodule ApiaryWeb.Contract.ClaimHarnessTest do
                documents["image_destination"],
                "/targets/#{Apiary.Registry.Names.target(target.public_id)}"
              )
+    end
+  end
+
+  describe "every claim of a run of the step workflow" do
+    # The run contract requires `workflow` for every run of the step `workflow`. A run
+    # with a workflow, from a stack row, from the process's first stage or from the
+    # built-in harness, is claimed with documents valid under the vendored schema. A run
+    # with none ends when it is queued (`Apiary.Harnesses.WalkJob.queue/2`), and no claim
+    # takes it.
+    @tag with_features: Apiary.Features.all() -- [:workflow_model]
+    test "has documents with a workflow, valid; a run with no workflow is not claimed",
+         _ctx do
+      # Each case in the workspace of a new sign-up, with a node pool of that workspace, so
+      # each claim takes that case's run.
+      fresh = fn ->
+        %{scope: scope} = sign_up_fixture()
+        scope |> handover_place_fixture() |> Map.put(:scope, scope)
+      end
+
+      cases = [
+        fn ctx ->
+          workflow!(ctx)
+          explore!(ctx, origin: :setting, document: section(), target_version: @version)
+        end,
+        fn ctx ->
+          {:ok, _stack} =
+            Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace}, @document)
+
+          explore!(ctx, origin: :setting, document: section(), target_version: @version)
+        end,
+        fn ctx -> WorkItems.take_in_test(ctx.scope, "Hello! Where are you running?") end
+      ]
+
+      for queue <- cases do
+        ctx = fresh.()
+        queue.(ctx)
+        documents = documents(claim(ctx))
+        assert %{"step" => "workflow", "workflow" => workflow} = documents
+        assert is_binary(workflow)
+      end
+
+      # Two stack rows with a workflow: the run has none.
+      ctx = fresh.()
+
+      for workflow <- ["triage", "review"] do
+        {:ok, _row} =
+          Stacks.put_stack(ctx.scope, {:workspace, ctx.scope.workspace, workflow}, nil)
+      end
+
+      work_item = work_item_fixture(ctx.scope, %{target_system: "tickets.example.com"})
+      {:ok, run} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      :ok = Apiary.DispatchedRunsFixtures.walks_resolved!()
+
+      claim = signed(ctx, "/v1/pools/claim", %{"version" => 1, "wait_seconds" => 0})
+      assert claim.status == 204
+
+      assert %Apiary.Dispatches.DispatchRun{state: :ended, end_cause: :harness_unresolved} =
+               Repo.get!(Apiary.Dispatches.DispatchRun, run.id)
     end
   end
 end

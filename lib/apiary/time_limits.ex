@@ -1,11 +1,13 @@
 defmodule Apiary.TimeLimits do
   # The time limits of a workspace: the whole minutes, 15 to 1440, that a run of one
   # workflow may take (`Apiary.TimeLimits.TimeLimit`), set at the workspace or at a target
-  # of it, and resolved for each run by `Apiary.TimeLimits.Resolution`. A run's workflow
-  # is read from the stacks of its places (`Apiary.Stacks.workflow/2`), or, with the
-  # workflow model, from its stage entry. A workflow with no limit at either place has
-  # the default, 180 minutes (`default_minutes/0`). This table is the one source of a
-  # limit: the process document has none, and a save here makes no process version.
+  # of it, and resolved for each run by `Apiary.TimeLimits.Resolution`. With the workflow
+  # model, a run's workflow is its stage entry's (`Apiary.Stages.run_workflow/1`); without
+  # it, the workflow of the one row with a workflow at the run's places, else the first
+  # workflow of the current process version (`Apiary.Stacks.workflow/2`). A workflow with
+  # no limit at either place has the default, 180 minutes (`default_minutes/0`). This
+  # table is the one source of a limit: the process document has none, and a save here
+  # makes no process version.
   #
   # ## Places
   #

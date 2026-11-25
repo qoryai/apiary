@@ -364,6 +364,23 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
     work_item
   end
 
+  # The workspace with one stack row with a workflow, `explore-a-ticket`, in place of the
+  # two rows of the setup: the next run of a work item in no stage has that row's
+  # workflow, and with two rows it would end when it is queued.
+  defp one_workflow_row!(scope) do
+    Repo.delete_all(
+      from s in Apiary.Stacks.Stack,
+        where: s.workspace_id == ^scope.workspace.id and not is_nil(s.workflow)
+    )
+
+    Repo.insert!(%Apiary.Stacks.Stack{
+      organisation_id: scope.workspace.organisation_id,
+      workspace_id: scope.workspace.id,
+      workflow: "explore-a-ticket",
+      access: :read
+    })
+  end
+
   # A work item whose first run asked a question: no proposal yet.
   defp asked_first!(scope) do
     work_item = work_item_fixture(scope)
@@ -589,6 +606,7 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
       scope: scope
     } do
       work_item = asked_after_proposal!(scope)
+      one_workflow_row!(scope)
       run = run_of(work_item, "q1")
 
       {:ok, view, _html} = live(conn, questions(scope, work_item.number))
@@ -1129,6 +1147,7 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
       scope: scope
     } do
       work_item = asked_after_proposal!(scope)
+      one_workflow_row!(scope)
 
       {:ok, _answered} =
         WorkItems.answer(scope, work_item, 2, [
@@ -1361,6 +1380,8 @@ defmodule ApiaryWeb.WorkItemLive.QuestionsTabTest do
       scope: scope
     } do
       work_item = asked_after_proposal!(scope)
+      one_workflow_row!(scope)
+
       {:ok, view, _html} = live(conn, questions(scope, work_item.number))
 
       view

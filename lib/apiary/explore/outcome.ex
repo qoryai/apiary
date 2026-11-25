@@ -20,9 +20,8 @@ defmodule Apiary.Explore.Outcome do
   #   * `:none` otherwise.
   #
   # nil when the newest questions cannot be read (`Apiary.Explore.Questions.current/1`),
-  # when the store cannot read the file of the run's newest verdict
-  # (`Apiary.Stages.reported_verdict/1`), or when whether the run is a run of Explore is
-  # not known yet (`Apiary.Stages.known_explore/1`): what the run gave is not known yet,
+  # or when the store cannot read the file of the run's newest verdict
+  # (`Apiary.Stages.reported_verdict/1`): what the run gave is not known yet,
   # so `Apiary.Dispatches.Settle` stores nothing and its sweep reads the run again, rather
   # than keep `proposal` or `none` while questions wait or a verdict escalates.
   #
@@ -51,11 +50,9 @@ defmodule Apiary.Explore.Outcome do
   @doc false
   @spec at_end(DispatchRun.t()) :: t | nil
   def at_end(%DispatchRun{work_item_id: work_item_id} = run) when is_binary(work_item_id) do
-    case Apiary.Stages.known_explore(run) do
-      %DispatchRun{explore: true} = run -> explore_at_end(run, work_item_id)
-      %DispatchRun{explore: false} -> :none
-      nil -> nil
-    end
+    if Apiary.Stages.explore_run?(run),
+      do: explore_at_end(run, work_item_id),
+      else: :none
   end
 
   def at_end(%DispatchRun{}), do: :none

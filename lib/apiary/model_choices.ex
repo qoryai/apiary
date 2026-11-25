@@ -14,8 +14,10 @@ defmodule Apiary.ModelChoices do
   #
   # A workflow name is a lower-case letter, then up to 54 lower-case letters, digits and
   # hyphens. A place with a workflow of another form is not found. A run reads the
-  # choices of its workflow (`Apiary.Stacks.workflow/2`), the same key as its time limit
-  # (`Apiary.TimeLimits`).
+  # choices of its workflow, the same key as its time limit (`Apiary.TimeLimits`): with
+  # the workflow model, its stage entry's (`Apiary.Stages.run_workflow/1`); without it,
+  # the workflow of the one row with a workflow at its places, else the first workflow of
+  # the current process version (`Apiary.Stacks.workflow/2`).
   #
   # ## Who
   #

@@ -514,7 +514,7 @@ defmodule Apiary.Runs.DiagnosticsTest do
 
       document = valid!(schema, Diagnostics.document(run, :instance))
 
-      assert %{"state" => "pending", "id" => id, "step" => "explore"} = document["run"]
+      assert %{"state" => "pending", "id" => id, "step" => "workflow"} = document["run"]
       assert id == run.public_id
       assert document["run"]["work_item"] == work_item.public_id
       assert document["queue"] == %{"state" => "waiting"}

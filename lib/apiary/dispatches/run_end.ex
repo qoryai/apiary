@@ -185,11 +185,11 @@ defmodule Apiary.Dispatches.RunEnd do
   @image_missing "image_missing"
 
   # The seconds from its attach by which a run of each step has its exit, or is lost:
-  # Explore's 24 hours and 15 minutes, the longest time limit (1440 minutes,
+  # a workflow's 24 hours and 15 minutes, the longest time limit (1440 minutes,
   # `Apiary.TimeLimits`) and a margin, and a prebuild's 1 hour and 15 minutes, within the
   # 90 minutes its claim lets its machine live (`ApiaryWeb.Contract.PoolClaimController`).
-  # A step not named here has Explore's.
-  @backstops %{"explore" => 87_300, "prebuild" => 4500}
+  # A step not named here has a workflow's.
+  @backstops %{"workflow" => 87_300, "prebuild" => 4500}
   @default_backstop 87_300
   # The seconds without a heartbeat after which an attached run with no exit is lost for
   # good, and its dispatch ends.

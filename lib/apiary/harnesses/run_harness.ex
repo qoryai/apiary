@@ -12,7 +12,8 @@ defmodule Apiary.Harnesses.RunHarness do
   #     and its owner `owner_organisation_id`, the section in `document`; `:builtin`, a
   #     test work item's run, the built-in section (`Apiary.Harnesses.Builtin`) in
   #     `document`, with no stack, owner or link, read only; `:none`, a run with no
-  #     workflow, for which nothing is read.
+  #     workflow queued before such a run ended at its queue
+  #     (`Apiary.Harnesses.WalkJob.queue/2`), for which nothing is read.
   #   * `workflow` and `harness_hidden`: the run's workflow and whether its harness is
   #     hidden.
   #   * `access_level`: what the run may do on its target, `:read`, `:write_no_push` (a

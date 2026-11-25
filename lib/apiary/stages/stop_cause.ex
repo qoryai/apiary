@@ -307,8 +307,7 @@ defmodule Apiary.Stages.StopCause do
        "A read-only run cannot run its setup inside the agent's container."}
 
   defp read_needs(%{code: "read_needs_no_nested_docker"}, work_item) do
-    workspace = Repo.get!(Workspace, work_item.workspace_id)
-    word = if Domain.name(workspace) == "software", do: "repository", else: "target"
+    word = Domain.target_noun(Repo.get!(Workspace, work_item.workspace_id))
 
     {:fix_first,
      "Choose an image without nested Docker in the #{word}'s environment, then start the run again.",
@@ -320,13 +319,12 @@ defmodule Apiary.Stages.StopCause do
       {:fix_first, "Start the run again.",
        "The setup container was not removed, so a process in it could still write the files."}
 
-  # What a person does about a run that writes and has no wall. The target's copy is a
-  # checkout in a software workspace. A person in an organisation cannot edit the
-  # forager.yaml of the instance's pool, so that pool's run has "Contact support.".
+  # What a person does about a run that writes and has no wall. The target's copy has its
+  # domain's word (`Apiary.Lingo.Domain.copy_noun/1`). A person in an organisation cannot
+  # edit the forager.yaml of the instance's pool, so that pool's run has "Contact support.".
   defp write_needs(%{installed: installed}, work_item) do
-    workspace = Repo.get!(Workspace, work_item.workspace_id)
-    what = if Domain.name(workspace) == "software", do: " to the checkout", else: ""
-    cause = "A run that writes#{what} needs a wall, and this machine has none."
+    copy = Domain.copy_noun(Repo.get!(Workspace, work_item.workspace_id))
+    cause = "A run that writes to the #{copy} needs a wall, and this machine has none."
 
     if installed,
       do: {:fix_first, "Contact support.", cause},
@@ -349,8 +347,7 @@ defmodule Apiary.Stages.StopCause do
   end
 
   defp gap_source({:target, target}, work_item) do
-    workspace = Repo.get!(Workspace, work_item.workspace_id)
-    word = if Domain.name(workspace) == "software", do: "repository", else: "target"
+    word = Domain.target_noun(Repo.get!(Workspace, work_item.workspace_id))
     "The harness comes from the harness file at the root of #{word} #{target}."
   end
 
@@ -831,6 +828,28 @@ defmodule Apiary.Stages.StopCause do
 
   defp harness_reason("walk_error", _walk, n),
     do: {"the harness walk stopped on an error in Qory Apiary", support(n)}
+
+  # A run with no workflow, ended when it was queued (`Apiary.Harnesses.WalkJob.queue/2`):
+  # the words of the run's page.
+  defp harness_reason("many_stacks", _walk, _n),
+    do:
+      {:whole,
+       "No workflow to start: more than one stack has a workflow. Keep the workflow in one stack."}
+
+  defp harness_reason("no_stage_run", _walk, _n),
+    do:
+      {:whole,
+       "No workflow to start: no stage started this run, and no stack has a workflow. Add a workflow to a stack, or start the work item from a stage."}
+
+  defp harness_reason("no_process", _walk, _n),
+    do:
+      {:whole,
+       "No workflow to start: the workspace has no process. Set up a process for the workspace."}
+
+  defp harness_reason("no_first_workflow", _walk, _n),
+    do:
+      {:whole,
+       "No workflow to start: the first stage of the process has no workflow. Add a workflow to that stage."}
 
   defp harness_reason(code, _walk, n),
     do:

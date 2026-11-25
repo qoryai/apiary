@@ -2221,7 +2221,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       # Queued before the workflow model was on: the run and its work item have no stage.
       {1, _rows} =
         Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
-          set: [stage_id: nil, workflow: nil, step: "explore"]
+          set: [stage_id: nil, workflow: nil, step: "workflow"]
         )
 
       {1, _rows} =

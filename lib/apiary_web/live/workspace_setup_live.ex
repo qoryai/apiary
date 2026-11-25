@@ -254,6 +254,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   alias Apiary.Stacks.Sources
 
   alias ApiaryWeb.{
+    BacklogComponents,
     HarnessComponents,
     HarnessTargets,
     IntegrationComponents,
@@ -1939,6 +1940,9 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
       {:error, :forbidden} ->
         {:noreply, socket |> reload() |> put_flash(:error, socket.assigns.who_may)}
+
+      {:error, {:no_workflow, stage}} ->
+        {:noreply, socket |> reload() |> put_flash(:error, BacklogComponents.no_workflow(stage))}
 
       {:error, _reason} ->
         {:noreply,

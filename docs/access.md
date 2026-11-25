@@ -849,8 +849,8 @@ for each other and never on each other at once:
    adapter's connection.
    A write of a time limit (`Apiary.TimeLimits`) takes the security policy's order, then
    the limit's row `FOR UPDATE`.
-   The claim of an explore run (`Apiary.Dispatches.RunSettings`) holds the pool's row, the
-   gateway's row, the environment records, the run of the queue and its dispatch
+   The claim of a run of the step `workflow` (`Apiary.Dispatches.RunSettings`) holds the
+   pool's row, the gateway's row, the environment records, the run of the queue and its dispatch
    (`Apiary.Dispatches.Slots`), then reads the choices and their fallbacks without a lock,
    then takes the rows of the providers they name, as a provider or a fallback,
    `FOR SHARE`, by id, then the rows of those providers' keys' secrets `FOR SHARE`, by id.

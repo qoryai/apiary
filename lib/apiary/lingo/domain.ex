@@ -159,6 +159,24 @@ defmodule Apiary.Lingo.Domain do
   @callback harness_file?() :: boolean
 
   @doc """
+  Whether a run of the domain that writes pushes its changes when it ends, as a
+  repository's run does: the line of a cancel of such a run lists what it pushed.
+  """
+  @callback pushes?() :: boolean
+
+  @doc """
+  The word for a target in the English texts that a stage stores about why a run stopped:
+  "repository" in the software domain.
+  """
+  @callback target_noun() :: String.t()
+
+  @doc """
+  The word for the copy of the target that a run writes to, in the English texts that a
+  stage stores about why a run stopped: "checkout" in the software domain.
+  """
+  @callback copy_noun() :: String.t()
+
+  @doc """
   The definition of the workspace type the domain is (`Apiary.Lingo.Domain.Definition`):
   its key, which a workspace of the domain stores in `workspaces.type`, who provides it,
   and the harness a workspace of the type starts with.
@@ -294,6 +312,18 @@ defmodule Apiary.Lingo.Domain do
   @doc "Whether the workspace's targets may have a harness file: `c:harness_file?/0` of its domain."
   @spec harness_file?(%Workspace{} | nil) :: boolean
   def harness_file?(workspace), do: for_workspace(workspace).harness_file?()
+
+  @doc "Whether a run of the workspace that writes pushes: `c:pushes?/0` of its domain."
+  @spec pushes?(%Workspace{} | nil) :: boolean
+  def pushes?(workspace), do: for_workspace(workspace).pushes?()
+
+  @doc "The word for a target in the workspace: `c:target_noun/0` of its domain."
+  @spec target_noun(%Workspace{} | nil) :: String.t()
+  def target_noun(workspace), do: for_workspace(workspace).target_noun()
+
+  @doc "The word for a target's copy in the workspace: `c:copy_noun/0` of its domain."
+  @spec copy_noun(%Workspace{} | nil) :: String.t()
+  def copy_noun(workspace), do: for_workspace(workspace).copy_noun()
 
   @doc """
   Whether an adapter that lists `domains` in its description, nil for none, serves the

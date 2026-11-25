@@ -324,9 +324,8 @@ defmodule Apiary.Processes.HarnessUpdate do
 
   @doc false
   # qory_in_use/1 is the commit of the Qory harness at which the Workflows page lists and
-  # checks the workflows of `workspace`, a workspace or its id, and at which a run is
-  # Explore (Apiary.Stages.explore_workflow/1): the commit the runs of its current version
-  # compose (`in_use_commit/2`), else the commit its harness settings choose
+  # checks the workflows of `workspace`, a workspace or its id: the commit the runs of its
+  # current version compose (`in_use_commit/2`), else the commit its harness settings choose
   # (Apiary.Harnesses.Qory.workspace_commit/1).
   @spec qory_in_use(%Workspace{} | Ecto.UUID.t()) :: String.t() | nil
   def qory_in_use(%Workspace{} = workspace) do

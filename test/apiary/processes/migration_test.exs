@@ -47,9 +47,13 @@ defmodule Apiary.Processes.MigrationTest do
   defp explored!(scope, outcome) do
     work_item = work_item_fixture(scope)
     %{dispatch_run: run} = explore_run_fixture(work_item, registered: false)
-    Repo.update!(Ecto.Changeset.change(run, result_outcome: outcome))
+    run |> as_then() |> Ecto.Changeset.change(result_outcome: outcome) |> Repo.update!()
     work_item
   end
+
+  # `run` with the step `explore`, as the migration read the rows: the step is `workflow`
+  # in runs written since.
+  defp as_then(run), do: Repo.update!(Ecto.Changeset.change(run, step: "explore"))
 
   defp confirm!(work_item, user) do
     Repo.insert!(%Confirmation{
@@ -102,7 +106,8 @@ defmodule Apiary.Processes.MigrationTest do
 
     fresh = work_item_fixture(scope)
     running = work_item_fixture(scope)
-    explore_run_fixture(running, state: :claimed, registered: false)
+    %{dispatch_run: claimed} = explore_run_fixture(running, state: :claimed, registered: false)
+    as_then(claimed)
     proposed = explored!(scope, :proposal)
     asked = explored!(scope, :questions)
     answered = explored!(scope, :questions)

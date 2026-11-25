@@ -194,6 +194,24 @@ defmodule Apiary.Stages.SharedRunTest do
              ] = for(s <- sessions(run), do: {s.sequence, s.forager_session, s.workflow, s.state})
     end
 
+    # The process has no Explore stage: Build, its first stage, is shared, so the take in's
+    # run is a run of Explore and shares its run.
+    test "the take in's run of a first stage with shared_run shares its run", %{scope: scope} do
+      save!(scope, [
+        build(workflows(~w(plan-the-build write-acceptance-checks))),
+        stage(@verify, "Verify", workflows(["verify-a-ticket"]))
+      ])
+
+      {work_item, run} = taken_in!(scope)
+      assert %DispatchRun{explore: true, stage_id: @build, workflow: "plan-the-build"} = run
+      assert %{shared_run: true} = Stages.session_flags(run, :read)
+      assert Stages.shared_workflows(run) == ~w(plan-the-build write-acceptance-checks)
+
+      :ok = verdict!(run, "passed")
+      assert {:session, %{workflow: "write-acceptance-checks"}} = report(run, 1)
+      assert runs(work_item) |> Enum.map(& &1.id) == [run.id]
+    end
+
     test "a session with no verdict escalates as a run of today with no verdict", %{scope: scope} do
       save!(scope, [
         build(workflows(~w(plan-the-build write-acceptance-checks implement-changes)))
@@ -562,6 +580,49 @@ defmodule Apiary.Stages.SharedRunTest do
                report(continuation, 1)
 
       assert %WorkItem{stage_entry: 2, stage_state: :running} = reload(work_item)
+    end
+
+    # The trigger take_in (`Apiary.Dispatches.take_in_run?/1`) stays on the take in's run
+    # requeued at its first session's place, and not on one requeued at a later round.
+    test "keeps the take in's trigger at the first session's place, not at a later round", %{
+      scope: scope
+    } do
+      save!(scope, [build([loop(workflows(~w(plan-the-build review-changes)))])])
+      {_work_item, run} = taken_in!(scope)
+      assert %DispatchRun{explore: true, attempt: 1} = run
+      assert Apiary.Dispatches.take_in_run?(run)
+
+      pause! = fn paused ->
+        {:ok, continuation} =
+          Repo.transact(fn ->
+            paused
+            |> Ecto.Changeset.change(state: :ended, end_cause: :run_ended)
+            |> Repo.update!()
+            |> Apiary.Dispatches.requeue_for_pause(nil, nil)
+          end)
+
+        continuation
+      end
+
+      # Paused in session 1: the continuation runs round 1's first entry again.
+      first = pause!.(run)
+
+      assert %DispatchRun{attempt: 2, round: 1, loop_entry: 0, explore: true} = first
+      assert first.continues_id == run.id
+      assert Apiary.Dispatches.take_in_run?(first)
+
+      # Round 2 of the loop starts plan-the-build again, in the same run.
+      walk!(first, :read)
+      first = claim!(first)
+      assert {:session, %{session: 2, workflow: "review-changes"}} = report(first, 1)
+      :ok = verdict!(first, "changes-requested")
+      assert {:session, %{session: 3, workflow: "plan-the-build"}} = report(first, 2)
+
+      # Paused there: the continuation is at round 2, a later place, with no trigger.
+      later = pause!.(first)
+
+      assert %DispatchRun{attempt: 3, round: 2, loop_entry: 0, explore: true} = later
+      refute Apiary.Dispatches.take_in_run?(later)
     end
 
     test "in review-changes continues at write, so the next implement-changes can push",

@@ -350,18 +350,19 @@ has `revision` 1. A claim answer is a request for a machine: `version`, `revisio
 `dispatch_id`, `pool_id` (the claiming key's node pool), `lease_until`, `run_code`,
 `gateway_url` and `max_lifetime_minutes`, 90 for a prebuild and 1470 for any other claim,
 sent with `Cache-Control: no-store`, and nothing of the run, neither its `run_id`, its
-`step`, its `access`, its `target` nor its `work_item`. A claim may have `offers`, 1 to
-64 `machine_spec`s: the machines the pool can start. Qory Apiary keeps the offers of the
-pool's latest claim (`nodes.offers`, null for a claim without them). A pool that sends
-offers takes only a run whose machine type one of them fits (each number at least the
+`step`, its `access`, its `target`, its `subject` nor its `trigger`. A claim may have
+`offers`, 1 to 64 `machine_spec`s: the machines the pool can start. Qory Apiary keeps the
+offers of the pool's latest claim (`nodes.offers`, null for a claim without them). A pool
+that sends offers takes only a run whose machine type one of them fits (each number at least the
 type's, the same `arch`, and `virtualization` for a type that needs it), and the answer
 adds `machine` and `machine_spec`, the run's type and its spec, after `lease_until`. A
 pool that sends no offers takes only a run of the instance's default type, a run queued on
 the type that was the default then (`dispatch_runs.machine_type_was_default`), or a run
 queued before machine types, and the answer has neither, so the starter uses its default
 machine type. A run queued before machine types has no spec and is of the default type.
-Every explore run's documents have `run_settings`, a stage's runs among them, as the run
-contract requires (`documents.schema.json`); a prebuild's have none. `runtime` and `model` come from the first model choice in this order
+The documents of every run of the step `workflow` have `run_settings`, a stage's runs among
+them, as the run contract requires (`documents.schema.json`); a prebuild's have none.
+`runtime` and `model` come from the first model choice in this order
 (`Apiary.ModelChoices.Resolution`): a locked choice of the workspace, the workflow's choice
 at the run's target, the target's choice, the workflow's choice at the workspace, the
 workspace's (Workspace settings › Model), and the organisation's default. With no choice,
@@ -374,13 +375,13 @@ the key the session starts on (`docs/contract/run-api.md`). A pool claims a run 
 the feature `factory` on (`dispatch.claim`), and `factory` needs `secrets`. The code that
 builds `run_settings` runs with either feature off too: with `factory` or `secrets` off,
 it builds the choice's `runtime`, `model`, `effort`, `provider_models` and `tiers` and no
-key, and checks neither the chosen key nor the provider's endpoint. An explore run's
-documents have `time_limit_minutes`, an integer from 15 to 1440, after `run_settings`, for
-a run with a workflow (`Apiary.Stacks.workflow/2`, or, with the workflow model, the
+key, and checks neither the chosen key nor the provider's endpoint. The documents of a
+run of the step `workflow` have `time_limit_minutes`, an integer from 15 to 1440, after
+`run_settings`, for a run with a workflow (`Apiary.Stacks.workflow/2`, or, with the workflow model, the
 workflow of its stage entry) and `factory` on: the limit set for that workflow at the
 run's target, else the one set at its workspace (`Apiary.TimeLimits`), else 180 minutes.
-With no workflow for the run, the member is absent: Qory Apiary sets no time limit for
-session 1. After `time_limit_minutes` come `shared_run`, `true` for a run of a stage with
+A run with no workflow, queued before such runs ended at the queue, has no
+`time_limit_minutes`: Qory Apiary sets no time limit for session 1. After `time_limit_minutes` come `shared_run`, `true` for a run of a stage with
 `shared_run: true`, and `full_suite`, `true` for a run with `write` access of an entry in
 a loop or with `first_attempt: true`, never for a run of Explore; each is absent where it
 would be `false`. The claim registers the run, and the run endpoint refuses, under any
@@ -428,14 +429,16 @@ never from the request; a prebuild's input is the `environment_ref` its run of t
 was queued for. The claim encodes the run's documents once (the run contract's
 `documents.schema.json`: `step`, `domain`,
 `access` (`read`, `write-no-push` or `write`) and `target` together or neither,
-`work_item`, `run_settings`, `stack`, `workflow` and `harness_hidden` together or none,
-and `inputs`) and keeps the bytes on the registered run (`runs.run_documents`); every
+`subject`, the run's work item, `trigger`, set to `take_in` on the run that a take in
+starts and on its requeues after a missing image or a pause, `run_settings`, `workflow` and
+`harness_hidden` together or none, and `inputs`) and keeps the bytes on the registered
+run (`runs.run_documents`); every
 redemption of the run code answers them as they are. The 201 of that redemption takes at
 most 1 MiB, what the gateway's relay passes back: the claim measures the rest of the 201
 with a run key of the run's grant and the server's keys, keeps 1,024 bytes free for a
-second server key, and gives the documents the rest; an explore run's input leaves out
-its oldest comments to fit, and a claim whose documents cannot fit is `503`
-`unavailable`. A prebuild's documents have its destinations in the instance's registry:
+second server key, and gives the documents the rest; the input of a run of the step
+`workflow` leaves out its oldest comments to fit, and a claim whose documents cannot fit is
+`503` `unavailable`. A prebuild's documents have its destinations in the instance's registry:
 `image_destination`, `<QORY_REGISTRY>/<instance>/<organisation>/targets/<target>`, and
 `environment_destination`,
 `<QORY_REGISTRY>/<instance>/<organisation>/environments/<key>`, or, where an environment
@@ -447,9 +450,9 @@ number of GB at the claim times 1,000,000,000; with none saved, and on any other
 member is absent. Prebuilds run only on an instance with a registry
 (`Apiary.Registry.configured?/0`): the `registry` feature on, and `QORY_REGISTRY` set to
 an address whose host has a dot or a port, or is `localhost`. On any other instance no
-prebuild is queued or claimed, no run waits for one, and an explore run starts in its
-pool's default image; a prebuild queued before stays waiting. The instance's registry
-name, the `<instance>` part, is made at the first claim of a prebuild where it is not
+prebuild is queued or claimed, no run waits for one, and a run of the step `workflow`
+starts in its pool's default image; a prebuild queued before stays waiting. The instance's
+registry name, the `<instance>` part, is made at the first claim of a prebuild where it is not
 made yet; a claim where it cannot be made is `503` `unavailable`. A prebuild of a
 workspace that serves no run configuration is given, at its attach, the workspace's
 default policy, in `observe` with no rules, composed with the registry's members; where
@@ -475,12 +478,25 @@ takes, 126 names or 64 KiB (`variables_invalid`), a work item whose ticket is no
 (`ticket_gone`), or an input that breaks the explore contract's rules for it, or a work
 item with no target in a domain that requires one (`inputs_invalid`).
 
-**The run's harness.** An explore run's documents have `workflow` and `harness_hidden`
-together, or neither; a prebuild's have neither, and none of `target_version` and
-`harness`. `workflow` is the workflow of the one stored stack with a workflow at the
-run's places: its workspace, and its target when it has one
-(`Apiary.Stacks.workflow/2`). With no such stack, or two or more, the run has no
-workflow, so its documents have none of the four members. A run with a workflow waits
+**The run's harness.** The documents of a run of the step `workflow` have `workflow` and
+`harness_hidden` together, or neither; a prebuild's have neither, and none of
+`target_version` and `harness`. A test work item's run has the workflow of the built-in
+harness (`Apiary.Harnesses.Builtin`), whatever the stacks. With the workflow model on, a
+run of a stage has the workflow of its stage entry (`Apiary.Stages.run_workflow/1`),
+whatever the stacks. For any other run, `workflow` is the workflow of the one stored
+stack with a workflow at the run's places: its workspace, and its target when it has one
+(`Apiary.Stacks.workflow/2`). With no such stack and the workflow model off, it is the
+first workflow of the first stage of the workspace's current process version. Any other
+run has no workflow, and the run contract requires one, so the run ends when it is
+queued, before it starts, with the end cause `harness_unresolved` and the case's code,
+and no claim takes it (`Apiary.Harnesses.WalkJob.queue/2`,
+`Apiary.Stacks.workflow_or_cause/2`): `many_stacks` for two or more such stacks;
+`no_stage_run` for no such stack with the workflow model on; `no_process` for no such
+stack with the workflow model off and no process version; and `no_first_workflow` for
+no such stack with the workflow model off and a version with no first stage with a
+workflow. A run with no workflow queued before such a run ended at its queue has a walk
+resolved with no workflow, and its documents have none of the four members. A run with
+a workflow waits
 until a job has walked its harness (`Apiary.Harnesses.Walk`); a claim takes no run whose
 walk has not resolved, and a walk that fails ends the run before it starts, with the end
 cause `harness_unresolved` and the failure's code. The walk takes the first of four.
@@ -562,7 +578,7 @@ whatever its state, ends it `run_ended`; a `dev.qory.run.refused` once folded en
 `run_refused`, for a run that is not a prebuild; and the lost-run check ends it `lost`
 when its gateway never attached it by its `attach_by`, when it has no exit by its
 backstop, 87,300 seconds (24 hours and 15 minutes) after its attach for the step
-`explore` and 4500 (1 hour and 15 minutes) for `prebuild` (Liveness), or when it went
+`workflow` and 4500 (1 hour and 15 minutes) for `prebuild` (Liveness), or when it went
 600 seconds without a heartbeat after its attach and before an exit: with the gateway
 down, no exit reaches Qory Apiary, and that end frees the slot. A heartbeat stored and
 not yet folded counts by its arrival. Such a silent run is `lost` for good: its registered
@@ -676,9 +692,9 @@ handed over, by its `dispatched` or by the redemption of its run code; `409`
 `lease_expired` for a dispatch that is stale or past its `lease_until`; and `503`
 `unavailable` last, after which nothing was written. Else the signed `204`, with no body:
 the dispatch ends `released`, its slot is freed, its registered run ends `failed` with
-the reason `machine_not_made`, and the run waits again, as when its lease lapses: an explore run with the
-same `run_id` and `queued_at`, its work item left exploring; a prebuild with its
-`environment_ref`, or it ends `superseded` while another prebuild of its collection,
+the reason `machine_not_made`, and the run waits again, as when its lease lapses: a run of
+the step `workflow` with the same `run_id` and `queued_at`, its work item left exploring; a
+prebuild with its `environment_ref`, or it ends `superseded` while another prebuild of its collection,
 pool and `environment_ref` waits. A release records no failure on a prebuild's environment
 record. Qory Apiary keeps every release's reason in its audit entry and on the
 dispatch, and the page of the failed run shows it. A release holds its run's work item, or a prebuild's environment record, before
@@ -895,8 +911,8 @@ keeps the results fit and no longer fit by the SHA-256 of the settings and of th
 (`Apiary.Connections.SettingsFit`). The check runs once for each stored settings and entry
 on each node, until the node restarts or the table, at 4,096 results, empties.
 
-**A run's model keys.** An explore run of a workspace's queue whose model choice resolves
-to a model provider gets the provider's keys at its claim
+**A run's model keys.** A run of the step `workflow` whose model choice resolves to a
+model provider gets the provider's keys at its claim
 (`Apiary.Dispatches.RunSettings`, `Apiary.ModelKeys.Order`), at most 6, so that the 16
 `credentials` of a run configuration hold them, the registry's credential, the work and
 push credentials, and the harness links. A run of a stage with `shared_run: true` also
@@ -1665,7 +1681,7 @@ when the workspace first heard of it, its registration for a run that registered
 through a gateway that is never attached is lost at its `attach_by`, and not before; until
 then it holds its node's instance. A run a workspace's queue handed over is also lost at
 its backstop, which its attach sets to the attach and its step's limit, 87,300 seconds for
-`explore` and 4500 for `prebuild` (`runs.backstop_at`), should it have no exit by then,
+`workflow` and 4500 for `prebuild` (`runs.backstop_at`), should it have no exit by then,
 however recently it beat; no heartbeat or start that arrives after that brings it back,
 and only its exit changes its state: a run of the queue takes no outcome. A run of the
 queue that went 600 seconds without a heartbeat after its attach, before an exit, has its

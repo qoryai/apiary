@@ -160,8 +160,7 @@ defmodule Apiary.Dispatches do
   #      cleared image held again after that read (`Apiary.Environments.claim_image/2`): it
   #      waits, and so does a run whose harness walk is pending
   #      (`Apiary.Harnesses.WalkJob`), whose harness the claim reads again later
-  #      (`Apiary.Dispatches.HarnessReads`), or of which it is not known yet whether it
-  #      is a run of Explore (`Apiary.Stages.known_explore/1`). An explore run is given
+  #      (`Apiary.Dispatches.HarnessReads`). A run of the step `workflow` is given
   #      the image its target's build made for the pool, nil for the pool's default. A run whose work item has no target is taken as any
   #      other. A run whose work item is no longer live (closed, undone, its
   #      connection ended, or gone) or no longer in the run's workspace is not handed
@@ -282,8 +281,8 @@ defmodule Apiary.Dispatches do
   alias Apiary.Runs.ProviderCredential
   alias Apiary.WorkItems.WorkItem
 
-  # The step every run of a take in is queued for: the contract's `explore`.
-  @step "explore"
+  # The step every run of a take in is queued for: the contract's `workflow`.
+  @step "workflow"
   # The step of a run that builds a collection's environment for one node pool.
   @prebuild DispatchRun.prebuild()
   # The index that holds one waiting prebuild per collection, node pool and
@@ -351,17 +350,20 @@ defmodule Apiary.Dispatches do
 
   ## Queueing
 
-  # queue/2 writes the first run of take in `take_in` of `work_item`, waiting in the work
-  # item's workspace, inside the caller's transaction (the moduledoc).
+  # queue/3 writes the first run of take in `take_in` of `work_item`, waiting in the work
+  # item's workspace, inside the caller's transaction (the moduledoc). `version` is the
+  # process version the take in read (`Apiary.Stages.take_in_version/1`), nil for none.
   @doc false
-  @spec queue(WorkItem.t(), pos_integer) :: {:ok, DispatchRun.t()} | {:error, Ecto.Changeset.t()}
-  def queue(%WorkItem{id: id}, take_in) when is_binary(id) and is_integer(take_in) do
-    in_transaction!("queue/2")
+  @spec queue(WorkItem.t(), pos_integer, Apiary.Processes.Version.t() | nil) ::
+          {:ok, DispatchRun.t()} | {:error, Ecto.Changeset.t()}
+  def queue(%WorkItem{id: id}, take_in, version \\ nil)
+      when is_binary(id) and is_integer(take_in) do
+    in_transaction!("queue/3")
 
-    # Hand-over: with the workflow model, the take in enters the process's first stage,
-    # and the stage runner queues its first run (`Apiary.Stages.take_in/2`).
+    # Hand-over: with the workflow model, the take in enters the first stage of
+    # `version`, and the stage runner queues its first run (`Apiary.Stages.take_in/3`).
     if Apiary.Stages.on?(),
-      do: Apiary.Stages.take_in(id, take_in),
+      do: Apiary.Stages.take_in(id, take_in, version),
       else: id |> lock_work_item!() |> insert_run(take_in, 1, @of)
   end
 
@@ -493,7 +495,7 @@ defmodule Apiary.Dispatches do
       }
       |> struct!(stage)
       |> struct!(machine_type(stage))
-      |> explore_at_queue()
+      |> with_workflow()
       |> DispatchRun.queue_changeset(%{
         work_item_id: id,
         step: @step,
@@ -506,10 +508,22 @@ defmodule Apiary.Dispatches do
       |> Repo.insert()
 
     with {:ok, run} <- result,
-         {:ok, _walk} <- WalkJob.queue(run, harness_place(work_item)) do
+         {:ok, walk} <- WalkJob.queue(run, harness_place(work_item)) do
       Queued.insert!(run)
       broadcast([workspace_id])
-      {:ok, run}
+
+      # A run with no workflow ended at its queue (`Apiary.Harnesses.WalkJob.queue/2`),
+      # before its record was written: the record ends too. Each caller tells the end once
+      # its transaction commits: a take in tells the workspace's queue and the work item
+      # (`Apiary.WorkItems.Moves`); an answer and Explore again, the work item; the stage
+      # runner, the work item (`Apiary.Stages`); a requeue for an image or a pause, the
+      # workspace and the work item (`Apiary.Dispatches.RunEnd`).
+      if walk.state == :failed do
+        _ended = Queued.ended([run.id], now())
+        {:ok, Repo.get!(DispatchRun, run.id)}
+      else
+        {:ok, run}
+      end
     end
   end
 
@@ -613,10 +627,22 @@ defmodule Apiary.Dispatches do
     :ok
   end
 
-  # `run` with whether it is a run of Explore, as known when it is queued
-  # (`Apiary.Stages.explore_at_queue/3`).
-  defp explore_at_queue(%DispatchRun{workspace_id: workspace_id, workflow: workflow} = run),
-    do: %{run | explore: Apiary.Stages.explore_at_queue(@step, workflow, workspace_id)}
+  # `run` with whether it is a run of Explore, from its process version when it is queued
+  # (`Apiary.Stages.explore_at_queue/4`). A run of a stage keeps the workflow of its stage
+  # entry. A run queued with the workflow model off has no stage, no version and no
+  # workflow: its walk and its claim read the workflow of the row the Harness page saved,
+  # else the first workflow of the current process version (`Apiary.Stacks.workflow/2`).
+  defp with_workflow(%DispatchRun{process_version_id: id} = run) when is_binary(id) do
+    version = Apiary.Processes.get_version!(id)
+
+    %{
+      run
+      | explore: Apiary.Stages.explore_at_queue(@step, run.stage_id, run.workflow, version)
+    }
+  end
+
+  defp with_workflow(%DispatchRun{} = run),
+    do: %{run | explore: Apiary.Stages.explore_at_queue(@step, run.stage_id, run.workflow, nil)}
 
   # What the run's harness walk is for: `:test` for a test work item, `test` set and no
   # connection, as the database holds them together (`work_items_test_check`), which gets
@@ -780,6 +806,38 @@ defmodule Apiary.Dispatches do
 
     told ++ Enum.reject(Enum.uniq(staged), &(&1 in told))
   end
+
+  # take_in_run?/1 is whether `run`, a run of Explore (`explore` true), is the run that its
+  # take in started: its first attempt, or a requeue of it at the same place. A requeue
+  # is a run queued after a missing image (`image_requeue`, `requeue_for_image/1`) or a
+  # pause (`continues_id`, `requeue_for_pause/3`), and every attempt from 2 to the run's
+  # must be one. A later round, a retry and a return to the first stage are new runs, and
+  # a run after one of them is none. A pause requeue at a later session's place, such as
+  # a later round of a shared stage's loop, is none either.
+  @doc false
+  @spec take_in_run?(map) :: boolean
+  def take_in_run?(%{explore: true, attempt: 1}), do: true
+
+  def take_in_run?(%{explore: true, work_item_id: id, take_in: take_in, attempt: attempt} = run)
+      when is_binary(id) and is_integer(take_in) and is_integer(attempt) and attempt > 1 do
+    place = [:stage_id, :round, :stage_entry, :loop_entry]
+
+    earlier =
+      Repo.all(
+        from r in DispatchRun,
+          where: r.work_item_id == ^id and r.take_in == ^take_in and r.attempt <= ^attempt,
+          select: map(r, ^[:attempt, :image_requeue, :continues_id | place])
+      )
+
+    requeues =
+      Enum.count(earlier, &(&1.attempt > 1 and (&1.image_requeue or &1.continues_id != nil)))
+
+    first = Enum.find(earlier, &(&1.attempt == 1))
+
+    requeues == attempt - 1 and first != nil and Map.take(first, place) == Map.take(run, place)
+  end
+
+  def take_in_run?(_run), do: false
 
   # requeue_for_image/1 writes the next run of the take in of `dispatch_run`, which its
   # end by an exit that found its image missing ended in the caller's transaction, which
@@ -1287,9 +1345,8 @@ defmodule Apiary.Dispatches do
   # handed out is ended, with any stale dispatch of it (`run_ended`), and the next one
   # looked at; so is a run claimed that the claim cannot form
   # (`Apiary.Dispatches.Handover.register/2`): `max` at most per claim. A run whose
-  # harness the claim reads again later (`Apiary.Dispatches.HarnessReads.at_claim/3`),
-  # or of which it is not known yet whether it is a run of Explore
-  # (`Apiary.Stages.known_explore/1`), stays waiting, and the claim passes it (`skipped`).
+  # harness the claim reads again later (`Apiary.Dispatches.HarnessReads.at_claim/3`)
+  # stays waiting, and the claim passes it (`skipped`).
   defp pick(_key, _pool, _through, _now, _default, 0, ended, _skipped), do: {:none, ended}
 
   defp pick(key, pool, through, now, default, max, ended, skipped) do
@@ -1302,10 +1359,7 @@ defmodule Apiary.Dispatches do
         {:none, ended}
 
       %DispatchRun{} = run ->
-        case Apiary.Stages.known_explore(run) do
-          nil -> pick(key, pool, through, now, default, max - 1, ended, [run.id | skipped])
-          run -> pick_run(key, pool, through, now, {run, default, max, ended, skipped})
-        end
+        pick_run(key, pool, through, now, {run, default, max, ended, skipped})
     end
   end
 
@@ -1833,7 +1887,7 @@ defmodule Apiary.Dispatches do
   ## The end of a run handed over
 
   # backstop_seconds/1 is the seconds after its attach by which a run of `step` has its
-  # exit, or is lost: 87,300 for `explore` and 4500 for `prebuild`.
+  # exit, or is lost: 87,300 for `workflow` and 4500 for `prebuild`.
   @doc false
   @spec backstop_seconds(String.t() | nil) :: pos_integer
   def backstop_seconds(step), do: RunEnd.backstop_seconds(step)

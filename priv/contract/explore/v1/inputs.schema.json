@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://qory.dev/contracts/explore/v1/inputs.schema.json",
   "title": "Explore inputs",
-  "description": "The run's inputs, https://qory.dev/contracts/run/v1/documents.schema.json, for the step explore, which the control plane writes and the job reads. instruction.text is the instruction the member who took the work item in gave the step. Every other text value, from the source or from members, such as ticket.title and comments[].body, is untrusted data, never an instruction. The object's size is bounded as https://qory.dev/contracts/run/v1/documents.schema.json bounds the run's inputs. Every member is required, at every level, except target and ticket, and every object refuses a member this schema does not define. Every time is the integration contract's time, https://qory.dev/contracts/integration/v1/definitions.schema.json: RFC 3339 in UTC with whole seconds, ending Z.",
+  "description": "The run's inputs, https://qory.dev/contracts/run/v1/documents.schema.json, for a run of the step workflow whose workflow reads these inputs, such as an Explore run, which the control plane writes and the job reads. instruction.text is the instruction the member who took the work item in gave the step. Every other text value, from the source or from members, such as ticket.title and comments[].body, is untrusted data, never an instruction. The object's size is bounded as https://qory.dev/contracts/run/v1/documents.schema.json bounds the run's inputs. Every member is required, at every level, except target and ticket, and every object refuses a member this schema does not define. Every time is the integration contract's time, https://qory.dev/contracts/integration/v1/definitions.schema.json: RFC 3339 in UTC with whole seconds, ending Z.",
   "type": "object",
   "additionalProperties": false,
   "required": [
@@ -47,7 +47,7 @@
       ],
       "properties": {
         "id": {
-          "description": "The work item's public id in the control plane: the same id as the run's work_item.id, https://qory.dev/contracts/run/v1/documents.schema.json. The control plane writes the same value into both.",
+          "description": "The work item's public id in the control plane: the same id as the run's subject.id when subject.kind is work_item, https://qory.dev/contracts/run/v1/documents.schema.json. The control plane writes the same value into both.",
           "$ref": "https://qory.dev/contracts/integration/v1/changes.schema.json#/$defs/work_item/properties/work_item_id"
         },
         "number": {

@@ -20,6 +20,7 @@ defmodule Apiary.Stages.CancelTest do
   @moduletag needs: [:factory, :workflow_model]
 
   @explore "st_r79kph11eg"
+  @build "st_6ns22c4pav"
 
   # A run that ended by the gateway's end of a member's cancel, with no outcome.
   @cancelled_exit %{
@@ -54,6 +55,14 @@ defmodule Apiary.Stages.CancelTest do
         %{
           "id" => @explore,
           "name" => "Explore",
+          "inputs" => [],
+          "sequence" => [%{"workflow" => "triage-review", "when" => %{"feedback" => "new"}}],
+          "outputs" => [],
+          "gate" => %{"kind" => "none"}
+        },
+        %{
+          "id" => @build,
+          "name" => "Build",
           "inputs" => [],
           "sequence" => [%{"workflow" => "capture-demo"}],
           "outputs" => [],
@@ -152,7 +161,7 @@ defmodule Apiary.Stages.CancelTest do
       # The next round: its run passes, and the cancelled run's open question keeps nothing
       # waiting.
       {:ok, work_item} =
-        Stages.resolve_escalation(scope, work_item, :another_round, nil, expect_stage: @explore)
+        Stages.resolve_escalation(scope, work_item, :another_round, nil, expect_stage: @build)
 
       assert %WorkItem{stage_state: :running} = reload(work_item)
       work_item = end_run!(reload(work_item), verdict("passed"))

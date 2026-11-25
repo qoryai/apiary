@@ -313,7 +313,7 @@ defmodule Apiary.Dispatches.ReleaseTest do
       assert [_only] = runs_of(work_item)
 
       entry!(ctx, dispatch, {"node", ctx.pool.id}, %{
-        "step" => "explore",
+        "step" => "workflow",
         "handed_over" => false,
         "waits" => true
       })

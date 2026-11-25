@@ -167,7 +167,7 @@ defmodule Apiary.Dispatches.SchemaTest do
       attrs
       |> Map.new()
       |> Map.put_new_lazy(:work_item_id, fn -> work_item_fixture(scope).id end)
-      |> Enum.into(%{step: "explore", take_in: 1, attempt: 1, of: 3, queued_at: now()})
+      |> Enum.into(%{step: "workflow", take_in: 1, attempt: 1, of: 3, queued_at: now()})
 
     %DispatchRun{organisation_id: workspace.organisation_id, workspace_id: workspace.id}
     |> DispatchRun.queue_changeset(attrs)
@@ -226,7 +226,7 @@ defmodule Apiary.Dispatches.SchemaTest do
       one = queued!(scope)
       other = queued!(scope, take_in: 2)
 
-      assert %DispatchRun{state: :waiting, end_cause: nil, step: "explore"} =
+      assert %DispatchRun{state: :waiting, end_cause: nil, step: "workflow"} =
                Repo.get!(DispatchRun, one.id)
 
       assert {:ok, _} = Ecto.UUID.cast(one.run_id)

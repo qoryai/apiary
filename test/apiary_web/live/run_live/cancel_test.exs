@@ -409,7 +409,9 @@ defmodule ApiaryWeb.RunLive.CancelTest do
     assert written(lv) == ["No push to this run's repositories was recorded."]
   end
 
-  test "outside a software workspace: the writes are kept, and the line says none", %{
+  # The example domain pushes (`Apiary.Lingo.Domain.pushes?/1`). Its run has no labels of
+  # a target, so the line records no push to the run's targets.
+  test "in another domain that pushes: the writes are kept, and the line records no push", %{
     conn: conn,
     scope: scope
   } do
@@ -421,10 +423,11 @@ defmodule ApiaryWeb.RunLive.CancelTest do
 
     {:ok, lv, _html} = page(conn, scope, run)
 
-    assert text(lv, "#run-cancelled") ==
-             "Cancelled by #{name(scope)} (you) at #{Format.time(at, seconds: true)}"
+    assert text(lv, "#run-cancelled") =~
+             "Cancelled by #{name(scope)} (you) at #{Format.time(at, seconds: true)}, " <>
+               "while the run was pushing its changes."
 
-    assert written(lv) == []
+    assert written(lv) == ["No push to this run's targets was recorded."]
     assert [%{state: "changed"}] = Apiary.Runs.TargetWrite.of_run(run)
   end
 
