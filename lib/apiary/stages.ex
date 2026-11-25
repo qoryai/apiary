@@ -155,6 +155,7 @@ defmodule Apiary.Stages do
     Audit,
     Dispatches,
     Features,
+    Findings,
     MachineTypes,
     ModelChoices,
     Processes,
@@ -204,6 +205,7 @@ defmodule Apiary.Stages do
           | {:track_not_offered, String.t()}
           | {:track_not_offered, String.t(), String.t()}
           | {:already_on, String.t()}
+          | Findings.refusal()
           | :store_unavailable
           | {:invalid, :note}
           | :note_missing
@@ -1748,6 +1750,24 @@ defmodule Apiary.Stages do
     ) || explore_stage_id(work_item)
   end
 
+  # confirmable/2 is `:ok` where a confirmation of the run `attempt` may pass the stage the
+  # locked work item waits in, else the gate's refusal (`Apiary.Findings.gate/2`). A
+  # confirmation calls it before it writes a row or broadcasts a change: a broadcast first
+  # would show the workspace a confirmation that the gate then undoes.
+  @doc false
+  @spec confirmable(WorkItem.t(), pos_integer) :: :ok | {:error, Findings.refusal()}
+  def confirmable(%WorkItem{stage_state: :at_gate} = work_item, attempt) do
+    with true <- on?(),
+         {:ok, _version, stage} <- placed(work_item),
+         true <- stage["id"] == confirmed_stage_id(work_item, attempt) do
+      Findings.gate(work_item, stage)
+    else
+      _no_gate -> :ok
+    end
+  end
+
+  def confirmable(%WorkItem{}, _attempt), do: :ok
+
   # run_stage_id/2 is the stage a version that the run of the queue `run` pushes for
   # `work_item` is made in: the run's stage, or, for a run of Explore with no stage, one
   # queued before the workflow model was on, Explore's stage (`explore_stage_id/1`), as
@@ -1943,14 +1963,16 @@ defmodule Apiary.Stages do
   # one entry in the trail. It covers the versions `recorded_versions/4` gives, which the
   # work item page frames (`gate_frames/3`), and sends those of a type delivered after the
   # gate (`Apiary.Artifacts.Delivery.approved/2`): a file of one that cannot be read is
-  # `{:error, :store_unavailable}`, and nothing is written.
+  # `{:error, :store_unavailable}`, and nothing is written. It is refused while the stage
+  # owns an open blocking finding (`Apiary.Findings.gate/2`).
   defp approve_locked(scope, work_item, version, stage, note, audit?, track) do
     artifacts = Artifacts.list(work_item)
     approvals = approvals_by_version(work_item)
     covered = Enum.map(recorded_versions(stage, artifacts, approvals, true), & &1.public_id)
     details = %{"stage_id" => stage["id"], "versions" => covered}
 
-    with {:ok, _decision} <-
+    with :ok <- Findings.gate(work_item, stage),
+         {:ok, _decision} <-
            decide(scope, work_item, version, stage, :approve, covered, nil, note, track: track),
          {:ok, _entry} <-
            if(audit?, do: audit(scope, work_item, "approve", details), else: {:ok, nil}),
@@ -2012,7 +2034,9 @@ defmodule Apiary.Stages do
   # `switch_tracks/1`), or close it. A work item that is offered a switch (`switch_tracks/1`
   # is not empty) is offered no accept and no move back: both are refused with `:invalid`.
   # An accept that would take the stage to its gate returns `{:error, :invalid}` too while
-  # a required output of the stage is missing (`accept_needs/4`).
+  # a required output of the stage is missing (`accept_needs/4`). An accept also accepts,
+  # as the person, every open finding the stage owns (`Apiary.Findings.accept_open/3`), in
+  # the same transaction, before the gate reads them.
   @doc false
   @spec resolve_escalation(Scope.t(), WorkItem.t(), resolution, String.t() | nil, expect) ::
           {:ok, WorkItem.t()} | {:error, refusal}
@@ -2023,6 +2047,7 @@ defmodule Apiary.Stages do
            %Escalation{} = escalation <- escalation!(work_item, version, stage),
            :ok <- switch_only(work_item, version, stage, resolution),
            :ok <- accept_outputs(work_item, version, stage, resolution),
+           :ok <- accept_findings(scope, work_item, stage, resolution),
            {:ok, work_item} <-
              resolve(scope, work_item, version, stage, escalation, resolution, note),
            {:ok, _entry} <-
@@ -2040,15 +2065,23 @@ defmodule Apiary.Stages do
     end)
   end
 
-  # An accept that passes a gate `none` is the approval, recorded with the member
+  defp accept_findings(scope, work_item, stage, :accept),
+    do: Findings.accept_open(work_item, stage["id"], scope.user.id)
+
+  defp accept_findings(_scope, _work_item, _stage, _resolution), do: :ok
+
+  # An accept passes the stage, so it is refused while the stage owns an open blocking
+  # finding. One that passes a gate `none` is the approval, recorded with the member
   # (`approve_none!/4`).
   defp resolve(scope, work_item, version, stage, escalation, resolution, note)
        when resolution in [:accept, :another_round] do
-    :ok = resolve!(escalation, resolution, scope, note)
-    event = {resolution, escalation.cause}
-    by = if resolution == :accept, do: scope && scope.user && scope.user.id
-    {work_item, _run} = apply_event(work_item, version, stage, event, nil, %{}, by)
-    {:ok, work_item}
+    with :ok <- if(resolution == :accept, do: Findings.gate(work_item, stage), else: :ok) do
+      :ok = resolve!(escalation, resolution, scope, note)
+      event = {resolution, escalation.cause}
+      by = if resolution == :accept, do: scope && scope.user && scope.user.id
+      {work_item, _run} = apply_event(work_item, version, stage, event, nil, %{}, by)
+      {:ok, work_item}
+    end
   end
 
   # A switch: the track is recorded as a move's decision out of `stage`, to the stage after
@@ -2212,6 +2245,7 @@ defmodule Apiary.Stages do
            :ok <- no_move_on_switch(work_item, version, stage),
            target when is_map(target) <-
              Processes.stage(version, stage_id) || {:error, :unknown_stage},
+           :ok <- moved_forward(work_item, version, stage, target),
            {:ok, track} <- moved_track(work_item, version, stage, target),
            {:ok, _decision} <-
              decide(scope, work_item, version, stage, :move, [], nil, note,
@@ -2235,11 +2269,20 @@ defmodule Apiary.Stages do
   # would record with none chosen (`chosen_track/3`); nil for a move back or to the same
   # stage, which passes no gate.
   defp moved_track(work_item, version, stage, target) do
-    ids = Enum.map(version.document["stages"], & &1["id"])
-
-    if Enum.find_index(ids, &(&1 == target["id"])) > Enum.find_index(ids, &(&1 == stage["id"])),
+    if forward?(version, stage, target),
       do: chosen_track(work_item, stage, []),
       else: {:ok, nil}
+  end
+
+  # A move forward passes the stage, so it is refused while the stage owns an open blocking
+  # finding; a move back is not.
+  defp moved_forward(work_item, version, stage, target) do
+    if forward?(version, stage, target), do: Findings.gate(work_item, stage), else: :ok
+  end
+
+  defp forward?(version, stage, target) do
+    ids = Enum.map(version.document["stages"], & &1["id"])
+    Enum.find_index(ids, &(&1 == target["id"])) > Enum.find_index(ids, &(&1 == stage["id"]))
   end
 
   ## What an act would start
@@ -2295,6 +2338,7 @@ defmodule Apiary.Stages do
   defp would_start(work_item, version, stage, :approve) do
     with :ok <- at_gate(work_item, stage),
          :ok <- outputs_exist(work_item, version, stage),
+         :ok <- Findings.gate(work_item, stage),
          %{} = next <- next_stage(version, stage) do
       approved = approved(work_item, stage, :person, & &1)
       stepped(work_item, version, next, :enter, approved, approved)
@@ -2324,10 +2368,11 @@ defmodule Apiary.Stages do
   defp would_start(work_item, version, stage, {:noted, act}),
     do: would_start(work_item, version, stage, act)
 
-  # An accept that fails the outputs check of `resolve_escalation/5` starts nothing.
+  # An accept that fails the outputs check of `resolve_escalation/5` starts nothing. It
+  # accepts the stage's open findings before the step.
   defp would_start(work_item, version, stage, :accept) do
     case accept_outputs(work_item, version, stage, :accept) do
-      :ok -> resolved_starts(work_item, version, stage, :accept, & &1)
+      :ok -> resolved_starts(work_item, version, stage, :accept, &findings_accepted/1)
       {:error, :invalid} -> :none
     end
   end
@@ -2368,9 +2413,15 @@ defmodule Apiary.Stages do
     stepped(work_item, version, stage, {resolution, cause}, adjust)
   end
 
-  defp resolved_starts(work_item, version, _stage, {:move, stage_id}, adjust)
-       when is_binary(stage_id),
-       do: entered(work_item, version, Processes.stage(version, stage_id), adjust)
+  defp resolved_starts(work_item, version, stage, {:move, stage_id}, adjust)
+       when is_binary(stage_id) do
+    with %{} = target <- Processes.stage(version, stage_id),
+         :ok <- moved_forward(work_item, version, stage, target) do
+      entered(work_item, version, target, adjust)
+    else
+      _no_run -> :none
+    end
+  end
 
   # A switch enters the stage after the gate that recorded the track, on the new track.
   defp resolved_starts(work_item, version, stage, {:switch, track}, adjust)
@@ -2402,6 +2453,9 @@ defmodule Apiary.Stages do
   # (`feedback_facts/3`), and `extra`.
   defp noted(facts, extra \\ %{}),
     do: facts |> Map.merge(%{feedback: true, feedback_noted: true}) |> Map.merge(extra)
+
+  # The facts once the stage's open findings are accepted.
+  defp findings_accepted(facts), do: Map.merge(facts, %{open_blocking: [], open_findings: []})
 
   # The versions that a condition `{input: T, changed: true}` reads (`stored`), with the
   # versions of the stage's outputs that an approval covers, `approved_at`, a list of
@@ -4056,6 +4110,7 @@ defmodule Apiary.Stages do
     # Read once per event: the outputs' checks and the runner both use it.
     approvals = Keyword.get_lazy(read, :approvals, fn -> approvals_by_version(work_item) end)
     strict? = Keyword.get(read, :strict, true)
+    findings = Findings.open(work_item, stage["id"])
 
     conditions =
       Keyword.get_lazy(read, :conditions, fn ->
@@ -4080,9 +4135,32 @@ defmodule Apiary.Stages do
       machine: version.document["machine"],
       test: work_item.test,
       earlier: Map.new(earlier_stages(version, stage), &{&1["id"], &1["name"]}),
-      returns: returns(work_item, stage)
+      returns: returns(work_item, stage),
+      open_blocking: for(%{severity: "blocking", number: number} <- findings, do: number),
+      open_findings: Findings.texts(findings),
+      shared_run: newest_run_shared?(work_item, stage)
     })
   end
+
+  # Whether the newest run of `stage` in the work item's take in ran the stage's workflows
+  # as sessions of one run (`shared_stage/1`): false for a stage without `shared_run:
+  # true`, and for a stage with no run in the take in.
+  defp newest_run_shared?(%WorkItem{id: id, take_in: take_in}, stage)
+       when is_binary(id) and is_integer(take_in) do
+    Processes.shared_run?(stage) and
+      case Repo.one(
+             from d in DispatchRun,
+               where: d.work_item_id == ^id and d.take_in == ^take_in,
+               where: d.stage_id == ^stage["id"],
+               order_by: [desc: d.attempt, desc: d.inserted_at],
+               limit: 1
+           ) do
+        nil -> false
+        run -> shared_stage(run) != nil
+      end
+  end
+
+  defp newest_run_shared?(_work_item, _stage), do: false
 
   # The stages of the version before `stage`, in order.
   defp earlier_stages(version, stage) do
@@ -5320,7 +5398,7 @@ defmodule Apiary.Stages do
        ) do
     with %{} = position <- position(work_item),
          false <- Runner.accept_to_gate?(stage, position, Keyword.fetch!(read, :conditions)) do
-      facts = facts(work_item, version, stage, read)
+      facts = findings_accepted(facts(work_item, version, stage, read))
       stage |> Runner.step(position, {:accept, cause}, facts) |> started_entry(stage)
     else
       _gate -> nil
@@ -5363,7 +5441,7 @@ defmodule Apiary.Stages do
          %Escalation{cause: cause} <-
            open_escalation(work_item) || placed_escalation(work_item, version, stage),
          %{} = position <- position(work_item) do
-      facts = facts(work_item, version, stage)
+      facts = findings_accepted(facts(work_item, version, stage))
 
       if accept_needs(work_item, stage, facts, facts.failed_checks) == [] do
         outcome = Runner.step(stage, position, {:accept, cause}, facts)

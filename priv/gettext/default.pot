@@ -3520,6 +3520,11 @@ msgstr ""
 msgid "%{stage} needs %{type} as an input, and no stage before %{stage} lists it as an output."
 msgstr ""
 
+#: lib/apiary/findings.ex
+#, elixir-autogen, elixir-format
+msgid "%{stage} passes only when none is open."
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/stage_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{stage} runs for the first time, with your note and the run's outputs. The next run undoes this attempt, then %{later} runs on %{track}."
@@ -7961,6 +7966,20 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "Click %{label}, then save. This key has no sign-in yet."
 msgstr ""
+
+#: lib/apiary/findings.ex
+#, elixir-autogen, elixir-format
+msgid "Click Request changes. 1 blocking finding is open."
+msgid_plural "Click Request changes. %{count} blocking findings are open."
+msgstr[0] ""
+msgstr[1] ""
+
+#: lib/apiary/findings.ex
+#, elixir-autogen, elixir-format
+msgid "Click Run another round. 1 blocking finding is open."
+msgid_plural "Click Run another round. %{count} blocking findings are open."
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format

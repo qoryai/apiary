@@ -18,6 +18,14 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   #   member cancelled wrote it, whether it is a withdrawal, and the person's note that
   #   asked for it with the note's time (`Apiary.Stages.artifact_index/1`).
   # - `version/3`: a version as a push returns it.
+  # - `findings/3`: the findings of the run's work item on the run's target and the base
+  #   of that target (`Apiary.Findings.list/3`, `Apiary.Findings.bases/2`), as the run
+  #   contract's `findings.schema.json` has them, with each stage by its name in the
+  #   contract (`Apiary.Findings.stage_names/1`). The actor of a person's event has no
+  #   name.
+  # - `findings_posted/3`: the answer to a batch of findings events: the id of each raise by
+  #   its ref, and the count of open blocking findings of each stage that owns a finding
+  #   (`findings-post-answer.schema.json`).
   # - `next_session/1`: the result of a next-session request
   #   (`Apiary.Stages.next_session/2`): `next`, then, for a next session, `session`,
   #   `workflow`, `model_choice`, `model_provider_credential_name`, `time_limit_minutes`,
@@ -373,6 +381,81 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
     do: at |> DateTime.from_naive!("Etc/UTC") |> time()
 
   defp time(_value), do: nil
+
+  @spec findings([map], [map], %{String.t() => String.t()}) :: Jason.OrderedObject.t()
+  def findings(findings, bases, names) do
+    object([
+      {"bases",
+       Enum.map(
+         bases,
+         &object([{"target", Apiary.Runs.Target.document(&1.target)}, {"base", &1.base}])
+       )},
+      {"findings", Enum.map(findings, &finding(&1, names))}
+    ])
+  end
+
+  defp finding(finding, names) do
+    object([
+      {"id", Apiary.Findings.Finding.id(finding)},
+      {"target", Apiary.Runs.Target.document(finding.target)},
+      {"stage", stage_name(names, finding.stage_id)},
+      {"source", object([{"kind", finding.source_kind}, {"name", finding.source_name}])},
+      {"severity", finding.severity},
+      {"place",
+       object(
+         for key <- ~w(quote file line version),
+             Map.has_key?(finding.place, key),
+             do: {key, finding.place[key]}
+       )},
+      {"point", finding.point},
+      {"problem", finding.problem},
+      {"fix", finding.fix},
+      {"proof", finding.proof},
+      {"state", finding.state},
+      {"disputed", finding.disputed},
+      {"events", Enum.map(finding.events, &finding_event(&1, names))}
+    ])
+  end
+
+  defp finding_event(event, names) do
+    actor =
+      case event.actor_kind do
+        "qory" -> object([{"kind", "qory"}, {"name", event.actor_name}])
+        "person" -> object([{"kind", "person"}])
+      end
+
+    object(
+      [
+        {"kind", event.kind},
+        {"round", event.round},
+        {"stage", stage_name(names, event.stage_id)},
+        {"actor", actor}
+      ] ++
+        for(
+          {key, value} <- [{"version", event.version}, {"reason", event.reason}],
+          value,
+          do: {key, value}
+        )
+    )
+  end
+
+  @spec findings_posted(
+          [{String.t(), String.t()}],
+          [{String.t(), non_neg_integer}],
+          %{String.t() => String.t()}
+        ) :: Jason.OrderedObject.t()
+  def findings_posted(created, open_blocking, names) do
+    object([
+      {"created", Enum.map(created, fn {ref, id} -> object([{"ref", ref}, {"id", id}]) end)},
+      {"open_blocking",
+       Enum.map(open_blocking, fn {stage_id, count} ->
+         object([{"stage", stage_name(names, stage_id)}, {"count", count}])
+       end)}
+    ])
+  end
+
+  defp stage_name(names, "st_" <> rest = stage_id), do: Map.get(names, stage_id, rest)
+  defp stage_name(names, stage_id), do: Map.get(names, stage_id, stage_id)
 
   defp object(pairs), do: Jason.OrderedObject.new(pairs)
 end

@@ -273,6 +273,8 @@ defmodule ApiaryWeb.Routes do
         post "/artifacts", Controller, :push
         post "/verdict", Controller, :verdict
         post "/pushed-commits", Controller, :pushed_commits
+        get "/findings", Controller, :findings
+        post "/findings", Controller, :post_findings
         post "/next-session", Controller, :next_session
       end
 

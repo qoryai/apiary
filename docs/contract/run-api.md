@@ -1,8 +1,9 @@
 # The run API
 
 A run, an agent on a machine, uses the run API to read its work item and the work
-item's artifacts, to push artifacts and its verdict, to report the commits it pushed, and,
-in a stage whose workflows share one run, to get its next session. Each request is signed with the
+item's artifacts, to push artifacts and its verdict, to report the commits it pushed, to read and
+write the findings of the work item, and, in a stage whose workflows share one run, to get
+its next session. Each request is signed with the
 access key of the gateway the run goes through; the run has no access key.
 
 The run API is part of the feature `workflow_model`, which is off by default. On an
@@ -45,6 +46,8 @@ serves, and a request for a run the key does not serve gets `404` `not_found`.
 | `POST artifacts` | Stores a new version of an artifact, or a withdrawal of its name; returns the version |
 | `POST verdict` | Stores the run's verdict as a version of the `verdict` artifact |
 | `POST pushed-commits` | Adds the commits the run pushed to the run's list |
+| `GET findings` | The findings of the work item on the run's target, with their events, and the target's base |
+| `POST findings` | Writes a batch of findings events; returns the new ids and the open blocking findings of each stage |
 | `POST next-session` | Steps the stage on the end of a session of a shared run; returns the next session or the end |
 | `GET resume/transcript` | The transcript of the paused run that the run continues, as a download |
 
@@ -83,8 +86,9 @@ The checks run in this order:
    seconds without a heartbeat or is past its backstop; until then the gateway that
    attached it, restarted, attaches it again and pushes for it. A run a member cancelled
    is `409` `run_ended` too, from the commit of the cancel, whatever its state, with the
-   message for a cancelled run, except for `POST pushed-commits`, which a cancel does not
-   refuse (see that request). A run reads its work item after it ends; it writes nothing.
+   message for a cancelled run, except for `POST pushed-commits` and `POST findings`, which
+   a cancel does not refuse (see those requests). For `POST findings`, a run that has ended
+   is `404` `not_found`. A run reads its work item after it ends; it writes nothing.
    A push or a verdict checks the run of the queue, and the cancel, again when it stores
    the version, under the lock of the work item that the end of a run and a cancel also
    take: a run whose run of the queue ended, or that a member cancelled, between the two
@@ -702,7 +706,9 @@ The body, at most 64 KiB:
  "track": {"id": "small-change", "reason": "The change touches one file."}}
 ```
 
-- `verdict`: `passed`, `changes-requested` or `escalate`.
+- `verdict`: `passed`, `changes-requested` or `escalate`. `passed` is refused while the stage
+  of the run owns an open blocking finding ([GET findings](#get-findings)), on any target of
+  the work item.
 - `points`: what is wrong or missing, 1 to 20 points. With `escalate`, points are
   required, and a person reads them when the stage escalates. With `changes-requested`,
   points are optional, and each point's `action` is `run_again`; the verdict's page shows
@@ -716,10 +722,15 @@ The body, at most 64 KiB:
   run that ends with no verdict in [POST verdict](#post-verdict)), and the fix is "Read
   the 2 open findings, then pick Start verify-a-ticket or Run another round." Where the
   page shows neither, the fix is "Read the 2 open findings, then pick Run another round."
-  With no points, the text is "3 of 3 rounds ran." The stage runner writes this point,
-  and the limit of one sentence and 500 characters below does not apply to it: with
-  points, its text is more than one sentence and can be longer than 500 characters. With
-  `passed`, a verdict has none.
+  With no points, the text is "3 of 3 rounds ran." Where the stage owns open findings
+  ([GET findings](#get-findings)), the point has those in place of the verdict's points,
+  whatever the verdict: their number, then the id and the `point` of each, such as "f3: The
+  total is wrong.", blocking ones first, of at most 20. At the limit of a `return`, the
+  escalation has one point with such a text for each of them, in place of the verdict's
+  points. The stage runner writes these points,
+  and the limit of one sentence and 500 characters below does not apply to them: with
+  findings, the text of a round limit's point is more than one sentence and can be longer
+  than 500 characters. With `passed`, a verdict has none.
   Each point has `text`, one plain sentence on one line of 1 to 500 characters that
   states what is wrong, with no action, and `action`: `answer`, with `question`, the id of
   an open question, or `run_again`, without `question`. A `run_again` point may also have
@@ -787,7 +798,18 @@ with `names` `["track"]` and the message in "The messages", for a push of the ar
 of each `answer` point must be open in the newest `questions` of the work item's current
 take in, so the run pushes its questions first; otherwise the verdict is `422`
 `invalid_artifact`, with the message "Push the questions first, or point at an open
-question in verdict.json: point 2 is about question q7, which is not open."
+question in verdict.json: point 2 is about question q7, which is not open." A `passed`
+verdict of a stage that owns an open blocking finding is `409` `open_blocking_findings`, as
+`findings-refusal.schema.json` of the run contract has it, and stores nothing, for a push of
+the artifact `verdict` too:
+
+```json
+{"error": "open_blocking_findings",
+ "message": "Send changes-requested in place of passed: build has 2 open blocking findings.\n  The open blocking findings are f1, f2.",
+ "stage": "build", "findings": ["f1", "f2"]}
+```
+
+`stage` is the name that `GET findings` has for the stage, and `findings` is at most 50 ids.
 
 ## POST pushed-commits
 
@@ -825,6 +847,99 @@ has more than 64 repositories, or has a member other than the ones above, or a `
 that is not a full commit id, is `400` `invalid_request`, with the first member that failed
 in `names`, such as `repositories[1].commit`; `body` for a body that is not a JSON object,
 and `repositories` for a list that is empty, over 64 or not a list.
+
+## GET findings
+
+The findings of the run's work item on the run's target, and the base of that target, as
+`findings.schema.json` of the run contract has them, for example:
+
+```json
+{"bases": [
+   {"target": {"collection": "R_1001", "address": {"system": "forge", "path": "acme/shop"}},
+    "base": "0123456789abcdef0123456789abcdef01234567"}],
+ "findings": [
+   {"id": "f1",
+    "target": {"collection": "R_1001", "address": {"system": "forge", "path": "acme/shop"}},
+    "stage": "build",
+    "source": {"kind": "reviewer", "name": "code-reviewer"},
+    "severity": "blocking",
+    "place": {"quote": "total = price + tax - discount", "file": "src/cart.go", "line": 42},
+    "point": "The discount is applied after the tax",
+    "problem": "The tax is charged on the full price.",
+    "fix": "Subtract the discount first, then add the tax.",
+    "proof": "An order of 100.00 with a 10.00 discount totals 110.00, not 108.00.",
+    "state": "open", "disputed": false,
+    "events": [{"kind": "raised", "round": 1, "stage": "build",
+                "actor": {"kind": "qory", "name": "code-reviewer"}}]}]}
+```
+
+- The findings and the base are those of the work item's current take in. Taking the work
+  item in again starts a new take in, with no findings and no base. The target is the run's;
+  a run with no target gets empty lists.
+- `findings`: open ones first, then by id, at most 500. `id` is `f` and the finding's number,
+  which counts the findings of the work item from 1, across its take ins and its targets.
+  `events` is the newest 100 of the finding, oldest first. The actor of a person's event has
+  no `name`.
+- `stage`, of a finding and of an event, is the name of the stage in lower case, with each
+  run of characters other than `a-z` and `0-9` written as one hyphen, at most 64 characters:
+  `Code review` is `code-review`. A stage gets the characters of its id after `st_` in
+  place of that name when its name has no letter or digit, when that name is also another
+  stage's, or when that name equals the characters after `st_` of another stage's id.
+
+## POST findings
+
+A batch of events about the findings of the run's work item, as
+`findings-post.schema.json` of the run contract has it. The body, at most 8 MiB:
+
+```json
+{"bases": [
+   {"target": {"collection": "R_1001"}, "base": "0123456789abcdef0123456789abcdef01234567"}],
+ "events": [
+   {"kind": "raise", "by": "code-reviewer", "ref": "r1",
+    "target": {"collection": "R_1001"}, "stage": "build",
+    "source": {"kind": "reviewer", "name": "code-reviewer"}, "severity": "blocking",
+    "place": {"quote": "total = price + tax - discount"},
+    "point": "The discount is applied after the tax",
+    "problem": "The tax is charged on the full price.",
+    "fix": "Subtract the discount first, then add the tax.",
+    "proof": "An order of 100.00 with a 10.00 discount totals 110.00, not 108.00."},
+   {"kind": "close_fixed", "by": "suite", "id": "f2", "reason": "The suite passes."}]}
+```
+
+- `events`: 1 to 100. A `raise` makes a finding, with the next id, in the state `open`. Each
+  other kind is about the finding `id`, on the run's target: `repeat`, `reply_fixed`,
+  `reply_disputed`, `close_fixed` and `close_dismissed`. `by` is the role or the check that
+  the event comes from. The body's members that the schema does not define are ignored,
+  unless `must_understand` lists them.
+- `bases`: the base of the run's target, written once for each take in of the work item and
+  each target. The same base again writes nothing.
+- A repeat of an open finding adds the event `repeated`. A repeat of a finding that a run
+  closed adds `reopened` and opens it. A repeat of a finding that a person closed adds
+  `repeated_after_person_close` and leaves it closed: a run never reopens it. A run's close
+  of such a finding is kept as an event, and the finding stays as it is.
+- Each event has the work item's `stage_round` as its `round`, 1 where no round has started,
+  and the work item's stage as its `stage`.
+- Returns `200` with `created`, the id of each raise by its `ref`, and `open_blocking`, the
+  count of open findings with `severity` `blocking` that each stage owns on the work item.
+- The batch is written whole or not at all, in one transaction under the work item's lock:
+  two raises at the same time get different ids.
+
+Checks, after checks 1 to 4 of the order of checks, before the work item's lock: a body
+over 8 MiB is `413` `payload_too_large`; a body outside the schema, a second base of one
+target, a second raise with one `ref`, a base or a raise of a target other than the run's,
+a raise for a stage the work item's process does not have, or a raise for a stage other
+than the run's stage, is `400` `invalid_request`, with the first member that failed in
+`names`, such as `events[0].stage`. The refusal of a raise for a stage other than the
+run's stage also has `message`: "Raise the finding for the run's stage. A run raises findings only for the
+stage that started it."
+
+Then, under the work item's lock: first the bases, where a base that differs from the one
+stored is `409` `base_changed`; then each event in order, where an id the work item's
+current take in does not have on the run's target is `404` `not_found`, and a repeat,
+`close_fixed` or `close_dismissed` of a finding that another stage owns is `400`
+`invalid_request` with `events[<i>].id` in `names` and the `message` "Close or repeat only
+a finding of the run's stage. Another stage owns this finding, and its re-check closes
+it." A reply, `reply_fixed` or `reply_disputed`, may be about a finding of any stage.
 
 ## POST next-session
 
@@ -987,11 +1102,14 @@ chunks are sent ends the answer there. No byte of a transcript is logged.
 
 | Status | `error` | Other members | When |
 |---|---|---|---|
-| `400` | `invalid_request` | `names`, and `message` for a report of pushed commits and a next-session request | A body that is not the request's object, a report of pushed commits over its limits or with a commit that is not a full commit id, a next-session request outside its schema, or a content that is not strict base64 |
+| `400` | `invalid_request` | `names`, and `message` for a report of pushed commits, a next-session request, and a findings event for another stage | A body that is not the request's object, a report of pushed commits over its limits or with a commit that is not a full commit id, a next-session request outside its schema, a batch of findings outside its schema, with a stage the process does not have, with a raise for another stage, or a repeat or a close of another stage's finding, or a content that is not strict base64 |
 | `401` | `unauthorized` | | The request does not verify; unsigned |
 | `404` | `not_found` | | An unknown run, a run of another gateway, an unknown version or file; for `GET resume/transcript`, a run that ended, has no `resume`, or whose transcript cannot be served; for `POST next-session`, a run of Explore or of a stage without `shared_run`, and an instance without `workflow_model` |
+| `404` | `not_found` | | For `POST findings`, a run that ended, or an `id` the work item's current take in does not have on the run's target |
 | `404` | (the error page) | | The instance does not have `workflow_model` (except for `POST next-session`), or, for `GET resume/transcript`, `observability` |
+| `409` | `base_changed` | | A base of a target that differs from the base stored for the take in |
 | `409` | `run_ended` | `message` | A push or a verdict after the run ended or a member cancelled it, checked before the push and again when the version is stored; a report of pushed commits after the run ended (a cancel does not refuse it), checked before and again under the work item's lock |
+| `409` | `open_blocking_findings` | `message`, `stage`, `findings` | A `passed` verdict while the run's stage owns an open blocking finding |
 | `409` | `run_ended` | `message` | A next-session request after the run ended or a member cancelled it, after the stage stopped running the run, or for inputs that ended the run |
 | `409` | `session_mismatch` | `message` | A next-session request for an older session than the newest one the run reported |
 | `409` | `not_writable` | `message` | A report of pushed commits from a run whose access is not `write` |
@@ -1024,6 +1142,10 @@ The messages:
   be formed: "Close the run. The input of its next session breaks a rule for the agent's
   input, such as its size limit, so the run ended."
 - `collection_clash`: "Give the targets different collections."
+- `open_blocking_findings`: "Send changes-requested in place of passed: build has 2 open
+  blocking findings.", then the line "  The open blocking findings are f1, f2.", which starts
+  with two spaces. For one: "Send changes-requested in place of passed: build has 1 open
+  blocking finding.", then "  The open blocking finding is f1."
 - `session_mismatch`: "Send the number of the session that ended last. A later session of
   this run ended already."
 - `invalid_request`, for a next-session request: "Send session, state and reason as the

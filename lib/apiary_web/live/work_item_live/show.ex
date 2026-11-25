@@ -66,7 +66,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
   # comments (`work_item.review_comment`). With
   # nothing to send it shows under the form that no answer was given. Undo, Close, Run
   # Explore again and Confirm show no words when they fail: the page reads the work item
-  # again and draws where it stands now. A send of Run another round or a reply that
+  # again and draws where it stands now. A Confirm that an open blocking finding stops shows
+  # the finding's line under the gate. A send of Run another round or a reply that
   # writes nothing shows why under its form, with the drafts kept
   # (`ApiaryWeb.WorkItemComponents.send_error/1`): the artifact store out of
   # reach, a run of the page's attempt that started first, a work item that changed after
@@ -130,8 +131,8 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   import ApiaryWeb.WorkItemComponents
 
-  alias Apiary.{Access, AccessKeys, Artifacts, Edition, Gateways, Processes, Runs, Stages}
-  alias Apiary.{Submissions, WorkItems, WorkspaceSetup}
+  alias Apiary.{Access, AccessKeys, Artifacts, Edition, Findings, Gateways, Processes, Runs}
+  alias Apiary.{Stages, Submissions, WorkItems, WorkspaceSetup}
   alias Apiary.Runs.Run
   alias Apiary.WorkItems.{ExploreView, Proposal}
 
@@ -1524,10 +1525,14 @@ defmodule ApiaryWeb.WorkItemLive.Show do
 
   defp confirm(socket, track) do
     with_attempt(socket, fn attempt ->
-      done(
-        socket,
-        WorkItems.confirm(scope(socket), socket.assigns.row, attempt, track: track)
-      )
+      case WorkItems.confirm(scope(socket), socket.assigns.row, attempt, track: track) do
+        {:error, {:open_blocking_findings, refusal}} = refused ->
+          {:noreply, socket} = done(socket, refused)
+          {:noreply, assign(socket, :move_error, open_findings(refusal, :another_round))}
+
+        result ->
+          done(socket, result)
+      end
     end)
   end
 
@@ -1717,6 +1722,13 @@ defmodule ApiaryWeb.WorkItemLive.Show do
     )
   end
 
+  # A gate `none` has no Request changes.
+  def refused({:open_blocking_findings, refusal}, %{gate_kind: "none"}),
+    do: open_findings(refusal, :another_round)
+
+  def refused({:open_blocking_findings, refusal}, _flow),
+    do: open_findings(refusal, :request_changes)
+
   def refused(:store_unavailable, _flow), do: store_error()
 
   def refused(:not_approver, flow),
@@ -1745,6 +1757,10 @@ defmodule ApiaryWeb.WorkItemLive.Show do
         "Reload the page and act again, and %{contact_support} if it fails again. Qory Apiary could not act on the stage.",
         contact_support: ApiaryWeb.Support.plain(mid_sentence: true)
       )
+
+  # The lines of a pass that open blocking findings stop, the action the page offers first.
+  defp open_findings(%{count: count, stage: stage}, action),
+    do: count |> Findings.refusal_lines(stage, action) |> Enum.join(" ")
 
   # Where the work item moved since the reader saw it, by the names of the stages.
   defp moved({seen_flow, seen_id}, flow) do

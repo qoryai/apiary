@@ -149,13 +149,19 @@ defmodule Apiary.Dispatches.WireTest do
   @run_schemas ~w(documents next-session-request next-session-answer next-session-refusal
                   outcome findings findings-post findings-post-answer findings-refusal)
 
+  defp run_schema_of(name) do
+    @run_schemas
+    |> Enum.filter(&String.starts_with?(name, &1 <> "-"))
+    |> Enum.max_by(&String.length/1, fn -> nil end)
+  end
+
   # A run fixture's schema is its directory's name under `fixtures/`, or, under
-  # `invalid/`, `closed/` and `check/`, the run schema its file name starts with, the
-  # longest that matches. A fixture under `closed/` has a member that the schema does not
-  # define: it is valid under the schema, as a reader ignores such a member. The contract's
-  # closed copy, which this test does not build, fails it. A fixture under `check/` is
-  # valid under the schema and breaks a rule that the schema cannot state
-  # (`ApiaryWeb.Contract.DocumentsCheck` for the documents).
+  # `invalid/`, `check/` and `closed/`, the run schema its file name starts with, the
+  # longest that matches. A fixture under `check/` breaks a rule that the schema cannot
+  # state (`ApiaryWeb.Contract.DocumentsCheck` for the documents): the schema accepts it.
+  # A fixture under `closed/` has a member that the schema does not define: it is valid
+  # under the schema, as a reader ignores such a member. The contract's closed copy, which
+  # this test does not build, fails it.
   @tag :contract
   test "every run fixture is valid under its schema, or refused under it under invalid/" do
     fixtures = Path.join(@vendored, "run/v1/fixtures")
@@ -184,13 +190,8 @@ defmodule Apiary.Dispatches.WireTest do
 
       {schema, expected} =
         case Path.split(relative) do
-          [dir, name] when dir in ["invalid", "closed", "check"] ->
-            schema =
-              @run_schemas
-              |> Enum.filter(&String.starts_with?(name, &1 <> "-"))
-              |> Enum.max_by(&String.length/1, fn -> nil end)
-
-            {schema, dir != "invalid"}
+          [folder, name] when folder in ["invalid", "check", "closed"] ->
+            {run_schema_of(name), folder != "invalid"}
 
           [dir, _name] ->
             {dir, true}

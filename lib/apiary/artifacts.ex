@@ -131,7 +131,9 @@ defmodule Apiary.Artifacts do
   # pushes its questions first (`verdict_kept/4`). A verdict's `track`, which the format check
   # passed, is a track that the gate of the stage the version is made in offers, in the
   # work item's process version, else
-  # `{:invalid, {:track_not_offered, %{stage: name | nil, ids: offered, id: track}}}`.
+  # `{:invalid, {:track_not_offered, %{stage: name | nil, ids: offered, id: track}}}`. Then
+  # a `passed` verdict made in a stage that owns an open blocking finding is
+  # `{:open_blocking_findings, findings}` (`Apiary.Findings.gate/2`).
   # Then a `decision` that is not the id of a person's note on the held work item
   # (`Apiary.Stages.Notes.find/2`) is `{:unknown_decision, decision}`, checked before the
   # integers, so a refused decision leaves no staged copy.
@@ -237,7 +239,7 @@ defmodule Apiary.Artifacts do
 
   import Ecto.Query, warn: false
 
-  alias Apiary.{Access, Audit, PublicId, Repo}
+  alias Apiary.{Access, Audit, Findings, PublicId, Repo}
   alias Apiary.Accounts.Scope
   alias Apiary.Artifacts.{Artifact, ArtifactFile, CustomSchema, Delivery, Filename, Format}
   alias Apiary.Artifacts.{Mockup, Store}
@@ -1548,22 +1550,35 @@ defmodule Apiary.Artifacts do
   # can answer it; else `{:invalid, {:kept, 0, {:not_open, point, question}}}`, with `point`
   # counted from 1. The format check passed, so the file is one JSON document of the
   # verdict's format. The newest questions, where their file cannot be read, are
-  # `{:error, :store_unavailable}`.
+  # `{:error, :store_unavailable}`. A `passed` verdict of a stage that owns an open blocking
+  # finding is `{:error, {:open_blocking_findings, _}}` (`Apiary.Findings.gate/2`); the
+  # posts of findings lock the work item too.
   defp verdict_kept(%WorkItem{} = held, %Artifact{type: "verdict"}, fields, [file]) do
     with {:ok, text} <- File.read(file.staged.path),
          {:ok, %{} = document} <- Jason.decode(text),
-         :ok <- track_offered(held, fields.stage_id, document) do
+         :ok <- track_offered(held, fields.stage_id, document),
+         :ok <- passed_kept(held, fields.stage_id, document) do
       case answer_points(document) do
         [] -> :ok
         answers -> answers_open(held, answers)
       end
     else
       {:error, {:invalid, _reason}} = refused -> refused
+      {:error, {:open_blocking_findings, _findings}} = refused -> refused
       _unreadable -> {:error, {:invalid, {:unreadable, 0}}}
     end
   end
 
   defp verdict_kept(_held, _artifact, _fields, _staged), do: :ok
+
+  # The stage `stage_id` of the work item's process version may pass, for the verdict
+  # `passed`.
+  defp passed_kept(held, stage_id, %{"verdict" => "passed"}) when is_binary(stage_id) do
+    stage = held |> Processes.version_for() |> Processes.stage(stage_id)
+    Findings.gate(held, stage || %{"id" => stage_id, "name" => nil})
+  end
+
+  defp passed_kept(_held, _stage_id, _document), do: :ok
 
   # The gate of the stage `stage_id` of the work item's process version offers the track of
   # the verdict, `%{"track" => %{"id" => id}}`; no stage, or a stage whose gate offers none,

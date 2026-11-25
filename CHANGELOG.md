@@ -2136,6 +2136,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   (`deliver` types, `read_targets` collections and the ids of `inputs.destinations`,
   each listed once) and is refused, `503`, with an error logged, for documents that
   fail.
+- A work item keeps the findings of its reviews and checks, and a stage passes only when
+  none of its blocking findings is open.
 <!-- /feature -->
 
 ### Changed
@@ -2179,6 +2181,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `409` `run_ended`, before Qory Apiary reads the body. A repeat of the newest session
   still gets its stored answer. `names` contains an unknown member at any length of its
   name. Without `workflow_model`, the request gets `404` `not_found` as JSON.
+- In a stage whose workflows share one run, Run another round after a run that stopped
+  in a loop starts the loop's first workflow.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
 - The run configuration's `model_credential` is now
@@ -4063,6 +4067,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   version that has `target_removed` keeps it and stays readable, but every write that
   changes that row, whatever column it sets, then fails the check, until the value is
   cleared or the migrations run again.
+- `findings`, `finding_events` and `finding_bases` (20261122150000): three new tables.
 - `nodes` (20261122160000 and 20261122160100): a nullable column, `change_kinds`, the
   kinds of change request that an adapter's source role lists, with a check that only an
   adapter has it, with 1 to 16 kinds of 1 to 64 lower-case letters, digits and single
