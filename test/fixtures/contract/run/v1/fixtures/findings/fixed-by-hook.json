@@ -1,0 +1,72 @@
+{
+  "bases": [],
+  "findings": [
+    {
+      "id": "f7",
+      "target": {
+        "collection": "R_1001",
+        "address": {
+          "system": "code.example.com",
+          "path": "acme/shop"
+        }
+      },
+      "stage": "build",
+      "source": {
+        "kind": "hook",
+        "name": "hook-1"
+      },
+      "severity": "non-blocking",
+      "place": {
+        "quote": "func total(c Cart) float64",
+        "file": "src/cart.go",
+        "line": 40
+      },
+      "point": "go vet reports a copied lock",
+      "problem": "total takes a Cart by value, and Cart has a lock, which go vet reports.",
+      "fix": "Pass the Cart by pointer.",
+      "proof": "Run go vet ./... and read the copylocks warning at src/cart.go line 40.",
+      "state": "fixed",
+      "disputed": false,
+      "events": [
+        {
+          "kind": "raised",
+          "round": 1,
+          "stage": "build",
+          "actor": {
+            "kind": "qory",
+            "name": "hook-1"
+          }
+        },
+        {
+          "kind": "repeated",
+          "round": 2,
+          "stage": "build",
+          "actor": {
+            "kind": "qory",
+            "name": "hook-1"
+          }
+        },
+        {
+          "kind": "replied_fixed",
+          "round": 3,
+          "stage": "build",
+          "actor": {
+            "kind": "qory",
+            "name": "implement-changes"
+          },
+          "reason": "Passed the Cart by pointer."
+        },
+        {
+          "kind": "closed_fixed",
+          "round": 3,
+          "stage": "build",
+          "actor": {
+            "kind": "qory",
+            "name": "hook-1"
+          },
+          "reason": "The hook reports no warning."
+        }
+      ]
+    }
+  ]
+}

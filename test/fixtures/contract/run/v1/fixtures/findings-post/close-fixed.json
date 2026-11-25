@@ -1,0 +1,11 @@
+{
+  "events": [
+    {
+      "kind": "close_fixed",
+      "by": "suite",
+      "id": "f2",
+      "reason": "The suite passes on the new version.",
+      "version": "89abcdef0123456789abcdef0123456789abcdef"
+    }
+  ]
+}

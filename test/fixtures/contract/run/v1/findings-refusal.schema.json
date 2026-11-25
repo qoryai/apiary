@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/run/v1/findings-refusal.schema.json",
+  "title": "Findings refusal",
+  "description": "The body of a coded refusal of Qory Apiary to a request about findings or to a verdict: Forager's link refusal, https://qory.dev/contracts/forager/v1/link-refusal.schema.json, with from apiary. error is one of four codes, and each code has one status. 400 invalid_request: a body outside findings-post.schema.json, or whose must_understand lists a pointer that Qory Apiary does not define, with names, the first member that fails, and message. 404 not_found: an unknown run, or a finding id that is not in the work item's findings. 409 base_changed: a base that differs from the base that Qory Apiary stored for the work item and the target. 409 open_blocking_findings: the answer to a verdict passed of a stage while the stage owns an open blocking finding, at POST /v1/runs/<id>/verdict. stage is that stage, findings has the ids of up to 50 of those findings, and message is required with this code. Send the verdict changes-requested for the stage in place of passed; a verdict changes-requested or escalate is not refused for this cause. Findings that are not blocking, that are not open, or that another stage owns do not count. The message of open_blocking_findings has two lines: \"Send changes-requested in place of passed: <stage> has <count> open blocking findings.\" and \"  The open blocking findings are <ids>.\" For a count of 1, the first line is \"Send changes-requested in place of passed: <stage> has 1 open blocking finding.\" and the second line is \"  The open blocking finding is <id>.\" <count> is the number of open blocking findings of the stage, and <ids> are the ids in findings, joined by a comma and a space. The other members are as the link refusal defines them. The checks that come before these, such as the signature of the request, are outside this document.",
+  "type": "object",
+  "allOf": [
+    {
+      "$ref": "https://qory.dev/contracts/forager/v1/link-refusal.schema.json"
+    }
+  ],
+  "if": {
+    "properties": {
+      "error": {
+        "const": "open_blocking_findings"
+      }
+    },
+    "required": [
+      "error"
+    ]
+  },
+  "then": {
+    "required": [
+      "stage",
+      "findings",
+      "message"
+    ]
+  },
+  "else": {
+    "not": {
+      "anyOf": [
+        {
+          "required": [
+            "stage"
+          ]
+        },
+        {
+          "required": [
+            "findings"
+          ]
+        }
+      ]
+    }
+  },
+  "properties": {
+    "error": {
+      "description": "The code of the refusal: invalid_request (400), not_found (404), base_changed (409) or open_blocking_findings (409).",
+      "type": "string",
+      "enum": [
+        "invalid_request",
+        "not_found",
+        "base_changed",
+        "open_blocking_findings"
+      ]
+    },
+    "from": {
+      "description": "apiary: the gateway passes on the refusal of Qory Apiary.",
+      "const": "apiary"
+    },
+    "stage": {
+      "description": "The stage whose verdict passed is refused. Present exactly when error is open_blocking_findings.",
+      "$ref": "https://qory.dev/contracts/run/v1/findings.schema.json#/$defs/stage"
+    },
+    "findings": {
+      "description": "The ids of up to 50 open blocking findings that the stage owns. Present exactly when error is open_blocking_findings.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 50,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "https://qory.dev/contracts/run/v1/findings.schema.json#/$defs/id"
+      }
+    }
+  }
+}

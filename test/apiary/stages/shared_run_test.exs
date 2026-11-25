@@ -1417,6 +1417,46 @@ defmodule Apiary.Stages.SharedRunTest do
       assert [%{workflow: "triage-review"}] = Stages.skips(work_item)
     end
 
+    test "Run another round after a stop in the loop's second workflow starts the loop again",
+         %{scope: scope} do
+      save!(scope, [feedback_build()])
+      {work_item, run} = taken_in!(scope)
+
+      :ok = verdict!(run, "passed")
+      assert {:session, %{workflow: "implement-changes"}} = report(run, 1)
+      assert {:session, %{workflow: "review-changes"}} = report(run, 2)
+
+      # The machine of review-changes' session fails.
+      assert report(run, 3, "failed") == :end
+      assert %WorkItem{stage_state: :escalated, loop_entry: 1} = reload(work_item)
+
+      work_item = another_round!(scope, work_item, nil)
+
+      assert %DispatchRun{workflow: "implement-changes", stage_entry: 2, loop_entry: 0, round: 2} =
+               newest_run(work_item)
+    end
+
+    test "Run another round after a stopped run of Explore in the loop starts the loop again",
+         %{scope: scope} do
+      save!(scope, [feedback_build()])
+      {work_item, run} = taken_in!(scope)
+
+      :ok = verdict!(run, "passed")
+      assert {:session, %{workflow: "implement-changes"}} = report(run, 1)
+      assert {:session, %{workflow: "review-changes"}} = report(run, 2)
+      assert report(run, 3, "failed") == :end
+
+      # A run of Explore in a stage with `shared_run: true` runs the stage's workflows as
+      # sessions of one run, as any other run of the stage.
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^run.id), set: [explore: true])
+
+      work_item = another_round!(scope, work_item, nil)
+
+      assert %DispatchRun{workflow: "implement-changes", stage_entry: 2, loop_entry: 0, round: 2} =
+               newest_run(work_item)
+    end
+
     test "Run another round with a comment starts triage-review; once a run handled the note, it does not start it again",
          %{scope: scope} do
       save!(scope, [feedback_build()])

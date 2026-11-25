@@ -1,0 +1,34 @@
+{
+  "bases": [
+    {
+      "target": {
+        "collection": "R_1003"
+      },
+      "base": "7"
+    }
+  ],
+  "events": [
+    {
+      "kind": "raise",
+      "by": "locked-checks",
+      "ref": "r3",
+      "target": {
+        "collection": "R_1003"
+      },
+      "stage": "verify",
+      "source": {
+        "kind": "criterion",
+        "name": "checkout-total"
+      },
+      "severity": "blocking",
+      "place": {
+        "quote": "The total on the receipt equals the sum of the lines.",
+        "version": "7"
+      },
+      "point": "The receipt total differs from the sum of its lines",
+      "problem": "A receipt of two lines, 40.00 and 60.00, shows a total of 90.00.",
+      "fix": "Compute the receipt total from its lines.",
+      "proof": "Open a receipt with two lines and add the lines by hand: the sum is 100.00, and the receipt shows 90.00."
+    }
+  ]
+}

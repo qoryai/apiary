@@ -2112,6 +2112,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   version.
 - `change_request.report`, an action of an adapter's key, covers the adapter's report of
   what became of a change request: its reply and its failure.
+<!-- feature: workflow_model -->
+- A work item keeps the findings of its reviews and checks, and a stage passes only when
+  none of its blocking findings is open.
+<!-- /feature -->
 
 ### Changed
 
@@ -2154,6 +2158,8 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   `409` `run_ended`, before Qory Apiary reads the body. A repeat of the newest session
   still gets its stored answer. `names` contains an unknown member at any length of its
   name. Without `workflow_model`, the request gets `404` `not_found` as JSON.
+- In a stage whose workflows share one run, Run another round after a run that stopped
+  in a loop starts the loop's first workflow.
 <!-- /feature -->
 <!-- feature: factory, secrets -->
 - The run configuration's `model_credential` is now
@@ -4038,6 +4044,7 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   version that has `target_removed` keeps it and stays readable, but every write that
   changes that row, whatever column it sets, then fails the check, until the value is
   cleared or the migrations run again.
+- `findings`, `finding_events` and `finding_bases` (20261122150000): three new tables.
 <!-- /feature -->
 
 ## [0.1.0] - 2026-10-13

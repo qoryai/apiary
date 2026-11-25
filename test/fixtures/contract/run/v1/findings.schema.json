@@ -1,0 +1,416 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/run/v1/findings.schema.json",
+  "title": "Findings",
+  "description": "The body of the 200 answer to GET /v1/runs/<id>/findings: the findings of the run's work item on the run's targets, open ones first, each with its events, and the base of each target. The findings and the bases are those of the current take in of the work item: a take in is one start of the work item in Qory Apiary, and taking the work item in again starts a new take in. A finding is one problem that a reviewer, a check, a criterion, a scenario or a hook raised about a target of the work item. Qory Apiary keeps the findings and mints their ids. An event is one line of a finding's history: the raise, a repeat, a reply, a close, or the action of a person. Events are only added, never changed. A finding that a person closed stays closed: a run that repeats it adds the event repeated_after_person_close. bases has one entry for each target whose base Qory Apiary has stored: the version that the first run of the take in on the target started from. A target with no earlier version has no entry in bases. The schema cannot check that no two findings have the same id, or that no two entries of bases have the same target: Findings.Check in Go does. findings has at most 500 entries, and this contract defines no answer for a work item with more. A reader ignores a member that this schema does not define, unless must_understand lists it. findings-post.schema.json is the body of the request that writes findings, and findings-refusal.schema.json is the body of a refusal.",
+  "type": "object",
+  "required": [
+    "bases",
+    "findings"
+  ],
+  "properties": {
+    "bases": {
+      "description": "The base of each target that has one, at most 20. A target with no earlier version has no entry. A base is written once for each take in of the work item and each target, by the first POST that has it.",
+      "type": "array",
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "https://qory.dev/contracts/run/v1/findings.schema.json#/$defs/base_entry"
+      }
+    },
+    "findings": {
+      "description": "The findings of the work item on the run's targets, open ones first, at most 500.",
+      "type": "array",
+      "maxItems": 500,
+      "items": {
+        "$ref": "https://qory.dev/contracts/run/v1/findings.schema.json#/$defs/finding"
+      }
+    },
+    "must_understand": {
+      "description": "The members of the document that the reader must understand, each as a JSON Pointer (RFC 6901) counted from the document, such as /findings. List each once, at most 32. A pointer has no line feed, and writes ~ only as ~0 or ~1. Each pointer is to a member that this schema defines. The reader ignores a member that this schema does not define, unless must_understand lists it. It refuses a document whose must_understand lists a pointer that it does not define.",
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 256,
+        "not": {
+          "pattern": "\\n"
+        },
+        "pattern": "^(?:/bases|/bases/(?:0|[1-9][0-9]*)|/bases/(?:0|[1-9][0-9]*)/base|/bases/(?:0|[1-9][0-9]*)/target|/bases/(?:0|[1-9][0-9]*)/target/address|/bases/(?:0|[1-9][0-9]*)/target/address/path|/bases/(?:0|[1-9][0-9]*)/target/address/system|/bases/(?:0|[1-9][0-9]*)/target/collection|/findings|/findings/(?:0|[1-9][0-9]*)|/findings/(?:0|[1-9][0-9]*)/disputed|/findings/(?:0|[1-9][0-9]*)/events|/findings/(?:0|[1-9][0-9]*)/events/(?:0|[1-9][0-9]*)|/findings/(?:0|[1-9][0-9]*)/events/(?:0|[1-9][0-9]*)/actor|/findings/(?:0|[1-9][0-9]*)/events/(?:0|[1-9][0-9]*)/actor/kind|/findings/(?:0|[1-9][0-9]*)/events/(?:0|[1-9][0-9]*)/actor/name|/findings/(?:0|[1-9][0-9]*)/events/(?:0|[1-9][0-9]*)/kind|/findings/(?:0|[1-9][0-9]*)/events/(?:0|[1-9][0-9]*)/reason|/findings/(?:0|[1-9][0-9]*)/events/(?:0|[1-9][0-9]*)/round|/findings/(?:0|[1-9][0-9]*)/events/(?:0|[1-9][0-9]*)/stage|/findings/(?:0|[1-9][0-9]*)/events/(?:0|[1-9][0-9]*)/version|/findings/(?:0|[1-9][0-9]*)/fix|/findings/(?:0|[1-9][0-9]*)/id|/findings/(?:0|[1-9][0-9]*)/place|/findings/(?:0|[1-9][0-9]*)/place/file|/findings/(?:0|[1-9][0-9]*)/place/line|/findings/(?:0|[1-9][0-9]*)/place/quote|/findings/(?:0|[1-9][0-9]*)/place/version|/findings/(?:0|[1-9][0-9]*)/point|/findings/(?:0|[1-9][0-9]*)/problem|/findings/(?:0|[1-9][0-9]*)/proof|/findings/(?:0|[1-9][0-9]*)/severity|/findings/(?:0|[1-9][0-9]*)/source|/findings/(?:0|[1-9][0-9]*)/source/kind|/findings/(?:0|[1-9][0-9]*)/source/name|/findings/(?:0|[1-9][0-9]*)/stage|/findings/(?:0|[1-9][0-9]*)/state|/findings/(?:0|[1-9][0-9]*)/target|/findings/(?:0|[1-9][0-9]*)/target/address|/findings/(?:0|[1-9][0-9]*)/target/address/path|/findings/(?:0|[1-9][0-9]*)/target/address/system|/findings/(?:0|[1-9][0-9]*)/target/collection)$"
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "description": "The id of a finding: f and a number from 1, at most 9 digits, minted by Qory Apiary for the work item, such as f12. Qory Apiary shows it to a person in this form.",
+      "type": "string",
+      "pattern": "^f[1-9][0-9]{0,8}$"
+    },
+    "stage": {
+      "description": "The name of a stage: lower-case letters and digits in groups joined by single hyphens, 1 to 64 characters.",
+      "type": "string",
+      "maxLength": 64,
+      "pattern": "^[a-z0-9]+(-[a-z0-9]+)*$"
+    },
+    "reason": {
+      "description": "The reason of an event, 1 to 2000 characters.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 2000,
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/text"
+    },
+    "report_text": {
+      "description": "A text of a report, 1 to 4000 characters, possibly on several lines.",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 4000,
+      "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/text"
+    },
+    "base_entry": {
+      "description": "The base of one target: target, and base, the version that the first run of the take in on the target started from, in the grammar of target_version in documents.schema.json.",
+      "type": "object",
+      "required": [
+        "target",
+        "base"
+      ],
+      "properties": {
+        "target": {
+          "description": "The target, as the finding has it.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/target"
+        },
+        "base": {
+          "description": "The version that the first run of the take in on the target started from.",
+          "$ref": "https://qory.dev/contracts/run/v1/documents.schema.json#/$defs/target_version"
+        }
+      }
+    },
+    "source": {
+      "description": "What raised a finding: kind and name.",
+      "type": "object",
+      "required": [
+        "kind",
+        "name"
+      ],
+      "properties": {
+        "kind": {
+          "description": "reviewer, a review agent; check, a check that qory runs, such as the test suite; criterion, an acceptance criterion; scenario, a demo scenario; or hook, a hook of the harness.",
+          "type": "string",
+          "enum": [
+            "reviewer",
+            "check",
+            "criterion",
+            "scenario",
+            "hook"
+          ]
+        },
+        "name": {
+          "description": "The role of the reviewer, or the name of the check, criterion, scenario or hook: 1 to 200 characters on one line, by the rule of a prose line (description.schema.json, $defs.line).",
+          "type": "string",
+          "maxLength": 200,
+          "$ref": "https://qory.dev/contracts/integration/v1/description.schema.json#/$defs/line"
+        }
+      }
+    },
+    "severity": {
+      "description": "blocking, a finding that keeps its stage from passing while it is open, or non-blocking, a finding that stays visible in later rounds and never keeps a stage from passing.",
+      "type": "string",
+      "enum": [
+        "blocking",
+        "non-blocking"
+      ]
+    },
+    "place": {
+      "description": "Where the finding is: quote, the text at the place, and, when the target has files, file and line. version is the version of the artifact that was reviewed.",
+      "type": "object",
+      "required": [
+        "quote"
+      ],
+      "dependentRequired": {
+        "line": [
+          "file"
+        ]
+      },
+      "properties": {
+        "quote": {
+          "description": "The text at the place, 1 to 2000 characters, possibly on several lines.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 2000,
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/text"
+        },
+        "file": {
+          "description": "The path of the file in the target, 1 to 300 characters on one line, by the rule of a prose line. Absent when the target has no files.",
+          "$ref": "https://qory.dev/contracts/integration/v1/description.schema.json#/$defs/line"
+        },
+        "line": {
+          "description": "The line in file, from 1. Present only with file.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "version": {
+          "description": "The version of the artifact that was reviewed, in the grammar of target_version in documents.schema.json.",
+          "$ref": "https://qory.dev/contracts/run/v1/documents.schema.json#/$defs/target_version"
+        }
+      }
+    },
+    "point": {
+      "description": "The point of the finding: one line that sums it up, 1 to 500 characters on one line, by the character rule of a prose line (description.schema.json, $defs.line).",
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 500,
+      "pattern": "^(?:[^\\p{Cc}\\p{Cf}\u2028\u2029]|[\u200c\u200d])+$"
+    },
+    "actor": {
+      "description": "Who wrote an event: kind qory, a report or a check that qory read, or person, a member of the workspace. For qory, name is the role of the session whose report the event came from, such as code-reviewer or implement-changes, or the name of the check, such as suite, locked-checks, demo-evidence or hook-1. For a person, name is absent: the run API does not show the user id.",
+      "type": "object",
+      "required": [
+        "kind"
+      ],
+      "if": {
+        "properties": {
+          "kind": {
+            "const": "person"
+          }
+        },
+        "required": [
+          "kind"
+        ]
+      },
+      "then": {
+        "not": {
+          "required": [
+            "name"
+          ]
+        }
+      },
+      "properties": {
+        "kind": {
+          "description": "qory or person.",
+          "type": "string",
+          "enum": [
+            "qory",
+            "person"
+          ]
+        },
+        "name": {
+          "description": "1 to 200 characters on one line, by the rule of a prose line (description.schema.json, $defs.line).",
+          "type": "string",
+          "maxLength": 200,
+          "$ref": "https://qory.dev/contracts/integration/v1/description.schema.json#/$defs/line"
+        }
+      }
+    },
+    "event": {
+      "description": "One event of a finding. The events replied_fixed, replied_disputed, closed_fixed, closed_dismissed and dismissed_by_person have a reason; every other kind may have one. The events of kinds raised, repeated, replied_fixed, replied_disputed, closed_fixed, closed_dismissed and repeated_after_person_close have the actor kind qory. The events of kinds dismissed_by_person, accepted and sent_back are the actions of a person, which the run API does not write, and have the actor kind person: dismissed_by_person and accepted close the finding, and sent_back keeps it open. The event reopened sets the state of a closed finding to open, and has the actor kind qory when a reviewer repeats a finding that a run closed, or when a check fails again after closed_fixed, and person when a person reopens the finding. A run that repeats a finding that a person closed adds repeated_after_person_close, and the finding stays closed.",
+      "type": "object",
+      "required": [
+        "kind",
+        "round",
+        "stage",
+        "actor"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "raised",
+                  "repeated",
+                  "replied_fixed",
+                  "replied_disputed",
+                  "closed_fixed",
+                  "closed_dismissed",
+                  "repeated_after_person_close"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "properties": {
+                  "kind": {
+                    "const": "qory"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "dismissed_by_person",
+                  "accepted",
+                  "sent_back"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "properties": {
+              "actor": {
+                "properties": {
+                  "kind": {
+                    "const": "person"
+                  }
+                }
+              }
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "replied_fixed",
+                  "replied_disputed",
+                  "closed_fixed",
+                  "closed_dismissed",
+                  "dismissed_by_person"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "reason"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "kind": {
+          "description": "What happened.",
+          "type": "string",
+          "enum": [
+            "raised",
+            "repeated",
+            "replied_fixed",
+            "replied_disputed",
+            "closed_fixed",
+            "closed_dismissed",
+            "repeated_after_person_close",
+            "dismissed_by_person",
+            "accepted",
+            "sent_back",
+            "reopened"
+          ]
+        },
+        "round": {
+          "description": "The stage_round of the work item when the event was written, from 1: the round counter of the stage.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "stage": {
+          "description": "The stage that the round counts. The round restarts after a return, so each event has the stage.",
+          "$ref": "#/$defs/stage"
+        },
+        "actor": {
+          "$ref": "#/$defs/actor"
+        },
+        "version": {
+          "description": "The version of the target or artifact that the event concerns, in the grammar of target_version in documents.schema.json.",
+          "$ref": "https://qory.dev/contracts/run/v1/documents.schema.json#/$defs/target_version"
+        },
+        "reason": {
+          "description": "Why, 1 to 2000 characters. Required for replied_fixed, replied_disputed, closed_fixed, closed_dismissed and dismissed_by_person, and optional for every other kind.",
+          "$ref": "#/$defs/reason"
+        }
+      }
+    },
+    "finding": {
+      "description": "One finding, with its history.",
+      "type": "object",
+      "required": [
+        "id",
+        "target",
+        "stage",
+        "source",
+        "severity",
+        "place",
+        "point",
+        "problem",
+        "fix",
+        "proof",
+        "state",
+        "disputed",
+        "events"
+      ],
+      "properties": {
+        "id": {
+          "$ref": "#/$defs/id"
+        },
+        "target": {
+          "description": "The target that the finding is about.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/target"
+        },
+        "stage": {
+          "description": "The stage that owns the finding: the stage whose checks raised it and whose re-check closes it. Only an open blocking finding of a stage keeps that stage from passing.",
+          "$ref": "#/$defs/stage"
+        },
+        "source": {
+          "$ref": "#/$defs/source"
+        },
+        "severity": {
+          "$ref": "#/$defs/severity"
+        },
+        "place": {
+          "$ref": "#/$defs/place"
+        },
+        "point": {
+          "$ref": "#/$defs/point"
+        },
+        "problem": {
+          "description": "What is wrong.",
+          "$ref": "#/$defs/report_text"
+        },
+        "fix": {
+          "description": "What would fix it.",
+          "$ref": "#/$defs/report_text"
+        },
+        "proof": {
+          "description": "How the reader can see the problem.",
+          "$ref": "#/$defs/report_text"
+        },
+        "state": {
+          "description": "open; fixed, closed after a re-check passed; dismissed, closed by a dismissal; or accepted, closed by a person who accepts the finding as it is. Only open keeps a stage from passing.",
+          "type": "string",
+          "enum": [
+            "open",
+            "fixed",
+            "dismissed",
+            "accepted"
+          ]
+        },
+        "disputed": {
+          "description": "true after a reply that disputed the finding. The finding stays open until a close.",
+          "type": "boolean"
+        },
+        "events": {
+          "description": "The events of the finding, 1 to 100, oldest first.",
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 100,
+          "items": {
+            "$ref": "#/$defs/event"
+          }
+        }
+      }
+    }
+  }
+}

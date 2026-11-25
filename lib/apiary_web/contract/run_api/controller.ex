@@ -1,10 +1,10 @@
 defmodule ApiaryWeb.Contract.RunApi.Controller do
   @moduledoc false
 
-  # The run API: a run's reads of its work item and that work item's artifacts, and its
-  # pushes of artifacts and its verdict, under `/v1/runs/<run_id>/`, as the run's gateway
-  # sends them. With the feature `workflow_model`; docs/contract/run-api.md is the
-  # contract.
+  # The run API: a run's reads of its work item and that work item's artifacts, its
+  # pushes of artifacts and its verdict, and its reads and writes of the work item's
+  # findings, under `/v1/runs/<run_id>/`, as the run's gateway sends them. With the
+  # feature `workflow_model`; docs/contract/run-api.md is the contract.
   #
   # Each request comes through the run endpoint's pipeline (`:contract_registration`):
   # `ApiaryWeb.Contract.SignedRequest` verifies it under the gateway's access key, in the
@@ -38,7 +38,9 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   #      the rule it breaks; a version of `acceptance-criteria` under a name other than
   #      `main`, `422` `invalid_artifact` with `name` in `names`, before its file is
   #      checked; a `decision` that is not the id of a person's note on the work item
-  #      (`Apiary.Stages.Notes`), `422` `unknown_decision`; and a version of
+  #      (`Apiary.Stages.Notes`), `422` `unknown_decision`; a `passed` verdict while the
+  #      run's stage owns an open blocking finding (`Apiary.Findings.gate/2`), `409`
+  #      `open_blocking_findings`; and a version of
   #      `questions` or `review-comments` whose file is over the size limit as stored,
   #      with each number that is an integer in value written as an integer (`1e3` as
   #      `1000`), `422` `too_large`;
@@ -71,10 +73,12 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
 
   alias Apiary.Artifacts.Format
   alias Apiary.Dispatches.RunEnd
+  alias Apiary.Findings
+  alias Apiary.Findings.Finding
   alias Apiary.PublicId
-  alias Apiary.Runs.PushedCommit
+  alias Apiary.Runs.{PushedCommit, Target}
   alias ApiaryWeb.Contract.Configuration
-  alias ApiaryWeb.Contract.RunApi.{Body, Boundary, Run, Wire}
+  alias ApiaryWeb.Contract.RunApi.{Body, Boundary, FindingsBody, Run, Wire}
 
   # The message of a next-session request outside the run contract.
   @next_session_body "Send session, state and reason as the run contract's next-session request has them."
@@ -109,6 +113,30 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     case run(conn, run_id) do
       {:ok, run} -> answer(conn, 200, Wire.index(Boundary.artifact_index(run.work_item)))
       {:error, :not_found} -> error(conn, 404, "not_found")
+    end
+  rescue
+    exception -> unavailable(conn, exception)
+  end
+
+  # The findings of the run's work item on the run's target and the base of that target,
+  # of the work item's current take in.
+  def findings(conn, %{"run_id" => run_id}) do
+    case run(conn, run_id) do
+      {:ok, run} ->
+        target_id = target_id(run)
+
+        answer(
+          conn,
+          200,
+          Wire.findings(
+            Findings.list(run.work_item, target_id),
+            Findings.bases(run.work_item, target_id),
+            stage_names(run.work_item)
+          )
+        )
+
+      {:error, :not_found} ->
+        error(conn, 404, "not_found")
     end
   rescue
     exception -> unavailable(conn, exception)
@@ -178,7 +206,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
       |> pushed(%{
         name: push.type,
         type: type,
-        filenames: Enum.map(files, & &1.filename)
+        filenames: Enum.map(files, & &1.filename),
+        work_item: run.work_item
       })
     end
   end
@@ -198,7 +227,8 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
            |> pushed(%{
              name: "verdict",
              type: nil,
-             filenames: ["verdict.json"]
+             filenames: ["verdict.json"],
+             work_item: run.work_item
            }) do
       answer(conn, 201, Wire.version(version, "verdict", "main"))
     else
@@ -207,6 +237,140 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   rescue
     exception -> unavailable(conn, exception)
   end
+
+  @raise_other_stage "Raise the finding for the run's stage. " <>
+                       "A run raises findings only for the stage that started it."
+  @finding_other_stage "Close or repeat only a finding of the run's stage. " <>
+                         "Another stage owns this finding, and its re-check closes it."
+
+  # A batch of findings events: `200` with the new ids and the open blocking findings of
+  # each stage. An ended run is `404` `not_found`, the one answer the contract has for a
+  # run that may not write, read here and again under the work item's lock
+  # (`Apiary.Findings.post/3`); a cancel that a member requested does not refuse it. Then
+  # the body (`413` `payload_too_large`, `400` `invalid_request` with the member in
+  # `names`), where a raise and a base are of the run's target and a raise's stage is the
+  # run's stage (with `message`); then, under the lock, another base than the one stored
+  # `409` `base_changed`, an id the work item does not have on that target `404`
+  # `not_found`, and a repeat or a close of a finding that another stage owns `400`
+  # `invalid_request` with `message`.
+  def post_findings(conn, %{"run_id" => run_id}) do
+    with {:ok, run} <- run(conn, run_id),
+         :ok <- reporting(run),
+         {:ok, body} <- FindingsBody.post(conn.assigns.raw_body),
+         names = stage_names(run.work_item),
+         target_id = target_id(run),
+         stages = findings_stages(run, names),
+         {:ok, batch} <- findings_batch(body, target_id, target(run), stages),
+         {:ok, %{created: created, open_blocking: counts}} <-
+           Findings.post(
+             run.work_item,
+             %{run_id: run.run.id, dispatch_run_id: run.dispatch_run.id},
+             batch
+           ) do
+      answer(conn, 200, Wire.findings_posted(created, counts, names))
+    else
+      {:error, reason} when reason in [:not_found, :run_ended] ->
+        error(conn, 404, "not_found")
+
+      {:error, {:not_found, _index}} ->
+        error(conn, 404, "not_found")
+
+      {:error, {:other_stage, index}} ->
+        write_error(conn, {:error, :invalid_request, "events[#{index}].id", @finding_other_stage})
+
+      {:error, :base_changed} ->
+        error(conn, 409, "base_changed")
+
+      error ->
+        write_error(conn, error)
+    end
+  rescue
+    exception -> unavailable(conn, exception)
+  end
+
+  # The stages a batch is checked against: the id of each stage by its name in the run
+  # contract (`ids`), and the run's stage (`run`). `Apiary.Findings.post/3` compares the
+  # stage that owns the finding of a repeat or a close with the run's stage under the work
+  # item's lock.
+  defp findings_stages(run, names) do
+    %{
+      ids: Map.new(names, fn {id, name} -> {name, id} end),
+      run: Apiary.Stages.run_stage_id(run.dispatch_run, run.work_item)
+    }
+  end
+
+  # The batch with the run's target and the ids of its stages. A run without a target row
+  # has no findings, so every raise and base is of another target.
+  defp findings_batch(%{bases: bases, events: events}, target_id, target, stages) do
+    with {:ok, bases} <- each(bases, &findings_base(&1, target_id, target)),
+         {:ok, events} <- each(events, &findings_event(&1, target_id, target, stages)) do
+      {:ok, %{bases: bases, events: events}}
+    end
+  end
+
+  defp findings_base(%{index: index, target: wire, base: base}, target_id, target) do
+    if target_id && same_target?(wire, target),
+      do: {:ok, %{target_id: target_id, base: base}},
+      else: {:error, :invalid_request, "bases[#{index}].target"}
+  end
+
+  defp findings_event(%{kind: "raise", index: index} = event, target_id, target, stages) do
+    stage_id = stages.ids[event.stage]
+
+    cond do
+      is_nil(target_id) or not same_target?(event.target, target) ->
+        {:error, :invalid_request, "events[#{index}].target"}
+
+      is_nil(stage_id) ->
+        {:error, :invalid_request, "events[#{index}].stage"}
+
+      stage_id != stages.run ->
+        {:error, :invalid_request, "events[#{index}].stage", @raise_other_stage}
+
+      true ->
+        {:ok, Map.merge(event, %{target_id: target_id, stage_id: stage_id})}
+    end
+  end
+
+  defp findings_event(_event, nil, _target, _stages), do: {:error, :not_found}
+
+  # A reply may be about a finding of any stage; a repeat and a close only about one that
+  # the run's stage owns.
+  defp findings_event(%{kind: kind} = event, target_id, _target, stages) do
+    event = Map.merge(event, %{target_id: target_id, number: Finding.number(event.id)})
+
+    if kind in ["reply_fixed", "reply_disputed"],
+      do: {:ok, event},
+      else: {:ok, Map.put(event, :run_stage_id, stages.run)}
+  end
+
+  # The target a run has in its collection, by the collection's ref: the address is a label
+  # that may change.
+  defp same_target?(%{"collection" => ref}, %{collection_external_ref: ref}), do: true
+  defp same_target?(_wire, _target), do: false
+
+  defp each(entries, read) do
+    entries
+    |> Enum.reduce_while([], fn entry, done ->
+      case read.(entry) do
+        {:ok, value} -> {:cont, [value | done]}
+        error -> {:halt, error}
+      end
+    end)
+    |> case do
+      done when is_list(done) -> {:ok, Enum.reverse(done)}
+      error -> error
+    end
+  end
+
+  defp target(run), do: Target.dispatched(run.dispatch_run.id)
+
+  defp target_id(run),
+    do: Target.dispatched_id(run.work_item.workspace_id, run.dispatch_run.id)
+
+  # The names of the stages of the work item's process version, by stage id
+  # (`Apiary.Findings.stage_names/1`).
+  defp stage_names(work_item), do: Findings.stage_names(Boundary.process_document(work_item))
 
   # A report of the commits the run pushed: `204`, signed, with no body. A run that has
   # ended is `409` `run_ended`, a run whose access is not `write` `409` `not_writable`
@@ -630,6 +794,12 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
   defp refused({:too_large, size_limit}, push),
     do: {:error, {:too_large, push.name, limit(size_limit, push.type, :size_limit)}}
 
+  # The stage by its name in the run contract, as `GET findings` has it.
+  defp refused({:open_blocking_findings, %{stage_id: stage_id} = refusal}, push) do
+    stage = Findings.stage_name(Boundary.process_document(push.work_item), stage_id)
+    {:error, {:open_blocking_findings, %{refusal | stage: stage}}}
+  end
+
   defp refused({:invalid, member}, _push) when member in [:type, :name, :note, :decision],
     do: {:error, :invalid_request, Atom.to_string(member)}
 
@@ -955,11 +1125,24 @@ defmodule ApiaryWeb.Contract.RunApi.Controller do
     )
   end
 
+  defp write_error(conn, {:error, {:open_blocking_findings, refusal}}) do
+    %{stage: stage, findings: findings, count: count} = refusal
+
+    error(conn, 409, "open_blocking_findings",
+      message: Findings.verdict_message(stage, count, findings),
+      stage: stage,
+      findings: findings
+    )
+  end
+
   defp write_error(conn, {:error, :too_large}), do: error(conn, 413, "payload_too_large")
 
   defp write_error(conn, {:error, :invalid_request, member}) do
     conn |> put_status(400) |> json(%{error: "invalid_request", names: [member]})
   end
+
+  defp write_error(conn, {:error, :invalid_request, member, message}),
+    do: error(conn, 400, "invalid_request", names: [member], message: message)
 
   defp write_error(conn, {:error, {:unknown_type, type}}) do
     error(conn, 422, "unknown_type", type: type, message: unknown_type_message(type))

@@ -1,0 +1,200 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://qory.dev/contracts/run/v1/findings-post.schema.json",
+  "title": "Findings post",
+  "description": "The body of POST /v1/runs/<id>/findings: a batch of events that qory writes about the findings of the run's work item after a round. The events are raise, repeat, reply_fixed, reply_disputed, close_fixed and close_dismissed. A raise has a ref, a key that is unique in the batch, and the members of a new finding from target to proof; Qory Apiary mints the id of the finding and returns it by ref in findings-post-answer.schema.json. Each other event has the id of an existing finding. A person's actions, dismiss, accept, send back and reopen, are not events of this request. A finding that a person closed cannot be reopened through this request: a repeat of it is stored as the event repeated_after_person_close. bases has the base of each target that the events concern. Qory Apiary writes a base once for each take in of the work item and each target, from the first request that has it (a take in is one start of the work item in Qory Apiary, and taking it in again starts a new take in), and refuses a different base later with the code base_changed (findings-refusal.schema.json). The schema cannot check that no two entries of bases have the same target, or that no two events have the same ref: FindingsPost.Check in Go does. A reader ignores a member that this schema does not define, unless must_understand lists it.",
+  "type": "object",
+  "required": [
+    "events"
+  ],
+  "properties": {
+    "bases": {
+      "description": "The base of each target that the events concern, at most 20.",
+      "type": "array",
+      "maxItems": 20,
+      "uniqueItems": true,
+      "items": {
+        "$ref": "https://qory.dev/contracts/run/v1/findings.schema.json#/$defs/base_entry"
+      }
+    },
+    "events": {
+      "description": "The events, 1 to 100, in the order they happened.",
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 100,
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    },
+    "must_understand": {
+      "description": "The members of the document that the reader must understand, each as a JSON Pointer (RFC 6901) counted from the document, such as /events. List each once, at most 32. A pointer has no line feed, and writes ~ only as ~0 or ~1. Each pointer is to a member that this schema defines. The reader ignores a member that this schema does not define, unless must_understand lists it. It refuses a document whose must_understand lists a pointer that it does not define.",
+      "type": "array",
+      "maxItems": 32,
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "maxLength": 256,
+        "not": {
+          "pattern": "\\n"
+        },
+        "pattern": "^(?:/bases|/bases/(?:0|[1-9][0-9]*)|/bases/(?:0|[1-9][0-9]*)/base|/bases/(?:0|[1-9][0-9]*)/target|/bases/(?:0|[1-9][0-9]*)/target/address|/bases/(?:0|[1-9][0-9]*)/target/address/path|/bases/(?:0|[1-9][0-9]*)/target/address/system|/bases/(?:0|[1-9][0-9]*)/target/collection|/events|/events/(?:0|[1-9][0-9]*)|/events/(?:0|[1-9][0-9]*)/by|/events/(?:0|[1-9][0-9]*)/fix|/events/(?:0|[1-9][0-9]*)/id|/events/(?:0|[1-9][0-9]*)/kind|/events/(?:0|[1-9][0-9]*)/place|/events/(?:0|[1-9][0-9]*)/place/file|/events/(?:0|[1-9][0-9]*)/place/line|/events/(?:0|[1-9][0-9]*)/place/quote|/events/(?:0|[1-9][0-9]*)/place/version|/events/(?:0|[1-9][0-9]*)/point|/events/(?:0|[1-9][0-9]*)/problem|/events/(?:0|[1-9][0-9]*)/proof|/events/(?:0|[1-9][0-9]*)/reason|/events/(?:0|[1-9][0-9]*)/ref|/events/(?:0|[1-9][0-9]*)/severity|/events/(?:0|[1-9][0-9]*)/source|/events/(?:0|[1-9][0-9]*)/source/kind|/events/(?:0|[1-9][0-9]*)/source/name|/events/(?:0|[1-9][0-9]*)/stage|/events/(?:0|[1-9][0-9]*)/target|/events/(?:0|[1-9][0-9]*)/target/address|/events/(?:0|[1-9][0-9]*)/target/address/path|/events/(?:0|[1-9][0-9]*)/target/address/system|/events/(?:0|[1-9][0-9]*)/target/collection|/events/(?:0|[1-9][0-9]*)/version)$"
+      }
+    }
+  },
+  "$defs": {
+    "ref": {
+      "description": "The key of a raise in the batch: 1 to 64 letters, digits and the characters ._-. The answer returns the id of the new finding under this key.",
+      "type": "string",
+      "pattern": "^[A-Za-z0-9._-]{1,64}$"
+    },
+    "event": {
+      "description": "One event. Each event has by. A raise has ref and the members of a finding from target to proof, and no id. Each other kind has id, and none of those members. Each kind except raise and repeat has a reason.",
+      "type": "object",
+      "required": [
+        "kind",
+        "by"
+      ],
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "raise"
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "ref",
+              "target",
+              "stage",
+              "source",
+              "severity",
+              "place",
+              "point",
+              "problem",
+              "fix",
+              "proof"
+            ],
+            "properties": {
+              "id": false
+            }
+          },
+          "else": {
+            "required": [
+              "id"
+            ],
+            "properties": {
+              "ref": false,
+              "target": false,
+              "stage": false,
+              "source": false,
+              "severity": false,
+              "place": false,
+              "point": false,
+              "problem": false,
+              "fix": false,
+              "proof": false
+            }
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "kind": {
+                "enum": [
+                  "reply_fixed",
+                  "reply_disputed",
+                  "close_fixed",
+                  "close_dismissed"
+                ]
+              }
+            },
+            "required": [
+              "kind"
+            ]
+          },
+          "then": {
+            "required": [
+              "reason"
+            ]
+          }
+        }
+      ],
+      "properties": {
+        "kind": {
+          "description": "raise, a new finding; repeat, a reviewer or check that raises the finding again; reply_fixed, the builder's report that it fixed the finding; reply_disputed, the builder's report that disputes the finding; close_fixed, a reviewer or check whose re-check passes; or close_dismissed, a reviewer's report that drops the finding after a dispute.",
+          "type": "string",
+          "enum": [
+            "raise",
+            "repeat",
+            "reply_fixed",
+            "reply_disputed",
+            "close_fixed",
+            "close_dismissed"
+          ]
+        },
+        "by": {
+          "description": "Who writes the event: the role of the session whose report the event comes from, such as code-reviewer or implement-changes, or the name of the check, such as suite or hook-1. For a finding that a criterion raises or closes, by is locked-checks, and for a scenario it is demo-evidence. Qory Apiary copies by to the name of the actor of the event that it writes. 1 to 200 characters on one line, by the rule of a prose line (description.schema.json, $defs.line).",
+          "type": "string",
+          "maxLength": 200,
+          "$ref": "https://qory.dev/contracts/integration/v1/description.schema.json#/$defs/line"
+        },
+        "ref": {
+          "$ref": "#/$defs/ref"
+        },
+        "id": {
+          "description": "The id of the finding, for each kind except raise.",
+          "$ref": "https://qory.dev/contracts/run/v1/findings.schema.json#/$defs/id"
+        },
+        "reason": {
+          "description": "Why, 1 to 2000 characters. Required for each kind except raise and repeat.",
+          "$ref": "https://qory.dev/contracts/run/v1/findings.schema.json#/$defs/reason"
+        },
+        "version": {
+          "description": "The version of the target or artifact that the event concerns, in the grammar of target_version in documents.schema.json.",
+          "$ref": "https://qory.dev/contracts/run/v1/documents.schema.json#/$defs/target_version"
+        },
+        "target": {
+          "description": "A raise: the target that the finding is about.",
+          "$ref": "https://qory.dev/contracts/integration/v1/definitions.schema.json#/$defs/target"
+        },
+        "stage": {
+          "description": "A raise: the stage that owns the finding.",
+          "$ref": "https://qory.dev/contracts/run/v1/findings.schema.json#/$defs/stage"
+        },
+        "source": {
+          "description": "A raise: what raised the finding.",
+          "$ref": "https://qory.dev/contracts/run/v1/findings.schema.json#/$defs/source"
+        },
+        "severity": {
+          "description": "A raise: blocking or non-blocking.",
+          "$ref": "https://qory.dev/contracts/run/v1/findings.schema.json#/$defs/severity"
+        },
+        "place": {
+          "description": "A raise: where the finding is.",
+          "$ref": "https://qory.dev/contracts/run/v1/findings.schema.json#/$defs/place"
+        },
+        "point": {
+          "description": "A raise: the point of the finding.",
+          "$ref": "https://qory.dev/contracts/run/v1/findings.schema.json#/$defs/point"
+        },
+        "problem": {
+          "description": "A raise: what is wrong.",
+          "$ref": "https://qory.dev/contracts/run/v1/findings.schema.json#/$defs/report_text"
+        },
+        "fix": {
+          "description": "A raise: what would fix it.",
+          "$ref": "https://qory.dev/contracts/run/v1/findings.schema.json#/$defs/report_text"
+        },
+        "proof": {
+          "description": "A raise: how the reader can see the problem.",
+          "$ref": "https://qory.dev/contracts/run/v1/findings.schema.json#/$defs/report_text"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,252 @@
+{
+  "bases": [
+    {
+      "target": {
+        "collection": "R_1001",
+        "address": {
+          "system": "code.example.com",
+          "path": "acme/shop"
+        }
+      },
+      "base": "0123456789abcdef0123456789abcdef01234567"
+    },
+    {
+      "target": {
+        "collection": "R_1002",
+        "address": {
+          "system": "ads.example.com",
+          "path": "accounts/1234"
+        }
+      },
+      "base": "7"
+    }
+  ],
+  "findings": [
+    {
+      "id": "f1",
+      "target": {
+        "collection": "R_1001",
+        "address": {
+          "system": "code.example.com",
+          "path": "acme/shop"
+        }
+      },
+      "stage": "build",
+      "source": {
+        "kind": "reviewer",
+        "name": "code-reviewer"
+      },
+      "severity": "blocking",
+      "place": {
+        "quote": "total = price + tax - discount",
+        "file": "src/cart.go",
+        "line": 42,
+        "version": "0123456789abcdef0123456789abcdef01234567"
+      },
+      "point": "The discount is applied after the tax",
+      "problem": "total adds the tax before it subtracts the discount, so the tax is charged on the full price.",
+      "fix": "Subtract the discount first, then add the tax on the reduced price.",
+      "proof": "An order of 100.00 with a 10.00 discount and 20 percent tax totals 110.00. It should total 108.00.",
+      "state": "open",
+      "disputed": true,
+      "events": [
+        {
+          "kind": "raised",
+          "round": 1,
+          "stage": "build",
+          "actor": {
+            "kind": "qory",
+            "name": "code-reviewer"
+          },
+          "version": "0123456789abcdef0123456789abcdef01234567"
+        },
+        {
+          "kind": "replied_disputed",
+          "round": 2,
+          "stage": "build",
+          "actor": {
+            "kind": "qory",
+            "name": "implement-changes"
+          },
+          "version": "89abcdef0123456789abcdef0123456789abcdef",
+          "reason": "The shop's rule charges the tax on the full price."
+        },
+        {
+          "kind": "sent_back",
+          "round": 2,
+          "stage": "build",
+          "actor": {
+            "kind": "person"
+          }
+        }
+      ]
+    },
+    {
+      "id": "f2",
+      "target": {
+        "collection": "R_1001",
+        "address": {
+          "system": "code.example.com",
+          "path": "acme/shop"
+        }
+      },
+      "stage": "build",
+      "source": {
+        "kind": "check",
+        "name": "suite"
+      },
+      "severity": "blocking",
+      "place": {
+        "quote": "FAIL TestCartTotal (0.02s)",
+        "file": "src/cart_test.go",
+        "line": 17
+      },
+      "point": "TestCartTotal fails",
+      "problem": "TestCartTotal returns 110.00; the criterion is 108.00.",
+      "fix": "Subtract the discount before the tax in total.",
+      "proof": "Run go test ./... and read the failure: TestCartTotal returns 110.00, and the criterion is 108.00.",
+      "state": "open",
+      "disputed": false,
+      "events": [
+        {
+          "kind": "raised",
+          "round": 1,
+          "stage": "build",
+          "actor": {
+            "kind": "qory",
+            "name": "suite"
+          }
+        },
+        {
+          "kind": "replied_fixed",
+          "round": 2,
+          "stage": "build",
+          "actor": {
+            "kind": "qory",
+            "name": "implement-changes"
+          },
+          "version": "89abcdef0123456789abcdef0123456789abcdef",
+          "reason": "Subtracted the discount before the tax in total."
+        },
+        {
+          "kind": "closed_fixed",
+          "round": 2,
+          "stage": "build",
+          "actor": {
+            "kind": "qory",
+            "name": "suite"
+          },
+          "version": "89abcdef0123456789abcdef0123456789abcdef",
+          "reason": "The suite passes on the new version."
+        },
+        {
+          "kind": "reopened",
+          "round": 3,
+          "stage": "build",
+          "actor": {
+            "kind": "qory",
+            "name": "suite"
+          },
+          "version": "89abcdef0123456789abcdef0123456789abcdef",
+          "reason": "The suite fails again on the new version."
+        }
+      ]
+    },
+    {
+      "id": "f3",
+      "target": {
+        "collection": "R_1002",
+        "address": {
+          "system": "ads.example.com",
+          "path": "accounts/1234"
+        }
+      },
+      "stage": "build",
+      "source": {
+        "kind": "reviewer",
+        "name": "copy-reviewer"
+      },
+      "severity": "non-blocking",
+      "place": {
+        "quote": "Free shiping on orders over 50"
+      },
+      "point": "The listing text has a typo",
+      "problem": "The listing has shipping with one p.",
+      "fix": "Write shipping with two p.",
+      "proof": "The listing text is Free shiping on orders over 50.",
+      "state": "dismissed",
+      "disputed": false,
+      "events": [
+        {
+          "kind": "raised",
+          "round": 1,
+          "stage": "build",
+          "actor": {
+            "kind": "qory",
+            "name": "copy-reviewer"
+          }
+        },
+        {
+          "kind": "dismissed_by_person",
+          "round": 1,
+          "stage": "build",
+          "actor": {
+            "kind": "person"
+          },
+          "reason": "The spelling is the brand's."
+        },
+        {
+          "kind": "repeated_after_person_close",
+          "round": 2,
+          "stage": "build",
+          "actor": {
+            "kind": "qory",
+            "name": "copy-reviewer"
+          }
+        }
+      ]
+    },
+    {
+      "id": "f4",
+      "target": {
+        "collection": "R_1003"
+      },
+      "stage": "verify",
+      "source": {
+        "kind": "criterion",
+        "name": "checkout-total"
+      },
+      "severity": "blocking",
+      "place": {
+        "quote": "The total on the receipt equals the sum of the lines.",
+        "version": "7"
+      },
+      "point": "The receipt total differs from the sum of its lines",
+      "problem": "A receipt of two lines, 40.00 and 60.00, shows a total of 90.00.",
+      "fix": "Compute the receipt total from its lines.",
+      "proof": "Open a receipt with two lines and add the lines by hand: the sum is 100.00, and the receipt shows 90.00.",
+      "state": "accepted",
+      "disputed": false,
+      "events": [
+        {
+          "kind": "raised",
+          "round": 1,
+          "stage": "verify",
+          "actor": {
+            "kind": "qory",
+            "name": "locked-checks"
+          }
+        },
+        {
+          "kind": "accepted",
+          "round": 1,
+          "stage": "verify",
+          "actor": {
+            "kind": "qory",
+            "name": "verify"
+          }
+        }
+      ]
+    }
+  ]
+}

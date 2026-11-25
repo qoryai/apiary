@@ -1,0 +1,22 @@
+{
+  "created": [
+    {
+      "ref": "r1",
+      "id": "f5"
+    },
+    {
+      "ref": "r2",
+      "id": "f6"
+    }
+  ],
+  "open_blocking": [
+    {
+      "stage": "build",
+      "count": 2
+    },
+    {
+      "stage": "verify",
+      "count": 0
+    }
+  ]
+}

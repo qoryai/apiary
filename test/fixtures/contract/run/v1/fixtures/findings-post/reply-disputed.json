@@ -1,0 +1,10 @@
+{
+  "events": [
+    {
+      "kind": "reply_disputed",
+      "by": "implement-changes",
+      "id": "f1",
+      "reason": "The shop's rule charges the tax on the full price."
+    }
+  ]
+}
