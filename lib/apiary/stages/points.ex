@@ -210,6 +210,13 @@ defmodule Apiary.Stages.Points do
   def no_verdict,
     do: [run_again(default(fn -> gettext("The run stopped before its verdict.") end))]
 
+  # stopped/1 is the point of a run that stopped, from its stop cause's parts
+  # (`Apiary.Stages.StopCause.parts/3`): a whole line as it is, else `run_stopped/2`.
+  @doc false
+  @spec stopped({String.t(), String.t() | nil} | {:whole, String.t()}) :: [t]
+  def stopped({:whole, line}) when is_binary(line), do: [run_again(line)]
+  def stopped({cause, fix}), do: run_stopped(cause, fix)
+
   # run_stopped/2 is the point of a run that stopped, from its stop cause
   # (`Apiary.Stages.StopCause.parts/3`): "The run stopped:" and the cause, with its
   # leading "The run" written as "it", and the cause's fix in `fix` where it has one.

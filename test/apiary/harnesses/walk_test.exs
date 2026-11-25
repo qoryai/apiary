@@ -550,6 +550,71 @@ defmodule Apiary.Harnesses.WalkTest do
       end
     end
 
+    test "a harness file whose section has hooks and no extends fails invalid, with the file, also one that lists modules",
+         ctx do
+      setting(ctx.scope, @setting)
+
+      for {file, section} <- [
+            {"qory.yaml", "hooks: [guard.sh]\n"},
+            {"qory.yaml", "hooks:\n    PreToolUse: [guard.sh]\n"},
+            {"qory.yaml", "name: app\n  modules: []\n  hooks: [guard.sh]\n"},
+            {"qory.yaml", "modules:\n    - source: {path: harness/local}\n  hooks: [guard.sh]\n"},
+            {"harness.yaml", "hooks: [guard.sh]\n"},
+            {"harness.yaml",
+             "modules:\n    - source: {path: harness/local}\n  hooks:\n    PreToolUse: [guard.sh]\n"}
+          ] do
+        serve([ctx.run],
+          covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+          files: Map.put(@base_files, {"R_app", file}, "harness:\n  " <> section)
+        )
+
+        assert {:failed, %{failure: :invalid, source: @target, rule: rule}} =
+                 Walk.run(ctx.input),
+               file <> ": " <> section
+
+        assert rule == %{"rule" => "hooks_without_extends", "values" => %{"file" => file}}
+      end
+    end
+
+    test "a qory.yaml with workflows or empty hooks, and neither extends nor modules, takes the document",
+         ctx do
+      setting(ctx.scope, @setting)
+
+      for {file, section} <- [
+            {"qory.yaml", "workflows:\n    explore: {access: read}\n"},
+            {"qory.yaml", "hooks: []\n"},
+            {"qory.yaml", "hooks: {}\n"},
+            {"qory.yaml", "hooks:\n  name: app\n"}
+          ] do
+        serve([ctx.run],
+          covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+          files: Map.put(@base_files, {"R_app", file}, "harness:\n  " <> section)
+        )
+
+        assert {:ok, %{origin: :setting, target_version: "c-R_app"}} = Walk.run(ctx.input),
+               file <> ": " <> section
+      end
+    end
+
+    test "a qory.yaml whose section has extends and hooks applies, as one with extends alone",
+         ctx do
+      setting(ctx.scope, @setting)
+
+      serve([ctx.run],
+        covered: covering(ctx, %{@tools => {"G_run", "R_tools"}}),
+        files:
+          Map.put(@base_files, {"R_app", "qory.yaml"}, @file_section <> "  hooks: [guard.sh]\n")
+      )
+
+      assert {:ok, walked} = Walk.run(ctx.input)
+      assert %{origin: :file, document: nil, stack_id: nil, target_version: "c-R_app"} = walked
+
+      assert walked.pins == [
+               %{"git" => @harness, "ref" => "v1", "at" => "c-R_harness"},
+               %{"git" => @tools, "ref" => "v2", "at" => "c-R_tools"}
+             ]
+    end
+
     test "a file whose section lists modules without extends applies over the choice's document, with its modules' sources alone",
          ctx do
       setting(ctx.scope, @setting)

@@ -53,6 +53,7 @@ defmodule Apiary.Stages.StopCause do
   def text(run, work_item, context \\ %{}) do
     case split(run, work_item, context) do
       {:one, cause} -> cause
+      {:whole, line} -> line
       {:point, cause, _point} -> cause
       {:then, cause, fix} -> cause <> " " <> fix
       {:lines, cause, fix} -> cause <> "\n" <> fix
@@ -61,13 +62,16 @@ defmodule Apiary.Stages.StopCause do
   end
 
   # parts/3 is why `run` stopped as an escalation's point takes it
-  # (`Apiary.Stages.Points.run_stopped/2`), after "The run stopped:": the cause, and what
-  # fixes it, nil where only another round does.
+  # (`Apiary.Stages.Points.stopped/1`): the cause after "The run stopped:", and what fixes
+  # it, nil where only another round does; or `{:whole, line}`, a line that is the whole
+  # point, with "The run stopped:" inside it.
   @doc false
-  @spec parts(DispatchRun.t(), WorkItem.t(), context) :: {String.t(), String.t() | nil}
+  @spec parts(DispatchRun.t(), WorkItem.t(), context) ::
+          {String.t(), String.t() | nil} | {:whole, String.t()}
   def parts(run, work_item, context \\ %{}) do
     case split(run, work_item, context) do
       {:one, cause} -> {cause, nil}
+      {:whole, line} -> {:whole, line}
       {:point, _cause, point} -> {point, nil}
       {:then, cause, fix} -> {cause, fix}
       {:lines, cause, fix} -> {cause, fix}
@@ -75,7 +79,9 @@ defmodule Apiary.Stages.StopCause do
     end
   end
 
-  # The cause and its fix: `{:one, cause}` with no fix; `{:point, cause, point}` with no
+  # The cause and its fix: `{:one, cause}` with no fix; `{:whole, line}` for a line that
+  # has the fix first and "The run stopped:" inside it, as the stop line and as the whole
+  # point, such as for a harness file with hooks and no `extends`; `{:point, cause, point}` with no
   # fix, where a point says the cause in other words after "The run stopped:";
   # `{:then, cause, fix}` for a cause whose second sentence follows on the same line;
   # `{:lines, cause, fix}` for a run that ended before it started; and
@@ -128,8 +134,10 @@ defmodule Apiary.Stages.StopCause do
        "Qory Apiary got no report from it and marked it lost."}
 
   defp stopped_split(%DispatchRun{} = run, %WorkItem{} = work_item, context) do
-    {cause, fix} = lines(run, work_item |> names() |> Map.put(:run, run), context)
-    {:lines, cause, fix}
+    case lines(run, work_item |> names() |> Map.put(:run, run), context) do
+      {:whole, line} -> {:whole, line}
+      {cause, fix} -> {:lines, cause, fix}
+    end
   end
 
   # no_result/0 is why a run stopped that ended without a result: the cause of a session
@@ -733,6 +741,7 @@ defmodule Apiary.Stages.StopCause do
     source = walk.failed_source || "of #{n.workspace}"
 
     case harness_reason(walk.failure, walk, n) do
+      {:whole, line} -> {:whole, line}
       {:line, cause, fix} -> {cause, fix}
       {reason, fix} -> {"Qory Apiary could not read the harness #{source} (#{reason}).", fix}
     end
@@ -744,6 +753,19 @@ defmodule Apiary.Stages.StopCause do
     do:
       {"the target has no harness file, and the workspace sets no harness",
        "Owners and admins of #{n.workspace} choose a harness on the set-up step Harness."}
+
+  # A harness file with hooks and no `extends`: the fix first, then the cause after "The
+  # run stopped:", as one line of plain text.
+  defp harness_reason(
+         "invalid",
+         %RunHarness{
+           failure_rule: %{"rule" => "hooks_without_extends", "values" => %{"file" => file}}
+         },
+         _n
+       ),
+       do:
+         {:whole,
+          "Add extends: with the workspace's stack to #{file}. The run stopped: hooks run only in a harness file that extends a stack."}
 
   defp harness_reason("invalid", _walk, _n),
     do:
