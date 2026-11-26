@@ -415,7 +415,7 @@ defmodule Apiary.Processes.LeftoversTest do
       %{id: choice_id} = on!(scope, provider, @workflow)
 
       assert {:ok, _provider} =
-               Connections.rename_provider_key(scope, provider, "spare", "other")
+               Connections.update_provider_key(scope, provider, "spare", %{"value_id" => "other"})
 
       provider = Repo.reload!(provider)
       assert {:ok, _provider} = Connections.delete_provider_key(scope, provider, "other")

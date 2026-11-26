@@ -362,7 +362,8 @@ defmodule Apiary.Connections.LoginsTest do
 
       {:ok, provider} = Connections.put_default_key(scope, provider, "spare")
 
-      assert {:ok, _} = Connections.rename_provider_key(scope, provider, "main", "renamed")
+      assert {:ok, _} =
+               Connections.update_provider_key(scope, provider, "main", %{"value_id" => "renamed"})
 
       assert %Login{generation: 1} = Login.by_key(provider)[value.id]
       assert stored(provider, "renamed").refresh_token == tokens.refresh_token
@@ -516,7 +517,9 @@ defmodule Apiary.Connections.LoginsTest do
           value: device_login(tag: "s")
         })
 
-      {:ok, provider} = Connections.rename_provider_key(scope, provider, "spare", "renamed")
+      {:ok, provider} =
+        Connections.update_provider_key(scope, provider, "spare", %{"value_id" => "renamed"})
+
       plain = Repo.get!(Connection, provider.id)
       value = key_value!(provider, "renamed")
       next = login_tokens(tag: "after-rename")
@@ -540,7 +543,9 @@ defmodule Apiary.Connections.LoginsTest do
       next = login_tokens(tag: "after-rename")
 
       # A rename encrypts the value again under its new value id.
-      {:ok, provider} = Connections.rename_provider_key(scope, provider, "spare", "renamed")
+      {:ok, provider} =
+        Connections.update_provider_key(scope, provider, "spare", %{"value_id" => "renamed"})
+
       assert Repo.get!(Value, value.id).nonce != value.nonce
 
       assert Secrets.write_refreshed_key(plain, value.id, refreshed(next), started) == :ok

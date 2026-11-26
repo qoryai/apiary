@@ -248,7 +248,7 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
     assert_receive {:request, call}, 5_000
 
     {:ok, _provider} =
-      Connections.rename_provider_key(ctx.scope, ctx.provider, "spare", "renamed")
+      Connections.update_provider_key(ctx.scope, ctx.provider, "spare", %{"value_id" => "renamed"})
 
     send(call, :go)
 
@@ -275,7 +275,9 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
         fn -> refresh(ctx.provider, id) end,
         fn ->
           {:ok, _provider} =
-            Connections.rename_provider_key(ctx.scope, ctx.provider, "r#{round - 1}", "r#{round}")
+            Connections.update_provider_key(ctx.scope, ctx.provider, "r#{round - 1}", %{
+              "value_id" => "r#{round}"
+            })
         end
       ])
 
@@ -751,7 +753,9 @@ defmodule Apiary.ModelKeys.LoginRefreshRacesTest do
               "value" => stored_in
             })
           end,
-          fn -> Connections.rename_provider_key(ctx.scope, provider, "spare", "moved") end,
+          fn ->
+            Connections.update_provider_key(ctx.scope, provider, "spare", %{"value_id" => "moved"})
+          end,
           fn -> Connections.delete_provider(ctx.scope, provider) end
         ])
 

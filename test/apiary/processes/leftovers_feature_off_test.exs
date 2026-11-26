@@ -109,7 +109,9 @@ defmodule Apiary.Processes.LeftoversFeatureOffTest do
     assert [%{level: 4, workflow: @workflow}] = ModelChoices.places_using(provider)
     assert {:error, {:model_in_use, [_place]}} = Connections.delete_provider(scope, provider)
 
-    assert {:ok, _provider} = Connections.rename_provider_key(scope, provider, "spare", "other")
+    assert {:ok, _provider} =
+             Connections.update_provider_key(scope, provider, "spare", %{"value_id" => "other"})
+
     provider = Repo.reload!(provider)
     assert {:ok, _provider} = Connections.delete_provider_key(scope, provider, "other")
 

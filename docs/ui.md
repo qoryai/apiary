@@ -434,87 +434,129 @@ replaces the navigation it is in.
   needs a recent
   sign-in, and the page leads to the log-in page otherwise; anyone else gets a page not
   found.
-- **Organisation settings › Model providers** (`/:org/settings/model-providers`,
+- **Organisation settings › Model provider keys** (`/:org/settings/model-providers`,
   `ApiaryWeb.ProviderLive.Index`, with the features `factory` and `secrets`) lists the
-  organisation's model providers. Its Keys column has how many keys each provider has
-  and how many of them are in cooldown, "3 keys, 1 in cooldown", then how many need a new
-  key, "3 keys, 1 in cooldown, 1 needs a new key" or "3 keys, 2 need a new key"; a count of
-  0 is not shown, so a provider with neither reads "3 keys". A key that needs a new key
-  is counted there only, not in cooldown (`Apiary.ModelKeys.cooldown_counts/2`,
-  `Apiary.ModelKeys.new_key_counts/1`). A provider's page
-  (`…/model-providers/:provider_id`, `ApiaryWeb.ProviderLive.Show`) lists its keys, the
-  default key first, then in the order they were added. Each row has the key's name in
-  mono and its state on one line (`ApiaryWeb.ModelKeyComponents.state_line/1`), in the
-  reader's time zone: "Available", then, each after a middle dot, one segment for each
-  limit window with a use or a reset still to come, "Available · 5-hour 89%, resets
-  14:00 · 7-day 40%, resets Mon 09:00"; or, while the key is in cooldown
-  (`Apiary.ModelKeys.cooldown/4`), "In cooldown until Fri 14:00", the latest end of its
-  cooldown, and after a middle dot where that time comes from: "from the provider's
-  response", "from this key's schedule", "no reset time given; paused for 1 hour", the
-  cooldown that applied, from the response that started it to its end, whatever the
-  key's Pause for is when the page shows it, or "5-hour at 90%, this key's Use up to",
-  while a limit window's use is at or above the key's Use up to (Add key, below), until
-  that window resets, with the percentage the key has when the page shows it, which the
-  window's use may be past. A time is the time of day alone on the reader's day, the
-  weekday and the time on one of the six days after it, else the date and the time
+  organisation's model provider keys, one row per key, in the order they were added:
+  Key, the key's value ID in mono ("key-2"), Provider, the provider's title ("Claude
+  subscription token"), Workspaces, "Every workspace", one name ("Checkout"), up to three
+  names ("Checkout, Storefront, Billing") or the first two and how many more
+  ("Checkout, Storefront and 3 more"), and State, then **Edit** and **Remove**. Below a
+  table width of 600 px a row stacks: the key and its state, then "<Provider> ·
+  <Workspaces>", then Edit and Remove. State is the key's state line
+  (`ApiaryWeb.ModelKeyComponents.state_line/1`), in the reader's time zone: "Available",
+  then, each after a middle dot, one segment for each limit window with a use or a reset
+  still to come, "Available · 5-hour 89%, resets 14:00 · 7-day 40%, resets Mon 09:00"; or,
+  while the key is in cooldown (`Apiary.ModelKeys.cooldown/4`), "In cooldown until Fri
+  14:00", the latest end of its cooldown, and after a middle dot where that time comes
+  from: "from the provider's response", "from this key's schedule", "no reset time given;
+  paused for 1 hour", or "5-hour at 90%, this key's Use up to", while a limit window's use
+  is at or above the key's Use up to, until that window resets. A key the provider
+  rejected reads "Needs a new key" and a sign-in that needs renewing "Needs a new
+  sign-in", in place of the state. A time is the time of day alone on the reader's day,
+  the weekday and the time on one of the six days after it, else the date and the time
   (`ApiaryWeb.Format.week_time/2`). The windows read 5-hour, 7-day, 7-day Opus, 7-day
   Sonnet, Extra usage, Requests per minute, Tokens per minute, Input tokens per minute,
   Output tokens per minute, Spend limit and Limit; a window of another code shows its
-  code. The page shows no key and no token; a row has, in its identity line (below), the
-  last 4 characters of a pasted API key or the email of a sign-in. Every member reads it
-  (`connection.read`); owners and admins (`provider.write`) have **Add key** in the
-  section's actions and **Edit** at the right of each row, its label "Edit key" and the
-  key's identity line, and anyone else neither. A key has no name that a person gives: a
-  row shows its identity line (`Apiary.ModelKeys.Identity`), the provider's name and, after
-  a middle dot, for an API key of at least 12 characters the last 4 characters of the key
-  (none when they hold a control character, a format character such as U+202E, or a line
-  or paragraph separator), "Northwind Claude · …9c2e", for a sign-in the email of the
-  account, or, where the sign-in has none, "account …" and the last 4 characters of the
-  account ID, and the provider's name alone for any other key.
-- **Add key** (`…/model-providers/:provider_id/keys/new`) and **Edit key**
-  (`…/keys/:key_id/edit`, the row id of the key's value; a value ID is not found),
-  `ApiaryWeb.ProviderLive.Key`, are pages (A form is a page, below), the breadcrumb ending
-  with the provider's name and the act, and Edit key titled with the key's identity line.
-  The form has no Name: Qory Apiary sets the value ID `key-<n>`, a number it did not give
-  the provider before, and no page shows it. On Add key the form has Key, a password field
-  that is
-  empty after every save, with "Qory Apiary stores the key encrypted, and nobody can
-  view it again."; on Edit key, New value, an optional password field that is empty
-  after every save, with "Leave it empty to keep the value."; then Resets, Pause for and,
-  for a provider whose catalogue entry lists limit windows, Use up to
+  code. The page shows no key and no token. Every member reads it (`connection.read`);
+  owners and admins (`provider.write`) have **New model provider key** in the section's
+  actions, a link to Edit key on each key, and Edit and Remove on each row; anyone else
+  has none of them, and a line under the table: "Only owners and admins add model
+  provider keys." (the edition's sentence where it has one), or, for a person who reads
+  the organisation without a membership, "You can read this organisation, and change
+  nothing here." With no key the page shows "No model
+  provider key yet" and "Add a model provider key, so agents can run." The paths of the
+  provider's page and of its Add key, which are gone (`…/model-providers/:provider_id`
+  and `…/:provider_id/keys/new`), open the list.
+- **New model provider key** (`…/model-providers/new`) is a page (A form is a page,
+  below) with Provider, Address for LiteLLM, Key, a password field that is empty after
+  every save, with "Qory Apiary stores the key encrypted, and nobody can view it again."
+  (for a provider whose keys are logins, the button Sign in with ChatGPT in its place),
+  then Workspaces, where the edition shows it (`c:Apiary.Edition.scope_setting?/1`) and
+  the organisation has two or more workspaces: "Every workspace in Northwind", or "Only
+  these workspaces" with a checkbox per workspace, the current workspace ticked; with
+  none ticked the save shows "Choose at least one workspace." Without Workspaces the key
+  serves the current workspace. Then Resets, Pause for and, for a provider whose
+  catalogue entry lists limit windows, Use up to
   (`ApiaryWeb.ModelKeyComponents.settings_fields/1`). Resets is a group of Day, Time and
-  Time zone, whose zone is the reader's for a key with no reset, with the hint "The
-  weekly time when this key's allowance resets. Set it if the provider sends no reset
-  time." Pause for is a number and a unit, minutes, hours or days, with the hint
-  "How long runs skip this key after the provider returns a limit error, when no reset
-  time is known. Empty: 1 hour." for a subscription's key, and "Empty: 1 minute." at its
-  end for an API key. Use up to is a number with "%" after it, empty by default, with the
-  hint "Runs skip this key once its 5-hour or 7-day use reaches this percentage of the
-  allowance, until that window resets, so the rest stays for your sessions outside Qory
-  Apiary. Empty: runs use the key up to its limit.", the windows those of the provider's
-  catalogue entry (`Apiary.ModelKeys.limit_windows/1`): a Claude subscription's key has
-  it, an API key does not. A group's error takes its hint's place: "Set the day, the
-  time and the time zone, or leave all three empty.", "Enter a time from 1 minute to 7
-  days." and "Enter a percentage from 1 to 99."
-  The foot has Add key or Save beside Cancel. A save goes back to the provider's page
-  with "Northwind Claude · …9c2e is added." or "… is saved." with the key's identity
-  line, and a key past the 32nd "Northwind Claude has 32 keys, the most it can have. Delete a key to add
-  another." under Key. Both pages remove the spaces, tabs and newlines around Key or New
-  value before the save and keep the spaces inside; a Key of only spaces, tabs or
-  newlines shows "can't be blank", as an empty Key does. New model provider and the
-  set-up's Model step trim Key the same way. On Edit key, a New value that is
-  empty after that keeps the key's value and its cooldown; any other replaces the value,
-  even one that differs from it only in those spaces, and ends the key's cooldown. A New
-  value that fails the checks of Key saves nothing and shows the error
-  under New value, such as "must not contain a NUL byte". Add key of a subscription has
-  About model providers beside the form. Workspace settings › Secrets and variables has
-  the same Resets, Pause for and Use up to on Add value and Change value of a model
-  provider's key, and both remove the spaces, tabs and newlines around the key's value,
-  as Add key does. Change value with New value empty, or of only spaces, tabs or newlines,
-  saves the settings and keeps the key's value. Another secret's value is saved as typed,
-  its last newline included.
+  Time zone, whose zone is the reader's, with the hint "The weekly time when this key's
+  allowance resets. Set it if the provider sends no reset time." Pause for is a number
+  and a unit, minutes, hours or days, with the hint "How long runs skip this key after
+  the provider returns a limit error, when no reset time is known. Empty: 1 hour." for a
+  subscription's key, and "Empty: 1 minute." at its end for an API key. Use up to is a
+  number with "%" after it, empty by default, with the hint "Runs skip this key once its
+  5-hour or 7-day use reaches this percentage of the allowance, until that window resets,
+  so the rest stays for your sessions outside Qory Apiary. Empty: runs use the key up to
+  its limit." A group's error takes its hint's place: "Set the day, the time and the time
+  zone, or leave all three empty.", "Enter a time from 1 minute to 7 days." and "Enter a
+  percentage from 1 to 99."; the errors of Key or of the sign-in show with them. About
+  model provider keys is beside the form. The person chooses no key name and no
+  provider. A key group is the organisation's providers of one kind, chain and stored
+  settings, such as the address. `Apiary.Connections.add_key/2` adds the key to the
+  provider of its key group that has the same workspaces, while that provider has fewer
+  than 32 keys, else to a new one. A new provider's keys are a secret of the workspace
+  for a key of one workspace, and of the organisation otherwise. The key's value id is
+  `key-<n>`, the number after the highest among the organisation's current keys of that
+  kind and their secrets' key counters: no current key of that kind has that number. A
+  save goes back to the list with "key-3 is added." The spaces, tabs and newlines around
+  Key are removed before the save, and the spaces inside are kept; a Key of only spaces,
+  tabs or newlines shows "can't be blank", as an empty Key does. The set-up's Model step
+  adds its key in the same way and trims Key in the same way.
+- **Remove** on a row turns the row into its confirmation: "Remove key-2? Runs in Checkout
+  stop using it." ("Runs in every workspace stop using it." for a key of every workspace),
+  with **Remove key** and **Cancel**. Removing the default key of a provider makes the key
+  added first of the others the default. Removing the last key of a provider moves each
+  model choice and fallback that uses the provider to another provider of its key group
+  that has at least one key and serves the choice's workspace (for the organisation's
+  default, a provider whose keys are a secret of the organisation and that serves every
+  workspace the removed provider served), then deletes the provider. A fallback that is
+  then the choice's provider, or another fallback of it, is removed. Each moved choice has
+  an entry in the audit trail, as a save of it has. Removing a provider's last key is
+  refused when the group has no other key for a workspace a choice uses, or, for the
+  organisation's default, no other provider whose keys are a secret of the organisation
+  and that serves those workspaces: "Add another key, or choose another provider in
+  Workspace settings › Model, then remove key-2. It is the last Claude subscription token
+  key for Checkout."; for the organisation's default, "Add another key for every workspace
+  in Northwind, then remove key-2. The organisation's default model uses Claude
+  subscription token."; and while a run uses the provider: "Wait until the runs that use
+  key-2 end, then remove it."
+- **Edit key** (`…/model-providers/:provider_id/keys/:key_id/edit`, the row id of the
+  key's value; a value ID is not found), `ApiaryWeb.ProviderLive.Key`, is a page with the
+  breadcrumb ending "Edit key" and titled with the key's identity line
+  (`Apiary.ModelKeys.Identity`): the provider's name and, after a middle dot, for an API
+  key of at least 12 characters the last 4 characters of the key (none when one of them is a
+  control character, a format character such as U+202E, or a line or paragraph
+  separator), "Northwind Claude · …9c2e", for a sign-in the email of the account, or,
+  where the sign-in has none, "account …" and the last 4 characters of the account ID,
+  and the provider's name alone for any other key. The form has Name, the key's value
+  id, which no other key of the provider's kind in the organisation may have ("is
+  already the name of another key"; an empty Name shows "can't be blank"). A new Name
+  of the form `key-<n>` shows "Choose another name: Qory Apiary gives names like key-3 to
+  new keys.": only a new key gets such a name. A renamed default key stays the
+  provider's default. Then New value, an optional
+  password field that is empty after every save, with "Leave it empty to keep the
+  value." (for a provider whose keys are logins, Sign in with ChatGPT), then Resets, Pause
+  for and Use up to as on New model provider key, then Workspaces, the key's workspaces
+  as text in the list's words, which a person cannot change. Save goes back to the list with "… is saved." and
+  the key's identity line. Edit key removes the spaces, tabs and newlines around New
+  value before the save; a New value that is empty after that keeps the key's value and
+  its cooldown; any other replaces the value, even one that differs from it only in those
+  spaces, and ends the key's cooldown. A New value that fails the checks of Key saves
+  nothing and shows the error under New value, such as "must not contain a NUL byte".
+  Workspace settings › Secrets and variables has the same Resets, Pause for and Use up to
+  on Change value of a model provider's key, which removes the spaces, tabs and newlines
+  around the key's value as Edit key does; such a secret has no Add value and no Rename
+  value. Change value
+  with New value empty, or of only spaces, tabs or newlines, saves the settings and
+  keeps the key's value. Another secret's value is saved as typed, its last newline
+  included.
 - **Workspace settings › Model** (`/settings/model`, `ApiaryWeb.ModelChoiceLive`) has
-  Provider, each model provider by its name, whose keys runs take. A provider that works
+  Provider, one entry for each key group of the model providers that serve the workspace
+  (the providers of one kind and one address), whose keys runs take: labelled by its
+  kind's title, with its address for a kind whose address is a setting ("LiteLLM at
+  https://litellm.example.com"). A save stores the group's first provider, and a choice
+  on another provider of the group shows as the group's entry. The set-up's Model step
+  lists the key groups the same way, in one list with no heading; the workspaces of each
+  key are on Organisation settings › Model provider keys. A provider that works
   with no runtime shows under Provider "<Provider> works with no runtime in this version
   of Qory. Pick another provider.", Provider has a red border, and Save writes nothing
   while the line shows. The part Fallbacks (`#model-fallbacks`) is under Provider, the
@@ -524,34 +566,39 @@ replaces the navigation it is in.
   with Provider, Model and effort per tier (`ApiaryWeb.ModelTiers.tiers/1`, as the
   default models have it) and Runtime (`ApiaryWeb.ModelTiers.runtime_part/1`, the
   runtimes the row's provider works with), then Move up, Move down and Remove, each
-  labelled with the place ("Move fallback 2 up"). A row's Provider lists every provider
+  labelled with the place ("Move fallback 2 up"). A row's Provider lists every key group
   that applies to the workspace, also one that works with no runtime, but the chosen
-  provider and those of the other rows. A row whose provider works with no runtime shows
-  "<Provider> works with no runtime in this version of Qory. Pick another provider."
-  under its Provider, which has a red border, and Save is disabled while the line shows.
+  provider's group and those of the other rows. A row whose provider works with no
+  runtime shows "<Provider> works with no runtime in this version of Qory. Pick another
+  provider." under its Provider, which has a red border, and Save is disabled while the
+  line shows.
   Add fallback adds a row of the first provider left that works with a runtime, else of
-  the first provider left. A new row, and a row whose provider changes, has no models
-  and starts on the chosen runtime where its provider works with it, else on the first
-  runtime that does; a change of a row's Runtime keeps its models, and an effort that
-  runtime does not accept goes back to "Not set". With no provider left, the part shows
-  "Add another model provider in Organisation settings › Model providers, then add it
+  the first provider left. A new row, and a row whose provider changes, has no models and
+  starts on the chosen runtime where its provider works with it, else on the first runtime
+  that does; a change of a row's Runtime keeps its models, and an effort that runtime does
+  not accept goes back to "Not set". With no provider left, the part shows "Add a key of
+  another provider in Organisation settings › Model provider keys, then add that provider
   here as a fallback.", the place a link. Save is enabled once every tier of the default
   models and of each row has a model and each row's provider works with a runtime. Save
   writes the rows with the choice, and an error shows under its row's field, such as
-  "Choose another provider: Northwind Claude is chosen already." A save that sends no
-  rows, as the set-up's Model step saves, keeps the rows but one of the chosen provider,
-  which it drops. Where the set-up's save is refused for a kept row, the step shows one
-  line under its form (`#set-up-model-fallback-refused`), "Change a fallback in Workspace
-  settings › Model. Choose another provider: Northwind Claude is not used in this
-  workspace.", the place a link to this page. On the set-up's Model step, a provider that
-  works with no runtime has the same line under Provider (`#set-up-model-no-runtime`),
-  and the Provider group (`#set-up-model-source`) has a red ring, `aria-invalid` and the
-  line as its description. A save that changes the chosen provider to the provider of a
-  row drops that row. A provider whose saved settings no longer fit the catalogue entry
-  of its kind in the running release serves nothing, and the page shows
-  "Add Northwind Claude again in Organisation settings › Model providers: its settings no
-  longer fit this version of Qory Apiary." A provider whose settings check ran out of time
-  or crashed serves nothing on that read, with no line, and the next read checks it again.
+  "Choose another provider: Northwind Claude is chosen already."; a row of another
+  provider of a key group that is chosen already has "Choose another provider: Storefront
+  proxy uses the keys of Northwind proxy, which is chosen already." The page shows no
+  stored row of the chosen provider's key group, and only the first stored row of each
+  other key group. A save that sends no rows, as the set-up's Model step saves, keeps the
+  stored rows that the page shows and drops the others. Where the set-up's save is refused
+  for a kept row, the step shows one line under its form
+  (`#set-up-model-fallback-refused`), "Change a fallback in Workspace settings › Model.
+  Choose another provider: Northwind Claude is not used in this workspace.", the place a
+  link to this page. On the set-up's Model step, a provider that works with no runtime has
+  the same line under Provider (`#set-up-model-no-runtime`), and the Provider group
+  (`#set-up-model-source`) has a red ring, `aria-invalid` and the line as its description.
+  A save that changes the chosen provider to the provider of a row drops that row. A
+  provider whose saved settings no longer fit the catalogue entry of its kind in the
+  running release serves nothing, and the page shows "Add a new key for Northwind Claude
+  in Organisation settings › Model provider keys: its settings no longer fit this version
+  of Qory Apiary." A provider whose settings check ran out of time or crashed serves
+  nothing on that read, with no line, and the next read checks it again.
 
 A workspace's and an organisation's settings keep the scope's sidebar, its Workspace
 settings or Organisation settings the current entry, marked as the parent, and are one
@@ -2023,7 +2070,7 @@ Forager claimed for the run, when it claimed one, under "Machine id".
   no "Jump to it" (`ApiaryWeb.PauseWords`): "Paused: every key of Northwind Claude is in
   cooldown until Fri 14:00. It continues in run 15.", the run's number a link to its
   page, while every key of its provider was in cooldown as it ended and that time is
-  still to come, the time as a key's row on Model providers shows it, and "Paused: every
+  still to come, the time as a key's row on Model provider keys shows it, and "Paused: every
   key of Northwind Claude is in cooldown until Fri 14:00 or needs a new key. It continues
   in run 15." where a key of the provider needs a new value too (the provider rejected it,
   or its sign-in needs a new one); else "Paused: a
@@ -2208,7 +2255,7 @@ Forager claimed for the run, when it claimed one, under "Machine id".
      waiting stores again the providers it checked, a change of a model choice or of a
      model provider stores them again from the choice in effect, and the line reads them
      (`Apiary.ModelKeys.first_to_leave/2`): the provider whose key leaves its cooldown
-     first, and when, the time as a key's row on Model providers shows it. For a
+     first, and when, the time as a key's row on Model provider keys shows it. For a
      provider of another organisation than the run's, left from when an operator
      managed whole organisations, the line has no name: "Waiting for a model key: every
      model key is in cooldown until 14:00." Where, beside the keys in cooldown, a key

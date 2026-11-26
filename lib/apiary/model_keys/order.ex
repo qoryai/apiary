@@ -1,12 +1,14 @@
 defmodule Apiary.ModelKeys.Order do
   @moduledoc """
-  The order of one model provider's keys at a run's claim, and the keys the run gets.
+  The order of the keys of one key group (`Apiary.ModelKeys.Group`), across its model
+  providers, at a run's claim, and the keys the run gets.
   Pure: keys and a time in, keys out.
 
   A key here is a map with:
 
     * `id`: the key's row id (`secret_values.id`);
-    * `default`: true for the provider's default key, at most one;
+    * `default`: true for the default key of the group's head, the provider the choice
+      points at, at most one;
     * `inserted_at`: when the key was added;
     * `known_reset`: its known reset, nil for none;
     * `cooldown_until`: the end of its cooldown, as `Apiary.ModelKeys.cooldown/4` has it
@@ -70,6 +72,36 @@ defmodule Apiary.ModelKeys.Order do
     cooling = Enum.sort_by(cooling, &{usec(&1.cooldown_until), tie(&1)})
 
     Enum.take(free ++ cooling, @max_keys)
+  end
+
+  @doc """
+  The keys of one key group, `members`, each provider with its keys, its head first, as
+  one list: each key with its provider as `connection`, and only the head's default key
+  as the group's default key (`default`).
+  """
+  @spec of_group([{struct, [key]}]) :: [key]
+  def of_group([]), do: []
+
+  def of_group([{head, _keys} | _others] = members) do
+    for {provider, keys} <- members, key <- keys do
+      key
+      |> Map.put(:default, key.default and provider.id == head.id)
+      |> Map.put(:connection, provider)
+    end
+  end
+
+  @doc """
+  The keys of one key group whose sign-in a claim at `now` may refresh: the first
+  `max_keys/0` in their order (`order/2`), leaving out the keys that need a new value or
+  a new sign-in (`blocked` `:new_key` or `:sign_in`), which only a person fixes. A claim
+  starts a refresh only for these (Apiary.Dispatches.RunSettings), and a waiting run's
+  reason counts a refresh only for these (`Apiary.ModelKeys.waiting_reason/3`).
+  """
+  @spec refresh_window([key], DateTime.t()) :: [key]
+  def refresh_window(keys, %DateTime{} = now) do
+    keys
+    |> Enum.reject(&(Map.get(&1, :blocked) in [:new_key, :sign_in]))
+    |> order(now)
   end
 
   @doc """

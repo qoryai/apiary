@@ -1230,7 +1230,7 @@ defmodule ApiaryWeb.PreparationComponents do
   defp waiting_fix(_reason, _queued), do: nil
 
   # A reason about a model key (`Apiary.Runs.Waiting`: `{kind, provider's public id, key}`)
-  # with the path of the key's page, Organisation settings › Model providers, in place of
+  # with the path of the key's page, Organisation settings › Model provider keys, in place of
   # the provider's id; none without the run's organisation.
   defp with_key_page({kind, _provider_id, %{id: nil, identity: identity}}, _organisation)
        when kind in [:refreshing, :restart, :sign_in, :new_key],
@@ -1364,7 +1364,7 @@ defmodule ApiaryWeb.PreparationComponents do
 
   @doc false
   # cooldown_time/2 is the end of a cooldown in the reader's time zone at `now`, as a key's
-  # row on Model providers shows it (`ApiaryWeb.Format.week_time/2`): the time of day
+  # row on Model provider keys shows it (`ApiaryWeb.Format.week_time/2`): the time of day
   # alone on the reader's day, "14:00", the weekday on one of the six days after it,
   # "Fri 14:00", else with its date, "26 Sept, 14:00".
   @spec cooldown_time(DateTime.t(), DateTime.t()) :: String.t()

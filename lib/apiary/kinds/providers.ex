@@ -70,7 +70,7 @@ defmodule Apiary.Kinds.Providers do
 
   @doc """
   offered?/1 is whether a person may choose `provider` where a provider is offered: the
-  add form of Settings › Model providers, the set-up's Model step, and the Model page. A
+  form New model provider key, the set-up's Model step, and the Model page. A
   provider whose description lists models is offered on every instance; one that lists
   none, such as LiteLLM, only while the feature `model_proxies` is on
   (`Apiary.Features`). The providers already added, the model choices that use them, and

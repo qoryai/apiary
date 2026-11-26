@@ -70,18 +70,19 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   #     organisation's collections and connections
   #     (`Apiary.Adapters.Collections.subscribe/1`) and reads the step again on each change;
   #   * Model, with the features `factory` and `secrets`: three choices. Provider: each
-  #     model provider of the organisation with a key that reaches the workspace (applies to
-  #     every workspace or lists it), by its name, to reuse, and Add a key, whose Kind
-  #     of provider, Key and, for a provider that needs one, Address add a model provider for
-  #     the workspace (`Apiary.Connections.create_provider/3` with `:workspace`): the key
-  #     is a secret of the workspace, and the provider reaches that workspace alone. Where
-  #     the edition shows it (`c:Apiary.Edition.scope_setting?/1`), Add a key has the
-  #     setting "Available to every workspace in <organisation>", off; on, it adds the
-  #     provider for the organisation, reaching every workspace, its key a secret of the
-  #     organisation (`Apiary.Connections.reach_at_add/3`). Where the edition shows that
-  #     setting, the providers to reuse that apply to every workspace come first in
-  #     Provider, under "Shared in <organisation>", each marked "every workspace"; with
-  #     none, Provider has no heading. With no provider to reuse, Add a key alone, open.
+  #     key group of the model providers of the organisation that reach the workspace
+  #     (apply to every workspace or list it), with a key, as its first provider by the
+  #     group's label (`ApiaryWeb.ModelTiers.key_groups/1`), to reuse, and Add a key,
+  #     whose Kind of provider, Key and, for a provider that needs one, Address add a key
+  #     for the workspace (`Apiary.Connections.add_key/2`): into a provider of its key
+  #     group that reaches that workspace alone, else a new provider whose key is a
+  #     secret of the workspace. Where the edition shows it
+  #     (`c:Apiary.Edition.scope_setting?/1`), Add a key has the setting "Available to
+  #     every workspace in <organisation>", off; on, the key serves every workspace, a
+  #     key of a provider of the organisation (`Apiary.Connections.reach_at_add/3`).
+  #     Provider is one list with no heading: the workspaces of each key are on
+  #     Organisation settings › Model provider keys. With no provider to reuse, Add a key
+  #     alone, open.
   #     A provider that works with no runtime of the catalogue has "<Provider> works with
   #     no runtime in this version of Qory. Pick another provider." under Provider,
   #     a red ring around Provider (`app.css`), Continue disabled, and a save of it
@@ -513,14 +514,14 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     )
   end
 
-  # `providers` are the ones to reuse, of which the first `shared_keys` are shown as shared
-  # (`split_shared/2`); `may_add` is of Add a key (`provider.write`), and `may` of a save
+  # `providers` are the ones to reuse, in one list; `may_add` is of Add a key
+  # (`provider.write`), and `may` of a save
   # (`model_choice.write` on the workspace) with a key to choose.
   defp load_step(%{assigns: %{step: :model}} = socket) do
     %{current_scope: scope, flow: flow} = socket.assigns
     choice = workspace_choice(scope, flow.workspace)
-    {shared, others} = split_shared(scope, reusable_providers(scope, flow.workspace, choice))
-    providers = shared ++ others
+    {providers, first_of} = reusable_providers(scope, flow.workspace, choice)
+    choice = on_first(choice, first_of)
     may_add = Access.can?(scope, :"provider.write", scope.organisation)
 
     socket
@@ -536,7 +537,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
           gettext("Only owners and admins add a model key.")
         ),
       providers: providers,
-      shared_keys: length(shared),
       choice: choice,
       stored: ModelTiers.stored(choice),
       # Whether the edition shows the organisation's secrets: the core shows none.
@@ -919,41 +919,45 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   ## The Model step's form
 
-  # The organisation's model providers with a key that reach `workspace`: those that apply
-  # to every workspace, and those that list it; of a kind that is offered
-  # (`Providers.offered?/1`) or the catalogue does not have, or the provider of `choice`,
-  # the workspace's choice, so that Continue keeps it unless the person chooses another.
+  # The organisation's model providers that reach `workspace`, one per key group with a
+  # key (`ApiaryWeb.ModelTiers.key_groups/1`): those that apply to every workspace, and
+  # those that list it; of a kind that is offered (`Providers.offered?/1`) or the
+  # catalogue does not have, or the provider of `choice`, the workspace's choice, so that
+  # Continue keeps it unless the person chooses another. `{providers, first_of}`, with
+  # the first provider of each provider's group by its row id.
   defp reusable_providers(scope, workspace, choice) do
     saved = choice && choice.connection_id
 
     case Connections.list_providers(scope) do
       {:ok, providers} ->
-        Enum.filter(
-          providers,
-          &(keys(&1) > 0 and
-              (&1.applies_to == "all" or workspace.id in Connections.workspace_ids_of(&1)) and
-              (offered_kind?(&1) or &1.id == saved))
-        )
+        reaching =
+          Enum.filter(
+            providers,
+            &((&1.applies_to == "all" or workspace.id in Connections.workspace_ids_of(&1)) and
+                (offered_kind?(&1) or &1.id == saved))
+          )
+
+        {firsts, first_of} = ModelTiers.key_groups(reaching)
+        keyed = MapSet.new(for p <- reaching, keys(p) > 0, do: Map.fetch!(first_of, p.id))
+        {Enum.filter(firsts, &MapSet.member?(keyed, &1.id)), first_of}
 
       {:error, _reason} ->
-        []
+        {[], %{}}
     end
   end
+
+  # `choice` on the first provider of its provider's key group (`reusable_providers/3`),
+  # so the step shows a choice on any provider of a group as that group's.
+  defp on_first(%ModelChoice{connection_id: id} = choice, first_of),
+    do: %{choice | connection_id: Map.get(first_of, id, id)}
+
+  defp on_first(nil, _first_of), do: nil
 
   defp offered_kind?(provider) do
     case catalogue(provider.provider_kind) do
       nil -> true
       described -> Providers.offered?(described)
     end
-  end
-
-  # `providers` as `{shared, others}`, each in the order given: shared are those that apply
-  # to every workspace, where the edition shows the setting that makes them
-  # (`c:Apiary.Edition.scope_setting?/1`); none where it does not.
-  defp split_shared(scope, providers) do
-    if Edition.scope_setting?(scope),
-      do: Enum.split_with(providers, &(&1.applies_to == "all")),
-      else: {[], providers}
   end
 
   # The workspace's choice (level 5), nil for none.
@@ -1171,20 +1175,16 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   attr :field, Phoenix.HTML.FormField, required: true
   attr :options, :list, required: true, doc: "Key's options, `{words, value}`"
-  attr :shared, :integer, required: true, doc: "how many of `options`, the first, are shared"
-  attr :organisation, :string, required: true
 
   attr :described_by, :string,
     default: nil,
     doc: "the id of the line of why the chosen provider cannot be used, such as no runtime"
 
-  # Key, one radio group as `input/1` draws one: the first `shared` options under "Shared
-  # in <organisation>", each marked "every workspace", then the others. With no shared
-  # option, no heading. With an error, or with `described_by`, the group has
+  # Key, one radio group as `input/1` draws one, with no heading over its options. With an
+  # error, or with `described_by`, the group has
   # `aria-invalid` and is described by each error and the line. Only with `described_by`
   # does it have the red ring (`.q-ring-invalid` in `app.css`).
   defp key_choice(assigns) do
-    {shared, others} = assigns.options |> Enum.with_index() |> Enum.split(assigns.shared)
     errors = Enum.map(assigns.field.errors, &translate_error/1)
     error_ids = for i <- 1..length(errors)//1, do: key_error_id("set-up-model-source", i)
     described = error_ids ++ List.wrap(assigns.described_by)
@@ -1192,8 +1192,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
     assigns =
       assign(assigns,
         id: "set-up-model-source",
-        shared_options: shared,
-        other_options: others,
+        options: Enum.with_index(assigns.options),
         errors: errors,
         described: described
       )
@@ -1206,27 +1205,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
       aria-describedby={@described != [] && Enum.join(@described, " ")}
     >
       <legend class="mb-1 text-[13px]/[18px] font-medium">{gettext("Provider")}</legend>
-      <div
-        :if={@shared_options != []}
-        id={"#{@id}-shared"}
-        role="group"
-        aria-labelledby={"#{@id}-shared-h"}
-        class="grid gap-1"
-      >
-        <p id={"#{@id}-shared-h"} class="text-[12.5px]/[18px] font-medium text-muted">
-          {gettext("Shared in %{organisation}", organisation: @organisation)}
-        </p>
-        <.key_option
-          :for={{option, index} <- @shared_options}
-          id={@id}
-          field={@field}
-          option={option}
-          index={index}
-          shared
-        />
-      </div>
       <.key_option
-        :for={{option, index} <- @other_options}
+        :for={{option, index} <- @options}
         id={@id}
         field={@field}
         option={option}
@@ -1248,7 +1228,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
   attr :field, Phoenix.HTML.FormField, required: true
   attr :option, :any, required: true
   attr :index, :integer, required: true
-  attr :shared, :boolean, default: false
 
   defp key_option(assigns) do
     ~H"""
@@ -1264,9 +1243,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         checked={to_string(@field.value) == elem(@option, 1)}
         class="radio radio-sm radio-primary"
       />
-      <span>
-        {elem(@option, 0)}<span :if={@shared} class="text-muted"> · {gettext("every workspace")}</span>
-      </span>
+      <span>{elem(@option, 0)}</span>
     </label>
     """
   end
@@ -1296,30 +1273,30 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
 
   defp value_ids(_provider), do: []
 
-  # Adds the provider with its key for Add a key; the provider to reuse, else. The key is
-  # a secret of the flow's workspace, which Name made before this step, and the provider
-  # reaches that workspace alone (`Apiary.Connections.create_provider/3`, `:workspace`);
-  # with the setting shown and on, the provider is the organisation's, reaching every
-  # workspace, its key a secret of the organisation (`Apiary.Connections.reach_at_add/3`).
+  # Adds the key for Add a key, for the flow's workspace, which Name made before this step
+  # (`Apiary.Connections.add_key/2`): into a provider of its key group that reaches that
+  # workspace alone, else a new provider whose key is a secret of the workspace; with the
+  # setting shown and on, for every workspace, a secret of the organisation
+  # (`Apiary.Connections.reach_at_add/3`). The provider that has the key, else the provider
+  # to reuse.
   defp model_provider(:add, scope, flow, params, key) do
     with %Provider{} = provider <- catalogue(params["provider"]) || {:error, :provider_unknown},
          runtime = Enum.find(Runtimes.list(), &(&1.name == params["runtime"])),
          :ok <- if(runtime, do: serves(provider, runtime), else: :ok) do
       scope = %{scope | workspace: flow.workspace}
 
-      attrs = %{
-        "provider" => provider.name,
-        "keys" => [%{"value_id" => "key-1", "value" => key}],
-        "settings" => Map.new(ProviderPage.address_names(provider.name), &{&1, params[&1] || ""})
-      }
+      attrs =
+        scope
+        |> Connections.reach_at_add(flow.workspace, params["everywhere"] == "true")
+        |> Map.merge(%{
+          "provider" => provider.name,
+          "value" => key,
+          "settings" =>
+            Map.new(ProviderPage.address_names(provider.name), &{&1, params[&1] || ""})
+        })
 
-      case Connections.reach_at_add(scope, flow.workspace, params["everywhere"] == "true") do
-        %{"applies_to" => "all"} = reach ->
-          Connections.create_provider(scope, Map.merge(attrs, reach))
-
-        %{"applies_to" => "selected"} ->
-          Connections.create_provider(scope, attrs, :workspace)
-      end
+      with {:ok, provider, _value_id} <- Connections.add_key(scope, attrs),
+           do: {:ok, provider}
     end
   end
 
@@ -2362,8 +2339,6 @@ defmodule ApiaryWeb.WorkspaceSetupLive do
         <.key_choice
           field={@form[:source]}
           options={source_options(@providers, @may_add)}
-          shared={@shared_keys}
-          organisation={@current_scope.organisation.name}
           described_by={@no_runtime && "set-up-model-no-runtime"}
         />
         <p

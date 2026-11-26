@@ -519,20 +519,22 @@ defmodule Apiary.Runs.Run do
   end
 
   @doc """
-  The ids of the model providers whose keys the session number `session` of `run` runs
-  on. Session 1 runs on the provider of the run's default model provider credential
-  (`provider_connection_id`). A later session runs on the provider of the run's key whose
-  name is that session's `model_provider_credential_name` in `session_settings`, else on
-  the default model provider credential's provider. For a nil `session`, not known, every
-  provider of the run's keys (`Apiary.Runs.ModelKey`). None for a run with no key. The end
-  of a paused run, with `session` the session that paused (`paused_session`), keeps the
-  earliest end of a cooldown among the keys of these providers alone as
+  The ids of the model providers whose keys the session number `session` of `run` runs on:
+  those of a key group (`Apiary.ModelKeys.Group`), the rows of one key group identity
+  (`Apiary.ModelKeys.Group.identity/1`), chain and API among the run's keys. Session 1
+  runs on the group of the run's default model provider credential: the provider of the
+  run's model choice (`provider_connection_id`) first, then the other providers of that
+  group's keys. A later session runs on the group of the run's key whose name is that
+  session's `model_provider_credential_name` in `session_settings`, that key's provider
+  first, else on the default model provider credential's group. For a nil `session`, not
+  known, every provider of the run's keys (`Apiary.Runs.ModelKey`). None for a run with no
+  key. The end of a paused run, with `session` the session that paused (`paused_session`),
+  keeps the earliest end of a cooldown among the keys of these providers alone as
   `dispatch_runs.paused_until` of the run's run of the queue, and the run that continues
   it waits for them. A run whose session 1 runs on the machine's local model provider
   credential has no default model provider credential, so session 1 has no provider and
-  runs on none. Reads the run's key rows, unless `model_keys` is loaded, and its
-  sessions, unless given as `sessions`, as
-  Apiary.Stages.session_rows_by_dispatch_run/1 reads them.
+  runs on none. Reads the run's key rows, unless `model_keys` is loaded, and its sessions,
+  unless given as `sessions`, as Apiary.Stages.session_rows_by_dispatch_run/1 reads them.
   """
   @spec session_provider_ids(t() | map(), pos_integer() | nil, list | nil) :: [Ecto.UUID.t()]
   def session_provider_ids(run, session, sessions \\ nil)
@@ -550,10 +552,11 @@ defmodule Apiary.Runs.Run do
   end
 
   def session_provider_ids(run, session, sessions) when is_integer(session) and session > 1 do
+    rows = Apiary.Runs.ProviderCredential.rows(run)
+
     with name when is_binary(name) <- Apiary.Stages.session_credential(run, session, sessions),
-         %{connection_id: id} when is_binary(id) <-
-           Enum.find(Apiary.Runs.ProviderCredential.rows(run), &(&1.name == name)) do
-      [id]
+         %{connection_id: id} = row when is_binary(id) <- Enum.find(rows, &(&1.name == name)) do
+      Enum.uniq([id | group_provider_ids(rows, row)])
     else
       _start -> start_provider_ids(run)
     end
@@ -561,8 +564,36 @@ defmodule Apiary.Runs.Run do
 
   def session_provider_ids(run, _session, _sessions), do: start_provider_ids(run)
 
-  defp start_provider_ids(%{provider_connection_id: id}) when is_binary(id), do: [id]
+  defp start_provider_ids(%{provider_connection_id: id} = run) when is_binary(id) do
+    rows = Apiary.Runs.ProviderCredential.rows(run)
+
+    case Enum.find(rows, & &1.default_credential) do
+      nil -> [id]
+      row -> Enum.uniq([id | group_provider_ids(rows, row)])
+    end
+  end
+
   defp start_provider_ids(_run), do: []
+
+  # The providers of the keys of the key group of the key row `row`, in the rows' order,
+  # grouped as the run configuration groups them (`ProviderCredential.key_groups/2`). A
+  # provider row that fails its integrity code (`Apiary.Connections.intact?/1`) is left out
+  # of the map, so its rows have no key group identity.
+  defp group_provider_ids(rows, row) do
+    ids = rows |> Enum.map(& &1.connection_id) |> Enum.reject(&is_nil/1) |> Enum.uniq()
+
+    providers =
+      Ecto.Query.from(c in Apiary.Connections.Connection, where: c.id in ^ids)
+      |> Apiary.Repo.all()
+      |> Enum.filter(&Apiary.Connections.intact?/1)
+      |> Map.new(&{&1.id, &1})
+
+    rows
+    |> Apiary.Runs.ProviderCredential.key_groups(providers)
+    |> Enum.find([], &(row in &1))
+    |> Enum.map(& &1.connection_id)
+    |> Enum.reject(&is_nil/1)
+  end
 
   @doc "Whether the run paused (`paused_states/0`)."
   @spec paused?(t() | map()) :: boolean()

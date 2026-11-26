@@ -79,15 +79,22 @@ defmodule Apiary.ModelChoices do
   #     runtime is needed and checked as `runtime` is; its provider is checked as
   #     `provider` is, against the fallback's runtime; and its tiers as `tiers` are at
   #     level 5, every tier needed, against that provider and runtime. The choice's
-  #     provider and a provider of an earlier fallback are refused. Each refusal is on
-  #     `fallbacks`, with the fallback's index from 0 (`fallback`); a refusal of its
-  #     tiers has the bindings of a refusal of `tiers` (`tier` and `field`), and any
-  #     other its field (`field`, `:provider` or `:runtime`). At levels 3, 5 and 6, a
-  #     save without
-  #     `fallbacks` keeps the place's fallbacks, checked again as sent ones are; an empty
-  #     list leaves none. Either way, a save that chooses a provider other than the
-  #     place's drops a fallback of that provider, with no error. No number bounds them:
-  #     each is another provider of the organisation.
+  #     provider, a provider of its key group (one of the same kind, chain and settings,
+  #     `Apiary.ModelKeys.Group.same?/2`), and a provider of an earlier fallback's key
+  #     group are refused, once the fallback's provider passes its check; a refusal of
+  #     another provider of a key group has `chosen`, the name of the provider chosen
+  #     already of that group. Each refusal is on `fallbacks`, with the fallback's index
+  #     from 0 (`fallback`); a refusal of its tiers has the bindings of a refusal of
+  #     `tiers` (`tier` and `field`), and any other its field (`field`, `:provider` or
+  #     `:runtime`). At levels 3, 5 and 6, a save without `fallbacks` keeps the place's
+  #     fallbacks, checked again as sent ones are, but with no error for those of the
+  #     choice's key group and for all but the first of one other key group, which it
+  #     drops, and the audit entry of the save has their providers' public ids as
+  #     `dropped_fallbacks`; an empty list leaves none. Either way, a save that chooses a
+  #     provider other than the place's drops a fallback of that provider's key group,
+  #     with no error, and a save that sends fallbacks has those it drops as
+  #     `dropped_fallbacks` too. No number bounds them: each is another provider of the
+  #     organisation.
   #
   # A stored choice that these rules refuse (one without a provider, with fewer tiers at
   # levels 4 to 6, or with tiers of another provider) stays as it is until its place is
@@ -131,6 +138,7 @@ defmodule Apiary.ModelChoices do
   alias Apiary.Connections.{Connection, ConnectionWorkspace}
   alias Apiary.Kinds.{Provider, Providers, Runtime, Runtimes}
   alias Apiary.ModelChoices.{Fallback, ModelChoice, Resolution}
+  alias Apiary.ModelKeys.Group
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Runs.Target
   alias Apiary.Secrets.Value
@@ -179,8 +187,8 @@ defmodule Apiary.ModelChoices do
         }
 
   @doc false
-  # default_runtime/0 is the runtime of a choice that names none, and of a run whose
-  # choices name no provider: the catalogue's only runtime (`Apiary.Kinds.Runtimes`).
+  # default_runtime/0 is the runtime of a choice with none, and of a run whose choices
+  # have no provider: the catalogue's only runtime (`Apiary.Kinds.Runtimes`).
   # With more than one in the catalogue, its first, in the catalogue's order.
   @spec default_runtime() :: Runtime.t()
   def default_runtime, do: hd(Runtimes.list())
@@ -303,10 +311,12 @@ defmodule Apiary.ModelChoices do
   # `shared_run: true` of `workspace`, at `target` (nil for none: the workspace's levels
   # 4 to 6), as `Apiary.Processes.shared_models/3` takes them: `choices`, each workflow's
   # resolution by its name (`Apiary.ModelChoices.Resolution.resolve/1`), and `providers`,
-  # the `name`, the catalogue `description` (`Apiary.Connections.provider/1`) and
-  # `keyed`, whether it has a model key, of each provider those choices and their
-  # fallbacks use, by row id, and of `start_ids`, the providers a continuation starts on.
-  # Read without a lock.
+  # the `name`, the catalogue `description` (`Apiary.Connections.provider/1`), `group`,
+  # its key group for the workspace (`Apiary.ModelKeys.Group.member_ids/4`, the row ids
+  # sorted, the same for each provider of the group), and `keyed`, whether a provider of
+  # that group has a model key, of each provider those choices and their fallbacks use,
+  # by row id, and of `start_ids`, the providers a continuation starts on. Read without a
+  # lock.
   @spec shared_models(Workspace.t(), Target.t() | nil, [String.t()], [Ecto.UUID.t()]) :: map
   def shared_models(%Workspace{} = workspace, target, workflows, start_ids \\ [])
       when is_list(workflows) and is_list(start_ids) do
@@ -317,7 +327,28 @@ defmodule Apiary.ModelChoices do
       Enum.flat_map(Map.values(inputs), &Map.get(&1, :rows, [])) ++
         provider_rows(workspace.organisation_id, [], start_ids)
 
-    %{choices: choices, providers: described_providers(rows)}
+    %{
+      choices: choices,
+      providers:
+        rows |> described_providers() |> in_groups(workspace.organisation_id, workspace.id)
+    }
+  end
+
+  # `providers`, as `described_providers/1` returns them, each with its key group for the
+  # workspace `workspace_id` of the organisation `organisation_id` (nil for a workspace
+  # not yet made) and whether a provider of that group has a key.
+  defp in_groups(providers, organisation_id, workspace_id) do
+    ids = Map.keys(providers)
+    members = Group.member_ids(organisation_id, workspace_id, ids)
+    keyed = Group.member_ids(organisation_id, workspace_id, ids, keyed: true)
+
+    Map.new(providers, fn {id, provider} ->
+      {id,
+       Map.merge(provider, %{
+         group: members |> Map.get(id, [id]) |> Enum.sort(),
+         keyed: provider.keyed or length(Map.get(keyed, id, [id])) > 1
+       })}
+    end)
   end
 
   @doc false
@@ -325,8 +356,9 @@ defmodule Apiary.ModelChoices do
   # organisation `organisation` (a scope or the organisation): only its default (level 6)
   # reaches it. The default choice, with its fallbacks and their providers, resolved once
   # (`Apiary.ModelChoices.Resolution.resolve/1`, which places a level-6 choice whatever
-  # the workspace and the workflow), is `default`, the choice of every workflow. Read
-  # without a lock.
+  # the workspace and the workflow), is `default`, the choice of every workflow. Each
+  # provider has its key group of the providers for every workspace, the only ones that
+  # reach a workspace not yet made. Read without a lock.
   @spec default_models(Scope.t() | Organisation.t()) :: map
   def default_models(%Scope{organisation: %Organisation{} = organisation}),
     do: default_models(organisation)
@@ -352,7 +384,11 @@ defmodule Apiary.ModelChoices do
       effort_values: Map.new(Runtimes.list(), &{&1.name, &1.effort_values})
     }
 
-    %{choices: %{}, default: Resolution.resolve(input), providers: described_providers(rows)}
+    %{
+      choices: %{},
+      default: Resolution.resolve(input),
+      providers: rows |> described_providers() |> in_groups(organisation_id, nil)
+    }
   end
 
   # Each provider's name, catalogue description and whether it has a model key
@@ -466,8 +502,8 @@ defmodule Apiary.ModelChoices do
   # of their id, with its default model (`Connections.default_model/1`) first. A model's
   # effort is its offered effort values, `[]` for a model the description does not list.
   # A default model the file lacks comes first all the same, with the description's title,
-  # as a choice that names no model runs it. The page reads its list here alone, and a
-  # choice may name any other model id too. Given a provider of the catalogue
+  # as a choice with no model runs it. The page reads its list here alone, and a choice
+  # may be set to any other model id too. Given a provider of the catalogue
   # (`Apiary.Kinds.Provider`), the same for a provider not added yet, from its
   # description, as the set-up's Model step offers them.
   @spec suggestions(Connection.t() | Provider.t(), Runtime.t()) :: [
@@ -502,7 +538,7 @@ defmodule Apiary.ModelChoices do
   @doc false
   # shown_model/2 is the model `model_id` of the model provider `provider` as the set-up's
   # Model step shows it chosen: the title of the model among `suggestions/2`, else of the
-  # first of them, the provider's default model, as the step does for a choice that names
+  # first of them, the provider's default model, as the step does for a choice with
   # no model or one the list does not have; the id for a model with no title. nil for a
   # provider with no model to suggest.
   @spec shown_model(Connection.t(), String.t() | nil) :: String.t() | nil
@@ -539,7 +575,9 @@ defmodule Apiary.ModelChoices do
           {:ok, ModelChoice.t()} | {:error, Access.reason() | Ecto.Changeset.t()}
   def put_choice(%Scope{} = scope, place, attrs, chain \\ "organisation") when is_map(attrs) do
     write(scope, place, chain, fn scope, at ->
-      changeset = attrs |> with_kept_fallbacks(at) |> input(at)
+      {attrs, stored} = with_kept_fallbacks(attrs, at)
+      at = Map.put(at, :kept_fallbacks, stored)
+      changeset = input(attrs, at)
 
       with {:ok, provider} <- hold_provider(changeset, at.organisation, at.chain),
            {:ok, values} <- checked(changeset, provider, Map.put(at, :scope, scope)) do
@@ -549,8 +587,10 @@ defmodule Apiary.ModelChoices do
     end)
   end
 
-  # `attrs` with the place's fallbacks where they send none, as a save sends them, but a
-  # fallback of the provider `attrs` chooses: that provider is no fallback of itself. A
+  # `{attrs, stored}`: `attrs` with the place's fallbacks where they send none, as a save
+  # sends them, but a fallback of the provider `attrs` chooses: that provider is no
+  # fallback of itself; `stored`, where the fallbacks are the place's, their providers'
+  # public ids in their order, else nil. A
   # workflow's choice (levels 2 and 4) keeps none: a save of it with no fallbacks removes
   # those stored before. Read under the place's lock (`hold_place/4`): the workspace's
   # row, or the organisation's integrations lock for its default, so no other save of the
@@ -558,7 +598,7 @@ defmodule Apiary.ModelChoices do
   defp with_kept_fallbacks(attrs, at) do
     if Map.has_key?(attrs, :fallbacks) or Map.has_key?(attrs, "fallbacks") or
          at.level in [2, 4] do
-      attrs
+      {attrs, nil}
     else
       chosen = attrs[:provider] || attrs["provider"]
 
@@ -573,10 +613,11 @@ defmodule Apiary.ModelChoices do
                   "tiers" => fallback.tiers
                 }
 
-          attrs |> stringify() |> Map.put("fallbacks", kept)
+          stored = Enum.map(fallbacks, & &1.connection.public_id)
+          {attrs |> stringify() |> Map.put("fallbacks", kept), stored}
 
         _none ->
-          attrs
+          {attrs, nil}
       end
     end
   end
@@ -828,6 +869,7 @@ defmodule Apiary.ModelChoices do
   defp save(scope, at, current, provider, values) do
     current = current && Repo.preload(current, fallbacks: :connection)
     {fallbacks, values} = Map.pop(values, :fallbacks, [])
+    {dropped, values} = Map.pop(values, :dropped_fallbacks, [])
     row = current || %ModelChoice{}
     before = current && audited(current)
 
@@ -877,7 +919,8 @@ defmodule Apiary.ModelChoices do
                  at,
                  saved,
                  if(current, do: "choice_changed", else: "choice_set"),
-                 %{before: before, after: after_}
+                 %{before: before, after: after_},
+                 if(dropped != [], do: %{dropped_fallbacks: dropped}, else: %{})
                ) do
           {:ok, saved}
         end
@@ -947,9 +990,14 @@ defmodule Apiary.ModelChoices do
   defp audited_fallback(%{connection: %Connection{public_id: id}} = fallback),
     do: %{provider: id, runtime: fallback.runtime, tiers: tiers_of(fallback.tiers)}
 
-  defp record(scope, at, choice, change, data) do
+  # `more`, such as `dropped_fallbacks`, goes into the details: the providers of the
+  # fallbacks that the save dropped with no error, of the place's stored ones where the
+  # save kept them, else of the sent ones, such as those of the chosen provider's key
+  # group.
+  defp record(scope, at, choice, change, data, more \\ %{}) do
     details =
       %{change: change, level: at.level, name: place_name(at)}
+      |> Map.merge(more)
       |> put_present(:workflow, at.workflow)
       |> put_present(:target_id, at.target && at.target.id)
 
@@ -1264,6 +1312,7 @@ defmodule Apiary.ModelChoices do
   # `{:ok, values}`, the columns to store, or the changeset with each reason.
   defp checked(changeset, provider, at) do
     runtime = runtime_of(changeset)
+    sent = get_field(changeset, :fallbacks) || []
 
     changeset =
       changeset
@@ -1280,11 +1329,20 @@ defmodule Apiary.ModelChoices do
          effort: get_field(changeset, :effort),
          tiers: tiers_of(get_field(changeset, :tiers)),
          locked: get_field(changeset, :locked),
-         fallbacks: get_field(changeset, :fallbacks) || []
+         fallbacks: get_field(changeset, :fallbacks) || [],
+         dropped_fallbacks: dropped_fallbacks(at, sent, get_field(changeset, :fallbacks) || [])
        }}
     else
       {:error, changeset}
     end
+  end
+
+  # The public ids of the providers of the fallbacks that a save drops with no error
+  # (`with_kept_fallbacks/2`, `check_fallbacks/3`), in their order: of the place's stored
+  # fallbacks where the save kept them, else of `sent`, those not in `checked`.
+  defp dropped_fallbacks(at, sent, checked) do
+    from = Map.get(at, :kept_fallbacks) || Enum.map(sent, & &1.provider)
+    from -- Enum.map(checked, & &1.provider)
   end
 
   defp tiers_of(nil), do: nil
@@ -1437,29 +1495,37 @@ defmodule Apiary.ModelChoices do
 
   # Each fallback, checked as the choice is against its provider, read with
   # `hold_fallback_providers/3`: a provider of the chain that applies, serves the
-  # fallback's runtime, and is neither the choice's provider nor an earlier fallback's,
-  # and tiers of that provider whose efforts that runtime offers. Each fallback goes on
-  # with its provider (`connection`). Where
-  # the save chooses a provider other than the place's, a fallback of the chosen provider
-  # is dropped, with no error, as Workspace settings › Model sends the rows it had when
-  # the choice moves to one of them; each other fallback keeps its index for its error.
+  # fallback's runtime, and is neither of the choice's key group (the choice's provider,
+  # or one of the same kind, chain and settings, `Apiary.ModelKeys.Group.same?/2`, whatever
+  # its workspaces) nor of an earlier fallback's key group, checked in that order after
+  # the provider, and tiers of that provider whose efforts that runtime offers. Each
+  # fallback goes on with its provider (`connection`).
+  # Where the save chooses a provider other than the place's, a fallback of the chosen
+  # provider's key group is dropped, with no error, as Workspace settings › Model sends
+  # the rows it had when the choice moves to one of them. The place's fallbacks, kept by a
+  # save that sends none (`with_kept_fallbacks/2`), drop with no error those of the
+  # choice's key group and, of several of one other key group, all but the first: a
+  # change of a provider's settings, such as a LiteLLM address, can put stored fallbacks
+  # in one key group; checked as sent ones are, they would fail every such save, and the
+  # Model pages show none of them. Each other fallback keeps its index for its error.
   defp check_fallbacks(changeset, nil, _at), do: changeset
 
   defp check_fallbacks(changeset, %Connection{} = provider, at) do
     case get_field(changeset, :fallbacks) do
       [_ | _] = fallbacks ->
         held = hold_fallback_providers(fallbacks, at.organisation, at.chain)
-        new_choice? = place_provider_id(at) != provider.id
+        kept? = is_list(Map.get(at, :kept_fallbacks))
+        drop_group? = kept? or place_provider_id(at) != provider.id
 
-        start = {changeset, [], MapSet.new([provider.id])}
+        start = {changeset, [], taken(%{}, provider)}
 
         {changeset, checked, _taken} =
           fallbacks
           |> Enum.with_index()
           |> Enum.reject(fn {fallback, _index} ->
-            new_choice? and
-              match?(%Connection{id: id} when id == provider.id, held[fallback.provider])
+            drop_group? and of_group?(provider, held[fallback.provider])
           end)
+          |> then(&if(kept?, do: first_of_groups(&1, held), else: &1))
           |> Enum.reduce(start, fn {fallback, index}, acc ->
             check_fallback(acc, fallback, index, held[fallback.provider], at)
           end)
@@ -1470,6 +1536,27 @@ defmodule Apiary.ModelChoices do
         changeset
     end
   end
+
+  # Of `fallbacks` with their indexes, the first of each key group of their providers in
+  # `held`; one whose provider is gone stays, for its error.
+  defp first_of_groups(fallbacks, held) do
+    Enum.uniq_by(fallbacks, fn {fallback, index} ->
+      case held[fallback.provider] do
+        %Connection{provider_kind: kind} = provider when is_binary(kind) ->
+          Group.identity(provider)
+
+        _gone ->
+          {:index, index}
+      end
+    end)
+  end
+
+  # Whether `other`, a fallback's provider, is of the key group of `provider`, the
+  # choice's: the same provider, or one of its kind, chain and settings.
+  defp of_group?(%Connection{} = provider, %Connection{} = other),
+    do: other.id == provider.id or Group.same?(provider, other)
+
+  defp of_group?(_provider, nil), do: false
 
   # The row id of the provider of the place's choice, nil for a place with no choice.
   defp place_provider_id(at), do: Repo.one(from c in at_place(at), select: c.connection_id)
@@ -1496,31 +1583,55 @@ defmodule Apiary.ModelChoices do
     # other.
     {:ok, runtime} = Runtimes.fetch(fallback.runtime)
 
+    row = fallback |> fallback_change() |> check_provider(provider, at, runtime)
+
     row =
-      if MapSet.member?(taken, provider.id),
-        do:
+      cond do
+        not row.valid? ->
+          row
+
+        Map.has_key?(taken, provider.id) ->
           add_error(
-            fallback_change(fallback),
+            row,
             :provider,
             dgettext_noop("errors", "Choose another provider: %{provider} is chosen already."),
             provider: provider.name
-          ),
-        else:
-          fallback
-          |> fallback_change()
-          |> check_provider(provider, at, runtime)
-          |> check_tiers(provider, runtime)
+          )
+
+        chosen = taken[{:group, Group.identity(provider)}] ->
+          add_error(
+            row,
+            :provider,
+            dgettext_noop(
+              "errors",
+              "Choose another provider: %{provider} uses the keys of %{chosen}, which is chosen already."
+            ),
+            provider: provider.name,
+            chosen: chosen
+          )
+
+        true ->
+          check_tiers(row, provider, runtime)
+      end
 
     if row.valid?,
       do:
-        {changeset, [Map.put(fallback, :connection, provider) | checked],
-         MapSet.put(taken, provider.id)},
+        {changeset, [Map.put(fallback, :connection, provider) | checked], taken(taken, provider)},
       else: {fallback_errors(changeset, row, index), checked, taken}
+  end
+
+  # `taken` with `provider` chosen: its row id, and its key group by its identity unless
+  # an earlier provider of the group took it, each to the name of the provider that took
+  # it. The choice's provider takes its key group first, then each fallback in turn.
+  defp taken(taken, %Connection{} = provider) do
+    taken
+    |> Map.put(provider.id, provider.name)
+    |> Map.put_new({:group, Group.identity(provider)}, provider.name)
   end
 
   defp fallback_change(fallback), do: change({%{}, @fallback_types}, fallback)
 
-  # The providers the fallbacks name, by public id: model providers of the chain `chain`,
+  # The providers of the fallbacks, by public id: model providers of the chain `chain`,
   # each read with its workspaces and its keys' secret, their rows locked `FOR SHARE` in
   # the order of their ids.
   defp hold_fallback_providers(fallbacks, %Organisation{id: organisation_id}, chain) do
@@ -1577,8 +1688,8 @@ defmodule Apiary.ModelChoices do
   # places_using/1 is the places of the choices, at levels 2 to 6, that use the model
   # provider `provider`, as their provider or as one of their fallbacks: each a
   # `t:named_place/0`, the organisation's default first, then by workspace, target and
-  # workflow. Read without a lock: the caller holds the provider's row `FOR UPDATE`, so no
-  # save of a choice of it runs meanwhile.
+  # workflow. Read without a lock: it runs while the provider's row is locked `FOR UPDATE`,
+  # so no save of a choice of it runs meanwhile.
   #
   # A workflow's choice in a workspace (level 4) that the workspace no longer keeps
   # (`Apiary.Processes.kept_workflows/1`) is left out: `delete_leftovers_using/2` deletes
@@ -1599,6 +1710,114 @@ defmodule Apiary.ModelChoices do
   @spec delete_leftovers_using(Scope.t(), Connection.t()) :: :ok | {:error, term}
   def delete_leftovers_using(%Scope{} = scope, %Connection{} = provider),
     do: delete_leftovers_of(scope, using(provider))
+
+  @doc false
+  # move_from/2 points each model choice, at levels 2 to 6, and each fallback that uses the
+  # model provider `provider` at the provider that `target` returns for the choice's
+  # workspace id, nil for the organisation's default: a connection, or nil for none. A
+  # fallback that would then be its choice's provider, or a provider that another of its
+  # choice's fallbacks has, is deleted, and the choice's fallbacks are numbered again from 0
+  # in their order. Each moved choice records a `choice_changed` entry, as a save of it
+  # does, its `before` and `after` with its provider and fallbacks. `{:ok, connections}`,
+  # the providers the choices and fallbacks now use, or `{:error, {:last_key,
+  # workspace_id}}` for the first place with none, nil for the organisation's default,
+  # which writes nothing. It runs while the provider's row is locked `FOR UPDATE`, so no
+  # save of a choice of it runs meanwhile.
+  @spec move_from(Scope.t(), Connection.t(), (Ecto.UUID.t() | nil -> Connection.t() | nil)) ::
+          {:ok, [Connection.t()]} | {:error, term}
+  def move_from(%Scope{} = scope, %Connection{id: id} = provider, target)
+      when is_function(target, 1) do
+    choices =
+      Repo.all(
+        from c in using(provider),
+          order_by: c.id,
+          lock: "FOR UPDATE",
+          preload: [fallbacks: ^from(f in Fallback, order_by: f.position, preload: :connection)]
+      )
+
+    moves = Enum.map(choices, &{&1, target.(&1.workspace_id)})
+
+    case Enum.find(moves, &match?({_choice, nil}, &1)) do
+      {choice, nil} ->
+        {:error, {:last_key, choice.workspace_id}}
+
+      nil ->
+        moved =
+          Enum.reduce_while(moves, :ok, fn {choice, to}, :ok ->
+            case moved_choice(scope, choice, id, to.id) do
+              {:ok, _entry} -> {:cont, :ok}
+              {:error, reason} -> {:halt, {:error, reason}}
+            end
+          end)
+
+        with :ok <- moved,
+             do: {:ok, moves |> Enum.map(&elem(&1, 1)) |> Enum.uniq_by(& &1.id)}
+    end
+  end
+
+  # The choice moved, with the entry of its change: who changed it and when, as a save
+  # writes them, and its `before` and `after`.
+  defp moved_choice(scope, %ModelChoice{} = choice, from, to) do
+    before = audited(choice)
+    :ok = move_choice(choice, from, to)
+
+    {1, _rows} =
+      Repo.update_all(from(c in ModelChoice, where: c.id == ^choice.id),
+        set: [updated_by_id: scope.user && scope.user.id, updated_at: DateTime.utc_now()]
+      )
+
+    moved = Repo.preload(Repo.get!(ModelChoice, choice.id), fallbacks: :connection)
+    level = ModelChoice.level(moved)
+
+    at = %{
+      level: level,
+      chain: moved.chain,
+      organisation: Repo.get!(Organisation, moved.organisation_id),
+      workspace: moved.workspace_id && Repo.get!(Workspace, moved.workspace_id),
+      target: moved.target_id && Repo.get!(Target, moved.target_id),
+      workflow: moved.workflow,
+      action: if(level == 6, do: :"provider.write", else: :"model_choice.write")
+    }
+
+    record(scope, at, moved, "choice_changed", %{before: before, after: audited(moved)})
+  end
+
+  # The choice, and its fallbacks, from the provider `from` to `to`. The fallbacks that
+  # are dropped go first, so no update meets the unique index of a choice's providers, then
+  # the moved fallback, then the positions from 0, lowest first, each to a place a fallback
+  # before it left.
+  defp move_choice(%ModelChoice{} = choice, from, to) do
+    provider = if choice.connection_id == from, do: to, else: choice.connection_id
+
+    if provider != choice.connection_id,
+      do:
+        Repo.update_all(from(c in ModelChoice, where: c.id == ^choice.id),
+          set: [connection_id: provider]
+        )
+
+    {kept, _seen} =
+      Enum.flat_map_reduce(choice.fallbacks, MapSet.new([provider]), fn fallback, seen ->
+        now = if fallback.connection_id == from, do: to, else: fallback.connection_id
+
+        if MapSet.member?(seen, now),
+          do: {[], seen},
+          else: {[{fallback, now}], MapSet.put(seen, now)}
+      end)
+
+    kept_ids = Enum.map(kept, fn {fallback, _now} -> fallback.id end)
+    dropped = for f <- choice.fallbacks, f.id not in kept_ids, do: f.id
+    Repo.delete_all(from f in Fallback, where: f.id in ^dropped)
+
+    for {fallback, now} <- kept, now != fallback.connection_id do
+      Repo.update_all(from(f in Fallback, where: f.id == ^fallback.id), set: [connection_id: now])
+    end
+
+    for {{fallback, _now}, position} <- Enum.with_index(kept), fallback.position != position do
+      Repo.update_all(from(f in Fallback, where: f.id == ^fallback.id), set: [position: position])
+    end
+
+    :ok
+  end
 
   defp delete_leftovers_of(scope, query) do
     if Apiary.Stages.on?(), do: delete_leftovers_read(scope, query), else: :ok

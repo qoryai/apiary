@@ -1290,7 +1290,7 @@ defmodule ApiaryWeb.WorkItemComponents do
        ),
        do:
          rich_gettext(
-           "Add a model key in Organisation settings › Model providers. The gateway had no model key for %{attempt}.",
+           "Add a model key in Organisation settings › Model provider keys. The gateway had no model key for %{attempt}.",
            attempt: attempt_words_lower(run)
          )
 
@@ -1350,7 +1350,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   defp used_up_line(%{end_cause: :run_refused, end_detail: "model_key_missing"} = run),
     do:
       rich_gettext(
-        "Add a model key in Organisation settings › Model providers. The gateway had no model key for %{attempt}. That was attempt %{number} of %{of}, the last attempt of this take in.",
+        "Add a model key in Organisation settings › Model provider keys. The gateway had no model key for %{attempt}. That was attempt %{number} of %{of}, the last attempt of this take in.",
         attempt: attempt_words_lower(run),
         number: Format.number(run.attempt),
         of: Format.number(run.of)
@@ -7297,7 +7297,7 @@ defmodule ApiaryWeb.WorkItemComponents do
     do:
       {"hero-exclamation-triangle-micro", gettext("The run did not start."),
        gettext(
-         "Add a model key in Organisation settings › Model providers. The gateway had no model key for the run."
+         "Add a model key in Organisation settings › Model provider keys. The gateway had no model key for the run."
        )}
 
   # A run whose variables are more than it takes, or take more than it takes: the claim
@@ -8700,7 +8700,7 @@ defmodule ApiaryWeb.WorkItemComponents do
        }),
        do:
          rich_gettext(
-           "Add a model key in Organisation settings › Model providers. The gateway had no model key for attempt %{attempt}",
+           "Add a model key in Organisation settings › Model provider keys. The gateway had no model key for attempt %{attempt}",
            attempt: attempt_ref(run)
          )
 

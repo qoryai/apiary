@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ModelKeyDevice do
   # The device sign-in of a key's form (`Apiary.ModelKeys.DeviceSignIn`) for a LiveView:
-  # Add key, Edit key, New model provider, the set-up's Model step, and a secret's Add
-  # value and Change value, in the core and in the Pro Secrets page. The LiveView calls
+  # Edit key, New model provider key, the set-up's Model step, and a secret's Change
+  # value, in the core and in the Pro Secrets page. The LiveView calls
   # `attach/2` in its mount and shows `ApiaryWeb.ModelKeyComponents.sign_in_with_chatgpt/1`
   # with the `device` assign; the hooks here read the events `device_sign_in` (the button)
   # and `device_cancel` (Cancel next to the waiting line) and the messages of the sign-in.
@@ -26,27 +26,21 @@ defmodule ApiaryWeb.ModelKeyDevice do
           state: :idle | :starting | :code | :signed_in | :expired | :off | :failed,
           pid: pid | nil,
           ref: reference | nil,
-          key: String.t() | nil,
           user_code: String.t() | nil,
           verification_url: String.t() | nil,
           expires_at: DateTime.t() | nil,
-          cause: pos_integer | :unknown | :no_account | :store | nil
+          cause: pos_integer | :unknown | :no_account | nil
         }
 
   @doc """
   Hooks the events and the messages of a device sign-in into the LiveView, and assigns
-  `device` for the keys of the provider `kind` (`for_provider/2`). With `signed_in:`, a
-  function of the socket, the LiveView stores the sign-in as soon as the person has signed
-  in (a button in a list's row starts such a sign-in, with no form to save).
+  `device` for the keys of the provider `kind` (`for_provider/2`).
   """
-  @spec attach(Phoenix.LiveView.Socket.t(), String.t() | nil, keyword) ::
-          Phoenix.LiveView.Socket.t()
-  def attach(socket, kind \\ nil, opts \\ []) do
-    signed_in = Keyword.get(opts, :signed_in, & &1)
-
+  @spec attach(Phoenix.LiveView.Socket.t(), String.t() | nil) :: Phoenix.LiveView.Socket.t()
+  def attach(socket, kind \\ nil) do
     socket
     |> attach_hook(:device_sign_in_event, :handle_event, &event/3)
-    |> attach_hook(:device_sign_in_info, :handle_info, &info(&1, &2, signed_in))
+    |> attach_hook(:device_sign_in_info, :handle_info, &info/2)
     |> assign(:device, nil)
     |> for_provider(kind)
   end
@@ -90,22 +84,6 @@ defmodule ApiaryWeb.ModelKeyDevice do
     case socket.assigns[:device] do
       %{state: :signed_in, pid: pid} -> DeviceSignIn.login(pid)
       _none -> :error
-    end
-  end
-
-  @doc """
-  Ends the sign-in of a LiveView that could not store it, as one that failed: the page
-  shows the fix of a failed sign-in and the button.
-  """
-  @spec fail(Phoenix.LiveView.Socket.t()) :: Phoenix.LiveView.Socket.t()
-  def fail(socket) do
-    case socket.assigns[:device] do
-      %{kind: kind, key: key} = device ->
-        stop(device)
-        assign(socket, :device, %{idle(kind) | state: :failed, key: key, cause: :store})
-
-      nil ->
-        socket
     end
   end
 
@@ -162,22 +140,6 @@ defmodule ApiaryWeb.ModelKeyDevice do
     end)
   end
 
-  @doc """
-  The row id of the key's value that the sign-in was started for (the button of a key's
-  row sends it), nil on a form.
-  """
-  @spec key(Phoenix.LiveView.Socket.t()) :: String.t() | nil
-  def key(socket), do: socket.assigns[:device] && socket.assigns.device.key
-
-  @doc "Whether a sign-in has its code or its tokens, or is about to."
-  @spec busy?(Phoenix.LiveView.Socket.t()) :: boolean
-  def busy?(socket),
-    do:
-      match?(
-        %{state: state} when state in [:starting, :code, :signed_in],
-        socket.assigns[:device]
-      )
-
   defp idle(nil), do: nil
 
   defp idle(kind) do
@@ -187,7 +149,6 @@ defmodule ApiaryWeb.ModelKeyDevice do
         state: :idle,
         pid: nil,
         ref: nil,
-        key: nil,
         user_code: nil,
         verification_url: nil,
         expires_at: nil,
@@ -201,11 +162,10 @@ defmodule ApiaryWeb.ModelKeyDevice do
 
   ## The hooks
 
-  defp event("device_sign_in", params, %{assigns: %{device: %{state: state} = device}} = socket)
+  defp event("device_sign_in", _params, %{assigns: %{device: %{state: state} = device}} = socket)
        when state in @starts do
     stop(device)
     ref = make_ref()
-    key = if is_binary(params["key"]) and params["key"] != "", do: params["key"]
 
     case DeviceSignIn.start(device.kind, ref) do
       {:ok, pid} ->
@@ -214,8 +174,7 @@ defmodule ApiaryWeb.ModelKeyDevice do
            idle(device.kind)
            | state: :starting,
              pid: pid,
-             ref: ref,
-             key: key
+             ref: ref
          })}
 
       {:error, :device_flow_unavailable} ->
@@ -233,18 +192,17 @@ defmodule ApiaryWeb.ModelKeyDevice do
 
   defp event(_name, _params, socket), do: {:cont, socket}
 
-  defp info({:device_sign_in, ref, event}, socket, signed_in) do
+  defp info({:device_sign_in, ref, event}, socket) do
     case socket.assigns[:device] do
       %{ref: ^ref} = device ->
-        socket = assign(socket, :device, advance(device, event))
-        {:halt, if(event == :signed_in, do: signed_in.(socket), else: socket)}
+        {:halt, assign(socket, :device, advance(device, event))}
 
       _stale ->
         {:halt, socket}
     end
   end
 
-  defp info(_message, socket, _signed_in), do: {:cont, socket}
+  defp info(_message, socket), do: {:cont, socket}
 
   defp advance(device, {:code, shown}),
     do: %{
@@ -259,8 +217,8 @@ defmodule ApiaryWeb.ModelKeyDevice do
     do: %{device | state: :signed_in, user_code: nil, verification_url: nil, expires_at: nil}
 
   defp advance(device, {:ended, reason}) when reason in [:expired, :off],
-    do: %{idle(device.kind) | state: reason, key: device.key}
+    do: %{idle(device.kind) | state: reason}
 
   defp advance(device, {:ended, :failed, cause}),
-    do: %{idle(device.kind) | state: :failed, key: device.key, cause: cause}
+    do: %{idle(device.kind) | state: :failed, cause: cause}
 end

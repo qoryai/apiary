@@ -912,7 +912,9 @@ defmodule Apiary.ModelKeysTest do
       :ok = seal(run, value)
 
       {:ok, _provider} =
-        Connections.rename_provider_key(ctx.scope, ctx.provider, "spare", "renamed")
+        Connections.update_provider_key(ctx.scope, ctx.provider, "spare", %{
+          "value_id" => "renamed"
+        })
 
       :ok = ModelKeys.record(ModelKeys.run_keys(run), [item([])], DateTime.utc_now())
       assert [%State{status: "allowed"}] = states(value)

@@ -20,10 +20,12 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
   # and `secrets`, and show without `organisation_variables`: then the page lists the keys
   # alone, with no Variables tab and no New secret; the search and the Filter menu stay over
   # the key rows. A key row shows its provider's name and "Model provider key", and a mask
-  # on each value's line, never the key. Add value, Change value, Rename value and Delete
-  # value write it as the provider's key (`Apiary.Connections.add_provider_key/3` to
-  # `Apiary.Connections.delete_provider_key/3`), under `provider.write`; Delete secret is
-  # refused while the provider links the secret, and Edit name and note is not offered. The
+  # on each value's line, never the key. Change value and Delete value write it as the
+  # provider's key (`Apiary.Connections.set_provider_key/5`,
+  # `Apiary.Connections.delete_provider_key/3`), under `provider.write`. A key row has no
+  # Add value and no Rename value: a key is added in Organisation settings › Model provider
+  # keys and renamed on its Edit key there. Delete secret is refused while the provider
+  # links the secret, and Edit name and note is not offered. The
   # rows are for whoever reads the organisation's secrets, or changes the keys
   # (`provider.write`); a member has neither, and does not open the page.
   #
@@ -369,8 +371,8 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
     end)
   end
 
-  # The id of a row in the page's source. A model key has no value id in it (`key-<n>`, which
-  # no page shows): its row has the key's row id, which is in `identities`.
+  # The id of a row in the page's source. The page shows a model key by its identity line,
+  # not its value id: its row has the key's row id, which is in `identities`.
   defp row_id({:secret, secret}, _identities), do: "secret-#{secret.public_id}"
 
   defp row_id({:value, secret, value}, identities) do
@@ -1079,8 +1081,8 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
   defp secret_path(scope, secret, :delete),
     do: ~p"/#{scope.organisation}/settings/secrets/#{secret.public_id}/delete"
 
-  # The segment of a value's address: the row id of a model key, which has no name that a
-  # person gives, else the value id of an ordinary secret's value.
+  # The segment of a value's address: the row id of a model key, whose name is changed on
+  # Edit key, else the value id of an ordinary secret's value.
   defp value_segment(%Value{id: id}, true), do: id
   defp value_segment(%Value{value_id: value_id}, false), do: value_id
 
@@ -1318,8 +1320,9 @@ defmodule ApiaryProWeb.SettingsLive.Secrets do
     )
   end
 
-  # Add value and Rename value are for the secrets that a person names: a model provider's
-  # secret is not found by these paths, as the keys have no names.
+  # Add value and Rename value are for ordinary secrets: a model provider's secret is not
+  # found by these paths, as its keys are added on New model provider key and renamed on
+  # Edit key.
   defp open(socket, :add_value, %{"id" => id}) do
     with_secret(
       socket,

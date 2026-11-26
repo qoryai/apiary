@@ -4,7 +4,8 @@ defmodule Apiary.ModelChoices.Fallback do
   # cooldown, at its `position` among the choice's fallbacks, from 0, with the runtime its
   # runs use (`runtime`, a name of `Apiary.Kinds.Runtimes`, one the provider serves) and a
   # tier map (`tiers`) with every tier, as a choice at levels 4 to 6 has. A provider is
-  # at most once among a choice's fallbacks, and never the choice's provider.
+  # at most once among a choice's fallbacks, and never the choice's provider or a
+  # provider of its key group (`Apiary.ModelKeys.Group`).
   #
   # Changed only through `Apiary.ModelChoices`, which writes a choice's fallbacks again
   # with each save of it.

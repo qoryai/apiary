@@ -18,7 +18,7 @@ defmodule ApiaryWeb.ModelChoiceUncheckedTest do
     {:ok, provider} =
       Connections.create_provider(scope, %{
         provider: "anthropic",
-        keys: [%{value_id: "key-1", value: "sk-ant-model-unchecked-0123456789"}]
+        keys: [%{value: "sk-ant-model-unchecked-0123456789"}]
       })
 
     SettingsFit.put_test_check(fn _entry, _settings -> :unchecked end)

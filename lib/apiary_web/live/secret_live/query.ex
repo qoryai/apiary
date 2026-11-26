@@ -100,8 +100,8 @@ defmodule ApiaryWeb.SecretLive.Query do
   `Apiary.Secrets.Secret` with its values. The search matches a secret's name and each
   value's value id, except for a model key, which has the identity line in `identities`
   (by the value's row id, `Apiary.ModelKeys.Identity`) in place of its value id: the
-  search matches the line as the page shows it, and the value id `key-<n>`, which no page
-  shows, is not searchable.
+  search matches the line as the page shows it, and the value id, which the Secrets page
+  does not show for a model key, is not searchable.
   """
   @spec secrets([struct], t, %{Ecto.UUID.t() => String.t()}) :: [struct]
   def secrets(secrets, %__MODULE__{} = query, identities \\ %{}) do

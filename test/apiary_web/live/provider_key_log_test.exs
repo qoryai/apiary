@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ProviderKeyLogTest do
-  # New model provider (`ApiaryWeb.ProviderLive.Index`) and Edit key
+  # New model provider key (`ApiaryWeb.ProviderLive.Index`) and Edit key
   # (`ApiaryWeb.ProviderLive.Key`) write no model key into a log line, when a save is
-  # refused or crashes. Not async: the tests set Logger's level to debug.
+  # refused, dropped or crashes. Not async: the tests set Logger's level to debug.
   use ApiaryWeb.ConnCase, async: false
 
   # The other lines logged at debug are kept out of the test's output.
@@ -35,30 +35,33 @@ defmodule ApiaryWeb.ProviderKeyLogTest do
     end)
   end
 
-  # Without `Apiary.SecretLogFilter` this test passes too: Phoenix prints the last message
-  # with its payload's `value`, the encoded form with the key, as `[FILTERED]`, because
-  # `value` is in `:filter_parameters`; and the page's state has no key (`assign_form/3`).
-  test "a save that crashes the page logs no key", %{conn: conn, scope: scope} do
+  # New model provider key drops an event whose fields are not each a string, before it is
+  # read: the page stays up, so no crash report prints the event, and the key in it.
+  test "a save with a field that is not a string is dropped, and logs no key", ctx do
+    %{conn: conn, scope: scope} = ctx
     key = key()
     {:ok, lv, _html} = live(conn, new_path(scope))
 
-    # An address sent as a map passes the save's checks as refused, then fails to render.
     log =
-      crash_log(lv, fn ->
-        render_submit(lv, "create", %{
-          "provider" => %{"provider" => "litellm", "key" => key, "address" => %{"a" => "b"}}
-        })
+      capture_log([level: :debug], fn ->
+        html =
+          render_submit(lv, "create", %{
+            "provider" => %{"provider" => "litellm", "key" => key, "address" => %{"a" => "b"}}
+          })
+
+        refute html =~ key
       end)
 
-    assert log =~ "terminating"
-    assert log =~ ~s(Last message: %Phoenix.Socket.Message{)
+    assert Process.alive?(lv.pid)
+    assert has_element?(lv, "#new-provider-form")
     refute log =~ key
+    assert Apiary.Connections.list_providers(scope) == {:ok, []}
   end
 
-  # `assign_form/3` keeps the key out of the HTML and the state. The crash's stacktrace has
-  # the key among the arguments of `handle_event/3`, which `Apiary.SecretLogFilter`
-  # replaces with the call's arity.
-  test "a refused save keeps no key, and a crash after it logs none", %{conn: conn, scope: scope} do
+  # `assign_form/4` keeps the key out of the HTML and the state; an event the page has no
+  # use for is dropped with the key in it.
+  test "a refused save keeps no key, and an unknown event after it logs none", ctx do
+    %{conn: conn, scope: scope} = ctx
     key = key()
     {:ok, lv, _html} = live(conn, new_path(scope))
 
@@ -70,14 +73,14 @@ defmodule ApiaryWeb.ProviderKeyLogTest do
     assert html =~ "https://"
     refute html =~ key
     refute inspect(:sys.get_state(lv.pid), limit: :infinity, printable_limit: :infinity) =~ key
+    assert Apiary.Connections.list_providers(scope) == {:ok, []}
 
-    # An event the page has no clause for fails with the key among the call's arguments.
     log =
-      crash_log(lv, fn ->
+      capture_log([level: :debug], fn ->
         render_submit(lv, "unknown", %{"provider" => %{"provider" => "anthropic", "key" => key}})
       end)
 
-    assert log =~ "FunctionClauseError"
+    assert Process.alive?(lv.pid)
     refute log =~ key
   end
 
@@ -102,7 +105,7 @@ defmodule ApiaryWeb.ProviderKeyLogTest do
     log =
       capture_log([level: :debug], fn ->
         html =
-          render_submit(lv, "save", %{"key" => %{"key" => key <> <<0>>}})
+          render_submit(lv, "save", %{"key" => %{"name" => "main", "key" => key <> <<0>>}})
 
         assert html =~ "must not contain a NUL byte"
         refute html =~ key
@@ -114,7 +117,7 @@ defmodule ApiaryWeb.ProviderKeyLogTest do
     log =
       capture_log([level: :debug], fn ->
         assert {:error, {:live_redirect, _to}} =
-                 render_submit(lv, "save", %{"key" => %{"key" => key}})
+                 render_submit(lv, "save", %{"key" => %{"name" => "main", "key" => key}})
       end)
 
     refute log =~ key

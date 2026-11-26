@@ -3,9 +3,11 @@ defmodule ApiaryWeb.ModelChoiceLive do
   # `factory` and `secrets`: the workspace's model choice (level 5, `Apiary.ModelChoices`),
   # under Default models.
   #
-  # Provider: each model provider of the organisation that applies to the workspace and
-  # is offered (`Apiary.Kinds.Providers.offered?/1`), by its name; the saved choice's
-  # provider stays listed while it is not offered. Runs take the chosen provider's keys.
+  # Provider: each key group of the model providers of the organisation that apply to
+  # the workspace and are offered (`Apiary.Kinds.Providers.offered?/1`), as its first
+  # provider, by the group's label (`ApiaryWeb.ModelTiers.key_groups/1`); the saved
+  # choice's provider stays listed while it is not offered. Runs take the keys of the
+  # chosen provider's key group.
   # A provider that works with no runtime of the catalogue (`Apiary.Kinds.Providers.runtimes/1`)
   # is listed too: chosen, it shows "<Provider> works with no runtime in this version of
   # Qory. Pick another provider." under Provider, which has a red border, and Save
@@ -74,13 +76,18 @@ defmodule ApiaryWeb.ModelChoiceLive do
      |> load()}
   end
 
-  # The providers that apply to the workspace, the runtime of the workspace's choice, and
-  # the form as that choice sets it.
+  # The providers that apply to the workspace, one per key group
+  # (`ApiaryWeb.ModelTiers.key_groups/1`), the runtime of the workspace's choice, and the
+  # form as that choice sets it. A stored choice or fallback on another provider of a
+  # group shows as that group's entry, so a save stores the group's first provider.
   defp load(socket) do
     scope = socket.assigns.current_scope
     {:ok, providers} = Connections.list_providers(scope)
-    choice = workspace_choice(scope)
-    applicable = Enum.filter(providers, &applies?(&1, scope.workspace.id))
+
+    {applicable, first_of} =
+      providers |> Enum.filter(&applies?(&1, scope.workspace.id)) |> ModelTiers.key_groups()
+
+    choice = scope |> workspace_choice() |> on_firsts(applicable, first_of)
     stored = if choice, do: choice.fallbacks, else: []
 
     described =
@@ -282,6 +289,39 @@ defmodule ApiaryWeb.ModelChoiceLive do
 
   defp applies?(%Connection{workspaces: workspaces}, workspace_id),
     do: Enum.any?(workspaces, &(&1.workspace_id == workspace_id))
+
+  # `choice` and its fallbacks with each provider that is not the first of its key group
+  # replaced by that first provider of `firsts`, by `first_of` (`load/1`). A fallback of
+  # the choice's key group, and each after the first of one other key group, as a change
+  # of a provider's settings can leave them, is left out: a save drops it
+  # (`Apiary.ModelChoices.put_choice/4`).
+  defp on_firsts(nil, _firsts, _first_of), do: nil
+
+  defp on_firsts(%ModelChoice{} = choice, firsts, first_of) do
+    by_id = Map.new(firsts, &{&1.id, &1})
+    first = &Map.get(by_id, Map.get(first_of, &1))
+    chosen = first.(choice.connection_id)
+    chosen_id = (chosen && chosen.id) || choice.connection_id
+
+    fallbacks =
+      choice.fallbacks
+      |> Enum.map(fn fallback ->
+        case first.(fallback.connection_id) do
+          %Connection{} = provider ->
+            %{fallback | connection_id: provider.id, connection: provider}
+
+          nil ->
+            fallback
+        end
+      end)
+      |> Enum.reject(&(&1.connection_id == chosen_id))
+      |> Enum.uniq_by(& &1.connection_id)
+
+    case chosen do
+      %Connection{id: id} -> %{choice | connection_id: id, fallbacks: fallbacks}
+      nil -> %{choice | fallbacks: fallbacks}
+    end
+  end
 
   # The workspace's choice at level 5, nil for none.
   defp workspace_choice(scope) do
@@ -772,7 +812,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
   defp unserved_text({:changed, provider}, scope),
     do:
       rich_gettext(
-        "Add %{provider} again in %{place}: its settings no longer fit this version of Qory Apiary.",
+        "Add a new key for %{provider} in %{place}: its settings no longer fit this version of Qory Apiary.",
         provider: {:b, provider.name},
         place: providers_link(scope)
       )
@@ -780,23 +820,23 @@ defmodule ApiaryWeb.ModelChoiceLive do
   defp unserved_text({:unknown, provider}, scope),
     do:
       rich_gettext(
-        "Add another model provider in %{place}: Qory Apiary no longer has the description %{provider} was added from.",
+        "Add a key of another provider in %{place}: Qory Apiary no longer has the description %{provider} was added from.",
         provider: {:b, provider.name},
         place: providers_link(scope)
       )
 
   # With no provider at all: where to add one, for whoever may add one there; for anyone
-  # else, who adds one, as Organisation settings › Model providers says it.
+  # else, who adds one, in the words of Organisation settings › Model provider keys.
   defp unserved_text(:none, scope) do
     if Access.can?(scope, :"provider.write", scope.organisation),
-      do: rich_gettext("Add a model provider in %{place}.", place: providers_link(scope)),
+      do: rich_gettext("Add a model provider key in %{place}.", place: providers_link(scope)),
       else: who_adds(scope)
   end
 
   defp providers_link(scope),
     do:
       {:link, ~p"/#{scope.organisation}/settings/model-providers",
-       gettext("Organisation settings › Model providers")}
+       gettext("Organisation settings › Model provider keys")}
 
   # What the Fallbacks part reads of the page's assigns.
   defp fallback_page(assigns),
@@ -845,7 +885,7 @@ defmodule ApiaryWeb.ModelChoiceLive do
         <p :if={@left == []} id="model-fallback-none" class="text-[13.5px]/5 text-muted">
           <.rich text={
             rich_gettext(
-              "Add another model provider in %{place}, then add it here as a fallback.",
+              "Add a key of another provider in %{place}, then add that provider here as a fallback.",
               place: providers_link(@page.current_scope)
             )
           } />
@@ -1015,10 +1055,10 @@ defmodule ApiaryWeb.ModelChoiceLive do
       >
         <p :if={@applicable == []} id="model-no-provider" class="text-[13.5px]/5 text-muted">
           <.rich text={
-            rich_gettext("Add a model provider in %{place}, then choose its model here.",
+            rich_gettext("Add a model provider key in %{place}, then choose its model here.",
               place:
                 {:link, ~p"/#{@current_scope.organisation}/settings/model-providers",
-                 gettext("Organisation settings › Model providers")}
+                 gettext("Organisation settings › Model provider keys")}
             )
           } />
         </p>

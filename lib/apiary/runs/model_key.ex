@@ -1,8 +1,8 @@
 defmodule Apiary.Runs.ModelKey do
   @moduledoc """
   One model key a run's claim stored for the run, in
-  `run_model_keys`: at most 6 per run, of one or more model providers, one provider per
-  session. Written once, with the run's registration, and never changed; not folded, so a
+  `run_model_keys`: at most 6 per run, of one or more model providers, one key group per
+  session (`Apiary.ModelKeys.Group`). Written once, with the run's registration, and never changed; not folded, so a
   rebuild keeps it.
 
   `position` is the key's place in the run configuration's `credentials`, from 1; `name`

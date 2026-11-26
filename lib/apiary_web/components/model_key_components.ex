@@ -1,7 +1,7 @@
 defmodule ApiaryWeb.ModelKeyComponents do
   # The settings and the state of a model key, a value of a model provider's secret
-  # (`Apiary.ModelKeys`), as the provider's page, Add key and Edit key
-  # (`ApiaryWeb.ProviderLive.Show`, `ApiaryWeb.ProviderLive.Key`) and the workspace's
+  # (`Apiary.ModelKeys`), as the list of model provider keys, New model provider key and
+  # Edit key (`ApiaryWeb.ProviderLive.Index`, `ApiaryWeb.ProviderLive.Key`) and the workspace's
   # Secrets page (`ApiaryWeb.SecretLive.Index`) show them:
   #
   #   * `settings_fields/1`: Resets, a weekly day, time and time zone, Pause for, a
@@ -11,7 +11,9 @@ defmodule ApiaryWeb.ModelKeyComponents do
   #     a form sent, and `errors/1` the errors of a settings changeset, by field group;
   #   * `state/4` the state of a key from its states, in words;
   #   * `login/2` and `login_line/1` the sign-in of a key of a provider whose keys are
-  #     logins (`Apiary.ModelKeys.Login`), in words.
+  #     logins (`Apiary.ModelKeys.Login`), in words;
+  #   * `workspace_names/2` and `workspaces_words/1` the workspaces a key serves, in the
+  #     words of the list of keys and of Edit key.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -28,6 +30,35 @@ defmodule ApiaryWeb.ModelKeyComponents do
   @fields ~w(reset_day reset_time reset_zone pause_number pause_unit use_up_to)
   @units %{"minutes" => 60, "hours" => 3600, "days" => 86_400}
   @reset_fields [:reset_weekday, :reset_time, :reset_time_zone]
+
+  @doc """
+  workspace_names/2 is `:all`, or the names of the workspaces the provider reaches, sorted
+  by name; `names` maps the organisation's workspace ids to their names.
+  """
+  @spec workspace_names(Connection.t(), %{Ecto.UUID.t() => String.t()}) :: :all | [String.t()]
+  def workspace_names(%Connection{applies_to: "all"}, _names), do: :all
+
+  def workspace_names(%Connection{} = provider, names) do
+    provider
+    |> Apiary.Connections.workspace_ids_of()
+    |> Enum.flat_map(&List.wrap(Map.get(names, &1)))
+    |> Enum.sort_by(&String.downcase/1)
+  end
+
+  @doc """
+  workspaces_words/1 is the workspaces of `workspace_names/2` in words: "Every workspace",
+  one to three names, or the first two and "and 3 more".
+  """
+  @spec workspaces_words(:all | [String.t()]) :: String.t()
+  def workspaces_words(:all), do: gettext("Every workspace")
+  def workspaces_words(names) when length(names) <= 3, do: Enum.join(names, ", ")
+
+  def workspaces_words([first, second | rest]),
+    do:
+      ngettext("%{names} and %{number} more", "%{names} and %{number} more", length(rest),
+        names: first <> ", " <> second,
+        number: Format.number(length(rest))
+      )
 
   @doc "The names of the fields `settings_fields/1` sends."
   @spec fields() :: [String.t()]
@@ -834,9 +865,7 @@ defmodule ApiaryWeb.ModelKeyComponents do
   end
 
   # The cause line of a failed sign-in: the status of the response that failed it, when
-  # there is one; a sign-in that could not be saved; a response with no account id.
-  defp failed_cause(:store), do: gettext("Qory Apiary could not save the sign-in.")
-
+  # there is one; a response with no account id.
   defp failed_cause(:no_account),
     do: gettext("OpenAI returned no account id for this sign-in.")
 

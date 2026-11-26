@@ -167,6 +167,42 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       end
     end
 
+    test "is answered the keys of each provider of the run's key group" do
+      # A second Anthropic provider, for the workspace alone, its key a secret of that
+      # workspace: the run's key group has both providers' keys.
+      %{scope: scope} = sign_up_fixture()
+      {:ok, _rule} = Policy.allow(scope, nil, %{host: "git.example"})
+      checkout_key = "sk-ant-checkout-0123456789"
+
+      ctx =
+        sealed_run_fixture(scope,
+          before_claim: fn _provider ->
+            {:ok, checkout} =
+              Connections.create_provider(
+                scope,
+                %{provider: "anthropic", keys: [%{value_id: "main", value: checkout_key}]},
+                :workspace
+              )
+
+            send(self(), {:checkout, checkout})
+          end
+        )
+
+      assert_received {:checkout, checkout}
+      names = ["#{ctx.provider.public_id}-1", "#{checkout.public_id}-1"]
+      assert Enum.map(stored_keys(ctx.run), & &1.name) == names
+
+      conn = post_secrets(ctx, request(ctx, credentials: names))
+      assert conn.status == 200
+      {_bytes, plaintext} = opened(ctx, conn)
+      # The values come sorted by credential name, and the names start with random ids.
+      assert Map.new(plaintext["values"], &{&1["credential"], &1["value"]}) ==
+               Map.new(Enum.zip(names, [model_key(), checkout_key]))
+
+      assert [entry] = seals()
+      assert entry.details["provider_ids"] == [ctx.provider.public_id, checkout.public_id]
+    end
+
     test "keeps when the value it sealed was set, the last request's", ctx do
       %{secret_value_id: id} = hd(stored_keys(ctx.run))
       value = Repo.get!(Value, id)
@@ -475,7 +511,9 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       {:ok, _provider} = Apiary.Connections.put_default_key(ctx.scope, provider(ctx), "spare")
 
       {:ok, _provider} =
-        Apiary.Connections.rename_provider_key(ctx.scope, provider(ctx), "main", "renamed")
+        Apiary.Connections.update_provider_key(ctx.scope, provider(ctx), "main", %{
+          "value_id" => "renamed"
+        })
 
       conn = post_secrets(ctx, request(ctx))
       assert conn.status == 200

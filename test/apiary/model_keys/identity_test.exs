@@ -168,21 +168,77 @@ defmodule Apiary.ModelKeys.IdentityTest do
                ["key-1", "key-3", "key-4"]
     end
 
-    test "names the keys of a new provider in order, after the value ids given", %{scope: scope} do
+    test "a new provider's keys get key-<n> in order, beside the value ids given",
+         %{scope: scope} do
       assert {:ok, provider} =
                Connections.create_provider(scope, %{
                  provider: "anthropic",
                  keys: [
                    %{value: "sk-ant-aaaaaaaaaaaaaaaa"},
-                   %{value_id: "key-5", value: "sk-ant-bbbbbbbbbbbbbbbb"},
+                   %{value_id: "main", value: "sk-ant-bbbbbbbbbbbbbbbb"},
                    %{value: "sk-ant-cccccccccccccccc"}
                  ]
                })
 
       assert Enum.map(provider.secret.values, & &1.value_id) |> Enum.sort() ==
-               ["key-5", "key-6", "key-7"]
+               ["key-1", "key-2", "main"]
 
-      assert provider.default_value_id == "key-6"
+      assert provider.default_value_id == "key-1"
+    end
+
+    test "refuses a key-<n> value id given for a new provider", %{scope: scope} do
+      assert {:error, changeset} =
+               Connections.create_provider(scope, %{
+                 provider: "anthropic",
+                 keys: [%{value_id: "key-5", value: "sk-ant-bbbbbbbbbbbbbbbb"}]
+               })
+
+      assert errors_on(changeset).value_id == [
+               "Choose another name: Qory Apiary gives names like key-3 to new keys."
+             ]
+
+      assert Apiary.Repo.aggregate(Apiary.Connections.Connection, :count) == 0
+    end
+
+    test "refuses a key-<n> value id given in a map of keys by index", %{scope: scope} do
+      for index <- ["0", 0] do
+        assert {:error, changeset} =
+                 Connections.create_provider(scope, %{
+                   provider: "anthropic",
+                   keys: %{
+                     index => %{"value_id" => "key-5", "value" => "sk-ant-bbbbbbbbbbbbbbbb"}
+                   }
+                 })
+
+        assert errors_on(changeset).value_id == [
+                 "Choose another name: Qory Apiary gives names like key-3 to new keys."
+               ]
+      end
+
+      assert Apiary.Repo.aggregate(Apiary.Connections.Connection, :count) == 0
+    end
+
+    test "refuses a key-<n> value id given for an added key", %{scope: scope} do
+      {:ok, provider} =
+        Connections.create_provider(scope, %{
+          provider: "anthropic",
+          keys: [%{value: "sk-ant-aaaaaaaaaaaaaaaa"}]
+        })
+
+      assert {:error, changeset} =
+               Connections.add_provider_key(scope, provider, %{
+                 value_id: "key-3",
+                 value: "sk-ant-bbbbbbbbbbbbbbbb"
+               })
+
+      assert errors_on(changeset).value_id == [
+               "Choose another name: Qory Apiary gives names like key-3 to new keys."
+             ]
+
+      assert {:ok, provider} =
+               Connections.add_provider_key(scope, provider, %{value: "sk-ant-cccccccccccccccc"})
+
+      assert Enum.sort(Enum.map(provider.secret.values, & &1.value_id)) == ["key-1", "key-2"]
     end
   end
 

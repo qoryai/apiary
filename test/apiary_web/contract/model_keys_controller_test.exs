@@ -393,7 +393,7 @@ defmodule ApiaryWeb.Contract.ModelKeysControllerTest do
 
       six =
         sealed_run_fixture(scope,
-          keys: for(n <- 1..6, do: %{value_id: "key-#{n}", value: "sk-ant-six-#{n}-0123456789"})
+          keys: for(n <- 1..6, do: %{value: "sk-ant-six-#{n}-0123456789"})
         )
 
       assert length(stored_keys(six.run)) == 6

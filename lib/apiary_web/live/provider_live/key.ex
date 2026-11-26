@@ -1,30 +1,28 @@
 defmodule ApiaryWeb.ProviderLive.Key do
-  # A model provider's Add key (`:new`) and Edit key (`:edit`), separate pages of
-  # Organisation settings › Model providers › the provider, with the features `factory`
-  # and `secrets`. Add key takes the Key and its settings, Resets, Pause for and, for a
-  # provider with limit windows, Use up to (`ApiaryWeb.ModelKeyComponents`), and writes them
-  # in one transaction (`Apiary.Connections.add_provider_key/4`); for a subscription, About
-  # model providers has where to get the key and the terms that allow it. A key has no name
-  # that a person gives: Apiary gives it its value id, and every page shows its identity
-  # line (`Apiary.ModelKeys.Identity`). Edit key, of a key by its row id, which the address
-  # has, shows the identity line as its title and takes a New value, which keeps the key's
-  # value when it is left empty, and its settings
-  # (`Apiary.Connections.update_provider_key/4`). Each save goes back to the provider's page,
-  # which shows that the key is added or saved.
+  # A model provider key's Edit key (`:edit`), a separate page of Organisation settings ›
+  # Model provider keys, with the features `factory` and `secrets`, of a key by its
+  # provider's public id and its row id, which the address has. It shows the key's identity
+  # line (`Apiary.ModelKeys.Identity`) as its title, the workspaces the key serves as text,
+  # set when the key was added, and takes its Name (the value id, which no other key of the
+  # provider's kind in the organisation may have), a New value, which keeps the key's value
+  # when it is left empty, and its settings, Resets, Pause for and, for a provider with limit
+  # windows, Use up to (`ApiaryWeb.ModelKeyComponents`), written in one transaction
+  # (`Apiary.Connections.update_provider_key/4`). Save goes back to the list, which shows
+  # that the key is saved.
   #
-  # Both are for owners and admins (`provider.write`): for anyone else the paths are not
-  # there, and the context asks again. A key of a provider the organisation does not have,
-  # or a row id its keys do not have, is not found.
+  # It is for owners and admins (`provider.write`): for anyone else the path is not there,
+  # and a save checks the access again. A key of a provider the organisation does not
+  # have, or a row id its keys do not have, is not found.
   #
-  # For a provider whose keys are logins (`Apiary.ModelKeys.Login`), Add key and Edit key
-  # have no field for the key: the button Sign in with ChatGPT starts a device sign-in
-  # (`ApiaryWeb.ModelKeyDevice`), and Save stores what it made. On Edit key of a key that
-  # needs a new sign-in, the state shows above the button.
+  # For a provider whose keys are logins (`Apiary.ModelKeys.Login`), Edit key has no field
+  # for the key: the button Sign in with ChatGPT starts a device sign-in
+  # (`ApiaryWeb.ModelKeyDevice`), and Save stores what it made. For a key that needs a new
+  # sign-in, the state shows above the button.
   #
-  # A key is write-only: the page never renders it nor keeps it in an assign. Its field,
-  # Key or New value, is left out of the page's patches (`phx-update="ignore"`), and each
-  # save renders a new, empty field. The tokens of a sign-in are in the process of the
-  # sign-in, never in an assign.
+  # A key is write-only: the page never renders it nor keeps it in an assign. Its New value
+  # field is left out of the page's patches (`phx-update="ignore"`), and each save renders a
+  # new, empty field. The tokens of a sign-in are in the process of the sign-in, never in an
+  # assign.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -35,29 +33,26 @@ defmodule ApiaryWeb.ProviderLive.Key do
   on_mount {ApiaryWeb.Features, :secrets}
   on_mount {ApiaryWeb.Access, :"connection.read"}
 
-  alias Apiary.{Access, Connections, ModelKeys, Secrets}
-  alias Apiary.Kinds.Providers
+  alias Apiary.{Access, Connections, ModelKeys, Organisations}
   alias Apiary.ModelKeys.{Identity, Login, Setting}
   alias Apiary.Secrets.Value
   alias ApiaryWeb.IntegrationLive.Common
-  alias ApiaryWeb.ProviderLive.Index, as: ProviderPage
   alias ApiaryWeb.{ModelKeyComponents, ModelKeyDevice, SettingsComponents, UserAuth}
 
   # The fields the form sends, each a string.
-  @fields ["key" | ModelKeyComponents.fields()]
+  @fields ["name", "key" | ModelKeyComponents.fields()]
 
   @impl true
   def mount(%{"provider_id" => public_id} = params, _session, socket) do
     scope = socket.assigns.current_scope
-    action = socket.assigns.live_action
 
     with true <- Access.can?(scope, :"provider.write", scope.organisation),
          {:ok, provider} <- Connections.get_provider(scope, public_id),
-         {:ok, key} <- key_of(provider, action, params) do
+         {:ok, key} <- key_of(provider, params) do
       subscription = ModelKeyComponents.subscription?(provider)
-      setting = key && ModelKeys.setting(key.id)
+      setting = ModelKeys.setting(key.id)
       login? = Login.provider?(provider)
-      rejection = key && ModelKeys.rejections(provider)[key.id]
+      rejection = ModelKeys.rejections(provider)[key.id]
 
       {:ok,
        socket
@@ -67,28 +62,31 @@ defmodule ApiaryWeb.ProviderLive.Key do
          key: key,
          subscription: subscription,
          login: login?,
-         sign_in: login? && key && sign_in_needed(provider, key, rejection),
-         new_key: key && ModelKeyComponents.new_key(rejection, provider),
-         identity: key && Identity.of(provider, key, Login.by_key(provider)),
+         sign_in: login? && sign_in_needed(provider, key, rejection),
+         new_key: ModelKeyComponents.new_key(rejection, provider),
+         identity: Identity.of(provider, key, Login.by_key(provider)),
+         workspaces: workspaces_words(scope, provider),
          limit_windows: ModelKeys.limit_windows(provider),
-         chosen: chosen(provider, subscription),
          sections: SettingsComponents.sections(scope, :organisation),
          attempt: 0,
          refusal: nil,
          page_title:
            SettingsComponents.page_title(scope, :organisation, [
-             crumb(action),
-             provider.name,
-             gettext("Model providers")
+             gettext("Edit key"),
+             gettext("Model provider keys")
            ])
        )
-       |> assign_form(ModelKeyComponents.params(setting, scope, subscription), [], %{})}
+       |> assign_form(
+         Map.put(ModelKeyComponents.params(setting, scope, subscription), "name", key.value_id),
+         [],
+         %{}
+       )}
     else
       _not_there -> raise ApiaryWeb.NotFound
     end
   end
 
-  # The key's state when it needs a new sign-in, as the provider's page shows it; else nil.
+  # The key's state when it needs a new sign-in, as the list of keys shows it; else nil.
   # The refresh's verdict comes first, then a rejection by the provider that a run reported.
   defp sign_in_needed(provider, key, rejection) do
     login = ModelKeyComponents.login(Map.get(Login.by_key(provider), key.id), provider)
@@ -101,9 +99,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
     end
   end
 
-  defp key_of(_provider, :new, _params), do: {:ok, nil}
-
-  defp key_of(provider, :edit, %{"key_id" => key_id}) do
+  defp key_of(provider, %{"key_id" => key_id}) do
     with {:ok, row_id} <- Ecto.UUID.cast(key_id),
          %Value{} = key <- Enum.find(provider.secret.values, &(&1.id == row_id)) do
       {:ok, key}
@@ -112,15 +108,14 @@ defmodule ApiaryWeb.ProviderLive.Key do
     end
   end
 
-  # The catalogue's provider, for where to get a subscription's key; nil for an API key.
-  defp chosen(provider, true) do
-    case Providers.fetch(provider.provider_kind) do
-      {:ok, chosen} -> chosen
-      :error -> nil
-    end
-  end
+  # The workspaces the key serves, in the words of the list of keys.
+  defp workspaces_words(scope, provider) do
+    names = Map.new(Organisations.list_workspaces(scope), &{&1.id, &1.name})
 
-  defp chosen(_provider, false), do: nil
+    provider
+    |> ModelKeyComponents.workspace_names(names)
+    |> ModelKeyComponents.workspaces_words()
+  end
 
   # The form, from what was sent but the key, with `errors` on its Key and
   # `settings_errors` on Resets, Pause for and Use up to; the key's field is always empty.
@@ -136,24 +131,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
     )
   end
 
-  defp crumb(:new), do: gettext("Add key")
-  defp crumb(:edit), do: gettext("Edit key")
-
-  defp title(:new, _identity), do: gettext("Add key")
-  defp title(:edit, identity), do: identity
-
-  defp key_label(:new), do: gettext("Key")
-  defp key_label(:edit), do: gettext("New value")
-
-  defp key_hint(:new),
-    do: gettext("Qory Apiary stores the key encrypted, and nobody can view it again.")
-
-  defp key_hint(:edit), do: gettext("Leave it empty to keep the value.")
-
-  # The errors of the Key as the sign-in shows them: a provider whose keys are logins has no
-  # field for them.
-  defp provider_path(scope, provider),
-    do: ~p"/#{scope.organisation}/settings/model-providers/#{provider.public_id}"
+  defp list_path(scope), do: ~p"/#{scope.organisation}/settings/model-providers"
 
   ## Events
 
@@ -162,59 +140,61 @@ defmodule ApiaryWeb.ProviderLive.Key do
   @impl true
   def handle_event("save", %{"key" => %{} = params}, socket) do
     if Enum.all?(@fields, &is_binary(Map.get(params, &1, ""))),
-      do: save(socket, socket.assigns.live_action, Map.take(params, @fields)),
+      do: save(socket, Map.take(params, @fields)),
       else: {:noreply, socket}
   end
 
   def handle_event("save", _params, socket), do: {:noreply, socket}
 
-  defp save(socket, action, params) do
+  defp save(socket, params) do
     socket = assign(socket, attempt: socket.assigns.attempt + 1, refusal: nil)
 
-    # Settings that cannot be saved write nothing; the Key is checked with them, so every
-    # error shows at once.
+    # Settings that cannot be saved write nothing; the New value is checked with them, so
+    # every error shows at once.
     case ModelKeyComponents.read_settings(params, socket.assigns.limit_windows) do
       {:ok, settings} ->
-        write(socket, action, params, settings)
+        case input_errors(params, socket.assigns.login, signed_in?(socket)) do
+          [] -> update_key(socket, params, settings)
+          errors -> {:noreply, assign_form(socket, params, errors, %{})}
+        end
 
       {:error, settings_errors} ->
         {:noreply,
          assign_form(
            socket,
            params,
-           input_errors(action, params, socket.assigns.login, signed_in?(socket)),
+           input_errors(params, socket.assigns.login, signed_in?(socket)),
            settings_errors
          )}
     end
   end
 
-  # The Key as `Apiary.Connections` checks it: without the whitespace at its ends. For a
-  # provider whose keys are logins, the key is the sign-in, which exists once the person has
-  # signed in (`signed_in`).
-  defp input_errors(:new, _params, true = _login, signed_in) do
-    %Value{}
-    |> Ecto.Changeset.change()
-    |> sign_in_missing(signed_in)
-    |> key_errors(nil)
+  # Name, which a save needs, and the New value as `Apiary.Connections` checks it: without
+  # the whitespace at its ends. An empty New value keeps the key's value. For a provider
+  # whose keys are logins, the value is the sign-in, once the person has signed in
+  # (`signed_in`).
+  defp input_errors(params, login, signed_in) do
+    name =
+      if blank?(params["name"]),
+        do: [name: {"can't be blank", [validation: :required]}],
+        else: []
+
+    value =
+      cond do
+        login and signed_in ->
+          []
+
+        blank?(params["key"]) ->
+          []
+
+        true ->
+          %Value{}
+          |> Value.changeset(%{"value" => Connections.trim_key(params["key"])})
+          |> key_errors()
+      end
+
+    name ++ value
   end
-
-  defp input_errors(:new, params, _login, _signed_in) do
-    %Value{}
-    |> Value.changeset(%{"value" => Connections.trim_key(params["key"])})
-    |> key_errors(nil)
-  end
-
-  defp input_errors(:edit, params, login, signed_in) do
-    if blank?(params["key"]) and not (login and signed_in),
-      do: [],
-      else: input_errors(:new, params, login, signed_in)
-  end
-
-  # The sign-in is the key's value: no value until the person has signed in.
-  defp sign_in_missing(changeset, true), do: changeset
-
-  defp sign_in_missing(changeset, false),
-    do: Ecto.Changeset.add_error(changeset, :value, "can't be blank", validation: :required)
 
   # A New value that is empty or only whitespace keeps the key's value; an event without
   # the field has none.
@@ -222,93 +202,35 @@ defmodule ApiaryWeb.ProviderLive.Key do
 
   defp signed_in?(socket), do: ModelKeyDevice.login(socket) != :error
 
-  # For a login, the sign-in is checked before the write, as Edit key's is.
-  defp write(socket, :new, params, settings) do
-    case socket.assigns.login &&
-           input_errors(:new, params, true, signed_in?(socket)) do
-      [_ | _] = errors -> {:noreply, assign_form(socket, params, errors, %{})}
-      _none -> add_key(socket, params, settings)
-    end
-  end
-
-  # The New value is checked before the write.
-  defp write(socket, :edit, params, settings) do
-    case input_errors(:edit, params, socket.assigns.login, signed_in?(socket)) do
-      [] -> update_key(socket, params, settings)
-      errors -> {:noreply, assign_form(socket, params, errors, %{})}
-    end
-  end
-
-  defp add_key(socket, params, settings) do
-    %{current_scope: scope, provider: provider} = socket.assigns
-
-    attrs = %{"value" => ModelKeyDevice.value(socket, socket.assigns.login, params["key"])}
-
-    case Connections.add_provider_key(scope, provider, attrs, settings) do
-      {:ok, added} ->
-        saved(socket, gettext("%{identity} is added.", identity: added_identity(provider, added)))
-
-      {:error, reason} ->
-        refused(socket, params, reason)
-    end
-  end
-
   defp update_key(socket, params, settings) do
     %{current_scope: scope, provider: provider, key: key} = socket.assigns
 
     attrs = %{
+      "value_id" => params["name"],
       "value" => ModelKeyDevice.value(socket, socket.assigns.login, params["key"]),
       "settings" => settings
     }
 
     case Connections.update_provider_key(scope, provider, key.value_id, attrs) do
       {:ok, _provider} ->
-        saved(
-          socket,
-          gettext("%{identity} is saved.", identity: Identity.for_key(provider, key.id))
-        )
+        {:noreply,
+         socket
+         |> put_flash(
+           :info,
+           gettext("%{identity} is saved.", identity: Identity.for_key(provider, key.id))
+         )
+         |> push_navigate(to: list_path(scope))}
 
       {:error, reason} ->
         refused(socket, params, reason)
     end
   end
 
-  # The identity line of the key `added` has that `before` had not, as the write left it.
-  defp added_identity(before, added) do
-    known = MapSet.new(before.secret.values, & &1.id)
-
-    case Enum.reject(added.secret.values, &MapSet.member?(known, &1.id)) do
-      [%Value{} = key] -> Identity.for_key(added, key.id)
-      _unknown -> added.name
-    end
-  end
-
-  defp saved(socket, words) do
-    %{current_scope: scope, provider: provider} = socket.assigns
-
-    {:noreply,
-     socket
-     |> put_flash(:info, words)
-     |> push_navigate(to: provider_path(scope, provider))}
-  end
-
   defp refused(socket, params, %Ecto.Changeset{data: %Setting{}} = changeset),
     do: {:noreply, assign_form(socket, params, [], ModelKeyComponents.errors(changeset))}
 
   defp refused(socket, params, %Ecto.Changeset{} = changeset),
-    do:
-      {:noreply, assign_form(socket, params, key_errors(changeset, socket.assigns.provider), %{})}
-
-  defp refused(socket, params, :too_many_values) do
-    limit =
-      gettext(
-        "%{provider} has %{number} keys, the most it can have. Delete a key to add another.",
-        provider: socket.assigns.provider.name,
-        number: Format.number(Secrets.max_values())
-      )
-
-    {:noreply, assign_form(socket, params, [key: {limit, []}], %{})}
-  end
+    do: {:noreply, assign_form(socket, params, key_errors(changeset), %{})}
 
   # A key or a provider deleted meanwhile, or a membership changed: the scope is read
   # again, and a page the person still reaches has the refusal of the provider pages,
@@ -333,9 +255,13 @@ defmodule ApiaryWeb.ProviderLive.Key do
      |> assign_form(params, [], %{})}
   end
 
-  # The errors of a refused key on the form's Key: the form has no other field to show them.
-  defp key_errors(%Ecto.Changeset{errors: errors}, _provider),
-    do: for({_field, {message, opts}} <- errors, do: {:key, {message, opts}})
+  # The errors of a refused key: those of its value id on Name, the others on New value.
+  defp key_errors(%Ecto.Changeset{errors: errors}),
+    do:
+      for(
+        {field, {message, opts}} <- errors,
+        do: {if(field == :value_id, do: :name, else: :key), {message, opts}}
+      )
 
   @impl true
   def render(assigns) do
@@ -349,12 +275,9 @@ defmodule ApiaryWeb.ProviderLive.Key do
       sections={@sections}
       section={:model_providers}
     >
-      <:crumb title={@provider.name} navigate={provider_path(@current_scope, @provider)}>
-        {@provider.name}
-      </:crumb>
-      <:crumb>{crumb(@live_action)}</:crumb>
+      <:crumb>{gettext("Edit key")}</:crumb>
 
-      <.settings_page section={:model_providers} title={title(@live_action, @identity)}>
+      <.settings_page section={:model_providers} title={@identity}>
         <.notice :if={@refusal} kind={:error}>
           <span id="key-refusal">{@refusal}</span>
         </.notice>
@@ -367,6 +290,13 @@ defmodule ApiaryWeb.ProviderLive.Key do
           class="grid gap-4"
           novalidate
         >
+          <.input
+            field={@form[:name]}
+            id="key-name"
+            label={gettext("Name")}
+            autocomplete="off"
+            spellcheck="false"
+          />
           <ModelKeyComponents.sign_in_with_chatgpt
             :if={@login}
             id="key-sign-in"
@@ -386,16 +316,15 @@ defmodule ApiaryWeb.ProviderLive.Key do
             id={"key-value-#{@attempt}"}
             type="password"
             value={nil}
-            label={key_label(@live_action)}
+            label={gettext("New value")}
             hint={
               if match?({:new_key, _line}, @new_key),
                 do: ModelKeyComponents.new_key_hint(),
-                else: key_hint(@live_action)
+                else: gettext("Leave it empty to keep the value.")
             }
             autocomplete="new-password"
             spellcheck="false"
             phx-update="ignore"
-            required={@live_action == :new}
           />
           <ModelKeyComponents.settings_fields
             form={@form}
@@ -403,15 +332,16 @@ defmodule ApiaryWeb.ProviderLive.Key do
             subscription={@subscription}
             limit_windows={@limit_windows}
           />
-          <.page_form_foot id="key-save" cancel={provider_path(@current_scope, @provider)}>
+          <div id="key-workspaces" class="grid gap-1">
+            <p class="text-[13px]/[18px] font-medium">{gettext("Workspaces")}</p>
+            <p id="key-workspaces-names" class="text-[13.5px]/5">{@workspaces}</p>
+          </div>
+          <.page_form_foot id="key-save" cancel={list_path(@current_scope)}>
             <.button id="key-submit" variant="primary" type="submit" loading_text={gettext("Saving")}>
-              {if @live_action == :new, do: gettext("Add key"), else: gettext("Save")}
+              {gettext("Save")}
             </.button>
           </.page_form_foot>
         </.form>
-        <:context :if={@live_action == :new and @chosen} about={gettext("About model providers")}>
-          <ProviderPage.get_key id="key-get-key" chosen={@chosen} />
-        </:context>
       </.settings_page>
     </Layouts.app>
     """

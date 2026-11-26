@@ -30,6 +30,8 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
   @moduletag needs: [:factory, :secrets, :workflow_model]
 
   @body ~s({"version":1,"time":"2026-10-18T12:00:00Z"})
+  # Claude Sonnet as OpenRouter's catalogue entry lists it.
+  @sonnet "anthropic/claude-sonnet-5.5"
   @build "st_6ns22c4pav"
 
   setup do
@@ -41,19 +43,31 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
   end
 
   # A model provider of the scope's organisation of `kind`, named `name`, with `count`
-  # keys.
+  # keys. Checkout keys is a Claude subscription unless `kind` is given, so its keys are
+  # not of the key group of Northwind keys, an Anthropic provider
+  # (`Apiary.ModelKeys.Group`).
   defp provider!(scope, name, opts \\ []) do
-    kind = Keyword.get(opts, :kind, "anthropic")
+    default_kind = if name == "Checkout keys", do: "claude-subscription", else: "anthropic"
+    kind = Keyword.get(opts, :kind, default_kind)
     prefix = if kind == "claude-subscription", do: "sk-ant-oat01-", else: "sk-ant-"
-    prefix = if kind == "openai", do: "sk-", else: prefix
+    prefix = if kind in ["openai", "litellm"], do: "sk-", else: prefix
     slug = name |> String.downcase() |> String.replace(" ", "-")
 
     keys =
       for n <- 1..Keyword.get(opts, :count, 1),
-          do: %{value_id: "key-#{n}", value: "#{prefix}#{slug}-#{n}-0123456789"}
+          do: %{value: "#{prefix}#{slug}-#{n}-0123456789"}
+
+    # A LiteLLM provider at an address made from its name: each one of another key group.
+    settings =
+      if kind == "litellm", do: %{"address" => "https://#{slug}.litellm.example.com"}, else: %{}
 
     {:ok, provider} =
-      Connections.create_provider(scope, %{provider: kind, name: name, keys: keys})
+      Connections.create_provider(scope, %{
+        provider: kind,
+        name: name,
+        keys: keys,
+        settings: settings
+      })
 
     provider
   end
@@ -341,13 +355,14 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
 
   describe "a claim of a stage whose later workflow's provider has every key in cooldown" do
     # Northwind keys for the first workflow; the workspace's choice on Checkout keys, with
-    # Claude Opus, and a fallback on Storefront keys, with Claude Sonnet, for the second,
-    # which has no workflow choice; saved. Then Checkout keys' one key cools.
+    # Claude Opus, and a fallback on Storefront keys, an OpenRouter provider, with Claude
+    # Sonnet, for the second, which has no workflow choice; saved. Then Checkout keys' one
+    # key cools.
     defp cooling_later!(ctx) do
       northwind = provider!(ctx.scope, "Northwind keys")
       checkout = provider!(ctx.scope, "Checkout keys")
-      storefront = provider!(ctx.scope, "Storefront keys")
-      sonnet = Apiary.ModelChoicesFixtures.every_tier("claude-sonnet-5-5")
+      storefront = provider!(ctx.scope, "Storefront keys", kind: "openrouter")
+      sonnet = Apiary.ModelChoicesFixtures.every_tier(@sonnet)
       fallback = Apiary.ModelChoicesFixtures.fallback_attrs(storefront, sonnet)
       choose!(ctx.scope, {:workspace, "plan-the-build"}, northwind)
       choose!(ctx.scope, :workspace, checkout, %{fallbacks: [fallback]})
@@ -368,7 +383,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert %{
                "workflow" => "write-acceptance-checks",
                "model_provider_credential_name" => ^fallback,
-               "model_choice" => %{"model" => "claude-sonnet-5-5"}
+               "model_choice" => %{"model" => @sonnet}
              } = second
 
       assert names(stored_keys(run)) == ["#{northwind.public_id}-1", fallback]
@@ -389,7 +404,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert %{
                "workflow" => "write-acceptance-checks",
                "model_provider_credential_name" => ^fallback,
-               "model_choice" => %{"model" => "claude-sonnet-5-5"}
+               "model_choice" => %{"model" => @sonnet}
              } = second
 
       assert names(stored_keys(run)) == ["#{northwind.public_id}-1", fallback]
@@ -461,10 +476,12 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
     end
   end
 
-  # `count` providers of the scope's organisation, named Northwind 1, Northwind 2 and so
-  # on.
-  defp providers!(scope, count),
-    do: for(n <- 1..count, do: provider!(scope, "Northwind #{n}"))
+  # `count` providers of the scope's organisation of `kind`, named Northwind 1, Northwind
+  # 2 and so on: LiteLLM providers by default, each at another address, so each of another
+  # key group (`Apiary.ModelKeys.Group`), as the save's check of a stage and a claim count
+  # key groups. A test of them needs the feature `model_proxies`.
+  defp providers!(scope, count, kind \\ "litellm"),
+    do: for(n <- 1..count, do: provider!(scope, "Northwind #{n}", kind: kind))
 
   defp steps(count), do: for(n <- 1..count, do: "step-#{n}")
 
@@ -593,6 +610,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert Words.refusal(refused, document(workflows)) == @other_api
     end
 
+    @tag needs: [:factory, :secrets, :workflow_model, :model_proxies]
     test "fails where the workflows use 7 providers", ctx do
       providers = providers!(ctx.scope, 7)
 
@@ -606,9 +624,126 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
                too_many(Enum.map(providers, & &1.name))
     end
 
+    @tag needs: [:factory, :secrets, :workflow_model, :model_proxies]
+    test "counts the providers of one key group as one", ctx do
+      # Two Anthropic providers, one key group, and 5 LiteLLM providers: 7 providers in 6
+      # key groups.
+      northwind = provider!(ctx.scope, "Northwind keys")
+      checkout = provider!(ctx.scope, "Checkout API keys", kind: "anthropic")
+      providers = [northwind, checkout | providers!(ctx.scope, 5)]
+
+      for {provider, workflow} <- Enum.zip(providers, steps(7)),
+          do: choose!(ctx.scope, {:workspace, workflow}, provider)
+
+      assert {:ok, _version} = save(ctx.scope, steps(7))
+    end
+
+    test "of a workspace not made yet counts the key groups of providers for every workspace",
+         ctx do
+      # The organisation's default on Northwind keys, with 6 fallbacks of one key group:
+      # Claude subscription token providers, as a change of a provider's settings can
+      # leave them. A save returns an error for a second fallback of one key group, so the
+      # rows of the other 5 are written here.
+      northwind = provider!(ctx.scope, "Northwind keys")
+      [first | rest] = providers!(ctx.scope, 6, "claude-subscription")
+      fallback = Apiary.ModelChoicesFixtures.fallback_attrs(first)
+      choice = choose!(ctx.scope, :organisation, northwind, %{fallbacks: [fallback]})
+      [stored] = Repo.preload(choice, :fallbacks).fallbacks
+
+      for {provider, position} <- Enum.with_index(rest, 1) do
+        Repo.insert!(%ModelChoices.Fallback{
+          organisation_id: stored.organisation_id,
+          model_choice_id: choice.id,
+          position: position,
+          connection_id: provider.id,
+          runtime: stored.runtime,
+          tiers: stored.tiers
+        })
+      end
+
+      [stage] = document(["plan-the-build"])["stages"]
+
+      # 7 providers in 2 key groups (`Apiary.ModelChoices.default_models/1`).
+      default = ModelChoices.default_models(ctx.scope)
+      assert Processes.shared_models(stage, default) == :ok
+    end
+
+    @tag needs: [:factory, :secrets, :workflow_model, :model_proxies]
+    test "of a workspace not made yet fails where 8 providers are in 7 key groups", ctx do
+      # The organisation's default on Northwind keys, with 6 LiteLLM fallbacks, each of
+      # another key group, and a 7th fallback of the key group of the first, as a change
+      # of a provider's address can leave it; its row is written here, past the save.
+      northwind = provider!(ctx.scope, "Northwind keys")
+      providers = providers!(ctx.scope, 6)
+      fallbacks = Enum.map(providers, &Apiary.ModelChoicesFixtures.fallback_attrs/1)
+      choice = choose!(ctx.scope, :organisation, northwind, %{fallbacks: fallbacks})
+
+      {:ok, twin} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "litellm",
+          name: "Northwind 1 again",
+          keys: [%{value: "sk-northwind-1-again-0123456789"}],
+          settings: %{"address" => "https://northwind-1.litellm.example.com"}
+        })
+
+      [stored | _rest] = Repo.preload(choice, :fallbacks).fallbacks
+
+      Repo.insert!(%ModelChoices.Fallback{
+        organisation_id: stored.organisation_id,
+        model_choice_id: choice.id,
+        position: 6,
+        connection_id: twin.id,
+        runtime: stored.runtime,
+        tiers: stored.tiers
+      })
+
+      [stage] = document(["plan-the-build"])["stages"]
+      default = ModelChoices.default_models(ctx.scope)
+
+      assert {:error, {:too_many_providers, 7, _names}} =
+               Processes.shared_models(stage, default)
+    end
+
+    test "of a workspace not made yet passes a later workflow on a provider with no key whose key group has one",
+         ctx do
+      # The organisation's default on Northwind keys, with no key, and Checkout API keys,
+      # of its key group for every workspace, with one: both workflows of the stage take
+      # the default.
+      northwind = provider!(ctx.scope, "Northwind keys")
+      _checkout = provider!(ctx.scope, "Checkout API keys", kind: "anthropic")
+      choose!(ctx.scope, :organisation, northwind)
+      no_keys!(northwind)
+      [stage] = document(~w(plan-the-build write-acceptance-checks))["stages"]
+
+      default = ModelChoices.default_models(ctx.scope)
+      assert Processes.shared_models(stage, default) == :ok
+    end
+
+    test "passes a later workflow on a provider with no key whose key group has one", ctx do
+      northwind = provider!(ctx.scope, "Northwind keys")
+      checkout = provider!(ctx.scope, "Checkout API keys", kind: "anthropic")
+      choose!(ctx.scope, {:workspace, "plan-the-build"}, northwind)
+      choose!(ctx.scope, {:workspace, "write-acceptance-checks"}, checkout)
+      no_keys!(checkout)
+
+      assert {:ok, _version} = save(ctx.scope, ~w(plan-the-build write-acceptance-checks))
+
+      # With no key in the group either, the save is refused.
+      no_keys!(northwind)
+      choose!(ctx.scope, :workspace, checkout)
+
+      assert {:error, errors} = save(ctx.scope, ~w(plan-the-build write-acceptance-checks))
+
+      assert error(errors, :session_key_missing).detail ==
+               {:session_key_missing, :no_key, "write-acceptance-checks", "Checkout API keys"}
+    end
+
+    @tag needs: [:factory, :secrets, :workflow_model, :model_proxies]
     test "counts a 7th provider that only a fallback uses", ctx do
-      providers = providers!(ctx.scope, 7)
-      [seventh | _] = Enum.reverse(providers)
+      # Northwind 7 of another kind: a fallback is never of the key group of its choice's
+      # provider.
+      seventh = provider!(ctx.scope, "Northwind 7", kind: "claude-subscription")
+      providers = providers!(ctx.scope, 6) ++ [seventh]
 
       for {provider, workflow} <- Enum.zip(Enum.take(providers, 5), steps(5)),
           do: choose!(ctx.scope, {:workspace, workflow}, provider)
@@ -637,6 +772,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
   end
 
   describe "the claim of a stage saved with choices that fit one run" do
+    @tag needs: [:factory, :secrets, :workflow_model, :model_proxies]
     test "ends the run too_many_providers after a change of the workspace's choice", ctx do
       providers = six_providers!(ctx)
       assert {{:ok, _run}, _queued} = claim!(ctx)
@@ -710,8 +846,9 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
     test "after a first session on another provider, ends the build session_key_missing where two later sessions use two APIs of one provider",
          ctx do
       second = second_api!()
-      northwind = provider!(ctx.scope, "Northwind keys")
-      checkout = provider!(ctx.scope, "Checkout keys")
+      # Checkout keys of the kind with the second API, Northwind keys of another kind.
+      northwind = provider!(ctx.scope, "Northwind keys", kind: "claude-subscription")
+      checkout = provider!(ctx.scope, "Checkout keys", kind: "anthropic")
       workflows = ~w(plan-the-build write-acceptance-checks review-the-build)
       # Session 1 starts on Northwind keys' key; sessions 2 and 3 run on Checkout keys.
       choose!(ctx.scope, {:workspace, "plan-the-build"}, northwind)
@@ -725,6 +862,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert built(queued!(ctx)) == {:end, :session_key_missing}
     end
 
+    @tag needs: [:factory, :secrets, :workflow_model, :model_proxies]
     test "ends the run too_many_providers after the 7th workflow's choice is set", ctx do
       providers = six_providers!(ctx)
       assert {{:ok, _run}, _queued} = claim!(ctx)
@@ -750,12 +888,25 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       version
     end
 
+    # Seven key groups: LiteLLM providers, each at another address.
+    @tag needs: [:factory, :secrets, :workflow_model, :model_proxies]
     test "ends the build too_many_providers for 7 providers that the guard did not see",
          ctx do
-      providers = providers!(ctx.scope, 7)
+      providers =
+        for n <- 1..7 do
+          {:ok, provider} =
+            Connections.create_provider(ctx.scope, %{
+              provider: "litellm",
+              name: "Northwind #{n}",
+              settings: %{"address" => "https://litellm-#{n}.example.com"},
+              keys: [%{value: "sk-northwind-#{n}"}]
+            })
+
+          provider
+        end
 
       for {provider, workflow} <- Enum.zip(providers, steps(7)),
-          do: choose!(ctx.scope, {:workspace, workflow}, provider)
+          do: choose!(ctx.scope, {:workspace, workflow}, provider, %{model: "team-large"})
 
       # Saved without the check of the model choices; the claim's guard would end the run
       # first, so the build is called as the claim calls it after the guard.
@@ -763,6 +914,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert built(queued!(ctx)) == {:end, :too_many_providers}
     end
 
+    @tag needs: [:factory, :secrets, :workflow_model, :model_proxies]
     test "ends the run model_choice_missing, or too_many_providers, after a harness change",
          ctx do
       openai_first!(ctx)
@@ -792,6 +944,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
     @key_cause "The run did not start, because a workflow of Build would run on a provider that has no key in the run, or on a second API of a provider that an earlier workflow uses."
     @too_many_cause "The run did not start, because the workflows of Build used more than 6 model providers."
 
+    @tag needs: [:factory, :secrets, :workflow_model, :model_proxies]
     test "of model_choice_missing show the fix with its values while that fault remains, else the round again",
          ctx do
       %{storefront: storefront, northwind: northwind} = openai_first!(ctx)
@@ -907,6 +1060,7 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert view_models(queued) == nil
     end
 
+    @tag needs: [:factory, :secrets, :workflow_model, :model_proxies]
     test "of too_many_providers show the fix with its values while that fault remains, else the round again",
          ctx do
       [first | rest] = providers = six_providers!(ctx)
@@ -1051,6 +1205,24 @@ defmodule Apiary.Dispatches.SharedProvidersTest do
       assert %{provider: "Checkout keys", until: until} = Pause.of_run(paused)
       assert DateTime.compare(until, later) == :eq
       assert paused_line(paused) =~ "Paused: every key of Checkout keys is in cooldown until "
+    end
+
+    test "in its second session on a key group of two providers waits for both, sent as one group",
+         ctx do
+      %{northwind: northwind, checkout: checkout} = two_providers!(ctx)
+      # A second Claude subscription token provider: of the key group of Checkout keys.
+      checkout_two = provider!(ctx.scope, "Checkout keys two", kind: "claude-subscription")
+
+      {paused, _dispatch_run, _continuation} = paused!(ctx, session: 2)
+
+      assert Run.session_provider_ids(paused, 2) == [checkout.id, checkout_two.id]
+
+      # Each key of the later session's key group has the `group` of its head, Checkout
+      # keys, the provider of that session's choice.
+      assert {:ok, credential} = ProviderCredential.for_run(paused)
+
+      assert Enum.map(credential.keys, & &1.entry["group"]) ==
+               [northwind.public_id, checkout.public_id, checkout.public_id]
     end
 
     test "with no session that paused keeps the earliest end among every provider; the Paused line shows the default model provider credential's",

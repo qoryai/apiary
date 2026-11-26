@@ -162,7 +162,10 @@ defmodule Apiary.Connections.WorkspaceKeysTest do
                Connections.add_provider_key(scope, provider, %{value_id: "spare", value: "x"})
 
       assert {:ok, _} = Connections.set_provider_key(scope, provider, "spare", "y")
-      assert {:ok, _} = Connections.rename_provider_key(scope, provider, "spare", "backup")
+
+      assert {:ok, _} =
+               Connections.update_provider_key(scope, provider, "spare", %{"value_id" => "backup"})
+
       assert values(provider) == ["backup", "main"]
 
       assert reveal(provider, "backup") ==

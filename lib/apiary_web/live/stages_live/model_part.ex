@@ -31,8 +31,9 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
   @doc """
   What the rows read of the model choices: `overrides`, the workspace's choice of each
   workflow by its name; `default`, `{:workspace, label}`, `{:organisation, name, label}`
-  or `:none`, with the label the provider's name; `runtime`, the default's runtime, else
-  the catalogue's default; and `providers`, each a map of `provider`, `title`, `runtimes`
+  or `:none`, with the label its key group's (`ApiaryWeb.ModelTiers.key_groups/1`);
+  `runtime`, the default's runtime, else the catalogue's default; and `providers`, one for
+  each key group as its first provider, each a map of `provider`, `title`, `runtimes`
   (the runtimes it serves), `models_by` (its suggestions for each of them, by the
   runtime's name), `free`, `offered`, and `no_runtime`, true for a provider whose
   description serves no runtime. nil where the scope may not read the choices, or the
@@ -62,11 +63,19 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
 
       runtime = runtime(workspace || organisation)
 
+      # One entry for each key group, as its first provider; an override on another
+      # provider of the group shows as that entry.
+      {firsts, first_of} =
+        providers |> Enum.filter(&applies?(&1, workspace_id)) |> ModelTiers.key_groups()
+
+      on_first = &on_first(&1, firsts, first_of)
+      overrides = Map.new(overrides, fn {workflow, choice} -> {workflow, on_first.(choice)} end)
+
       %{
         overrides: overrides,
-        default: default(workspace, organisation, scope),
+        default: default(on_first.(workspace), on_first.(organisation), scope),
         runtime: runtime,
-        providers: provider_entries(providers, workspace_id, overrides)
+        providers: provider_entries(firsts, overrides)
       }
     else
       _not_shown -> nil
@@ -94,15 +103,27 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
 
   defp label(%ModelChoice{connection: provider}), do: provider.name
 
-  # The providers that apply to the workspace, with their descriptions: each that is
-  # offered, and the provider of an override, whichever it is. The provider of an override
-  # whose description cannot be read stays, not offered and with no runtimes and no
-  # models, so its row shows the override's provider and can remove it.
-  defp provider_entries(providers, workspace_id, overrides) do
+  # `choice` on the first provider of its key group, of `firsts` by `first_of`
+  # (`ApiaryWeb.ModelTiers.key_groups/1`), with the group's label as the provider's name;
+  # unchanged for a provider that does not serve the workspace.
+  defp on_first(nil, _firsts, _first_of), do: nil
+
+  defp on_first(%ModelChoice{connection_id: id} = choice, firsts, first_of) do
+    case Enum.find(firsts, &(&1.id == Map.get(first_of, id))) do
+      %Connection{id: first_id} = first -> %{choice | connection_id: first_id, connection: first}
+      nil -> choice
+    end
+  end
+
+  # The first providers of the key groups that apply to the workspace, with their
+  # descriptions: each that is offered, and the provider of an override, whichever it is.
+  # The provider of an override whose description cannot be read stays, not offered and
+  # with no runtimes and no models, so its row shows the override's provider and can
+  # remove it.
+  defp provider_entries(providers, overrides) do
     stored = for {_workflow, choice} <- overrides, into: MapSet.new(), do: choice.connection_id
 
     for provider <- providers,
-        applies?(provider, workspace_id),
         entry <- entry(provider, MapSet.member?(stored, provider.id)),
         do: entry
   end
@@ -330,8 +351,8 @@ defmodule ApiaryWeb.StagesLive.ModelPart do
                runtime_name(model, stored) != state.runtime)))
   end
 
-  # The runtime of the override `stored`: its own name, or the catalogue's default where
-  # it names none, as a run takes it (`Apiary.ModelChoices.default_runtime/0`); with no
+  # The runtime of the override `stored`: the one it is set to, or the catalogue's default
+  # where it has none, as a run takes it (`Apiary.ModelChoices.default_runtime/0`); with no
   # override, the workspace default's, so a new override starts from it.
   defp runtime_name(model, nil), do: model.runtime.name
 

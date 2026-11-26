@@ -1,9 +1,9 @@
 defmodule ApiaryWeb.ProviderLiveTest do
-  # Organisation settings › Model providers (`ApiaryWeb.ProviderLive.Index`,
-  # `ApiaryWeb.ProviderLive.Show` and `ApiaryWeb.ProviderLive.Key`): the list, New model
-  # provider with its key and, for LiteLLM, its address, a provider's page with its keys
-  # and their states, never a key, Add key and Edit key with a key's settings; who sees
-  # what.
+  # Organisation settings › Model provider keys (`ApiaryWeb.ProviderLive.Index` and
+  # `ApiaryWeb.ProviderLive.Key`): the state of each key on the list, never a key; New model
+  # provider key with its key, its settings and, for LiteLLM, its address; Edit key with a
+  # key's settings under its identity line; who sees what. The rows, Workspaces and Remove
+  # are in `ApiaryWeb.ModelProviderKeysTest`.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -31,7 +31,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       Connections.create_provider(scope, %{
         provider: name,
         settings: settings,
-        keys: [%{value_id: "key-1", value: @key}]
+        keys: [%{value: @key}]
       })
 
     provider
@@ -95,14 +95,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       |> Map.new(&{&1.value_id, &1})
 
   # The id of the key `value_id` in the page source: its row id.
-  defp key_dom(provider, value_id), do: "provider-key-#{values(provider)[value_id].id}"
-
-  # No page shows the value id Apiary gave a key (`key-<n>`). A row id may start with
-  # digits, so the UUIDs go first.
-  defp refute_key_names(html) do
-    uuid = ~r/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/
-    refute Regex.replace(uuid, html, "") =~ ~r/key-\d/
-  end
+  defp key_dom(provider, value_id), do: "key-#{values(provider)[value_id].id}"
 
   # A state of the key `value`, as a run's gateway reports it.
   defp record!(value, attrs) do
@@ -165,7 +158,8 @@ defmodule ApiaryWeb.ProviderLiveTest do
     |> Enum.join(" ")
   end
 
-  # New model provider's form in `html` is sent with POST, and its key's field has no value.
+  # The form of New model provider key in `html` is sent with POST, and its key's field has
+  # no value.
   defp assert_posts_without_key(html) do
     form = LazyHTML.query(html, "#new-provider-form")
     assert LazyHTML.attribute(form, "method") == ["post"]
@@ -176,90 +170,54 @@ defmodule ApiaryWeb.ProviderLiveTest do
   end
 
   describe "the list" do
-    test "lists each provider with its keys, and New model provider for an owner", ctx do
-      %{conn: conn, scope: scope} = ctx
+    test "a member reads the state of each key, never a key", %{scope: scope} do
       provider = provider!(scope)
-
-      {:ok, lv, _html} = live(conn, list_path(scope))
-
-      assert has_element?(lv, "h1", "Model providers")
-      assert page_title(lv) =~ "Model providers · Organisation settings"
-      assert has_element?(lv, ~s{#settings-tab-model_providers[aria-current="page"]})
-      assert has_element?(lv, "#provider-#{provider.public_id}-name", title("anthropic"))
-      assert has_element?(lv, "#provider-#{provider.public_id}-keys", "1")
-      assert has_element?(lv, ~s{a#new-model-provider[href="#{new_path(scope)}"]})
-      refute has_element?(lv, "#providers-who")
-      refute render(lv) =~ @key
-    end
-
-    test "a member reads the list without New, and its form's path is not there", ctx do
-      %{scope: scope} = ctx
-      provider!(scope)
       conn = member_conn(scope, :member)
 
-      {:ok, lv, _html} = live(conn, list_path(scope))
-
-      assert has_element?(lv, "#providers")
-      refute has_element?(lv, "#new-model-provider")
-      assert has_element?(lv, "#providers-who", "Only owners and admins add model providers.")
-      assert_raise ApiaryWeb.NotFound, fn -> live(conn, new_path(scope)) end
+      {:ok, lv, html} = live(conn, list_path(scope))
+      assert has_element?(lv, "##{key_dom(provider, "key-1")}-state", "Available")
+      refute html =~ @key
     end
 
     test "an admin adds one", %{scope: scope} do
       {:ok, lv, _html} = live(member_conn(scope, :admin), list_path(scope))
       assert has_element?(lv, "#new-model-provider")
     end
-
-    test "with none, says how to start", %{conn: conn, scope: scope} do
-      {:ok, lv, _html} = live(conn, list_path(scope))
-      assert has_element?(lv, "#providers-none", "Add a model key, so agents can run.")
-    end
   end
 
-  describe "New model provider" do
-    test "adds a provider with its key, never rendering it", ctx do
+  describe "New model provider key" do
+    test "adds a key, never rendering it", ctx do
       %{conn: conn, scope: scope} = ctx
       {:ok, lv, _html} = live(conn, new_path(scope))
 
       refute has_element?(lv, "#new-provider-address")
 
-      {:error, {:live_redirect, %{to: to}}} =
+      {:ok, list, html} =
         lv
         |> form("#new-provider-form", provider: %{provider: "anthropic", key: @key})
         |> render_submit()
+        |> follow_redirect(conn, list_path(scope))
 
+      assert html =~ "key-1 is added."
       assert {:ok, [provider]} = Connections.list_providers(scope)
       assert provider.provider_kind == "anthropic"
-      assert to == "#{list_path(scope)}/#{provider.public_id}"
-
-      {:ok, show, html} = live(conn, to)
-      assert has_element?(show, "h1", title("anthropic"))
-      assert has_element?(show, "##{key_dom(provider, "key-1")}-name", line(provider))
-      refute text(show, "#provider-keys") =~ "key-1"
+      assert text(list, "##{key_dom(provider, "key-1")}-provider") == title("anthropic")
       refute html =~ @key
       refute html =~ String.slice(@key, -8, 8)
     end
 
-    test "with the setting left off, adds it for the workspace alone, its key a secret of the workspace",
+    test "with one workspace, adds the key as a secret of the workspace, on its Secrets page",
          ctx do
       %{conn: conn, scope: scope} = ctx
       {:ok, lv, _html} = live(conn, new_path(scope))
-      # The edition shows the setting of where the provider applies, off.
-      assert has_element?(lv, "#new-provider-form input[name='provider[everywhere]']")
-      refute has_element?(lv, "#new-provider-form input[name='provider[everywhere]'][checked]")
 
       lv
       |> form("#new-provider-form", provider: %{provider: "anthropic", key: @key})
       |> render_submit()
 
       assert {:ok, [provider]} = Connections.list_providers(scope)
-      assert provider.applies_to == "selected"
-      assert Connections.workspace_ids_of(provider) == [scope.workspace.id]
-
       secret = Repo.get!(Secret, provider.secret_id)
-      assert secret.workspace_id == scope.workspace.id
 
-      # The key is on the workspace's Secrets and variables, with its provider.
       {:ok, secrets, html} =
         live(conn, "/#{scope.organisation.slug}/#{scope.workspace.slug}/settings/secrets")
 
@@ -267,46 +225,18 @@ defmodule ApiaryWeb.ProviderLiveTest do
       refute html =~ @key
     end
 
-    test "where the edition shows the setting: on, for every workspace; off, for this one",
-         ctx do
+    test "a key for every workspace is a secret of the organisation", ctx do
       %{conn: conn, scope: scope} = ctx
-      :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+      workspace_fixture(scope.organisation, "Storefront")
       {:ok, lv, _html} = live(conn, new_path(scope))
 
-      assert has_element?(
-               lv,
-               "#new-provider-form label",
-               "Available to every workspace in #{scope.organisation.name}"
-             )
-
-      refute has_element?(
-               lv,
-               "#new-provider-form input[type=checkbox][name='provider[everywhere]'][checked]"
-             )
-
       lv
-      |> form("#new-provider-form",
-        provider: %{provider: "anthropic", key: @key, everywhere: "true"}
-      )
+      |> form("#new-provider-form", provider: %{provider: "anthropic", key: @key, reach: "all"})
       |> render_submit()
 
       assert {:ok, [every]} = Connections.list_providers(scope)
       assert every.applies_to == "all"
       assert Repo.get!(Secret, every.secret_id).workspace_id == nil
-
-      {:ok, lv, _html} = live(conn, new_path(scope))
-
-      lv
-      |> form("#new-provider-form",
-        provider: %{provider: "openrouter", key: @key, everywhere: "false"}
-      )
-      |> render_submit()
-
-      assert {:ok, providers} = Connections.list_providers(scope)
-      one = Enum.find(providers, &(&1.provider_kind == "openrouter"))
-      assert one.applies_to == "selected"
-      assert Connections.workspace_ids_of(one) == [scope.workspace.id]
-      assert Repo.get!(Secret, one.secret_id).workspace_id == scope.workspace.id
     end
 
     test "with no workspace yet, says to set one up first, with no form", %{conn: conn} do
@@ -318,7 +248,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert has_element?(
                lv,
                "#new-provider-needs-workspace",
-               "Set up a workspace first, then add a model provider in its Model step."
+               "Set up a workspace first, then add a model provider key in its Model step."
              )
 
       assert has_element?(
@@ -341,7 +271,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert has_element?(
                lv,
                "#new-provider-needs-workspace",
-               "Set up a workspace first, then add a model provider in its Model step."
+               "Set up a workspace first, then add a model provider key in its Model step."
              )
 
       assert has_element?(
@@ -353,7 +283,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       refute has_element?(lv, "#new-provider-form")
 
       render_hook(lv, "create", %{
-        "provider" => %{"provider" => "anthropic", "key" => @key, "everywhere" => "true"}
+        "provider" => %{"provider" => "anthropic", "key" => @key, "reach" => "all"}
       })
 
       assert has_element?(lv, "#new-provider-needs-workspace")
@@ -379,14 +309,15 @@ defmodule ApiaryWeb.ProviderLiveTest do
 
     # LiteLLM is offered with model_proxies alone.
     @tag needs: [:factory, :secrets, :model_proxies]
-    test "About model providers has what a key is for, and where to get the chosen one", ctx do
+    test "About model provider keys has what a key is for, and where to get the chosen one",
+         ctx do
       %{conn: conn, scope: scope} = ctx
       {:ok, lv, _html} = live(conn, new_path(scope))
 
       assert has_element?(
                lv,
                "aside#page-context > h2#page-context-h",
-               ~r/\AAbout model providers\z/
+               ~r/\AAbout model provider keys\z/
              )
 
       assert has_element?(
@@ -468,7 +399,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert text(lv, "#new-provider-get-key") ==
                "Get the key from the provider first: create an API key in the OpenAI Platform."
 
-      # Its description's address on About model providers is the subscription's alone.
+      # Its description's address on About model provider keys is the subscription's alone.
       assert {:ok, openai} = Providers.fetch("openai")
       assert Index.terms_url(openai) == nil
       assert {:ok, subscription} = Providers.fetch("openai-subscription")
@@ -512,7 +443,8 @@ defmodule ApiaryWeb.ProviderLiveTest do
         assert has_element?(lv, "label[for=provider_provider-#{index}]", provider.title)
       end
 
-      # A subtitle is plain text: no backticks, and the terms' address is on About model providers.
+      # A subtitle is plain text: no backticks, and the terms' address is on About model
+      # provider keys.
       subscription = Enum.find_index(Providers.offered(), &(&1.name == "claude-subscription"))
       subtitle = lv |> element("#provider_provider-#{subscription}-s") |> render()
       assert subtitle =~ "an access token that claude setup-token creates."
@@ -562,7 +494,9 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert html =~ "Acme&#39;s terms"
     end
 
-    test "a refused key leaves the field empty and says why", %{conn: conn, scope: scope} do
+    test "a refused key leaves the field empty and shows its error; only spaces are an empty Key",
+         ctx do
+      %{conn: conn, scope: scope} = ctx
       {:ok, lv, _html} = live(conn, new_path(scope))
 
       html =
@@ -571,6 +505,13 @@ defmodule ApiaryWeb.ProviderLiveTest do
         |> render_submit()
 
       assert html =~ "can&#39;t be blank"
+      empty = text(lv, "#new-provider-key-1-error")
+
+      lv
+      |> form("#new-provider-form", provider: %{provider: "anthropic", key: " \n\t\u00A0\r\n"})
+      |> render_submit()
+
+      assert text(lv, "#new-provider-key-2-error") == empty
       assert {:ok, []} = Connections.list_providers(scope)
     end
 
@@ -631,80 +572,13 @@ defmodule ApiaryWeb.ProviderLiveTest do
     end
   end
 
-  describe "a provider's page" do
-    test "a member reads its keys, never a key", %{scope: scope} do
-      provider = provider!(scope)
-      conn = member_conn(scope, :member)
-
-      {:ok, lv, html} = live(conn, "#{list_path(scope)}/#{provider.public_id}")
-      assert has_element?(lv, "#provider-keys", "Keys")
-      assert has_element?(lv, "##{key_dom(provider, "key-1")}")
-      refute html =~ @key
-    end
-
-    test "one of another organisation is not found", %{conn: conn, scope: scope} do
-      %{scope: other} = sign_up_fixture()
-      provider = provider!(other)
-
-      assert_raise ApiaryWeb.NotFound, fn ->
-        live(conn, "#{list_path(scope)}/#{provider.public_id}")
-      end
-    end
-  end
-
-  describe "the page source" do
-    # A provider whose two keys Apiary named: `key-1` and `key-2`.
-    defp named_by_apiary!(scope) do
-      provider =
-        provider_with!(scope, "anthropic", [
-          "sk-ant-first-0123456789-aaaa",
-          "sk-ant-second-0123456789-bbbb"
-        ])
-
-      assert values(provider) |> Map.keys() |> Enum.sort() == ["key-1", "key-2"]
-      provider
-    end
-
-    test "of a provider's page has no value id of a key", ctx do
-      %{conn: conn, scope: scope} = ctx
-      provider = named_by_apiary!(scope)
-
-      {:ok, lv, html} = live(conn, "#{list_path(scope)}/#{provider.public_id}")
-      assert has_element?(lv, "##{key_dom(provider, "key-1")}-name")
-      assert has_element?(lv, "##{key_dom(provider, "key-2")}-edit")
-      refute_key_names(html)
-      refute_key_names(render(lv))
-    end
-
-    test "of Edit key has no value id of a key", ctx do
-      %{conn: conn, scope: scope} = ctx
-      provider = named_by_apiary!(scope)
-
-      {:ok, lv, html} = live(conn, edit_path(scope, provider, "key-2"))
-      assert has_element?(lv, "#key-form")
-      refute_key_names(html)
-      refute_key_names(render(lv))
-    end
-
-    test "of Add key has no value id of a key", ctx do
-      %{conn: conn, scope: scope} = ctx
-      provider = named_by_apiary!(scope)
-
-      {:ok, lv, html} = live(conn, key_path(scope, provider, "new"))
-      assert has_element?(lv, "#key-form")
-      refute_key_names(html)
-      refute_key_names(render(lv))
-    end
-  end
-
-  describe "a provider's keys" do
-    test "are in the provider's order, each with its state, in the reader's time zone", ctx do
+  describe "the state of a key on the list" do
+    test "is in words, in the reader's time zone", ctx do
       %{conn: conn, scope: scope, user: user} = ctx
       Repo.update!(Ecto.Changeset.change(user, time_zone: "Europe/Berlin"))
       now = DateTime.utc_now()
 
       provider = keys!(scope, "anthropic", ~w(zeta beta alpha gamma delta omega))
-      {:ok, provider} = Connections.put_default_key(scope, provider, "alpha")
       values = values(provider)
 
       soon = DateTime.add(now, 60)
@@ -744,13 +618,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
 
       {:ok, _setting} = put_key_setting(scope, values["delta"], %{"pause_seconds" => 600})
 
-      {:ok, lv, html} = live(conn, "#{list_path(scope)}/#{provider.public_id}")
-
-      assert html
-             |> LazyHTML.from_document()
-             |> LazyHTML.query("#provider-keys li")
-             |> LazyHTML.attribute("id") ==
-               Enum.map(~w(alpha zeta beta gamma delta omega), &key_dom(provider, &1))
+      {:ok, lv, html} = live(conn, list_path(scope))
 
       until = "In cooldown until #{berlin(in_two_days, now)}"
 
@@ -771,79 +639,30 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert text(lv, "##{key_dom(provider, "omega")}-state") ==
                "#{until} · no reset time given; paused for 1 minute"
 
-      for name <- ~w(alpha zeta beta gamma delta omega),
-          do: assert(text(lv, "##{key_dom(provider, name)}-name") == line(provider))
-
       refute html =~ @key
     end
 
-    test "an owner has Add key and Edit on each row; a member has neither", ctx do
+    test "a member reads it without Edit, and Edit key is not found for them", ctx do
       %{conn: conn, scope: scope} = ctx
       provider = keys!(scope, "anthropic", ~w(main spare))
-      page = "#{list_path(scope)}/#{provider.public_id}"
+      edit = edit_path(scope, provider, "spare")
 
-      {:ok, lv, _html} = live(conn, page)
-      assert has_element?(lv, ~s{a#provider-add-key[href="#{page}/keys/new"]}, "Add key")
+      {:ok, lv, _html} = live(conn, list_path(scope))
 
       assert has_element?(
                lv,
-               ~s{a##{key_dom(provider, "spare")}-edit[href="#{page}/keys/#{values(provider)["spare"].id}/edit"][aria-label="Edit key #{line(provider)}"]},
+               ~s{a##{key_dom(provider, "spare")}-edit[href="#{edit}"][aria-label="Edit spare"]},
                "Edit"
              )
 
       member = member_conn(scope, :member)
-      {:ok, lv, _html} = live(member, page)
+      {:ok, lv, _html} = live(member, list_path(scope))
       assert has_element?(lv, "##{key_dom(provider, "spare")}-state", "Available")
-      refute has_element?(lv, "#provider-add-key")
       refute has_element?(lv, "##{key_dom(provider, "spare")}-edit")
-
-      for path <- ["#{page}/keys/new", "#{page}/keys/#{values(provider)["spare"].id}/edit"] do
-        assert_raise ApiaryWeb.NotFound, fn -> live(member, path) end
-      end
+      assert_raise ApiaryWeb.NotFound, fn -> live(member, edit) end
     end
 
-    test "the list counts each provider's keys and those in cooldown", ctx do
-      %{conn: conn, scope: scope} = ctx
-      three = keys!(scope, "anthropic", ~w(main spare backup))
-      one = keys!(scope, "openrouter", ~w(main))
-      now = DateTime.utc_now()
-
-      record!(values(three)["spare"], %{
-        window: "five_hour",
-        status: "rejected",
-        cooldown_until: DateTime.add(now, 3600)
-      })
-
-      # A key with two windows in cooldown counts once.
-      record!(values(three)["spare"], %{
-        window: "seven_day",
-        status: "rejected",
-        cooldown_until: DateTime.add(now, 7200)
-      })
-
-      record!(values(three)["backup"], %{
-        window: "five_hour",
-        status: "rejected",
-        cooldown_until: DateTime.add(now, -3600)
-      })
-
-      two = keys!(scope, "deepseek", ~w(main spare))
-
-      for {_id, value} <- values(two) do
-        record!(value, %{
-          window: "requests",
-          status: "rejected",
-          cooldown_until: DateTime.add(now, 60)
-        })
-      end
-
-      {:ok, lv, _html} = live(conn, list_path(scope))
-      assert text(lv, "#provider-#{three.public_id}-keys") == "3 keys, 1 in cooldown"
-      assert text(lv, "#provider-#{two.public_id}-keys") == "2 keys, 2 in cooldown"
-      assert text(lv, "#provider-#{one.public_id}-keys") == "1 key"
-    end
-
-    test "name each window of the contract in words, and another by its code", ctx do
+    test "shows each window of the contract in words, and another by its code", ctx do
       %{conn: conn, scope: scope, user: user} = ctx
       Repo.update!(Ecto.Changeset.change(user, time_zone: "Europe/Berlin"))
       provider = keys!(scope, "anthropic", ~w(main))
@@ -881,7 +700,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
         updated_at: DateTime.utc_now()
       })
 
-      {:ok, lv, _html} = live(conn, "#{list_path(scope)}/#{provider.public_id}")
+      {:ok, lv, _html} = live(conn, list_path(scope))
       segments = lv |> text("##{key_dom(provider, "main")}-state") |> String.split(" · ")
       assert hd(segments) == "Available"
 
@@ -895,51 +714,42 @@ defmodule ApiaryWeb.ProviderLiveTest do
       now = DateTime.utc_now()
       soon = DateTime.add(now, 60)
       record!(value, %{window: "requests", utilization: 12, resets_at: soon})
-      {:ok, lv, _html} = live(conn, "#{list_path(scope)}/#{provider.public_id}")
+      {:ok, lv, _html} = live(conn, list_path(scope))
 
       assert text(lv, "##{key_dom(provider, "main")}-state") =~
                "Requests per minute 12%, resets #{berlin(soon, now)}"
     end
   end
 
-  describe "Add key" do
+  describe "New model provider key, a key's settings" do
     test "adds a key with its settings, never rendering it", ctx do
       %{conn: conn, scope: scope, user: user} = ctx
       Repo.update!(Ecto.Changeset.change(user, time_zone: "Europe/Berlin"))
-      provider = provider!(scope)
 
-      {:ok, lv, html} = live(conn, key_path(scope, provider, "new"))
-      assert has_element?(lv, "h1", "Add key")
-      assert page_title(lv) =~ "Add key · #{provider.name} · Model providers"
-      refute has_element?(lv, "#key_value_id")
-      refute html =~ "Lowercase letters, digits"
-
-      assert html =~
-               "Qory Apiary stores the key encrypted, and nobody can view it again."
+      {:ok, lv, _html} = live(conn, new_path(scope))
 
       assert has_element?(
                lv,
-               "#key_reset_day-resets-hint",
+               "#provider_reset_day-resets-hint",
                "The weekly time when this key's allowance resets. Set it if the provider sends no reset time."
              )
 
       assert has_element?(
                lv,
-               "#key_pause_number-pause-hint",
+               "#provider_pause_number-pause-hint",
                "How long runs skip this key after the provider returns a limit error, when no reset time is known. Empty: 1 minute."
              )
 
-      assert has_element?(lv, ~s{#key_reset_zone option[value="Europe/Berlin"][selected]})
-      assert has_element?(lv, ~s{#key_pause_unit option[value="minutes"][selected]})
-      assert has_element?(lv, ~s{#key_reset_day option[value="1"]}, "Monday")
-      refute has_element?(lv, "#key-get-key")
-      assert has_element?(lv, "#key-submit", "Add key")
+      assert has_element?(lv, ~s{#provider_reset_zone option[value="Europe/Berlin"][selected]})
+      assert has_element?(lv, ~s{#provider_pause_unit option[value="minutes"][selected]})
+      assert has_element?(lv, ~s{#provider_reset_day option[value="1"]}, "Monday")
 
-      result =
+      {:ok, list, html} =
         lv
-        |> form("#key-form",
-          key: %{
-            key: @key <> "-2",
+        |> form("#new-provider-form",
+          provider: %{
+            provider: "anthropic",
+            key: @key,
             reset_day: "1",
             reset_time: "09:00",
             reset_zone: "Europe/Berlin",
@@ -948,161 +758,175 @@ defmodule ApiaryWeb.ProviderLiveTest do
           }
         )
         |> render_submit()
+        |> follow_redirect(conn, list_path(scope))
 
-      assert {:error, {:live_redirect, %{to: to}}} = result
-      assert to == "#{list_path(scope)}/#{provider.public_id}"
-      {:ok, show, html} = follow_redirect(result, conn)
-      assert html =~ "#{line(provider, "ef-2")} is added."
-      assert has_element?(show, "##{key_dom(provider, "key-2")}-name", line(provider, "ef-2"))
-      assert has_element?(show, "##{key_dom(provider, "key-2")}-state", "Available")
+      assert html =~ "key-1 is added."
+      assert {:ok, [provider]} = Connections.list_providers(scope)
+      assert has_element?(list, "##{key_dom(provider, "key-1")}-state", "Available")
       refute html =~ @key
 
-      value = values(provider)["key-2"]
+      value = values(provider)["key-1"]
       setting = ModelKeys.setting(value.id)
       assert {setting.reset_weekday, setting.reset_time} == {1, ~T[09:00:00]}
       assert {setting.reset_time_zone, setting.pause_seconds} == {"Europe/Berlin", 7200}
-
-      assert Apiary.ModelKeysFixtures.revealed_key(Repo.get!(Connection, provider.id), value.id) ==
-               {:ok, @key <> "-2"}
+      assert key_value(provider, "key-1") == {:ok, @key}
     end
 
-    test "for a subscription, says where to get the key and the terms, and pauses for an hour",
-         ctx do
-      %{conn: conn, scope: scope} = ctx
-      provider = provider!(scope, "claude-subscription")
+    test "for a subscription, pauses for an hour", %{conn: conn, scope: scope} do
+      {:ok, lv, _html} = live(conn, new_path(scope))
 
-      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+      lv
+      |> form("#new-provider-form", provider: %{provider: "claude-subscription"})
+      |> render_change()
 
       assert has_element?(
                lv,
-               "#key_pause_number-pause-hint",
+               "#provider_pause_number-pause-hint",
                "How long runs skip this key after the provider returns a limit error, when no reset time is known. Empty: 1 hour."
              )
 
-      assert has_element?(lv, ~s{#key_pause_unit option[value="hours"][selected]})
-      assert has_element?(lv, "#key-get-key-command", "claude setup-token")
-
-      assert text(lv, "#key-get-key-copy-token") ==
-               "Then copy the token it prints. Anthropic's terms (opens in a new tab) allow this for personal use only."
+      assert has_element?(lv, ~s{#provider_pause_unit option[value="hours"][selected]})
     end
 
     test "says what is wrong under each field, and adds nothing", ctx do
       %{conn: conn, scope: scope} = ctx
-      provider = provider!(scope)
-      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+      {:ok, lv, _html} = live(conn, new_path(scope))
 
       html =
         lv
-        |> form("#key-form",
-          key: %{key: @key, reset_day: "1", pause_number: "0"}
+        |> form("#new-provider-form",
+          provider: %{provider: "anthropic", key: @key, reset_day: "1", pause_number: "0"}
         )
         |> render_submit()
 
       refute html =~ @key
-      assert has_element?(lv, ~s{#key-form input[type=password]:not([value])})
+      assert has_element?(lv, ~s{#new-provider-form input[type=password]:not([value])})
 
       assert has_element?(
                lv,
-               "#key_reset_day-resets-error",
+               "#provider_reset_day-resets-error",
                "Set the day, the time and the time zone, or leave all three empty."
              )
 
       assert has_element?(
                lv,
-               "#key_pause_number-pause-error",
+               "#provider_pause_number-pause-error",
                "Enter a time from 1 minute to 7 days."
              )
 
-      refute has_element?(lv, "#key_pause_number-pause-hint")
+      refute has_element?(lv, "#provider_pause_number-pause-hint")
 
       lv
-      |> form("#key-form",
-        key: %{key: @key, reset_day: "", pause_number: "8", pause_unit: "days"}
+      |> form("#new-provider-form",
+        provider: %{
+          provider: "anthropic",
+          key: @key,
+          reset_day: "",
+          pause_number: "8",
+          pause_unit: "days"
+        }
       )
       |> render_submit()
 
       assert has_element?(
                lv,
-               "#key_pause_number-pause-error",
+               "#provider_pause_number-pause-error",
                "Enter a time from 1 minute to 7 days."
              )
 
-      assert Map.keys(values(provider)) == ["key-1"]
+      assert {:ok, []} = Connections.list_providers(scope)
     end
 
-    test "trims the spaces and newlines around the Key; only those are an empty Key", ctx do
-      %{conn: conn, scope: scope} = ctx
-      provider = provider!(scope)
-      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
-
-      # A Key of only whitespace has the error of an empty Key, and adds nothing.
-      lv |> form("#key-form", key: %{key: ""}) |> render_submit()
-      empty = text(lv, "#key-value-1-error")
-      assert empty =~ "can't be blank"
-
-      lv
-      |> form("#key-form", key: %{key: " \n\t\u00A0\r\n"})
-      |> render_submit()
-
-      assert text(lv, "#key-value-2-error") == empty
-      assert Map.keys(values(provider)) == ["key-1"]
-
-      # The spaces inside the key stay.
-      result =
-        lv
-        |> form("#key-form", key: %{key: " \n#{@key} two\r\n\u00A0"})
-        |> render_submit()
-
-      {:ok, _show, html} = follow_redirect(result, conn)
-      assert html =~ "#{line(provider, " two")} is added."
-      refute html =~ @key
-      assert key_value(provider, "key-2") == {:ok, @key <> " two"}
-    end
-
-    test "at the most keys a provider has, says so under Key", ctx do
-      %{conn: conn, scope: scope} = ctx
-      provider = keys!(scope, "anthropic", for(n <- 1..32, do: "key-#{n}"))
-      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
-
-      lv |> form("#key-form", key: %{key: @key}) |> render_submit()
-
-      assert has_element?(
-               lv,
-               ~s{#key-form [id$="-error"]},
-               "#{provider.name} has 32 keys, the most it can have. Delete a key to add another."
-             )
-
-      assert map_size(values(provider)) == 32
-    end
-
-    test "a person who can no longer write keys adds nothing", ctx do
-      %{scope: scope} = ctx
-      provider = provider!(scope)
+    test "a person who can no longer write keys adds nothing", %{scope: scope} do
       %{user: user, membership: membership} = member_fixture(scope, :admin)
       conn = log_in_user(build_conn(), user)
 
-      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+      {:ok, lv, _html} = live(conn, new_path(scope))
       {:ok, _membership} = Apiary.Organisations.set_member_level(scope, membership.id, :member)
 
-      lv |> form("#key-form", key: %{key: @key}) |> render_submit()
+      lv
+      |> form("#new-provider-form", provider: %{provider: "anthropic", key: @key})
+      |> render_submit()
 
-      assert has_element?(lv, "#key-refusal")
-      assert Map.keys(values(provider)) == ["key-1"]
+      assert has_element?(lv, "#new-provider-refusal")
+      assert {:ok, []} = Connections.list_providers(scope)
+    end
+  end
+
+  describe "Edit key, Name" do
+    test "has the key's name, and a new name renames it; the default key stays the default",
+         ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = keys!(scope, "anthropic", ~w(main spare))
+      assert provider.default_value_id == "main"
+
+      {:ok, lv, _html} = live(conn, edit_path(scope, provider, "main"))
+      assert has_element?(lv, ~s{#key-form label[for="key-name"]}, "Name")
+      assert has_element?(lv, ~s{#key-name[value="main"]})
+
+      {:ok, _list, html} =
+        lv
+        |> form("#key-form", key: %{name: "primary"})
+        |> render_submit()
+        |> follow_redirect(conn, list_path(scope))
+
+      assert html =~ "#{line(provider)} is saved."
+      assert values(provider) |> Map.keys() |> Enum.sort() == ["primary", "spare"]
+      assert Repo.get!(Connections.Connection, provider.id).default_value_id == "primary"
     end
 
-    test "a provider or a key of another organisation is not found", ctx do
+    test "two providers' keys both named key-1 keep their names, and one can be renamed",
+         ctx do
       %{conn: conn, scope: scope} = ctx
-      %{scope: other} = sign_up_fixture()
-      theirs = keys!(other, "anthropic", ~w(key-1 theirs))
-      ours = provider!(scope)
+      storefront = workspace_fixture(scope.organisation, "Storefront")
 
-      for path <- [
-            key_path(scope, theirs, "new"),
-            key_path(scope, theirs, "#{values(theirs)["theirs"].id}/edit"),
-            key_path(scope, ours, "#{values(theirs)["theirs"].id}/edit")
-          ] do
-        assert_raise ApiaryWeb.NotFound, fn -> live(conn, path) end
+      create = fn reach ->
+        {:ok, provider} =
+          Connections.create_provider(
+            scope,
+            Map.merge(%{provider: "anthropic", keys: [%{value: @key}]}, reach)
+          )
+
+        provider
       end
+
+      every = create.(%{applies_to: "all"})
+      only = create.(%{applies_to: "selected", workspace_ids: [storefront.id]})
+
+      # Both providers have a key-1; one is renamed storefront.
+      {:ok, lv, _html} = live(conn, edit_path(scope, only, "key-1"))
+      assert has_element?(lv, ~s{#key-name[value="key-1"]})
+
+      lv |> form("#key-form", key: %{name: "storefront"}) |> render_submit()
+      {:ok, lv, _html} = live(conn, edit_path(scope, every, "key-1"))
+
+      # Another key of the kind has storefront now: the name is refused, under Name.
+      lv |> form("#key-form", key: %{name: "storefront"}) |> render_submit()
+      assert has_element?(lv, "#key-form", "is already the name of another key")
+
+      # A name key-<n> is refused too, under Name.
+      lv |> form("#key-form", key: %{name: "key-7"}) |> render_submit()
+
+      assert has_element?(
+               lv,
+               "#key-form",
+               "Choose another name: Qory Apiary gives names like key-3 to new keys."
+             )
+
+      assert Map.keys(values(every)) == ["key-1"]
+      assert Map.keys(values(only)) == ["storefront"]
+    end
+
+    test "an empty Name is refused, and saves nothing", ctx do
+      %{conn: conn, scope: scope} = ctx
+      provider = keys!(scope, "anthropic", ~w(main))
+      {:ok, lv, _html} = live(conn, edit_path(scope, provider, "main"))
+
+      lv |> form("#key-form", key: %{name: " ", pause_number: "5"}) |> render_submit()
+
+      assert has_element?(lv, "#key-form", "can't be blank")
+      assert Map.keys(values(provider)) == ["main"]
+      assert ModelKeys.setting(values(provider)["main"].id) == nil
     end
   end
 
@@ -1139,6 +963,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert has_element?(lv, ~s{#key_pause_number[value="2"]})
       assert has_element?(lv, ~s{#key_pause_unit option[value="hours"][selected]})
       assert has_element?(lv, "#key-submit", "Save")
+      assert text(lv, "#key-workspaces-names") == "Every workspace"
       refute html =~ @key
 
       result =
@@ -1153,9 +978,9 @@ defmodule ApiaryWeb.ProviderLiveTest do
         )
         |> render_submit()
 
-      {:ok, show, html} = follow_redirect(result, conn)
+      {:ok, list, html} = follow_redirect(result, conn, list_path(scope))
       assert html =~ "#{line(provider)} is saved."
-      assert text(show, "##{key_dom(provider, "spare")}-state") =~ "Available · 5-hour 30%"
+      assert text(list, "##{key_dom(provider, "spare")}-state") =~ "Available · 5-hour 30%"
       assert values(provider)["spare"].id == value.id
       setting = ModelKeys.setting(value.id)
       assert {setting.reset_weekday, setting.pause_seconds} == {nil, 1800}
@@ -1177,9 +1002,9 @@ defmodule ApiaryWeb.ProviderLiveTest do
         |> form("#key-form", key: %{key: "   ", pause_number: "5"})
         |> render_submit()
 
-      {:ok, show, html} = follow_redirect(result, conn)
+      {:ok, list, html} = follow_redirect(result, conn, list_path(scope))
       assert html =~ "#{line(provider)} is saved."
-      assert text(show, "##{key_dom(provider, "spare")}-state") =~ "In cooldown until"
+      assert text(list, "##{key_dom(provider, "spare")}-state") =~ "In cooldown until"
       assert ModelKeys.setting(value.id).pause_seconds == 300
       assert values(provider)["spare"].value_set_at == value.value_set_at
 
@@ -1193,11 +1018,11 @@ defmodule ApiaryWeb.ProviderLiveTest do
         |> form("#key-form", key: %{key: new_value, pause_number: "5"})
         |> render_submit()
 
-      {:ok, show, html} = follow_redirect(result, conn)
+      {:ok, list, html} = follow_redirect(result, conn, list_path(scope))
       assert html =~ "#{line(provider)} is saved."
       refute html =~ new_value
       refute html =~ String.slice(new_value, -8, 8)
-      assert text(show, "##{key_dom(provider, "spare")}-state") == "Available"
+      assert text(list, "##{key_dom(provider, "spare")}-state") == "Available"
 
       saved = values(provider)["spare"]
       assert DateTime.compare(saved.value_set_at, value.value_set_at) == :gt
@@ -1226,8 +1051,8 @@ defmodule ApiaryWeb.ProviderLiveTest do
         |> form("#key-form", key: %{key: "\n\t\u00A0\r\n"})
         |> render_submit()
 
-      {:ok, show, _html} = follow_redirect(result, conn)
-      assert text(show, "##{key_dom(provider, "spare")}-state") =~ "In cooldown until"
+      {:ok, list, _html} = follow_redirect(result, conn, list_path(scope))
+      assert text(list, "##{key_dom(provider, "spare")}-state") =~ "In cooldown until"
       assert values(provider)["spare"].value_set_at == value.value_set_at
       assert key_value(provider, "spare") == {:ok, @key}
 
@@ -1239,10 +1064,10 @@ defmodule ApiaryWeb.ProviderLiveTest do
         |> form("#key-form", key: %{key: " #{@key}\n"})
         |> render_submit()
 
-      {:ok, show, html} = follow_redirect(result, conn)
+      {:ok, list, html} = follow_redirect(result, conn, list_path(scope))
       assert html =~ "#{line(provider)} is saved."
       refute html =~ @key
-      assert text(show, "##{key_dom(provider, "spare")}-state") == "Available"
+      assert text(list, "##{key_dom(provider, "spare")}-state") == "Available"
       assert DateTime.compare(values(provider)["spare"].value_set_at, value.value_set_at) == :gt
       assert key_value(provider, "spare") == {:ok, @key}
 
@@ -1253,7 +1078,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
         |> form("#key-form", key: %{key: "\r\n sk-ant rotated key \n"})
         |> render_submit()
 
-      {:ok, _show, html} = follow_redirect(result, conn)
+      {:ok, _list, html} = follow_redirect(result, conn, list_path(scope))
       refute html =~ "rotated"
       assert key_value(provider, "spare") == {:ok, "sk-ant rotated key"}
     end
@@ -1350,9 +1175,22 @@ defmodule ApiaryWeb.ProviderLiveTest do
                values(provider)["spare"].id
              ) == {:ok, @key}
     end
+
+    test "a key of another organisation is not found", %{conn: conn, scope: scope} do
+      %{scope: other} = sign_up_fixture()
+      theirs = keys!(other, "anthropic", ~w(main theirs))
+      ours = provider!(scope)
+
+      for path <- [
+            key_path(scope, theirs, "#{values(theirs)["theirs"].id}/edit"),
+            key_path(scope, ours, "#{values(theirs)["theirs"].id}/edit")
+          ] do
+        assert_raise ApiaryWeb.NotFound, fn -> live(conn, path) end
+      end
+    end
   end
 
-  describe "a key's identity line" do
+  describe "a key's identity line, the title of Edit key" do
     # A provider of `name` with a key for each value, added in their order, a second apart.
     defp provider_with!(scope, name, values) do
       [first | rest] = values
@@ -1377,60 +1215,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       provider
     end
 
-    defp row_texts(lv, provider) do
-      for {value_id, _} <- Enum.sort(values(provider)),
-          into: %{},
-          do: {value_id, text(lv, "##{key_dom(provider, value_id)}-name")}
-    end
-
-    test "Add key has no Name field, and the new key shows by its line in the list", ctx do
-      %{conn: conn, scope: scope} = ctx
-      provider = provider!(scope)
-
-      {:ok, lv, html} = live(conn, key_path(scope, provider, "new"))
-      refute has_element?(lv, "#key_value_id")
-      refute has_element?(lv, ~s{#key-form input[name="key[value_id]"]})
-      refute html =~ "Name"
-
-      result =
-        lv
-        |> form("#key-form", key: %{key: "sk-ant-added-0123456789-edge-Rm52"})
-        |> render_submit()
-
-      {:ok, show, html} = follow_redirect(result, conn)
-      assert html =~ "#{line(provider, "Rm52")} is added."
-      assert text(show, "##{key_dom(provider, "key-2")}-name") == line(provider, "Rm52")
-      assert text(show, "##{key_dom(provider, "key-1")}-name") == line(provider)
-
-      # A key with a value that another key has is one more key: no name can clash.
-      {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
-      lv |> form("#key-form", key: %{key: @key}) |> render_submit()
-      assert Map.keys(values(provider)) |> Enum.sort() == ["key-1", "key-2", "key-3"]
-    end
-
-    test "each row shows the provider's name and the last 4 characters of its value", ctx do
-      %{conn: conn, scope: scope} = ctx
-
-      provider =
-        provider_with!(scope, "anthropic", [
-          "sk-ant-build-0123456789-9c2e",
-          "sk-ant-docs-0123456789-4h7k",
-          "sk-ant-ci-0123456789-Qx81"
-        ])
-
-      {:ok, lv, html} = live(conn, "#{list_path(scope)}/#{provider.public_id}")
-
-      assert row_texts(lv, provider) == %{
-               "key-1" => line(provider, "9c2e"),
-               "key-2" => line(provider, "4h7k"),
-               "key-3" => line(provider, "Qx81")
-             }
-
-      refute html =~ "sk-ant-build"
-      refute text(lv, "#provider-keys") =~ "key-1"
-    end
-
-    test "a value of fewer than 12 characters, or a key with no hint, shows the name alone",
+    test "a value of fewer than 12 characters, or a key with no hint, is the name alone",
          ctx do
       %{conn: conn, scope: scope} = ctx
 
@@ -1448,18 +1233,10 @@ defmodule ApiaryWeb.ProviderLiveTest do
       # An API key saved before the hint existed has none.
       Repo.update_all(from(v in Value, where: v.id == ^values["key-3"].id), set: [hint: nil])
 
-      {:ok, lv, _html} = live(conn, "#{list_path(scope)}/#{provider.public_id}")
-
-      assert row_texts(lv, provider) == %{
-               "key-1" => line(provider, "9c2e"),
-               "key-2" => provider.name,
-               "key-3" => provider.name
-             }
-
-      assert has_element?(
-               lv,
-               ~s{##{key_dom(provider, "key-2")}-edit[aria-label="Edit key #{provider.name}"]}
-             )
+      for value_id <- ~w(key-2 key-3) do
+        {:ok, lv, _html} = live(conn, edit_path(scope, provider, value_id))
+        assert text(lv, "h1") == provider.name
+      end
     end
 
     test "a provider named differently from its kind shows its name in the line", ctx do
@@ -1470,40 +1247,38 @@ defmodule ApiaryWeb.ProviderLiveTest do
         set: [name: "Web shop API"]
       )
 
-      {:ok, lv, _html} = live(conn, "#{list_path(scope)}/#{provider.public_id}")
-      assert text(lv, "##{key_dom(provider, "key-1")}-name") == "Web shop API · …cdef"
-
       {:ok, edit, _html} = live(conn, edit_path(scope, provider, "key-1"))
       assert has_element?(edit, "h1", "Web shop API · …cdef")
     end
 
-    test "Edit key is at the key's row id, and no other address is found", ctx do
+    test "is at the key's row id, and no other address is found", ctx do
       %{conn: conn, scope: scope} = ctx
       provider = provider!(scope)
-      other = keys!(scope, "openrouter", ~w(key-1))
+      other = keys!(scope, "openrouter", ~w(main))
       row_id = values(provider)["key-1"].id
 
       {:ok, lv, _html} = live(conn, key_path(scope, provider, "#{row_id}/edit"))
       assert has_element?(lv, "h1", line(provider))
       refute has_element?(lv, "#key_value_id")
 
-      {:ok, show, _html} = live(conn, "#{list_path(scope)}/#{provider.public_id}")
+      {:ok, list, _html} = live(conn, list_path(scope))
 
       assert has_element?(
-               show,
+               list,
                ~s{##{key_dom(provider, "key-1")}-edit[href="#{key_path(scope, provider, "#{row_id}/edit")}"]}
              )
 
       for rest <- [
             "key-1/edit",
             "#{Ecto.UUID.generate()}/edit",
-            "#{values(other)["key-1"].id}/edit"
+            "#{values(other)["main"].id}/edit"
           ] do
         assert_raise ApiaryWeb.NotFound, fn -> live(conn, key_path(scope, provider, rest)) end
       end
     end
 
-    test "the edit title is the line of the key, and a save says so", ctx do
+    test "is the provider's name and the last 4 characters of the value, shown on save",
+         ctx do
       %{conn: conn, scope: scope} = ctx
 
       provider =
@@ -1516,7 +1291,7 @@ defmodule ApiaryWeb.ProviderLiveTest do
       assert has_element?(lv, "h1", line(provider, "4h7k"))
 
       result = lv |> form("#key-form", key: %{pause_number: "5"}) |> render_submit()
-      {:ok, _show, html} = follow_redirect(result, conn)
+      {:ok, _list, html} = follow_redirect(result, conn, list_path(scope))
       assert html =~ "#{line(provider, "4h7k")} is saved."
     end
   end

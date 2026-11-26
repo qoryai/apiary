@@ -1700,9 +1700,12 @@ defmodule Apiary.Secrets do
   highest `key-<n>` of the keys the secret starts with.
   """
   @spec next_key_id(Secret.t()) :: String.t()
-  # shortcut: a context call with an explicit value_id above the counter can collide with a
-  # later auto key. The unique index refuses the add, the counter rolls back with it, and
-  # nothing repairs the counter. Replace when a path lets a person choose a key number.
+  # shortcut: a direct `add_value/4` or `rename_value/5` call with `provider:` and a value_id
+  # key-<n> above the counter can collide with a later auto key. A later auto key's add then
+  # fails on the unique index, the counter rolls back with it, and no code repairs the
+  # counter. Without `provider:` a key secret is not found, and `Apiary.Connections`
+  # refuses a given name of that form.
+  # Replace when a path lets a person give a key a name key-<n>.
   def next_key_id(%Secret{id: id}) do
     {1, [number]} =
       Repo.update_all(

@@ -131,7 +131,7 @@ defmodule Apiary.Connections do
   }
 
   alias Apiary.Accounts.Scope
-  alias Apiary.ModelKeys.{Identity, Login}
+  alias Apiary.ModelKeys.{Group, Identity, Login}
 
   alias Apiary.Connections.{
     Connection,
@@ -1377,7 +1377,9 @@ defmodule Apiary.Connections do
       index, as `Apiary.Secrets.create_provider_keys/2` takes them, each `value` without
       the whitespace at its ends (`String.trim/1`); for a provider whose keys are logins
       (`Apiary.ModelKeys.Login`) the `value` is the sign-in of a device sign-in
-      (`t:Apiary.ModelKeys.Login.parsed/0`), and any text is refused with "is invalid";
+      (`t:Apiary.ModelKeys.Login.parsed/0`), and any text is refused with "is invalid".
+      A key with no `value_id` gets the next `key-<n>`; a given `value_id` of that form is
+      refused with "Choose another name: Qory Apiary gives names like key-3 to new keys.";
     * `default_key`, the value id of its default key, the first key's by default;
     * `chain`, `"organisation"` by default; any other chain is refused with
       `:forbidden`.
@@ -1391,12 +1393,25 @@ defmodule Apiary.Connections do
   `{:ok, provider}`, loaded as `get_provider/2` loads it, or `{:error, refusal}`: a
   changeset of the provider whose errors are on `name`, `applies_to`, `provider_kind`,
   `settings` or `default_value_id`, a changeset of the keys' secret whose errors are on
-  `values`, or a refusal of the settings.
+  `values`, a value changeset whose error is on `value_id` for a given `key-<n>`, or a
+  refusal of the settings.
   """
   @spec create_provider(Scope.t(), map, :organisation | :workspace) ::
           {:ok, Connection.t()} | {:error, refusal}
   def create_provider(%Scope{} = scope, attrs, place \\ :organisation)
       when place in [:organisation, :workspace] do
+    scope
+    |> insert_provider(attrs, place, :given)
+    |> refreshed()
+    |> reload()
+    |> without_keys()
+  end
+
+  # The write of `create_provider/3`, in a new transaction or in the caller's
+  # (`add_key/2`), which refreshes the waiting runs once its transaction commits. `names`
+  # is `:given` for keys' value ids from the caller, where a `key-<n>` is refused, or
+  # `:numbered` for the one `add_key/2` sets (`next_key_name/2`).
+  defp insert_provider(scope, attrs, place, names) do
     attrs = scope |> placed(stringify(attrs), place)
 
     write(scope, fn scope, organisation ->
@@ -1412,8 +1427,10 @@ defmodule Apiary.Connections do
            {:ok, workspace_ids} <-
              workspace_ids(organisation.id, connection_reach_ids(changeset, attrs)),
            :ok <- placed_reach(place, workspace_ids),
+           ordered = in_order(attrs["keys"]),
+           :ok <- given_names(ordered, names),
            {:ok, keys, logins} <-
-             login_keys(provider, attrs["keys"] |> in_order() |> trim_keys() |> name_keys()),
+             login_keys(provider, ordered |> trim_keys() |> name_keys()),
            {:ok, secret} <-
              Secrets.create_provider_keys(
                scope,
@@ -1441,9 +1458,6 @@ defmodule Apiary.Connections do
         {:ok, inserted}
       end
     end)
-    |> refreshed()
-    |> reload()
-    |> without_keys()
   end
 
   # A provider added for the scope's workspace alone reaches that workspace, `selected`,
@@ -1545,14 +1559,14 @@ defmodule Apiary.Connections do
     end
   end
 
-  # Each key that has no value id gets the next `key-<n>` (`Apiary.Secrets.Value.next_key_id/1`),
-  # after the value ids the other keys have: Apiary names a model provider's key, and no
-  # page shows the name.
+  # Each key that has no value id gets the next `key-<n>` (`Apiary.Secrets.Value.next_key_id/1`):
+  # Qory Apiary gives a new key its name, which the list of model provider keys and Edit
+  # key show. The numbers start at 1 without a seed (`given_names/2`): on the `:given` path
+  # no given value id has the form `key-<n>`, and on the `:numbered` path every key already
+  # has its value id.
   defp name_keys(keys) do
-    taken = for %{} = key <- keys, id = Value.normalise_value_id(key["value_id"]), do: id
-
     {keys, _taken} =
-      Enum.map_reduce(keys, taken, fn
+      Enum.map_reduce(keys, [], fn
         %{} = key, taken ->
           if Value.normalise_value_id(key["value_id"]) do
             {key, taken}
@@ -1893,44 +1907,280 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  add_provider_key/4 adds a key to a model provider's keys (`provider.write`): `attrs`
-  has `value` and, optionally, `value_id`, as `Apiary.Secrets.add_value/4` takes them, the
-  `value` without the whitespace at its ends (`String.trim/1`). With no `value_id` the
-  key gets `key-<n>` (`Apiary.Secrets.next_key_id/1`); no page sends one. `settings`
-  is the key's settings (`Apiary.ModelKeys.Setting.changeset/3`, with the provider's limit
-  windows), nil for none. For a provider whose keys are logins the `value` is the sign-in of a
-  device sign-in (`t:Apiary.ModelKeys.Login.parsed/0`), and any text is refused with
-  "is invalid". The key and its settings are written in one transaction.
-  `{:ok, provider}`, or `{:error, refusal}` as `Apiary.Secrets.add_value/4` returns, or a
-  changeset of the settings, which leaves no key added.
+  add_provider_key/4 adds a key to a model provider's keys (`provider.write`): `attrs` has
+  `value` and, optionally, `value_id`, as `Apiary.Secrets.add_value/4` takes them, the
+  `value` without the whitespace at its ends (`String.trim/1`). With no `value_id` the key
+  gets `key-<n>` (`Apiary.Secrets.next_key_id/1`); no page sends one.
+  `settings` is the key's settings (`Apiary.ModelKeys.Setting.changeset/3`, with the
+  provider's limit windows), nil for none. For a provider whose keys are logins the
+  `value` is the sign-in of a device sign-in (`t:Apiary.ModelKeys.Login.parsed/0`). The
+  key and its settings are written in one transaction.
+  `{:ok, provider}`, or `{:error, refusal}` as `Apiary.Secrets.add_value/4` returns, a
+  value changeset whose error is on `value_id` for a given `value_id` of the form
+  `key-<n>` (as `create_provider/3` refuses it), a value changeset whose error "is invalid"
+  is on `value` for a text where a sign-in is expected, or a changeset of the settings.
+  No refusal leaves a key added.
   """
   @spec add_provider_key(Scope.t(), Connection.t(), map, map | nil) ::
           {:ok, Connection.t()} | {:error, refusal}
   def add_provider_key(%Scope{} = scope, %Connection{} = provider, attrs, settings \\ nil),
+    do: add_named_key(scope, provider, attrs, settings, :given)
+
+  # `add_provider_key/4`, with `names` as `insert_provider/4` has it: `add_key/2` passes
+  # `:numbered` for the `key-<n>` it sets.
+  defp add_named_key(scope, provider, attrs, settings, names),
     do:
       write_keys(scope, provider, fn scope, secret, current ->
         attrs = trim_value(stringify(attrs))
 
-        value_id =
-          Value.normalise_value_id(attrs["value_id"]) ||
-            Secrets.next_key_id(current.secret)
+        with :ok <- given_names([attrs], names) do
+          value_id =
+            Value.normalise_value_id(attrs["value_id"]) ||
+              Secrets.next_key_id(current.secret)
 
-        attrs = Map.put(attrs, "value_id", value_id)
+          attrs = Map.put(attrs, "value_id", value_id)
 
-        with {:ok, attrs, login} <- login_attrs(current, attrs),
-             {:ok, _secret} <- Secrets.add_value(scope, secret, attrs, provider: current),
-             {:ok, _setting} <- put_key_setting(current, value_id, settings),
-             :ok <- put_login(current, value_id, login),
-             do:
-               {:ok,
-                %{
-                  after: %{value_id: value_id},
-                  details: %{
-                    value_id: value_id,
-                    identity: Identity.for_value_id(current, value_id)
-                  }
-                }}
+          with {:ok, attrs, login} <- login_attrs(current, attrs),
+               {:ok, _secret} <- Secrets.add_value(scope, secret, attrs, provider: current),
+               {:ok, _setting} <- put_key_setting(current, value_id, settings),
+               :ok <- put_login(current, value_id, login),
+               do:
+                 {:ok,
+                  %{
+                    after: %{value_id: value_id},
+                    details: %{
+                      value_id: value_id,
+                      identity: Identity.for_value_id(current, value_id)
+                    }
+                  }}
+        end
       end)
+
+  @doc """
+  add_key/2 adds a model provider key to the scope's organisation (`provider.write`), in
+  one transaction under the organisation's integrations lock (`write/2`), so two adds take
+  turns. `attrs` has:
+
+    * `provider`, the name of a provider of the catalogue, else `:provider_unknown`;
+    * `value`, the key, as `add_provider_key/4` takes it;
+    * `settings`, the provider's plain settings, such as LiteLLM's address, `%{}` by
+      default;
+    * `applies_to`, `all` or `selected`, and with `selected`, `workspace_ids`, the
+      workspaces of the organisation that the key serves; those the scope's person does not
+      reach are left out, and `all` is `:forbidden` unless they reach every workspace;
+    * `key_settings`, the key's Resets, Pause for and Use up to
+      (`Apiary.ModelKeys.Setting`), nil for none.
+
+  The key goes into the key group: the providers of the organisation's chain with the same
+  kind and the same stored settings (`Apiary.ModelKeys.Group.of/2`), intact, whose
+  settings still fit the catalogue (`provider/1`). The first of them, oldest first, that
+  reaches the same workspaces (every workspace, or the same set) and whose keys' secret
+  has room (`Apiary.Secrets.max_values/0`) takes the key as its next value. With none, a new
+  provider is created with the key (`create_provider/3`): for one workspace, the key is a
+  secret of that workspace (`:workspace`); for several or every workspace, a secret of the
+  organisation. The key's value id is `key-<n>`: the number after the highest among the
+  value ids of the organisation's current keys of that kind and the key counters
+  (`last_key_number`) of those keys' secrets. No current key of that kind has that
+  number; a number of a key whose provider was deleted can come again.
+
+  A provider whose description lists no models, such as LiteLLM, takes a key only with
+  the feature `model_proxies` on, as `create_provider/3` checks it, also where a provider
+  of its group exists. Once the key is committed, the model providers of the
+  organisation's waiting runs are set again, as after `create_provider/3`.
+
+  `{:ok, provider, value_id}`, the provider that has the key, or `{:error, refusal}`:
+  `:no_workspace` for `selected` without a workspace the person reaches,
+  `:workspace_not_found` for a workspace that is not one of the organisation's, a
+  changeset whose error is on `provider_kind` for a provider not offered, or a refusal of
+  `create_provider/3` or `add_provider_key/4`, which adds no key.
+  """
+  @spec add_key(Scope.t(), map) :: {:ok, Connection.t(), String.t()} | {:error, refusal}
+  def add_key(%Scope{} = scope, attrs) do
+    attrs = stringify(attrs)
+
+    write(scope, fn scope, organisation ->
+      with :ok <- providers_shown(scope),
+           :ok <- Access.check(scope, :"provider.write", organisation),
+           {:ok, provider} <- fetch_provider(attrs["provider"]),
+           :ok <- offered(change(%Connection{}), provider),
+           {:ok, reach} <- key_reach(scope, organisation.id, attrs) do
+        value_id = next_key_name(organisation.id, provider.name)
+
+        with {:ok, added} <- add_to_group(scope, organisation, provider, reach, attrs, value_id),
+             do: {:ok, {added, value_id}}
+      end
+    end)
+    |> case do
+      # The waiting runs are refreshed once the key is committed, so they read it.
+      {:ok, {provider, value_id}} ->
+        {:ok, provider} = {:ok, provider} |> refreshed() |> reload()
+        {:ok, provider, value_id}
+
+      {:error, reason} ->
+        without_keys({:error, reason})
+    end
+  end
+
+  # The workspaces a new key serves: `:all`, for a person who reaches every workspace
+  # (`Apiary.Access.reaches_every_workspace_in?/1`), else `:forbidden`; or the sorted ids
+  # of the organisation's workspaces it lists that the scope's person reaches
+  # (`Apiary.Organisations.workspace_scopes/1`); the others are left out.
+  defp key_reach(scope, _organisation_id, %{"applies_to" => "all"}) do
+    if Access.reaches_every_workspace_in?(scope), do: {:ok, :all}, else: {:error, :forbidden}
+  end
+
+  defp key_reach(scope, organisation_id, %{"applies_to" => "selected"} = attrs) do
+    reached = scope |> Apiary.Organisations.workspace_scopes() |> Map.keys()
+
+    case workspace_ids(organisation_id, List.wrap(attrs["workspace_ids"])) do
+      {:ok, ids} ->
+        case Enum.filter(ids, &(&1 in reached)) do
+          [] -> {:error, :no_workspace}
+          ids -> {:ok, Enum.sort(ids)}
+        end
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp key_reach(_scope, _organisation_id, _attrs), do: {:error, :no_workspace}
+
+  # The value id of the next key of `kind` in the organisation: the number after the
+  # highest among the value ids of its current keys of that kind and the counters of their
+  # secrets. A deleted provider's secret is gone, so its numbers are not counted.
+  defp next_key_name(organisation_id, kind) do
+    rows =
+      Repo.all(
+        from c in connections(organisation_id),
+          join: s in Secret,
+          on: s.id == c.secret_id,
+          left_join: v in Value,
+          on: v.secret_id == s.id,
+          where: c.provider_kind == ^kind,
+          select: {s.last_key_number, v.value_id}
+      )
+
+    counted = rows |> Enum.map(&elem(&1, 1)) |> Value.highest_key_number()
+    counters = for {number, _value_id} <- rows, is_integer(number), do: number
+
+    "key-#{Enum.max([counted | counters]) + 1}"
+  end
+
+  # The key, with the value id `value_id`, added to the first provider of its group that
+  # reaches `reach` and has room, else to a new provider.
+  defp add_to_group(scope, organisation, %Provider{} = provider, reach, attrs, value_id) do
+    found =
+      organisation.id
+      |> key_group(provider, attrs["settings"] || %{})
+      |> Enum.find(&(same_reach?(&1, reach) and room?(&1)))
+
+    case found do
+      %Connection{} = found ->
+        key = %{"value_id" => value_id, "value" => attrs["value"]}
+
+        with {:ok, added} <-
+               add_named_key(scope, found, key, attrs["key_settings"], :numbered),
+             :ok <- take_key_number(added.secret_id, value_id),
+             do: {:ok, added}
+
+      nil ->
+        new_key_provider(scope, provider, reach, attrs, value_id)
+    end
+  end
+
+  # The key group of a new key of `provider` with the plain settings `settings`: none when
+  # the settings are refused, and `create_provider/3` then returns the refusal.
+  defp key_group(organisation_id, %Provider{} = provider, settings) do
+    case settings(provider.description, settings) do
+      {:ok, encoded} ->
+        group_of(%Connection{
+          organisation_id: organisation_id,
+          provider_kind: provider.name,
+          chain: "organisation",
+          settings: encoded
+        })
+
+      {:error, _refusal} ->
+        []
+    end
+  end
+
+  # The providers of the key group of `provider` (`Apiary.ModelKeys.Group.of/2`), intact
+  # and whose settings still fit the catalogue, oldest first, with their workspaces and
+  # keys.
+  defp group_of(%Connection{} = provider) do
+    Repo.all(
+      from c in Group.of(provider),
+        order_by: [asc: c.inserted_at, asc: c.id],
+        preload: ^preloads(%Connection{provider_kind: ""})
+    )
+    |> Enum.filter(&(intact?(&1) and match?({:ok, _provider}, provider(&1))))
+  end
+
+  defp same_reach?(%Connection{applies_to: "all"}, :all), do: true
+
+  # Both sorted: `ids` by `key_reach/2`, a provider's by `workspace_ids_of/1`.
+  defp same_reach?(%Connection{applies_to: "selected"} = connection, ids) when is_list(ids),
+    do: workspace_ids_of(connection) == ids
+
+  defp same_reach?(%Connection{}, _reach), do: false
+
+  defp room?(%Connection{secret: %Secret{values: values}}) when is_list(values),
+    do: length(values) < Secrets.max_values()
+
+  defp room?(%Connection{}), do: false
+
+  # The counter of the keys' secret `secret_id` moved up to the number of `value_id`, so
+  # `Apiary.Secrets.next_key_id/1` never returns that number again; nothing for a value id
+  # with no number (`Apiary.Secrets.Value.key_number/1`).
+  defp take_key_number(secret_id, value_id) do
+    with number when is_integer(number) <- Value.key_number(value_id) do
+      Repo.update_all(
+        from(s in Secret, where: s.id == ^secret_id and s.last_key_number < ^number),
+        set: [last_key_number: number]
+      )
+    end
+
+    :ok
+  end
+
+  # A new provider with the key: for one workspace, its key a secret of that workspace;
+  # else of the organisation. The key's settings are written with it.
+  defp new_key_provider(scope, %Provider{} = provider, reach, attrs, value_id) do
+    created = %{
+      "provider" => provider.name,
+      "settings" => attrs["settings"] || %{},
+      "keys" => [%{"value_id" => value_id, "value" => attrs["value"]}]
+    }
+
+    result =
+      case reach do
+        [workspace_id] ->
+          workspace = Repo.get!(Workspace, workspace_id)
+          insert_provider(%{scope | workspace: workspace}, created, :workspace, :numbered)
+
+        :all ->
+          insert_provider(
+            scope,
+            Map.put(created, "applies_to", "all"),
+            :organisation,
+            :numbered
+          )
+
+        ids ->
+          insert_provider(
+            scope,
+            Map.merge(created, %{"applies_to" => "selected", "workspace_ids" => ids}),
+            :organisation,
+            :numbered
+          )
+      end
+
+    with {:ok, added} <- result,
+         {:ok, _setting} <- put_key_setting(added, value_id, attrs["key_settings"]),
+         do: {:ok, added}
+  end
 
   @doc """
   set_provider_key/5 replaces the value of a model provider's key with the value id
@@ -2011,18 +2261,23 @@ defmodule Apiary.Connections do
 
   @doc """
   update_provider_key/4 changes a model provider's key with the value id `value_id`
-  (`provider.write`): `attrs` has its new `value_id`, which renames it as
-  `rename_provider_key/4` does, its `settings` (`Apiary.ModelKeys.Setting.changeset/3`,
-  with the provider's limit windows) and, optionally, its new `value`. A rename keeps the
-  settings and the states, which are the value's row's. The `value` loses the whitespace
-  at its ends (`String.trim/1`). A `value` that is nil or then empty keeps the value and
-  its states; any other replaces the value and deletes the states, as
-  `set_provider_key/5` does, and the details of the entry then have `value_set: true`.
-  The value, the name and the settings are written in one transaction, and a save that
-  changes none of them leaves no entry.
+  (`provider.write`): `attrs` has its new `value_id`, which renames it
+  (`Apiary.Secrets.rename_value/5`), its `settings`
+  (`Apiary.ModelKeys.Setting.changeset/3`, with the provider's limit windows) and,
+  optionally, its new `value`. A rename keeps the settings and the states, which are the
+  value's row's; the new value id must be one no key of the provider's kind in the
+  organisation has, else the error "is already the name of another key" on `value_id`, and
+  it must not be of the form `key-<n>`, which only `add_key/2` sets, else "Choose another
+  name: Qory Apiary gives names like key-3 to new keys." on `value_id`; a rename of the
+  default key moves the default with it. The `value` loses the whitespace at its ends
+  (`String.trim/1`). A `value` that is nil or then empty keeps the value and its states;
+  any other replaces the value and deletes the states, as `set_provider_key/5` does, and
+  the details of the entry then have `value_set: true`. The value, the name and the
+  settings are written in one transaction, and a save that changes none of them leaves no
+  entry.
   `{:ok, provider}`, or `{:error, refusal}`: `:not_found` for a value id the provider's
   keys do not have, a refusal of the value as `Apiary.Secrets.set_value/5` returns, a
-  refusal of the rename as `rename_provider_key/4` returns, or a changeset of the
+  refusal of the rename as `Apiary.Secrets.rename_value/5` returns, or a changeset of the
   settings; each leaves the key as it was.
   """
   @spec update_provider_key(Scope.t(), Connection.t(), String.t(), map) ::
@@ -2044,8 +2299,10 @@ defmodule Apiary.Connections do
                ModelKeys.limit_windows(current)
              ),
            :ok <- valid(changeset),
+           :ok <- if(renaming, do: name_free(current, new_value_id), else: :ok),
            :ok <-
              if(new_value, do: set_key(scope, secret, current, value_id, new_value), else: :ok),
+           {:ok, current} <- follow_default(scope, current, value_id, renaming && new_value_id),
            {:ok, renamed} <-
              scope
              |> rename_key(secret, current, value_id, new_value_id)
@@ -2209,6 +2466,93 @@ defmodule Apiary.Connections do
     end)
   end
 
+  # A new name of a key: a valid value id that no key of the provider's kind in the
+  # organisation has, as `add_key/2` numbers the keys across the kind, and not of the form
+  # `key-<n>`, which only `add_key/2` sets, so a rename never takes a number that a later
+  # add would set. The error on `value_id`. It runs under the organisation's integrations
+  # lock (`write/2`, through `lock/1`).
+  defp name_free(%Connection{} = current, new_value_id) do
+    changeset =
+      %Value{}
+      |> change(value_id: new_value_id)
+      |> Value.value_id_changeset(:required)
+
+    value_id = get_field(changeset, :value_id)
+
+    taken =
+      changeset.valid? and
+        Repo.exists?(
+          from c in connections(current.organisation_id),
+            join: v in Value,
+            on: v.secret_id == c.secret_id,
+            where: c.provider_kind == ^current.provider_kind and v.value_id == ^value_id
+        )
+
+    cond do
+      not changeset.valid? ->
+        {:error, changeset}
+
+      key_name?(value_id) ->
+        {:error, key_name_refused(changeset)}
+
+      taken ->
+        {:error,
+         add_error(
+           changeset,
+           :value_id,
+           dgettext_noop("errors", "is already the name of another key")
+         )}
+
+      true ->
+        :ok
+    end
+  end
+
+  # Whether `value_id` has the form `key-<n>`, which only `add_key/2` sets, and a key
+  # added with no value id gets.
+  defp key_name?(value_id) when is_binary(value_id), do: value_id =~ ~r/\Akey-[0-9]+\z/
+  defp key_name?(_value_id), do: false
+
+  defp key_name_refused(changeset),
+    do:
+      add_error(
+        changeset,
+        :value_id,
+        dgettext_noop(
+          "errors",
+          "Choose another name: Qory Apiary gives names like key-3 to new keys."
+        )
+      )
+
+  # The value ids `keys` were given, `:numbered` by `add_key/2` or `:given` by a caller,
+  # where a `key-<n>` is refused, its error on `value_id`.
+  defp given_names(_keys, :numbered), do: :ok
+
+  defp given_names(keys, :given) do
+    case Enum.find(List.wrap(keys), &(is_map(&1) and key_name?(given_value_id(&1)))) do
+      nil ->
+        :ok
+
+      key ->
+        {:error, %Value{} |> change(value_id: given_value_id(key)) |> key_name_refused()}
+    end
+  end
+
+  defp given_value_id(key),
+    do: key |> stringify() |> Map.get("value_id") |> Value.normalise_value_id()
+
+  # A rename of the provider's default key moves the default to the new value id first,
+  # in the same transaction, so the rename is not refused as a use of the old one.
+  defp follow_default(scope, %Connection{default_value_id: value_id} = current, value_id, new)
+       when is_binary(new) do
+    current
+    |> change(default_value_id: new, updated_by_id: scope.user && scope.user.id)
+    |> Coded.seal()
+    |> Repo.update()
+  end
+
+  defp follow_default(_scope, current, _value_id, _new), do: {:ok, current}
+
   # Adds the line `identity` to the refusal of a key in use that `Apiary.Secrets` returns.
   defp with_identity({:error, {:in_use, uses}}, identity), do: {:error, {:in_use, uses, identity}}
   defp with_identity(result, _identity), do: result
@@ -2248,31 +2592,6 @@ defmodule Apiary.Connections do
   end
 
   @doc """
-  rename_provider_key/4 gives a model provider's key another value id
-  (`provider.write`). `{:ok, provider}`, or `{:error, refusal}` as
-  `Apiary.Secrets.rename_value/5` answers, or a changeset whose error is on `value_id` for
-  its default key or a key a model choice uses.
-  """
-  @spec rename_provider_key(Scope.t(), Connection.t(), String.t(), String.t()) ::
-          {:ok, Connection.t()} | {:error, refusal}
-  def rename_provider_key(%Scope{} = scope, %Connection{} = provider, value_id, new_value_id),
-    do:
-      write_keys(
-        scope,
-        provider,
-        fn scope, secret, current ->
-          new_value_id = Value.normalise_value_id(new_value_id)
-          identity = Identity.for_value_id(current, value_id)
-
-          with {:ok, _secret} <-
-                 scope
-                 |> Secrets.rename_value(secret, value_id, new_value_id, provider: current)
-                 |> with_identity(identity),
-               do: {:ok, %{before: %{value_id: value_id}, after: %{value_id: new_value_id}}}
-        end
-      )
-
-  @doc """
   delete_provider_key/3 deletes a model provider's key (`provider.write`).
   `{:ok, provider}`, or `{:error, refusal}` as `Apiary.Secrets.delete_value/4` answers:
   `:last_value` for its only key, or a changeset whose error is on `value_id` for its
@@ -2297,6 +2616,124 @@ defmodule Apiary.Connections do
                   details: %{value_id: value_id, identity: identity}
                 }}
       end)
+
+  @doc """
+  remove_key/3 removes the key of a model provider whose value has the row id `row_id`
+  (`secret_values.id`, `provider.write`), in one transaction, found by that row id under
+  the provider's row lock:
+
+    * a key that is not the provider's last: its value is deleted
+      (`delete_provider_key/3`); for the provider's default key, the key added first of
+      the others becomes the default first (`put_default_key/3`);
+    * the provider's last key: each model choice and fallback that uses the provider moves
+      to another provider of its key group (the same kind, chain and stored settings, as
+      `add_key/2` groups keys) that serves the choice's workspace, or, for the
+      organisation's default, a provider whose keys are a secret of the organisation and
+      that serves every workspace the provider reached; then the provider is deleted with
+      its keys' secret, as `delete_provider/2` deletes it, its `provider_deleted` entry
+      with the key and the public ids of the providers the choices moved to.
+
+  `{:ok, provider}`, the provider as it was, or `{:error, refusal}`: `:not_found` for a
+  row id that is not a key of the provider; `{:last_key, place}` when a choice's place has
+  no other provider in the group that it can move to, `place` the workspace, nil for the
+  organisation's default, which writes nothing;
+  `{:provider_in_use, %{places: [], runs: run_public_ids}}` while a run that may still
+  read the provider's keys uses it (`delete_provider/2`).
+  """
+  @spec remove_key(Scope.t(), Connection.t(), Ecto.UUID.t()) ::
+          {:ok, Connection.t()} | {:error, refusal}
+  def remove_key(%Scope{} = scope, %Connection{provider_kind: kind} = provider, row_id)
+      when is_binary(kind) do
+    write_connection(scope, provider, fn scope, _organisation, current ->
+      values = (current.secret && current.secret.values) || []
+
+      case Enum.find(values, &(&1.id == row_id)) do
+        nil -> {:error, :not_found}
+        %Value{} = key when length(values) == 1 -> remove_last(scope, current, key)
+        %Value{} = key -> remove_one(scope, current, key, values)
+      end
+    end)
+    |> refreshed()
+    |> without_keys()
+  end
+
+  def remove_key(%Scope{}, %Connection{}, _row_id), do: {:error, :not_found}
+
+  defp remove_one(scope, current, %Value{} = key, values) do
+    with {:ok, current} <- default_elsewhere(scope, current, key, values),
+         {:ok, _provider} <- delete_provider_key(scope, current, key.value_id),
+         do: {:ok, current}
+  end
+
+  # The provider with another of its keys as its default when `key` is the default: the
+  # key added first of the others.
+  defp default_elsewhere(
+         scope,
+         %Connection{default_value_id: id} = current,
+         %Value{value_id: id},
+         values
+       ) do
+    other =
+      values
+      |> Enum.reject(&(&1.value_id == id))
+      |> Enum.min_by(&DateTime.to_unix(&1.inserted_at, :microsecond))
+
+    put_default_key(scope, current, other.value_id)
+  end
+
+  defp default_elsewhere(_scope, current, _key, _values), do: {:ok, current}
+
+  defp remove_last(scope, current, %Value{} = key) do
+    identity = Identity.for_value_id(current, key.value_id)
+
+    # The other providers of the group with at least one key.
+    others =
+      current
+      |> group_of()
+      |> Enum.filter(&(&1.id != current.id and match?(%Secret{values: [_ | _]}, &1.secret)))
+
+    reach = if current.applies_to == "all", do: :all, else: workspace_ids_of(current)
+
+    # The organisation's default (place nil) moves only to a provider whose keys are a
+    # secret of the organisation, as a save of the default checks.
+    shared = Enum.filter(others, &is_nil(&1.secret.workspace_id))
+
+    target = fn
+      nil -> serving(shared, reach)
+      workspace_id -> serving(others, workspace_id)
+    end
+
+    with :ok <- ModelChoices.delete_leftovers_using(scope, current),
+         {:ok, moved_to} <- ModelChoices.move_from(scope, current, target),
+         :ok <- not_used(ModelChoices.places_using(current), live_runs(current)),
+         {:ok, deleted} <- delete_with_keys(scope, current),
+         {:ok, _entry} <-
+           Audit.record(Repo, scope, :"provider.write", deleted, %{
+             before: provider_audited(current),
+             details: %{
+               change: "provider_deleted",
+               connection_id: deleted.public_id,
+               kind: deleted.kind,
+               name: deleted.name,
+               provider: deleted.provider_kind,
+               value_id: key.value_id,
+               identity: identity,
+               moved_to: Enum.map(moved_to, & &1.public_id)
+             }
+           }) do
+      {:ok, deleted}
+    end
+  end
+
+  # The provider of `others` that serves a workspace (its id), or every workspace of
+  # `ids` (a list), or every workspace (`:all`); nil for none.
+  defp serving(others, :all), do: Enum.find(others, &(&1.applies_to == "all"))
+
+  defp serving(others, ids) when is_list(ids),
+    do: Enum.find(others, &(&1.applies_to == "all" or ids -- workspace_ids_of(&1) == []))
+
+  defp serving(others, workspace_id) when is_binary(workspace_id),
+    do: serving(others, [workspace_id])
 
   # A write to a provider's keys, under the provider's locks. `fun` takes the scope, the
   # keys' secret and the provider, as `Apiary.Secrets` writes it, and returns `{:ok, change}`,

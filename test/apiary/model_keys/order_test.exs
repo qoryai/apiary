@@ -112,4 +112,52 @@ defmodule Apiary.ModelKeys.OrderTest do
     assert ids(Order.order(keys, @now)) == ~w(open ended)
     assert Order.cooling?(hd(keys), @now) == false
   end
+
+  describe "of_group/1" do
+    test "is empty for no provider" do
+      assert Order.of_group([]) == []
+    end
+
+    test "keeps the default key of the head alone, each key with its provider" do
+      head = %{id: "head"}
+      other = %{id: "other"}
+      members = [{head, [key("h1", 2, default: true)]}, {other, [key("o1", 0, default: true)]}]
+
+      assert [
+               %{id: "h1", default: true, connection: ^head},
+               %{id: "o1", default: false, connection: ^other}
+             ] = Order.of_group(members)
+
+      # The head's default key goes first in tie order, though the other's was added first.
+      assert ids(Order.order(Order.of_group(members), @now)) == ~w(h1 o1)
+    end
+  end
+
+  describe "refresh_window/2" do
+    test "is empty for no key" do
+      assert Order.refresh_window([], @now) == []
+    end
+
+    test "has every key where there are fewer than 6, in their order" do
+      keys = [key("b", 2), key("a", 1, default: true), key("c", 3)]
+      assert ids(Order.refresh_window(keys, @now)) == ~w(a b c)
+    end
+
+    test "has the first 6 keys where there are more" do
+      keys = for n <- 1..8, do: key("k#{n}", n)
+      assert ids(Order.refresh_window(keys, @now)) == ~w(k1 k2 k3 k4 k5 k6)
+    end
+
+    test "leaves out the keys that need a new value or a new sign-in, before the 6" do
+      blocked =
+        for {n, blocked} <- Enum.zip(1..6, Stream.cycle([:new_key, :sign_in])),
+            do: Map.put(key("blocked#{n}", n), :blocked, blocked)
+
+      due = key("due", 10) |> Map.put(:blocked, :due)
+      refreshing = key("refreshing", 11) |> Map.put(:blocked, :refreshing)
+
+      assert ids(Order.refresh_window(blocked ++ [due, refreshing], @now)) ==
+               ~w(due refreshing)
+    end
+  end
 end

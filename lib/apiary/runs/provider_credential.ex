@@ -8,11 +8,13 @@ defmodule Apiary.Runs.ProviderCredential do
   # which the run's `egress.allow` and `egress.allow_first` gain
   # (`Apiary.Policy.ComposedConfiguration`). Both come from the run's key rows and their
   # providers' rows, so a choice or a key's state changed after the claim changes neither.
-  # A run's keys may be of several providers, one provider per session.
+  # A run's keys may be of several providers, one key group per session
+  # (`Apiary.ModelKeys.Group`, `key_groups/2`).
   #
   # Each entry has, in the schema's order: `name`, the key's credential name as the run
-  # keeps it; `format`, `endpoint` and `auth` of the API its row keeps, the same for every
-  # key of one provider, `auth` with `account_header` and `account_claim` for an API whose
+  # keeps it; `group`, the same for every key of one key group (`group_names/3`);
+  # `format`, `endpoint` and `auth` of the API its row keeps, the same for every key of
+  # one key group, `auth` with `account_header` and `account_claim` for an API whose
   # keys are sign-ins that name the account; `paths`, the paths of the endpoint's host the
   # gateway sets the key on, when the API has them; `key_prefixes` when the API has them;
   # and, as the claim wrote them, `resets_at`, `schedule_resets_at`, `pause_for_s`,
@@ -49,6 +51,7 @@ defmodule Apiary.Runs.ProviderCredential do
   alias Apiary.{Connections, Features, Gateways, Repo}
   alias Apiary.Connections.Connection
   alias Apiary.Kinds.{Endpoint, Provider}
+  alias Apiary.ModelKeys.Group
   alias Apiary.Nodes.Node
   alias Apiary.Runs.ModelKey
 
@@ -238,7 +241,7 @@ defmodule Apiary.Runs.ProviderCredential do
   defp sealable_at?(_chain, _level, _gateway_organisation_id, _run_organisation_id),
     do: false
 
-  defp credential(_run, rows) do
+  defp credential(run, rows) do
     groups = rows |> Enum.group_by(& &1.connection_id) |> Map.new()
     ids = rows |> Enum.map(& &1.connection_id) |> Enum.uniq()
 
@@ -260,6 +263,7 @@ defmodule Apiary.Runs.ProviderCredential do
       # Every run with key rows has a row with `default_credential`: a claim stores keys
       # only for a run whose first session has a default model provider credential.
       %ModelKey{name: default_name} = Enum.find(rows, & &1.default_credential)
+      group_names = group_names(run, rows, providers)
 
       keys =
         for row <- rows do
@@ -268,7 +272,7 @@ defmodule Apiary.Runs.ProviderCredential do
           %{
             name: row.name,
             secret_value_id: row.secret_value_id,
-            entry: entry(row.name, provider.public_id, row.api, kept(row)),
+            entry: entry(row.name, Map.fetch!(group_names, row.position), row.api, kept(row)),
             provider: provider,
             row: row
           }
@@ -282,6 +286,42 @@ defmodule Apiary.Runs.ProviderCredential do
          providers: Enum.map(read, &elem(&1, 0))
        }}
     end
+  end
+
+  @doc false
+  # key_groups/2 is the key rows `rows` by key group, in the order of each group's first
+  # row, each group's rows in their order: the rows of one chain and one API whose
+  # providers, in `providers` by row id, have one key group identity
+  # (`Apiary.ModelKeys.Group.identity/1`). The claim writes every key of one key group, of
+  # one or more providers, with the group's chain and API, so two key groups of one run
+  # with the same chain and API stay two. A row whose provider is not in `providers` has
+  # no identity, and joins the other such rows of its chain and API.
+  @spec key_groups([ModelKey.t()], %{Ecto.UUID.t() => Connection.t()}) :: [[ModelKey.t()]]
+  def key_groups(rows, providers) when is_list(rows) and is_map(providers) do
+    key = fn row ->
+      provider = Map.get(providers, row.connection_id)
+      {provider && Group.identity(provider), row.chain, row.api}
+    end
+
+    by_group = Enum.group_by(rows, key)
+    rows |> Enum.map(key) |> Enum.uniq() |> Enum.map(&Map.fetch!(by_group, &1))
+  end
+
+  # The `group` of each key row, by its position: for each key group (`key_groups/2`), the
+  # public id of the provider of the run's default model provider credential
+  # (`provider_connection_id`), the provider of the run's model choice, where the group
+  # has a key of it; else that of the provider of the group's first key.
+  # shortcut: a later session's group takes the first key's provider, not the provider of
+  # that session's model choice; replace when a row keeps its group.
+  defp group_names(run, rows, providers) do
+    head = Map.get(run, :provider_connection_id)
+
+    for group <- key_groups(rows, providers),
+        ids = Enum.map(group, & &1.connection_id),
+        id = if(head in ids, do: head, else: hd(ids)),
+        row <- group,
+        into: %{},
+        do: {row.position, Map.fetch!(providers, id).public_id}
   end
 
   # What a key row keeps for its run configuration entry, by the contract's member names,
@@ -368,10 +408,11 @@ defmodule Apiary.Runs.ProviderCredential do
 
   @doc false
   # entry/4 is the API credential named `name` of the key group `group`, the public id of
-  # the key's provider, for `api`, the API of the key's row, with the members the run
-  # keeps for the key `key`, by the contract's member names, and with the row's
-  # `use_up_to_windows`, from `api`, beside the key's `use_up_to_percent`. Each provider's
-  # keys are one key group for the gateway, which rotates, cools and stops each group
+  # the provider of the run's model choice for the group's keys (`group_names/3`), for
+  # `api`, the API of the key's row, with the members the run keeps for the key `key`, by
+  # the contract's member names, and with the row's `use_up_to_windows`, from `api`,
+  # beside the key's `use_up_to_percent`. The keys of one key group, of one or more
+  # providers, are one group for the gateway, which rotates, cools and stops each group
   # apart from the others.
   @spec entry(String.t(), String.t(), map, map) :: Jason.OrderedObject.t()
   def entry(

@@ -769,9 +769,9 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
          ctx do
       {:ok, fallback} =
         Connections.create_provider(ctx.scope, %{
-          provider: "anthropic",
+          provider: "claude-subscription",
           name: "Fallback keys",
-          keys: [%{value_id: "main", value: "sk-ant-fallback-0123456789"}]
+          keys: [%{value_id: "main", value: "sk-ant-oat01-fallback-0123456789"}]
         })
 
       {:ok, _choice} =
@@ -796,9 +796,9 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
          ctx do
       {:ok, other} =
         Connections.create_provider(ctx.scope, %{
-          provider: "anthropic",
+          provider: "claude-subscription",
           name: "Checkout keys",
-          keys: [%{value_id: "main", value: "sk-ant-other-0123456789"}]
+          keys: [%{value_id: "main", value: "sk-ant-oat01-other-0123456789"}]
         })
 
       # A workflow's choice falls back to the workspace's choice, on the run's provider,
@@ -834,9 +834,9 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
          ctx do
       {:ok, other} =
         Connections.create_provider(ctx.scope, %{
-          provider: "anthropic",
+          provider: "claude-subscription",
           name: "Checkout keys",
-          keys: [%{value_id: "main", value: "sk-ant-other-0123456789"}]
+          keys: [%{value_id: "main", value: "sk-ant-oat01-other-0123456789"}]
         })
 
       :ok = choose!(ctx, :workspace, %{model: "claude-opus-5-5"})
@@ -863,6 +863,39 @@ defmodule ApiaryWeb.Contract.RunApi.NextSessionTest do
       assert [%ModelKey{default_credential: true} = default | rest] = stored_keys(ctx.gateway_run)
       assert default.connection_id == ctx.provider.id
       assert Enum.map(rest, &{&1.connection_id, &1.name}) == [{other.id, "#{other.public_id}-1"}]
+    end
+
+    test "is the workflow's choice on the run's keys where its provider is of the run's key group",
+         ctx do
+      # A second Anthropic provider: of the key group of the run's provider.
+      {:ok, other} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "anthropic",
+          name: "Checkout keys",
+          keys: [%{value_id: "main", value: "sk-ant-other-0123456789"}]
+        })
+
+      :ok = choose!(ctx, :workspace, %{model: "claude-opus-5-5"})
+
+      {:ok, _choice} =
+        ModelChoicesFixtures.put_choice(ctx.scope, {:workspace, "write-acceptance-checks"}, %{
+          provider: other.public_id,
+          model: "claude-sonnet-5-5"
+        })
+
+      ctx = shared!(ctx, [build_stage(~w(plan-the-build write-acceptance-checks))])
+      :ok = verdict!(ctx, "passed")
+      body = json_response(request(ctx, ended(1)), 200)
+
+      # Session 2 has the choice's model on the group of the default model provider
+      # credential, which has the keys of both providers.
+      assert %{"runtime" => "claude", "model" => "claude-sonnet-5-5"} = body["model_choice"]
+      refute Map.has_key?(body, "model_provider_credential_name")
+
+      assert Enum.map(stored_keys(ctx.gateway_run), &{&1.connection_id, &1.name}) == [
+               {ctx.provider.id, "#{ctx.provider.public_id}-1"},
+               {other.id, "#{other.public_id}-1"}
+             ]
     end
 
     @tag :contract

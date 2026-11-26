@@ -895,7 +895,8 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
       files = Apiary.HarnessReadsFixtures.repository_files("R_harness", %{"support-desk" => file})
       Apiary.HarnessReadsFixtures.serve_calls([ctx.adapter], covered: ctx.covered, files: files)
 
-      # The organisation's default choice, on Northwind 1 with 6 fallbacks, Northwind 2 to 7.
+      # The organisation's default choice, on Northwind 1 with 6 fallbacks, Northwind 2 to 7:
+      # LiteLLM providers, each at another address, so each of another key group.
       scope = scope_of(user, organisation)
 
       [first | rest] =
@@ -903,9 +904,10 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
         for n <- 1..7 do
           {:ok, provider} =
             Apiary.Connections.create_provider(scope, %{
-              provider: "anthropic",
+              provider: "litellm",
               name: "Northwind #{n}",
-              keys: [%{value_id: "main", value: "sk-ant-northwind-#{n}-0123456789"}]
+              settings: %{"address" => "https://litellm-#{n}.example.com"},
+              keys: [%{value_id: "main", value: "sk-northwind-#{n}-0123456789"}]
             })
 
           provider
@@ -914,7 +916,7 @@ defmodule ApiaryWeb.WorkspaceTypeLiveTest do
       {:ok, _choice} =
         Apiary.ModelChoicesFixtures.put_choice(scope, :organisation, %{
           provider: first.public_id,
-          model: "claude-opus-5-5",
+          model: "team-large",
           fallbacks: Enum.map(rest, &Apiary.ModelChoicesFixtures.fallback_attrs/1)
         })
 

@@ -1,7 +1,8 @@
 defmodule ApiaryWeb.ProviderKeyUseUpToTest do
-  # A model key's Use up to on Add key, Edit key and the workspace's Secrets › Add value
-  # and Change value, only for a provider with limit windows, with its hint and its error;
-  # and a key's row on the provider's page while a window is at the key's percentage.
+  # A model key's Use up to on New model provider key, Edit key and the workspace's
+  # Secrets › Add value and Change value, only for a provider with limit windows, with its
+  # hint and its error; and a key's row on the list of model provider keys while a window
+  # is at the key's percentage.
   use ApiaryWeb.ConnCase, async: true
 
   import Ecto.Query, only: [from: 2]
@@ -23,15 +24,15 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
     {:ok, provider} =
       Connections.create_provider(
         scope,
-        %{provider: kind, keys: [%{value_id: "key-1", value: @key}]},
+        %{provider: kind, keys: [%{value: @key}]},
         reach
       )
 
     provider
   end
 
-  defp page(scope, provider),
-    do: ~p"/#{scope.organisation}/settings/model-providers/#{provider.public_id}"
+  defp list_path(scope), do: ~p"/#{scope.organisation}/settings/model-providers"
+  defp new_path(scope), do: "#{list_path(scope)}/new"
 
   defp value!(provider, value_id) do
     Repo.one!(
@@ -54,37 +55,44 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
 
   # The Edit key page of the key `value_id`, at its row id.
   defp edit_path(scope, provider, value_id),
-    do: "#{page(scope, provider)}/keys/#{value!(provider, value_id).id}/edit"
+    do: "#{list_path(scope)}/#{provider.public_id}/keys/#{value!(provider, value_id).id}/edit"
 
   # The id of the key `value_id` in the page source: its row id.
-  defp key_dom(provider, value_id), do: "provider-key-#{value!(provider, value_id).id}"
+  defp key_dom(provider, value_id), do: "key-#{value!(provider, value_id).id}"
 
   # The Change value page of the key `value_id` of `secret`, at its row id.
   defp change_path(scope, provider, secret, value_id),
     do: secrets_path(scope, "/#{secret.public_id}/values/#{value!(provider, value_id).id}/change")
 
-  describe "Add key and Edit key" do
+  describe "New model provider key and Edit key" do
     test "show Use up to for a provider with limit windows, and save it", ctx do
       %{conn: conn, scope: scope} = ctx
-      provider = provider!(scope, "claude-subscription")
 
-      {:ok, lv, _html} = live(conn, "#{page(scope, provider)}/keys/new")
-      assert has_element?(lv, "#key_use_up_to-use-up-to legend", "Use up to")
-      assert has_element?(lv, ~s{#key_use_up_to[type="number"][min="1"][max="99"]})
-      refute has_element?(lv, ~s{#key_use_up_to[value]:not([value=""])})
-      assert has_element?(lv, "#key_use_up_to-use-up-to-hint", @hint)
+      {:ok, lv, _html} = live(conn, new_path(scope))
 
       lv
-      |> form("#key-form", key: %{key: @key <> "-2", use_up_to: "90"})
+      |> form("#new-provider-form", provider: %{provider: "claude-subscription"})
+      |> render_change()
+
+      assert has_element?(lv, "#provider_use_up_to-use-up-to legend", "Use up to")
+      assert has_element?(lv, ~s{#provider_use_up_to[type="number"][min="1"][max="99"]})
+      refute has_element?(lv, ~s{#provider_use_up_to[value]:not([value=""])})
+      assert has_element?(lv, "#provider_use_up_to-use-up-to-hint", @hint)
+
+      lv
+      |> form("#new-provider-form",
+        provider: %{provider: "claude-subscription", key: @key, use_up_to: "90"}
+      )
       |> render_submit()
 
-      assert ModelKeys.setting(value!(provider, "key-2").id).use_up_to_percent == 90
+      assert {:ok, [provider]} = Connections.list_providers(scope)
+      assert ModelKeys.setting(value!(provider, "key-1").id).use_up_to_percent == 90
 
-      {:ok, lv, _html} = live(conn, edit_path(scope, provider, "key-2"))
+      {:ok, lv, _html} = live(conn, edit_path(scope, provider, "key-1"))
       assert has_element?(lv, ~s{#key_use_up_to[value="90"]})
 
       lv |> form("#key-form", key: %{use_up_to: ""}) |> render_submit()
-      assert ModelKeys.setting(value!(provider, "key-2").id).use_up_to_percent == nil
+      assert ModelKeys.setting(value!(provider, "key-1").id).use_up_to_percent == nil
     end
 
     test "show the error of a percentage outside 1 to 99, and save nothing", ctx do
@@ -128,11 +136,13 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
       %{conn: conn, scope: scope} = ctx
       provider = provider!(scope, "anthropic")
 
-      for path <- ["#{page(scope, provider)}/keys/new", edit_path(scope, provider, "key-1")] do
-        {:ok, lv, html} = live(conn, path)
-        refute has_element?(lv, "#key_use_up_to"), path
-        refute html =~ "Use up to", path
-      end
+      {:ok, lv, html} = live(conn, new_path(scope))
+      refute has_element?(lv, "#provider_use_up_to")
+      refute html =~ "Use up to"
+
+      {:ok, lv, html} = live(conn, edit_path(scope, provider, "key-1"))
+      refute has_element?(lv, "#key_use_up_to")
+      refute html =~ "Use up to"
     end
   end
 
@@ -169,7 +179,7 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
         DateTime.utc_now()
       )
 
-      {:ok, lv, _html} = live(conn, page(scope, provider))
+      {:ok, lv, _html} = live(conn, list_path(scope))
       assert has_element?(lv, "##{key_dom(provider, "key-1")}-state", "In cooldown until")
 
       assert has_element?(
@@ -180,7 +190,7 @@ defmodule ApiaryWeb.ProviderKeyUseUpToTest do
 
       # Above the window's use, the key is available, with its use.
       {:ok, _} = put_key_setting(scope, value, %{"use_up_to_percent" => 95})
-      {:ok, lv, _html} = live(conn, page(scope, provider))
+      {:ok, lv, _html} = live(conn, list_path(scope))
       assert has_element?(lv, "##{key_dom(provider, "key-1")}-state", "Available")
       assert has_element?(lv, "##{key_dom(provider, "key-1")}-state", "5-hour 93%")
     end

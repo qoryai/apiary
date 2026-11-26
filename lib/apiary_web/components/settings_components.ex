@@ -81,7 +81,7 @@ defmodule ApiaryWeb.SettingsComponents do
           place: :organisation
         },
       # The organisation's integrations, with the `factory` feature, for whoever may read
-      # them; each change there asks its action again.
+      # them; each change there checks its action again.
       can?(scope, :"adapter.read") &&
         %Entry{
           section: :main,
@@ -91,13 +91,13 @@ defmodule ApiaryWeb.SettingsComponents do
           path: ~p"/#{organisation}/settings/integrations",
           place: :organisation
         },
-      # The organisation's model providers and their keys, with the features `factory`
-      # and `secrets`, for whoever may read them; each change there asks its action again.
+      # The organisation's model provider keys, with the features `factory` and
+      # `secrets`, for whoever may read them; each change there asks its action again.
       providers?(scope) && can?(scope, :"connection.read") &&
         %Entry{
           section: :main,
           key: :model_providers,
-          label: gettext("Model providers"),
+          label: gettext("Model provider keys"),
           icon: "hero-cpu-chip",
           path: ~p"/#{organisation}/settings/model-providers",
           place: :organisation

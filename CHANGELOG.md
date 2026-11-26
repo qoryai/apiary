@@ -2158,6 +2158,77 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+<!-- feature: factory, secrets -->
+- **Organisation settings › Model providers** is now **Model provider keys**, a list with
+  one row per key, in the order the keys were added. A row has the key's name, such as
+  `key-2`, as a link to **Edit key**; its provider, such as “Claude subscription token”;
+  its workspaces; its state; and **Edit** and **Remove**. Workspaces show “Every
+  workspace”, “Checkout”, “Checkout, Storefront, Billing” or, for more than three, “Checkout,
+  Storefront and 3 more”. A key that the provider rejected shows “Needs a new key”, and a
+  sign-in that needs renewing shows “Needs a new sign-in”, in place of the state. A member
+  who is not an owner or an admin sees no **New model provider key**, **Edit** or
+  **Remove**, and reads “Only owners and admins add model provider keys.” With no key, the
+  page shows “No model provider key yet” and “Add a model provider key, so agents can
+  run.” A provider's page and its **Add key** are gone; their addresses open the list.
+- **New model provider** is now **New model provider key**. It adds one key and asks for
+  **Provider**; an address, for a provider that needs one, such as LiteLLM; **Key**
+  (**Sign in with ChatGPT** for a provider whose keys are sign-ins); **Workspaces**;
+  **Resets**; **Pause for**; and, for a provider with limit windows, **Use up to**.
+  **Workspaces** shows when the organisation has two or more workspaces: “Every workspace
+  in Northwind” or “Only these workspaces”, with a checkbox per workspace and the current
+  workspace ticked. With none ticked, the save shows “Choose at least one workspace.”
+  Without **Workspaces**, the key serves the current workspace. A person with access to
+  only some workspaces adds a key for those, and for every workspace only when they have
+  access to all of them. A save returns to the list with “key-3 is added.”
+- A new key is named `key-<n>`, the number after the highest among the organisation's keys
+  of that provider kind. **Edit key** has **Name**. A new name of that form shows “Choose
+  another name: Qory Apiary gives names like key-3 to new keys.”, and a name that another
+  key of the kind has shows “is already the name of another key”. **Edit key** shows the
+  key's workspaces as text; they are set when the key is added. The message “Northwind
+  Claude has 32 keys, the most it can have. Delete a key to add another.” is gone: a 33rd
+  key is added like the others.
+- A run uses every key of its key group: the keys of the organisation's model providers
+  with the same provider kind, chain and settings (such as a LiteLLM address) that serve
+  the run's workspace, as one list in the order that applied to one provider's keys, with
+  the default key of the provider the model choice points at first. A run gets at most 6
+  keys. When every key of the choice's key group is in cooldown, the run moves to the
+  first fallback that has a key outside cooldown; it waits for a model key only when no
+  step has a key outside cooldown. The waiting line shows the provider whose key leaves
+  its cooldown first, of any provider of those key groups. In the run configuration, every
+  key of a key group has the same `group`: the public id of the provider that the choice
+  points at. The gateway then rotates and cools them together. A stage whose workflows use more than 6 key groups fails to save
+  with “Use at most 6 model providers in one stage. Its workflows use 7: Northwind, …”; the
+  providers of one key group count as one.
+- The set-up's **Model** step lists one entry per key group in one list, with no “Shared in
+  Northwind” heading and no “every workspace” mark. The workspaces of each key are on
+  **Model provider keys**. **Add a key** on that step adds the key as **New model provider
+  key** does, for the workspace being set up, or for every workspace when “Available to
+  every workspace in Northwind” is on.
+- A model choice and a fallback keep their provider. **Workspace settings › Model** lists
+  one entry per key group, by the title of its kind and, for LiteLLM, its address
+  (“LiteLLM at https://litellm.example.com”). A fallback in the choice's key group, or in
+  the key group of an earlier fallback, shows “Choose another provider:
+  Checkout subscription uses the keys of Northwind subscription, which is chosen already.”
+- **Remove** on a row asks inline, “Remove key-2? Runs in Checkout stop using it.” (“Runs in
+  every workspace stop using it.” for a key of every workspace), with **Remove key** and
+  **Cancel**, and removes the key. When the key is its provider's default, the key added
+  first of the others becomes the default. When it is the provider's last key, each model
+  choice and fallback that uses the provider moves to another provider of the key group
+  that has a key and serves the choice's workspace; the organisation's default moves
+  only to a provider whose keys are a secret of the organisation and that serves every
+  workspace the removed provider served. A fallback that then equals its choice's provider
+  or another fallback of the choice is removed. When the key group has no such provider,
+  the page shows “Add another key, or choose another provider in Workspace settings ›
+  Model, then remove key-2. It is the last Claude subscription token key for Checkout.”,
+  or, for the organisation's default, “Add another key for every workspace in Northwind,
+  then remove key-2. The organisation's default model uses Claude subscription token.”,
+  and nothing is removed. While a run uses the provider, the page shows “Wait until the
+  runs that use key-2 end, then remove it.”
+- A waiting run counts a sign-in that is being refreshed in the background in its reason
+  only for the keys it would get, the first 6 in order and none that needs a new key or a
+  new sign-in.
+<!-- /feature -->
+
 - The harness contract's `process.schema.json` is vendored at a qory commit that has
   delivered artifact types and `type_settings`. An entry of `artifact_types` may have
   `deliver: {send}`, and only a custom structured type has it; such a type has a

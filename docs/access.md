@@ -562,19 +562,23 @@ stay known to such a gateway, and are accepted:
 ## Model keys
 
 A model provider's keys are values of its secret (`Apiary.ModelKeys`), and their pages
-need the features `factory` and `secrets`. Every member reads a provider's page with its
-keys and their states (`connection.read`). A key shows as its identity line, which for a
-pasted API key has its last 4 characters (none when they hold a control character, a
-format character or a line or paragraph separator) and for a sign-in has the email of the
-ChatGPT account, so members see those, never the key or a token. Adding a key, changing its
-value, its Resets,
-its Pause for and its Use up to, and deleting it, are `provider.write`,
-owners' and admins', checked at the organisation: **Add key** and **Edit key** on the
-provider's page (`ApiaryWeb.ProviderLive.Key`), and **Add value**, **Change value**,
-**Delete value** of the provider's key on Workspace settings ›
-Secrets and variables; a key has no name to change, so its secret has no **Add value**
-and no **Rename value**. For anyone else Add key and Edit are not on the page, their paths
-are not found, and `Apiary.Connections.add_provider_key/4` and
+need the features `factory` and `secrets`. Every member reads Organisation settings ›
+Model provider keys, one row per key with its name, provider, workspaces and state
+(`connection.read`). A run's page and the Activity page show a key as its identity
+line, which for a pasted API key has its last 4 characters (none when those are a
+control character, a format character or a line or paragraph separator) and for a
+sign-in has the email of the ChatGPT account, so members see those, never the key or a
+token. Adding a key, renaming
+it, changing its value, its Resets, its Pause for and its Use up to, and removing it, are
+`provider.write`, owners' and admins', checked at the organisation: **New model provider
+key** and **Remove** on the list, and **Edit key** with its Name
+(`ApiaryWeb.ProviderLive.Key`); and **Change value** and **Delete value** of the
+provider's key on Workspace settings › Secrets and variables, where the key's secret has
+no **Add value** and no **Rename value**. A person who adds a key for chosen workspaces
+gets only the workspaces they reach, and a key for every workspace only when they reach
+every workspace. For anyone else New model provider key, Edit and Remove are not on the
+page, the paths of New model provider key and Edit key are not found, and
+`Apiary.Connections.add_key/2`, `Apiary.Connections.remove_key/3` and
 `Apiary.Connections.update_provider_key/4` check it again inside their transaction. Each
 change leaves the provider's `provider_keys_changed` entry; a save of Edit key that
 changes nothing leaves none.
