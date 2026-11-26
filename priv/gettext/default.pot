@@ -5288,9 +5288,19 @@ msgstr ""
 msgid "Add an integration"
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/key.ex
+#, elixir-autogen, elixir-format
+msgid "Add another key for every workspace in %{organisation}, then change the workspaces of %{key}. The organisation's default model uses %{provider}."
+msgstr ""
+
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Add another key for every workspace in %{organisation}, then remove %{key}. The organisation's default model uses %{provider}."
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/key.ex
+#, elixir-autogen, elixir-format
+msgid "Add another key, or choose another provider in Workspace settings › Model, then change the workspaces of %{key}. It is the last %{provider} key for %{place}."
 msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
@@ -6352,6 +6362,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Ask one of this stage's approvers to write comments on the proposal. Only approvers of the stage can write them."
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/key.ex
+#, elixir-autogen, elixir-format
+msgid "Ask the administrator of this Qory Apiary to check %{provider}: its settings were changed outside Qory Apiary, so its keys cannot move."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -7939,6 +7954,7 @@ msgid "Choose another workflow for %{stage}. To keep %{workflow}, change the har
 msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
+#: lib/apiary_web/live/provider_live/key.ex
 #, elixir-autogen, elixir-format
 msgid "Choose at least one workspace."
 msgstr ""
@@ -10340,7 +10356,7 @@ msgstr ""
 msgid "Every workspace"
 msgstr ""
 
-#: lib/apiary_web/live/provider_live/index.ex
+#: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format
 msgid "Every workspace in %{organisation}"
 msgstr ""
@@ -14161,6 +14177,11 @@ msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
 #, elixir-autogen, elixir-format
+msgid "Moved a model provider key"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
 msgid "Moved a work item back to an earlier stage to resolve an escalation"
 msgstr ""
 
@@ -16345,7 +16366,7 @@ msgstr ""
 msgid "Only the result, read from the runtime's output, is shown."
 msgstr ""
 
-#: lib/apiary_web/live/provider_live/index.ex
+#: lib/apiary_web/components/model_key_components.ex
 #, elixir-autogen, elixir-format
 msgid "Only these workspaces"
 msgstr ""
@@ -25044,6 +25065,11 @@ msgstr[1] ""
 msgid "Wait until %{time}, then send the link again. Qory Apiary sends at most one test link a minute."
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/key.ex
+#, elixir-autogen, elixir-format
+msgid "Wait until the runs that use %{key} end, then change its workspaces."
+msgstr ""
+
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Wait until the runs that use %{key} end, then remove it."
@@ -25893,6 +25919,7 @@ msgstr ""
 msgid "Workspace, locked"
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/organisation_live.ex

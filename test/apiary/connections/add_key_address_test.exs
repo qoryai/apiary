@@ -52,4 +52,21 @@ defmodule Apiary.Connections.AddKeyAddressTest do
              :count
            ) == 1
   end
+
+  test "a key that moves to a new provider keeps its address, and its group" do
+    %{scope: scope} = sign_up_fixture()
+    {every, "key-1"} = add!(scope, "https://litellm.example.com")
+    {_every, "key-2"} = add!(scope, "https://litellm.example.com")
+
+    assert {:ok, moved_to} =
+             Connections.update_provider_key(scope, every, "key-2", %{
+               "value_id" => "key-2",
+               "applies_to" => "selected",
+               "workspace_ids" => [scope.workspace.id]
+             })
+
+    refute moved_to.id == every.id
+    assert moved_to.settings == every.settings
+    assert Apiary.ModelKeys.Group.same?(moved_to, every)
+  end
 end

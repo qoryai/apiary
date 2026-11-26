@@ -1157,6 +1157,7 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     do: gettext("Changed a model provider's default key")
 
   defp said_connection("provider_keys_changed"), do: gettext("Changed a model provider's keys")
+  defp said_connection("provider_key_moved"), do: gettext("Moved a model provider key")
 
   defp said_connection("provider_model_added"), do: gettext("Added a model to a model provider")
 
@@ -1515,6 +1516,12 @@ defmodule ApiaryWeb.Activity.Describer.Core do
       do:
         from_to(before["value_id"], after_["value_id"]) || identity(d["identity"]) ||
           value_id(d["value_id"])
+
+  # A key moved to the provider of other workspaces: the key's identity line, else its
+  # value ID.
+  def change(action, _before, _after, %{"change" => "provider_key_moved"} = d)
+      when action in @connection_writes,
+      do: identity(d["identity"]) || value_id(d["value_id"])
 
   def change(action, before, after_, %{"change" => "provider_address_changed"})
       when action in @connection_writes,

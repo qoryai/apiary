@@ -41,6 +41,7 @@ defmodule ApiaryWeb.ActivityModelProviderTest do
           {"provider_address_changed", "Changed a model provider's address"},
           {"provider_default_key_changed", "Changed a model provider's default key"},
           {"provider_keys_changed", "Changed a model provider's keys"},
+          {"provider_key_moved", "Moved a model provider key"},
           {"provider_model_added", "Added a model to a model provider"},
           {"provider_model_changed", "Changed a model of a model provider"},
           {"provider_model_removed", "Removed a model from a model provider"},
@@ -86,6 +87,19 @@ defmodule ApiaryWeb.ActivityModelProviderTest do
 
       assert changed.(nil, nil, details.("provider_keys_changed", %{"value_id" => "spare"})) ==
                [{:m, "spare"}]
+
+      # A moved key shows its identity line, else its value id.
+      assert changed.(
+               %{"connection_id" => "con_0123456789abcdef", "applies_to" => "all"},
+               %{"connection_id" => "con_fedcba9876543210", "applies_to" => "selected"},
+               details.("provider_key_moved", %{
+                 "value_id" => "key-2",
+                 "identity" => "Northwind Claude · …9c2e"
+               })
+             ) == [{:m, "Northwind Claude · …9c2e"}]
+
+      assert changed.(nil, nil, details.("provider_key_moved", %{"value_id" => "key-2"})) ==
+               [{:m, "key-2"}]
 
       # An entry with the identity line of the key shows it, not the value id.
       assert changed.(

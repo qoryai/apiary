@@ -2,13 +2,18 @@ defmodule ApiaryWeb.ProviderLive.Key do
   # A model provider key's Edit key (`:edit`), a separate page of Organisation settings ›
   # Model provider keys, with the features `factory` and `secrets`, of a key by its
   # provider's public id and its row id, which the address has. It shows the key's identity
-  # line (`Apiary.ModelKeys.Identity`) as its title, the workspaces the key serves as text,
-  # set when the key was added, and takes its Name (the value id, which no other key of the
-  # provider's kind in the organisation may have), a New value, which keeps the key's value
-  # when it is left empty, and its settings, Resets, Pause for and, for a provider with limit
-  # windows, Use up to (`ApiaryWeb.ModelKeyComponents`), written in one transaction
-  # (`Apiary.Connections.update_provider_key/4`). Save goes back to the list, which shows
-  # that the key is saved.
+  # line (`Apiary.ModelKeys.Identity`) as its title, and takes its Name (the value id, which
+  # no other key of the provider's kind in the organisation may have), a New value, which
+  # keeps the key's value when it is left empty, where New model provider key shows it,
+  # Workspaces (`ApiaryWeb.ModelKeyComponents.workspaces_field/1`), and its settings,
+  # Resets, Pause for and, for a provider with limit windows, Use up to
+  # (`ApiaryWeb.ModelKeyComponents`), written in one transaction
+  # (`Apiary.Connections.update_provider_key/4`). Elsewhere the workspaces the key serves
+  # show as text, in the same place. A change of the workspaces moves the key to the provider of those
+  # workspaces; a move that Remove's rules stop, `{:last_key, place}` or
+  # `{:provider_in_use, uses}`, or of a key of a provider that fails its integrity code,
+  # shows a sentence above the form on what to do first. Save goes back to the list,
+  # which shows that the key is saved.
   #
   # It is for owners and admins (`provider.write`): for anyone else the path is not there,
   # and a save checks the access again. A key of a provider the organisation does not
@@ -34,13 +39,15 @@ defmodule ApiaryWeb.ProviderLive.Key do
   on_mount {ApiaryWeb.Access, :"connection.read"}
 
   alias Apiary.{Access, Connections, ModelKeys, Organisations}
+  alias Apiary.Connections.Connection
   alias Apiary.ModelKeys.{Identity, Login, Setting}
   alias Apiary.Secrets.Value
   alias ApiaryWeb.IntegrationLive.Common
+  alias ApiaryWeb.ProviderLive.Index
   alias ApiaryWeb.{ModelKeyComponents, ModelKeyDevice, SettingsComponents, UserAuth}
 
-  # The fields the form sends, each a string.
-  @fields ["name", "key" | ModelKeyComponents.fields()]
+  # The fields the form sends, each a string, and the workspace ids a list of strings.
+  @fields ["name", "key", "reach", "workspace_ids" | ModelKeyComponents.fields()]
 
   @impl true
   def mount(%{"provider_id" => public_id} = params, _session, socket) do
@@ -53,6 +60,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
       setting = ModelKeys.setting(key.id)
       login? = Login.provider?(provider)
       rejection = ModelKeys.rejections(provider)[key.id]
+      workspaces = Organisations.list_workspaces(scope)
 
       {:ok,
        socket
@@ -65,7 +73,9 @@ defmodule ApiaryWeb.ProviderLive.Key do
          sign_in: login? && sign_in_needed(provider, key, rejection),
          new_key: ModelKeyComponents.new_key(rejection, provider),
          identity: Identity.of(provider, key, Login.by_key(provider)),
-         workspaces: workspaces_words(scope, provider),
+         workspaces: workspaces,
+         workspaces_words: workspaces_words(workspaces, provider),
+         choose_workspaces: Apiary.Edition.scope_setting?(scope) and length(workspaces) > 1,
          limit_windows: ModelKeys.limit_windows(provider),
          sections: SettingsComponents.sections(scope, :organisation),
          attempt: 0,
@@ -77,7 +87,13 @@ defmodule ApiaryWeb.ProviderLive.Key do
            ])
        )
        |> assign_form(
-         Map.put(ModelKeyComponents.params(setting, scope, subscription), "name", key.value_id),
+         setting
+         |> ModelKeyComponents.params(scope, subscription)
+         |> Map.merge(%{
+           "name" => key.value_id,
+           "reach" => if(provider.applies_to == "all", do: "all", else: "selected"),
+           "workspace_ids" => Connections.workspace_ids_of(provider)
+         }),
          [],
          %{}
        )}
@@ -109,8 +125,8 @@ defmodule ApiaryWeb.ProviderLive.Key do
   end
 
   # The workspaces the key serves, in the words of the list of keys.
-  defp workspaces_words(scope, provider) do
-    names = Map.new(Organisations.list_workspaces(scope), &{&1.id, &1.name})
+  defp workspaces_words(workspaces, provider) do
+    names = Map.new(workspaces, &{&1.id, &1.name})
 
     provider
     |> ModelKeyComponents.workspace_names(names)
@@ -124,6 +140,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
       params
       |> Map.take(@fields)
       |> Map.put("key", "")
+      |> Map.update("workspace_ids", [], &ticked/1)
 
     assign(socket,
       form: to_form(params, as: :key, errors: errors, action: if(errors != [], do: :validate)),
@@ -131,20 +148,38 @@ defmodule ApiaryWeb.ProviderLive.Key do
     )
   end
 
+  # The workspace ids ticked, without the empty value that keeps the field in the form.
+  defp ticked(ids), do: ids |> List.wrap() |> Enum.filter(&(is_binary(&1) and &1 != ""))
+
   defp list_path(scope), do: ~p"/#{scope.organisation}/settings/model-providers"
 
   ## Events
 
-  # An event whose fields are not each a string is dropped before it is read: the page
-  # stays up, so no crash report prints the event, and a key in it.
+  # An event whose fields are not each a string, or a list of strings for the workspaces,
+  # is dropped before it is read: the page stays up, so no crash report prints the event,
+  # and a key in it. A change shows the form as sent, for Workspaces' list of checkboxes.
   @impl true
-  def handle_event("save", %{"key" => %{} = params}, socket) do
-    if Enum.all?(@fields, &is_binary(Map.get(params, &1, ""))),
-      do: save(socket, Map.take(params, @fields)),
-      else: {:noreply, socket}
+  def handle_event(event, %{"key" => %{} = params}, socket) when event in ~w(change save) do
+    case {event, sent?(params)} do
+      {_event, false} -> {:noreply, socket}
+      {"change", true} -> {:noreply, assign_form(socket, params, [], %{})}
+      {"save", true} -> save(socket, Map.take(params, @fields))
+    end
   end
 
-  def handle_event("save", _params, socket), do: {:noreply, socket}
+  def handle_event(event, _params, socket) when event in ~w(change save),
+    do: {:noreply, socket}
+
+  defp sent?(params) do
+    Enum.all?(@fields, fn
+      "workspace_ids" ->
+        ids = Map.get(params, "workspace_ids", [])
+        is_list(ids) and Enum.all?(ids, &is_binary/1)
+
+      field ->
+        is_binary(Map.get(params, field, ""))
+    end)
+  end
 
   defp save(socket, params) do
     socket = assign(socket, attempt: socket.assigns.attempt + 1, refusal: nil)
@@ -205,19 +240,20 @@ defmodule ApiaryWeb.ProviderLive.Key do
   defp update_key(socket, params, settings) do
     %{current_scope: scope, provider: provider, key: key} = socket.assigns
 
-    attrs = %{
-      "value_id" => params["name"],
-      "value" => ModelKeyDevice.value(socket, socket.assigns.login, params["key"]),
-      "settings" => settings
-    }
+    attrs =
+      Map.merge(reach(socket.assigns, params), %{
+        "value_id" => params["name"],
+        "value" => ModelKeyDevice.value(socket, socket.assigns.login, params["key"]),
+        "settings" => settings
+      })
 
     case Connections.update_provider_key(scope, provider, key.value_id, attrs) do
-      {:ok, _provider} ->
+      {:ok, saved} ->
         {:noreply,
          socket
          |> put_flash(
            :info,
-           gettext("%{identity} is saved.", identity: Identity.for_key(provider, key.id))
+           gettext("%{identity} is saved.", identity: saved_line(socket.assigns, saved, params))
          )
          |> push_navigate(to: list_path(scope))}
 
@@ -225,6 +261,25 @@ defmodule ApiaryWeb.ProviderLive.Key do
         refused(socket, params, reason)
     end
   end
+
+  # The workspaces the form chose, where it shows Workspaces; else none, and the key stays
+  # where it is. A save of the provider's workspaces moves nothing
+  # (`Apiary.Connections.update_provider_key/4`).
+  defp reach(%{choose_workspaces: true}, params) do
+    if params["reach"] == "all",
+      do: %{"applies_to" => "all"},
+      else: %{"applies_to" => "selected", "workspace_ids" => ticked(params["workspace_ids"])}
+  end
+
+  defp reach(_assigns, _params), do: %{}
+
+  # The identity line of the saved key: by its row id where it stayed, by its value id in
+  # the provider it moved to.
+  defp saved_line(%{provider: %{id: id} = provider, key: key}, %Connection{id: id}, _params),
+    do: Identity.for_key(provider, key.id)
+
+  defp saved_line(%{key: key}, %Connection{} = saved, params),
+    do: Identity.for_value_id(saved, Value.normalise_value_id(params["name"]) || key.value_id)
 
   defp refused(socket, params, %Ecto.Changeset{data: %Setting{}} = changeset),
     do: {:noreply, assign_form(socket, params, [], ModelKeyComponents.errors(changeset))}
@@ -243,7 +298,56 @@ defmodule ApiaryWeb.ProviderLive.Key do
       else: shown(socket, params, :not_found)
   end
 
+  defp refused(socket, params, :no_workspace),
+    do:
+      {:noreply,
+       assign_form(
+         socket,
+         params,
+         [workspaces: {gettext("Choose at least one workspace."), []}],
+         %{}
+       )}
+
+  # A move that Remove's rules stop, or of a key of a provider that fails its integrity
+  # code: the sentence above the form.
+  defp refused(socket, params, {refusal, _detail} = reason)
+       when refusal in [:last_key, :provider_in_use, :integrity] do
+    sentence = move_refusal(socket.assigns, reason)
+    {:noreply, socket |> assign(:refusal, sentence) |> assign_form(params, [], %{})}
+  end
+
   defp refused(socket, params, reason), do: shown(socket, params, reason)
+
+  defp move_refusal(%{current_scope: scope, provider: provider, key: key}, {:last_key, nil}),
+    do:
+      gettext(
+        "Add another key for every workspace in %{organisation}, then change the workspaces of %{key}. The organisation's default model uses %{provider}.",
+        key: key.value_id,
+        provider: Index.kind_title(provider),
+        organisation: scope.organisation.name
+      )
+
+  defp move_refusal(%{current_scope: scope, provider: provider, key: key}, {:last_key, place}),
+    do:
+      gettext(
+        "Add another key, or choose another provider in Workspace settings › Model, then change the workspaces of %{key}. It is the last %{provider} key for %{place}.",
+        key: key.value_id,
+        provider: Index.kind_title(provider),
+        place: Index.place_name(scope, place)
+      )
+
+  defp move_refusal(%{key: key}, {:provider_in_use, _uses}),
+    do:
+      gettext("Wait until the runs that use %{key} end, then change its workspaces.",
+        key: key.value_id
+      )
+
+  defp move_refusal(%{provider: provider}, {:integrity, _public_ids}),
+    do:
+      gettext(
+        "Ask the administrator of this Qory Apiary to check %{provider}: its settings were changed outside Qory Apiary, so its keys cannot move.",
+        provider: provider.name
+      )
 
   # The refusal's sentence above the form (`ApiaryWeb.IntegrationLive.Common.refusal/4`).
   defp shown(socket, params, reason) do
@@ -286,6 +390,7 @@ defmodule ApiaryWeb.ProviderLive.Key do
           for={@form}
           id="key-form"
           method="post"
+          phx-change="change"
           phx-submit="save"
           class="grid gap-4"
           novalidate
@@ -326,16 +431,23 @@ defmodule ApiaryWeb.ProviderLive.Key do
             spellcheck="false"
             phx-update="ignore"
           />
+          <ModelKeyComponents.workspaces_field
+            :if={@choose_workspaces}
+            id="key"
+            form={@form}
+            workspaces={@workspaces}
+            organisation={@current_scope.organisation.name}
+          />
+          <div :if={!@choose_workspaces} id="key-workspaces" class="grid gap-1">
+            <p class="text-[13px]/[18px] font-medium">{gettext("Workspaces")}</p>
+            <p id="key-workspaces-names" class="text-[13.5px]/5">{@workspaces_words}</p>
+          </div>
           <ModelKeyComponents.settings_fields
             form={@form}
             errors={@settings_errors}
             subscription={@subscription}
             limit_windows={@limit_windows}
           />
-          <div id="key-workspaces" class="grid gap-1">
-            <p class="text-[13px]/[18px] font-medium">{gettext("Workspaces")}</p>
-            <p id="key-workspaces-names" class="text-[13.5px]/5">{@workspaces}</p>
-          </div>
           <.page_form_foot id="key-save" cancel={list_path(@current_scope)}>
             <.button id="key-submit" variant="primary" type="submit" loading_text={gettext("Saving")}>
               {gettext("Save")}

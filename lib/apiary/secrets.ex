@@ -106,7 +106,7 @@ defmodule Apiary.Secrets do
   alias Apiary.Accounts.Scope
   alias Apiary.Organisations.{Organisation, Workspace}
   alias Apiary.Connections.Connection
-  alias Apiary.ModelKeys.Login
+  alias Apiary.ModelKeys.{Group, Login}
   alias Apiary.Secrets.{Cipher, DataKey, OrganisationDataKey, Secret, Usage, Value}
 
   @max_values 32
@@ -899,6 +899,10 @@ defmodule Apiary.Secrets do
   characters (`Apiary.Secrets.Value.hint/1`) unless `opts` has `hint: false`, as it does
   for the keys of a provider whose keys are sign-ins.
 
+  With `copy: {from, row_id}` in `opts`, the secret's one value is a copy of the key of
+  the provider `from` whose row id is `row_id`, made as `copy_provider_key/4` makes it,
+  and `values` is not read; `:not_found` for a row id that is not a key of `from`.
+
   `Apiary.Connections` calls it in the transaction that adds the provider, after the
   organisation's integrations lock; it asks `Apiary.Access` for `provider.write` with the
   `factory` feature, not the edition or `secret.write`. Then it takes, for
@@ -922,15 +926,9 @@ defmodule Apiary.Secrets do
     Repo.transact(fn ->
       with :ok <- provider_verdict(scope),
            {:ok, workspace_id} <- keys_place(scope, place) do
-        with {:ok, secret} <-
-               new_secret(
-                 scope,
-                 %Secret{organisation_id: organisation_id, workspace_id: workspace_id},
-                 %{"name" => attrs["name"], "values" => List.wrap(attrs["values"])},
-                 :ok,
-                 provider: :new,
-                 hint: Keyword.get(opts, :hint, true)
-               ),
+        secret = %Secret{organisation_id: organisation_id, workspace_id: workspace_id}
+
+        with {:ok, secret} <- new_keys(scope, secret, attrs, opts),
              :ok <- start_key_counter(secret) do
           {:ok, secret}
         end
@@ -940,6 +938,34 @@ defmodule Apiary.Secrets do
   end
 
   def create_provider_keys(_scope, _attrs, _place, _opts), do: {:error, :not_found}
+
+  defp new_keys(scope, secret, attrs, opts) do
+    case Keyword.get(opts, :copy) do
+      {%Connection{} = from, row_id} ->
+        with {:ok, source, source_secret} <- provider_key_row(scope, from, row_id),
+             {:ok, secret} <-
+               %{
+                 secret
+                 | public_id: PublicId.generate("sec"),
+                   created_by_id: scope.user.id,
+                   updated_by_id: scope.user.id
+               }
+               |> Secret.changeset(%{"name" => attrs["name"]})
+               |> PublicId.Insert.insert(),
+             {:ok, _row} <- insert_copy(scope, secret, source, source_secret),
+             do: {:ok, secret}
+
+      nil ->
+        new_secret(
+          scope,
+          secret,
+          %{"name" => attrs["name"], "values" => List.wrap(attrs["values"])},
+          :ok,
+          provider: :new,
+          hint: Keyword.get(opts, :hint, true)
+        )
+    end
+  end
 
   # The counter of `next_key_id/1` starts at the highest `key-<n>` the new secret's keys have.
   defp start_key_counter(%Secret{id: id}) do
@@ -1028,6 +1054,133 @@ defmodule Apiary.Secrets do
   end
 
   defp linked_keys(_scope, _provider), do: nil
+
+  @doc """
+  copy_provider_key/4 writes a copy of the key of the model provider `from` whose value
+  has the row id `row_id` (`secret_values.id`) into the keys of the provider `to`, under
+  the key's value id, as `add_value/4` adds a value to them: `Apiary.Connections` moves a
+  key to the provider of other workspaces with it. The copy is decrypted under the data
+  key of `from`'s keys and encrypted again under the data key of `to`'s keys, bound to
+  their secret and the value id, in this function and nowhere else; it keeps the key's
+  hint, the time its value was set (`value_set_at`) and the time it was added
+  (`inserted_at`), which orders the keys of a list and of a run. The key's row in
+  `from`'s keys stays: the caller removes it.
+
+  `{:ok, secret}`, `to`'s keys with their values, or `{:error, refusal}`: `:not_found`
+  where either provider links no secret of the scope's organisation, or for a row id
+  that is not a key of `from`; `:other_key_group` where `from` and `to` are not of one
+  key group (`Apiary.ModelKeys.Group.same?/2`); `:too_many_values` past `max_values/0`;
+  a value changeset whose error is on `value_id` for a value id that `to`'s keys have;
+  `:key_unavailable` when the key cannot be decrypted. It leaves no `secret.write` entry:
+  the provider's `provider.write` entry records the move.
+  """
+  @spec copy_provider_key(Scope.t(), Connection.t(), Ecto.UUID.t(), Connection.t()) ::
+          {:ok, Secret.t()} | {:error, refusal}
+  def copy_provider_key(
+        %Scope{} = scope,
+        %Connection{} = from,
+        row_id,
+        %Connection{secret_id: secret_id} = to
+      ) do
+    write_secret(scope, %Secret{id: secret_id}, [provider: to], fn scope, current ->
+      with :ok <- room_for_another(current),
+           {:ok, source, source_secret} <- provider_key_row(scope, from, row_id, to),
+           {:ok, _row} <- insert_copy(scope, current, source, source_secret),
+           {:ok, current} <- touch(scope, current) do
+        {:ok, current}
+      end
+    end)
+    |> reload()
+  end
+
+  # The row of the key `row_id` of the provider `from`, with the secret it is a value of:
+  # the provider, the secret and the row each read in the scope's organisation. With `to`,
+  # a provider of the organisation, only where `from` and `to` are of one key group
+  # (`Apiary.ModelKeys.Group.same?/2`), as their rows have it, else `:other_key_group`.
+  defp provider_key_row(scope, %Connection{} = from, row_id, to \\ nil) do
+    %Scope{organisation: %Organisation{id: organisation_id}} = scope
+
+    with %Connection{secret_id: secret_id} = from_row when is_binary(secret_id) <-
+           provider_row(scope, from),
+         :ok <- same_group(scope, from_row, to),
+         {:ok, row_id} <- Ecto.UUID.cast(row_id),
+         %Secret{} = secret <-
+           Repo.one(
+             from s in Secret, where: s.id == ^secret_id and s.organisation_id == ^organisation_id
+           ),
+         %Value{} = row <-
+           Repo.one(
+             from v in Value,
+               where:
+                 v.id == ^row_id and v.secret_id == ^secret_id and
+                   v.organisation_id == ^organisation_id
+           ) do
+      {:ok, row, secret}
+    else
+      {:error, reason} -> {:error, reason}
+      _not_a_key -> {:error, :not_found}
+    end
+  end
+
+  # The row of the model provider `provider` in the scope's organisation, else nil.
+  defp provider_row(%Scope{organisation: %Organisation{id: organisation_id}}, %Connection{
+         id: id
+       })
+       when is_binary(id) do
+    Repo.one(
+      from c in Connection,
+        where:
+          c.id == ^id and c.organisation_id == ^organisation_id and not is_nil(c.provider_kind)
+    )
+  end
+
+  defp provider_row(_scope, _provider), do: nil
+
+  defp same_group(_scope, _from_row, nil), do: :ok
+
+  defp same_group(scope, from_row, %Connection{} = to) do
+    case provider_row(scope, to) do
+      %Connection{} = to_row ->
+        if Group.same?(from_row, to_row), do: :ok, else: {:error, :other_key_group}
+
+      nil ->
+        {:error, :not_found}
+    end
+  end
+
+  # A new value of `secret` with the plaintext of `source`, a value of `source_secret`,
+  # under the value id of `source`, encrypted under the data key of `secret`'s level and
+  # bound to `secret` and that value id. The plaintext stays in this function.
+  defp insert_copy(scope, %Secret{} = secret, %Value{} = source, %Secret{} = source_secret) do
+    with {:ok, key} <- unwrap(key_of(source)),
+         {:ok, plaintext} <- decrypt_row(key, source_secret, source),
+         {:ok, key_field, new_key} <- data_key(secret) do
+      {nonce, ciphertext} = Cipher.encrypt(new_key, value_aad(secret, source.value_id), plaintext)
+
+      %Value{}
+      |> Ecto.Changeset.change(
+        [
+          value_id: source.value_id,
+          nonce: nonce,
+          ciphertext: ciphertext,
+          hint: source.hint,
+          value_set_at: source.value_set_at,
+          inserted_at: source.inserted_at,
+          organisation_id: secret.organisation_id,
+          workspace_id: secret.workspace_id,
+          secret_id: secret.id,
+          created_by_id: scope.user.id,
+          updated_by_id: scope.user.id
+        ] ++ key_field
+      )
+      |> Value.value_id_changeset(:required)
+      |> Repo.insert()
+      |> case do
+        {:ok, row} -> {:ok, row}
+        {:error, changeset} -> {:error, scrub(changeset)}
+      end
+    end
+  end
 
   # The organisation's answer for a model provider's keys: `provider.write`, with the
   # `factory` feature shown to the scope.

@@ -2183,10 +2183,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 - A new key is named `key-<n>`, the number after the highest among the organisation's keys
   of that provider kind. **Edit key** has **Name**. A new name of that form shows “Choose
   another name: Qory Apiary gives names like key-3 to new keys.”, and a name that another
-  key of the kind has shows “is already the name of another key”. **Edit key** shows the
-  key's workspaces as text; they are set when the key is added. The message “Northwind
-  Claude has 32 keys, the most it can have. Delete a key to add another.” is gone: a 33rd
-  key is added like the others.
+  key of the kind has shows “is already the name of another key”. **Edit key** has
+  **Workspaces** as **New model provider key** has. A save with other workspaces moves the
+  key, with its name, value, settings and state, to a provider of its key group that
+  serves them, or to a new one, under the rules of **Remove** for a provider's last key.
+  The message “Northwind Claude has 32 keys, the most it can have. Delete a key to add
+  another.” is gone: a 33rd key is added like the others.
 - A run uses every key of its key group: the keys of the organisation's model providers
   with the same provider kind, chain and settings (such as a LiteLLM address) that serve
   the run's workspace, as one list in the order that applied to one provider's keys, with

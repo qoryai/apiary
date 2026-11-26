@@ -1135,6 +1135,33 @@ defmodule Apiary.ModelKeys do
   end
 
   @doc """
+  Copies what the key with the row id `from` has to the key with the row id `to`, a copy
+  of its value in another provider's keys (`Apiary.Secrets.copy_provider_key/4`), in the
+  caller's transaction: its settings (Resets, Pause for and Use up to), its states, its
+  rejection and its sign-in. The sign-in is copied without its lease: a refresh that
+  has the lease writes to `from`. Which runs have the value (`Apiary.ModelKeys.Copy`)
+  is not copied: a run that has `from` does not have `to`. Returns `:ok`.
+  """
+  @spec copy_key_rows(Ecto.UUID.t(), Ecto.UUID.t()) :: :ok
+  def copy_key_rows(from, to) when is_binary(from) and is_binary(to) do
+    # shortcut: a refresh of the sign-in that writes to `from` between the copy's read of
+    # the key and the move's lock on `from`'s secret is lost with `from`, so the key may
+    # need a new sign-in. Replace when a move waits for the lease.
+    tables = [{Setting, []}, {State, []}, {Rejection, []}, {Login, [:lease_id, :lease_until]}]
+
+    for {schema, left_out} <- tables do
+      fields = schema.__schema__(:fields) -- [:secret_value_id | left_out]
+
+      rows =
+        Repo.all(from r in schema, where: r.secret_value_id == ^from, select: map(r, ^fields))
+
+      Repo.insert_all(schema, Enum.map(rows, &Map.put(&1, :secret_value_id, to)))
+    end
+
+    :ok
+  end
+
+  @doc """
   Marks the keys of a run whose provider returned 401, as the run's gateway reports them
   (`Apiary.ModelKeys.Report`, `unauthorized`): `entries`, `[%{credential:, at:}]`, the key's
   credential name and when the 401 arrived, for the run's keys `keys` (`run_keys/1`), of
