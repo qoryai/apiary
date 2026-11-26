@@ -16,12 +16,26 @@ defmodule ApiaryWeb.ModelProviderKeysTest do
 
   @moduletag needs: [:factory, :secrets]
 
+  # A stub of `Apiary.Edition` where admins reach only the workspaces the test names
+  # (`Apiary.EditionStubs.MembersReachNamed.put/1`); owners reach every workspace.
+  defmodule AdminsReachNamed do
+    alias Apiary.EditionStubs.MembersReachNamed
+
+    defdelegate limits, to: MembersReachNamed
+    def every_workspace_levels, do: [:owner]
+    defdelegate reached_workspaces(query, scope), to: MembersReachNamed
+    defdelegate reaches_workspace?(scope, workspace_id, opts), to: MembersReachNamed
+  end
+
   @key "sk-ant-keys-page-0123456789abcdef"
 
   setup :register_and_log_in_user
 
   defp list_path(scope), do: ~p"/#{scope.organisation}/settings/model-providers"
   defp new_path(scope), do: ~p"/#{scope.organisation}/settings/model-providers/new"
+
+  defp edit_path(scope, provider, row_id),
+    do: "#{list_path(scope)}/#{provider.public_id}/keys/#{row_id}/edit"
 
   defp add!(scope, reach) do
     {:ok, provider, value_id} =
@@ -55,6 +69,28 @@ defmodule ApiaryWeb.ModelProviderKeysTest do
     |> LazyHTML.text()
     |> String.split()
     |> Enum.join(" ")
+  end
+
+  # Whether the page `html` of Edit key, of a provider with Use up to, has Name, New
+  # value, Workspaces (`workspaces`, its marker), Resets, Pause for and Use up to in that
+  # order.
+  defp in_order?(html, workspaces) do
+    markers = [
+      ~s{id="key-name"},
+      ~s{id="key-value-},
+      workspaces,
+      ~s{id="key_reset_day-resets"},
+      ~s{id="key_pause_number-pause"},
+      ~s{id="key_use_up_to-use-up-to"}
+    ]
+
+    positions =
+      for marker <- markers do
+        {index, _length} = :binary.match(html, marker)
+        index
+      end
+
+    positions == Enum.sort(positions)
   end
 
   # Northwind's case: a key for every workspace and a key for Checkout, the scope's
@@ -148,11 +184,11 @@ defmodule ApiaryWeb.ModelProviderKeysTest do
 
       assert text(lv, "#key-#{five}-workspaces") == "#{first}, #{second} and 3 more"
 
-      # Edit key has the same words.
-      {:ok, edit, _html} =
-        live(conn, "#{list_path(scope)}/#{five_provider.public_id}/keys/#{five}/edit")
+      # Edit key ticks the same workspaces.
+      {:ok, edit, _html} = live(conn, edit_path(scope, five_provider, five))
 
-      assert text(edit, "#key-workspaces-names") == "#{first}, #{second} and 3 more"
+      for id <- Connections.workspace_ids_of(five_provider),
+          do: assert(has_element?(edit, "#key-workspace-#{id}[checked]"))
     end
 
     test "with none, shows how to start", %{conn: conn, scope: scope} do
@@ -465,6 +501,305 @@ defmodule ApiaryWeb.ModelProviderKeysTest do
                  "key-1. The organisation's default model uses Claude subscription token."
 
       assert has_element?(lv, "#key-#{nw.first}-name")
+    end
+  end
+
+  describe "Edit key's Workspaces" do
+    test "with one workspace, shows the key's workspace as text and no field", ctx do
+      %{conn: conn, scope: scope} = ctx
+      {provider, key} = add!(scope, only([scope.workspace]))
+
+      {:ok, lv, _html} = live(conn, edit_path(scope, provider, key))
+
+      assert text(lv, "#key-workspaces-names") == scope.workspace.name
+      refute has_element?(lv, "fieldset#key-workspaces")
+      refute has_element?(lv, ~s{input[name="key[reach]"]})
+    end
+
+    test "with two workspaces, has the field of New model provider key, as the key has it",
+         ctx do
+      %{conn: conn, scope: scope} = ctx
+      nw = northwind(scope)
+
+      {:ok, lv, _html} = live(conn, edit_path(scope, nw.every, nw.first))
+
+      assert has_element?(lv, "#key-workspaces legend", "Workspaces")
+
+      assert has_element?(
+               lv,
+               "#key-workspaces label",
+               "Every workspace in #{scope.organisation.name}"
+             )
+
+      assert has_element?(lv, "#key-reach-all[checked]")
+      refute has_element?(lv, "#key-workspace-list")
+      refute has_element?(lv, "#key-workspaces-names")
+
+      {:ok, lv, _html} = live(conn, edit_path(scope, nw.checkout, nw.second))
+      assert has_element?(lv, "#key-reach-selected[checked]")
+      assert has_element?(lv, "#key-workspace-#{scope.workspace.id}[checked]")
+      refute has_element?(lv, "#key-workspace-#{nw.storefront.id}[checked]")
+
+      # Every workspace hides the list of checkboxes.
+      lv
+      |> element("#key-form")
+      |> render_change(%{"key" => %{"reach" => "all", "workspace_ids" => [""]}})
+
+      refute has_element?(lv, "#key-workspace-list")
+    end
+
+    test "the fields are Name, New value, Workspaces, Resets, Pause for and Use up to, in that order",
+         ctx do
+      %{conn: conn, scope: scope} = ctx
+
+      # One workspace: Workspaces is text, in the place of the field.
+      {checkout, row_id} = add!(scope, only([scope.workspace]))
+      {:ok, lv, html} = live(conn, edit_path(scope, checkout, row_id))
+      assert has_element?(lv, "#key-workspaces-names")
+      assert in_order?(html, ~s{id="key-workspaces-names"})
+
+      # Two workspaces: Workspaces is the field.
+      _storefront = workspace_fixture(scope.organisation, "Storefront")
+      {:ok, lv, html} = live(conn, edit_path(scope, checkout, row_id))
+      assert has_element?(lv, "fieldset#key-workspaces")
+      assert in_order?(html, ~s{id="key-workspaces"})
+    end
+
+    test "Save with other workspaces moves the key, its settings kept", ctx do
+      %{conn: conn, scope: scope} = ctx
+      nw = northwind(scope)
+      {_every, third} = add!(scope, every())
+      value = Repo.get!(Value, third)
+
+      {:ok, _} =
+        Apiary.ModelKeysFixtures.put_key_setting(scope, value, %{"pause_seconds" => 7200})
+
+      {:ok, lv, _html} = live(conn, edit_path(scope, nw.every, third))
+
+      # Only these workspaces shows the list of checkboxes.
+      lv
+      |> element("#key-form")
+      |> render_change(%{"key" => %{"reach" => "selected", "workspace_ids" => [""]}})
+
+      {:ok, list, _html} =
+        lv
+        |> form("#key-form",
+          key: %{reach: "selected", workspace_ids: [scope.workspace.id], pause_number: "2"}
+        )
+        |> render_submit()
+        |> follow_redirect(conn, list_path(scope))
+
+      assert render(list) =~ "key-3"
+      assert render(list) =~ "is saved."
+
+      # key-3 joins key-2 in the provider for Checkout.
+      assert Repo.all(
+               from v in Value,
+                 where: v.secret_id == ^nw.checkout.secret_id,
+                 order_by: v.value_id,
+                 select: v.value_id
+             ) == ["key-2", "key-3"]
+
+      moved = Repo.get_by!(Value, secret_id: nw.checkout.secret_id, value_id: "key-3")
+      assert Apiary.ModelKeys.setting(moved.id).pause_seconds == 7200
+      assert text(list, "#key-#{moved.id}-workspaces") == scope.workspace.name
+    end
+
+    test "a move that Remove's rules stop shows Remove's sentence and keeps the key", ctx do
+      %{conn: conn, scope: scope} = ctx
+      nw = northwind(scope)
+
+      {:ok, _choice} =
+        ModelChoicesFixtures.put_choice(scope, :workspace, %{provider: nw.checkout.public_id})
+
+      {:ok, _} = Connections.remove_key(scope, nw.every, nw.first)
+
+      {:ok, lv, _html} = live(conn, edit_path(scope, nw.checkout, nw.second))
+
+      lv
+      |> form("#key-form", key: %{reach: "selected", workspace_ids: [nw.storefront.id]})
+      |> render_submit()
+
+      assert text(lv, "#key-refusal") ==
+               "Add another key, or choose another provider in Workspace settings › Model, " <>
+                 "then change the workspaces of key-2. It is the last Claude subscription " <>
+                 "token key for #{scope.workspace.name}."
+
+      assert Repo.get!(Value, nw.second).secret_id == nw.checkout.secret_id
+    end
+
+    test "a move of the last key of the organisation's default shows what to add first", ctx do
+      %{conn: conn, scope: scope} = ctx
+      storefront = workspace_fixture(scope.organisation, "Storefront")
+
+      # A provider for Checkout whose key is a secret of Checkout, and one whose key is a
+      # secret of the organisation, which the organisation's default uses.
+      {_workspace_keys, _first} = add!(scope, only([scope.workspace]))
+
+      {:ok, shared} =
+        Connections.create_provider(scope, %{
+          provider: "claude-subscription",
+          applies_to: "selected",
+          workspace_ids: [scope.workspace.id],
+          keys: [%{value: @key}]
+        })
+
+      {:ok, _choice} =
+        ModelChoicesFixtures.put_choice(scope, :organisation, %{provider: shared.public_id})
+
+      [%Value{id: row_id, value_id: value_id}] =
+        Repo.all(from v in Value, where: v.secret_id == ^shared.secret_id)
+
+      {:ok, lv, _html} = live(conn, edit_path(scope, shared, row_id))
+
+      lv
+      |> form("#key-form", key: %{reach: "selected", workspace_ids: [storefront.id]})
+      |> render_submit()
+
+      assert text(lv, "#key-refusal") ==
+               "Add another key for every workspace in #{scope.organisation.name}, then " <>
+                 "change the workspaces of #{value_id}. The organisation's default model " <>
+                 "uses Claude subscription token."
+
+      assert Repo.get!(Value, row_id).secret_id == shared.secret_id
+    end
+
+    test "a move of the last key of a provider a run uses shows to wait for the runs", ctx do
+      %{conn: conn, scope: scope} = ctx
+      nw = northwind(scope)
+      run = Apiary.RunEventsFixtures.run_fixture(scope)
+
+      Apiary.ModelKeysFixtures.run_keys!(run, [
+        %{provider: nw.checkout, secret_value_id: nw.second}
+      ])
+
+      {:ok, lv, _html} = live(conn, edit_path(scope, nw.checkout, nw.second))
+
+      lv
+      |> form("#key-form", key: %{reach: "selected", workspace_ids: [nw.storefront.id]})
+      |> render_submit()
+
+      assert text(lv, "#key-refusal") ==
+               "Wait until the runs that use key-2 end, then change its workspaces."
+
+      assert Repo.get!(Value, nw.second).secret_id == nw.checkout.secret_id
+    end
+
+    test "a move of a key of a provider that fails its integrity code shows whom to ask",
+         ctx do
+      %{conn: conn, scope: scope} = ctx
+      nw = northwind(scope)
+
+      {:ok, lv, _html} = live(conn, edit_path(scope, nw.every, nw.first))
+
+      # A name written without a new code.
+      {1, _rows} =
+        Repo.update_all(from(c in Connection, where: c.id == ^nw.every.id),
+          set: [name: "Changed outside Qory Apiary"]
+        )
+
+      lv
+      |> element("#key-form")
+      |> render_change(%{"key" => %{"reach" => "selected", "workspace_ids" => [""]}})
+
+      lv
+      |> form("#key-form", key: %{reach: "selected", workspace_ids: [nw.storefront.id]})
+      |> render_submit()
+
+      assert text(lv, "#key-refusal") ==
+               "Ask the administrator of this Qory Apiary to check #{nw.every.name}: its " <>
+                 "settings were changed outside Qory Apiary, so its keys cannot move."
+
+      assert Repo.get!(Value, nw.first).secret_id == nw.every.secret_id
+    end
+
+    test "Only these workspaces with none ticked shows Choose at least one workspace", ctx do
+      %{conn: conn, scope: scope} = ctx
+      nw = northwind(scope)
+
+      {:ok, lv, _html} = live(conn, edit_path(scope, nw.checkout, nw.second))
+
+      lv
+      |> element("#key-form")
+      |> render_submit(%{
+        "key" => %{"name" => "key-2", "reach" => "selected", "workspace_ids" => [""]}
+      })
+
+      assert text(lv, "#key-workspaces-error") == "Choose at least one workspace."
+      assert Repo.get!(Value, nw.second).secret_id == nw.checkout.secret_id
+    end
+
+    test "a name the provider of those workspaces has shows the rename's error on Name", ctx do
+      %{conn: conn, scope: scope} = ctx
+      _storefront = workspace_fixture(scope.organisation, "Storefront")
+
+      # Two providers made before keys were numbered across the kind, each with a key-1.
+      {:ok, every} =
+        Connections.create_provider(scope, %{
+          provider: "claude-subscription",
+          applies_to: "all",
+          keys: [%{value: @key}]
+        })
+
+      {:ok, checkout} =
+        Connections.create_provider(
+          scope,
+          %{provider: "claude-subscription", keys: [%{value: @key}]},
+          :workspace
+        )
+
+      {:ok, lv, _html} = live(conn, edit_path(scope, checkout, row(checkout, "key-1")))
+
+      lv
+      |> element("#key-form")
+      |> render_submit(%{
+        "key" => %{"name" => "key-1", "reach" => "all", "workspace_ids" => [""]}
+      })
+
+      assert has_element?(lv, "#key-form", "is already the name of another key")
+      assert row(checkout, "key-1")
+      assert row(every, "key-1")
+    end
+
+    test "Only these workspaces for a key of every workspace, from an admin who does not reach every workspace, shows who may do it",
+         ctx do
+      %{scope: scope} = ctx
+      nw = northwind(scope)
+      billing = workspace_fixture(scope.organisation, "Billing")
+
+      :ok = Apiary.Edition.put_test_stub(AdminsReachNamed)
+      Apiary.EditionStubs.MembersReachNamed.put([scope.workspace.id, billing.id])
+
+      {:ok, lv, _html} = live(member_conn(scope, :admin), edit_path(scope, nw.every, nw.first))
+
+      lv
+      |> element("#key-form")
+      |> render_change(%{"key" => %{"reach" => "selected", "workspace_ids" => [""]}})
+
+      lv
+      |> form("#key-form", key: %{reach: "selected", workspace_ids: [billing.id]})
+      |> render_submit()
+
+      assert text(lv, "#key-refusal") ==
+               "Only owners and admins change the integrations of the organisation."
+
+      assert Repo.get!(Value, nw.first).secret_id == nw.every.secret_id
+    end
+
+    test "a save of other fields with the workspaces untouched moves nothing", ctx do
+      %{conn: conn, scope: scope} = ctx
+      nw = northwind(scope)
+
+      {:ok, lv, _html} = live(conn, edit_path(scope, nw.checkout, nw.second))
+
+      {:ok, _list, _html} =
+        lv
+        |> form("#key-form", key: %{pause_number: "3", pause_unit: "hours"})
+        |> render_submit()
+        |> follow_redirect(conn, list_path(scope))
+
+      assert Repo.get!(Value, nw.second).secret_id == nw.checkout.secret_id
+      assert Apiary.ModelKeys.setting(nw.second).pause_seconds == 10_800
     end
   end
 end

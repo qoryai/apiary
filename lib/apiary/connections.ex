@@ -1410,8 +1410,9 @@ defmodule Apiary.Connections do
   # The write of `create_provider/3`, in a new transaction or in the caller's
   # (`add_key/2`), which refreshes the waiting runs once its transaction commits. `names`
   # is `:given` for keys' value ids from the caller, where a `key-<n>` is refused, or
-  # `:numbered` for the one `add_key/2` sets (`next_key_name/2`).
-  defp insert_provider(scope, attrs, place, names) do
+  # `:numbered` for the one `add_key/2` sets (`next_key_name/2`). `keys_opts` goes to
+  # `Apiary.Secrets.create_provider_keys/4`: `copy:` for a key that moves (`move_key/4`).
+  defp insert_provider(scope, attrs, place, names, keys_opts \\ []) do
     attrs = scope |> placed(stringify(attrs), place)
 
     write(scope, fn scope, organisation ->
@@ -1436,7 +1437,7 @@ defmodule Apiary.Connections do
                scope,
                %{name: keys_name(new), values: keys},
                place,
-               hint: not Login.provider?(provider.name)
+               [hint: not Login.provider?(provider.name)] ++ keys_opts
              ),
            :ok <- put_logins(secret.id, logins),
            {:ok, changeset} <-
@@ -2154,32 +2155,44 @@ defmodule Apiary.Connections do
       "keys" => [%{"value_id" => value_id, "value" => attrs["value"]}]
     }
 
-    result =
-      case reach do
-        [workspace_id] ->
-          workspace = Repo.get!(Workspace, workspace_id)
-          insert_provider(%{scope | workspace: workspace}, created, :workspace, :numbered)
-
-        :all ->
-          insert_provider(
-            scope,
-            Map.put(created, "applies_to", "all"),
-            :organisation,
-            :numbered
-          )
-
-        ids ->
-          insert_provider(
-            scope,
-            Map.merge(created, %{"applies_to" => "selected", "workspace_ids" => ids}),
-            :organisation,
-            :numbered
-          )
-      end
-
-    with {:ok, added} <- result,
+    with {:ok, added} <- insert_for_reach(scope, created, reach, []),
          {:ok, _setting} <- put_key_setting(added, value_id, attrs["key_settings"]),
          do: {:ok, added}
+  end
+
+  # A new provider, `created` as `insert_provider/5` takes it, for `reach`: for one
+  # workspace, its keys a secret of that workspace; else of the organisation.
+  defp insert_for_reach(scope, created, reach, keys_opts) do
+    case reach do
+      [workspace_id] ->
+        workspace = Repo.get!(Workspace, workspace_id)
+
+        insert_provider(
+          %{scope | workspace: workspace},
+          created,
+          :workspace,
+          :numbered,
+          keys_opts
+        )
+
+      :all ->
+        insert_provider(
+          scope,
+          Map.put(created, "applies_to", "all"),
+          :organisation,
+          :numbered,
+          keys_opts
+        )
+
+      ids ->
+        insert_provider(
+          scope,
+          Map.merge(created, %{"applies_to" => "selected", "workspace_ids" => ids}),
+          :organisation,
+          :numbered,
+          keys_opts
+        )
+    end
   end
 
   @doc """
@@ -2279,11 +2292,35 @@ defmodule Apiary.Connections do
   keys do not have, a refusal of the value as `Apiary.Secrets.set_value/5` returns, a
   refusal of the rename as `Apiary.Secrets.rename_value/5` returns, or a changeset of the
   settings; each leaves the key as it was.
+
+  With `applies_to`, `all` or `selected`, and with `selected`, `workspace_ids`, as
+  `add_key/2` takes them, the key then serves those workspaces, in the same transaction
+  under the organisation's integrations lock. For other workspaces than the provider's,
+  the key moves to the provider that `add_key/2` would choose for them, else to a new
+  one, as `add_key/2` makes it: it keeps its value id, its value, its settings, its
+  states, its rejection and its sign-in. It is then removed from `provider` as
+  `remove_key/3` removes it, and `{:ok, provider}` has the provider the key moved to.
+  A workspace the person does not reach stays as the provider has it; when the key moves,
+  one marked for deletion goes. A save with the provider's workspaces less the ones
+  marked for deletion moves nothing; a marked workspace in `workspace_ids` returns
+  `{:error, :workspace_not_found}`. For a key of every workspace, `selected` from a
+  person who does not reach every workspace returns `{:error, :forbidden}`. A move of a
+  key of a provider that fails its integrity code returns
+  `{:error, {:integrity, [public_id]}}` before any write. The other errors of the
+  workspaces are `add_key/2`'s, those of the removal `remove_key/3`'s, and each leaves
+  every key as it was.
   """
   @spec update_provider_key(Scope.t(), Connection.t(), String.t(), map) ::
           {:ok, Connection.t()} | {:error, refusal}
   def update_provider_key(%Scope{} = scope, %Connection{} = provider, value_id, attrs) do
     attrs = stringify(attrs)
+
+    if Map.has_key?(attrs, "applies_to"),
+      do: update_and_move(scope, provider, value_id, attrs),
+      else: update_key(scope, provider, value_id, attrs)
+  end
+
+  defp update_key(scope, provider, value_id, attrs) do
     new_value_id = Value.normalise_value_id(attrs["value_id"])
     new_value = blank_to_nil(trim_key(attrs["value"]))
 
@@ -2334,6 +2371,159 @@ defmodule Apiary.Connections do
         {:error, reason} -> {:error, reason}
       end
     end)
+  end
+
+  defp update_and_move(scope, provider, value_id, attrs) do
+    write_connection(scope, provider, fn scope, organisation, current ->
+      with {:ok, reach} <- move_reach(scope, organisation.id, current, attrs),
+           %Value{id: row_id} <-
+             Enum.find(current.secret.values, &(&1.value_id == value_id)) ||
+               {:error, :not_found},
+           # A move of a key of a provider that fails its integrity code: checked on the row
+           # read `FOR UPDATE`, before the update writes a new code for it.
+           true <-
+             (same_reach?(current, reach) or intact?(current)) ||
+               {:error, {:integrity, [current.public_id]}},
+           {:ok, _updated} <- update_key(scope, current, value_id, attrs),
+           do: move_key(scope, current, row_id, reach)
+    end)
+    |> refreshed()
+    |> reload()
+    |> without_keys()
+  end
+
+  # The workspaces a key serves after Edit key: as `key_reach/3` reads them, with the
+  # workspaces of `current` that the person does not reach kept, except those marked for
+  # deletion. When that is `current`'s workspaces less the marked ones, it is `current`'s
+  # workspaces, and the key does not move. For a key of `current` for every workspace,
+  # `selected` from a person who does not reach every workspace returns
+  # `{:error, :forbidden}`.
+  defp move_reach(scope, organisation_id, current, %{"applies_to" => "selected"} = attrs) do
+    reached = scope |> Apiary.Organisations.workspace_scopes() |> Map.keys()
+
+    if current.applies_to == "all" and not Access.reaches_every_workspace_in?(scope) do
+      {:error, :forbidden}
+    else
+      with {:ok, ids} <- workspace_ids(organisation_id, List.wrap(attrs["workspace_ids"])) do
+        served = if current.applies_to == "all", do: [], else: workspace_ids_of(current)
+        unmarked = unmarked(served)
+
+        case Enum.sort(Enum.uniq(Enum.filter(ids, &(&1 in reached)) ++ (unmarked -- reached))) do
+          [] -> {:error, :no_workspace}
+          ^unmarked when served != [] -> {:ok, served}
+          ids -> {:ok, ids}
+        end
+      end
+    end
+  end
+
+  defp move_reach(_scope, _organisation_id, %Connection{applies_to: "all"}, %{
+         "applies_to" => "all"
+       }),
+       do: {:ok, :all}
+
+  defp move_reach(scope, organisation_id, _current, attrs),
+    do: key_reach(scope, organisation_id, attrs)
+
+  # The workspaces of `ids` not marked for deletion, sorted as `key_reach/3` sorts.
+  defp unmarked([]), do: []
+
+  defp unmarked(ids),
+    do:
+      Enum.sort(
+        Repo.all(
+          from w in Workspace, where: w.id in ^ids and is_nil(w.deletion_marked_at), select: w.id
+        )
+      )
+
+  # The key `row_id` of `provider`, read again after its update, moved to the provider of
+  # its group that serves `reach` and has room, else to a new provider; nothing for the
+  # reach the provider has. The key's rows go with it (`Apiary.ModelKeys.copy_key_rows/2`),
+  # then the key leaves `provider` as `remove_key/3` removes it, so a run that has it
+  # loses it as it loses a removed key. `{:ok, provider}`, the provider with the key.
+  defp move_key(scope, %Connection{} = provider, row_id, reach) do
+    current = Repo.preload(Repo.reload!(provider), preloads(provider), force: true)
+
+    if same_reach?(current, reach) do
+      {:ok, current}
+    else
+      key = Enum.find(current.secret.values, &(&1.id == row_id))
+
+      found =
+        current
+        |> group_of()
+        |> Enum.find(&(&1.id != current.id and same_reach?(&1, reach) and room?(&1)))
+
+      with :ok <- name_free_in(found, key.value_id),
+           {:ok, moved_to} <- copy_to(scope, current, key, found, reach),
+           %Value{id: copy_id} =
+             Repo.get_by!(Value, secret_id: moved_to.secret_id, value_id: key.value_id),
+           :ok <- ModelKeys.copy_key_rows(key.id, copy_id),
+           {:ok, _removed} <- remove_from(scope, current, key.id),
+           {:ok, _entry} <-
+             Audit.record(Repo, scope, :"provider.write", moved_to, %{
+               before: reach_audited(current),
+               after: reach_audited(moved_to),
+               details: %{
+                 change: "provider_key_moved",
+                 connection_id: moved_to.public_id,
+                 name: moved_to.name,
+                 value_id: key.value_id,
+                 identity: Identity.for_value_id(moved_to, key.value_id)
+               }
+             }) do
+        {:ok, moved_to}
+      end
+    end
+  end
+
+  # A key keeps its value id when it moves: a provider whose keys have that value id, as
+  # two providers made before `add_key/2` can have, takes it only after a rename, else the
+  # error on `value_id` that a rename to a taken name has.
+  defp name_free_in(nil, _value_id), do: :ok
+
+  defp name_free_in(%Connection{secret: %Secret{values: values}}, value_id) do
+    if Enum.any?(values, &(&1.value_id == value_id)),
+      do:
+        {:error,
+         %Value{}
+         |> change(value_id: value_id)
+         |> add_error(:value_id, dgettext_noop("errors", "is already the name of another key"))},
+      else: :ok
+  end
+
+  # A copy of `key` in the keys of `found`, or of a new provider for `reach`.
+  defp copy_to(scope, current, key, %Connection{} = found, _reach) do
+    with {:ok, _secret} <- Secrets.copy_provider_key(scope, current, key.id, found),
+         :ok <- take_key_number(found.secret_id, key.value_id),
+         do: {:ok, found}
+  end
+
+  defp copy_to(scope, current, key, nil, reach) do
+    created = %{
+      "provider" => current.provider_kind,
+      "settings" => Jason.decode!(current.settings),
+      "keys" => [%{"value_id" => key.value_id}]
+    }
+
+    insert_for_reach(scope, created, reach, copy: {current, key.id})
+  end
+
+  # The provider and the workspaces it serves, by public ids, for a move's entry.
+  defp reach_audited(%Connection{applies_to: "all"} = provider),
+    do: %{connection_id: provider.public_id, applies_to: "all"}
+
+  defp reach_audited(%Connection{} = provider) do
+    ids = workspace_ids_of(provider)
+
+    %{
+      connection_id: provider.public_id,
+      applies_to: provider.applies_to,
+      workspace_ids:
+        Repo.all(
+          from w in Workspace, where: w.id in ^ids, order_by: w.public_id, select: w.public_id
+        )
+    }
   end
 
   # A new value of the key `value_id`, which deletes its states. `update_provider_key/4`
@@ -2645,19 +2835,25 @@ defmodule Apiary.Connections do
   def remove_key(%Scope{} = scope, %Connection{provider_kind: kind} = provider, row_id)
       when is_binary(kind) do
     write_connection(scope, provider, fn scope, _organisation, current ->
-      values = (current.secret && current.secret.values) || []
-
-      case Enum.find(values, &(&1.id == row_id)) do
-        nil -> {:error, :not_found}
-        %Value{} = key when length(values) == 1 -> remove_last(scope, current, key)
-        %Value{} = key -> remove_one(scope, current, key, values)
-      end
+      remove_from(scope, current, row_id)
     end)
     |> refreshed()
     |> without_keys()
   end
 
   def remove_key(%Scope{}, %Connection{}, _row_id), do: {:error, :not_found}
+
+  # The key `row_id` removed from `current`, a provider read under its row lock, as
+  # `remove_key/3` removes it; `move_key/4` removes a moved key with it.
+  defp remove_from(scope, current, row_id) do
+    values = (current.secret && current.secret.values) || []
+
+    case Enum.find(values, &(&1.id == row_id)) do
+      nil -> {:error, :not_found}
+      %Value{} = key when length(values) == 1 -> remove_last(scope, current, key)
+      %Value{} = key -> remove_one(scope, current, key, values)
+    end
+  end
 
   defp remove_one(scope, current, %Value{} = key, values) do
     with {:ok, current} <- default_elsewhere(scope, current, key, values),

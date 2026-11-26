@@ -13,7 +13,8 @@ defmodule ApiaryWeb.ModelKeyComponents do
   #   * `login/2` and `login_line/1` the sign-in of a key of a provider whose keys are
   #     logins (`Apiary.ModelKeys.Login`), in words;
   #   * `workspace_names/2` and `workspaces_words/1` the workspaces a key serves, in the
-  #     words of the list of keys and of Edit key.
+  #     words of the list of keys and of Edit key, and `workspaces_field/1` the field that
+  #     chooses them.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -63,6 +64,99 @@ defmodule ApiaryWeb.ModelKeyComponents do
   @doc "The names of the fields `settings_fields/1` sends."
   @spec fields() :: [String.t()]
   def fields, do: @fields
+
+  @doc """
+  Workspaces, as New model provider key and Edit key show it: every workspace of the
+  organisation, or only those ticked, a checkbox per workspace under the second choice.
+  While every workspace is chosen, the ticks are kept in hidden fields. The fields are
+  the form's `reach` and `workspace_ids`, and the errors those on `workspaces`; its elements'
+  ids start with `id`.
+  """
+  attr :id, :string, required: true
+  attr :form, Phoenix.HTML.Form, required: true
+  attr :workspaces, :list, required: true
+  attr :organisation, :string, required: true
+
+  def workspaces_field(assigns) do
+    assigns =
+      assign(assigns,
+        only: assigns.form[:reach].value != "all",
+        ticked: List.wrap(assigns.form[:workspace_ids].value),
+        errors: Enum.map(assigns.form[:workspaces].errors, &translate_error/1)
+      )
+
+    ~H"""
+    <fieldset
+      id={"#{@id}-workspaces"}
+      class="fieldset"
+      aria-invalid={@errors != [] && "true"}
+      aria-describedby={@errors != [] && "#{@id}-workspaces-error"}
+    >
+      <legend class="mb-1 text-[13px]/[18px] font-medium">{gettext("Workspaces")}</legend>
+      <input type="hidden" name={@form[:workspace_ids].name <> "[]"} value="" />
+      <label
+        for={"#{@id}-reach-all"}
+        class="inline-flex w-fit cursor-pointer items-center gap-2 text-[13.5px]/5 max-md:min-h-10"
+      >
+        <input
+          type="radio"
+          id={"#{@id}-reach-all"}
+          name={@form[:reach].name}
+          value="all"
+          checked={!@only}
+          class="radio radio-sm radio-primary"
+        />
+        {gettext("Every workspace in %{organisation}", organisation: @organisation)}
+      </label>
+      <label
+        for={"#{@id}-reach-selected"}
+        class="inline-flex w-fit cursor-pointer items-center gap-2 text-[13.5px]/5 max-md:min-h-10"
+      >
+        <input
+          type="radio"
+          id={"#{@id}-reach-selected"}
+          name={@form[:reach].name}
+          value="selected"
+          checked={@only}
+          class="radio radio-sm radio-primary"
+        />
+        {gettext("Only these workspaces")}
+      </label>
+      <div :if={@only} id={"#{@id}-workspace-list"} class="grid gap-1 pl-6">
+        <label
+          :for={workspace <- @workspaces}
+          for={"#{@id}-workspace-#{workspace.id}"}
+          class="inline-flex w-fit cursor-pointer items-center gap-2 text-[13.5px]/5 max-md:min-h-10"
+        >
+          <input
+            type="checkbox"
+            id={"#{@id}-workspace-#{workspace.id}"}
+            name={@form[:workspace_ids].name <> "[]"}
+            value={workspace.id}
+            checked={workspace.id in @ticked}
+            class="checkbox checkbox-sm checkbox-primary"
+          />
+          {workspace.name}
+        </label>
+      </div>
+      <input
+        :for={id <- @ticked}
+        :if={!@only}
+        type="hidden"
+        name={@form[:workspace_ids].name <> "[]"}
+        value={id}
+      />
+      <p
+        :for={msg <- @errors}
+        id={"#{@id}-workspaces-error"}
+        class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
+      >
+        <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
+        {msg}
+      </p>
+    </fieldset>
+    """
+  end
 
   @doc """
   Whether the keys of `provider` are a subscription's: its catalogue entry's API `auth`

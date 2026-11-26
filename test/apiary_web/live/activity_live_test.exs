@@ -146,6 +146,34 @@ defmodule ApiaryWeb.ActivityLiveTest do
       refute has_element?(view, "#entry-#{renamed.id}-change > span:not(.q-parts)")
     end
 
+    @tag needs: [:factory, :secrets]
+    test "a moved model provider key shows its identity line", %{conn: conn, scope: scope} do
+      _storefront = workspace_fixture(scope.organisation, "Storefront")
+      key = %{"provider" => "anthropic", "value" => "sk-ant-activity-0123456789abcdef"}
+      {:ok, every, "key-1"} = Apiary.Connections.add_key(scope, Map.put(key, "applies_to", "all"))
+
+      {:ok, _every, "key-2"} =
+        Apiary.Connections.add_key(scope, Map.put(key, "applies_to", "all"))
+
+      {:ok, _moved_to} =
+        Apiary.Connections.update_provider_key(scope, every, "key-2", %{
+          "value_id" => "key-2",
+          "applies_to" => "selected",
+          "workspace_ids" => [scope.workspace.id]
+        })
+
+      [moved] =
+        Repo.all(
+          from e in Audit.Entry,
+            where: fragment("?->>'change'", e.details) == "provider_key_moved"
+        )
+
+      view = open(conn, scope)
+      assert text(view, "#entry-#{moved.id}-action") =~ "Moved a model provider key"
+      assert moved.details["identity"] =~ "…cdef"
+      assert text(view, "#entry-#{moved.id}-change") =~ moved.details["identity"]
+    end
+
     test "its title names the organisation", %{conn: conn, scope: scope} do
       view = open(conn, scope)
       assert page_title(view) =~ "Audit log · #{scope.organisation.name}"

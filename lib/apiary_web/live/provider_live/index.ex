@@ -206,8 +206,10 @@ defmodule ApiaryWeb.ProviderLive.Index do
 
   defp key_rows(_provider, _names, _now), do: []
 
-  # The title of the provider's kind in the catalogue, else the provider's name.
-  defp kind_title(%Connection{provider_kind: kind, name: name}) do
+  @doc false
+  # kind_title/1 is the title of the provider's kind in the catalogue, else the provider's
+  # name. Edit key calls it too.
+  def kind_title(%Connection{provider_kind: kind, name: name}) do
     case Providers.fetch(kind) do
       {:ok, %Provider{title: title}} -> title
       :error -> name
@@ -418,8 +420,10 @@ defmodule ApiaryWeb.ProviderLive.Index do
     end
   end
 
-  # Why a key was not removed, in a sentence.
-  defp remove_refusal(scope, key, {:last_key, nil}),
+  @doc false
+  # remove_refusal/3 is why a key was not removed, in a sentence: `key` has the key's
+  # `name` and its provider's `title`.
+  def remove_refusal(scope, key, {:last_key, nil}),
     do:
       gettext(
         "Add another key for every workspace in %{organisation}, then remove %{key}. The organisation's default model uses %{provider}.",
@@ -428,26 +432,30 @@ defmodule ApiaryWeb.ProviderLive.Index do
         organisation: scope.organisation.name
       )
 
-  defp remove_refusal(scope, key, {:last_key, workspace_id}) do
-    place =
-      case Enum.find(Organisations.list_workspaces(scope), &(&1.id == workspace_id)) do
-        %{name: name} -> name
-        nil -> scope.organisation.name
-      end
+  def remove_refusal(scope, key, {:last_key, workspace_id}),
+    do:
+      gettext(
+        "Add another key, or choose another provider in Workspace settings › Model, then remove %{key}. It is the last %{provider} key for %{place}.",
+        key: key.name,
+        provider: key.title,
+        place: place_name(scope, workspace_id)
+      )
 
-    gettext(
-      "Add another key, or choose another provider in Workspace settings › Model, then remove %{key}. It is the last %{provider} key for %{place}.",
-      key: key.name,
-      provider: key.title,
-      place: place
-    )
-  end
-
-  defp remove_refusal(_scope, key, {:provider_in_use, _uses}),
+  def remove_refusal(_scope, key, {:provider_in_use, _uses}),
     do: gettext("Wait until the runs that use %{key} end, then remove it.", key: key.name)
 
-  defp remove_refusal(scope, _key, reason),
+  def remove_refusal(scope, _key, reason),
     do: Common.refusal(scope, reason, [], :"provider.write")
+
+  @doc false
+  # place_name/2 is the name of the workspace `workspace_id` that the scope reaches, else
+  # the organisation's name.
+  def place_name(scope, workspace_id) do
+    case Enum.find(Organisations.list_workspaces(scope), &(&1.id == workspace_id)) do
+      %{name: name} -> name
+      nil -> scope.organisation.name
+    end
+  end
 
   @doc false
   # field_errors/1 is the errors of a refused key, each on the field it is about: the
@@ -577,8 +585,9 @@ defmodule ApiaryWeb.ProviderLive.Index do
             phx-update="ignore"
             required
           />
-          <.workspaces_field
+          <ModelKeyComponents.workspaces_field
             :if={@choose_workspaces}
+            id="new-provider"
             form={@form}
             workspaces={@workspaces}
             organisation={@current_scope.organisation.name}
@@ -766,94 +775,6 @@ defmodule ApiaryWeb.ProviderLive.Index do
     >
       {gettext("Remove")}
     </button>
-    """
-  end
-
-  # Workspaces: every workspace of the organisation, or only those ticked, a checkbox per
-  # workspace under the second choice. While every workspace is chosen, the ticks are kept
-  # in hidden fields.
-  attr :form, Phoenix.HTML.Form, required: true
-  attr :workspaces, :list, required: true
-  attr :organisation, :string, required: true
-
-  defp workspaces_field(assigns) do
-    assigns =
-      assign(assigns,
-        only: assigns.form[:reach].value != "all",
-        ticked: List.wrap(assigns.form[:workspace_ids].value),
-        errors: Enum.map(assigns.form[:workspaces].errors, &translate_error/1)
-      )
-
-    ~H"""
-    <fieldset
-      id="new-provider-workspaces"
-      class="fieldset"
-      aria-invalid={@errors != [] && "true"}
-      aria-describedby={@errors != [] && "new-provider-workspaces-error"}
-    >
-      <legend class="mb-1 text-[13px]/[18px] font-medium">{gettext("Workspaces")}</legend>
-      <input type="hidden" name="provider[workspace_ids][]" value="" />
-      <label
-        for="new-provider-reach-all"
-        class="inline-flex w-fit cursor-pointer items-center gap-2 text-[13.5px]/5 max-md:min-h-10"
-      >
-        <input
-          type="radio"
-          id="new-provider-reach-all"
-          name="provider[reach]"
-          value="all"
-          checked={!@only}
-          class="radio radio-sm radio-primary"
-        />
-        {gettext("Every workspace in %{organisation}", organisation: @organisation)}
-      </label>
-      <label
-        for="new-provider-reach-selected"
-        class="inline-flex w-fit cursor-pointer items-center gap-2 text-[13.5px]/5 max-md:min-h-10"
-      >
-        <input
-          type="radio"
-          id="new-provider-reach-selected"
-          name="provider[reach]"
-          value="selected"
-          checked={@only}
-          class="radio radio-sm radio-primary"
-        />
-        {gettext("Only these workspaces")}
-      </label>
-      <div :if={@only} id="new-provider-workspace-list" class="grid gap-1 pl-6">
-        <label
-          :for={workspace <- @workspaces}
-          for={"new-provider-workspace-#{workspace.id}"}
-          class="inline-flex w-fit cursor-pointer items-center gap-2 text-[13.5px]/5 max-md:min-h-10"
-        >
-          <input
-            type="checkbox"
-            id={"new-provider-workspace-#{workspace.id}"}
-            name="provider[workspace_ids][]"
-            value={workspace.id}
-            checked={workspace.id in @ticked}
-            class="checkbox checkbox-sm checkbox-primary"
-          />
-          {workspace.name}
-        </label>
-      </div>
-      <input
-        :for={id <- @ticked}
-        :if={!@only}
-        type="hidden"
-        name="provider[workspace_ids][]"
-        value={id}
-      />
-      <p
-        :for={msg <- @errors}
-        id="new-provider-workspaces-error"
-        class="flex items-center gap-1.5 text-[12.5px]/[18px] text-error"
-      >
-        <.icon name="hero-exclamation-circle-micro" class="size-4 flex-none" />
-        {msg}
-      </p>
-    </fieldset>
     """
   end
 

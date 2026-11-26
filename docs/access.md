@@ -583,6 +583,20 @@ page, the paths of New model provider key and Edit key are not found, and
 change leaves the provider's `provider_keys_changed` entry; a save of Edit key that
 changes nothing leaves none.
 
+Edit key's Workspaces is `provider.write` too. A save keeps each workspace of the key
+that the person does not reach, except one marked for deletion. A save with the key's
+workspaces less the ones marked for deletion moves nothing, and the marked ones stay. A
+key for every workspace gets chosen workspaces only from a person who reaches every
+workspace; for anyone else the save returns `:forbidden` and changes nothing. A move
+leaves a `provider_key_moved` entry on the provider the key moved to, with the public
+ids of both providers and of their workspaces, the key's name and its identity line.
+The rest is by case: `provider_created` for a new provider; the old provider's
+`provider_default_key_changed` when the key was its default and it keeps other keys;
+the old provider's `provider_keys_changed` when it keeps other keys, or its
+`provider_deleted` when the key was its last; and the old provider's
+`provider_keys_changed` first when the save also changes the key's name, value or
+settings.
+
 A model choice's fallbacks, on Workspace settings › Model, are saved with the choice,
 under the choice's action: `model_choice.write` of the workspace or the target, owners'
 and admins', of the feature `factory`.

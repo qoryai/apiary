@@ -534,21 +534,40 @@ replaces the navigation it is in.
   new keys.": only a new key gets such a name. A renamed default key stays the
   provider's default. Then New value, an optional
   password field that is empty after every save, with "Leave it empty to keep the
-  value." (for a provider whose keys are logins, Sign in with ChatGPT), then Resets, Pause
-  for and Use up to as on New model provider key, then Workspaces, the key's workspaces
-  as text in the list's words, which a person cannot change. Save goes back to the list with "… is saved." and
-  the key's identity line. Edit key removes the spaces, tabs and newlines around New
-  value before the save; a New value that is empty after that keeps the key's value and
-  its cooldown; any other replaces the value, even one that differs from it only in those
-  spaces, and ends the key's cooldown. A New value that fails the checks of Key saves
-  nothing and shows the error under New value, such as "must not contain a NUL byte".
-  Workspace settings › Secrets and variables has the same Resets, Pause for and Use up to
-  on Change value of a model provider's key, which removes the spaces, tabs and newlines
-  around the key's value as Edit key does; such a secret has no Add value and no Rename
-  value. Change value
-  with New value empty, or of only spaces, tabs or newlines, saves the settings and
-  keeps the key's value. Another secret's value is saved as typed, its last newline
-  included.
+  value." (for a provider whose keys are logins, Sign in with ChatGPT), then Workspaces,
+  then Resets, Pause for and Use up to as on New model provider key. Where the organisation
+  has two or more workspaces, Workspaces is the field of New model provider key with the
+  key's workspaces chosen; elsewhere it is the key's workspaces as text in the list's
+  words. Save with other workspaces moves the key, with its name, value, settings and
+  state, to the provider of those workspaces that New model provider key would add it to,
+  or to a new one; a save with the key's workspaces, or with those less the ones marked
+  for deletion, moves nothing. A workspace that the person does not reach stays; when the
+  key moves, one marked for deletion goes. A move that Remove's rules for a provider's
+  last key stop saves nothing and shows above the form: for a workspace's choice, "Add
+  another key, or choose another provider in Workspace settings › Model, then change the
+  workspaces of key-2. It is the last Claude subscription token key for Checkout."; for
+  the organisation's default, "Add another key for every workspace in Northwind, then
+  change the workspaces of key-2. The organisation's default model uses Claude
+  subscription token."; and while a run uses the provider, "Wait until the runs that use
+  key-2 end, then change its workspaces.". A move of a key of a provider whose settings
+  were changed outside Qory Apiary shows "Ask the administrator of this Qory Apiary to
+  check Northwind Claude: its settings were changed outside Qory Apiary, so its keys
+  cannot move.". Only these workspaces with none ticked shows "Choose at least one
+  workspace."; a Name that the keys of those workspaces have shows "is already the name
+  of another key" under Name; and Only these workspaces for a key of every workspace,
+  from a person who does not reach every workspace, shows "Only owners and admins change
+  the integrations of the organisation.". Save goes back to the list with "… is saved."
+  and the key's identity line, read from the provider the key moved to. Edit key removes
+  the spaces, tabs and newlines around New value before the save; a New value that is
+  empty after that keeps the key's value and its cooldown; any other replaces the value,
+  even one that differs from it only in those spaces, and ends the key's cooldown. A New
+  value that fails the checks of Key saves nothing and shows the error under New value,
+  such as "must not contain a NUL byte". Workspace settings › Secrets and variables has
+  the same Resets, Pause for and Use up to on Change value of a model provider's key,
+  which removes the spaces, tabs and newlines around the key's value as Edit key does;
+  such a secret has no Add value and no Rename value. Change value with New value empty,
+  or of only spaces, tabs or newlines, saves the settings and keeps the key's value.
+  Another secret's value is saved as typed, its last newline included.
 - **Workspace settings › Model** (`/settings/model`, `ApiaryWeb.ModelChoiceLive`) has
   Provider, one entry for each key group of the model providers that serve the workspace
   (the providers of one kind and one address), whose keys runs take: labelled by its
