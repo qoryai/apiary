@@ -9,6 +9,8 @@ defmodule ApiaryWeb.ModelTiers do
   #
   # The state:
   #
+  #   * `key_groups/1` the providers a form offers of those that serve a workspace, one per
+  #     key group, each named by its group's label;
   #   * `entries/2` the providers a form offers, each a provider entry: `value`, the
   #     provider's public id; `label`, the provider's name; the `provider`;
   #     `provider_ref`, the provider's row id; the provider's `models`, as
@@ -37,6 +39,8 @@ defmodule ApiaryWeb.ModelTiers do
   alias Apiary.ModelChoices
   alias Apiary.ModelChoices.{ModelChoice, Resolution}
   alias Apiary.Connections.Connection
+  alias Apiary.Kinds.Providers
+  alias Apiary.ModelKeys.Group
   alias Apiary.Kinds.{Provider, Runtime}
 
   @doc "The tiers in the order a form shows them: the most capable first."
@@ -50,6 +54,50 @@ defmodule ApiaryWeb.ModelTiers do
   defp blank_tier, do: %{"model" => "", "effort" => ""}
 
   ## Providers
+
+  @doc """
+  Of `providers`, rows that serve one workspace, the first provider of each key group
+  (`Apiary.ModelKeys.Group.firsts/1`), each with its group's label as its `name`: the
+  title of its kind in the catalogue, with its address for a kind whose endpoint is a
+  setting, such as LiteLLM ("LiteLLM at https://litellm.example.com"); its name for a kind
+  the catalogue does not have. `{firsts, first_of}`, as `Group.firsts/1` returns them. A
+  row so named is for a form to show, never to write.
+  """
+  @spec key_groups([Connection.t()]) :: {[Connection.t()], %{Ecto.UUID.t() => Ecto.UUID.t()}}
+  def key_groups(providers) do
+    {firsts, first_of} = Group.firsts(providers)
+    {Enum.map(firsts, &%{&1 | name: group_label(&1)}), first_of}
+  end
+
+  defp group_label(%Connection{provider_kind: kind, settings: settings} = provider) do
+    with true <- is_binary(kind),
+         {:ok, %Apiary.Kinds.Provider{} = described} <- Providers.fetch(kind) do
+      case addresses(described, settings) do
+        [] ->
+          described.title
+
+        addresses ->
+          gettext("%{provider} at %{address}",
+            provider: described.title,
+            address: Enum.join(addresses, ", ")
+          )
+      end
+    else
+      _not_described -> provider.name
+    end
+  end
+
+  defp addresses(described, settings) do
+    values =
+      case Jason.decode(settings || "{}") do
+        {:ok, %{} = values} -> values
+        _not_a_map -> %{}
+      end
+
+    for name <- Apiary.Kinds.Provider.address_settings(described),
+        is_binary(values[name]),
+        do: values[name]
+  end
 
   @doc """
   The provider entries of `providers`, each a map of `provider`, `models`, `free` and

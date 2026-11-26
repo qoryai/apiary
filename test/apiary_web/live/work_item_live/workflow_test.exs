@@ -6326,14 +6326,14 @@ defmodule ApiaryWeb.WorkItemLive.WorkflowTest do
         %{
           "text" => "The run stopped: the gateway had no model key for the run.",
           "action" => "run_again",
-          "fix" => "Add a model key in Organisation settings › Model providers."
+          "fix" => "Add a model key in Organisation settings › Model provider keys."
         }
       ])
 
       {:ok, view, _html} = live(conn, page(scope, work_item.number))
 
       assert line(view, "#work-item-needs-point-1") ==
-               "The run stopped: the gateway had no model key for the run. Add a model key in Organisation settings › Model providers."
+               "The run stopped: the gateway had no model key for the run. Add a model key in Organisation settings › Model provider keys."
     end
   end
 

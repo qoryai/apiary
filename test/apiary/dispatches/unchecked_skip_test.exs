@@ -381,12 +381,13 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
     first = queued!(scope)
     second = queued!(scope)
 
-    # A choice for the third run's target: an API provider with a key not in cooldown.
+    # A choice for the third run's target: an API provider of another kind, so of another
+    # key group, with a key not in cooldown.
     {target, of} = ticket_target_fixture(scope, %{system: "github.example", path: "acme/site"})
 
     {:ok, good} =
       Connections.create_provider(scope, %{
-        provider: "anthropic",
+        provider: "deepseek",
         name: "Free keys",
         keys: [@api_key]
       })
@@ -417,11 +418,11 @@ defmodule Apiary.Dispatches.UncheckedSkipTest do
 
     {:ok, other} =
       Connections.create_provider(scope, %{
-        provider: "anthropic",
+        provider: "claude-subscription",
         name: "Site keys",
         applies_to: "selected",
         workspace_ids: [site.id],
-        keys: [%{value_id: "main", value: "sk-ant-api03-skip-site-0123456789"}]
+        keys: [%{value_id: "main", value: "sk-ant-oat01-skip-site-0123456789"}]
       })
 
     # The organisation's choice, whose fallback applies to the other workspace alone.

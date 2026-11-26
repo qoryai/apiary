@@ -1421,7 +1421,7 @@ defmodule ApiaryWeb.WorkItemLive.ShowTest do
       |> Enum.join(" ")
     end
 
-    @key_fix "Add a model key in Organisation settings › Model providers."
+    @key_fix "Add a model key in Organisation settings › Model provider keys."
 
     # Run `attempt` of 3 of a work item, refused by its gateway with `code` through the
     # refusal's path: queued, claimed and handed over, then its `run.refused` event

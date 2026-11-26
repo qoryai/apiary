@@ -1148,12 +1148,6 @@ msgstr ""
 
 #: lib/apiary_web/live/provider_live/key.ex
 #, elixir-autogen, elixir-format
-msgid "%{identity} is added."
-msgstr ""
-
-#: lib/apiary_web/live/provider_live/key.ex
-#: lib/apiary_web/live/provider_live/show.ex
-#, elixir-autogen, elixir-format
 msgid "%{identity} is saved."
 msgstr ""
 
@@ -1283,11 +1277,6 @@ msgstr ""
 msgid "%{items} from the %{assigned}. Take one in to make it a work item."
 msgstr ""
 
-#: lib/apiary_web/live/provider_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "%{keys}, %{cooling}"
-msgstr ""
-
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "%{key} leaves focus"
@@ -1379,6 +1368,13 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgid "%{names} and %{last}"
 msgstr ""
+
+#: lib/apiary_web/components/model_key_components.ex
+#, elixir-autogen, elixir-format
+msgid "%{names} and %{number} more"
+msgid_plural "%{names} and %{number} more"
+msgstr[0] ""
+msgstr[1] ""
 
 #: lib/apiary_web/machine_type_words.ex
 #, elixir-autogen, elixir-format
@@ -2387,13 +2383,6 @@ msgid_plural "%{number} hours"
 msgstr[0] ""
 msgstr[1] ""
 
-#: lib/apiary_web/live/provider_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} in cooldown"
-msgid_plural "%{number} in cooldown"
-msgstr[0] ""
-msgstr[1] ""
-
 #: lib/apiary_web/live/organisation_live.ex
 #, elixir-autogen, elixir-format
 msgid "%{number} invitation pending"
@@ -2413,13 +2402,6 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} kB"
 msgstr ""
-
-#: lib/apiary_web/live/provider_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} key"
-msgid_plural "%{number} keys"
-msgstr[0] ""
-msgstr[1] ""
 
 #: lib/apiary_web/components/run_page_components.ex
 #: lib/apiary_web/components/transcript_components.ex
@@ -2576,13 +2558,6 @@ msgstr[1] ""
 #, elixir-autogen, elixir-format
 msgid "%{number} more to add"
 msgid_plural "%{number} more to add"
-msgstr[0] ""
-msgstr[1] ""
-
-#: lib/apiary_web/live/provider_live/index.ex
-#, elixir-autogen, elixir-format
-msgid "%{number} needs a new key"
-msgid_plural "%{number} need a new key"
 msgstr[0] ""
 msgstr[1] ""
 
@@ -3214,9 +3189,9 @@ msgstr ""
 msgid "%{product} menu"
 msgstr ""
 
-#: lib/apiary_web/live/provider_live/key.ex
+#: lib/apiary_web/components/model_tiers.ex
 #, elixir-autogen, elixir-format
-msgid "%{provider} has %{number} keys, the most it can have. Delete a key to add another."
+msgid "%{provider} at %{address}"
 msgstr ""
 
 #: lib/apiary_web/components/model_tiers.ex
@@ -3376,7 +3351,7 @@ msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "%{set_up} first, then add a model provider in its Model step."
+msgid "%{set_up} first, then add a model provider key in its Model step."
 msgstr ""
 
 #: lib/apiary_web/components/core_components.ex
@@ -4897,9 +4872,8 @@ msgid "About mail"
 msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
-#: lib/apiary_web/live/provider_live/key.ex
 #, elixir-autogen, elixir-format
-msgid "About model providers"
+msgid "About model provider keys"
 msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex
@@ -5154,11 +5128,6 @@ msgstr ""
 msgid "Add %{extends} with the workspace's stack to %{file}: hooks run only in a harness file that extends a stack."
 msgstr ""
 
-#: lib/apiary_web/live/model_choice_live.ex
-#, elixir-autogen, elixir-format
-msgid "Add %{provider} again in %{place}: its settings no longer fit this version of Qory Apiary."
-msgstr ""
-
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Add %{title}"
@@ -5183,6 +5152,16 @@ msgstr ""
 msgid "Add a key"
 msgstr ""
 
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "Add a key of another provider in %{place}, then add that provider here as a fallback."
+msgstr ""
+
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "Add a key of another provider in %{place}: Qory Apiary no longer has the description %{provider} was added from."
+msgstr ""
+
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
 msgid "Add a machine"
@@ -5205,22 +5184,22 @@ msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Add a model key in Organisation settings › Model providers. The gateway had no model key for %{attempt}."
+msgid "Add a model key in Organisation settings › Model provider keys. The gateway had no model key for %{attempt}."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Add a model key in Organisation settings › Model providers. The gateway had no model key for %{attempt}. That was attempt %{number} of %{of}, the last attempt of this take in."
+msgid "Add a model key in Organisation settings › Model provider keys. The gateway had no model key for %{attempt}. That was attempt %{number} of %{of}, the last attempt of this take in."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Add a model key in Organisation settings › Model providers. The gateway had no model key for attempt %{attempt}"
+msgid "Add a model key in Organisation settings › Model provider keys. The gateway had no model key for attempt %{attempt}"
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
-msgid "Add a model key in Organisation settings › Model providers. The gateway had no model key for the run."
+msgid "Add a model key in Organisation settings › Model provider keys. The gateway had no model key for the run."
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -5233,19 +5212,24 @@ msgstr ""
 msgid "Add a model key to %{provider}, or choose a model of another provider for workflow %{workflow}. %{provider} has no model key."
 msgstr ""
 
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "Add a model provider key in %{place}, then choose its model here."
+msgstr ""
+
+#: lib/apiary_web/live/model_choice_live.ex
+#, elixir-autogen, elixir-format
+msgid "Add a model provider key in %{place}."
+msgstr ""
+
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Add a model key, so agents can run."
+msgid "Add a model provider key, so agents can run."
 msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
-msgid "Add a model provider in %{place}, then choose its model here."
-msgstr ""
-
-#: lib/apiary_web/live/model_choice_live.ex
-#, elixir-autogen, elixir-format
-msgid "Add a model provider in %{place}."
+msgid "Add a new key for %{provider} in %{place}: its settings no longer fit this version of Qory Apiary."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/show.ex
@@ -5304,14 +5288,14 @@ msgstr ""
 msgid "Add an integration"
 msgstr ""
 
-#: lib/apiary_web/live/model_choice_live.ex
+#: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Add another model provider in %{place}, then add it here as a fallback."
+msgid "Add another key for every workspace in %{organisation}, then remove %{key}. The organisation's default model uses %{provider}."
 msgstr ""
 
-#: lib/apiary_web/live/model_choice_live.ex
+#: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "Add another model provider in %{place}: Qory Apiary no longer has the description %{provider} was added from."
+msgid "Add another key, or choose another provider in Workspace settings › Model, then remove %{key}. It is the last %{provider} key for %{place}."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -5369,12 +5353,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/release.ex
 #, elixir-autogen, elixir-format
 msgid "Add it"
-msgstr ""
-
-#: lib/apiary_web/live/provider_live/key.ex
-#: lib/apiary_web/live/provider_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Add key"
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
@@ -6675,7 +6653,6 @@ msgid "Available"
 msgstr ""
 
 #: lib/apiary_web/live/integration_live/common.ex
-#: lib/apiary_web/live/provider_live/index.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Available to every workspace in %{organisation}"
@@ -7116,6 +7093,11 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #, elixir-autogen, elixir-format
 msgid "Change to deny"
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Change type_settings.json_schema in process.yaml so that it accepts %{value}. The schema fails it: %{error}."
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -7938,7 +7920,7 @@ msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
 #, elixir-autogen, elixir-format
-msgid "Choose another provider on the Model step, or add a key to that provider in Organisation settings › Model providers, then press Run the test. The model provider chosen for this workspace has no key."
+msgid "Choose another provider on the Model step, or add a key to that provider in Organisation settings › Model provider keys, then press Run the test. The model provider chosen for this workspace has no key."
 msgstr ""
 
 #: lib/apiary_web/components/set_up_components.ex
@@ -7954,6 +7936,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Choose another workflow for %{stage}. To keep %{workflow}, change the harness in Workspace settings › Harness to one that lists it under workflows. The Qory harness does not list %{workflow}, so %{stage} waits and starts no run."
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Choose at least one workspace."
 msgstr ""
 
 #: lib/apiary_web/live/node_live/access_key.ex
@@ -8544,6 +8531,11 @@ msgstr ""
 #: lib/apiary_web/components/support.ex
 #, elixir-autogen, elixir-format
 msgid "Contact support."
+msgstr ""
+
+#: lib/apiary_web/live/stages_live/words.ex
+#, elixir-autogen, elixir-format
+msgid "Contact support. The Qory harness has a process that Qory Apiary cannot use, so you cannot save changes until support fixes it."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -9811,9 +9803,14 @@ msgstr ""
 #: lib/apiary_web/live/artifact_live/types.ex
 #: lib/apiary_web/live/instance_live/machine_types.ex
 #: lib/apiary_web/live/integration_live/definition.ex
-#: lib/apiary_web/live/provider_live/show.ex
+#: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Edit"
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Edit %{key}"
 msgstr ""
 
 #: lib/apiary_web/live/artifact_live/types.ex
@@ -9835,11 +9832,6 @@ msgstr ""
 #: lib/apiary_web/live/provider_live/key.ex
 #, elixir-autogen, elixir-format
 msgid "Edit key"
-msgstr ""
-
-#: lib/apiary_web/live/provider_live/show.ex
-#, elixir-autogen, elixir-format
-msgid "Edit key %{identity}"
 msgstr ""
 
 #: lib/apiary_web/live/secret_live/index.ex
@@ -10342,9 +10334,15 @@ msgstr ""
 msgid "Every workflow is declared, every type exists, and every input is an output of an earlier stage."
 msgstr ""
 
+#: lib/apiary_web/components/model_key_components.ex
 #: lib/apiary_web/live/integration_live/common.ex
 #, elixir-autogen, elixir-format
 msgid "Every workspace"
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Every workspace in %{organisation}"
 msgstr ""
 
 #: lib/apiary_web/live/node_live/index.ex
@@ -12854,7 +12852,6 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/definition.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/provider_live/index.ex
-#: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -12897,8 +12894,6 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/node.ex
 #: lib/apiary_web/live/node_live/access_key.ex
 #: lib/apiary_web/live/policy_live/views.ex
-#: lib/apiary_web/live/provider_live/index.ex
-#: lib/apiary_web/live/provider_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Keys"
 msgstr ""
@@ -13985,11 +13980,14 @@ msgstr ""
 msgid "Model provider key"
 msgstr ""
 
-#: lib/apiary_web/components/host_components.ex
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/provider_live/index.ex
 #: lib/apiary_web/live/provider_live/key.ex
-#: lib/apiary_web/live/provider_live/show.ex
+#, elixir-autogen, elixir-format
+msgid "Model provider keys"
+msgstr ""
+
+#: lib/apiary_web/components/host_components.ex
 #, elixir-autogen, elixir-format
 msgid "Model providers"
 msgstr ""
@@ -14196,6 +14194,7 @@ msgstr ""
 #: lib/apiary_web/live/node_live/gateways.ex
 #: lib/apiary_web/live/node_live/index.ex
 #: lib/apiary_web/live/node_live/show.ex
+#: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/stages_live/inspector.ex
@@ -14382,7 +14381,7 @@ msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "New model provider"
+msgid "New model provider key"
 msgstr ""
 
 #: lib/apiary_web/live/user_live/password.ex
@@ -14826,7 +14825,7 @@ msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
-msgid "No model provider yet"
+msgid "No model provider key yet"
 msgstr ""
 
 #: lib/apiary_web/live/member_live/index.ex
@@ -16179,8 +16178,12 @@ msgstr ""
 msgid "Only owners and admins add machines."
 msgstr ""
 
-#: lib/apiary_web/live/model_choice_live.ex
 #: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only owners and admins add model provider keys."
+msgstr ""
+
+#: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
 msgid "Only owners and admins add model providers."
 msgstr ""
@@ -16340,6 +16343,11 @@ msgstr ""
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "Only the result, read from the runtime's output, is shown."
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Only these workspaces"
 msgstr ""
 
 #: lib/apiary_web/components/overview_components.ex
@@ -16647,7 +16655,7 @@ msgstr ""
 
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
-msgid "Organisation settings › Model providers"
+msgid "Organisation settings › Model provider keys"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex
@@ -17613,11 +17621,6 @@ msgstr ""
 msgid "Qory Apiary could not save the new sign-in on %{time}."
 msgstr ""
 
-#: lib/apiary_web/components/model_key_components.ex
-#, elixir-autogen, elixir-format
-msgid "Qory Apiary could not save the sign-in."
-msgstr ""
-
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary could not save the work item, so the %{item} was not taken in."
@@ -17758,7 +17761,6 @@ msgid "Qory Apiary stopped reading %{source} after %{seconds} seconds, before it
 msgstr ""
 
 #: lib/apiary_web/live/provider_live/index.ex
-#: lib/apiary_web/live/provider_live/key.ex
 #, elixir-autogen, elixir-format
 msgid "Qory Apiary stores the key encrypted, and nobody can view it again."
 msgstr ""
@@ -18218,6 +18220,7 @@ msgstr ""
 #: lib/apiary_web/components/policy_components.ex
 #: lib/apiary_web/live/instance_live/adapter.ex
 #: lib/apiary_web/live/model_choice_live.ex
+#: lib/apiary_web/live/provider_live/index.ex
 #: lib/apiary_web/live/secret_live/index.ex
 #: lib/apiary_web/live/stages_live/inspector.ex
 #, elixir-autogen, elixir-format
@@ -18248,6 +18251,16 @@ msgstr ""
 #: lib/apiary/policy.ex
 #, elixir-autogen, elixir-format
 msgid "Remove %{host} from the rule. %{integration} needs this host, so no rule can deny it."
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove %{key}"
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove %{key}?"
 msgstr ""
 
 #: lib/apiary_web/live/instance_live/adapter.ex
@@ -18306,6 +18319,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Remove harness sources or files, then run Explore again. The run did not start: the call to %{adapter} for %{what} was over 256 KiB."
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Remove key"
 msgstr ""
 
 #: lib/apiary_web/live/stages_live/inspector.ex
@@ -18575,6 +18593,7 @@ msgstr ""
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/member_live/index.ex
 #: lib/apiary_web/live/policy_live/show.ex
+#: lib/apiary_web/live/provider_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Removing"
 msgstr ""
@@ -19421,6 +19440,11 @@ msgstr ""
 msgid "Runs handed over"
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Runs in %{workspaces} stop using it."
+msgstr ""
+
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Runs in %{workspace} then wait for this pool, and the Qory Pool stops taking them."
@@ -19435,6 +19459,11 @@ msgstr ""
 #, elixir-autogen, elixir-format
 msgctxt "plain"
 msgid "Runs in %{workspace} use the workflow you choose here, from a harness repository."
+msgstr ""
+
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Runs in every workspace stop using it."
 msgstr ""
 
 #: lib/apiary_web/components/policy_components.ex
@@ -20438,7 +20467,6 @@ msgid "Shared harness"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
-#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Shared in %{organisation}"
 msgstr ""
@@ -21024,6 +21052,7 @@ msgstr ""
 #: lib/apiary_web/live/instance_live/adapters.ex
 #: lib/apiary_web/live/instance_live/nodes.ex
 #: lib/apiary_web/live/node_live/index.ex
+#: lib/apiary_web/live/provider_live/index.ex
 #: lib/apiary_web/live/run_live/index.ex
 #: lib/apiary_web/live/run_live/show.ex
 #: lib/apiary_web/live/user_live/organisations.ex
@@ -25015,6 +25044,11 @@ msgstr[1] ""
 msgid "Wait until %{time}, then send the link again. Qory Apiary sends at most one test link a minute."
 msgstr ""
 
+#: lib/apiary_web/live/provider_live/index.ex
+#, elixir-autogen, elixir-format
+msgid "Wait until the runs that use %{key} end, then remove it."
+msgstr ""
+
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "Wait until the test run in progress ends, then press %{run} again."
@@ -25862,6 +25896,8 @@ msgstr ""
 #: lib/apiary_web/components/settings_components.ex
 #: lib/apiary_web/live/integration_live/show.ex
 #: lib/apiary_web/live/organisation_live.ex
+#: lib/apiary_web/live/provider_live/index.ex
+#: lib/apiary_web/live/provider_live/key.ex
 #: lib/apiary_web/live/settings_live.ex
 #: lib/apiary_web/live/user_live/organisations.ex
 #, elixir-autogen, elixir-format
@@ -27178,7 +27214,6 @@ msgid "every path"
 msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
-#: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
 msgid "every workspace"
 msgstr ""

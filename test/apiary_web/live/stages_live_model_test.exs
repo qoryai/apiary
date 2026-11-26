@@ -968,6 +968,47 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
     assert has_element?(view, @saved, "Saved.")
   end
 
+  test "Provider lists a key group once, by its first provider, and shows an override on a later provider as it",
+       %{conn: conn, path: path, scope: scope, anthropic: anthropic, openrouter: openrouter} do
+    # A second Anthropic provider, for the workspace alone: of Anthropic's key group.
+    {:ok, checkout} =
+      Connections.create_provider(
+        scope,
+        %{
+          provider: "anthropic",
+          name: "Checkout API keys",
+          keys: [%{value_id: "checkout", value: "sk-fold-model-checkout-0123456789"}]
+        },
+        :workspace
+      )
+
+    default!(scope, checkout)
+
+    {:ok, _choice} =
+      ModelChoices.put_choice(scope, {:workspace, @workflow}, %{
+        provider: checkout.public_id,
+        tiers: @default_tiers
+      })
+
+    {:ok, view, _html} = live(conn, path)
+
+    assert provider_options(view) == [
+             {"", "Use workspace default", false},
+             {anthropic.public_id, "Anthropic API key", true},
+             {openrouter.public_id, openrouter.name, false}
+           ]
+
+    assert has_element?(
+             view,
+             ~s{#stage-entry-0-model-tiers_thinking_effort option[value="high"][selected]}
+           )
+
+    # The default's line shows the group's label too.
+    save_model(view, %{"provider" => ""})
+    assert has_element?(view, @line, "Uses the workspace default: Anthropic API key.")
+    refute render(view) =~ "Checkout API keys"
+  end
+
   describe "the feature model_proxies" do
     setup %{scope: scope} = ctx do
       litellm =
@@ -1002,7 +1043,10 @@ defmodule ApiaryWeb.StagesLive.ModelTest do
 
       {:ok, view, _html} = live(conn, path)
 
-      assert {litellm.public_id, litellm.name, true} in provider_options(view)
+      # Named by its key group: its kind's title and its address.
+      assert {litellm.public_id, "LiteLLM at https://litellm.example.com", true} in provider_options(
+               view
+             )
 
       assert has_element?(
                view,

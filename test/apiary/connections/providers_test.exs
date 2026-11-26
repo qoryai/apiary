@@ -151,6 +151,7 @@ defmodule Apiary.Connections.ProvidersTest do
       assert Repo.aggregate(Connection, :count) == 0
     end
 
+    @tag needs: [:factory, :model_proxies]
     test "checks each address setting by the endpoint rule", %{scope: scope} do
       for {address, message} <- [
             {"http://models.example.com",
@@ -243,6 +244,7 @@ defmodule Apiary.Connections.ProvidersTest do
       assert changes(provider) == ["provider_created", "updated"]
     end
 
+    @tag needs: [:factory, :model_proxies]
     test "enters a change of address with its host before and after", %{scope: scope} do
       {:ok, provider} = litellm(scope, "https://litellm.example.com")
 
@@ -357,22 +359,19 @@ defmodule Apiary.Connections.ProvidersTest do
       assert {:ok, provider} =
                Connections.add_provider_key(scope, provider, %{value_id: "third", value: "z"})
 
-      assert {:ok, provider} = Connections.rename_provider_key(scope, provider, "third", "fourth")
+      assert {:ok, provider} =
+               Connections.update_provider_key(scope, provider, "third", %{"value_id" => "fourth"})
+
       assert {:ok, provider} = Connections.set_provider_key(scope, provider, "fourth", "w")
       assert {:ok, provider} = Connections.delete_provider_key(scope, provider, "spare")
       assert Enum.map(provider.secret.values, & &1.value_id) == ["fourth", "main"]
 
-      # The default key stays, by its value id.
-      for refused <- [
-            Connections.delete_provider_key(scope, provider, "main"),
-            Connections.rename_provider_key(scope, provider, "main", "first")
-          ] do
-        assert {:error, changeset} = refused
+      # The default key stays, by its value id; a rename moves the default with it.
+      assert {:error, changeset} = Connections.delete_provider_key(scope, provider, "main")
 
-        assert errors_on(changeset).value_id == [
-                 "Choose another default key for OpenRouter first: OpenRouter · …6789 is its default key."
-               ]
-      end
+      assert errors_on(changeset).value_id == [
+               "Choose another default key for OpenRouter first: OpenRouter · …6789 is its default key."
+             ]
 
       assert {:error, changeset} =
                Connections.add_provider_key(scope, provider, %{value_id: "Bad", value: "x"})
@@ -387,12 +386,17 @@ defmodule Apiary.Connections.ProvidersTest do
 
       assert Enum.map(entries, &{&1.before, &1.after, &1.details["value_id"]}) == [
                {nil, %{"value_id" => "third"}, "third"},
-               {%{"value_id" => "third"}, %{"value_id" => "fourth"}, nil},
+               {%{"value_id" => "third"}, %{"value_id" => "fourth"}, "fourth"},
                {nil, nil, "fourth"},
                {%{"value_id" => "spare"}, nil, "spare"}
              ]
 
       refute Repo.exists?(from e in Entry, where: e.subject_id == ^provider.secret_id)
+
+      assert {:ok, renamed} =
+               Connections.update_provider_key(scope, provider, "main", %{"value_id" => "first"})
+
+      assert renamed.default_value_id == "first"
     end
 
     test "are left out of the organisation's secrets, and not found there", %{scope: scope} do
@@ -676,7 +680,7 @@ defmodule Apiary.Connections.ProvidersTest do
       assert {:error, changeset} =
                Connections.update_provider_key(scope, provider, "backup", %{"value_id" => "main"})
 
-      assert errors_on(changeset).value_id == ["is already a value ID of this secret"]
+      assert errors_on(changeset).value_id == ["is already the name of another key"]
       assert Connections.update_provider_key(scope, provider, "gone", %{}) == {:error, :not_found}
     end
 
@@ -734,7 +738,7 @@ defmodule Apiary.Connections.ProvidersTest do
                  "settings" => Map.put(@settings, "pause_seconds", 60)
                })
 
-      assert errors_on(changeset).value_id == ["is already a value ID of this secret"]
+      assert errors_on(changeset).value_id == ["is already the name of another key"]
       refute inspect(changeset, limit: :infinity, printable_limit: :infinity) =~ @key
       assert value!(provider, "spare").id == spare.id
       assert value!(provider, "spare").value_set_at == spare.value_set_at

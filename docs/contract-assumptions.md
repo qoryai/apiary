@@ -916,44 +916,49 @@ keeps the results fit and no longer fit by the SHA-256 of the settings and of th
 on each node, until the node restarts or the table, at 4,096 results, empties.
 
 **A run's model keys.** A run of the step `workflow` whose model choice resolves to a
-model provider gets the provider's keys at its claim
+model provider gets the keys of that provider's key group at its claim
 (`Apiary.Dispatches.RunSettings`, `Apiary.ModelKeys.Order`), at most 6, so that the 16
 `credentials` of a run configuration hold them, the registry's credential, the work and
-push credentials, and the harness links. A run of a stage with `shared_run: true` also
-gets the keys of each provider its later sessions run on, one provider per session. The
-claim picks at most 6 keys in this order: the keys of the provider of the default model
-provider credential, at most 6 less the number of other providers; then one key of each
-other provider, in session order; then the other providers' remaining keys;
-`credentials` lists them provider by provider, the provider of the default model
-provider credential first. A run whose first session runs on the machine's local model
-provider credential, as its workflow resolves to no model choice, gets no key. The run
-keeps its keys in `run_model_keys`, one row per key. Each key is an API credential named
-`<provider's public id>-<n>`, `n` from 1 for each provider, with its provider's
-`format`, `endpoint` and `auth`, and `group`, the provider's public id, so each
-provider's keys form one key group, which the gateway rotates, cools and stops apart
-from every other group (the Forager contract, Several model keys). Where the workflows
-of a stage with `shared_run: true`, their later steps included (the default step under a
-workflow's override, then the fallbacks), use more than 6 providers, a save of the stage
-fails, and a claim of a run of the stage ends `too_many_providers`. A save of the stage
+push credentials, and the harness links. A key group (`Apiary.ModelKeys.Group`) is every
+model provider of the organisation with the provider's kind, chain and settings (its
+address) that serves the run's workspace; its head is the provider the choice points at.
+A run of a stage with `shared_run: true` also gets the keys of the key group of each
+provider its later sessions run on, one group per session. The claim picks at most 6
+keys in this order: the keys of the key group of the default model provider credential,
+at most 6 less the number of other groups; then one key of each other group, in session
+order; then the other groups' remaining keys; `credentials` lists them group by group,
+the group of the default model provider credential first. A run whose first session
+runs on the machine's local model provider credential, as its workflow resolves to no
+model choice, gets no key. The run keeps its keys in `run_model_keys`, one row per key.
+Each key is an API credential named `<its provider's public id>-<n>`, `n` from 1 for each
+provider of the group, with the group's `format`, `endpoint` and `auth`, and `group`, the
+public id of the group's head, so the keys of one key group, across its providers, form
+one group, which the gateway rotates, cools and stops apart from every other group (the
+Forager contract, Several model keys). Where the workflows of a stage with
+`shared_run: true`, their later steps included (the default step under a workflow's
+override, then the fallbacks), use more than 6 key groups, a save of the stage fails,
+and a claim of a run of the stage ends `too_many_providers`. A save of the stage
 also fails, and a claim of a run of the stage ends `session_key_missing`, in three
-cases. First, a later workflow's provider has no key, and neither has a provider of its
-later steps. Second, a workflow's runtime uses another API of a provider that an earlier
-workflow uses: one run uses one API of each provider. Third, the first workflow has no
+cases. First, a later workflow's provider has no key, nor another provider of its key
+group, and neither has a provider of its later steps. Second, a workflow's runtime uses
+another API of a key group that an earlier workflow uses: one run uses one API of each
+key group. Third, the first workflow has no
 model choice, and a later workflow's choice is on a model provider. A later workflow
 with no model choice, which runs on the default runtime, never fails the save. The claim
-orders the provider's keys at its clock: the keys with no known reset, or one already
-passed; then the keys by their known reset, the closest minute first; then the keys in
-cooldown, the earliest `cooldown_until` first. Ties go in tie order: the default key
-first, then the other keys by when each was added. A key's known reset is the earliest
-`resets_at` that a gateway reported, else the next reset of its weekly schedule; a key
-is in cooldown while one of its windows has a `cooldown_until` after the claim's clock,
-or while one of its provider's limit windows has a reported `utilization` at or above
-the key's Use up to percentage and a `resets_at` after the claim's clock
-(`Apiary.ModelKeys.cooldown/4`). The limit windows are `limit_windows` of the provider's
-model provider role in the integrations contract's description, vendored with the
-catalogue: `five_hour` and `seven_day` for the Claude subscription, none for an API key.
-The first key of that order is the default model provider credential,
-`default_model_provider_credential_name`, never a key in cooldown.
+orders the keys of the key group, across its providers, at its clock: the keys with no
+known reset, or one already passed; then the keys by their known reset, the closest
+minute first; then the keys in cooldown, the earliest `cooldown_until` first. Ties go
+in tie order: the default key of the group's head first, then the other keys by when
+each was added. A key's known reset is the earliest `resets_at` that a gateway
+reported, else the next reset of its weekly schedule; a key is in cooldown while one of
+its windows has a `cooldown_until` after the claim's clock, or while one of its
+provider's limit windows has a reported `utilization` at or above the key's Use up to
+percentage and a `resets_at` after the claim's clock (`Apiary.ModelKeys.cooldown/4`).
+The limit windows are `limit_windows` of the provider's model provider role in the
+integrations contract's description, vendored with the catalogue: `five_hour` and
+`seven_day` for the Claude subscription, none for an API key. The first key of that
+order is the default model provider credential, `default_model_provider_credential_name`,
+never a key in cooldown.
 `credentials` lists the keys in the order the contract has the server send
 them: the keys out of cooldown in tie order, then the keys in cooldown in tie order.
 Each entry has `pause_for_s`, the key's Pause for, else 60 for an API key and 3600 for a

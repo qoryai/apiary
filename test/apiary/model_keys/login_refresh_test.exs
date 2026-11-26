@@ -579,7 +579,11 @@ defmodule Apiary.ModelKeys.LoginRefreshTest do
       fresh = new_tokens("renamed")
 
       stub!(fn conn, _body ->
-        {:ok, _} = Connections.rename_provider_key(scope, plain(provider), "spare", "renamed")
+        {:ok, _} =
+          Connections.update_provider_key(scope, plain(provider), "spare", %{
+            "value_id" => "renamed"
+          })
+
         Req.Test.json(conn, fresh)
       end)
 

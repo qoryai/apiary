@@ -1,5 +1,5 @@
 defmodule ApiaryWeb.ProviderLiveFeaturesTest do
-  # Model providers and the workspace's Model need the features `factory` and `secrets`
+  # Model provider keys and the workspace's Model need the features `factory` and `secrets`
   # both: with either off, neither section is listed in the settings, and their paths are
   # not found. Not async: the features are the whole node's.
   use ApiaryWeb.ConnCase, async: false
@@ -90,8 +90,9 @@ defmodule ApiaryWeb.ProviderLiveFeaturesTest do
           keys: [%{value_id: "main", value: "sk-litellm-features-0123456789"}]
         })
 
+      row = Apiary.Repo.get_by!(Apiary.Secrets.Value, secret_id: provider.secret_id)
       {:ok, lv, _html} = live(conn, ~p"/#{scope.organisation}/settings/model-providers")
-      assert has_element?(lv, "#provider-#{provider.public_id}-name", provider.name)
+      assert has_element?(lv, "#key-#{row.id}-provider", "LiteLLM")
     end
 
     @tag with_features: Apiary.Features.all()

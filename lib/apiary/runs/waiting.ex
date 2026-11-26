@@ -17,6 +17,8 @@ defmodule Apiary.Runs.Waiting do
   #       * `{:refreshing, provider, key}`, a sign-in that expires before the end of the
   #         run's time limit is refreshed in the background, `{:restart, provider, key}`
   #         while the node is stopping and the refresh starts after it starts again;
+  #         only a key in the claim's refresh window counts
+  #         (`Apiary.ModelKeys.Order.refresh_window/2`);
   #       * `{:cooldown, provider, until}`, every key is in cooldown: `provider` is the
   #         name of the one whose key leaves its cooldown first, nil for a provider of
   #         another organisation than the run's, left from when an operator managed whole

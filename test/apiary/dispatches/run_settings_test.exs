@@ -90,13 +90,19 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
   defp provider_ids(%DispatchRun{id: id}), do: Repo.get!(DispatchRun, id).model_provider_ids
 
-  # A second Anthropic provider of the organisation, named `name`, with one key.
-  defp other_provider!(scope, name) do
+  # Another provider of the organisation, named `name`, with one key: of `kind`, a Claude
+  # subscription by default, so its keys are not of the key group of the setup's
+  # Anthropic provider (`Apiary.ModelKeys.Group`). OpenRouter's models are
+  # `anthropic/claude-…`.
+  defp other_provider!(scope, name, kind \\ "claude-subscription") do
+    prefix = if kind == "claude-subscription", do: "sk-ant-oat01-", else: "sk-or-"
+    slug = name |> String.downcase() |> String.replace(" ", "-")
+
     {:ok, provider} =
       Connections.create_provider(scope, %{
-        provider: "anthropic",
+        provider: kind,
         name: name,
-        keys: [%{value_id: "main", value: "sk-ant-#{String.downcase(name)}-0123456789"}]
+        keys: [%{value_id: "main", value: "#{prefix}#{slug}-0123456789"}]
       })
 
     provider
@@ -537,8 +543,8 @@ defmodule Apiary.Dispatches.RunSettingsTest do
     test "are at most 6, the free keys first", ctx do
       {:ok, many} =
         Connections.create_provider(ctx.scope, %{
-          provider: "anthropic",
-          keys: for(n <- 1..8, do: %{value_id: "key-#{n}", value: "sk-ant-many-#{n}"})
+          provider: "claude-subscription",
+          keys: for(n <- 1..8, do: %{value: "sk-ant-oat01-many-#{n}"})
         })
 
       choose!(ctx.scope, :workspace, %{provider: many.public_id})
@@ -556,26 +562,18 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
     test "come from the first fallback with a free key, with its runtime and tiers, while every key of the provider is in cooldown",
          ctx do
-      {:ok, cooling} =
-        Connections.create_provider(ctx.scope, %{
-          provider: "anthropic",
-          name: "Cooling keys",
-          keys: [%{value_id: "main", value: "sk-ant-cooling-0123456789"}]
-        })
-
-      {:ok, free} =
-        Connections.create_provider(ctx.scope, %{
-          provider: "anthropic",
-          name: "Free keys",
-          keys: [%{value_id: "main", value: "sk-ant-free-0123456789"}]
-        })
+      cooling = other_provider!(ctx.scope, "Cooling keys")
+      free = other_provider!(ctx.scope, "Free keys", "openrouter")
 
       choose!(ctx.scope, :workspace, %{
         provider: ctx.provider.public_id,
         model: "claude-opus-5-5",
         fallbacks: [
           fallback(cooling, all_tiers(%{"model" => "claude-opus-5-5", "effort" => "max"})),
-          fallback(free, all_tiers(%{"model" => "claude-sonnet-5-5", "effort" => "high"}))
+          fallback(
+            free,
+            all_tiers(%{"model" => "anthropic/claude-sonnet-5.5", "effort" => "high"})
+          )
         ]
       })
 
@@ -588,13 +586,13 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
       assert %{
                "runtime" => @runtime,
-               "model" => "claude-sonnet-5-5",
+               "model" => "anthropic/claude-sonnet-5.5",
                "effort" => "high",
                "tiers" => tiers
              } = settings(handed)
 
       # The fallback's tiers, its thinking tier as the run's model and effort.
-      assert tiers == all_tiers(%{"model" => "claude-sonnet-5-5", "effort" => "high"})
+      assert tiers == all_tiers(%{"model" => "anthropic/claude-sonnet-5.5", "effort" => "high"})
 
       free_id = free.id
 
@@ -852,8 +850,8 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
     test "fall to the default's fallbacks, not the override's stored ones, while the default cools too",
          ctx do
-      free = other_provider!(ctx.scope, "Free keys")
-      unread = other_provider!(ctx.scope, "Unread keys")
+      free = other_provider!(ctx.scope, "Free keys", "openrouter")
+      unread = other_provider!(ctx.scope, "Unread keys", "deepseek")
 
       # An override stored with a fallback, past the save: it is not read.
       override = override!(ctx, ctx.override, all_tiers("claude-sonnet-5-5"))
@@ -871,7 +869,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
         provider: ctx.provider.public_id,
         tiers: all_tiers("claude-opus-5-5"),
         fallbacks: [
-          fallback(free, all_tiers(%{"model" => "claude-haiku-5-5", "effort" => "low"}))
+          fallback(free, all_tiers(%{"model" => "anthropic/claude-haiku-5.5", "effort" => "low"}))
         ]
       })
 
@@ -887,10 +885,10 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert queued.model_provider_ids == [ctx.override.id, ctx.provider.id, free.id]
       assert Repo.get!(Run, handed.run.id).provider_connection_id == free.id
 
-      assert %{"model" => "claude-haiku-5-5", "effort" => "low", "tiers" => tiers} =
+      assert %{"model" => "anthropic/claude-haiku-5.5", "effort" => "low", "tiers" => tiers} =
                settings(handed)
 
-      assert tiers == all_tiers(%{"model" => "claude-haiku-5-5", "effort" => "low"})
+      assert tiers == all_tiers(%{"model" => "anthropic/claude-haiku-5.5", "effort" => "low"})
     end
 
     test "leave the run waiting for the override's and the default's providers", ctx do
@@ -914,13 +912,14 @@ defmodule Apiary.Dispatches.RunSettingsTest do
 
     test "wait for a provider once where the override and the default share it, then take the default's fallback",
          ctx do
-      free = other_provider!(ctx.scope, "Free keys")
+      # Not of the key group of the override's setup provider, whose key is free.
+      free = other_provider!(ctx.scope, "Free keys", "openrouter")
       override!(ctx, ctx.provider, all_tiers("claude-sonnet-5-5"))
 
       choose!(ctx.scope, :workspace, %{
         provider: ctx.provider.public_id,
         tiers: all_tiers("claude-opus-5-5"),
-        fallbacks: [fallback(free, all_tiers("claude-haiku-5-5"))]
+        fallbacks: [fallback(free, all_tiers("anthropic/claude-haiku-5.5"))]
       })
 
       for key <- ["main", "spare"], do: state!(ctx.provider, key, until: in_seconds(3600))
@@ -934,12 +933,12 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       state!(free, "main", until: in_seconds(-1))
       assert {_queued, {:ok, %{columns: columns, stored: stored}}} = built!(ctx)
       assert columns.provider_connection_id == free.id
-      assert stored["tiers"] == all_tiers("claude-haiku-5-5")
+      assert stored["tiers"] == all_tiers("anthropic/claude-haiku-5.5")
     end
 
     test "take the next fallback after one that names the override's provider, whose keys are in cooldown",
          ctx do
-      free = other_provider!(ctx.scope, "Free keys")
+      free = other_provider!(ctx.scope, "Free keys", "openrouter")
       override!(ctx, ctx.override, all_tiers("claude-sonnet-5-5"))
 
       choose!(ctx.scope, :workspace, %{
@@ -947,7 +946,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
         tiers: all_tiers("claude-opus-5-5"),
         fallbacks: [
           fallback(ctx.override, all_tiers("claude-opus-5-5")),
-          fallback(free, all_tiers("claude-haiku-5-5"))
+          fallback(free, all_tiers("anthropic/claude-haiku-5.5"))
         ]
       })
 
@@ -961,7 +960,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert {queued, {:ok, %{columns: columns, stored: stored}}} = built!(ctx)
       assert queued.model_provider_ids == [ctx.override.id, ctx.provider.id, free.id]
       assert columns.provider_connection_id == free.id
-      assert stored["model"] == "claude-haiku-5-5"
+      assert stored["model"] == "anthropic/claude-haiku-5.5"
 
       state!(free, "main", until: in_seconds(3600))
       assert {_queued, {:cooling, _built, ids}} = built!(ctx)
@@ -1127,6 +1126,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       end
     end
 
+    @tag needs: [:factory, :model_proxies]
     test "model_gone where no model resolves, for a provider whose description lists none",
          ctx do
       {:ok, litellm} =
@@ -1181,6 +1181,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       assert List.last(listed) == %{"id" => "acme-large"}
     end
 
+    @tag needs: [:factory, :model_proxies]
     test "provider_gone for a setting endpoint that fails the endpoint rule", ctx do
       {:ok, litellm} =
         Connections.create_provider(ctx.scope, %{
@@ -1211,6 +1212,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       ended!(queued, dispatch, :provider_gone)
     end
 
+    @tag needs: [:factory, :model_proxies]
     test "provider_gone for a provider row that fails its integrity code", ctx do
       {:ok, litellm} =
         Connections.create_provider(ctx.scope, %{
@@ -1259,6 +1261,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
       %{litellm: litellm}
     end
 
+    @tag needs: [:factory, :model_proxies]
     test "is resolved to the address the provider has", ctx do
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
 
@@ -1277,6 +1280,7 @@ defmodule Apiary.Dispatches.RunSettingsTest do
              ] = stored_keys(handed.run)
     end
 
+    @tag needs: [:factory, :model_proxies]
     test "is written once: a later change of the address or a rebuild keeps the run's", ctx do
       {{:ok, handed}, _queued, _dispatch} = handover!(ctx)
       run = Repo.get!(Run, handed.run.id)

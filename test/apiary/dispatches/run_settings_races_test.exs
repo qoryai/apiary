@@ -150,6 +150,7 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
     do: Repo.exists?(from c in Connection, where: c.id == ^ctx.provider.id)
 
   describe "a claim and a change of the provider's address" do
+    @tag needs: [:factory, :model_proxies]
     test "the claim first: the change waits, and the run keeps the address before", ctx do
       queued!(ctx)
       {first, first_pid} = hold(claim(ctx))
@@ -163,6 +164,7 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
       assert endpoints(handed) == [@old_address]
     end
 
+    @tag needs: [:factory, :model_proxies]
     test "the change first: the claim waits, and the run takes the address after", ctx do
       queued!(ctx)
       {first, first_pid} = hold(change_address(ctx))
@@ -178,6 +180,7 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
   end
 
   describe "a claim and the provider's deletion" do
+    @tag needs: [:factory, :model_proxies]
     test "the claim first: the deletion waits, then is refused for the run it registered",
          ctx do
       queued!(ctx)
@@ -204,6 +207,7 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
       assert provider_id == ctx.provider.id
     end
 
+    @tag needs: [:factory, :model_proxies]
     test "the deletion first: the claim waits, then finds no choice", ctx do
       # The run with no model providers, as the choice's removal sets them: the removal
       # then leaves the run's row as it is, so the claim takes the run and waits on the
@@ -238,6 +242,7 @@ defmodule Apiary.Dispatches.RunSettingsRacesTest do
   describe "two writes of a waiting run's model providers" do
     @describetag needs: [:factory, :secrets]
 
+    @tag needs: [:factory, :model_proxies]
     test "the write that waits for the run's row reads the choice after the change", ctx do
       {:ok, queued} = queued!(ctx)
 

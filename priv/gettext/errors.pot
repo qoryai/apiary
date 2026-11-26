@@ -74,6 +74,11 @@ msgstr ""
 msgid "Choose another name. Qory Apiary keeps the address %{address}."
 msgstr ""
 
+#: lib/apiary/connections.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another name: Qory Apiary gives names like key-3 to new keys."
+msgstr ""
+
 #: lib/apiary/model_choices.ex
 #, elixir-autogen, elixir-format
 msgid "Choose another provider for %{runtime}. %{provider} serves no request format that %{runtime} sends."
@@ -99,6 +104,11 @@ msgstr ""
 #: lib/apiary_web/live/model_choice_live.ex
 #, elixir-autogen, elixir-format
 msgid "Choose another provider: %{provider} is not used in this workspace."
+msgstr ""
+
+#: lib/apiary/model_choices.ex
+#, elixir-autogen, elixir-format
+msgid "Choose another provider: %{provider} uses the keys of %{chosen}, which is chosen already."
 msgstr ""
 
 #: lib/apiary/model_choices.ex
@@ -467,6 +477,11 @@ msgstr ""
 #: lib/apiary/organisations/workspace.ex
 #, elixir-autogen, elixir-format
 msgid "is already the name of a workspace in this organisation"
+msgstr ""
+
+#: lib/apiary/connections.ex
+#, elixir-autogen, elixir-format
+msgid "is already the name of another key"
 msgstr ""
 
 #: lib/apiary/organisations/workspace.ex

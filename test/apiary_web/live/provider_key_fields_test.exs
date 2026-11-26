@@ -1,17 +1,16 @@
 defmodule ApiaryWeb.ProviderKeyFieldsTest do
-  # The field of a model provider's key on each page that takes one: Add key and Edit key
-  # (`ApiaryWeb.ProviderLive.Key`), New model provider (`ApiaryWeb.ProviderLive.Index`)
+  # The field of a model provider's key on each page that takes one: Edit key
+  # (`ApiaryWeb.ProviderLive.Key`), New model provider key (`ApiaryWeb.ProviderLive.Index`)
   # and the set-up's Model step (`ApiaryWeb.WorkspaceSetupLive`). Each is a password
   # field with `autocomplete="new-password"`, so a browser does not fill it with a saved
   # sign-in password, and each page stores the key without the whitespace at its ends
   # (`Apiary.Connections.trim_key/1`).
   use ApiaryWeb.ConnCase, async: true
 
-  import Ecto.Query, only: [from: 2]
   import Phoenix.LiveViewTest
   import Apiary.OrganisationsFixtures
 
-  alias Apiary.{Connections, Repo, Secrets}
+  alias Apiary.{Connections, Repo}
   alias Apiary.Connections.Connection
   alias Apiary.Secrets.Value
 
@@ -36,7 +35,7 @@ defmodule ApiaryWeb.ProviderKeyFieldsTest do
     {:ok, provider} =
       Connections.create_provider(scope, %{
         provider: "anthropic",
-        keys: [%{value_id: "key-1", value: @key}]
+        keys: [%{value: @key}]
       })
 
     provider
@@ -56,9 +55,6 @@ defmodule ApiaryWeb.ProviderKeyFieldsTest do
     %{conn: conn, scope: scope} = ctx
     provider = provider!(scope)
 
-    {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
-    assert new_password?(lv, "#key-form input[name='key[key]']")
-
     {:ok, lv, _html} = live(conn, edit_path(scope, provider, "key-1"))
     assert new_password?(lv, "#key-form input[name='key[key]']")
 
@@ -73,39 +69,23 @@ defmodule ApiaryWeb.ProviderKeyFieldsTest do
     assert new_password?(lv, "#set-up-model-form input[name='model[key]']")
   end
 
-  test "Add key with settings that fail checks the Key as the save does, trimmed", ctx do
+  test "New model provider key takes the longest Key with a newline after it, trimmed", ctx do
     %{conn: conn, scope: scope} = ctx
-    provider = provider!(scope)
     longest = String.duplicate("k", Value.value_max())
-    {:ok, lv, _html} = live(conn, key_path(scope, provider, "new"))
+    {:ok, lv, _html} = live(conn, "#{providers_path(scope)}/new")
 
-    # The longest key with a newline after it fits; only the settings' error shows.
-    html =
-      lv
-      |> form("#key-form",
-        key: %{key: "#{longest}\n", reset_day: "1", reset_time: ""}
-      )
-      |> render_submit()
+    assert {:error, {:live_redirect, _to}} =
+             lv
+             |> form("#new-provider-form",
+               provider: %{provider: "anthropic", key: "#{longest}\n"}
+             )
+             |> render_submit()
 
-    assert has_element?(lv, "#key_reset_day-resets-error")
-    refute has_element?(lv, "#key-value-1-error")
-    refute html =~ "must be at most"
-    refute html =~ longest
-
-    # A Key of only whitespace has the error of an empty Key.
-    lv
-    |> form("#key-form",
-      key: %{key: " \n\t", reset_day: "1", reset_time: ""}
-    )
-    |> render_submit()
-
-    assert has_element?(lv, "#key-value-2-error", "can't be blank")
-
-    assert Repo.aggregate(from(v in Value, where: v.secret_id == ^provider.secret_id), :count) ==
-             1
+    assert {:ok, [provider]} = Connections.list_providers(scope)
+    assert key_value(provider, provider.default_value_id) == {:ok, longest}
   end
 
-  test "New model provider stores its key trimmed, the spaces inside kept", ctx do
+  test "New model provider key stores its key trimmed, the spaces inside kept", ctx do
     %{conn: conn, scope: scope} = ctx
     {:ok, lv, _html} = live(conn, "#{providers_path(scope)}/new")
 

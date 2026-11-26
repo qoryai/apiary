@@ -119,6 +119,7 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
   end
 
   describe "the 201's limit" do
+    @tag needs: [:factory, :model_proxies]
     test "holds the run settings and the input at its limit within 1 MiB", ctx do
       provider_with_long_ids!(ctx.scope)
       queued!(ctx)
@@ -137,6 +138,7 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
       assert byte_size(body) <= @limit - 1_024
     end
 
+    @tag needs: [:factory, :model_proxies]
     test "leaves out more of the oldest comments when the rest of the 201 takes more", ctx do
       provider_with_long_ids!(ctx.scope)
       queued!(ctx)
@@ -155,6 +157,7 @@ defmodule Apiary.Dispatches.RunSettingsBudgetTest do
     end
 
     @tag :capture_log
+    @tag needs: [:factory, :model_proxies]
     test "refuses the claim, with nothing written, when the rest of the documents passes the limit",
          ctx do
       provider_with_long_ids!(ctx.scope)

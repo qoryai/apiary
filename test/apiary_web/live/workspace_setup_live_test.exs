@@ -3996,7 +3996,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
         key_gone:
           @no_run_lead <>
             "Choose another provider on the Model step, or add a key to that provider in " <>
-            "Organisation settings › Model providers, then press Run the test. The model " <>
+            "Organisation settings › Model provider keys, then press Run the test. The model " <>
             "provider chosen for this workspace has no key.",
         model_gone:
           @no_run_lead <>
@@ -4739,6 +4739,41 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     assert choice.connection_id == provider.id
   end
 
+  test "Add a key for every workspace, where a provider of its key group is: that provider's next key",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
+
+    {:ok, shared, "key-1"} =
+      Connections.add_key(scope, %{
+        "provider" => "anthropic",
+        "value" => @key,
+        "applies_to" => "all"
+      })
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+    lv |> form("#set-up-model-form", model: %{source: "add"}) |> render_change()
+
+    lv
+    |> form("#set-up-model-form",
+      model: %{
+        source: "add",
+        provider: "anthropic",
+        key: @key,
+        everywhere: "true",
+        tiers: tiers(hd(models("anthropic")))
+      }
+    )
+    |> render_submit()
+
+    assert {:ok, [provider]} = Connections.list_providers(scope)
+    assert provider.id == shared.id
+    assert Enum.map(provider.secret.values, & &1.value_id) |> Enum.sort() == ["key-1", "key-2"]
+
+    assert {[choice], []} = choices(scope)
+    assert choice.connection_id == shared.id
+  end
+
   test "Add a key with the setting shown and off: the provider of the workspace",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
@@ -4772,7 +4807,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     [_first, second | _rest] = models(provider)
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
-    assert key_options(lv) == [{"#{provider.name} · every workspace", true}, {"Add a key", false}]
+    assert key_options(lv) == [{provider.name, true}, {"Add a key", false}]
     refute has_element?(lv, "#set-up-model-add")
     refute has_element?(lv, "input[name='model[key]']")
     # The provider's key is a secret of the organisation, whose secrets the edition shows
@@ -4824,7 +4859,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     provider = provider!(scope, "anthropic", "main")
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
-    assert key_options(lv) == [{"#{provider.name} · every workspace", true}, {"Add a key", false}]
+    assert key_options(lv) == [{provider.name, true}, {"Add a key", false}]
     assert words(lv, "#set-up-model-later") == @organisation_later
 
     lv |> form("#set-up-model-form", model: %{source: "add"}) |> render_change()
@@ -4840,8 +4875,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
     assert Enum.sort(key_options(lv)) ==
              Enum.sort([
-               {"#{anthropic.name} · every workspace", true},
-               {"#{deepseek.name} · every workspace", false},
+               {anthropic.name, true},
+               {deepseek.name, false},
                {"Add a key", false}
              ])
 
@@ -5093,18 +5128,116 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     for f <- Enum.sort_by(choice.fallbacks, & &1.position), do: {f.connection_id, f.runtime}
   end
 
+  test "a save passes with a stored fallback of the choice's key group, and drops it",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+    northwind = provider!(scope, "anthropic", "main", %{name: "Northwind keys"})
+    deepseek = provider!(scope, "deepseek", "ds")
+
+    {:ok, checkout} =
+      Connections.create_provider(
+        scope,
+        %{
+          provider: "anthropic",
+          name: "Checkout API keys",
+          keys: [%{value_id: "main", value: "sk-ant-set-up-checkout-0123456789"}]
+        },
+        :workspace
+      )
+
+    {:ok, choice} =
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
+        provider: northwind.public_id,
+        fallbacks: [Apiary.ModelChoicesFixtures.fallback_attrs(deepseek)]
+      })
+
+    # A fallback of the choice's key group, as a change of a provider's settings can
+    # leave it.
+    {1, _rows} =
+      Repo.update_all(from(f in ModelChoices.Fallback, where: f.model_choice_id == ^choice.id),
+        set: [connection_id: checkout.id]
+      )
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    lv |> form("#set-up-model-form", model: %{source: northwind.public_id}) |> render_change()
+
+    lv
+    |> form("#set-up-model-form",
+      model: %{source: northwind.public_id, tiers: tiers(hd(tl(models(northwind))))}
+    )
+    |> render_submit()
+
+    refute has_element?(lv, "#set-up-model-fallback-refused")
+    assert {[saved], []} = choices(scope)
+    assert saved.connection_id == northwind.id
+    assert Repo.preload(saved, :fallbacks, force: true).fallbacks == []
+  end
+
+  test "Key lists the providers of a key group as one, and shows a choice on its later provider as it",
+       %{conn: conn} do
+    %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
+
+    # Two Claude subscription token providers, one key group: one for every workspace,
+    # added first, and one for the workspace alone.
+    every =
+      provider!(scope, "claude-subscription", "every", %{
+        name: "Every workspace",
+        keys: [%{value: "sk-ant-oat01-set-up-every-0123456789"}]
+      })
+
+    {:ok, checkout} =
+      Connections.create_provider(
+        scope,
+        %{
+          provider: "claude-subscription",
+          name: "Checkout",
+          keys: [%{value: "sk-ant-oat01-set-up-checkout-0123456789"}]
+        },
+        :workspace
+      )
+
+    {:ok, _choice} =
+      Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
+        provider: checkout.public_id,
+        model: "claude-sonnet-5-5"
+      })
+
+    {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
+
+    # The stored choice's tiers show with the group's entry.
+    assert has_element?(
+             lv,
+             ~s{select[name="model[tiers][thinking][model]"] option[value="claude-sonnet-5-5"][selected]}
+           )
+
+    assert key_options(lv) == [
+             {"Claude subscription token", true},
+             {"Add a key", false}
+           ]
+
+    assert has_element?(lv, ~s{#set-up-model-source input[value="#{every.public_id}"][checked]})
+    refute has_element?(lv, ~s{#set-up-model-source input[value="#{checkout.public_id}"]})
+  end
+
   test "a change of Provider to one whose runtime a stored fallback does not serve shows no line, and Continue saves with the fallback kept",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
     anthropic = provider!(scope, "anthropic", "main")
-    openrouter = provider!(scope, "openrouter", "router")
     team = provider!(scope, "openrouter", "team", %{name: "OpenRouter team"})
     {header, bearer} = split_runtimes()
 
+    # The stored choice on a Claude subscription token: a choice on another OpenRouter
+    # provider would make OpenRouter team one of its key group, which a fallback is not.
+    subscription =
+      provider!(scope, "claude-subscription", "sub", %{
+        keys: [%{value_id: "sub", value: "sk-ant-oat01-set-up-sub-0123456789"}]
+      })
+
     {:ok, _stored} =
       Apiary.ModelChoicesFixtures.put_choice(scope, :workspace, %{
-        provider: openrouter.public_id,
-        runtime: bearer.name,
+        provider: subscription.public_id,
+        runtime: header.name,
         fallbacks: [fallback(team, bearer.name)]
       })
 
@@ -5425,7 +5558,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
 
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
-    assert {"#{provider.name} · every workspace", true} in key_options(lv)
+    assert {provider.name, true} in key_options(lv)
     refute has_element?(lv, "#set-up-model-tiers")
 
     assert words(lv, "#set-up-model-unread") ==
@@ -5533,23 +5666,22 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     {own, shared}
   end
 
-  test "with the setting shown: the providers every workspace shares first, under Shared in, each marked; the first is chosen",
+  test "with the setting shown: one list, by name, with no heading; the first is chosen",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
     :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
     {own, shared} = own_and_shared!(scope)
     {:ok, lv, _html} = conn |> log_in_user(user) |> live(model_path(organisation))
 
-    assert words(lv, "#set-up-model-source-shared-h") == "Shared in #{organisation.name}"
-
+    # The workspaces of each key are on Organisation settings › Model provider keys.
     assert key_options(lv) == [
-             {"#{shared.name} · every workspace", true},
-             {own.name, false},
+             {own.name, true},
+             {shared.name, false},
              {"Add a key", false}
            ]
 
-    assert has_element?(lv, "#set-up-model-source-shared label", shared.name)
-    refute has_element?(lv, "#set-up-model-source-shared label", own.name)
+    refute has_element?(lv, "#set-up-model-source-shared")
+    refute render(lv) =~ "Shared in"
 
     # The workspace's choice of its provider: that provider is chosen when the step opens.
     lv |> form("#set-up-model-form", model: %{source: own.public_id}) |> render_change()
@@ -5564,13 +5696,30 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     {:ok, lv, _html} = live(conn |> log_in_user(user), model_path(organisation))
 
     assert key_options(lv) == [
-             {"#{shared.name} · every workspace", false},
              {own.name, true},
+             {shared.name, false},
+             {"Add a key", false}
+           ]
+
+    # The workspace's choice of the shared provider: that provider is chosen.
+    lv |> form("#set-up-model-form", model: %{source: shared.public_id}) |> render_change()
+
+    lv
+    |> form("#set-up-model-form",
+      model: %{source: shared.public_id, tiers: tiers(hd(models(shared)))}
+    )
+    |> render_submit()
+
+    {:ok, lv, _html} = live(conn |> log_in_user(user), model_path(organisation))
+
+    assert key_options(lv) == [
+             {own.name, false},
+             {shared.name, true},
              {"Add a key", false}
            ]
   end
 
-  test "with the setting shown and no provider every workspace shares: no heading, no mark",
+  test "with the setting shown and no provider every workspace shares: no heading",
        %{conn: conn} do
     %{user: user, organisation: organisation, scope: scope} = sign_up_fixture()
     :ok = Apiary.Edition.put_test_stub(Apiary.EditionStubs.ScopeSetting)
@@ -5588,10 +5737,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.ModelTest do
     refute render(lv) =~ "Shared in"
   end
 
-  # The core, which shows no setting, listed a provider every workspace shares by its name,
-  # with no heading. The edition shows the setting: "with the setting shown: the providers
-  # every workspace shares first, under Shared in, each marked; the first is chosen" in this
-  # file, and test/apiary_pro_web/live/scope_setting_test.exs.
+  # The core, which shows no setting, lists a provider every workspace shares by its name,
+  # with no heading, as the edition that shows the setting does: "with the setting shown:
+  # one list, by name, with no heading; the first is chosen" in this file, and
+  # test/apiary_pro_web/live/scope_setting_test.exs.
 
   test "a provider that does not reach the workspace, or has no key, is not offered; a save of it saves nothing",
        %{conn: conn} do

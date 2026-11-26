@@ -531,16 +531,18 @@ defmodule Apiary.Processes do
   Apiary.ModelChoices.shared_models/3 or Apiary.ModelChoices.default_models/1:
   `choices`, each workflow's resolution by its name (Apiary.ModelChoices.Resolution.resolve/1),
   with `default` for a workflow not listed; and `providers`, the name and the catalogue
-  description of each provider those use, by row id. `start_ids` are the providers the
-  stage's runs can start on: nil for those of the stage's first workflow's choice, its
-  provider and then its fallbacks' providers; a continuation passes the provider of the
-  session that paused.
+  description of each provider those use, by row id, with its key group (`group`).
+  `start_ids` are the providers the stage's runs can start on: nil for those of the
+  stage's first workflow's choice, its provider and then its fallbacks' providers; a
+  continuation passes the provider of the session that paused.
 
   `{:error, {:too_many_providers, count, names}}` where the workflows' choices and their
-  fallbacks use more than 6 providers, `count` of them, `names` in the order the
-  workflows first use them: one run takes keys of at most 6, and at least one of each
-  provider. Else `{:error, {:model_choice_missing, workflow, runtime, provider}}` for the
-  first workflow with no model choice (`:none`) whose runtime, the catalogue's default
+  fallbacks use more than 6 key groups (Apiary.ModelKeys.Group), `count` of them,
+  `names` those of the first provider of each, in the order the workflows first use
+  them: one run takes keys of at most 6, and at least one of each key group. Providers of
+  one key group count as one: they are one key list in the run. Else
+  `{:error, {:model_choice_missing, workflow, runtime, provider}}` for the first workflow
+  with no model choice (`:none`) whose runtime, the catalogue's default
   (Apiary.ModelChoices.default_runtime/0, its title as `runtime`), cannot use one of
   `start_ids` (`Apiary.Kinds.Providers.api/2`), with that provider's name: such a session
   joins the default model provider credential's group and cannot use the machine's local
@@ -554,8 +556,8 @@ defmodule Apiary.Processes do
       first session runs on the machine's local model provider credential, so the run is
       given no key;
     * `{:session_key_missing, :no_key, workflow, provider}` for a workflow after the
-      first whose choice's provider has no model key, and no provider of its later steps
-      (`choice_providers/1`) has one either;
+      first whose choice's provider has no model key, nor another provider of its key
+      group, and no provider of its later steps (`choice_providers/1`) has one either;
     * `{:session_key_missing, :other_api, workflow, api, provider, earlier}` for a
       workflow whose choice is on the provider of an earlier workflow's choice, `earlier`,
       the first workflow included, while the runtimes of the two choices use different
@@ -589,6 +591,7 @@ defmodule Apiary.Processes do
       workflows
       |> Enum.flat_map(&choice_providers(Map.fetch!(choices, &1)))
       |> Enum.uniq()
+      |> Enum.uniq_by(&group_of(models, &1))
 
     start_ids = start_ids || choice_providers(Map.get(choices, List.first(workflows)))
 
@@ -606,6 +609,15 @@ defmodule Apiary.Processes do
 
       true ->
         :ok
+    end
+  end
+
+  # The key group of the provider `id`, as `models` has it; the provider alone for an id
+  # that `models` has no entry for: each provider in `models` has its group.
+  defp group_of(models, id) do
+    case Map.get(Map.get(models, :providers, %{}), id) do
+      %{group: [_ | _] = group} -> group
+      _alone -> [id]
     end
   end
 
@@ -655,8 +667,8 @@ defmodule Apiary.Processes do
   # The first workflow whose session would have no key in the run: the first workflow
   # where it has no model choice and a later workflow's choice is on a provider
   # (`:machine`); else one after the first whose providers have no model key (`:no_key`),
-  # else one on the provider of an earlier workflow's choice with another API of it
-  # (`:other_api`), in workflow order. A provider that is gone, or whose description
+  # else one on the key group of an earlier workflow's choice's provider with another API
+  # of it (`:other_api`), in workflow order. A provider that is gone, or whose description
   # cannot be read, is no fault here: the claim ends such a run `provider_gone`. A
   # runtime that is no longer in the catalogue, or that its provider no longer serves, is
   # none either: the claim gives such a session the run's `run_settings`.
@@ -682,9 +694,11 @@ defmodule Apiary.Processes do
           {:halt, {:fault, {:session_key_missing, :no_key, workflow, name}}}
 
         {nil, {id, api}} ->
-          case Map.get(used, id) do
+          group = group_of(models, id)
+
+          case Map.get(used, group) do
             nil ->
-              {:cont, Map.put(used, id, {workflow, api})}
+              {:cont, Map.put(used, group, {workflow, api})}
 
             {earlier, earlier_api} ->
               if same_api?(api, earlier_api),

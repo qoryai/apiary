@@ -35,15 +35,18 @@ defmodule ApiaryWeb.SecretLive.Index do
     `factory` and `secrets`): the secrets whose values are the keys of a model provider
     added for this workspace alone, in the Secrets tab among the others, each with its
     provider's name, "Model provider key", and a mask on each value's line, never the key.
-    Add value, Change value, Rename value and Delete value write them as the provider's
-    keys (`Apiary.Connections.add_provider_key/4` to
-    `Apiary.Connections.delete_provider_key/3`), under `provider.write`; Add value and
-    Change value also take the key's settings, Resets and Pause for
-    (`Apiary.ModelKeys.Setting`), written with it. For a provider whose keys are logins
-    (`Apiary.ModelKeys.Login`), Add value and Change value have the button Sign in with
-    ChatGPT in place of the Value field (a device sign-in, `Apiary.ModelKeys.DeviceSignIn`),
-    and refuse a save before the person has signed in. Delete secret is refused while the
-    provider links the secret, and Edit name and note is not offered.
+    Change value and Delete value write them as the provider's keys
+    (`Apiary.Connections.set_provider_key/5`, `Apiary.Connections.update_provider_key/4`
+    and `Apiary.Connections.delete_provider_key/3`), under `provider.write`; Change value
+    also takes the key's settings, Resets and Pause for (`Apiary.ModelKeys.Setting`),
+    written with it. A key is added in Organisation settings › Model provider keys, and
+    renamed on its Edit key there: such a secret has no Add value and no Rename value. For
+    a provider whose keys are logins (`Apiary.ModelKeys.Login`), Change value has the
+    button Sign in with ChatGPT in place of the Value field (a device sign-in,
+    `Apiary.ModelKeys.DeviceSignIn`), and a save before the person has signed in writes
+    nothing.
+    Delete secret is refused while the provider links the secret, and Edit name and note is
+    not offered.
   - **Variables** (`Apiary.Variables`): the workspace's variables, each with its value, which
     is plain configuration, its lock, and the targets that override the value or whose
     value a lock sets aside, from their resolution
@@ -470,8 +473,8 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp key_row?({:secret, secret}, keys), do: Map.has_key?(keys, secret.id)
   defp key_row?({:value, secret, _value}, keys), do: Map.has_key?(keys, secret.id)
 
-  # The id of a row in the page's source. A model key has no value id in it (`key-<n>`, which
-  # no page shows): its row has the key's row id, which is in `identities`.
+  # The id of a row in the page's source. The page shows a model key by its identity line,
+  # not its value id: its row has the key's row id, which is in `identities`.
   defp row_id({:secret, secret}, _identities), do: "secret-#{secret.public_id}"
 
   defp row_id({:value, secret, value}, identities) do
@@ -1776,8 +1779,8 @@ defmodule ApiaryWeb.SecretLive.Index do
   defp secret_path(scope, secret, :delete),
     do: ~p"/#{scope.organisation}/#{scope.workspace}/settings/secrets/#{secret.public_id}/delete"
 
-  # The segment of a value's address: the row id of a model key, which has no name that a
-  # person gives, else the value id of an ordinary secret's value.
+  # The segment of a value's address: the row id of a model key, whose name is changed on
+  # Edit key, else the value id of an ordinary secret's value.
   defp value_segment(%Value{id: id}, true), do: id
   defp value_segment(%Value{value_id: value_id}, false), do: value_id
 
@@ -1994,8 +1997,9 @@ defmodule ApiaryWeb.SecretLive.Index do
     )
   end
 
-  # Add value and Rename value are for the secrets that a person names: a model provider's
-  # secret is not found by these paths, as the keys have no names.
+  # Add value and Rename value are for ordinary secrets: a model provider's secret is not
+  # found by these paths, as its keys are added on New model provider key and renamed on
+  # Edit key.
   defp open(socket, :add_value, %{"id" => id}) do
     with_secret(
       socket,

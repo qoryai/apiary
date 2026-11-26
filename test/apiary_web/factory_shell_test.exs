@@ -39,7 +39,6 @@ defmodule ApiaryWeb.FactoryShellTest do
     ApiaryWeb.WorkItemLive.Show,
     ApiaryWeb.TargetLive.FurtherRepositories,
     ApiaryWeb.ProviderLive.Index,
-    ApiaryWeb.ProviderLive.Show,
     ApiaryWeb.ProviderLive.Key,
     ApiaryWeb.ModelChoiceLive,
     ApiaryWeb.HarnessLive,

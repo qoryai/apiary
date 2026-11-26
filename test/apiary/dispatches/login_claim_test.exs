@@ -70,7 +70,7 @@ defmodule Apiary.Dispatches.LoginClaimTest do
         provider: "openai-subscription",
         keys:
           for({value_id, opts} <- keys) do
-            %{value_id: value_id, value: device_login(tokens: login_tokens(opts))}
+            key(value_id, device_login(tokens: login_tokens(opts)))
           end
       })
 
@@ -91,6 +91,74 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       Repo.update_all(from(l in Login, where: l.secret_value_id == ^value(provider, name).id),
         set: [state: "sign_in_needed", sign_in_cause: "refresh_token_expired"]
       )
+  end
+
+  # The key needs a new value, as after a provider rejected it (`Apiary.ModelKeys.reject/3`).
+  defp rejected!(provider, name) do
+    %Value{} = value = value(provider, name)
+    now = DateTime.utc_now()
+
+    Repo.insert!(%Apiary.ModelKeys.Rejection{
+      secret_value_id: value.id,
+      organisation_id: provider.organisation_id,
+      rejected_at: now,
+      value_set_at: value.value_set_at,
+      updated_at: now
+    })
+  end
+
+  # 6 keys that `block!` leaves for a person to fix, then one of another provider of the
+  # key group whose sign-in expires within the run's time limit: the claim starts its
+  # refresh alone. `:ok` once checked.
+  defp past_person_fixed(ctx, block!) do
+    blocked = for n <- 1..6, do: {"key-#{n}", [expires_in: 3600, tag: "north#{n}"]}
+    provider = provider!(ctx, blocked)
+    for n <- 1..6, do: block!.(provider, "key-#{n}")
+    other = other_provider!(ctx)
+    aged!(other, "key-1")
+    queued!(ctx)
+
+    assert {:ok, :none} = claim(ctx)
+    jobs = for job <- all_enqueued(worker: LoginRefreshJob), do: job.args["secret_value_id"]
+    assert jobs == [value(other, "key-1").id]
+    :ok
+  end
+
+  # A key as `Apiary.Connections.create_provider/3` takes it, with no `key-<n>` value id:
+  # Qory Apiary names a provider's keys `key-1` up, in order, and a given value id of that
+  # form fails.
+  defp key("key-" <> _number, value), do: %{value: value}
+  defp key(value_id, value), do: %{value_id: value_id, value: value}
+
+  # A second provider of the key group of `provider!/2`'s, with one key whose sign-in
+  # expires in an hour.
+  defp other_provider!(ctx) do
+    {:ok, other} =
+      Connections.create_provider(ctx.scope, %{
+        provider: "openai-subscription",
+        keys: [
+          %{value: device_login(tokens: login_tokens(expires_in: 3600, tag: "south"))}
+        ]
+      })
+
+    other
+  end
+
+  # The key is in cooldown until `until`, as after a provider reported its limit.
+  defp cooled!(provider, name, until) do
+    now = DateTime.utc_now()
+
+    Repo.insert!(%Apiary.ModelKeys.State{
+      secret_value_id: value(provider, name).id,
+      window: "five_hour",
+      organisation_id: provider.organisation_id,
+      status: "rejected",
+      resets_at: until,
+      cooldown_until: until,
+      source: "provider",
+      observed_at: now,
+      updated_at: now
+    })
   end
 
   # The login signed in `seconds` ago, so a new sign-in is not read as just made.
@@ -340,6 +408,68 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       assert requests() == []
     end
 
+    test "is refreshed for the first 6 keys of the key group's order alone", ctx do
+      # Two providers of one key group with 4 keys each whose sign-ins expire within the
+      # run's time limit: a run gets at most 6 keys, so the claim starts a refresh for 6.
+      keys = fn tag -> for n <- 1..4, do: {"key-#{n}", [expires_in: 3600, tag: "#{tag}#{n}"]} end
+      provider = provider!(ctx, keys.("north"))
+
+      {:ok, other} =
+        Connections.create_provider(ctx.scope, %{
+          provider: "openai-subscription",
+          keys:
+            for({value_id, opts} <- keys.("south")) do
+              key(value_id, device_login(tokens: login_tokens(opts)))
+            end
+        })
+
+      for p <- [provider, other], n <- 1..4, do: aged!(p, "key-#{n}")
+      queued!(ctx)
+
+      assert {:ok, :none} = claim(ctx)
+
+      # The choice's provider's 4 keys, added first, then 2 of the other provider's.
+      jobs = for job <- all_enqueued(worker: LoginRefreshJob), do: job.args["secret_value_id"]
+      assert length(jobs) == 6
+      for n <- 1..4, do: assert(value(provider, "key-#{n}").id in jobs)
+      assert Enum.count(1..4, &(value(other, "key-#{&1}").id in jobs)) == 2
+      assert requests() == []
+    end
+
+    test "is refreshed past 6 keys that need a new sign-in", ctx do
+      assert past_person_fixed(ctx, &sign_in_needed!/2) == :ok
+    end
+
+    test "is refreshed past 6 keys that need a new value", ctx do
+      assert past_person_fixed(ctx, &rejected!/2) == :ok
+    end
+
+    test "of a 7th key of the key group shows no refresh on a waiting run", ctx do
+      # 6 keys in cooldown, then a 7th, of another provider of the key group, whose
+      # sign-in expires within the run's time limit and whose cooldown ends last: no claim
+      # refreshes it, so the run waits for the first cooldown to end.
+      now = DateTime.utc_now()
+      first_end = DateTime.add(now, 600)
+      cooled = for n <- 1..6, do: {"key-#{n}", [expires_in: 30 * 86_400, tag: "north#{n}"]}
+      provider = provider!(ctx, cooled)
+      for n <- 1..6, do: cooled!(provider, "key-#{n}", DateTime.add(first_end, n))
+      other = other_provider!(ctx)
+      aged!(other, "key-1")
+      cooled!(other, "key-1", DateTime.add(now, 3600))
+
+      assert {:cooldown, %Connection{}, until} =
+               ModelKeys.waiting_reason([provider.id, other.id], now,
+                 expires_before: DateTime.add(now, 7200)
+               )
+
+      assert DateTime.compare(until, DateTime.add(first_end, 1)) == :eq
+
+      # A claim of the run starts no refresh.
+      queued!(ctx)
+      assert {:ok, :none} = claim(ctx)
+      assert all_enqueued(worker: LoginRefreshJob) == []
+    end
+
     test "is enqueued once while the job waits", ctx do
       provider = provider!(ctx, [{"main", [expires_in: 3600]}])
       aged!(provider, "main")
@@ -376,32 +506,6 @@ defmodule Apiary.Dispatches.LoginClaimTest do
       assert {:refreshing, _public_id, %{id: key_id, identity: _line}} = Waiting.reason(waiting)
 
       assert key_id == value(provider, "main").id
-      assert requests() == []
-    end
-  end
-
-  describe "while the node is stopping" do
-    @describetag :stopping
-
-    setup do
-      previous = Application.get_env(:apiary, Login, [])
-      on_exit(fn -> Application.put_env(:apiary, Login, previous) end)
-      Application.put_env(:apiary, Login, Keyword.put(previous, :stopping, fn -> true end))
-      :ok
-    end
-
-    test "no refresh is started, and the run's line says the server restarts", ctx do
-      provider = provider!(ctx, [{"main", [expires_in: 3600]}])
-      aged!(provider, "main")
-      queued = queued!(ctx)
-
-      assert {:ok, :none} = claim(ctx)
-      waiting = waiting!(queued, provider)
-
-      assert {:restart, _public_id, %{id: key_id, identity: _line}} = Waiting.reason(waiting)
-
-      assert key_id == value(provider, "main").id
-      refute_enqueued(worker: LoginRefreshJob)
       assert requests() == []
     end
   end

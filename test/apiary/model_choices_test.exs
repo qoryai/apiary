@@ -809,6 +809,7 @@ defmodule Apiary.ModelChoicesTest do
              }
     end
 
+    @tag needs: [:factory, :model_proxies]
     test "take any model id of a provider whose description lists no model", ctx do
       %{scope: scope} = ctx
 
@@ -1487,6 +1488,188 @@ defmodule Apiary.ModelChoicesTest do
                {0, :provider, "Choose another provider: Anthropic API key is chosen already."},
                {2, :provider,
                 "Choose another provider: Claude subscription token is chosen already."}
+             ]
+    end
+
+    test "are refused for a provider of the choice's key group, or one not used in the workspace",
+         ctx do
+      %{scope: scope, provider: provider, subscription: subscription} = ctx
+
+      # Anthropic providers as the choice's: one for another workspace alone, one for
+      # every workspace. Each has the kind, chain and settings of the choice's provider;
+      # the one for another workspace is refused first for its workspaces.
+      {:ok, elsewhere} =
+        Connections.create_provider(scope, %{
+          provider: "anthropic",
+          name: "Storefront keys",
+          applies_to: "selected",
+          workspace_ids: [second_workspace(scope).id],
+          keys: [%{value_id: "main", value: "sk-ant-storefront-0123456789"}]
+        })
+
+      {:ok, everywhere} =
+        Connections.create_provider(scope, %{
+          provider: "anthropic",
+          name: "Checkout keys",
+          keys: [%{value_id: "main", value: "sk-ant-checkout-0123456789"}]
+        })
+
+      {:ok, _} = ModelChoices.put_choice(scope, :workspace, attrs(provider))
+
+      assert fallback_errors(
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 attrs(provider, %{
+                   fallbacks: [fallback(elsewhere), fallback(subscription), fallback(everywhere)]
+                 })
+               )
+             ) == [
+               {0, :provider,
+                "Choose another provider: Storefront keys is not used in this workspace."},
+               {2, :provider,
+                "Choose another provider: Checkout keys uses the keys of Anthropic API key, which is chosen already."}
+             ]
+
+      # A save that chooses a provider of the place's key group drops a fallback of that
+      # group, as a fallback of the chosen provider.
+      assert {:ok, choice} =
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 attrs(everywhere, %{fallbacks: [fallback(provider), fallback(subscription)]})
+               )
+
+      assert choice.connection_id == everywhere.id
+      assert stored(choice) == [row(0, fallback(subscription))]
+      assert List.last(trail(choice.id)).details["dropped_fallbacks"] == [provider.public_id]
+    end
+
+    test "a save without fallbacks drops the stored ones of the choice's key group and all but the first of one other",
+         ctx do
+      %{scope: scope, provider: provider, subscription: subscription} = ctx
+
+      {:ok, checkout} =
+        Connections.create_provider(scope, %{
+          provider: "claude-subscription",
+          name: "Checkout subscription",
+          keys: [%{value_id: "main", value: "sk-ant-oat01-checkout-0123456789"}]
+        })
+
+      {:ok, everywhere} =
+        Connections.create_provider(scope, %{
+          provider: "anthropic",
+          name: "Checkout keys",
+          keys: [%{value_id: "main", value: "sk-ant-checkout-0123456789"}]
+        })
+
+      # Two fallbacks of one key group, as after a change of a provider's settings (the
+      # test "of one key group after a change of an address: a save without fallbacks
+      # keeps the first" builds it that way): a save of both returns an error for the
+      # second, so its row is written here.
+      {:ok, choice} =
+        ModelChoices.put_choice(
+          scope,
+          :workspace,
+          attrs(provider, %{fallbacks: [fallback(subscription)]})
+        )
+
+      [first] = Repo.preload(choice, :fallbacks).fallbacks
+
+      Repo.insert!(%Apiary.ModelChoices.Fallback{
+        organisation_id: first.organisation_id,
+        model_choice_id: choice.id,
+        position: 1,
+        connection_id: checkout.id,
+        runtime: first.runtime,
+        tiers: first.tiers
+      })
+
+      assert {:ok, kept} = ModelChoices.put_choice(scope, :workspace, attrs(provider))
+      assert stored(kept) == [row(0, fallback(subscription))]
+      assert List.last(trail(choice.id)).details["dropped_fallbacks"] == [checkout.public_id]
+
+      # A fallback of the choice's key group, as after a change of its provider's settings.
+      {1, _rows} =
+        Repo.update_all(
+          from(f in Apiary.ModelChoices.Fallback, where: f.model_choice_id == ^choice.id),
+          set: [connection_id: everywhere.id]
+        )
+
+      assert {:ok, kept} = ModelChoices.put_choice(scope, :workspace, attrs(provider))
+      assert stored(kept) == []
+      assert List.last(trail(choice.id)).details["dropped_fallbacks"] == [everywhere.public_id]
+
+      # A save that sends its fallbacks drops none.
+      assert {:ok, _kept} =
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 attrs(provider, %{fallbacks: [fallback(subscription)]})
+               )
+
+      refute Map.has_key?(List.last(trail(choice.id)).details, "dropped_fallbacks")
+    end
+
+    @tag needs: [:factory, :secrets, :model_proxies]
+    test "of one key group after a change of an address: a save without fallbacks keeps the first",
+         ctx do
+      %{scope: scope, provider: provider} = ctx
+
+      litellm = fn name, host ->
+        {:ok, litellm} =
+          Connections.create_provider(scope, %{
+            provider: "litellm",
+            name: name,
+            settings: %{"address" => "https://#{host}.example.com"},
+            keys: [%{value_id: "main", value: "sk-litellm-#{host}-0123456789"}]
+          })
+
+        litellm
+      end
+
+      north = litellm.("Northwind proxy", "north")
+      south = litellm.("Storefront proxy", "south")
+
+      sent = [
+        fallback(north, every_tier("team/model-1")),
+        fallback(south, every_tier("team/model-1"))
+      ]
+
+      {:ok, choice} =
+        ModelChoices.put_choice(scope, :workspace, attrs(provider, %{fallbacks: sent}))
+
+      # The second proxy moves to the first one's address: both fallbacks are of one key
+      # group now.
+      {:ok, _south} =
+        Connections.update_provider(scope, south, %{
+          settings: %{"address" => "https://north.example.com"}
+        })
+
+      assert {:ok, kept} = ModelChoices.put_choice(scope, :workspace, attrs(provider))
+      assert stored(kept) == [row(0, hd(sent))]
+      assert List.last(trail(choice.id)).details["dropped_fallbacks"] == [south.public_id]
+    end
+
+    test "are refused for a second provider of one other key group", ctx do
+      %{scope: scope, provider: provider, subscription: subscription} = ctx
+
+      {:ok, checkout} =
+        Connections.create_provider(scope, %{
+          provider: "claude-subscription",
+          name: "Checkout subscription",
+          keys: [%{value_id: "main", value: "sk-ant-oat01-checkout-0123456789"}]
+        })
+
+      assert fallback_errors(
+               ModelChoices.put_choice(
+                 scope,
+                 :workspace,
+                 attrs(provider, %{fallbacks: [fallback(subscription), fallback(checkout)]})
+               )
+             ) == [
+               {1, :provider,
+                "Choose another provider: Checkout subscription uses the keys of Claude subscription token, which is chosen already."}
              ]
     end
 

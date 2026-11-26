@@ -87,7 +87,9 @@ defmodule Apiary.ModelChoicesInUseTest do
       scope: scope,
       provider: provider
     } do
-      assert {:ok, _} = Connections.rename_provider_key(scope, provider, "spare", "other")
+      assert {:ok, _} =
+               Connections.update_provider_key(scope, provider, "spare", %{"value_id" => "other"})
+
       provider = Repo.get!(Connection, provider.id)
       assert {:ok, _} = Connections.delete_provider_key(scope, provider, "other")
 

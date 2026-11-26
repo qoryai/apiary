@@ -1,10 +1,11 @@
 defmodule Apiary.ModelKeys.Identity do
   @moduledoc """
   The identity line of a model provider's key: how every page, entry of the Activity page
-  and sentence of a run's page names a key. A key has no name that a person gives; its
-  value id (`key-1`, `key-2`, …) is made by Apiary and shown nowhere.
+  and sentence of a run's page shows a key. The key's name, the value id (`key-1`,
+  `key-2`, …) that Qory Apiary sets when the key is added, is what the list Organisation
+  settings › Model provider keys shows; it is changed on Edit key.
 
-  The line is the provider's name (`provider.name`, as the provider's page shows it), a
+  The line is the provider's name (`provider.name`, as Edit key shows it), a
   middle dot and the text that distinguishes the keys of the provider:
 
     * a sign-in, `OpenAI subscription · dana@example.com`: the `email` claim of the

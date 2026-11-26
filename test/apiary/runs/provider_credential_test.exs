@@ -222,6 +222,111 @@ defmodule Apiary.Runs.ProviderCredentialTest do
     end
   end
 
+  describe "a run with two key groups of one chain and one API" do
+    # One chain and one API for every row, as when the API of one provider kind is the
+    # API of another, such as a LiteLLM address of OpenRouter's API.
+    @api %{
+      "format" => "anthropic-messages",
+      "endpoint" => "https://api.anthropic.com",
+      "auth" => %{"scheme" => "bearer"}
+    }
+
+    defp provider!(scope, kind, value) do
+      {:ok, provider} =
+        Connections.create_provider(scope, %{provider: kind, keys: [%{value: value}]})
+
+      provider
+    end
+
+    # A key row of each provider of `providers`, in order, the first the default.
+    defp key_rows(providers) do
+      for {provider, position} <- Enum.with_index(providers, 1) do
+        %ModelKey{
+          position: position,
+          name: "#{provider.public_id}-1",
+          default_credential: position == 1,
+          secret_value_id: Ecto.UUID.generate(),
+          connection_id: provider.id,
+          secret_id: provider.secret_id,
+          chain: "organisation",
+          api: @api,
+          pause_for_s: 60
+        }
+      end
+    end
+
+    @tag needs: [:factory, :secrets]
+    test "is given one group for each key group, each with only its keys" do
+      %{scope: scope} = sign_up_fixture()
+      api_key = provider!(scope, "anthropic", "sk-ant-api-key-0123456789")
+      subscription = provider!(scope, "claude-subscription", "sk-ant-oat01-sub-0123456789")
+      keys = key_rows([api_key, subscription])
+      run = %{provider_connection_id: api_key.id, model_keys: keys}
+
+      assert {:ok, %{keys: built}} = ProviderCredential.for_run(run)
+
+      assert Enum.map(built, &{&1.name, &1.entry["group"]}) == [
+               {"#{api_key.public_id}-1", api_key.public_id},
+               {"#{subscription.public_id}-1", subscription.public_id}
+             ]
+
+      # Each session waits for the providers of its key group alone: session 1 for the
+      # default key's, session 2 for the key its settings name.
+      assert Run.session_provider_ids(run, 1) == [api_key.id]
+
+      run =
+        Map.merge(run, %{
+          dispatch_run_id: Ecto.UUID.generate(),
+          session_settings: %{
+            "2" => %{"model_provider_credential_name" => "#{subscription.public_id}-1"}
+          }
+        })
+
+      sessions = [%Apiary.Stages.Session{forager_session: 2, stage_entry: 2}]
+      assert Run.session_provider_ids(run, 2, sessions) == [subscription.id]
+    end
+
+    @tag needs: [:factory, :secrets]
+    test "a provider that fails its integrity code is not of the default key's group" do
+      %{scope: scope} = sign_up_fixture()
+      first = provider!(scope, "anthropic", "sk-ant-api-first-0123456789")
+      second = provider!(scope, "anthropic", "sk-ant-api-second-0123456789")
+      run = %{provider_connection_id: first.id, model_keys: key_rows([first, second])}
+
+      assert Run.session_provider_ids(run, 1) == [first.id, second.id]
+
+      # A name written without a new code.
+      {1, _rows} =
+        Repo.update_all(from(c in Connection, where: c.id == ^second.id),
+          set: [name: "Changed outside Qory Apiary"]
+        )
+
+      assert Run.session_provider_ids(run, 1) == [first.id]
+    end
+
+    test "key_groups/2 groups the rows whose provider is not in the map by chain and API" do
+      organisation_id = Ecto.UUID.generate()
+
+      known = %Connection{
+        id: Ecto.UUID.generate(),
+        public_id: "con_known",
+        organisation_id: organisation_id,
+        provider_kind: "anthropic",
+        chain: "organisation",
+        settings: "{}"
+      }
+
+      unknown = %{known | id: Ecto.UUID.generate(), public_id: "con_unknown"}
+      [a, b, c] = key_rows([known, unknown, known])
+      d = %{c | position: 4, connection_id: nil}
+
+      assert ProviderCredential.key_groups([a, b, c, d], %{known.id => known}) == [
+               [a, c],
+               [b, d]
+             ]
+    end
+  end
+
   describe "the provider's hosts and the deny list" do
     setup do
       %{scope: scope} = sign_up_fixture()
@@ -331,6 +436,7 @@ defmodule Apiary.Runs.ProviderCredentialTest do
   end
 
   describe "a setting's host" do
+    @tag needs: [:factory, :model_proxies]
     test "is the host of the address the run's API takes its endpoint from" do
       %{scope: scope} = sign_up_fixture()
 

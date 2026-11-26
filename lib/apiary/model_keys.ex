@@ -824,7 +824,8 @@ defmodule Apiary.ModelKeys do
     1. `{:refreshing, provider, value_id}`: a sign-in that a refresh in the background
        makes usable, one that runs, one that is retried after a failure, or, `{:restart,
        provider, value_id}`, one whose refresh starts after this node starts again, as
-       this node is stopping (the check of `Login`'s `stopping?/0`);
+       this node is stopping (the check of `Login`'s `stopping?/0`); only a key in the
+       claim's refresh window counts (`Apiary.ModelKeys.Order.refresh_window/2`);
     2. `{:cooldown, provider, until}`: the key that leaves its cooldown first;
        `{:cooldown_or_new_key, provider, until}` where, beside the keys in cooldown, a key
        needs a new value (a sign-in or a rejected key): `until` is the same, and
@@ -868,7 +869,12 @@ defmodule Apiary.ModelKeys do
 
   defp unfree_reason(keyed, now, organisation_id) do
     all = for {provider, keys} <- keyed, key <- keys, do: {provider, key}
-    refresh = Enum.find(all, fn {_provider, key} -> refresh_block?(key.blocked) end)
+    window = refresh_window(keyed, now)
+
+    refresh =
+      Enum.find(all, fn {_provider, key} ->
+        refresh_block?(key.blocked) and MapSet.member?(window, key.id)
+      end)
 
     cooling =
       for {provider, key} <- all,
@@ -919,6 +925,19 @@ defmodule Apiary.ModelKeys do
           nil -> nil
         end
     end
+  end
+
+  # The ids of the keys of `keyed` whose sign-in a claim may refresh: those of each key
+  # group's window (`Apiary.ModelKeys.Order.refresh_window/2`), the group read as the
+  # claim reads it (`Apiary.ModelKeys.Order.of_group/1`), its first provider in `keyed`
+  # as its head.
+  defp refresh_window(keyed, now) do
+    keyed
+    |> Enum.group_by(fn {provider, _keys} -> Apiary.ModelKeys.Group.identity(provider) end)
+    |> Enum.flat_map(fn {_identity, members} ->
+      members |> Apiary.ModelKeys.Order.of_group() |> Apiary.ModelKeys.Order.refresh_window(now)
+    end)
+    |> MapSet.new(& &1.id)
   end
 
   defp refresh_block?(:due), do: true

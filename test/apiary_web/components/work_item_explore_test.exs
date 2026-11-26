@@ -4478,7 +4478,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
   end
 
   describe "a run the gateway refused for want of a model key" do
-    @key_fix "Add a model key in Organisation settings › Model providers."
+    @key_fix "Add a model key in Organisation settings › Model provider keys."
 
     defp refused(detail) do
       run(%{
