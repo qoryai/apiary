@@ -276,7 +276,7 @@ Returns `200` with the index:
         {
           "id": "av_...",
           "number": 2,
-          "writer": {"kind": "run", "run_id": "..."},
+          "writer": {"kind": "run", "run_id": "...", "workflow": "capture-demo"},
           "cancelled": false,
           "withdrawn": false,
           "stage_id": "st_...",
@@ -298,14 +298,18 @@ none; `newest_version` is the number of the newest version, leaving out versions
 run a member cancelled, and null when a run a member cancelled wrote every version.
 `changed_after_approval` is true when that newest version is
 newer than the approved one and was made in a stage other than the work item's stage.
-A version
-written by a run has `"writer": {"kind": "run", "run_id": "..."}`, with the `run_id` of
-the answer to the redemption of the run code; a version written
-by a person has `"writer": {"kind": "person", "name": "dana"}`. `cancelled` is true when
-a member cancelled the run that wrote the version, and false for a version of any other
-run or of a person. `withdrawn` is true for a withdrawal, a version a run stored with no
-files (`files` is `[]`), and false for every other version. A name is withdrawn when its
-newest version, leaving out versions by a run a member cancelled, is a withdrawal. The
+A version written by a run has
+`"writer": {"kind": "run", "run_id": "...", "workflow": "capture-demo"}`, with the
+`run_id` of the answer to the redemption of the run code. `workflow` is the name of the
+workflow of the run's session that pushed the version, so two sessions of a shared run
+have their two workflows. It is null for a run with no workflow, and for a version
+pushed before Qory Apiary stored the workflow. A version written by a person has
+`"writer": {"kind": "person", "name": "dana"}`, with no `workflow`.
+`cancelled` is true when a member cancelled the run that wrote the version, and false
+for a version of any other run or of a person. `withdrawn` is true for a withdrawal, a
+version a run stored with no files (`files` is `[]`), and false for every other version.
+A name is withdrawn when its newest version, leaving out versions by a run a member
+cancelled, is a withdrawal. The
 index lists a withdrawn name with its versions, and the stage's outputs and inputs in
 `GET work-item` and the work item's pages leave it out. A run cannot withdraw `verdict`,
 so the newest verdict in `GET work-item` is never a withdrawal. An approval is

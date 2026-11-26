@@ -11,7 +11,10 @@ defmodule Apiary.Artifacts.Version do
   # characters. `withdrawn` is true for a withdrawal, a run's version with no files that
   # withdraws its artifact's name (`Apiary.Artifacts.withdraw/4`), false for every other.
   # `decision_id` is the id of the person's note that asked for the version, `gd_…` or
-  # `es_…` (`Apiary.Stages.Notes`), nil for none.
+  # `es_…` (`Apiary.Stages.Notes`), nil for none. `workflow` is the workflow of the run's
+  # session that stored the version, at the push (`Apiary.Artifacts.push/5`) or the
+  # withdrawal (`Apiary.Artifacts.withdraw/4`); nil for a person's version, for a run with
+  # no workflow, and for a version stored before the column.
   #
   # `delivery`, `delivery_reply`, `delivery_failure` and `delivery_at` store where the
   # delivery of the version to an adapter stands (`Apiary.Artifacts.Delivery`): `delivery`
@@ -59,6 +62,7 @@ defmodule Apiary.Artifacts.Version do
     field :note, :string
     field :withdrawn, :boolean, default: false
     field :decision_id, :string
+    field :workflow, :string
     field :delivery, Ecto.Enum, values: [:sent, :delivered, :failed]
     field :delivery_reply, :map
     field :delivery_failure, Ecto.Enum, values: @delivery_failures
