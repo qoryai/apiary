@@ -17,10 +17,10 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
   import Apiary.SealedRunsFixtures
 
   alias Apiary.Repo
-  alias Apiary.Artifacts.ArtifactFile
+  alias Apiary.Artifacts.{ArtifactFile, Version}
   alias Apiary.Dispatches.{DispatchRun, Inputs}
   alias Apiary.Runs.Run
-  alias Apiary.Stages.{Check, GateDecision}
+  alias Apiary.Stages.{Check, GateDecision, Session}
   alias Apiary.WorkItems.WorkItem
   alias Apiary.SigningKey
   alias ApiaryWeb.Contract.{RawBody, SignedAnswer}
@@ -942,7 +942,11 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                      %{
                        "id" => version.public_id,
                        "number" => 1,
-                       "writer" => %{"kind" => "run", "run_id" => ctx.dispatch_run.run_id},
+                       "writer" => %{
+                         "kind" => "run",
+                         "run_id" => ctx.dispatch_run.run_id,
+                         "workflow" => ctx.dispatch_run.workflow
+                       },
                        "cancelled" => false,
                        "withdrawn" => false,
                        "stage_id" => @explore,
@@ -967,6 +971,102 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
                  }
                ]
              }
+    end
+
+    test "has the workflow of each session of a shared run that pushed a version", ctx do
+      place!(ctx)
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
+          set: [workflow: "write-acceptance-checks"]
+        )
+
+      # Each session of the shared run pushes a version while it is the newest session.
+      for {workflow, sequence} <- [{"write-acceptance-checks", 1}, {"review-checks", 2}] do
+        Repo.insert!(%Session{
+          organisation_id: ctx.dispatch_run.organisation_id,
+          workspace_id: ctx.dispatch_run.workspace_id,
+          dispatch_run_id: ctx.dispatch_run.id,
+          sequence: sequence,
+          stage_entry: sequence - 1,
+          round: 1,
+          workflow: workflow
+        })
+
+        body = push_body("screenshot", [{"one.png", "image/png", @png <> workflow}])
+        assert write(ctx, "/artifacts", body).status == 201
+      end
+
+      [artifact] = json_response(read(ctx, "/artifacts"), 200)["artifacts"]
+
+      assert Enum.map(artifact["versions"], & &1["writer"]) == [
+               %{
+                 "kind" => "run",
+                 "run_id" => ctx.dispatch_run.run_id,
+                 "workflow" => "review-checks"
+               },
+               %{
+                 "kind" => "run",
+                 "run_id" => ctx.dispatch_run.run_id,
+                 "workflow" => "write-acceptance-checks"
+               }
+             ]
+    end
+
+    test "has null as the workflow of a run with no workflow", ctx do
+      place!(ctx)
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
+          set: [workflow: nil]
+        )
+
+      store!(%{ctx | dispatch_run: Repo.get!(DispatchRun, ctx.dispatch_run.id)}, "screenshot", [
+        file("one.png", "image/png", @png)
+      ])
+
+      [artifact] = json_response(read(ctx, "/artifacts"), 200)["artifacts"]
+
+      assert [%{"writer" => %{"kind" => "run", "run_id" => run_id, "workflow" => nil}}] =
+               artifact["versions"]
+
+      assert run_id == ctx.dispatch_run.run_id
+    end
+
+    test "has null as the workflow of a version stored with none, whatever the run's", ctx do
+      place!(ctx)
+
+      {1, _rows} =
+        Repo.update_all(from(d in DispatchRun, where: d.id == ^ctx.dispatch_run.id),
+          set: [workflow: "capture-demo"]
+        )
+
+      version = store!(ctx, "screenshot", [file("one.png", "image/png", @png)])
+
+      # A version stored before the column existed.
+      {1, _rows} =
+        Repo.update_all(from(v in Version, where: v.id == ^version.id), set: [workflow: nil])
+
+      [artifact] = json_response(read(ctx, "/artifacts"), 200)["artifacts"]
+      assert [%{"writer" => %{"kind" => "run", "workflow" => nil}}] = artifact["versions"]
+    end
+
+    test "has no workflow in the writer of a version a person wrote", ctx do
+      place!(ctx)
+
+      {:ok, _version} =
+        Apiary.Artifacts.push({:member_action, ctx.scope}, ctx.work_item, "questions", [
+          %{
+            filename: "questions.json",
+            content_type: "application/json",
+            binary: Jason.encode!(%{"questions" => []})
+          }
+        ])
+
+      [artifact] = json_response(read(ctx, "/artifacts"), 200)["artifacts"]
+      assert [%{"writer" => writer}] = artifact["versions"]
+      assert writer == %{"kind" => "person", "name" => Inputs.person_name(ctx.scope.user.id)}
+      refute Map.has_key?(writer, "workflow")
     end
 
     test "has the approved version by its id, and who approved it", ctx do
@@ -2458,6 +2558,7 @@ defmodule ApiaryWeb.Contract.RunApi.ControllerTest do
       assert withdrawn.withdrawn
       assert withdrawn.files == []
       assert withdrawn.writer == :run
+      assert withdrawn.workflow == "explore-a-ticket"
       assert withdrawn.note == "Shape removed scenario-2."
       assert {:run, %DispatchRun{id: id}} = withdrawn.opts[:actor]
       assert id == ctx.dispatch_run.id

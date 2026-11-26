@@ -1775,6 +1775,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
   run failed after it wrote proposal version 2.” Questions wait for answers at any count
   of runs and in any round: a stage no longer escalates them at its last round.
 - `GET work-item` returns the run's number in `run.number`.
+- In `GET artifacts`, the `writer` of a version that a run wrote has `workflow`: the
+  workflow of the run's session that pushed the version. It is null for a run with no
+  workflow and for a version stored before this change. The `writer` of a person's version
+  has no `workflow`.
 <!-- /feature -->
 - The **Run** list in a run's Timeline shows the run's `push` steps under **Save the
   outputs**, as they happen. A failed push opens its row with the step's output, and it does
@@ -3532,6 +3536,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+<!-- feature: workflow_model -->
+- `artifact_versions` (20261126120000): a nullable column `workflow`, the workflow of the
+  run's session that pushed the version. It changes no row: a version stored before this
+  change has none, and `GET artifacts` returns `workflow: null` for such a version that a
+  run wrote. Rolling back drops the column.
+<!-- /feature -->
 <!-- feature: factory, secrets -->
 - `secrets` (20261120090000): a column `last_key_number`, `NOT NULL` with the default 0,
   the number of the last `key-<n>` value ID given to the secret's key. Adding the

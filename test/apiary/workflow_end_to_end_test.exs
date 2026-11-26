@@ -219,7 +219,12 @@ defmodule Apiary.WorkflowEndToEndTest do
     assert %{"newest_version" => 1} = artifact(index, "verdict")
 
     for version <- artifact(index, "proposal")["versions"] do
-      assert version["writer"] == %{"kind" => "run", "run_id" => run.run_id}
+      assert version["writer"] == %{
+               "kind" => "run",
+               "run_id" => run.run_id,
+               "workflow" => "explore-a-ticket"
+             }
+
       assert version["stage_id"] == @explore
     end
 

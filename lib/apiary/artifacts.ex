@@ -968,7 +968,21 @@ defmodule Apiary.Artifacts do
   defp writer({:run, %DispatchRun{id: run_id} = run}, %WorkItem{} = work_item, _type_name)
        when is_binary(run_id) do
     if run.work_item_id == work_item.id and run.organisation_id == work_item.organisation_id,
-      do: {:ok, %{actor: :run, writer: :run, user_id: nil, run_id: run_id, scope: nil, run: run}},
+      do:
+        {:ok,
+         %{
+           actor: :run,
+           writer: :run,
+           user_id: nil,
+           run_id: run_id,
+           # shortcut: the workflow is the session open when Qory Apiary handles the push,
+           # so a push still in flight when the run moves to its next session is stored
+           # with the next session's workflow; replace it when each run API request has
+           # its session.
+           workflow: Apiary.Stages.session_workflow(run),
+           scope: nil,
+           run: run
+         }},
       else: {:error, :not_found}
   end
 
@@ -1817,6 +1831,7 @@ defmodule Apiary.Artifacts do
       writer: writer.writer,
       run_id: writer.run_id,
       user_id: writer.user_id,
+      workflow: Map.get(writer, :workflow),
       stage_id: fields.stage_id,
       note: fields.note,
       decision_id: fields.decision,

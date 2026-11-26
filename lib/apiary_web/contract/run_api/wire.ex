@@ -234,7 +234,11 @@ defmodule ApiaryWeb.Contract.RunApi.Wire do
   defp writer(version, context) do
     case text(get(version, :writer)) do
       "run" ->
-        object([{"kind", "run"}, {"run_id", Map.get(context.runs, get(version, :run_id))}])
+        object([
+          {"kind", "run"},
+          {"run_id", Map.get(context.runs, get(version, :run_id))},
+          {"workflow", get(version, :workflow)}
+        ])
 
       "person" ->
         object([{"kind", "person"}, {"name", name(context, get(version, :user_id))}])

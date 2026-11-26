@@ -872,6 +872,17 @@ defmodule Apiary.Stages do
 
   def newest_session(%DispatchRun{}), do: nil
 
+  # session_workflow/1 is the workflow of `run` now: for a run of a stage with
+  # `shared_run: true`, that of its newest session (`newest_session/1`), else the run's.
+  @doc false
+  @spec session_workflow(DispatchRun.t()) :: String.t() | nil
+  def session_workflow(%DispatchRun{} = run) do
+    case newest_session(run) do
+      nil -> run.workflow
+      session -> session.workflow
+    end
+  end
+
   # session_credential/2 is the `model_provider_credential_name` that the claim of `run`,
   # a registered run of a stage with `shared_run: true`, kept for its session number
   # `session` (`claim_sessions!/3`): the key whose group that session starts on. The
@@ -3414,9 +3425,10 @@ defmodule Apiary.Stages do
     end
   end
 
-  # A version of an artifact as the reads return it, with the approvals that cover it, and
+  # A version of an artifact as the reads return it, with the approvals that cover it,
   # `decision`, the id of the person's note that asked for it, with `decision_at`, the
-  # time of that note from `times` (`Apiary.Stages.Notes.times/2`); nil for none.
+  # time of that note from `times` (`Apiary.Stages.Notes.times/2`), nil for none, and
+  # `workflow`, the workflow of the run's session that stored it, nil for none.
   defp version_map(version, approvals, times) do
     decision = Map.get(version, :decision_id)
 
@@ -3434,7 +3446,8 @@ defmodule Apiary.Stages do
       cancelled: Artifacts.cancelled?(version),
       withdrawn: Map.get(version, :withdrawn) == true,
       decision: decision,
-      decision_at: decision && Map.get(times, decision)
+      decision_at: decision && Map.get(times, decision),
+      workflow: Map.get(version, :workflow)
     }
   end
 

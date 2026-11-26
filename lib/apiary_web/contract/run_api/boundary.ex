@@ -49,15 +49,11 @@ defmodule ApiaryWeb.Contract.RunApi.Boundary do
   ## The run's columns of the workflow model
 
   # workflow/1 and round/1 are the run's workflow and round now: for a run of a stage
-  # with `shared_run: true`, those of its newest session (`Apiary.Stages.newest_session/1`),
-  # as the run's columns keep only its first session's.
+  # with `shared_run: true`, those of its newest session (`Apiary.Stages.newest_session/1`;
+  # workflow/1 reads it with `Apiary.Stages.session_workflow/1`), as the run's columns
+  # keep only its first session's.
   @spec workflow(DispatchRun.t()) :: String.t() | nil
-  def workflow(%DispatchRun{} = run) do
-    case Apiary.Stages.newest_session(run) do
-      nil -> run.workflow
-      session -> session.workflow
-    end
-  end
+  def workflow(%DispatchRun{} = run), do: Apiary.Stages.session_workflow(run)
 
   @spec stage_id(DispatchRun.t()) :: String.t() | nil
   def stage_id(%DispatchRun{stage_id: stage_id}), do: stage_id
