@@ -3470,19 +3470,19 @@ defmodule ApiaryWeb.WorkItemExploreTest do
             {%{code: "adapter_unavailable", adapter: "code-host"},
              "Run Explore again. If the run ends the same way, contact support. Three calls to the adapter code-host failed."},
             {%{code: "assigned_without_token", source: "https://code.example.com/acme/harness"},
-             "Connect an account that can read https://code.example.com/acme/harness to this organisation, then take the work item in again. https://code.example.com/acme/harness is a private harness source, and the access assigned to this organisation gives runs no read token for it."},
+             "Connect an account that can read https://code.example.com/acme/harness to this organisation, then run Explore again. https://code.example.com/acme/harness is a private harness source, and the access assigned to this organisation gives runs no read token for it."},
             {%{code: "assigned_gateway", source: nil},
-             "Connect an account that can read the workspace's private harness sources to this organisation, then take the work item in again."},
+             "Connect an account that can read the workspace's private harness sources to this organisation, then run Explore again."},
             {%{code: "assigned_without_token", source: nil},
-             "Connect an account that can read the workspace's private harness sources to this organisation, then take the work item in again."},
+             "Connect an account that can read the workspace's private harness sources to this organisation, then run Explore again."},
             {%{code: "source_case", rule: %{"rule" => "source_case", "values" => %{}}},
-             "Ask an owner or admin of this workspace to write the harness sources in the case the forge names them, then take the work item in again."},
+             "Ask an owner or admin of this workspace to write the harness sources in the case the forge names them, then run Explore again."},
             {%{
                code: "source_case",
                workspace: "Main",
                rule: %{"rule" => "source_case", "values" => %{}}
              },
-             "Ask an owner or admin of Main to write the harness sources in the case the forge names them, then take the work item in again."},
+             "Ask an owner or admin of Main to write the harness sources in the case the forge names them, then run Explore again."},
             {%{
                code: "harness_entries",
                rule: %{
@@ -3490,7 +3490,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                  "values" => %{"reason" => "overlap", "host" => "code.example.com"}
                }
              },
-             "Take the private harness sources on code.example.com through one account, then take the work item in again. A run reads each forge through one account."},
+             "Take the private harness sources on code.example.com through one account, then run Explore again. A run reads each forge through one account."},
             {%{
                code: "harness_entries",
                rule: %{
@@ -3498,15 +3498,15 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                  "values" => %{"reason" => "too_many_paths", "host" => "code.example.com"}
                }
              },
-             "Take fewer private harness sources from code.example.com, then take the work item in again. A run reads at most 32 sources through one account."},
+             "Take fewer private harness sources from code.example.com, then run Explore again."},
             {%{
                code: "harness_entries",
                source: "https://code.example.com/acme/harness",
                rule: %{"rule" => "harness_entries", "values" => %{"reason" => "path_refused"}}
              },
-             "Write https://code.example.com/acme/harness without *, {, } or .., then take the work item in again."},
+             "Write https://code.example.com/acme/harness without spaces or any of * ? # { } // .., then run Explore again."},
             {%{code: "assigned_gateway", source: "https://code.example.com/acme/harness"},
-             "Connect an account that can read https://code.example.com/acme/harness to this organisation, then take the work item in again."},
+             "Connect an account that can read https://code.example.com/acme/harness to this organisation, then run Explore again."},
             {%{
                code: "source_case",
                source: "https://code.example.com/Acme/Harness",
@@ -3516,6 +3516,33 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                }
              },
              "Write the harness source as https://code.example.com/acme/harness: the forge names it in that case."},
+            {%{
+               code: "harness_entries",
+               rule: %{
+                 "rule" => "harness_entries",
+                 "values" => %{"reason" => "integration_overlap", "host" => "code.example.com"}
+               }
+             },
+             "Ask your Qory Apiary admin to update the code.example.com integration, then run Explore again."},
+            # A hidden harness shows no host and no source.
+            {%{
+               code: "harness_entries",
+               workspace: "Main",
+               rule: %{"rule" => "harness_entries", "values" => %{"reason" => "overlap"}}
+             },
+             "Ask an owner or admin of Main to take the private harness sources on each forge through one account, then run Explore again."},
+            {%{
+               code: "harness_entries",
+               workspace: "Main",
+               rule: %{"rule" => "harness_entries", "values" => %{"reason" => "too_many_paths"}}
+             },
+             "Ask an owner or admin of Main to take fewer private harness sources from one forge, then run Explore again."},
+            {%{
+               code: "harness_entries",
+               workspace: "Main",
+               rule: %{"rule" => "harness_entries", "values" => %{"reason" => "path_refused"}}
+             },
+             "Ask an owner or admin of Main to correct the harness source addresses, then run Explore again."},
             # A run with no workflow, ended when it was queued.
             {%{code: "many_stacks"},
              "No workflow to start: more than one stack has a workflow. Keep the workflow in one stack."},
@@ -3549,16 +3576,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                ]
       end
 
-      # Entries the claim refused with no host or no source to show (a hidden harness's
-      # refused path): the heading alone, as for any unknown code.
+      # Entries the claim refused for a reason with no words: the heading alone, as for
+      # any unknown code.
       for failure <- [
             %{
               code: "harness_entries",
-              rule: %{"rule" => "harness_entries", "values" => %{"reason" => "overlap"}}
-            },
-            %{
-              code: "harness_entries",
-              rule: %{"rule" => "harness_entries", "values" => %{"reason" => "path_refused"}}
+              rule: %{"rule" => "harness_entries", "values" => %{"reason" => "other"}}
             }
           ] do
         r =

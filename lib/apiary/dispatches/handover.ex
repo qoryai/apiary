@@ -1066,10 +1066,12 @@ defmodule Apiary.Dispatches.Handover do
   #     Qory Apiary provides;
   #   * `harness_entries`, for entries the run configuration cannot take, with the
   #     reason in the rule's values: `path_refused`, a path the templates refuse, with
-  #     the source as the failed source while the harness is not hidden;
-  #     `too_many_paths`, an item with more than 32 paths; or `overlap`, two items, of
-  #     one entry or of two, that claim one host and overlap or have no paths. Those two
-  #     have the host in the values.
+  #     the source as the failed source; `too_many_paths`, an item with more than 32
+  #     paths; `overlap`, the paths of two entries that claim one host overlap; or
+  #     `integration_overlap`, two items of one entry claim one host, or an item has no
+  #     paths. The last three have the host in the values. A hidden harness shows neither
+  #     the source nor the host, but for `integration_overlap`, whose fix is the
+  #     integration of that host.
   defp harness_entries(%DispatchRun{id: id} = dispatch_run, locked) do
     %{gateway: {gateway, _workspace}, key: %{node: pool}, now: now} = locked
 
@@ -1089,7 +1091,8 @@ defmodule Apiary.Dispatches.Handover do
                   {:source, git} when is_binary(git) and walk.harness_hidden != true ->
                     {Document.shown(git), %{}}
 
-                  {:host, host} ->
+                  {:host, host}
+                  when reason == :integration_overlap or walk.harness_hidden != true ->
                     {nil, %{"host" => host}}
 
                   _hidden ->

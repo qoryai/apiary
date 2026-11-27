@@ -2058,6 +2058,10 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert WorkCredentialStub.calls() == []
       assert seals() == []
 
+      # Activity names the machine as the cause.
+      assert [{"harness-1", "machine_not_provided"}] ==
+               for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]})
+
       # Only a run on a machine Qory Apiary provides may receive it: the gateway at the
       # instance's level and the instance's pool. The run's pool is the workspace's,
       # so even the instance's gateway is refused for it. An entry under a grant of the
@@ -2122,6 +2126,10 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert log =~ "may not be sealed for its gateway"
       assert WorkCredentialStub.calls() == []
       assert seals() == []
+
+      # Activity names the machine as the cause.
+      assert [{"harness-1", "machine_not_provided"}] ==
+               for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]})
     end
 
     test "that names the work entry and two harness entries takes the run's row first", ctx do

@@ -333,12 +333,13 @@ defmodule Apiary.Runs.RunCredentials do
   # run configuration has `stack_hosts` (the moduledoc): `{:ok, entries}`, not yet stored,
   # `[]` for none, or `{:error, reason, at}`: `:path_refused` with `{:source, git}`, the
   # address of the source whose path the templates refuse; `:too_many_paths` with
-  # `{:host, host}`, the first host of the item; or `:overlap` with `{:host, host}`, the
-  # host two items claim (`conflict/1`).
+  # `{:host, host}`, the first host of the item; or, with `{:host, host}`, the host two
+  # items claim (`conflict/1`), `:integration_overlap` where the adapter's items cause it,
+  # and `:overlap` where the entries of two links or two resources do.
   @spec form_harness(DispatchRun.t(), [String.t()]) ::
           {:ok, [RunCredential.t()]}
           | {:error, :path_refused, {:source, String.t() | nil}}
-          | {:error, :too_many_paths | :overlap, {:host, String.t()}}
+          | {:error, :too_many_paths | :overlap | :integration_overlap, {:host, String.t()}}
   def form_harness(%DispatchRun{} = dispatch_run, stack_hosts) when is_list(stack_hosts) do
     dispatch_run
     |> Apiary.Harnesses.entries()
@@ -353,7 +354,8 @@ defmodule Apiary.Runs.RunCredentials do
       {:ok, formed} ->
         case conflict(Enum.map(formed, &elem(&1, 1))) do
           nil -> {:ok, harness_rows(dispatch_run, formed)}
-          host -> {:error, :overlap, {:host, host}}
+          {host, :integration} -> {:error, :integration_overlap, {:host, host}}
+          {host, :accounts} -> {:error, :overlap, {:host, host}}
         end
 
       error ->
@@ -460,24 +462,39 @@ defmodule Apiary.Runs.RunCredentials do
 
   @doc false
   # conflict/1 is the first host that two apply items of the harness entries whose items
-  # are `entries` claim in a way the gateway refuses, nil for none: as the gateway checks
-  # a run configuration's harness credentials, each item is compared with every item
-  # before it, of the same entry or of another, and on a host both claim, one of them
-  # has no `paths`, or a path of one and a path of the other match one request. A path
-  # matches whole, or up to a final `*` as a prefix, and a segment written `{}` matches
-  # one segment that is not empty.
-  @spec conflict([[map]]) :: String.t() | nil
+  # are `entries` claim in a way the gateway refuses, with who causes it, nil for none: as
+  # the gateway checks a run configuration's harness credentials, each item is compared
+  # with every item before it, of the same entry or of another, and on a host both claim,
+  # one of them has no `paths`, or a path of one and a path of the other match one
+  # request. A path matches whole, or up to a final `*` as a prefix, and a segment
+  # written `{}` matches one segment that is not empty. `{host, :integration}` for two
+  # items of one entry, or an item with no paths: the adapter's items, or a resource it
+  # resolved no path for; `{host, :accounts}` for the paths of two entries.
+  @spec conflict([[map]]) :: {String.t(), :integration | :accounts} | nil
   def conflict(entries) do
-    items = Enum.with_index(List.flatten(entries))
+    items =
+      for {items, n} <- Enum.with_index(entries), item <- items do
+        {item, n}
+      end
+      |> Enum.with_index()
 
-    Enum.find_value(items, fn {item, i} ->
-      Enum.find_value(Enum.take(items, i), fn {earlier, _j} ->
-        Enum.find(item["hosts"], fn host ->
-          host in earlier["hosts"] and claims_meet?(earlier["paths"], item["paths"])
-        end)
+    Enum.find_value(items, fn {{item, n}, i} ->
+      Enum.find_value(Enum.take(items, i), fn {{earlier, m}, _j} ->
+        host =
+          Enum.find(item["hosts"], fn host ->
+            host in earlier["hosts"] and claims_meet?(earlier["paths"], item["paths"])
+          end)
+
+        cond do
+          is_nil(host) -> nil
+          n == m or pathless?(earlier) or pathless?(item) -> {host, :integration}
+          true -> {host, :accounts}
+        end
       end)
     end)
   end
+
+  defp pathless?(item), do: item["paths"] in [nil, []]
 
   defp claims_meet?(a, b) when is_nil(a) or is_nil(b) or a == [] or b == [], do: true
   defp claims_meet?(a, b), do: Enum.any?(a, fn x -> Enum.any?(b, &paths_meet?(x, &1)) end)

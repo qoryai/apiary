@@ -7600,9 +7600,9 @@ defmodule ApiaryWeb.WorkItemComponents do
   # reaches, and a failed read of a public repository, have the Harness step's words
   # (`ApiaryWeb.HarnessComponents.public_read_words/2`). A harness file with hooks and no
   # `extends` has a sentence alone, which starts with its fix. A read token the run gets
-  # none of, a case failure and entries a claim refused have the stop cause's words
-  # (`Apiary.Stages.StopCause`), with no source for a hidden harness; nil for entries
-  # whose rule names no host or no source it can show.
+  # none of, a case failure, the limit on accounts and entries a claim refused have the
+  # stop cause's fixes (`Apiary.Stages.StopCause`), ending with running Explore again as
+  # every harness line here does, with no source or host for a hidden harness.
   defp harness_failure_words(%{
          code: "invalid",
          rule: %{"rule" => "hooks_without_extends", "values" => %{"file" => file}}
@@ -7665,7 +7665,8 @@ defmodule ApiaryWeb.WorkItemComponents do
       code when code in ["assigned_without_token", "assigned_gateway"] ->
         Apiary.Stages.StopCause.harness_token_words(
           String.to_existing_atom(code),
-          failure.source
+          failure.source,
+          :explore
         )
 
       "source_case" ->
@@ -7675,12 +7676,18 @@ defmodule ApiaryWeb.WorkItemComponents do
 
           _hidden ->
             Apiary.Stages.StopCause.hidden_source_case_words(
-              failure[:workspace] || gettext("this workspace")
+              failure[:workspace] || gettext("this workspace"),
+              :explore
             )
         end
 
       "harness_entries" ->
-        Apiary.Stages.StopCause.harness_entries_words(failure.rule, failure.source)
+        Apiary.Stages.StopCause.harness_entries_words(
+          failure.rule,
+          failure.source,
+          failure[:workspace] || gettext("this workspace"),
+          :explore
+        )
 
       "adapter_unavailable" ->
         rich_gettext(

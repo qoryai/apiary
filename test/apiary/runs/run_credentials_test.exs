@@ -1672,7 +1672,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
           )
         ])
 
-      assert formed(queued) == {:error, :overlap, {:host, "git.example.com"}}
+      assert formed(queued) == {:error, :integration_overlap, {:host, "git.example.com"}}
     end
 
     test "two items of one entry on one host, with no path for the resource, overlap", ctx do
@@ -1698,7 +1698,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
                entry.apply
 
       queued = walked!(queued, [link(grant, [{"R_h", nil, [@harness_source]}])])
-      assert formed(queued) == {:error, :overlap, {:host, "git.example.com"}}
+      assert formed(queued) == {:error, :integration_overlap, {:host, "git.example.com"}}
     end
 
     test "a path the templates refuse, and more than 32 paths, refuse the entries", ctx do
@@ -1707,6 +1707,11 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
       queued = walked!(queued, [link(grant, [{"R_h", "acme/*", [@harness_source]}])])
       assert formed(queued) == {:error, :path_refused, {:source, @harness_source["git"]}}
+
+      # A path with a space is refused too.
+      spaced = %{"git" => "https://git.example.com/acme/my harness", "ref" => "v1"}
+      queued = walked!(queued, [link(grant, [{"R_h", "acme/my harness", [spaced]}])])
+      assert formed(queued) == {:error, :path_refused, {:source, spaced["git"]}}
 
       many = for n <- 1..17, do: {"R_#{n}", "acme/repo-#{n}", [@harness_source]}
       queued = walked!(queued, [link(grant, many)])
@@ -1740,7 +1745,12 @@ defmodule Apiary.Runs.RunCredentialsTest do
                [%{"hosts" => ["other.example.com"]}]
              ])
 
-      assert RunCredentials.conflict([[item.(nil)], [item.(["/a"])]]) == "git.example.com"
+      # The adapter's items cause an overlap of one entry, or one with no paths; the
+      # paths of two entries cause the others.
+      host = "git.example.com"
+      assert RunCredentials.conflict([[item.(nil)], [item.(["/a"])]]) == {host, :integration}
+      assert RunCredentials.conflict([[item.(["/a"]), item.(["/a"])]]) == {host, :integration}
+      assert RunCredentials.conflict([[item.(["/a/*"])], [item.(["/a/b"])]]) == {host, :accounts}
       assert RunCredentials.conflict([[item.(["/a"])], [item.(["/b"])]]) == nil
     end
 
@@ -1795,7 +1805,8 @@ defmodule Apiary.Runs.RunCredentialsTest do
       assert values == %{"reason" => "path_refused"}
     end
 
-    test "a claim ends the run for entries that overlap, with the host and no source", ctx do
+    test "a claim ends the run for an overlap its integration causes, with the host even when hidden",
+         ctx do
       {work_item, queued} = queued!(ctx)
       grant = own_grant!(work_item)
 
@@ -1814,13 +1825,41 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
       assert {:ok, _claimed} = claim(ctx)
 
+      # The adapter resolved no path for R_h: its integration causes the overlap, and
+      # its host shows even for a hidden harness.
       assert %RunHarness{
                failure: "harness_entries",
                failed_source: nil,
                failure_rule: %{
-                 "values" => %{"reason" => "overlap", "host" => "git.example.com"}
+                 "values" => %{"reason" => "integration_overlap", "host" => "git.example.com"}
                }
              } = Repo.get_by!(RunHarness, dispatch_run_id: queued.id)
+    end
+
+    test "a claim ends the run for two entries whose paths overlap, with the host unless hidden",
+         ctx do
+      {work_item, queued} = queued!(ctx)
+      grant = own_grant!(work_item)
+
+      nested = [
+        {"R_a", "acme/tools", [@tools_source]},
+        {"R_b", "acme/tools/sub", [%{"git" => "https://git.example.com/acme/tools/sub"}]}
+      ]
+
+      queued = walked!(queued, [link(grant, nested, true)])
+      assert formed(queued) == {:error, :overlap, {:host, "git.example.com"}}
+
+      {1, _rows} =
+        Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^queued.id),
+          set: [harness_hidden: true]
+        )
+
+      assert {:ok, _claimed} = claim(ctx)
+
+      assert %RunHarness{failure: "harness_entries", failure_rule: %{"values" => values}} =
+               Repo.get_by!(RunHarness, dispatch_run_id: queued.id)
+
+      assert values == %{"reason" => "overlap"}
     end
 
     test "a claim through a gateway the run's organisation controls ends the run for a link of another organisation's grant",

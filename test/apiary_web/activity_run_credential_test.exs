@@ -74,7 +74,7 @@ defmodule ApiaryWeb.ActivityRunCredentialTest do
   test "every cause of a refusal has its words" do
     for cause <- Apiary.Runs.WorkCredential.causes() do
       assert sentence(Map.put(@details, "outcome", Atom.to_string(cause))) =~
-               ~r/\AWas refused write access to acme\/shop for the run: (the|Qory Apiary) /
+               ~r/\AWas refused write access to acme\/shop for the run: (the|Qory Apiary|only) /
     end
   end
 
@@ -123,6 +123,11 @@ defmodule ApiaryWeb.ActivityRunCredentialTest do
 
       assert sentence(hidden) ==
                "Received read access to the run's harness sources, with no end time"
+    end
+
+    test "refused because the run's machine is not one Qory Apiary provides" do
+      assert sentence(Map.put(@harness, "outcome", "machine_not_provided")) ==
+               "Was refused read access to the harness sources code.example.com/acme/harness, code.example.com/acme/tools for the run: only machines that Qory Apiary provides may receive these sources"
     end
 
     test "refused because the run may no longer use the grant" do

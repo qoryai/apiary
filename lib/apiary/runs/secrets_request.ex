@@ -74,7 +74,9 @@ defmodule Apiary.Runs.SecretsRequest do
   #     the organisation's chain; for a request for the work entry, the push entry or a
   #     harness entry, a gateway that may not receive its credential
   #     (`Apiary.Runs.WorkCredential.entry_sealable_to?/3`): a harness entry from another
-  #     organisation's grant goes only to a gateway that Qory Apiary provides;
+  #     organisation's grant goes only to a run on a gateway and a node pool that Qory
+  #     Apiary provides, and its refusal for the run's machine alone has an Activity
+  #     entry, `machine_not_provided`;
   #     both checks are also false for a gateway of another organisation or of another
   #     workspace, whose request step 4 ends first; the access key's public key fails a
   #     key check (`Apiary.Contract.Ed25519.check_public_key/1`);
@@ -473,20 +475,35 @@ defmodule Apiary.Runs.SecretsRequest do
 
   # The work entry's and the push entry's credentials may be sealed for a gateway of the
   # run's organisation, or the instance's gateway (`Apiary.Runs.WorkCredential.sealable_to?/2`);
-  # a harness entry's from another organisation's grant only for a gateway that Qory
-  # Apiary provides (`Apiary.Runs.WorkCredential.entry_sealable_to?/3`).
+  # a harness entry's from another organisation's grant only for a run on a machine that
+  # Qory Apiary provides (`Apiary.Runs.WorkCredential.entry_sealable_to?/3`). A harness
+  # entry refused for its machine alone gets its Activity entry, `machine_not_provided`
+  # (`Apiary.Runs.WorkCredential.seal_refusal/3`); `{:error, :unavailable}` where it
+  # cannot be written.
   defp work_sealable(_run, [], _access_key), do: :ok
 
-  defp work_sealable(%Run{} = run, [_ | _] = works, %AccessKey{node: node}) do
-    if Enum.all?(works, &WorkCredential.entry_sealable_to?(node, run, &1.row)) do
-      :ok
-    else
-      Logger.warning(
-        "a secrets request for the run #{run.node_run_id} was refused: a credential it " <>
-          "names may not be sealed for its gateway"
-      )
+  defp work_sealable(%Run{} = run, [_ | _] = works, %AccessKey{node: node} = access_key) do
+    case for(
+           work <- works,
+           cause = WorkCredential.seal_refusal(node, run, work.row),
+           do: {work.row, cause}
+         ) do
+      [] ->
+        :ok
 
-      {:error, :credential_unavailable}
+      refused ->
+        Logger.warning(
+          "a secrets request for the run #{run.node_run_id} was refused: a credential it " <>
+            "names may not be sealed for its gateway"
+        )
+
+        written =
+          for {row, :machine_not_provided} <- refused,
+              do: WorkCredential.refuse(access_key, run, row, :machine_not_provided)
+
+        if {:error, :unavailable} in written,
+          do: {:error, :unavailable},
+          else: {:error, :credential_unavailable}
     end
   end
 

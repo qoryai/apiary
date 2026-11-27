@@ -53,8 +53,10 @@ source of the entry, under an adapter whose credential reaches only the resource
 call (`credential_scope: resource`). An entry under another organisation's grant is
 sealed only for a run that the instance's gateway serves and the instance's node pool
 claimed. Otherwise the call is not made, and the request is refused. The Activity entry
-names the cause: `connection_gone` for a connection that is not connected, and
-`harness_not_allowed` for a grant that ended or that the run may no longer use.
+names the cause: `connection_gone` for a connection that is not connected,
+`harness_not_allowed` for a grant that ended or that the run may no longer use, and
+`machine_not_provided` for an entry under another organisation's grant whose run is on a
+gateway or a node pool that Qory does not provide.
 
 A run ends `harness_unresolved` before it fetches anything in these cases:
 
@@ -79,9 +81,11 @@ A run ends `harness_unresolved` before it fetches anything in these cases:
 - `harness_entries`: entries the run configuration cannot take, with the reason in the
   rule's values: `path_refused`, a path the templates refuse, with the source as the
   failed source unless the harness is hidden; `too_many_paths`, an item with more than 32
-  paths; or `overlap`, two items on one host, of one entry or of two, whose paths overlap
-  or one of which has no paths, as the gateway checks them. The last two have the
-  `host`.
+  paths; `overlap`, the paths of two entries on one host overlap; or
+  `integration_overlap`, two items of one entry on one host, or an item with no paths
+  beside another on its host: the adapter's items, or a resource it resolved no `path`
+  for. The gateway checks the items in the same way. The last three have the `host`,
+  except `overlap` and `too_many_paths` for a hidden harness.
 
 ## The run's track
 

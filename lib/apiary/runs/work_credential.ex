@@ -98,6 +98,7 @@ defmodule Apiary.Runs.WorkCredential do
   @type cause ::
           :connection_gone
           | :harness_not_allowed
+          | :machine_not_provided
           | :adapter_key_missing
           | :call_failed
           | CallFailure.cause()
@@ -118,7 +119,8 @@ defmodule Apiary.Runs.WorkCredential do
   # causes/0 is every cause an Activity entry's `outcome` may have, besides `issued`.
   @spec causes() :: [cause]
   def causes do
-    [:connection_gone, :harness_not_allowed, :adapter_key_missing, :call_failed] ++
+    [:connection_gone, :harness_not_allowed, :machine_not_provided, :adapter_key_missing] ++
+      [:call_failed] ++
       CallFailure.causes() ++
       RunCredentialIssue.causes() ++
       [:run_not_live, :seal_failed, :apply_moved, :not_recorded, :other_credential_failed]
@@ -167,6 +169,38 @@ defmodule Apiary.Runs.WorkCredential do
   end
 
   def entry_sealable_to?(gateway, %Run{} = run, %RunCredential{}), do: sealable_to?(gateway, run)
+
+  @doc false
+  # seal_refusal/3 is why the credential of the entry `row` of `run` may not be sealed for
+  # `gateway` (`entry_sealable_to?/3`), nil where it may: `:machine_not_provided` for a
+  # harness entry from another organisation's grant whose run is on a machine that Qory
+  # Apiary does not provide (`assigned_machine?/2`), though the gateway may receive the
+  # run's other credentials; `:not_sealable` for every other refusal.
+  @spec seal_refusal(Node.t(), Run.t(), RunCredential.t()) ::
+          nil | :machine_not_provided | :not_sealable
+  def seal_refusal(gateway, %Run{} = run, %RunCredential{} = row) do
+    cond do
+      entry_sealable_to?(gateway, run, row) ->
+        nil
+
+      row.purpose == :harness and sealable_to?(gateway, run) and
+          match?(%Grant{}, row.grant_id && Repo.get(Grant, row.grant_id)) ->
+        :machine_not_provided
+
+      true ->
+        :not_sealable
+    end
+  end
+
+  @doc false
+  # refuse/4 refuses the credential of the entry `row` of `run` for `cause`, before any
+  # call: its log line, and its Activity entry by the gateway's `access_key`.
+  # `{:error, :credential_unavailable}`, or `{:error, :unavailable}` where the Activity
+  # entry cannot be written.
+  @spec refuse(AccessKey.t(), Run.t(), RunCredential.t(), cause) ::
+          {:error, :credential_unavailable | :unavailable}
+  def refuse(%AccessKey{} = access_key, %Run{} = run, %RunCredential{} = row, cause),
+    do: refusal(access_key, run, row, place(row), cause, nil)
 
   @doc false
   # assigned_machine?/2 is whether a run whose gateway is `gateway` and whose pool is

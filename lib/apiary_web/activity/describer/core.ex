@@ -1143,6 +1143,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
   defp refusal_cause("harness_not_allowed"),
     do: gettext("the access to these sources has ended for this organisation")
 
+  defp refusal_cause("machine_not_provided"),
+    do: gettext("only machines that Qory Apiary provides may receive these sources")
+
   defp refusal_cause("adapter_key_missing"),
     do: gettext("the adapter is deleted or has no access key in use")
 
