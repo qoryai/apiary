@@ -269,7 +269,8 @@ defmodule Apiary.Dispatches.RunEnd do
   # made at `claimed_at` when that comes first: `minutes`, the lifetime the claim kept on
   # its dispatch, which every handed-over dispatch has. `at` as it is with no claim.
   @doc false
-  @spec capped(DateTime.t(), DateTime.t() | nil, pos_integer | nil) :: DateTime.t()
+  @spec capped(DateTime.t(), nil, pos_integer | nil) :: DateTime.t()
+  @spec capped(DateTime.t(), DateTime.t(), pos_integer) :: DateTime.t()
   def capped(%DateTime{} = at, nil, _minutes), do: at
 
   def capped(%DateTime{} = at, %DateTime{} = claimed_at, minutes) when is_integer(minutes),
