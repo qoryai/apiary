@@ -2169,6 +2169,12 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Changed
 
+<!-- feature: factory -->
+- A run's deadline follows its session time limits: the first session's limit plus 2 hours
+  from the attach, then each later session's limit plus 2 hours from the end of the session
+  before. Before, every run had 24 hours and 15 minutes. The machine lifetime in the claim
+  answer is the most the run's sessions can take, at most 7 days.
+<!-- /feature -->
 <!-- feature: factory, secrets -->
 - **Organisation settings › Model providers** is now **Model provider keys**, a list with
   one row per key, in the order the keys were added. A row has the key's name, such as
@@ -3543,6 +3549,9 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+<!-- feature: factory -->
+- `dispatches` (20261127140000): Adds `dispatches.machine_lifetime_minutes`.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - `artifact_versions` (20261126120000): a nullable column `workflow`, the workflow of the
   run's session that pushed the version. It changes no row: a version stored before this

@@ -247,11 +247,12 @@ defmodule Apiary.Dispatches do
   # deleted pool: they end `build_failed`, unless a live pool has an image for their
   # target from its collection's `environment_ref`.
   #
-  # ## The end of a run handed over: `backstop_seconds/1`
+  # ## The end of a run handed over: `backstop_seconds/2`
   #
   # A run handed over ends with its registered run: by its exit, by its gateway's refusal,
-  # or by the lost-run check, at its gateway's `attach_by` should it never attach, at
-  # `backstop_seconds/1` of its step after its attach should it have no exit by then, or
+  # or by the lost-run check, at its gateway's `attach_by` should it never attach, at its
+  # backstop should it have no exit by then (`backstop_seconds/2` after its attach, moved
+  # at each next session of a shared run), or
   # once it went 600 seconds without a heartbeat after its attach and before an exit
   # (`Apiary.Dispatches.RunEnd`). Its dispatch ends with it and the slot
   # it held is freed, once.
@@ -1424,7 +1425,13 @@ defmodule Apiary.Dispatches do
 
     case Handover.register(Map.merge(claimed, registering), now) do
       {:ok, registered} ->
+        dispatch = %{
+          claimed.dispatch
+          | machine_lifetime_minutes: registered.machine_lifetime_minutes
+        }
+
         {Map.merge(claimed, %{
+           dispatch: dispatch,
            registered: registered.run,
            run_code: registered.run_code,
            gateway_url: registered.gateway_url,
@@ -1886,11 +1893,13 @@ defmodule Apiary.Dispatches do
 
   ## The end of a run handed over
 
-  # backstop_seconds/1 is the seconds after its attach by which a run of `step` has its
-  # exit, or is lost: 87,300 for `workflow` and 4500 for `prebuild`.
+  # backstop_seconds/2 is the seconds after its attach by which a run of `step` whose
+  # first session has the time limit `minutes` has its exit, or is lost
+  # (`Apiary.Dispatches.RunEnd.backstop_seconds/2`): 4500 for `prebuild`, 87,300 for a run
+  # with no time limit (nil).
   @doc false
-  @spec backstop_seconds(String.t() | nil) :: pos_integer
-  def backstop_seconds(step), do: RunEnd.backstop_seconds(step)
+  @spec backstop_seconds(String.t() | nil, pos_integer | nil) :: pos_integer
+  def backstop_seconds(step, minutes), do: RunEnd.backstop_seconds(step, minutes)
 
   ## The sweep
 

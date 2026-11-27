@@ -1106,8 +1106,8 @@ defmodule ApiaryWeb.OverviewComponents do
 
   defp silenced?(run), do: match?(%DateTime{}, Map.get(run, :silenced_at))
 
-  # The time its attach gave the run for its end: what the step's backstop was then,
-  # whatever it is now.
+  # The time the run had for its end, from its attach to its backstop: the one its attach
+  # set, as each next session of a shared run moved it.
   defp backstop_words(%{backstop_at: backstop_at, attached_at: attached_at}),
     do: duration_words(DateTime.diff(backstop_at, attached_at, :second))
 

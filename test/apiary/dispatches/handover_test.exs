@@ -1934,10 +1934,10 @@ defmodule Apiary.Dispatches.HandoverTest do
       %Dispatch{late_machine_at: late} = dispatch!(claimed)
       assert DateTime.diff(late, claimed_at, :second) >= 70 * 60
 
-      # 90 + 60 minutes from the claim is too early, and so is a microsecond before the
+      # 100 + 60 minutes from the claim is too early, and so is a microsecond before the
       # net counted from the dispatched.
-      net = DateTime.add(late, (90 + 60) * 60, :second)
-      Dispatches.sweep(DateTime.add(claimed_at, (90 + 60) * 60, :second))
+      net = DateTime.add(late, (100 + 60) * 60, :second)
+      Dispatches.sweep(DateTime.add(claimed_at, (100 + 60) * 60, :second))
       Dispatches.sweep(DateTime.add(net, -1, :microsecond))
       assert Slots.held(ctx.pool.id) == 1
 

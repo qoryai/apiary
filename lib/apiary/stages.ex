@@ -483,11 +483,7 @@ defmodule Apiary.Stages do
         settings =
           Map.new(workflow_entries(stage), fn {place, entry, loop_entry} ->
             workflow = entry["workflow"]
-
-            minutes =
-              Map.get_lazy(limits, workflow, fn ->
-                Apiary.Dispatches.RunSettings.time_limit_minutes(run, workflow)
-              end)
+            minutes = session_minutes(run, limits, workflow)
 
             {place,
              Map.merge(
@@ -530,6 +526,45 @@ defmodule Apiary.Stages do
 
         :ok
     end
+  end
+
+  # session_seconds/3 is the seconds of the most sessions that `run`, a run of the queue,
+  # can run, each session's setup, limit and margin
+  # (`Apiary.Dispatches.RunEnd.session_seconds/1`), from the limits its claim reads: for a
+  # run of a stage with `shared_run: true`, the sessions of the stage's heaviest count
+  # (`Apiary.Stages.Runner.heaviest/3`), each limit as `claim_sessions!/3` keeps it from
+  # `limits`; for any other run, the one session of `limit`. At most the seconds of the
+  # contract's most lifetime
+  # (`Apiary.Dispatches.DispatchRun.max_machine_lifetime_minutes/0`). Nil when a limit is
+  # missing, as with `factory` off, or the stage has no workflow.
+  @doc false
+  @spec session_seconds(DispatchRun.t(), pos_integer | nil, %{
+          optional(String.t()) => pos_integer
+        }) :: pos_integer | nil
+  def session_seconds(%DispatchRun{} = run, limit, limits) when is_map(limits) do
+    cap = DispatchRun.max_machine_lifetime_minutes() * 60
+
+    case shared_stage(run) do
+      nil ->
+        if is_integer(limit), do: min(weight(limit), cap)
+
+      stage ->
+        minutes = Map.new(Runner.workflows(stage), &{&1, session_minutes(run, limits, &1)})
+
+        if minutes != %{} and Enum.all?(Map.values(minutes), &is_integer/1),
+          do: Runner.heaviest(stage, &weight(Map.fetch!(minutes, &1)), cap)
+    end
+  end
+
+  # The weight of a session whose limit is `minutes`: the seconds it may take.
+  defp weight(minutes), do: Apiary.Dispatches.RunEnd.session_seconds(minutes)
+
+  # The minutes of a session of `workflow` of `run`: its limit in `limits`, as the claim
+  # read them, else read now.
+  defp session_minutes(run, limits, workflow) do
+    Map.get_lazy(limits, workflow, fn ->
+      Apiary.Dispatches.RunSettings.time_limit_minutes(run, workflow)
+    end)
   end
 
   # The workflow entries of `stage`, those in a loop's body included, in the sequence's
@@ -688,7 +723,10 @@ defmodule Apiary.Stages do
   # session joins with the group of the run's default model provider credential.
   #
   # The step is recorded with its result, and a repeat for the same `session` returns
-  # that result and steps nothing. Errors, with nothing written:
+  # that result and steps nothing. A step that queues the next session moves the run's
+  # backstop to the time the result was recorded and the next session's setup, time limit
+  # and margin, under the work item's lock (`Apiary.Dispatches.RunEnd.extend/3`).
+  # Errors, with nothing written:
   # `{:error, :not_found}` for an unknown run, a run of Explore, a run of a stage
   # without `shared_run`, and a run that no claim of a shared stage registered
   # (`claim_sessions!/3`); `{:error, :invalid_request}` for a report of another form;
@@ -805,18 +843,27 @@ defmodule Apiary.Stages do
         apply_outcome(work_item, version, stage, outcome, run.id, nil, :session)
 
       with {:ok, stored} <- session_response(next, work_item, run, settings, pending) do
-        pending
-        |> Ecto.Changeset.change(
-          forager_session: number,
-          state: state,
-          reason: reason,
-          verdict_number: seen,
-          response: stored
-        )
-        |> Repo.update!()
+        answered =
+          pending
+          |> Ecto.Changeset.change(
+            forager_session: number,
+            state: state,
+            reason: reason,
+            verdict_number: seen,
+            response: stored
+          )
+          |> Repo.update!()
 
-        if next_session = session_spec(next),
-          do: insert_session!(run, pending.sequence + 1, next_session)
+        if next_session = session_spec(next) do
+          insert_session!(run, pending.sequence + 1, next_session)
+
+          :ok =
+            Apiary.Dispatches.RunEnd.extend(
+              run.id,
+              stored["time_limit_minutes"],
+              answered.updated_at
+            )
+        end
 
         {:ok, %{result: response(stored), told: told(work_item)}}
       end

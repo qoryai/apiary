@@ -3,7 +3,7 @@ defmodule Apiary.ContractCopiesTest do
 
   # Every copy of the qoryai/integrations integration contract and data descriptions in this
   # repository is the file at the integrations commit `@ref`. The run contract is at the
-  # same commit, and the explore, diagnostics and provisioner contracts are at earlier
+  # same commit, and the explore, diagnostics and provisioner contracts are at other
   # commits; other tests check those copies (see @other_ref_files). CI has no integrations
   # checkout, so the files are checked against `test/fixtures/contract-copies.sha256`: the
   # SHA-256 and the path here of each file at that commit, one per line, sorted by path.

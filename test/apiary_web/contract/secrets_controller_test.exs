@@ -1447,6 +1447,36 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert ["issued", "issued"] = Enum.map(issues(), & &1.details["outcome"])
     end
 
+    test "a run attached 30 hours earlier, before its backstop, is answered work-1 again",
+         ctx do
+      issued!(ctx)
+      now = DateTime.utc_now()
+
+      # A run of several sessions, whose next-session answers moved its backstop on.
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.run.id),
+          set: [
+            state: "running",
+            attached_at: DateTime.add(now, -30 * 3600, :second),
+            last_heartbeat_at: now,
+            backstop_at: DateTime.add(now, 3600, :second)
+          ]
+        )
+
+      # A token of 24 hours, the most one answer may have, counted from the request.
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential("fixture-work-token-renewed-0002", @entry_apply, 86_400)
+      )
+
+      conn = post_secrets(ctx, request(ctx, credentials: ["work-1"]))
+      assert conn.status == 200, conn.resp_body
+      {_bytes, plaintext} = opened(ctx, conn)
+
+      assert [%{"credential" => "work-1", "value" => "fixture-work-token-renewed-0002"}] =
+               plaintext["values"]
+    end
+
     test "at a renewal, an answer whose apply items differ from the start's is refused",
          ctx do
       issued!(ctx)

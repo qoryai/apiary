@@ -102,12 +102,73 @@ defmodule Apiary.Dispatches.RunEndTest do
     :ok
   end
 
-  describe "backstop_seconds/1" do
-    test "is 87,300 for workflow, 4500 for prebuild, and a workflow's for a step it does not name" do
-      assert Dispatches.backstop_seconds("workflow") == 87_300
-      assert Dispatches.backstop_seconds("prebuild") == 4500
-      assert Dispatches.backstop_seconds("another_step") == 87_300
-      assert Dispatches.backstop_seconds(nil) == 87_300
+  describe "backstop_seconds/2 and lifetime_minutes/2" do
+    # The seconds of sessions of `limits`: each session's setup, limit and margin.
+    defp seconds(limits), do: limits |> Enum.map(&RunEnd.session_seconds/1) |> Enum.sum()
+
+    test "a backstop is the first session's setup, limit and margin; fixed with no limit" do
+      # 30 minutes of setup, the limit, and 90 minutes of margin.
+      assert Dispatches.backstop_seconds("workflow", 15) == (30 + 15 + 90) * 60
+      assert Dispatches.backstop_seconds("workflow", 30) == 150 * 60
+      assert Dispatches.backstop_seconds("workflow", nil) == 87_300
+      assert Dispatches.backstop_seconds("prebuild", nil) == 4500
+      assert Dispatches.backstop_seconds("prebuild", 30) == 4500
+      assert Dispatches.backstop_seconds("another_step", nil) == 87_300
+      assert Dispatches.backstop_seconds(nil, nil) == 87_300
+      assert RunEnd.session_seconds(90) == 210 * 60
+    end
+
+    test "a lifetime is the attach window and each session's setup, limit and margin" do
+      # One session of 15 minutes: 25 + 30 + 15 + 90.
+      assert RunEnd.lifetime_minutes("workflow", seconds([15])) == 160
+      # Seven sessions of 390 minutes in all, 30 then three rounds of 90 and 30:
+      # 25 + 7 × 30 + 390 + 7 × 90.
+      assert RunEnd.lifetime_minutes("workflow", seconds([30, 90, 30, 90, 30, 90, 30])) == 1255
+    end
+
+    test "a lifetime is at most the contract's most; a prebuild's and a run's with no limit are fixed" do
+      # 25 + 30 + 1440 + 90, and 25 + 2 × (30 + 1440 + 90).
+      assert RunEnd.lifetime_minutes("workflow", seconds([1440])) == 1585
+      assert RunEnd.lifetime_minutes("workflow", seconds([1440, 1440])) == 3145
+      # 25 + 6 × 1560 is 9385 and 25 + 7 × 1560 is 10,945: 7 days, 10,080, at most.
+      assert RunEnd.lifetime_minutes("workflow", seconds(List.duplicate(1440, 6))) == 9385
+      assert RunEnd.lifetime_minutes("workflow", seconds(List.duplicate(1440, 7))) == 10_080
+      # The attach window and the fixed backstop: 25 + 1455, and 25 + 75.
+      assert RunEnd.lifetime_minutes("workflow", nil) == 1480
+      assert RunEnd.lifetime_minutes("prebuild", nil) == 100
+      assert RunEnd.lifetime_minutes("prebuild", seconds([1440])) == 100
+    end
+
+    test "a run attached at the end of the attach window, 25 minutes after its claim, keeps its whole backstop" do
+      claimed_at = ~U[2026-11-27 10:00:00.000000Z]
+      attached_at = DateTime.add(claimed_at, 25 * 60, :second)
+
+      for {step, limits, first} <- [
+            {"workflow", [15], 15},
+            {"workflow", [30, 90, 30], 30},
+            {"prebuild", nil, nil},
+            {"workflow", nil, nil}
+          ] do
+        backstop_at = DateTime.add(attached_at, Dispatches.backstop_seconds(step, first), :second)
+        lifetime = RunEnd.lifetime_minutes(step, limits && seconds(limits))
+        assert RunEnd.capped(backstop_at, claimed_at, lifetime) == backstop_at, step
+      end
+
+      # One second later, the end of the lifetime cuts the backstop of a run of one session.
+      late = DateTime.add(attached_at, 1, :second)
+      backstop_at = DateTime.add(late, Dispatches.backstop_seconds("workflow", 15), :second)
+      lifetime = RunEnd.lifetime_minutes("workflow", seconds([15]))
+      assert RunEnd.capped(backstop_at, claimed_at, lifetime) != backstop_at
+    end
+
+    test "a backstop capped at the end of the machine's lifetime from the claim" do
+      claimed_at = ~U[2026-11-27 10:00:00.000000Z]
+      at = ~U[2026-11-27 12:00:00.000000Z]
+
+      # A lifetime of 145 minutes ends at 12:25, after `at`; one of 100 at 11:40, before.
+      assert RunEnd.capped(at, claimed_at, 145) == at
+      assert RunEnd.capped(at, claimed_at, 100) == ~U[2026-11-27 11:40:00.000000Z]
+      assert RunEnd.capped(at, nil, 100) == at
     end
 
     test "the silence is 600 s" do
@@ -116,11 +177,12 @@ defmodule Apiary.Dispatches.RunEndTest do
   end
 
   describe "the backstop" do
-    test "a run beating still is lost 87,300 s after its attach, and its dispatch ends lost",
+    test "a run beating still is lost at its backstop after its attach, and its dispatch ends lost",
          ctx do
       handed = handed_over!(ctx)
       backstop_at = handed.run.backstop_at
-      assert DateTime.diff(backstop_at, handed.run.attached_at) == 87_300
+      # The setup, the time limit of 180 minutes and the margin of its first session.
+      assert DateTime.diff(backstop_at, handed.run.attached_at) == (30 + 180 + 90) * 60
 
       # Heard a second ago, at the backstop: nothing yet.
       Repo.update_all(from(r in Run, where: r.id == ^handed.run.id),
@@ -291,6 +353,73 @@ defmodule Apiary.Dispatches.RunEndTest do
 
       assert [%Run{}] = alive.(handed.run.backstop_at)
       assert alive.(DateTime.add(handed.run.backstop_at, 1, :microsecond)) == []
+    end
+  end
+
+  describe "extend/3, at a next-session answer" do
+    # A run handed over whose machine lives 1470 minutes from its claim, with its backstop
+    # an hour from now, and the answer at `now`.
+    setup ctx do
+      handed = handed_over!(ctx)
+      now = Dispatches.now()
+      backstop_at = DateTime.add(now, 3600, :second)
+
+      {1, _rows} =
+        Repo.update_all(from(d in Dispatch, where: d.id == ^handed.dispatch.id),
+          set: [machine_lifetime_minutes: 1470]
+        )
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^handed.run.id),
+          set: [backstop_at: backstop_at]
+        )
+
+      %{handed: handed, now: now, backstop_at: backstop_at}
+    end
+
+    defp extend!(handed, minutes, at) do
+      {:ok, :ok} =
+        Repo.transact(fn -> {:ok, RunEnd.extend(handed.dispatch_run.id, minutes, at)} end)
+
+      run!(handed.run).backstop_at
+    end
+
+    test "moves the backstop to the answer and the session's setup, limit and margin; a repeat changes nothing",
+         ctx do
+      # 30 + 90 + 90 minutes from the answer, which the next session's setup starts after.
+      extended = DateTime.add(ctx.now, (30 + 90 + 90) * 60, :second)
+      assert extend!(ctx.handed, 90, ctx.now) == extended
+      assert extend!(ctx.handed, 90, ctx.now) == extended
+    end
+
+    test "never moves the backstop earlier, nor for a run with no time limit", ctx do
+      # 30 + 1 + 90 minutes from the answer is later than the hour left: moved.
+      assert extend!(ctx.handed, 1, ctx.now) == DateTime.add(ctx.now, 121 * 60, :second)
+
+      # An answer an hour earlier with a limit of 1 minute ends before it: kept.
+      earlier = DateTime.add(ctx.now, -3600, :second)
+      assert extend!(ctx.handed, 1, earlier) == DateTime.add(ctx.now, 121 * 60, :second)
+
+      assert extend!(ctx.handed, nil, DateTime.add(ctx.now, 60, :second)) ==
+               DateTime.add(ctx.now, 121 * 60, :second)
+    end
+
+    test "is at most the end of the lifetime the claim gave the machine", ctx do
+      end_of_life = DateTime.add(ctx.handed.dispatch.claimed_at, 1470 * 60, :second)
+      assert extend!(ctx.handed, 1440, ctx.now) == end_of_life
+    end
+
+    test "changes nothing for a run past its backstop or one that went silent", ctx do
+      past = DateTime.add(ctx.backstop_at, 1, :second)
+      assert extend!(ctx.handed, 90, past) == ctx.backstop_at
+      assert extend!(ctx.handed, 90, ctx.backstop_at) == ctx.backstop_at
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.id == ^ctx.handed.run.id),
+          set: [silenced_at: ctx.now]
+        )
+
+      assert extend!(ctx.handed, 90, ctx.now) == ctx.backstop_at
     end
   end
 
@@ -975,7 +1104,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert record!(ctx.record) == ctx.record
     end
 
-    test "its slot, its machine never reported gone, is freed 90 and 60 minutes after its last sign of a machine",
+    test "its slot, its machine never reported gone, is freed 100 and 60 minutes after its last sign of a machine",
          ctx do
       assert {:ok, %{run: _run}} = ctx.attach.()
       exited!(ctx)
@@ -985,7 +1114,7 @@ defmodule Apiary.Dispatches.RunEndTest do
         dispatch!(ctx.handed.dispatch)
 
       last = Enum.max([dispatched_at, handed_over_at], DateTime)
-      net = DateTime.add(last, (90 + 60) * 60, :second)
+      net = DateTime.add(last, (100 + 60) * 60, :second)
 
       Dispatches.sweep(DateTime.add(net, -1, :microsecond))
       assert Slots.held(ctx.place.pool.id) == 1
@@ -995,7 +1124,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert Slots.held(ctx.place.pool.id) == 0
     end
 
-    test "its slot, its run not ended and its machine never reported gone, is freed 90 and 60 minutes after its last sign of a machine",
+    test "its slot, its run not ended and its machine never reported gone, is freed 100 and 60 minutes after its last sign of a machine",
          ctx do
       assert {:ok, %{run: _run}} = ctx.attach.()
 
@@ -1003,7 +1132,7 @@ defmodule Apiary.Dispatches.RunEndTest do
         dispatch!(ctx.handed.dispatch)
 
       last = Enum.max([dispatched_at, handed_over_at], DateTime)
-      net = DateTime.add(last, (90 + 60) * 60, :second)
+      net = DateTime.add(last, (100 + 60) * 60, :second)
 
       # The run still beats at the net, so the lost-run check leaves it live.
       beat!(ctx.handed.run, net)

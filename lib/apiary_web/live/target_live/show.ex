@@ -1061,7 +1061,7 @@ defmodule ApiaryWeb.TargetLive.Show do
       gettext("The last build failed: it ran past %{duration}.",
         duration:
           ApiaryWeb.OverviewComponents.duration_words(
-            Apiary.Dispatches.backstop_seconds(Apiary.Dispatches.DispatchRun.prebuild())
+            Apiary.Dispatches.backstop_seconds(Apiary.Dispatches.DispatchRun.prebuild(), nil)
           )
       )
 

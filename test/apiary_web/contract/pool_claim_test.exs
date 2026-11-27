@@ -188,8 +188,12 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
                "lease_until" => lease_until,
                "run_code" => run_code,
                "gateway_url" => "https://gateway.example",
-               "max_lifetime_minutes" => 1470
+               # The run's one session of 180 minutes, the default time limit: 25 minutes
+               # to attach, 30 of setup and 90 of margin beside it.
+               "max_lifetime_minutes" => 25 + 30 + 180 + 90
              }
+
+      assert dispatch.machine_lifetime_minutes == 325
 
       assert [head, fingerprint] = String.split(run_code, ".")
       assert head =~ ~r/\Aqecr_[0-9A-HJKMNP-TV-Z]{26}\z/
@@ -248,7 +252,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
 
   describe "a claim of a prebuild or of a run without a target" do
     @tag needs: [:factory, :registry]
-    test "takes a prebuild held for its pool, answered 200, signed, its machine living 90 minutes",
+    test "takes a prebuild held for its pool, answered 200, signed, its machine living 100 minutes",
          ctx do
       collection = collection_fixture(ctx.scope, target_path: "acme/shop")
       run = prebuild!(collection, ctx.pool)
@@ -277,9 +281,10 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
                "lease_until" => lease_until,
                "run_code" => answer["run_code"],
                "gateway_url" => "https://gateway.example",
-               "max_lifetime_minutes" => 90
+               "max_lifetime_minutes" => 100
              }
 
+      assert dispatch.machine_lifetime_minutes == 100
       assert Repo.get!(DispatchRun, run.id).state == :claimed
     end
 
@@ -304,7 +309,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       assert members(conn.resp_body) ==
                ~w(version revision dispatch_id pool_id lease_until run_code gateway_url max_lifetime_minutes)
 
-      assert answer["max_lifetime_minutes"] == 1470
+      assert answer["max_lifetime_minutes"] == 325
       assert claimed_run_id(conn) == run.run_id
     end
 

@@ -444,7 +444,12 @@ node attaches the run: it is refused `wrong_gateway` before `run_attached`.
 A run found lost, with no heartbeat for three of its intervals (90 seconds at Forager's
 30), is still live until it is lost for good. A run of a workspace's queue is lost for
 good once it has gone 600 seconds without a heartbeat, or once it is past its backstop,
-the deadline its attach set for its end. Between 90 and 600 seconds, a gateway that
+the deadline for its end. The attach sets the backstop to 30 minutes of setup, the first
+session's time limit and 90 minutes of margin after the attach; a prebuild's is 75 minutes,
+and a run with no time limit has 24 hours and 15 minutes. Each next-session answer
+of a run of a stage with `shared_run: true` moves it to the same span for the next session
+after the answer, at most to the end of the machine lifetime of the run's claim. Between
+90 and 600 seconds, a gateway that
 restarted attaches the run again, from the same node and instance, is given the answer it
 was given, and every route of the run serves it: the secrets request and the work entry
 it issues, the registry credential, the model keys report, the run API and the
@@ -575,7 +580,7 @@ the run endpoint's.
 
 | Status | When | Body |
 |---|---|---|
-| `404` | the run is not attached to the gateway that sends the request, or the key may not post its events (`run.post_events`), or it ended, a lost run once it is lost for good, or it has no `resume`; the paused run is no longer the one it continues; or the transcript is gone, has a gap in its offsets, is over 64 MiB, or has 100,000 chunks or more | `{"error":"not_found"}` |
+| `404` | the run is not attached to the gateway that sends the request, or the key may not post its events (`run.post_events`), or it ended, a lost run once it is lost for good, or it has no `resume`; the paused run is no longer the one it continues; or the transcript is gone, has a gap in its offsets, is over 64 MiB, or has as many chunks as 2,048 plus one per second of the paused run's machine lifetime, one per 120 minutes of it, and one, or more | `{"error":"not_found"}` |
 | `503` | the transcript could not be read | `{"error":"unavailable"}` |
 | `200` | found | the transcript, `application/x-ndjson` |
 
