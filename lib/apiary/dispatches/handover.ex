@@ -1070,8 +1070,7 @@ defmodule Apiary.Dispatches.Handover do
   #     paths; `overlap`, the paths of two entries that claim one host overlap; or
   #     `integration_overlap`, two items of one entry claim one host, or an item has no
   #     paths. The last three have the host in the values. A hidden harness shows neither
-  #     the source nor the host, but for `integration_overlap`, whose fix is the
-  #     integration of that host.
+  #     the source nor the host.
   defp harness_entries(%DispatchRun{id: id} = dispatch_run, locked) do
     %{gateway: {gateway, _workspace}, key: %{node: pool}, now: now} = locked
 
@@ -1091,8 +1090,7 @@ defmodule Apiary.Dispatches.Handover do
                   {:source, git} when is_binary(git) and walk.harness_hidden != true ->
                     {Document.shown(git), %{}}
 
-                  {:host, host}
-                  when reason == :integration_overlap or walk.harness_hidden != true ->
+                  {:host, host} when walk.harness_hidden != true ->
                     {nil, %{"host" => host}}
 
                   _hidden ->

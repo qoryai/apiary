@@ -982,7 +982,8 @@ defmodule Apiary.Stages.StopCause do
   # `ending`: `overlap` and `too_many_paths` with the host, or, with none (a hidden
   # harness), what owners and admins of `workspace` do; `path_refused` with `source`, the
   # source the walk kept, or with none the same; `integration_overlap`, which the
-  # integration of the host causes, with the host. Nil for any other rule.
+  # integration of the host causes, with the host, or with none the integration for the
+  # workspace's harness sources. Nil for any other rule.
   @spec harness_entries_words(map | nil, String.t() | nil, String.t(), :take_in | :explore) ::
           String.t() | nil
   def harness_entries_words(rule, source, workspace, ending \\ :take_in)
@@ -1087,6 +1088,18 @@ defmodule Apiary.Stages.StopCause do
       gettext(
         "Ask your Qory Apiary admin to update the %{host} integration, then run Explore again.",
         host: host
+      )
+
+  defp entries_words("integration_overlap", nil, _source, _ws, :take_in),
+    do:
+      gettext(
+        "Ask your Qory Apiary admin to update the integration for this workspace's harness sources, then take the work item in again."
+      )
+
+  defp entries_words("integration_overlap", nil, _source, _ws, :explore),
+    do:
+      gettext(
+        "Ask your Qory Apiary admin to update the integration for this workspace's harness sources, then run Explore again."
       )
 
   defp entries_words(_reason, _host, _source, _ws, _ending), do: nil

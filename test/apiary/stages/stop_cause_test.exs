@@ -405,7 +405,9 @@ defmodule Apiary.Stages.StopCauseTest do
             {nil, %{"reason" => "too_many_paths"},
              "Ask an owner or admin of #{ws} to take fewer private harness sources from one forge, then take the work item in again."},
             {nil, %{"reason" => "path_refused"},
-             "Ask an owner or admin of #{ws} to correct the harness source addresses, then take the work item in again."}
+             "Ask an owner or admin of #{ws} to correct the harness source addresses, then take the work item in again."},
+            {nil, %{"reason" => "integration_overlap"},
+             "Ask your Qory Apiary admin to update the integration for this workspace's harness sources, then take the work item in again."}
           ] do
         {run, work_item} = walk_failed(scope, "harness_entries", source)
         rule!.(run, values)

@@ -1805,35 +1805,41 @@ defmodule Apiary.Runs.RunCredentialsTest do
       assert values == %{"reason" => "path_refused"}
     end
 
-    test "a claim ends the run for an overlap its integration causes, with the host even when hidden",
-         ctx do
-      {work_item, queued} = queued!(ctx)
-      grant = own_grant!(work_item)
+    for hidden <- [false, true] do
+      test "a claim ends the run for an overlap its integration causes, hidden: #{hidden}",
+           ctx do
+        {work_item, queued} = queued!(ctx)
+        grant = own_grant!(work_item)
 
-      walked!(queued, [
-        link(
-          grant,
-          [{"R_h", nil, [@harness_source]}, {"R_t", "acme/tools", [@tools_source]}],
-          true
-        )
-      ])
+        walked!(queued, [
+          link(
+            grant,
+            [{"R_h", nil, [@harness_source]}, {"R_t", "acme/tools", [@tools_source]}],
+            true
+          )
+        ])
 
-      {1, _rows} =
-        Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^queued.id),
-          set: [harness_hidden: true]
-        )
+        {1, _rows} =
+          Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^queued.id),
+            set: [harness_hidden: unquote(hidden)]
+          )
 
-      assert {:ok, _claimed} = claim(ctx)
+        assert {:ok, _claimed} = claim(ctx)
 
-      # The adapter resolved no path for R_h: its integration causes the overlap, and
-      # its host shows even for a hidden harness.
-      assert %RunHarness{
-               failure: "harness_entries",
-               failed_source: nil,
-               failure_rule: %{
-                 "values" => %{"reason" => "integration_overlap", "host" => "git.example.com"}
-               }
-             } = Repo.get_by!(RunHarness, dispatch_run_id: queued.id)
+        # The adapter resolved no path for R_h: its integration causes the overlap. A
+        # hidden harness keeps no host.
+        assert %RunHarness{
+                 failure: "harness_entries",
+                 failed_source: nil,
+                 failure_rule: %{"values" => values}
+               } = Repo.get_by!(RunHarness, dispatch_run_id: queued.id)
+
+        if unquote(hidden) do
+          assert values == %{"reason" => "integration_overlap"}
+        else
+          assert values == %{"reason" => "integration_overlap", "host" => "git.example.com"}
+        end
+      end
     end
 
     test "a claim ends the run for two entries whose paths overlap, with the host unless hidden",

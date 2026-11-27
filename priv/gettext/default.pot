@@ -6429,6 +6429,16 @@ msgstr ""
 msgid "Ask your Qory Apiary admin to update the %{host} integration, then take the work item in again."
 msgstr ""
 
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Ask your Qory Apiary admin to update the integration for this workspace's harness sources, then run Explore again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Ask your Qory Apiary admin to update the integration for this workspace's harness sources, then take the work item in again."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Asked as question %{number}"

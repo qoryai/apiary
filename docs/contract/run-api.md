@@ -85,7 +85,7 @@ A run ends `harness_unresolved` before it fetches anything in these cases:
   `integration_overlap`, two items of one entry on one host, or an item with no paths
   beside another on its host: the adapter's items, or a resource it resolved no `path`
   for. The gateway checks the items in the same way. The last three have the `host`,
-  except `overlap` and `too_many_paths` for a hidden harness.
+  except for a hidden harness.
 
 ## The run's track
 

@@ -3543,6 +3543,15 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                rule: %{"rule" => "harness_entries", "values" => %{"reason" => "path_refused"}}
              },
              "Ask an owner or admin of Main to correct the harness source addresses, then run Explore again."},
+            {%{
+               code: "harness_entries",
+               workspace: "Main",
+               rule: %{
+                 "rule" => "harness_entries",
+                 "values" => %{"reason" => "integration_overlap"}
+               }
+             },
+             "Ask your Qory Apiary admin to update the integration for this workspace's harness sources, then run Explore again."},
             # A run with no workflow, ended when it was queued.
             {%{code: "many_stacks"},
              "No workflow to start: more than one stack has a workflow. Keep the workflow in one stack."},
