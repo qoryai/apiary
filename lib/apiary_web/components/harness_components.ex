@@ -1536,7 +1536,7 @@ defmodule ApiaryWeb.HarnessComponents do
        )
        when is_binary(canonical),
        do:
-         gettext("Write the harness source as %{canonical}: the forge names it in that case.",
+         gettext("Write the harness source as %{canonical}, the case the forge names it in.",
            canonical: canonical
          )
 

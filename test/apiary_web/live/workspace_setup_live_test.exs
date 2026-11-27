@@ -2496,7 +2496,7 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
                  "values" => %{"canonical" => "https://code.example.com/acme/harness"}
                })
              ) ==
-               "Write the harness source as https://code.example.com/acme/harness: the forge names it in that case."
+               "Write the harness source as https://code.example.com/acme/harness, the case the forge names it in."
 
       # The chosen source's address or folder, before any call: the form rule it breaks.
       for {rule, line} <- [

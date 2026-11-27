@@ -1887,8 +1887,6 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
     end
   end
 
-  # The credential names of a run with a model key and a work entry, in the run
-  # configuration's order, and of a write run, which has a push entry after it.
   describe "a work entry refused for the gateway" do
     @describetag :work
 
@@ -2284,6 +2282,8 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
     ctx
   end
 
+  # The credential names of a run with a model key and a work entry, in the run
+  # configuration's order, and of a write run, which has a push entry after it.
   defp names(ctx), do: [default_name(ctx), "work-1"]
   defp all(ctx), do: names(ctx) ++ ["push-1"]
 

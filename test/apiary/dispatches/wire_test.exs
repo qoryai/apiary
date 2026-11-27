@@ -108,7 +108,7 @@ defmodule Apiary.Dispatches.WireTest do
     "time" => "2026-10-15T12:02:00Z",
     "reason" => "The job could not start."
   }
-  # The vendored contracts are at five integrations commits. The provisioner contract
+  # The vendored contracts are at four integrations commits. The provisioner contract
   # is at 4761b92c, which allows a claim answer's max_lifetime_minutes up to 10080, after
   # 699a22cf, which opens its schemas: a reader ignores a member that a schema does not
   # define unless must_understand lists it, and the fixtures with such a member move from

@@ -26179,7 +26179,7 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "Write the harness source as %{canonical}: the forge names it in that case."
+msgid "Write the harness source as %{canonical}, the case the forge names it in."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
