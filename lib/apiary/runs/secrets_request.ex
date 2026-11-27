@@ -8,12 +8,14 @@ defmodule Apiary.Runs.SecretsRequest do
   # key (`Apiary.Secrets.Sealing`). The gateway names every credential when the run starts,
   # and at a renewal only the ones whose values expire. The credentials Qory writes are a
   # run's model keys (`Apiary.Runs.ProviderCredential`), with the `registry` feature, its
-  # registry credential (`Apiary.Registry.Credential`), and the work entry and the push
-  # entry its claim recorded (`Apiary.Runs.RunCredentials`, `work-1` and `push-1`), whose
-  # value the entry's adapter issues anew for each request that names it
-  # (`Apiary.Runs.WorkCredential`). A request may ask for either or both, as a renewal asks
-  # for the entries whose values expire; each entry is a separate call to the adapter, with
-  # the access of that entry. A request reveals a
+  # registry credential (`Apiary.Registry.Credential`), and the work entry, the push
+  # entry and the harness entries its claim recorded (`Apiary.Runs.RunCredentials`,
+  # `work-1`, `push-1` and `harness-<n>`), whose value the entry's adapter issues anew for
+  # each request that names it (`Apiary.Runs.WorkCredential`). A request may ask for any of
+  # them, as a renewal asks for the entries whose values expire; each entry is a separate
+  # call to the adapter, with the access and purpose of that entry. A harness entry is read
+  # only, and the gateway sets it only while it fetches the harness, before the first
+  # session. A request reveals a
   # model key only when it names it, and only a key the run's claim stored for the run
   # (`run_model_keys`), by its row id, from the secret of that key's provider, under the
   # value id the key has at the request: a key renamed since the claim is revealed, one
@@ -69,12 +71,16 @@ defmodule Apiary.Runs.SecretsRequest do
   #     organisation than the run's (`provider_organisation/2`); the gateway may not
   #     receive the key (`Apiary.Runs.ProviderCredential.sealable_to?/3`): any gateway
   #     for a provider of any other chain; the instance's gateway may receive a key of
-  #     the organisation's chain; for a request for the work entry or the push entry, a
-  #     gateway that may not receive its credential (`Apiary.Runs.WorkCredential.sealable_to?/2`);
+  #     the organisation's chain; for a request for the work entry, the push entry or a
+  #     harness entry, a gateway that may not receive its credential
+  #     (`Apiary.Runs.WorkCredential.entry_sealable_to?/3`): a harness entry from another
+  #     organisation's grant goes only to a run on a gateway and a node pool that Qory
+  #     Apiary provides, and its refusal for the run's machine alone has an Activity
+  #     entry, `machine_not_provided`;
   #     both checks are also false for a gateway of another organisation or of another
   #     workspace, whose request step 4 ends first; the access key's public key fails a
   #     key check (`Apiary.Contract.Ed25519.check_public_key/1`);
-  #  9. for a request for the work entry or the push entry, after every check above and the
+  #  9. for a request for the work, push or harness entries, after every check above and the
   #     model key's read, the credential of an entry is not issued
   #     (`Apiary.Runs.WorkCredential.issue_all/5`): the entries are checked in the order of
   #     the run configuration, then their calls are made at the same time, all under the
@@ -88,7 +94,7 @@ defmodule Apiary.Runs.SecretsRequest do
   #     transaction is open during the call;
   # 10. `{:error, :credential_unavailable}`, a value that does not fit the plaintext's
   #     schema;
-  # 11. for a request for the work entry or the push entry, an entry's apply items
+  # 11. for a request for the work, push or harness entries, an entry's apply items
   #     differ from those of that entry's first credential
   #     (`Apiary.Runs.WorkCredential.keep/1`): `{:error, :credential_unavailable}`.
   #
@@ -345,7 +351,10 @@ defmodule Apiary.Runs.SecretsRequest do
   defp credentials(%Run{} = run) do
     with {:ok, model} <- model(run) do
       registry = RunAccess.applies?(run)
-      works = Enum.reject([RunCredentials.work(run), RunCredentials.push(run)], &is_nil/1)
+
+      works =
+        Enum.reject([RunCredentials.work(run), RunCredentials.push(run)], &is_nil/1) ++
+          RunCredentials.harness(run)
 
       names =
         if(model, do: Enum.map(model.keys, & &1.name), else: []) ++
@@ -464,20 +473,43 @@ defmodule Apiary.Runs.SecretsRequest do
   defp provider_organisation(%{chain: "organisation"}, %Run{organisation_id: id}), do: id
   defp provider_organisation(provider, _run), do: provider.organisation_id
 
-  # The work entry's and the push entry's credentials may be sealed for a gateway of the
-  # run's organisation, or the instance's gateway (`Apiary.Runs.WorkCredential.sealable_to?/2`).
-  defp work_sealable(_run, [], _access_key), do: :ok
+  @doc false
+  # work_sealable/3 is `:ok` where the credentials of the entries `works` (each with its
+  # `row`) of `run` may be sealed for the gateway of `access_key`. The work entry's and
+  # the push entry's credentials may be sealed for a gateway of the run's organisation, or
+  # the instance's gateway (`Apiary.Runs.WorkCredential.sealable_to?/2`); a harness
+  # entry's from another organisation's grant only for a run on a machine that Qory
+  # Apiary provides (`Apiary.Runs.WorkCredential.entry_sealable_to?/3`). A harness entry
+  # refused for its machine alone gets its Activity entry, `machine_not_provided`
+  # (`Apiary.Runs.WorkCredential.seal_refusal/3`); `{:error, :unavailable}` where it
+  # cannot be written. Every other refusal is `{:error, :credential_unavailable}`, with
+  # no Activity entry.
+  @spec work_sealable(Run.t(), [%{row: Apiary.Runs.RunCredential.t()}], AccessKey.t()) ::
+          :ok | {:error, :credential_unavailable | :unavailable}
+  def work_sealable(_run, [], _access_key), do: :ok
 
-  defp work_sealable(%Run{} = run, [_ | _], %AccessKey{node: node}) do
-    if WorkCredential.sealable_to?(node, run) do
-      :ok
-    else
-      Logger.warning(
-        "a secrets request for the run #{run.node_run_id} was refused: its work " <>
-          "credential may not be sealed for its gateway"
-      )
+  def work_sealable(%Run{} = run, [_ | _] = works, %AccessKey{node: node} = access_key) do
+    case for(
+           work <- works,
+           cause = WorkCredential.seal_refusal(node, run, work.row),
+           do: {work.row, cause}
+         ) do
+      [] ->
+        :ok
 
-      {:error, :credential_unavailable}
+      refused ->
+        Logger.warning(
+          "a secrets request for the run #{run.node_run_id} was refused: a credential it " <>
+            "names may not be sealed for its gateway"
+        )
+
+        written =
+          for {row, :machine_not_provided} <- refused,
+              do: WorkCredential.refuse(access_key, run, row, :machine_not_provided)
+
+        if {:error, :unavailable} in written,
+          do: {:error, :unavailable},
+          else: {:error, :credential_unavailable}
     end
   end
 
@@ -557,8 +589,8 @@ defmodule Apiary.Runs.SecretsRequest do
   # then each credential's Activity entry, last. A run's deletion locks the run's row
   # and then its `run_credentials` rows, so both take the run first and cannot deadlock;
   # a request for one entry and no model key has no copies and takes no lock on the run;
-  # a request for both entries takes the run's row `FOR KEY SHARE` before the first
-  # update (`lock_run/2`), since a deletion removes the two rows in no fixed order. A step
+  # a request for two or more entries takes the run's row `FOR KEY SHARE` before the
+  # first update (`lock_run/2`), since a deletion removes the rows in no fixed order. A step
   # that fails rolls them all back, and the credential it failed on is refused for its
   # cause, the others as `not_recorded` (`Apiary.Runs.WorkCredential.refused/4`).
   defp recorded(access_key, run, seal, []), do: record(access_key, run, seal)

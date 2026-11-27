@@ -89,7 +89,7 @@ defmodule ApiaryWeb.WorkItemComponents do
   use ApiaryWeb, :html
 
   alias Apiary.ExternalText
-  alias Apiary.Harnesses.{Qory, Walk}
+  alias Apiary.Harnesses.Qory
   alias Apiary.Stages.Runner
   alias ApiaryWeb.BacklogComponents
   alias ApiaryWeb.HarnessComponents
@@ -7599,7 +7599,10 @@ defmodule ApiaryWeb.WorkItemComponents do
   # wrote none: a harness choice's document, or a hidden harness. A source no connection
   # reaches, and a failed read of a public repository, have the Harness step's words
   # (`ApiaryWeb.HarnessComponents.public_read_words/2`). A harness file with hooks and no
-  # `extends` has a sentence alone, which starts with its fix.
+  # `extends` has a sentence alone, which starts with its fix. A read token the run gets
+  # none of, a case failure, the limit on accounts and entries a claim refused have the
+  # stop cause's fixes (`Apiary.Stages.StopCause`), ending with running Explore again as
+  # every harness line here does, with no source or host for a hidden harness.
   defp harness_failure_words(%{
          code: "invalid",
          rule: %{"rule" => "hooks_without_extends", "values" => %{"file" => file}}
@@ -7657,9 +7660,33 @@ defmodule ApiaryWeb.WorkItemComponents do
         )
 
       "too_many" ->
-        gettext(
-          "Take the harness sources from at most %{n} accounts, then run Explore again. A run takes %{n} harness credentials at most.",
-          n: Walk.max_links()
+        Apiary.Stages.StopCause.too_many_words(:explore)
+
+      code when code in ["assigned_without_token", "assigned_gateway"] ->
+        Apiary.Stages.StopCause.harness_token_words(
+          String.to_existing_atom(code),
+          failure.source,
+          :explore
+        )
+
+      "source_case" ->
+        case failure.rule do
+          %{"values" => %{"canonical" => canonical}} when is_binary(canonical) ->
+            Apiary.Stages.StopCause.source_case_words(canonical, :explore)
+
+          _hidden ->
+            Apiary.Stages.StopCause.hidden_source_case_words(
+              failure[:workspace] || gettext("this workspace"),
+              :explore
+            )
+        end
+
+      "harness_entries" ->
+        Apiary.Stages.StopCause.harness_entries_words(
+          failure.rule,
+          failure.source,
+          failure[:workspace] || gettext("this workspace"),
+          :explore
         )
 
       "adapter_unavailable" ->

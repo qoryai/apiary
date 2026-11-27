@@ -342,6 +342,127 @@ defmodule Apiary.Stages.StopCauseTest do
       {%{run | state: :ended, end_cause: :harness_unresolved}, work_item}
     end
 
+    test "a private assigned source with no read token: connect an account, with the reason or without" do
+      %{scope: scope} = sign_up_fixture()
+      source = "https://code.example.com/acme/harness"
+
+      {run, work_item} = walk_failed(scope, "assigned_without_token", source)
+
+      assert StopCause.text(run, work_item) ==
+               "Connect an account that can read #{source} to this organisation, then take the work item in again. #{source} is a private harness source, and the access assigned to this organisation gives runs no read token for it."
+
+      {run, work_item} = walk_failed(scope, "assigned_gateway", source)
+
+      assert StopCause.text(run, work_item) ==
+               "Connect an account that can read #{source} to this organisation, then take the work item in again."
+    end
+
+    test "a hidden harness: no source in the token causes and the case failure" do
+      %{scope: scope} = sign_up_fixture()
+      ws = scope.workspace.name
+
+      for code <- ["assigned_without_token", "assigned_gateway"] do
+        {run, work_item} = walk_failed(scope, code, nil)
+
+        assert StopCause.text(run, work_item) ==
+                 "Connect an account that can read the workspace's private harness sources to this organisation, then take the work item in again.",
+               code
+      end
+
+      # A hidden harness's case failure has no address to show.
+      {run, work_item} = walk_failed(scope, "source_case", nil)
+
+      assert StopCause.text(run, work_item) ==
+               "Ask an owner or admin of #{ws} to write the harness sources in the case the forge names them, then take the work item in again."
+    end
+
+    test "entries the claim refused: the fix by the reason, with or without a host or a source" do
+      %{scope: scope} = sign_up_fixture()
+      ws = scope.workspace.name
+      source = "https://code.example.com/acme/harness"
+
+      rule! = fn run, values ->
+        {1, _rows} =
+          Repo.update_all(
+            from(h in Apiary.Harnesses.RunHarness, where: h.dispatch_run_id == ^run.id),
+            set: [failure_rule: %{"rule" => "harness_entries", "values" => values}]
+          )
+      end
+
+      for {source, values, line} <- [
+            {nil, %{"reason" => "overlap", "host" => "code.example.com"},
+             "Take the private harness sources on code.example.com through one account, then take the work item in again. A run reads each forge through one account."},
+            {nil, %{"reason" => "too_many_paths", "host" => "code.example.com"},
+             "Take fewer private harness sources from code.example.com, then take the work item in again."},
+            {source, %{"reason" => "path_refused"},
+             "Write the path of #{source} without spaces or any of * ? # { } // .., then take the work item in again."},
+            {nil,
+             %{
+               "reason" => "nested_sources",
+               "host" => "code.example.com",
+               "first" => "https://code.example.com/acme/tools",
+               "second" => "https://code.example.com/acme/tools/sub"
+             },
+             "Take only one of https://code.example.com/acme/tools and https://code.example.com/acme/tools/sub, which nest on code.example.com, then take the work item in again."},
+            {nil, %{"reason" => "integration_overlap", "host" => "code.example.com"},
+             "Ask your Qory Apiary admin to update the code.example.com integration, then take the work item in again."},
+            # A hidden harness shows no host and no source, and neither does a rule
+            # with none.
+            {nil, %{"reason" => "overlap"},
+             "Ask an owner or admin of #{ws} to take the private harness sources on each forge through one account, then take the work item in again."},
+            {nil, %{"reason" => "too_many_paths"},
+             "Ask an owner or admin of #{ws} to take fewer private harness sources from one forge, then take the work item in again."},
+            {nil, %{"reason" => "path_refused"},
+             "Ask an owner or admin of #{ws} to correct the harness source addresses, then take the work item in again."},
+            {nil, %{"reason" => "nested_sources"},
+             "Ask an owner or admin of #{ws} to take only one of the nested private harness sources on each forge, then take the work item in again."},
+            {nil, %{"reason" => "nested_sources", "host" => "code.example.com"},
+             "Ask an owner or admin of #{ws} to take only one of the nested private harness sources on each forge, then take the work item in again."},
+            {nil, %{"reason" => "integration_overlap"},
+             "Ask your Qory Apiary admin to update the integration for this workspace's harness sources, then take the work item in again."}
+          ] do
+        {run, work_item} = walk_failed(scope, "harness_entries", source)
+        rule!.(run, values)
+        assert StopCause.text(run, work_item) == line
+      end
+
+      # A reason with no words shows the code.
+      {run, work_item} = walk_failed(scope, "harness_entries", nil)
+      rule!.(run, %{"reason" => "other"})
+      assert StopCause.text(run, work_item) =~ "with the code harness_entries"
+    end
+
+    test "too many accounts: at most five accounts and assigned repositories" do
+      %{scope: scope} = sign_up_fixture()
+      {run, work_item} = walk_failed(scope, "too_many", nil)
+
+      assert StopCause.text(run, work_item) ==
+               "Take the private harness sources from at most 5 accounts and assigned repositories, then take the work item in again."
+
+      assert StopCause.set_up_step(run) == :harness
+    end
+
+    test "a source in another letter case than the forge's: write it in the forge's case" do
+      %{scope: scope} = sign_up_fixture()
+
+      {run, work_item} =
+        walk_failed(scope, "source_case", "https://code.example.com/Acme/Harness")
+
+      {1, _rows} =
+        Repo.update_all(
+          from(h in Apiary.Harnesses.RunHarness, where: h.dispatch_run_id == ^run.id),
+          set: [
+            failure_rule: %{
+              "rule" => "source_case",
+              "values" => %{"canonical" => "https://code.example.com/acme/harness"}
+            }
+          ]
+        )
+
+      assert StopCause.text(run, work_item) ==
+               "Write the harness source as https://code.example.com/acme/harness, the case the forge names it in, then take the work item in again."
+    end
+
     test "on the workspace's choice, the fix is on the set-up step Harness" do
       %{scope: scope} = sign_up_fixture()
       ws = scope.workspace.name

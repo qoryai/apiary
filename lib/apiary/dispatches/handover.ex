@@ -244,7 +244,7 @@ defmodule Apiary.Dispatches.Handover do
 
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
-  alias Apiary.Adapters.Collection
+  alias Apiary.Adapters.{Collection, Grant}
 
   alias Apiary.Dispatches.{
     Dispatch,
@@ -272,7 +272,8 @@ defmodule Apiary.Dispatches.Handover do
     RunCredential,
     RunCredentials,
     RunVariables,
-    Target
+    Target,
+    WorkCredential
   }
 
   alias Apiary.Stacks.Document
@@ -470,6 +471,7 @@ defmodule Apiary.Dispatches.Handover do
 
           if formed.work, do: RunCredentials.insert!(formed.work, run)
           if formed.push, do: RunCredentials.insert!(formed.push, run)
+          for entry <- Map.get(formed, :harness, []), do: RunCredentials.insert!(entry, run)
 
           :ok =
             Apiary.Stages.claim_sessions!(
@@ -848,13 +850,19 @@ defmodule Apiary.Dispatches.Handover do
   # keys, or when the key of one of its providers may not be sealed for the gateway
   # (`Apiary.Runs.ProviderCredential.sealable_to?/3`). `run` is the run of the queue, read
   # under lock at the claim.
-  defp sealable({:ok, %{work: %RunCredential{}}} = ok, gateway, run, keys) do
+  defp sealable({:ok, %{work: %RunCredential{}}} = ok, gateway, run, keys),
+    do: entries_sealable(ok, gateway, run, keys)
+
+  defp sealable({:ok, %{harness: [_ | _]}} = ok, gateway, run, keys),
+    do: entries_sealable(ok, gateway, run, keys)
+
+  defp sealable(formed, gateway, run, keys), do: model_sealable(formed, gateway, run, keys)
+
+  defp entries_sealable(ok, gateway, run, keys) do
     if Enum.all?(keys, & &1.allow_secrets),
       do: model_sealable(ok, gateway, run, keys),
       else: {:end, :secrets_not_allowed}
   end
-
-  defp sealable(formed, gateway, run, keys), do: model_sealable(formed, gateway, run, keys)
 
   @doc false
   # model_sealable/4 is `formed` when every model key of the run, of each of its
@@ -964,6 +972,7 @@ defmodule Apiary.Dispatches.Handover do
          :ok <- shared_access(dispatch_run),
          :ok <- shared_models(dispatch_run),
          {:ok, harness} <- harness(dispatch_run, target, locked.harness_read, locked.now),
+         {:ok, entries} <- harness_entries(dispatch_run, locked),
          level = RunCredentials.run_access(dispatch_run),
          collection = RunCredentials.work_collection(dispatch_run, work_item, target),
          harness = with_level(harness, level),
@@ -995,6 +1004,7 @@ defmodule Apiary.Dispatches.Handover do
       |> answer_level(level)
       |> with_cooling(cooling)
       |> with_collection(collection)
+      |> with_harness(entries)
     else
       true -> {:end, :inputs_invalid}
       {:end, _cause} = ended -> ended
@@ -1070,6 +1080,127 @@ defmodule Apiary.Dispatches.Handover do
     do: {:ok, Map.put(formed, :work_collection, collection)}
 
   defp with_collection(not_formed, _collection), do: not_formed
+
+  defp with_harness({:ok, formed}, entries), do: {:ok, Map.put(formed, :harness, entries)}
+  defp with_harness(not_formed, _entries), do: not_formed
+
+  # The harness entries of an explore run (`Apiary.Runs.RunCredentials.form_harness/2`),
+  # from its resolved walk, for the claim's gateway: `{:ok, entries}`, `[]` for a run
+  # with no resolved walk, or the walk failed at the claim, the first point where the
+  # gateway is known, so the run ends `harness_unresolved` before it fetches anything:
+  #
+  #   * `assigned_gateway`, for a link through an assignment, a grant of another
+  #     organisation than the run's, on a machine that Qory Apiary does not provide: a
+  #     gateway that is not the instance's (`Apiary.Gateways.level/1`), or a claiming
+  #     pool of an organisation or a workspace (`WorkCredential.assigned_machine?/2`).
+  #     The run's machine reaches the gateway's stack proxy with the run key, so the read
+  #     token of a source assigned from another organisation goes only to machines that
+  #     Qory Apiary provides;
+  #   * `harness_entries`, for entries the run configuration cannot take, with the
+  #     reason in the rule's values: `path_refused`, a path the templates refuse, with
+  #     the source as the failed source; `too_many_paths`, an item with more than 32
+  #     paths; `overlap`, the paths of the entries of two links that claim one host
+  #     overlap; `nested_sources`, the paths of two resources of one assigned link
+  #     overlap, with the address of each one's first source as `first` and `second`; or
+  #     `integration_overlap`, the adapter's items overlap. The last four have the host
+  #     in the values. A hidden harness shows neither a source nor the host.
+  defp harness_entries(%DispatchRun{id: id} = dispatch_run, locked) do
+    %{gateway: {gateway, _workspace}, key: %{node: pool}, now: now} = locked
+
+    case Repo.one(from h in RunHarness, where: h.dispatch_run_id == ^id and h.state == :resolved) do
+      %RunHarness{} = walk ->
+        with :ok <- assigned_gateway(walk, dispatch_run, {gateway, pool}, now) do
+          case RunCredentials.form_harness(
+                 dispatch_run,
+                 Apiary.Policy.ComposedConfiguration.stack_hosts(walk.pins)
+               ) do
+            {:ok, entries} ->
+              {:ok, entries}
+
+            {:error, reason, at} ->
+              {source, values} =
+                case at do
+                  {:source, git} when is_binary(git) and walk.harness_hidden != true ->
+                    {Document.shown(git), %{}}
+
+                  {:host, host} when walk.harness_hidden != true ->
+                    {nil, %{"host" => host}}
+
+                  {:nested, host, first, second} when walk.harness_hidden != true ->
+                    {nil,
+                     for(
+                       {key, git} <- [{"first", first}, {"second", second}],
+                       is_binary(git),
+                       into: %{"host" => host},
+                       do: {key, git |> Document.shown() |> cut()}
+                     )}
+
+                  _hidden ->
+                    {nil, %{}}
+                end
+
+              values = Map.put(values, "reason", Atom.to_string(reason))
+              walk_failed(walk, :harness_entries, source, values, now)
+          end
+        end
+
+      nil ->
+        {:ok, []}
+    end
+  end
+
+  defp assigned_gateway(walk, dispatch_run, {gateway, pool}, now) do
+    assigned =
+      Enum.filter(walk.harness_links, fn link ->
+        case Repo.get(Grant, link["grant_id"]) do
+          %{organisation_id: id} -> id != dispatch_run.organisation_id
+          nil -> link["assigned"] == true
+        end
+      end)
+
+    if assigned == [] or WorkCredential.assigned_machine?(gateway, pool) do
+      :ok
+    else
+      source =
+        assigned
+        |> Enum.flat_map(fn link -> link |> Map.get("sources", %{}) |> Map.values() end)
+        |> List.flatten()
+        |> Enum.find_value(fn
+          %{"git" => git} when is_binary(git) -> git
+          _source -> nil
+        end)
+
+      shown = if source && not walk.harness_hidden, do: Document.shown(source)
+      walk_failed(walk, :assigned_gateway, shown, nil, now)
+    end
+  end
+
+  # The walk failed at the claim with `code`: the run ends `harness_unresolved` with that
+  # code (`end_claimed/3`), and the run's page shows `source`, at most 512 code points as
+  # the row's check counts them (`Apiary.Harnesses.Walk`, `cut/1`), and the rule's values.
+  defp walk_failed(walk, code, source, values, now) do
+    Logger.warning(
+      "a claim ended a run before it started end_cause=harness_unresolved failure=#{code}"
+    )
+
+    {:ok, _walk} =
+      walk
+      |> Ecto.Changeset.change(
+        state: :failed,
+        origin: nil,
+        document: nil,
+        failure: Atom.to_string(code),
+        failed_source: source && cut(source),
+        failure_rule: values && %{"rule" => Atom.to_string(code), "values" => values},
+        updated_at: now
+      )
+      |> Repo.update()
+
+    {:end, {:harness_unresolved, code}}
+  end
+
+  # A source address the run's page shows: at most 512 code points.
+  defp cut(source), do: source |> String.to_charlist() |> Enum.take(512) |> List.to_string()
 
   # The `deliver` entries of a run's documents, `{type, send}` objects: the types that the
   # run's process version delivers (`Apiary.Processes.delivered_entries/1`), in the order

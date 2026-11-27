@@ -1530,10 +1530,20 @@ defmodule ApiaryWeb.HarnessComponents do
   defp walk_words(%{failure: :invalid, rule: %{"rule" => "both_files"} = rule}, source),
     do: invalid_words("harness.yaml", rule, source)
 
+  defp walk_words(
+         %{failure: :source_case, rule: %{"values" => %{"canonical" => canonical}}},
+         _source
+       )
+       when is_binary(canonical),
+       do:
+         gettext("Write the harness source as %{canonical}, the case the forge names it in.",
+           canonical: canonical
+         )
+
   defp walk_words(%{failure: :too_many}, source),
     do:
       gettext(
-        "Correct the harness in %{source}: its modules come from more than %{n} accounts, and a run can read at most %{n}.",
+        "Correct the harness in %{source}: take its private harness sources from at most %{n} accounts and assigned repositories.",
         source: label(source),
         n: Apiary.Harnesses.Walk.max_links()
       )

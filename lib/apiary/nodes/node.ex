@@ -194,6 +194,14 @@ defmodule Apiary.Nodes.Node do
     # never cast.
     field :source_apply, {:array, :map}
     field :egress_hosts, {:array, :string}
+    # An adapter's alone (`nodes_credential_scope_check`): how far one credential it
+    # answers to a run-credential call reaches, as its latest start's source role says
+    # (`credential_scope`): `:resource`, the resources of the call, also where the
+    # description says nothing, or `:grant`, every resource of the grant; nil before its
+    # first start and on every other node. Set at each start (`source_role_changeset/2`)
+    # and never cast. A run gets no harness token through an assignment of an adapter with
+    # `:grant` (`Apiary.Harnesses.Walk`).
+    field :credential_scope, Ecto.Enum, values: [:resource, :grant]
 
     belongs_to :organisation, Apiary.Organisations.Organisation
     belongs_to :workspace, Apiary.Organisations.Workspace
@@ -468,9 +476,12 @@ defmodule Apiary.Nodes.Node do
   # (`Apiary.Integrations.Description.source_secrets/1`, nil for none), and the apply
   # items of its work credential with the description's exact `egress_hosts`
   # (`Apiary.Integrations.Description.source_apply/1` and `exact_egress_hosts/1`, nil for
-  # none), and its guide (`Apiary.Integrations.Description.source_guide/1`, nil for none).
+  # none), its guide (`Apiary.Integrations.Description.source_guide/1`, nil for none),
+  # and how far its credential reaches
+  # (`Apiary.Integrations.Description.credential_scope/1`).
   # A description with no source role gives the defaults: no words, items, no targets, no
-  # comments, no change kinds, no line, no names, no apply items and no guide. Database
+  # comments, no change kinds, no line, no names, no apply items, no guide and the scope
+  # `:resource`. Database
   # checks limit the words and items to the same (`nodes_items_check`,
   # `nodes_collection_noun_check`), and the targets, the comments, the change kinds, the
   # line, the names, the apply items and the guide to adapters (`nodes_targets_check`,
@@ -508,7 +519,8 @@ defmodule Apiary.Nodes.Node do
       secret_names: Description.source_secrets(description),
       source_apply: Description.source_apply(description),
       egress_hosts: Description.exact_egress_hosts(description),
-      source_guide: Description.source_guide(description)
+      source_guide: Description.source_guide(description),
+      credential_scope: Description.credential_scope(description)
     )
     |> check_constraint(:items, name: :nodes_items_check)
     |> check_constraint(:targets, name: :nodes_targets_check)
@@ -519,6 +531,7 @@ defmodule Apiary.Nodes.Node do
     |> check_constraint(:source_access, name: :nodes_source_access_check)
     |> check_constraint(:source_apply, name: :nodes_source_apply_check)
     |> check_constraint(:source_guide, name: :nodes_source_guide_check)
+    |> check_constraint(:credential_scope, name: :nodes_credential_scope_check)
   end
 
   @doc false

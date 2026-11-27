@@ -5,9 +5,11 @@ defmodule Apiary.Runs.RunCredential do
   # `issued_apply` is written later, once. It has no value. The table and its rules are
   # `20261025160500_keep_each_run_s_credential_entries`'s and
   # `20261025160600_keep_the_apply_items_of_a_run_s_first_work_credential`'s, and
-  # `20261118090000_keep_a_write_run_s_push_credential_entry`'s.
+  # `20261118090000_keep_a_write_run_s_push_credential_entry`'s, and
+  # `20261127150200_keep_a_run_s_harness_credential_entries`'s.
   #
-  #   * `name`: `work-1` for the run's work entry and `push-1` for its push entry; the run
+  #   * `name`: `work-1` for the run's work entry, `push-1` for its push entry and
+  #     `harness-1` to `harness-5` for its harness entries; the run
   #     configuration lists each entry under its name
   #     (`Apiary.Policy.ComposedConfiguration`). Names say nothing of the target.
   #   * `purpose`: `:work`, the run's target, at most one per run, which the run's sessions
@@ -18,10 +20,15 @@ defmodule Apiary.Runs.RunCredential do
   #     push entry existed may have `:write`).
   #   * `connection_id` and `adapter_id`: the organisation's connection through which the
   #     target's collection came, and its adapter. A call for the work credential sends
-  #     that connection's public id as `connection_id`.
+  #     that connection's public id as `connection_id`. A harness entry has no
+  #     connection: `grant_id` is the grant its credential is issued under, which may be
+  #     the instance's organisation's, through an assignment (`Apiary.Harnesses`).
   #   * `resources`: `%{"collection_id", "external_ref", "path"}` for each collection the
   #     entry covers: its row id, its ref as the adapter listed it, which a call for the
-  #     work credential sends as its one resource, and the path of the run's target.
+  #     work credential sends as its one resource, and the path of the run's target. A
+  #     harness entry's are `%{"resource_ref", "sources"}`, with `"path"` where the adapter
+  #     resolved one: the resource as the adapter resolved it, and the harness sources the
+  #     run reads through it (`Apiary.Harnesses.entries/1`).
   #   * `apply`: the adapter's apply items with `{target.path}` filled
   #     (`Apiary.Integrations.ApplyTemplates`); `placeholders`: nil for none.
   #   * `issued_apply`: the apply items of the first credential the adapter issued for the
@@ -52,6 +59,7 @@ defmodule Apiary.Runs.RunCredential do
     belongs_to :workspace, Apiary.Organisations.Workspace
     belongs_to :run, Apiary.Runs.Run
     belongs_to :connection, Apiary.Adapters.Connection
+    belongs_to :grant, Apiary.Adapters.Grant
     belongs_to :adapter, Apiary.Nodes.Node
   end
 end

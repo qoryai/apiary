@@ -119,12 +119,25 @@ defmodule Apiary.Harnesses do
   ## A run's links
 
   @doc false
-  # entries/1 is the links the run of the queue `run` reads its harness sources through,
-  # read only, as its walk resolved them (`Apiary.Harnesses.Walk`): one per link, its
-  # grant, with the resources the walk found under it. `[]` for a run whose walk has not
-  # resolved, or resolved none.
+  # entries/1 is the harness credential entries of the run of the queue `run`, read only,
+  # from the links its walk resolved (`Apiary.Harnesses.Walk`): one entry for a link of
+  # the run's organisation, with every resource the walk found under it; one entry for
+  # each resource of a link through an assignment, so each such credential reaches only
+  # the source assigned. Each resource is `%{"resource_ref", "sources"}`, with `"path"`
+  # where the adapter resolved one; `sources` are the harness sources the run reads
+  # through it. `[]` for a run whose walk has not resolved, or resolved none. A link
+  # stored before links had `assigned` is taken as one of the run's organisation, with no
+  # paths and no sources: the issue re-reads its grant's organisation, and refuses a grant
+  # of another organisation with no sources (`Apiary.Runs.WorkCredential`).
   @spec entries(DispatchRun.t()) :: [
-          %{purpose: :harness, link_id: Ecto.UUID.t(), resources: [term], access: :read}
+          %{
+            purpose: :harness,
+            link_id: Ecto.UUID.t(),
+            adapter_id: Ecto.UUID.t(),
+            assigned: boolean,
+            resources: [map],
+            access: :read
+          }
         ]
   def entries(%DispatchRun{id: id}) do
     Repo.one(
@@ -133,8 +146,31 @@ defmodule Apiary.Harnesses do
         select: h.harness_links
     )
     |> List.wrap()
-    |> Enum.map(fn link ->
-      %{purpose: :harness, link_id: link["grant_id"], resources: link["resources"], access: :read}
+    |> Enum.flat_map(fn link ->
+      resources =
+        for ref <- link["resources"] do
+          %{"resource_ref" => ref, "sources" => Map.get(link["sources"] || %{}, ref, [])}
+          |> then(fn resource ->
+            case Map.get(link["paths"] || %{}, ref) do
+              path when is_binary(path) -> Map.put(resource, "path", path)
+              nil -> resource
+            end
+          end)
+        end
+
+      assigned = link["assigned"] == true
+      groups = if assigned, do: Enum.map(resources, &[&1]), else: [resources]
+
+      for group <- groups do
+        %{
+          purpose: :harness,
+          link_id: link["grant_id"],
+          adapter_id: link["adapter_id"],
+          assigned: assigned,
+          resources: group,
+          access: :read
+        }
+      end
     end)
   end
 

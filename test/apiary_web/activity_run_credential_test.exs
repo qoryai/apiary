@@ -74,7 +74,65 @@ defmodule ApiaryWeb.ActivityRunCredentialTest do
   test "every cause of a refusal has its words" do
     for cause <- Apiary.Runs.WorkCredential.causes() do
       assert sentence(Map.put(@details, "outcome", Atom.to_string(cause))) =~
-               ~r/\AWas refused write access to acme\/shop for the run: (the|Qory Apiary) /
+               ~r/\AWas refused write access to acme\/shop for the run: (the|Qory Apiary|only) /
+    end
+  end
+
+  describe "a harness credential" do
+    @harness %{
+      "run_id" => "6f1c2a40-1d2e-4b5f-9a8b-0c1d2e3f4a5b",
+      "adapter_id" => "na_0123456789abcdef",
+      "access" => "read",
+      "purpose" => "harness",
+      "credential" => "harness-1",
+      "sources" => ["code.example.com/acme/harness", "code.example.com/acme/tools"]
+    }
+
+    test "sent: the sources it reads, and its expiry" do
+      issued =
+        Map.merge(@harness, %{"outcome" => "issued", "expires_at" => "2026-10-25T13:00:00Z"})
+
+      assert sentence(issued) ==
+               "Received read access to the harness sources code.example.com/acme/harness, code.example.com/acme/tools for the run, until 2026-10-25 13:00 UTC"
+    end
+
+    test "refused: the sources and the cause" do
+      assert sentence(Map.put(@harness, "outcome", "timeout")) ==
+               "Was refused read access to the harness sources code.example.com/acme/harness, code.example.com/acme/tools for the run: the call to the adapter timed out"
+    end
+
+    test "for a hidden harness, no source" do
+      hidden = @harness |> Map.delete("sources") |> Map.put("harness_hidden", true)
+
+      assert sentence(
+               Map.merge(hidden, %{"outcome" => "issued", "expires_at" => "2026-10-25T13:00:00Z"})
+             ) ==
+               "Received read access to the run's harness sources, until 2026-10-25 13:00 UTC"
+
+      assert sentence(Map.put(hidden, "outcome", "refused")) ==
+               "Was refused read access to the run's harness sources: the adapter returned a refusal"
+    end
+
+    test "sent with no end time, with the sources or without" do
+      issued = Map.put(@harness, "outcome", "issued")
+
+      assert sentence(issued) ==
+               "Received read access to the harness sources code.example.com/acme/harness, code.example.com/acme/tools for the run, with no end time"
+
+      hidden = issued |> Map.delete("sources") |> Map.put("harness_hidden", true)
+
+      assert sentence(hidden) ==
+               "Received read access to the run's harness sources, with no end time"
+    end
+
+    test "refused because the run's machine is not one Qory Apiary provides" do
+      assert sentence(Map.put(@harness, "outcome", "machine_not_provided")) ==
+               "Was refused read access to the harness sources code.example.com/acme/harness, code.example.com/acme/tools for the run: only machines that Qory Apiary provides may receive these sources"
+    end
+
+    test "refused because the run may no longer use the grant" do
+      assert sentence(Map.put(@harness, "outcome", "harness_not_allowed")) ==
+               "Was refused read access to the harness sources code.example.com/acme/harness, code.example.com/acme/tools for the run: the access to these sources has ended for this organisation"
     end
   end
 end

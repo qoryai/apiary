@@ -13,8 +13,9 @@ defmodule Apiary.HarnessReadsFixtures do
   alias Apiary.Nodes.Node
 
   @doc """
-  An adapter with a call address, as its start-up declares one: `%{adapter, host, seed}`,
-  the seed to sign its answers with.
+  An adapter with a call address and a credential per resource of a call
+  (`credential_scope` `resource`), as its start-up declares them: `%{adapter, host,
+  seed}`, the seed to sign its answers with.
   """
   def call_adapter_fixture(attrs \\ %{}) do
     %{adapter: adapter, pair: pair} = Apiary.NodesFixtures.connectable_adapter_fixture(attrs)
@@ -22,7 +23,11 @@ defmodule Apiary.HarnessReadsFixtures do
 
     {1, _} =
       Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
-        set: [call_url: "https://#{host}/calls/", call_instance_id: "instance-1"]
+        set: [
+          call_url: "https://#{host}/calls/",
+          call_instance_id: "instance-1",
+          credential_scope: :resource
+        ]
       )
 
     %{adapter: Repo.get!(Node, adapter.id), host: host, seed: pair.secret}

@@ -13,6 +13,13 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 ### Added
 
 <!-- feature: factory -->
+- A run that composes a harness from private sources gets a read-only token for each linked
+  account, from that account's integration. The run's gateway sets the token only while it
+  fetches the harness, before the first session. Each token sent or refused has an Activity
+  entry. A private harness source assigned to an organisation gives a run a read token only
+  when Qory Apiary provides both the run's gateway and its machine.
+<!-- /feature -->
+<!-- feature: factory -->
 - An organisation's connection to an adapter has one external account. The server returns
   409 `connection_held` for a grant report with another ref than the connection's grant
   that has not ended, and nothing changes: no grant, no pass spent, no feed entry. A report

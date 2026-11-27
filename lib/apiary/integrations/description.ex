@@ -407,6 +407,19 @@ defmodule Apiary.Integrations.Description do
     do: get_in(document, ["roles", "source", "apply"])
 
   @doc false
+  # credential_scope/1 is how far one credential the adapter answers to a run-credential
+  # call reaches, the source role's `credential_scope`: `:grant`, every resource of the
+  # grant, where it says `grant`; else `:resource`, only the resources of the call, also
+  # where it says nothing and for a description with no source role.
+  @spec credential_scope(t) :: :resource | :grant
+  def credential_scope(%__MODULE__{document: document}) do
+    case get_in(document, ["roles", "source", "credential_scope"]) do
+      "grant" -> :grant
+      _resource -> :resource
+    end
+  end
+
+  @doc false
   # exact_egress_hosts/1 is the entries of `egress_hosts` that are hosts, each exact, in
   # their order, without the entries of a setting; nil for none.
   @spec exact_egress_hosts(t) :: [String.t()] | nil

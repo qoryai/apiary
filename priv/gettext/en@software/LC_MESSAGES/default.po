@@ -6349,6 +6349,56 @@ msgstr ""
 msgid "Ask an approver of %{stage} to act on it."
 msgstr ""
 
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an owner or admin of %{workspace} to correct the harness source addresses, then run Explore again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an owner or admin of %{workspace} to correct the harness source addresses, then take the work item in again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an owner or admin of %{workspace} to take fewer private harness sources from one forge, then run Explore again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an owner or admin of %{workspace} to take fewer private harness sources from one forge, then take the work item in again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an owner or admin of %{workspace} to take only one of the nested private harness sources on each forge, then run Explore again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an owner or admin of %{workspace} to take only one of the nested private harness sources on each forge, then take the work item in again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an owner or admin of %{workspace} to take the private harness sources on each forge through one account, then run Explore again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an owner or admin of %{workspace} to take the private harness sources on each forge through one account, then take the work item in again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an owner or admin of %{workspace} to write the harness sources in the case the forge names them, then run Explore again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Ask an owner or admin of %{workspace} to write the harness sources in the case the forge names them, then take the work item in again."
+msgstr ""
+
 #: lib/apiary_web/live/node_live/index.ex
 #, elixir-autogen, elixir-format
 msgid "Ask an owner or admin to add the pool. Adding a pool needs the right to set its machine limit."
@@ -6377,6 +6427,26 @@ msgstr ""
 #: lib/apiary_web/components/harness_update_components.ex
 #, elixir-autogen, elixir-format
 msgid "Ask whoever keeps the harness to give %{workflow} %{other} access, or to move it to a separate stage. %{workflow} runs with %{level} access, because its harness sets %{level}."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Ask your Qory Apiary admin to update the %{host} integration, then run Explore again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Ask your Qory Apiary admin to update the %{host} integration, then take the work item in again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Ask your Qory Apiary admin to update the integration for this workspace's harness sources, then run Explore again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Ask your Qory Apiary admin to update the integration for this workspace's harness sources, then take the work item in again."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -8441,6 +8511,36 @@ msgstr ""
 msgid "Connect a work source"
 msgstr ""
 
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Connect an account that can read %{source} to this organisation, then run Explore again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Connect an account that can read %{source} to this organisation, then run Explore again. %{source} is a private harness source, and the access assigned to this organisation gives runs no read token for it."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Connect an account that can read %{source} to this organisation, then take the work item in again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Connect an account that can read %{source} to this organisation, then take the work item in again. %{source} is a private harness source, and the access assigned to this organisation gives runs no read token for it."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Connect an account that can read the workspace's private harness sources to this organisation, then run Explore again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Connect an account that can read the workspace's private harness sources to this organisation, then take the work item in again."
+msgstr ""
+
 #: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -8766,7 +8866,7 @@ msgstr ""
 
 #: lib/apiary_web/components/harness_components.ex
 #, elixir-autogen, elixir-format
-msgid "Correct the harness in %{source}: its modules come from more than %{n} accounts, and a run can read at most %{n}."
+msgid "Correct the harness in %{source}: take its private harness sources from at most %{n} accounts and assigned repositories."
 msgstr ""
 
 #: lib/apiary_web/components/harness_update_components.ex
@@ -18088,6 +18188,26 @@ msgstr ""
 msgid "Received %{access} access to %{target} for the run, with no end time"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Received read access to the harness sources %{sources} for the run, until %{time}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Received read access to the harness sources %{sources} for the run, with no end time"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Received read access to the run's harness sources, until %{time}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Received read access to the run's harness sources, with no end time"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Recent runs"
@@ -21380,6 +21500,16 @@ msgstr ""
 msgid "Tag %{tag}"
 msgstr ""
 
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Take fewer private harness sources from %{host}, then run Explore again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Take fewer private harness sources from %{host}, then take the work item in again."
+msgstr ""
+
 #: lib/apiary_web/components/backlog_components.ex
 #, elixir-autogen, elixir-format
 msgid "Take in"
@@ -21436,14 +21566,39 @@ msgstr ""
 msgid "Take its %{items} into the Backlog"
 msgstr ""
 
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Take only one of %{first} and %{second}, which nest on %{host}, then run Explore again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Take only one of %{first} and %{second}, which nest on %{host}, then take the work item in again."
+msgstr ""
+
 #: lib/apiary_web/components/integration_components.ex
 #, elixir-autogen, elixir-format
 msgid "Take the %{items} of %{name} into the Backlog"
 msgstr ""
 
-#: lib/apiary_web/components/work_item_components.ex
+#: lib/apiary/stages/stop_cause.ex
 #, elixir-autogen, elixir-format
-msgid "Take the harness sources from at most %{n} accounts, then run Explore again. A run takes %{n} harness credentials at most."
+msgid "Take the private harness sources from at most %{n} accounts and assigned repositories, then run Explore again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Take the private harness sources from at most %{n} accounts and assigned repositories, then take the work item in again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Take the private harness sources on %{host} through one account, then run Explore again. A run reads each forge through one account."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Take the private harness sources on %{host} through one account, then take the work item in again. A run reads each forge through one account."
 msgstr ""
 
 #: lib/apiary_web/components/backlog_components.ex
@@ -25254,6 +25409,16 @@ msgstr ""
 msgid "Was refused %{access} access to %{target} for the run: %{cause}"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Was refused read access to the harness sources %{sources} for the run: %{cause}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Was refused read access to the run's harness sources: %{cause}"
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "Watch"
@@ -26002,9 +26167,34 @@ msgstr ""
 msgid "Write each track of the gate of %{stage} as an id of lower-case words joined by hyphens, such as small-change."
 msgstr ""
 
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Write the harness source as %{canonical}, the case the forge names it in, then run Explore again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Write the harness source as %{canonical}, the case the forge names it in, then take the work item in again."
+msgstr ""
+
+#: lib/apiary_web/components/harness_components.ex
+#, elixir-autogen, elixir-format
+msgid "Write the harness source as %{canonical}, the case the forge names it in."
+msgstr ""
+
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "Write the new wording of %{criterion}, or pick another option."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Write the path of %{source} without spaces or any of * ? # { } // .., then run Explore again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Write the path of %{source} without spaces or any of * ? # { } // .., then take the work item in again."
 msgstr ""
 
 #: lib/apiary_web/live/work_item_live/stage_components.ex
@@ -27884,6 +28074,11 @@ msgstr ""
 msgid "only hosts on its list allowed"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "only machines that Qory Apiary provides may receive these sources"
+msgstr ""
+
 #: lib/apiary_web/components/run_page_components.ex
 #, elixir-autogen, elixir-format
 msgid "only open call at a connection"
@@ -28239,6 +28434,11 @@ msgstr ""
 #: lib/apiary_web/components/node_components.ex
 #, elixir-autogen, elixir-format
 msgid "the Qory Pool"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "the access to these sources has ended for this organisation"
 msgstr ""
 
 #: lib/apiary_web/activity/describer/core.ex

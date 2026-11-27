@@ -1,0 +1,19 @@
+{
+  "version": 1,
+  "revision": 1,
+  "results": [
+    {
+      "address": "https://code.example.com/example-org/example-repo",
+      "grant_ref": "G_1",
+      "resource_ref": "R_1001",
+      "path": "example-org/example-repo"
+    },
+    {
+      "address": "https://code.example.com/example-org/public-repo",
+      "resource_ref": "R_2001",
+      "path": "example-org/public-repo",
+      "public": true,
+      "public_ref": "code.example.com/example-org/public-repo"
+    }
+  ]
+}

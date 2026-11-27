@@ -29,6 +29,67 @@ of the workflow's entry in the stage of `process.yaml`, which may be `read` or
 none declares `read`. A run of a stage whose version has no entry for its workflow has
 `read`.
 
+## The run's harness credentials
+
+A run whose harness comes from private sources gets one read-only credential entry for
+each link of its harness walk, `harness-1` to `harness-5`, beside `work-1` and `push-1`
+in the run configuration. A link is the grant of one account's integration that covers
+sources of the harness; a link through an assignment, a grant of another organisation
+than the run's, gets one entry for each resource. Each entry has the source role's apply
+items of the link's adapter whose hosts are all in the run's `stack_hosts`, with
+`{target.path}` filled with each resource's `path` from the adapter's `resolve` answer.
+An item has no `paths` where a resource has no `path`. A source that no grant covers,
+public or at a full commit id, and the built-in harness get no entry.
+
+The gateway sets a harness credential only on the stack proxy, while it fetches the
+harness before the first session, so the run's sessions never get it. On the gateway's
+secrets request, Qory Apiary calls the link's adapter with purpose `harness`, the
+grant's `grant_ref`, the resources and access `read`, and seals the answer to the
+gateway's key, as for `work-1`. Each call writes a `run_credential.issue` Activity entry,
+with the sources the entry reads, or none for a hidden harness. Before each call, Qory
+Apiary checks that the grant is live, of a connected connection of the entry's adapter,
+and either of the run's organisation or covered by an assignment still in force for each
+source of the entry, under an adapter whose credential reaches only the resources of the
+call (`credential_scope: resource`). An entry under another organisation's grant is
+sealed only for a run that the instance's gateway serves and the instance's node pool
+claimed. Otherwise the call is not made, and the request is refused. The Activity entry
+names the cause: `connection_gone` for a connection that is not connected,
+`harness_not_allowed` for a grant that ended or that the run may no longer use, and
+`machine_not_provided` for an entry under another organisation's grant whose run is on a
+gateway or a node pool that Qory does not provide.
+
+A run ends `harness_unresolved` before it fetches anything in these cases:
+
+- `assigned_without_token`: an assigned private source, under an adapter whose credential
+  reaches its whole grant (`credential_scope: grant` in the adapter's description), or
+  under an adapter that has not started since Qory Apiary began to keep that value. Such
+  an adapter gives no token for an assigned source. A public assigned source is read
+  from its host.
+- `assigned_gateway`: a link through an assignment on a machine that the run's
+  organisation controls: a gateway of the organisation or of one of its workspaces, or a
+  node pool of a workspace, also one that names the instance's gateway. The run's machine
+  reaches the gateway's stack proxy with the run key, and the proxy sets the token on its
+  requests until the first session. So the read token for a source assigned from another
+  organisation goes only to runs that Qory provides both parts of: the instance's gateway
+  and the instance's node pool. The claim checks this, the first point where the gateway
+  is known, and each secrets request checks it again.
+- `source_case`: a linked source whose address's path differs from the `path` the
+  adapter resolved only in letter case, such as `Acme/Harness` for `acme/harness`. The
+  stack proxy matches paths with case, so the run could not fetch it. The rule's
+  `canonical` is the address with the adapter's path, its scheme, port and any `.git`
+  kept, and none for a hidden harness.
+- `harness_entries`: entries the run configuration cannot take, with the reason in the
+  rule's values: `path_refused`, a path the templates refuse, with the source as the
+  failed source unless the harness is hidden; `too_many_paths`, an item with more than 32
+  paths; `overlap`, the paths of the entries of two links on one host overlap;
+  `nested_sources`, the paths of two resources of one assigned link nest, with the
+  address of each one's first source as `first` and `second`; or
+  `integration_overlap`, the adapter's items cause the overlap: two items of one entry
+  on one host, an item with no paths beside another on its host (a resource the adapter
+  resolved no `path` for), or a path with no `{target.path}`, which every entry of the
+  adapter has. The gateway checks the items in the same way. The last four have the
+  `host`, except for a hidden harness.
+
 ## The run's track
 
 The `inputs` of a run of any stage but Explore's contain `track`, the id of the work

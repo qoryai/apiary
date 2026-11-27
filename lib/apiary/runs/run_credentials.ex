@@ -50,8 +50,31 @@ defmodule Apiary.Runs.RunCredentials do
   # prebuild have the work entry alone. Only Forager's push proxy gets the push entry's
   # value; the run's sessions get the work entry's.
   #
-  # The claim writes the entries with their run (`insert!/2`), once. `work/1` and `push/1`
-  # read them back for the run's documents and its secrets request.
+  # ## The harness entries
+  #
+  # `form_harness/2` forms the run's harness entries, `harness-1` to `harness-5`, from the
+  # links its harness walk resolved (`Apiary.Harnesses.entries/1`), in that order: one
+  # entry per link of the run's organisation, one per resource of a link through an
+  # assignment. Each entry is read only, under the link's grant (`grant_id`, no
+  # connection), and takes its adapter's apply items (`Apiary.Nodes.Node`'s
+  # `source_apply`):
+  #
+  #   * a path with `{target.path}` is filled with each resource's path, as the adapter
+  #     resolved it (`Apiary.Integrations.ApplyTemplates.fill/2`), the paths of all its
+  #     resources in one item, each once; where one of its resources has no path, the
+  #     item has no `paths`, so it covers every path of its hosts;
+  #   * only the items whose hosts are all in the run's `stack_hosts` are kept, since only
+  #     the stack proxy sets a harness credential, on those hosts alone.
+  #
+  # A link whose adapter is gone or declares no apply items, or keeps no item, gets no
+  # entry. The entries are refused, and the run does not start, when a resource's path is
+  # one the templates refuse (`:path_refused`), an item gets more than 32 paths
+  # (`:too_many_paths`), or two entries have items on one host that overlap or have no
+  # paths (`:overlap`), which the gateway refuses (`run-configuration.schema.json`). So,
+  # without the adapters' paths, a run has one link per forge host.
+  #
+  # The claim writes the entries with their run (`insert!/2`), once. `work/1`, `push/1` and
+  # `harness/1` read them back for the run's documents and its secrets request.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -69,6 +92,9 @@ defmodule Apiary.Runs.RunCredentials do
   alias Apiary.WorkItems.WorkItem
 
   @work_name "work-1"
+  @harness_prefix "harness-"
+  # The most paths of an item (`run-configuration.schema.json`, `credential_paths`).
+  @max_paths 32
   @push_name "push-1"
   @push_ref "refs/heads/qory/"
   @prebuild DispatchRun.prebuild()
@@ -303,6 +329,274 @@ defmodule Apiary.Runs.RunCredentials do
   def push_from(_work, _level, _work_item), do: nil
 
   @doc false
+  # form_harness/2 is the harness entries of the run of the queue `dispatch_run`, whose
+  # run configuration has `stack_hosts` (the moduledoc): `{:ok, entries}`, not yet stored,
+  # `[]` for none, or `{:error, reason, at}`: `:path_refused` with `{:source, git}`, the
+  # address of the source whose path the templates refuse; `:too_many_paths` with
+  # `{:host, host}`, the first host of the item; or, with the host two items claim
+  # (`conflict/1`): `:integration_overlap` with `{:host, host}` where the adapter's items
+  # cause it, `:overlap` with `{:host, host}` where the entries of two links do, and
+  # `:nested_sources` with `{:nested, host, first, second}` where two resources of one
+  # assigned link nest, `first` and `second` the address of the first source each reads,
+  # nil for none.
+  @spec form_harness(DispatchRun.t(), [String.t()]) ::
+          {:ok, [RunCredential.t()]}
+          | {:error, :path_refused, {:source, String.t() | nil}}
+          | {:error, :too_many_paths | :overlap | :integration_overlap, {:host, String.t()}}
+          | {:error, :nested_sources, {:nested, String.t(), String.t() | nil, String.t() | nil}}
+  def form_harness(%DispatchRun{} = dispatch_run, stack_hosts) when is_list(stack_hosts) do
+    dispatch_run
+    |> Apiary.Harnesses.entries()
+    |> Enum.reduce_while({:ok, []}, fn link, {:ok, formed} ->
+      case harness_apply(link, stack_hosts) do
+        {:ok, nil} -> {:cont, {:ok, formed}}
+        {:ok, {apply, fixed}} -> {:cont, {:ok, formed ++ [{link, apply, fixed}]}}
+        {:error, _reason, _at} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, formed} ->
+        claims =
+          for {link, apply, fixed} <- formed,
+              do: %{grant: link.link_id, items: apply, fixed: fixed}
+
+        case conflict(claims) do
+          nil ->
+            {:ok, harness_rows(dispatch_run, Enum.map(formed, &Tuple.delete_at(&1, 2)))}
+
+          {host, :integration} ->
+            {:error, :integration_overlap, {:host, host}}
+
+          {host, :accounts} ->
+            {:error, :overlap, {:host, host}}
+
+          {host, {:nested, m, n}} ->
+            [first, second] = for i <- [m, n], do: formed |> Enum.at(i) |> elem(0) |> entry_git()
+            {:error, :nested_sources, {:nested, host, first, second}}
+        end
+
+      error ->
+        error
+    end
+  end
+
+  defp harness_rows(dispatch_run, formed) do
+    formed
+    |> Enum.with_index(1)
+    |> Enum.map(fn {{link, apply}, n} ->
+      %RunCredential{
+        organisation_id: dispatch_run.organisation_id,
+        workspace_id: dispatch_run.workspace_id,
+        connection_id: nil,
+        grant_id: link.link_id,
+        adapter_id: link.adapter_id,
+        name: @harness_prefix <> Integer.to_string(n),
+        purpose: :harness,
+        access: :read,
+        resources: link.resources,
+        apply: apply,
+        placeholders: nil
+      }
+    end)
+  end
+
+  # The address of the first source the first resource of the harness entry `link` reads,
+  # nil for none.
+  defp entry_git(link), do: Enum.find_value(link.resources, &first_git/1)
+
+  # The apply items of one harness entry, each a map in a run configuration's order of
+  # members (the moduledoc), and the paths of the adapter's templates that no resource
+  # fills (no `{target.path}`); nil for no item.
+  defp harness_apply(link, stack_hosts) do
+    case link.adapter_id && Repo.get(Node, link.adapter_id) do
+      %Node{source_apply: [_ | _] = items, deleted_at: nil} ->
+        items =
+          Enum.filter(items, fn %{"hosts" => hosts} -> Enum.all?(hosts, &(&1 in stack_hosts)) end)
+
+        fixed =
+          for %{"paths" => [_ | _] = paths} <- items,
+              path <- paths,
+              not String.contains?(path, "{target.path}"),
+              uniq: true,
+              do: path
+
+        items
+        |> Enum.reduce_while({:ok, []}, fn item, {:ok, done} ->
+          case harness_item(item, link.resources) do
+            {:ok, item} -> {:cont, {:ok, done ++ [item]}}
+            error -> {:halt, error}
+          end
+        end)
+        |> case do
+          {:ok, []} -> {:ok, nil}
+          {:ok, apply} -> {:ok, {apply, fixed}}
+          error -> error
+        end
+
+      _none ->
+        {:ok, nil}
+    end
+  end
+
+  # One template item for `resources`: its paths filled with each resource's path.
+  defp harness_item(%{"paths" => templates} = item, resources) do
+    filled? = Enum.any?(templates, &String.contains?(&1, "{target.path}"))
+
+    cond do
+      not filled? ->
+        {:ok, ordered_map(item)}
+
+      Enum.any?(resources, &is_nil(&1["path"])) ->
+        {:ok, item |> Map.delete("paths") |> ordered_map()}
+
+      true ->
+        Enum.reduce_while(resources, {:ok, []}, fn resource, {:ok, all} ->
+          case ApplyTemplates.fill([item], resource["path"]) do
+            {:ok, [filled]} ->
+              {:cont, {:ok, all ++ filled["paths"]}}
+
+            {:error, :path_refused} ->
+              {:halt, {:error, :path_refused, {:source, first_git(resource)}}}
+          end
+        end)
+        |> case do
+          {:ok, all} ->
+            all = Enum.uniq(all)
+
+            if length(all) > @max_paths,
+              do: {:error, :too_many_paths, {:host, hd(item["hosts"])}},
+              else: {:ok, item |> Map.put("paths", all) |> ordered_map()}
+
+          error ->
+            error
+        end
+    end
+  end
+
+  defp harness_item(item, _resources), do: {:ok, ordered_map(item)}
+
+  # The address of the first source a resource reads, nil for none.
+  defp first_git(resource) do
+    Enum.find_value(List.wrap(resource["sources"]), fn
+      %{"git" => git} when is_binary(git) -> git
+      _source -> nil
+    end)
+  end
+
+  defp ordered_map(item), do: item |> ApplyTemplates.ordered() |> Map.get(:values) |> Map.new()
+
+  @doc false
+  # overlap?/1 is whether two apply items of the harness entries whose items are `entries`
+  # (one list of items each, each entry of a link of its own), of one entry or of two,
+  # claim one host in a way the gateway refuses (`conflict/1`).
+  @spec overlap?([[map]]) :: boolean
+  def overlap?(entries),
+    do: conflict(for(items <- entries, do: %{grant: nil, items: items, fixed: []})) != nil
+
+  @doc false
+  # conflict/1 is the first host that two apply items of the harness entries `entries`
+  # claim in a way the gateway refuses, with who causes it, nil for none. Each entry is
+  # `%{grant:, items:, fixed:}`: the id of its link, its apply items, and the paths of the
+  # adapter's templates that no resource fills. As the gateway checks a run
+  # configuration's harness credentials, each item is compared with every item before
+  # it, of the same entry or of another, and on a host both claim, one of them has no
+  # `paths`, or a path of one and a path of the other match one request. A path matches
+  # whole, or up to a final `*` as a prefix, and a segment written `{}` matches one
+  # segment that is not empty.
+  #
+  # `{host, :integration}` where the adapter's items cause it: two items of one entry, an
+  # item with no paths (a resource the adapter resolved no path for), or a path that no
+  # resource fills. Else, for two entries whose paths filled from resources match:
+  # `{host, {:nested, m, n}}` for two entries of one link, the indexes of the earlier
+  # entry and the later one, whose resources nest; `{host, :accounts}` for entries of two
+  # links.
+  @spec conflict([%{grant: term, items: [map], fixed: [String.t()]}]) ::
+          {String.t(), :integration | :accounts | {:nested, integer, integer}} | nil
+  def conflict(entries) do
+    items =
+      for {entry, n} <- Enum.with_index(entries), item <- entry.items do
+        {item, entry, n}
+      end
+      |> Enum.with_index()
+
+    Enum.find_value(items, fn {later, i} ->
+      Enum.find_value(Enum.take(items, i), fn {earlier, _j} ->
+        {item, _entry, _n} = later
+
+        Enum.find_value(item["hosts"], fn host ->
+          if host in elem(earlier, 0)["hosts"], do: claim_conflict(host, earlier, later)
+        end)
+      end)
+    end)
+  end
+
+  # Two items, each with its entry and that entry's index, on `host`, which both claim.
+  defp claim_conflict(host, {a, entry_a, m}, {b, entry_b, n}) do
+    if pathless?(a) or pathless?(b) do
+      {host, :integration}
+    else
+      meeting = for x <- a["paths"], y <- b["paths"], paths_meet?(x, y), do: {x, y}
+
+      cond do
+        meeting == [] ->
+          nil
+
+        m == n or Enum.any?(meeting, fn {x, y} -> x in entry_a.fixed or y in entry_b.fixed end) ->
+          {host, :integration}
+
+        not is_nil(entry_a.grant) and entry_a.grant == entry_b.grant ->
+          {host, {:nested, m, n}}
+
+        true ->
+          {host, :accounts}
+      end
+    end
+  end
+
+  defp pathless?(item), do: item["paths"] in [nil, []]
+
+  # Whether two path patterns match one request path.
+  defp paths_meet?(a, b), do: meet?(pattern(a), pattern(b))
+
+  # A pattern's segments, and whether it ends with `*`: the last segment is then the
+  # prefix of a segment, after which anything may follow.
+  defp pattern(path) do
+    {path, star} =
+      if String.ends_with?(path, "*"),
+        do: {String.trim_trailing(path, "*"), true},
+        else: {path, false}
+
+    ["" | segments] = String.split(path, "/")
+    {segments, star}
+  end
+
+  # Two last segments that each end with `*` meet where either is `{}` or one is a prefix
+  # of the other. A last segment ending with `*` and a whole segment of the other pattern
+  # meet where that segment matches a segment that starts with the prefix.
+  defp meet?({[a], true}, {[b], true}),
+    do: a == "{}" or b == "{}" or String.starts_with?(a, b) or String.starts_with?(b, a)
+
+  defp meet?({[a], true}, {[b | _], _star}), do: prefix_meets?(a, b)
+  defp meet?({[a | _], _star}, {[b], true}), do: prefix_meets?(b, a)
+  defp meet?({[], false}, {[], false}), do: true
+
+  defp meet?({[a | rest_a], star_a}, {[b | rest_b], star_b}) do
+    segment_meets?(a, b) and meet?({rest_a, star_a}, {rest_b, star_b})
+  end
+
+  defp meet?(_a, _b), do: false
+
+  # The prefix of a last segment that ends with `*`, and a whole segment pattern of the
+  # other path.
+  defp prefix_meets?("{}", segment), do: segment != ""
+  defp prefix_meets?(_prefix, "{}"), do: true
+  defp prefix_meets?(prefix, segment), do: String.starts_with?(segment, prefix)
+
+  defp segment_meets?("{}", b), do: b != ""
+  defp segment_meets?(a, "{}"), do: a != ""
+  defp segment_meets?(a, b), do: a == b
+
+  @doc false
   # run_access/1 is the access level of the run of the queue `dispatch_run`: its harness
   # walk's. With the workflow model, the lower of the walk's and the stage entry's, and
   # for a run of a stage that shares one run, the highest level of the stage's entries,
@@ -368,16 +662,42 @@ defmodule Apiary.Runs.RunCredentials do
         nil
 
       %RunCredential{} = row ->
-        %{
-          name: row.name,
-          entry: listed_entry(row),
-          hosts: ApplyTemplates.hosts(row.apply),
-          row: row
-        }
+        listed_row(row)
     end
   end
 
   defp listed(_run, _purpose), do: nil
+
+  defp listed_row(%RunCredential{} = row) do
+    %{
+      name: row.name,
+      entry: listed_entry(row),
+      hosts: ApplyTemplates.hosts(row.apply),
+      row: row
+    }
+  end
+
+  @doc false
+  # harness/1 is the harness entries of `run`, as `work/1` is the work entry, with
+  # `purpose` `harness`, in the order of their names; `[]` for none.
+  @spec harness(map | nil) :: [
+          %{
+            name: String.t(),
+            entry: Jason.OrderedObject.t(),
+            hosts: [String.t()],
+            row: RunCredential.t()
+          }
+        ]
+  def harness(%{id: run_id}) when is_binary(run_id) do
+    from(c in RunCredential,
+      where: c.run_id == ^run_id and c.purpose == :harness,
+      order_by: [asc: c.name]
+    )
+    |> Repo.all()
+    |> Enum.map(&listed_row/1)
+  end
+
+  def harness(_run), do: []
 
   @doc false
   # workspace_hosts/1 is the hosts a run of `workspace` can gain with its work entry: the

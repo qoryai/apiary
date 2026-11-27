@@ -20,7 +20,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
   alias Apiary.Connections.Connection
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.ModelKeys.Copy
-  alias Apiary.Runs.{ModelKey, Run, RunCredential}
+  alias Apiary.Runs.{ModelKey, Run, RunCredential, WorkCredential}
   alias Apiary.Secrets.Value
   alias ApiaryWeb.Contract.SignedRequest
 
@@ -50,6 +50,16 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
   ]
 
   @token "fixture-work-token-for-tests-only-7f3a"
+  @harness_token "fixture-harness-token-for-tests-only-5d1e"
+  @harness_source %{"git" => "https://git.example.com/acme/harness", "ref" => "v1"}
+  @harness_apply [
+    %{
+      "hosts" => ["git.example.com"],
+      "scheme" => "basic",
+      "username" => "x-access",
+      "paths" => ["/acme/harness.git/*", "/acme/harness/*"]
+    }
+  ]
   @push_token "fixture-push-token-for-tests-only-91c2"
   @branch "refs/heads/qory/wi_0123456789abcdef"
 
@@ -57,6 +67,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
     %{scope: scope} = sign_up_fixture()
     {:ok, _rule} = Policy.allow(scope, nil, %{host: "git.example"})
     opts = if ctx[:work], do: [work: @apply], else: []
+    opts = if ctx[:machine], do: [machine: ctx[:machine]] ++ opts, else: opts
     scope |> sealed_run_fixture(opts) |> Map.put(:scope, scope)
   end
 
@@ -1876,6 +1887,401 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
     end
   end
 
+  describe "a work entry refused for the gateway" do
+    @describetag :work
+
+    test "writes no Activity entry", ctx do
+      run = Repo.get!(Run, ctx.run.id)
+
+      # A gateway of another organisation may receive none of the run's credentials.
+      other = %Apiary.Nodes.Node{
+        kind: :gateway,
+        organisation_id: Ecto.UUID.generate(),
+        workspace_id: nil
+      }
+
+      key = %{gateway_key(ctx) | node: other}
+      assert WorkCredential.seal_refusal(other, run, work_row(ctx)) == :not_sealable
+
+      {result, log} =
+        with_log(fn ->
+          Apiary.Runs.SecretsRequest.work_sealable(run, [%{row: work_row(ctx)}], key)
+        end)
+
+      assert result == {:error, :credential_unavailable}
+      assert log =~ "may not be sealed for its gateway"
+      assert issues() == []
+      assert seals() == []
+      assert WorkCredentialStub.calls() == []
+    end
+  end
+
+  describe "a request that names a harness entry" do
+    @describetag :work
+
+    test "under a grant of the run's organisation, is answered a read credential for the entry's resources",
+         ctx do
+      ctx = harness_entry!(ctx, own_grant!(ctx))
+
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential(@harness_token, @harness_apply)
+      )
+
+      {conn, log} =
+        with_log(fn -> post_secrets(ctx, request(ctx, credentials: ["harness-1"])) end)
+
+      assert conn.status == 200, conn.resp_body
+      {_bytes, plaintext} = opened(ctx, conn)
+
+      assert %{"value" => @harness_token, "apply" => @harness_apply} =
+               value(plaintext, "harness-1")
+
+      # The call: the grant, the entry's resources, read, for the harness; no connection.
+      assert [{"/calls/run-credential", body}] = WorkCredentialStub.calls()
+
+      assert Map.delete(body, "time") == %{
+               "version" => 1,
+               "grant_ref" => "G_harness",
+               "resources" => ["R_harness"],
+               "access" => "read",
+               "purpose" => "harness"
+             }
+
+      assert harness_row(ctx).issued_apply == @harness_apply
+
+      assert [entry] = issues()
+
+      assert entry.details == %{
+               "run_id" => ctx.run.node_run_id,
+               "adapter_id" => ctx.adapter.public_id,
+               "sources" => ["https://git.example.com/acme/harness"],
+               "access" => "read",
+               "purpose" => "harness",
+               "credential" => "harness-1",
+               "expires_at" => value(plaintext, "harness-1")["expires_at"],
+               "outcome" => "issued"
+             }
+
+      refute log =~ @harness_token
+      refute inspect(entry.details) =~ @harness_token
+    end
+
+    test "for a hidden harness, the Activity entry has no source", ctx do
+      {1, _rows} =
+        Repo.update_all(
+          from(h in Apiary.Harnesses.RunHarness,
+            where: h.dispatch_run_id == ^ctx.run.dispatch_run_id
+          ),
+          set: [harness_hidden: true]
+        )
+
+      ctx = harness_entry!(ctx, own_grant!(ctx))
+
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential(@harness_token, @harness_apply)
+      )
+
+      assert post_secrets(ctx, request(ctx, credentials: ["harness-1"])).status == 200
+      assert [%Entry{details: details}] = issues()
+      assert details["harness_hidden"] == true
+      refute Map.has_key?(details, "sources")
+    end
+
+    test "is refused with no call when the grant may no longer be used", ctx do
+      for {why, cause, change} <- [
+            {"the grant ended", "harness_not_allowed",
+             fn grant ->
+               grant
+               |> Ecto.Changeset.change(
+                 ended_at: DateTime.utc_now(),
+                 state: :ended,
+                 ended_reason: :adapter_reported
+               )
+               |> Repo.update!()
+             end},
+            {"the connection is not connected", "connection_gone",
+             fn grant ->
+               {1, _rows} =
+                 Repo.update_all(
+                   from(c in Apiary.Adapters.Connection, where: c.id == ^grant.connection_id),
+                   set: [state: :pending, connected_at: nil]
+                 )
+             end}
+          ] do
+        ctx = harness_entry!(ctx, grant = own_grant!(ctx))
+        change.(grant)
+
+        {conn, _log} =
+          with_log(fn -> post_secrets(ctx, request(ctx, credentials: ["harness-1"])) end)
+
+        assert conn.status == 409, why
+        assert WorkCredentialStub.calls() == [], why
+
+        assert [{"harness-1", cause}] ==
+                 for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]}),
+               why
+
+        Repo.delete_all(Entry)
+        Repo.delete!(harness_row(ctx))
+        restore_connection!(grant)
+      end
+    end
+
+    # The checks at the issue itself, past the gateway's check of the request (the next
+    # test): `Apiary.Runs.WorkCredential.issue_all/5`, as the request calls it.
+    test "under another organisation's grant, is refused with no call without an assignment in force, or under a grant-wide token",
+         ctx do
+      ctx = harness_entry!(ctx, instance_grant!(ctx))
+      instance_scope = Apiary.OrganisationsFixtures.instance_admin_scope()
+      {key, _seed} = ctx.secrets_key
+      key = Repo.preload(key, [:workspace, :node])
+
+      issue = fn ->
+        run = Repo.get!(Run, ctx.run.id)
+        now = System.os_time(:second)
+        until = System.monotonic_time(:millisecond) + 5_000
+        WorkCredential.issue_all(run, [harness_row(ctx)], key, now, until)
+      end
+
+      # No assignment of the source.
+      assert {{:error, :credential_unavailable}, _log} = with_log(issue)
+
+      # An assignment, under an adapter whose token reaches its whole grant.
+      assignment =
+        Repo.insert!(%Apiary.Harnesses.Assignment{
+          organisation_id: ctx.scope.organisation.id,
+          every_organisation: false,
+          source: @harness_source,
+          created_by_id: instance_scope.user.id
+        })
+
+      scope! = fn scope ->
+        {1, _rows} =
+          Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^ctx.adapter.id),
+            set: [credential_scope: scope]
+          )
+      end
+
+      # An adapter that has not said its scope since it started counts as grant-wide.
+      for scope <- [:grant, nil] do
+        scope!.(scope)
+        assert {{:error, :credential_unavailable}, _log} = with_log(issue)
+        assert WorkCredentialStub.calls() == []
+      end
+
+      # With the assignment in force and a token per resource, the credential is issued.
+      scope!.(:resource)
+
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential(@harness_token, @harness_apply)
+      )
+
+      assert {:ok, [_issued]} = issue.()
+
+      assert [{"/calls/run-credential", %{"grant_ref" => "G_harness"}}] =
+               WorkCredentialStub.calls()
+
+      # The assignment removed: refused again, with no call.
+      Repo.delete!(assignment)
+      assert {{:error, :credential_unavailable}, _log} = with_log(issue)
+      assert WorkCredentialStub.calls() == []
+
+      # The request records an issued credential once sealed; the issue alone does not.
+      assert ~w(harness_not_allowed harness_not_allowed harness_not_allowed harness_not_allowed) ==
+               for(%Entry{details: d} <- issues(), do: d["outcome"])
+    end
+
+    test "under another organisation's grant, is refused for a gateway the run's organisation controls",
+         ctx do
+      ctx = harness_entry!(ctx, instance_grant!(ctx))
+      instance_scope = Apiary.OrganisationsFixtures.instance_admin_scope()
+
+      Repo.insert!(%Apiary.Harnesses.Assignment{
+        organisation_id: ctx.scope.organisation.id,
+        every_organisation: false,
+        source: @harness_source,
+        created_by_id: instance_scope.user.id
+      })
+
+      {conn, log} =
+        with_log(fn -> post_secrets(ctx, request(ctx, credentials: ["harness-1"])) end)
+
+      assert conn.status == 409
+      assert conn.resp_body == ~s({"error":"credential_unavailable"})
+      assert log =~ "may not be sealed for its gateway"
+      assert WorkCredentialStub.calls() == []
+      assert seals() == []
+
+      # Activity names the machine as the cause.
+      assert [{"harness-1", "machine_not_provided"}] ==
+               for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]})
+
+      # Only a run on a machine Qory Apiary provides may receive it: the gateway at the
+      # instance's level and the instance's pool. The run's pool is the workspace's,
+      # so even the instance's gateway is refused for it. An entry under a grant of the
+      # run's organisation goes to the run's gateway as before.
+      run = Repo.get!(Run, ctx.run.id)
+      assert run.node_id == ctx.pool.id
+      instance = %Apiary.Nodes.Node{kind: :gateway, organisation_id: nil, workspace_id: nil}
+      instance_pool = Apiary.NodesFixtures.instance_pool_fixture()
+
+      organisation = %Apiary.Nodes.Node{
+        kind: :gateway,
+        organisation_id: run.organisation_id,
+        workspace_id: nil
+      }
+
+      on_instance_pool = %{run | node_id: instance_pool.id}
+      assert WorkCredential.entry_sealable_to?(instance, on_instance_pool, harness_row(ctx))
+      refute WorkCredential.entry_sealable_to?(organisation, on_instance_pool, harness_row(ctx))
+      refute WorkCredential.entry_sealable_to?(instance, run, harness_row(ctx))
+      refute WorkCredential.entry_sealable_to?(instance, %{run | node_id: nil}, harness_row(ctx))
+      refute WorkCredential.entry_sealable_to?(organisation, run, harness_row(ctx))
+      Repo.delete!(harness_row(ctx))
+      ctx = harness_entry!(ctx, own_grant!(ctx, "G_own"))
+      assert WorkCredential.entry_sealable_to?(organisation, run, harness_row(ctx))
+    end
+
+    @tag machine: :instance
+    test "under another organisation's grant, is answered for a run the instance's gateway and pool serve",
+         ctx do
+      assert Repo.get!(Run, ctx.run.id).node_id == ctx.pool.id
+      ctx = assigned_entry!(ctx)
+
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential(@harness_token, @harness_apply)
+      )
+
+      {conn, log} =
+        with_log(fn -> post_secrets(ctx, request(ctx, credentials: ["harness-1"])) end)
+
+      assert conn.status == 200, conn.resp_body
+      {_bytes, plaintext} = opened(ctx, conn)
+      assert %{"value" => @harness_token} = value(plaintext, "harness-1")
+
+      assert [{"/calls/run-credential", %{"grant_ref" => "G_harness", "purpose" => "harness"}}] =
+               WorkCredentialStub.calls()
+
+      assert [%Entry{details: %{"outcome" => "issued"}}] = issues()
+      refute log =~ @harness_token
+    end
+
+    @tag machine: :instance_gateway
+    test "under another organisation's grant, is refused for a workspace's pool that names the instance's gateway",
+         ctx do
+      ctx = assigned_entry!(ctx)
+
+      {conn, log} =
+        with_log(fn -> post_secrets(ctx, request(ctx, credentials: ["harness-1"])) end)
+
+      assert conn.status == 409
+      assert conn.resp_body == ~s({"error":"credential_unavailable"})
+      assert log =~ "may not be sealed for its gateway"
+      assert WorkCredentialStub.calls() == []
+      assert seals() == []
+
+      # Activity names the machine as the cause.
+      assert [{"harness-1", "machine_not_provided"}] ==
+               for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]})
+    end
+
+    @tag machine: :instance_gateway
+    test "under another organisation's grant, is unavailable where the Activity entry of the machine refusal cannot be written",
+         ctx do
+      ctx = assigned_entry!(ctx)
+      key = gateway_key(ctx)
+
+      # The run's organisation is gone: its Activity entry has nowhere to be written.
+      gone = %{Repo.get!(Run, ctx.run.id) | organisation_id: Ecto.UUID.generate()}
+
+      assert WorkCredential.seal_refusal(key.node, gone, harness_row(ctx)) ==
+               :machine_not_provided
+
+      {result, log} =
+        with_log(fn ->
+          Apiary.Runs.SecretsRequest.work_sealable(gone, [%{row: harness_row(ctx)}], key)
+        end)
+
+      assert result == {:error, :unavailable}
+      assert log =~ "could not be written"
+      assert issues() == []
+      assert seals() == []
+      assert WorkCredentialStub.calls() == []
+    end
+
+    test "that names the work entry and two harness entries takes the run's row first", ctx do
+      issued!(ctx)
+      running!(ctx)
+      ctx = harness_entry!(ctx, own_grant!(ctx))
+
+      # The stub answers every call alike, so each entry has the work entry's items.
+      harness = harness_row(ctx) |> Ecto.Changeset.change(apply: @entry_apply) |> Repo.update!()
+
+      Repo.insert!(%{
+        Ecto.put_meta(harness, state: :built)
+        | id: nil,
+          name: "harness-2",
+          resources: [%{"resource_ref" => "R_tools", "sources" => [@harness_source]}]
+      })
+
+      ctx = harness_entry!(ctx, nil)
+
+      WorkCredentialStub.issue(
+        ctx.adapter_seed,
+        WorkCredentialStub.credential(@token, @entry_apply)
+      )
+
+      handler = "secrets-harness-lock-order-#{System.unique_integer()}"
+      test = self()
+
+      :telemetry.attach(
+        handler,
+        [:apiary, :repo, :query],
+        fn _event, _measurements, %{source: source, query: query}, _config ->
+          if self() == test, do: send(test, {:statement, source, query})
+        end,
+        nil
+      )
+
+      on_exit(fn -> :telemetry.detach(handler) end)
+      _earlier = statements()
+
+      conn =
+        post_secrets(ctx, request(ctx, credentials: ["work-1", "harness-1", "harness-2"]))
+
+      :telemetry.detach(handler)
+      assert conn.status == 200, conn.resp_body
+
+      writes = statements() |> Enum.filter(&(&1 in [:run_lock, :work_entry])) |> Enum.dedup()
+      assert writes == [:run_lock, :work_entry]
+    end
+  end
+
+  # The run's harness entry `harness-1` under a live grant of the instance's organisation,
+  # with an assignment of its source to the run's organisation, under an adapter whose
+  # credential reaches only the resources of the call.
+  defp assigned_entry!(ctx) do
+    ctx = harness_entry!(ctx, instance_grant!(ctx))
+
+    Repo.insert!(%Apiary.Harnesses.Assignment{
+      organisation_id: ctx.scope.organisation.id,
+      every_organisation: false,
+      source: @harness_source,
+      created_by_id: Apiary.OrganisationsFixtures.instance_admin_scope().user.id
+    })
+
+    {1, _rows} =
+      Repo.update_all(from(n in Apiary.Nodes.Node, where: n.id == ^ctx.adapter.id),
+        set: [credential_scope: :resource]
+      )
+
+    ctx
+  end
+
   # The credential names of a run with a model key and a work entry, in the run
   # configuration's order, and of a write run, which has a push entry after it.
   defp names(ctx), do: [default_name(ctx), "work-1"]
@@ -1912,6 +2318,115 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
   defp statement(_source, _query), do: :other
 
   defp work_row(ctx), do: Repo.get_by!(RunCredential, run_id: ctx.run.id, purpose: :work)
+
+  defp harness_row(ctx), do: Repo.get_by!(RunCredential, run_id: ctx.run.id, name: "harness-1")
+
+  # The access key of the run's gateway, with its node, as a request reads it.
+  defp gateway_key(ctx) do
+    {key, _seed} = ctx.secrets_key
+    Repo.preload(Repo.get!(Apiary.AccessKeys.AccessKey, key.id), [:workspace, :node])
+  end
+
+  # A live grant `grant_ref` of the work entry's connection, of the run's organisation: the
+  # connection's live grant where it has one, else a new one.
+  defp own_grant!(ctx, grant_ref \\ "G_harness") do
+    connection = Repo.get!(Apiary.Adapters.Connection, work_row(ctx).connection_id)
+    restore_connection!(%{connection_id: connection.id})
+
+    live = from g in Apiary.Adapters.Grant, where: g.connection_id == ^connection.id
+    live = from g in live, where: is_nil(g.ended_at)
+
+    case Repo.one(live) do
+      nil ->
+        Apiary.HarnessReadsFixtures.live_grant_fixture(
+          connection.organisation_id,
+          ctx.adapter,
+          connection,
+          grant_ref
+        )
+
+      grant ->
+        grant |> Ecto.Changeset.change(grant_ref: grant_ref) |> Repo.update!()
+    end
+  end
+
+  # A live grant `G_harness` of a connection of the instance's organisation to the run's
+  # adapter.
+  defp instance_grant!(ctx) do
+    scope = Apiary.OrganisationsFixtures.instance_admin_scope()
+    now = DateTime.utc_now()
+
+    connection =
+      Repo.insert!(%Apiary.Adapters.Connection{
+        public_id: Apiary.PublicId.generate(Apiary.Adapters.Connection.prefix()),
+        organisation_id: scope.organisation.id,
+        adapter_id: ctx.adapter.id,
+        created_by_id: scope.user.id,
+        state: :connected,
+        pass_nonce: :crypto.strong_rand_bytes(16),
+        pass_nonce_used_at: now,
+        connected_at: now
+      })
+
+    Apiary.HarnessReadsFixtures.live_grant_fixture(
+      scope.organisation.id,
+      ctx.adapter,
+      connection,
+      "G_harness"
+    )
+  end
+
+  defp restore_connection!(%{connection_id: id}) do
+    Repo.update_all(from(c in Apiary.Adapters.Connection, where: c.id == ^id),
+      set: [state: :connected, connected_at: DateTime.utc_now()]
+    )
+  end
+
+  # The run's harness entry `harness-1` under `grant`, for the resource `R_harness` of the
+  # source `@harness_source`, written as a claim writes it, and the run's configuration
+  # fetched again, so a secrets request may name it.
+  defp harness_entry!(ctx, nil) do
+    {key, _seed} = ctx.secrets_key
+
+    assert {:ok, %{digest: digest}} =
+             Apiary.Runs.Registration.fetch(
+               key,
+               ctx.run.node_run_id,
+               Apiary.ContractFixtures.instance_id()
+             )
+
+    put_in(ctx.attached.digest, digest)
+  end
+
+  defp harness_entry!(ctx, grant) do
+    work = work_row(ctx)
+
+    Repo.insert!(%{
+      Ecto.put_meta(work, state: :built)
+      | id: nil,
+        name: "harness-1",
+        purpose: :harness,
+        access: :read,
+        connection_id: nil,
+        grant_id: grant.id,
+        resources: [%{"resource_ref" => "R_harness", "sources" => [@harness_source]}],
+        apply: @harness_apply,
+        placeholders: nil,
+        issued_apply: nil
+    })
+
+    {key, _seed} = ctx.secrets_key
+
+    assert {:ok, %{digest: digest}} =
+             Apiary.Runs.Registration.fetch(
+               key,
+               ctx.run.node_run_id,
+               Apiary.ContractFixtures.instance_id()
+             )
+
+    put_in(ctx.attached.digest, digest)
+  end
+
   defp push_row(ctx), do: Repo.get_by!(RunCredential, run_id: ctx.run.id, purpose: :push)
 
   # The adapter's answers to a write run: its read credential for the call with access

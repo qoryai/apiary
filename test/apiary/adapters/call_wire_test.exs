@@ -147,7 +147,7 @@ defmodule Apiary.Adapters.CallWireTest do
       |> Path.wildcard()
       |> Enum.map(&Path.basename/1)
 
-    assert length(names) == 48
+    assert length(names) == 52
 
     for name <- names do
       body = fixture("invalid/" <> name)
@@ -287,6 +287,52 @@ defmodule Apiary.Adapters.CallWireTest do
             %{both | "public" => false}
           ] do
         assert answer("resolve", %{body | "results" => [bad, second]}, call) == :error,
+               inspect(bad)
+      end
+    end
+  end
+
+  describe "a resolve result's path" do
+    test "is read beside a covered result and a public one" do
+      body = fixture("resolve-answer/with-path.json")
+      call = %{"addresses" => for(%{"address" => a} <- body["results"], do: a)}
+
+      assert answer("resolve", body, call) ==
+               {:ok,
+                [
+                  %{
+                    address: "https://code.example.com/example-org/example-repo",
+                    grant_ref: "G_1",
+                    resource_ref: "R_1001",
+                    path: "example-org/example-repo"
+                  },
+                  %{
+                    address: "https://code.example.com/example-org/public-repo",
+                    resource_ref: "R_2001",
+                    path: "example-org/public-repo",
+                    public: true,
+                    public_ref: "code.example.com/example-org/public-repo"
+                  }
+                ]}
+    end
+
+    test "is 1 to 200 characters with no control character and no brace" do
+      body = fixture("resolve-answer/with-path.json")
+      [first, second] = body["results"]
+      call = %{"addresses" => [first["address"], second["address"]]}
+
+      assert {:ok, [%{path: path}, _]} =
+               answer(
+                 "resolve",
+                 %{body | "results" => [%{first | "path" => String.duplicate("é", 200)}, second]},
+                 call
+               )
+
+      assert String.length(path) == 200
+
+      for bad <- ["", String.duplicate("a", 201), "a{b", "a}b", "a\nb", "a\u007fb", 1] do
+        assert answer("resolve", %{body | "results" => [%{first | "path" => bad}, second]}, call) ==
+                 :error,
                inspect(bad)
       end
     end

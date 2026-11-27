@@ -21,10 +21,12 @@ defmodule Apiary.Adapters.CallWire do
   #     printable ASCII characters. Its answer is `results`, one for each address, in the
   #     call's order: `address`, then `grant_ref` and `resource_ref`, with `public`, true,
   #     and `public_ref` when given; or `resource_ref`, `public`, true, and `public_ref`,
-  #     with no `grant_ref`; or `covered`, false, and no ref. `{:ok, [%{address:,
-  #     grant_ref:, resource_ref:} | %{address:, grant_ref:, resource_ref:, public: true,
-  #     public_ref:} | %{address:, resource_ref:, public: true, public_ref:}
-  #     | %{address:, covered: false}]}`.
+  #     with no `grant_ref`; or `covered`, false, and no ref. The first two forms may
+  #     have `path`, the resource's path as the adapter writes it, in the grammar of
+  #     `definitions.schema.json` `$defs/address_path`. `{:ok, [%{address:, grant_ref:,
+  #     resource_ref:} | %{address:, grant_ref:, resource_ref:, public: true, public_ref:}
+  #     | %{address:, resource_ref:, public: true, public_ref:}
+  #     | %{address:, covered: false}]}`, each with `path:` where the result has one.
   #   * `read` (`read.schema.json`): `grant_ref`, `resource_ref`, `path`, a relative path
   #     of 1 to 1,024 characters with no NUL, no empty part and no part `.` or `..`, and
   #     `at`, a version ref. Its answer is `resolved_at`, a version ref, and `content`, UTF-8
@@ -52,6 +54,7 @@ defmodule Apiary.Adapters.CallWire do
   @connection_id ~r/\Aac_[0-9a-hjkmnp-tv-z]{16}\z/
   @address ~r/\A[!-~]{1,2048}\z/
   @version_ref ~r/\A[A-Za-z0-9._\/-]{1,255}\z/
+  @address_path ~r/\A[^\x{0}-\x{1F}\x{7F}{}]+\z/u
   @part "(?:[^/\\x00.][^/\\x00]*|\\.[^/\\x00.][^/\\x00]*|\\.\\.[^/\\x00]+)"
   @document_path Regex.compile!("\\A#{@part}(?:/#{@part})*\\z", "u")
 
@@ -209,9 +212,10 @@ defmodule Apiary.Adapters.CallWire do
        address},
       read ->
         covered = %{address: address, grant_ref: grant, resource_ref: resource}
+        {covered, result} = with_path(covered, result)
 
         cond do
-          not (ref?(grant) and ref?(resource)) ->
+          covered == :error or not (ref?(grant) and ref?(resource)) ->
             {:halt, :error}
 
           map_size(result) == 3 ->
@@ -226,18 +230,12 @@ defmodule Apiary.Adapters.CallWire do
         end
 
       {%{"address" => address, "resource_ref" => resource} = result, address}, read ->
-        if map_size(result) == 4 and ref?(resource) and public?(result),
+        public = %{address: address, resource_ref: resource}
+        {public, result} = with_path(public, result)
+
+        if public != :error and map_size(result) == 4 and ref?(resource) and public?(result),
           do:
-            {:cont,
-             [
-               %{
-                 address: address,
-                 resource_ref: resource,
-                 public: true,
-                 public_ref: result["public_ref"]
-               }
-               | read
-             ]},
+            {:cont, [Map.merge(public, %{public: true, public_ref: result["public_ref"]}) | read]},
           else: {:halt, :error}
 
       _other, _read ->
@@ -248,6 +246,25 @@ defmodule Apiary.Adapters.CallWire do
       read -> Enum.reverse(read)
     end
   end
+
+  # A result's `path`, when it has one: the resource's path in the target grammar
+  # (`definitions.schema.json` `$defs/address_path`), 1 to 200 characters with no control
+  # character and no `{` or `}`. `{covered, result}` with `path` moved from `result` to
+  # `covered`; `{:error, result}` for a `path` of another form.
+  defp with_path(covered, %{"path" => path} = result) do
+    if address_path?(path),
+      do: {Map.put(covered, :path, path), Map.delete(result, "path")},
+      else: {:error, result}
+  end
+
+  defp with_path(covered, result), do: {covered, result}
+
+  defp address_path?(path) when is_binary(path) do
+    String.valid?(path) and (path |> String.to_charlist() |> length()) in 1..200 and
+      Regex.match?(@address_path, path)
+  end
+
+  defp address_path?(_path), do: false
 
   # A public result: `public`, true, and `public_ref`, a ref.
   defp public?(result), do: result["public"] === true and ref?(result["public_ref"])

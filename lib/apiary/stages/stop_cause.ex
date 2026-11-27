@@ -795,10 +795,30 @@ defmodule Apiary.Stages.StopCause do
       {"its address contains a user name or a password",
        "Owners and admins of #{n.workspace} remove them from the address on the set-up step Harness."}
 
-  defp harness_reason("too_many", _walk, n),
-    do:
-      {"it takes harness sources from more than #{Walk.max_links()} accounts",
-       "Owners and admins of #{n.workspace} take the harness sources from at most #{Walk.max_links()} accounts, on the set-up step Harness."}
+  defp harness_reason("too_many", _walk, _n), do: {:whole, too_many_words(:take_in)}
+
+  defp harness_reason(code, walk, _n) when code in ["assigned_without_token", "assigned_gateway"],
+    do: {:whole, harness_token_words(String.to_existing_atom(code), walk.failed_source)}
+
+  defp harness_reason(
+         "source_case",
+         %RunHarness{failure_rule: %{"values" => %{"canonical" => canonical}}},
+         _n
+       )
+       when is_binary(canonical),
+       do: {:whole, source_case_words(canonical)}
+
+  defp harness_reason("source_case", _walk, n),
+    do: {:whole, hidden_source_case_words(n.workspace)}
+
+  # Entries the run configuration cannot take: by the reason, or with the code for a
+  # reason with no words.
+  defp harness_reason("harness_entries" = code, walk, n) do
+    case harness_entries_words(walk.failure_rule, walk.failed_source, n.workspace) do
+      nil -> unknown_reason(code, n)
+      words -> {:whole, words}
+    end
+  end
 
   defp harness_reason("adapter_unavailable", _walk, n),
     do: {"three calls to read it failed", support(n)}
@@ -851,10 +871,309 @@ defmodule Apiary.Stages.StopCause do
       {:whole,
        "No workflow to start: the first stage of the process has no workflow. Add a workflow to that stage."}
 
-  defp harness_reason(code, _walk, n),
+  defp harness_reason(code, _walk, n), do: unknown_reason(code, n)
+
+  defp unknown_reason(code, n),
     do:
       {"a failure Qory Apiary has no description for#{if code, do: ", with the code #{code}", else: ""}",
        support(n)}
+
+  # The fixes of a harness walk that failed below end with the action of their surface,
+  # `ending`: `:take_in` on the stop cause, taking the work item in again; `:explore` on
+  # the Explore tab, whose harness lines all end with running Explore again.
+
+  @doc false
+  # harness_token_words/3 is the fix of a walk that failed because the run gets no read
+  # token for the assigned private harness source `source`, nil for a hidden harness:
+  # `:assigned_without_token`, whose adapter gives one token for its whole grant, and
+  # `:assigned_gateway`, on a gateway or a node pool the run's organisation controls
+  # (`Apiary.Dispatches.Handover`), ending with `ending`.
+  @spec harness_token_words(
+          :assigned_without_token | :assigned_gateway,
+          String.t() | nil,
+          :take_in | :explore
+        ) :: String.t()
+  def harness_token_words(code, source, ending \\ :take_in)
+
+  def harness_token_words(_code, nil, :take_in),
+    do:
+      gettext(
+        "Connect an account that can read the workspace's private harness sources to this organisation, then take the work item in again."
+      )
+
+  def harness_token_words(_code, nil, :explore),
+    do:
+      gettext(
+        "Connect an account that can read the workspace's private harness sources to this organisation, then run Explore again."
+      )
+
+  def harness_token_words(:assigned_without_token, source, :take_in),
+    do:
+      gettext(
+        "Connect an account that can read %{source} to this organisation, then take the work item in again. %{source} is a private harness source, and the access assigned to this organisation gives runs no read token for it.",
+        source: source
+      )
+
+  def harness_token_words(:assigned_without_token, source, :explore),
+    do:
+      gettext(
+        "Connect an account that can read %{source} to this organisation, then run Explore again. %{source} is a private harness source, and the access assigned to this organisation gives runs no read token for it.",
+        source: source
+      )
+
+  def harness_token_words(:assigned_gateway, source, :take_in),
+    do:
+      gettext(
+        "Connect an account that can read %{source} to this organisation, then take the work item in again.",
+        source: source
+      )
+
+  def harness_token_words(:assigned_gateway, source, :explore),
+    do:
+      gettext(
+        "Connect an account that can read %{source} to this organisation, then run Explore again.",
+        source: source
+      )
+
+  @doc false
+  # hidden_source_case_words/2 is the fix of a walk that failed `source_case` for a hidden
+  # harness, which shows no address: owners and admins of `workspace` write the sources,
+  # ending with `ending`.
+  @spec hidden_source_case_words(String.t(), :take_in | :explore) :: String.t()
+  def hidden_source_case_words(workspace, ending \\ :take_in)
+
+  def hidden_source_case_words(workspace, :take_in),
+    do:
+      gettext(
+        "Ask an owner or admin of %{workspace} to write the harness sources in the case the forge names them, then take the work item in again.",
+        workspace: workspace
+      )
+
+  def hidden_source_case_words(workspace, :explore),
+    do:
+      gettext(
+        "Ask an owner or admin of %{workspace} to write the harness sources in the case the forge names them, then run Explore again.",
+        workspace: workspace
+      )
+
+  @doc false
+  # too_many_words/1 is the fix of a walk that failed `too_many`, more entries than a run
+  # takes (`Apiary.Harnesses.Walk.max_links/0`): an account of the organisation counts
+  # once, and an account through an assignment once for each assigned repository,
+  # ending with `ending`.
+  @spec too_many_words(:take_in | :explore) :: String.t()
+  def too_many_words(:take_in),
+    do:
+      gettext(
+        "Take the private harness sources from at most %{n} accounts and assigned repositories, then take the work item in again.",
+        n: Walk.max_links()
+      )
+
+  def too_many_words(:explore),
+    do:
+      gettext(
+        "Take the private harness sources from at most %{n} accounts and assigned repositories, then run Explore again.",
+        n: Walk.max_links()
+      )
+
+  @doc false
+  # harness_entries_words/4 is the fix of a walk that failed `harness_entries` at the
+  # claim (`Apiary.Dispatches.Handover`), by the reason in its rule's values, ending with
+  # `ending`: `overlap` and `too_many_paths` with the host, or, with none (a hidden
+  # harness), what owners and admins of `workspace` do; `path_refused` with `source`, the
+  # source the walk kept, or with none the same; `nested_sources` with the host and the
+  # two nested sources, or with none the same; `integration_overlap`, which the
+  # integration of the host causes, with the host, or with none the integration for the
+  # workspace's harness sources. Nil for any other rule.
+  @spec harness_entries_words(map | nil, String.t() | nil, String.t(), :take_in | :explore) ::
+          String.t() | nil
+  def harness_entries_words(rule, source, workspace, ending \\ :take_in)
+
+  def harness_entries_words(
+        %{
+          "values" => %{
+            "reason" => "nested_sources",
+            "host" => host,
+            "first" => first,
+            "second" => second
+          }
+        },
+        _source,
+        _ws,
+        ending
+      )
+      when is_binary(host) and is_binary(first) and is_binary(second),
+      do: nested_words(host, first, second, ending)
+
+  def harness_entries_words(%{"values" => %{"reason" => reason} = values}, source, ws, ending) do
+    entries_words(reason, values["host"], source, ws, ending)
+  end
+
+  def harness_entries_words(_rule, _source, _workspace, _ending), do: nil
+
+  defp entries_words("overlap", host, _source, _ws, :take_in) when is_binary(host),
+    do:
+      gettext(
+        "Take the private harness sources on %{host} through one account, then take the work item in again. A run reads each forge through one account.",
+        host: host
+      )
+
+  defp entries_words("overlap", host, _source, _ws, :explore) when is_binary(host),
+    do:
+      gettext(
+        "Take the private harness sources on %{host} through one account, then run Explore again. A run reads each forge through one account.",
+        host: host
+      )
+
+  defp entries_words("overlap", nil, _source, ws, :take_in),
+    do:
+      gettext(
+        "Ask an owner or admin of %{workspace} to take the private harness sources on each forge through one account, then take the work item in again.",
+        workspace: ws
+      )
+
+  defp entries_words("overlap", nil, _source, ws, :explore),
+    do:
+      gettext(
+        "Ask an owner or admin of %{workspace} to take the private harness sources on each forge through one account, then run Explore again.",
+        workspace: ws
+      )
+
+  defp entries_words("too_many_paths", host, _source, _ws, :take_in) when is_binary(host),
+    do:
+      gettext(
+        "Take fewer private harness sources from %{host}, then take the work item in again.",
+        host: host
+      )
+
+  defp entries_words("too_many_paths", host, _source, _ws, :explore) when is_binary(host),
+    do:
+      gettext("Take fewer private harness sources from %{host}, then run Explore again.",
+        host: host
+      )
+
+  defp entries_words("too_many_paths", nil, _source, ws, :take_in),
+    do:
+      gettext(
+        "Ask an owner or admin of %{workspace} to take fewer private harness sources from one forge, then take the work item in again.",
+        workspace: ws
+      )
+
+  defp entries_words("too_many_paths", nil, _source, ws, :explore),
+    do:
+      gettext(
+        "Ask an owner or admin of %{workspace} to take fewer private harness sources from one forge, then run Explore again.",
+        workspace: ws
+      )
+
+  defp entries_words("path_refused", _host, source, _ws, :take_in) when is_binary(source),
+    do:
+      gettext(
+        "Write the path of %{source} without spaces or any of * ? # { } // .., then take the work item in again.",
+        source: source
+      )
+
+  defp entries_words("path_refused", _host, source, _ws, :explore) when is_binary(source),
+    do:
+      gettext(
+        "Write the path of %{source} without spaces or any of * ? # { } // .., then run Explore again.",
+        source: source
+      )
+
+  defp entries_words("path_refused", _host, nil, ws, :take_in),
+    do:
+      gettext(
+        "Ask an owner or admin of %{workspace} to correct the harness source addresses, then take the work item in again.",
+        workspace: ws
+      )
+
+  defp entries_words("path_refused", _host, nil, ws, :explore),
+    do:
+      gettext(
+        "Ask an owner or admin of %{workspace} to correct the harness source addresses, then run Explore again.",
+        workspace: ws
+      )
+
+  defp entries_words("integration_overlap", host, _source, _ws, :take_in) when is_binary(host),
+    do:
+      gettext(
+        "Ask your Qory Apiary admin to update the %{host} integration, then take the work item in again.",
+        host: host
+      )
+
+  defp entries_words("integration_overlap", host, _source, _ws, :explore) when is_binary(host),
+    do:
+      gettext(
+        "Ask your Qory Apiary admin to update the %{host} integration, then run Explore again.",
+        host: host
+      )
+
+  defp entries_words("integration_overlap", nil, _source, _ws, :take_in),
+    do:
+      gettext(
+        "Ask your Qory Apiary admin to update the integration for this workspace's harness sources, then take the work item in again."
+      )
+
+  defp entries_words("integration_overlap", nil, _source, _ws, :explore),
+    do:
+      gettext(
+        "Ask your Qory Apiary admin to update the integration for this workspace's harness sources, then run Explore again."
+      )
+
+  defp entries_words("nested_sources", _host, _source, ws, :take_in),
+    do:
+      gettext(
+        "Ask an owner or admin of %{workspace} to take only one of the nested private harness sources on each forge, then take the work item in again.",
+        workspace: ws
+      )
+
+  defp entries_words("nested_sources", _host, _source, ws, :explore),
+    do:
+      gettext(
+        "Ask an owner or admin of %{workspace} to take only one of the nested private harness sources on each forge, then run Explore again.",
+        workspace: ws
+      )
+
+  defp entries_words(_reason, _host, _source, _ws, _ending), do: nil
+
+  defp nested_words(host, first, second, :take_in),
+    do:
+      gettext(
+        "Take only one of %{first} and %{second}, which nest on %{host}, then take the work item in again.",
+        first: first,
+        second: second,
+        host: host
+      )
+
+  defp nested_words(host, first, second, :explore),
+    do:
+      gettext(
+        "Take only one of %{first} and %{second}, which nest on %{host}, then run Explore again.",
+        first: first,
+        second: second,
+        host: host
+      )
+
+  @doc false
+  # source_case_words/2 is the fix of a walk that failed `source_case`: a harness source
+  # written in another letter case than the forge names it, `canonical`, ending with
+  # `ending`. The run's page and its stop cause show the same words.
+  @spec source_case_words(String.t(), :take_in | :explore) :: String.t()
+  def source_case_words(canonical, ending \\ :take_in)
+
+  def source_case_words(canonical, :take_in),
+    do:
+      gettext(
+        "Write the harness source as %{canonical}, the case the forge names it in, then take the work item in again.",
+        canonical: canonical
+      )
+
+  def source_case_words(canonical, :explore),
+    do:
+      gettext(
+        "Write the harness source as %{canonical}, the case the forge names it in, then run Explore again.",
+        canonical: canonical
+      )
 
   ## Names
 
