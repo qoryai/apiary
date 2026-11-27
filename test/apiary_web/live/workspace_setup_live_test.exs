@@ -2493,10 +2493,10 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       assert words.(
                failure.(:source_case, "https://code.example.com/Acme/Harness", %{
                  "rule" => "source_case",
-                 "values" => %{"canonical" => "code.example.com/acme/harness"}
+                 "values" => %{"canonical" => "https://code.example.com/acme/harness"}
                })
              ) ==
-               "Write the harness source as code.example.com/acme/harness: the forge names it in that case."
+               "Write the harness source as https://code.example.com/acme/harness: the forge names it in that case."
 
       # The chosen source's address or folder, before any call: the form rule it breaks.
       for {rule, line} <- [
@@ -2681,8 +2681,8 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       n = Apiary.Harnesses.Walk.max_links()
 
       assert words.(failure.(:too_many, nil, nil)) ==
-               "Correct the harness in acme/harness: its modules come from more than #{n} " <>
-                 "accounts, and a run can read at most #{n}."
+               "Correct the harness in acme/harness: take its private harness sources from at " <>
+                 "most #{n} accounts and assigned repositories."
 
       assert words.(failure.(:no_harness, nil, nil)) ==
                harness <> "it has no harness file and no harness is set."

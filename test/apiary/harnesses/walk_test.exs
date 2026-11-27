@@ -4069,7 +4069,7 @@ defmodule Apiary.Harnesses.WalkTest do
                 source: ^mixed,
                 rule: %{
                   "rule" => "source_case",
-                  "values" => %{"canonical" => "code.example.com/acme/harness"}
+                  "values" => %{"canonical" => "https://code.example.com/acme/harness"}
                 }
               }} = Walk.run(ctx.input)
 
@@ -4080,6 +4080,28 @@ defmodule Apiary.Harnesses.WalkTest do
                  "ref" => "v1",
                  "stack" => "web"
                })
+    end
+
+    test "the address in the forge's case keeps the written scheme, port and .git", ctx do
+      mixed = "https://code.example.com:8443/Acme/Harness.git"
+      setting(ctx.scope, "extends: {git: \"#{mixed}\", ref: v1, stack: web}\n")
+
+      serve([ctx.run],
+        covered:
+          covering(ctx, %{
+            mixed => {"G_run", "R_harness", "acme/harness"},
+            @tools => {"G_run", "R_tools"}
+          }),
+        files: @base_files
+      )
+
+      assert {:failed,
+              %{
+                failure: :source_case,
+                rule: %{
+                  "values" => %{"canonical" => "https://code.example.com:8443/acme/harness.git"}
+                }
+              }} = Walk.run(ctx.input)
     end
 
     test "a covered source written in the case of its path passes", ctx do

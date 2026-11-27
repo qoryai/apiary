@@ -23,11 +23,11 @@ defmodule Apiary.Runs.WorkCredential do
   #   1. The entry's connection is connected, of the run's organisation and of the
   #      entry's adapter (`:connection_gone`), and the adapter is not deleted and has an
   #      access key in use (`:adapter_key_missing`). Otherwise no call is made. For a
-  #      harness entry, its grant is live, of a connected connection of the entry's
-  #      adapter, and the run may use it now: a grant of the run's organisation, or one of
-  #      the instance's organisation with an assignment still in force for each source of
-  #      the entry, under an adapter whose `credential_scope` is `resource`
-  #      (`:connection_gone`).
+  #      harness entry, its grant is of a connected connection of the entry's adapter
+  #      (`:connection_gone`), and the run may use it now (`:harness_not_allowed`): the
+  #      grant has not ended, and is of the run's organisation, or of the instance's
+  #      organisation with an assignment still in force for each source of the entry,
+  #      under an adapter whose `credential_scope` is `resource`.
   #   2. The call (`Apiary.Adapters.Calls.run_credential/3`), with the purpose `work`, also
   #      for a push entry: the connection's public id, the one resource the entry has, the
   #      collection's ref as the adapter listed it, and the entry's access, with no
@@ -97,6 +97,7 @@ defmodule Apiary.Runs.WorkCredential do
   @typedoc "Why a work credential was not issued."
   @type cause ::
           :connection_gone
+          | :harness_not_allowed
           | :adapter_key_missing
           | :call_failed
           | CallFailure.cause()
@@ -117,7 +118,7 @@ defmodule Apiary.Runs.WorkCredential do
   # causes/0 is every cause an Activity entry's `outcome` may have, besides `issued`.
   @spec causes() :: [cause]
   def causes do
-    [:connection_gone, :adapter_key_missing, :call_failed] ++
+    [:connection_gone, :harness_not_allowed, :adapter_key_missing, :call_failed] ++
       CallFailure.causes() ++
       RunCredentialIssue.causes() ++
       [:run_not_live, :seal_failed, :apply_moved, :not_recorded, :other_credential_failed]
@@ -515,22 +516,29 @@ defmodule Apiary.Runs.WorkCredential do
     }
   end
 
-  # A harness entry's grant is live, of a connected connection of the entry's adapter, and
-  # the run may use it now: a grant of the run's organisation, or of the instance's
-  # organisation with an assignment in force for each source the entry reads, under an
-  # adapter whose credential reaches only the resources of the call
-  # (`Apiary.Harnesses.allowed?/3`, `credential_scope` `resource`; an adapter that has not
-  # said its scope since it started counts as `grant`). Else `:connection_gone`.
+  # A harness entry's grant is of a connected connection of the entry's adapter
+  # (`:connection_gone`), and the run may use it now (`:harness_not_allowed`): the grant
+  # has not ended, and is of the run's organisation, or of the instance's organisation
+  # with an assignment in force for each source the entry reads, under an adapter whose
+  # credential reaches only the resources of the call (`Apiary.Harnesses.allowed?/3`,
+  # `credential_scope` `resource`; an adapter that has not said its scope since it
+  # started counts as `grant`).
   defp live(%{grant: grant, connection: connection, adapter: adapter} = place, run, %{
          purpose: :harness,
          resources: resources
        }) do
-    if match?(%Grant{ended_at: nil}, grant) and
-         match?(%Connection{state: :connected}, connection) and
-         grant.adapter_id == adapter_id(adapter) and connection.adapter_id == grant.adapter_id and
-         harness_allowed?(grant, adapter, run, resources),
-       do: adapter_live(place),
-       else: {:error, :connection_gone, nil}
+    cond do
+      not (match?(%Grant{}, grant) and match?(%Connection{state: :connected}, connection) and
+             grant.adapter_id == adapter_id(adapter) and
+               connection.adapter_id == grant.adapter_id) ->
+        {:error, :connection_gone, nil}
+
+      not (is_nil(grant.ended_at) and harness_allowed?(grant, adapter, run, resources)) ->
+        {:error, :harness_not_allowed, nil}
+
+      true ->
+        adapter_live(place)
+    end
   end
 
   defp live(%{connection: connection, adapter: adapter} = place, %Run{} = run, _row) do

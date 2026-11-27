@@ -331,10 +331,14 @@ defmodule Apiary.Runs.RunCredentials do
   @doc false
   # form_harness/2 is the harness entries of the run of the queue `dispatch_run`, whose
   # run configuration has `stack_hosts` (the moduledoc): `{:ok, entries}`, not yet stored,
-  # `[]` for none, or `{:error, reason}`, `:path_refused`, `:too_many_paths` or
-  # `:overlap`.
+  # `[]` for none, or `{:error, reason, at}`: `:path_refused` with `{:source, git}`, the
+  # address of the source whose path the templates refuse; `:too_many_paths` with
+  # `{:host, host}`, the first host of the item; or `:overlap` with `{:host, host}`, the
+  # host two items claim (`conflict/1`).
   @spec form_harness(DispatchRun.t(), [String.t()]) ::
-          {:ok, [RunCredential.t()]} | {:error, :path_refused | :too_many_paths | :overlap}
+          {:ok, [RunCredential.t()]}
+          | {:error, :path_refused, {:source, String.t() | nil}}
+          | {:error, :too_many_paths | :overlap, {:host, String.t()}}
   def form_harness(%DispatchRun{} = dispatch_run, stack_hosts) when is_list(stack_hosts) do
     dispatch_run
     |> Apiary.Harnesses.entries()
@@ -342,14 +346,15 @@ defmodule Apiary.Runs.RunCredentials do
       case harness_apply(link, stack_hosts) do
         {:ok, nil} -> {:cont, {:ok, formed}}
         {:ok, apply} -> {:cont, {:ok, formed ++ [{link, apply}]}}
-        {:error, _reason} = error -> {:halt, error}
+        {:error, _reason, _at} = error -> {:halt, error}
       end
     end)
     |> case do
       {:ok, formed} ->
-        if overlap?(Enum.map(formed, &elem(&1, 1))),
-          do: {:error, :overlap},
-          else: {:ok, harness_rows(dispatch_run, formed)}
+        case conflict(Enum.map(formed, &elem(&1, 1))) do
+          nil -> {:ok, harness_rows(dispatch_run, formed)}
+          host -> {:error, :overlap, {:host, host}}
+        end
 
       error ->
         error
@@ -402,20 +407,22 @@ defmodule Apiary.Runs.RunCredentials do
   # One template item for `resources`: its paths filled with each resource's path.
   defp harness_item(%{"paths" => templates} = item, resources) do
     filled? = Enum.any?(templates, &String.contains?(&1, "{target.path}"))
-    paths = Enum.map(resources, & &1["path"])
 
     cond do
       not filled? ->
         {:ok, ordered_map(item)}
 
-      Enum.any?(paths, &is_nil/1) ->
+      Enum.any?(resources, &is_nil(&1["path"])) ->
         {:ok, item |> Map.delete("paths") |> ordered_map()}
 
       true ->
-        Enum.reduce_while(paths, {:ok, []}, fn path, {:ok, all} ->
-          case ApplyTemplates.fill([item], path) do
-            {:ok, [filled]} -> {:cont, {:ok, all ++ filled["paths"]}}
-            {:error, :path_refused} -> {:halt, {:error, :path_refused}}
+        Enum.reduce_while(resources, {:ok, []}, fn resource, {:ok, all} ->
+          case ApplyTemplates.fill([item], resource["path"]) do
+            {:ok, [filled]} ->
+              {:cont, {:ok, all ++ filled["paths"]}}
+
+            {:error, :path_refused} ->
+              {:halt, {:error, :path_refused, {:source, first_git(resource)}}}
           end
         end)
         |> case do
@@ -423,7 +430,7 @@ defmodule Apiary.Runs.RunCredentials do
             all = Enum.uniq(all)
 
             if length(all) > @max_paths,
-              do: {:error, :too_many_paths},
+              do: {:error, :too_many_paths, {:host, hd(item["hosts"])}},
               else: {:ok, item |> Map.put("paths", all) |> ordered_map()}
 
           error ->
@@ -434,31 +441,46 @@ defmodule Apiary.Runs.RunCredentials do
 
   defp harness_item(item, _resources), do: {:ok, ordered_map(item)}
 
+  # The address of the first source a resource reads, nil for none.
+  defp first_git(resource) do
+    Enum.find_value(List.wrap(resource["sources"]), fn
+      %{"git" => git} when is_binary(git) -> git
+      _source -> nil
+    end)
+  end
+
   defp ordered_map(item), do: item |> ApplyTemplates.ordered() |> Map.get(:values) |> Map.new()
 
   @doc false
-  # overlap?/1 is whether two of the harness entries whose apply items are `entries`
-  # (one list of items each) have items on one host that the gateway refuses together:
-  # one of them has no `paths`, or a path of one and a path of the other match one
-  # request. A path matches whole, or up to a final `*` as a prefix, and a segment
-  # written `{}` matches one segment that is not empty. Items of one entry are not
-  # compared.
+  # overlap?/1 is whether two apply items of the harness entries whose items are `entries`
+  # (one list of items each), of one entry or of two, claim one host in a way the gateway
+  # refuses (`conflict/1`).
   @spec overlap?([[map]]) :: boolean
-  def overlap?(entries) do
-    claims =
-      for {items, n} <- Enum.with_index(entries),
-          item <- items,
-          host <- item["hosts"],
-          do: {host, n, item["paths"]}
+  def overlap?(entries), do: conflict(entries) != nil
 
-    for {host, n, a} <- claims, {^host, m, b} <- claims, n < m, reduce: false do
-      true ->
-        true
+  @doc false
+  # conflict/1 is the first host that two apply items of the harness entries whose items
+  # are `entries` claim in a way the gateway refuses, nil for none: as the gateway checks
+  # a run configuration's harness credentials, each item is compared with every item
+  # before it, of the same entry or of another, and on a host both claim, one of them
+  # has no `paths`, or a path of one and a path of the other match one request. A path
+  # matches whole, or up to a final `*` as a prefix, and a segment written `{}` matches
+  # one segment that is not empty.
+  @spec conflict([[map]]) :: String.t() | nil
+  def conflict(entries) do
+    items = Enum.with_index(List.flatten(entries))
 
-      false ->
-        is_nil(a) or is_nil(b) or Enum.any?(a, fn x -> Enum.any?(b, &paths_meet?(x, &1)) end)
-    end
+    Enum.find_value(items, fn {item, i} ->
+      Enum.find_value(Enum.take(items, i), fn {earlier, _j} ->
+        Enum.find(item["hosts"], fn host ->
+          host in earlier["hosts"] and claims_meet?(earlier["paths"], item["paths"])
+        end)
+      end)
+    end)
   end
+
+  defp claims_meet?(a, b) when is_nil(a) or is_nil(b) or a == [] or b == [], do: true
+  defp claims_meet?(a, b), do: Enum.any?(a, fn x -> Enum.any?(b, &paths_meet?(x, &1)) end)
 
   # Whether two path patterns match one request path.
   defp paths_meet?(a, b), do: meet?(pattern(a), pattern(b))
@@ -475,6 +497,12 @@ defmodule Apiary.Runs.RunCredentials do
     {segments, star}
   end
 
+  # Two last segments that each end with `*` meet where either is `{}` or one is a prefix
+  # of the other. A last segment ending with `*` and a whole segment of the other pattern
+  # meet where that segment matches a segment that starts with the prefix.
+  defp meet?({[a], true}, {[b], true}),
+    do: a == "{}" or b == "{}" or String.starts_with?(a, b) or String.starts_with?(b, a)
+
   defp meet?({[a], true}, {[b | _], _star}), do: prefix_meets?(a, b)
   defp meet?({[a | _], _star}, {[b], true}), do: prefix_meets?(b, a)
   defp meet?({[], false}, {[], false}), do: true
@@ -485,11 +513,11 @@ defmodule Apiary.Runs.RunCredentials do
 
   defp meet?(_a, _b), do: false
 
-  # A segment starting with `prefix` and the segment pattern `segment` (or a prefix too).
+  # The prefix of a last segment that ends with `*`, and a whole segment pattern of the
+  # other path.
+  defp prefix_meets?("{}", segment), do: segment != ""
   defp prefix_meets?(_prefix, "{}"), do: true
-
-  defp prefix_meets?(prefix, segment),
-    do: String.starts_with?(segment, prefix) or String.starts_with?(prefix, segment)
+  defp prefix_meets?(prefix, segment), do: String.starts_with?(segment, prefix)
 
   defp segment_meets?("{}", b), do: b != ""
   defp segment_meets?(a, "{}"), do: a != ""

@@ -357,21 +357,66 @@ defmodule Apiary.Stages.StopCauseTest do
                "Connect an account that can read #{source} to this organisation, then take the work item in again."
     end
 
-    test "a cause with no words of its own: the code, a hidden source, no case shown" do
+    test "a hidden harness: no source in the token causes and the case failure" do
       %{scope: scope} = sign_up_fixture()
       ws = scope.workspace.name
 
-      {run, work_item} = walk_failed(scope, "harness_entries", nil)
-      assert StopCause.text(run, work_item) =~ "with the code harness_entries"
+      for code <- ["assigned_without_token", "assigned_gateway"] do
+        {run, work_item} = walk_failed(scope, code, nil)
 
-      {run, work_item} = walk_failed(scope, "assigned_gateway", nil)
-
-      assert StopCause.text(run, work_item) ==
-               "Connect an account that can read the harness of #{ws} to this organisation, then take the work item in again."
+        assert StopCause.text(run, work_item) ==
+                 "Connect an account that can read the workspace's private harness sources to this organisation, then take the work item in again.",
+               code
+      end
 
       # A hidden harness's case failure has no address to show.
       {run, work_item} = walk_failed(scope, "source_case", nil)
-      assert StopCause.text(run, work_item) =~ "with the code source_case"
+
+      assert StopCause.text(run, work_item) ==
+               "Ask an owner or admin of #{ws} to write the harness sources in the case the forge names them, then take the work item in again."
+    end
+
+    test "entries the claim refused: the fix by the reason, and the code without a host or a shown source" do
+      %{scope: scope} = sign_up_fixture()
+      source = "https://code.example.com/acme/harness"
+
+      rule! = fn run, values ->
+        {1, _rows} =
+          Repo.update_all(
+            from(h in Apiary.Harnesses.RunHarness, where: h.dispatch_run_id == ^run.id),
+            set: [failure_rule: %{"rule" => "harness_entries", "values" => values}]
+          )
+      end
+
+      for {source, values, line} <- [
+            {nil, %{"reason" => "overlap", "host" => "code.example.com"},
+             "Take the private harness sources on code.example.com through one account, then take the work item in again. A run reads each forge through one account."},
+            {nil, %{"reason" => "too_many_paths", "host" => "code.example.com"},
+             "Take fewer private harness sources from code.example.com, then take the work item in again. A run reads at most 32 sources through one account."},
+            {source, %{"reason" => "path_refused"},
+             "Write #{source} without *, {, } or .., then take the work item in again."}
+          ] do
+        {run, work_item} = walk_failed(scope, "harness_entries", source)
+        rule!.(run, values)
+        assert StopCause.text(run, work_item) == line
+      end
+
+      # A hidden harness's refused path, and a rule with no host.
+      for values <- [%{"reason" => "path_refused"}, %{"reason" => "overlap"}] do
+        {run, work_item} = walk_failed(scope, "harness_entries", nil)
+        rule!.(run, values)
+        assert StopCause.text(run, work_item) =~ "with the code harness_entries"
+      end
+    end
+
+    test "too many accounts: at most five accounts and assigned repositories" do
+      %{scope: scope} = sign_up_fixture()
+      {run, work_item} = walk_failed(scope, "too_many", nil)
+
+      assert StopCause.text(run, work_item) ==
+               "Take the private harness sources from at most 5 accounts and assigned repositories, then take the work item in again."
+
+      assert StopCause.set_up_step(run) == :harness
     end
 
     test "a source in another letter case than the forge's: write it in the forge's case" do
@@ -386,13 +431,13 @@ defmodule Apiary.Stages.StopCauseTest do
           set: [
             failure_rule: %{
               "rule" => "source_case",
-              "values" => %{"canonical" => "code.example.com/acme/harness"}
+              "values" => %{"canonical" => "https://code.example.com/acme/harness"}
             }
           ]
         )
 
       assert StopCause.text(run, work_item) ==
-               "Write the harness source as code.example.com/acme/harness: the forge names it in that case."
+               "Write the harness source as https://code.example.com/acme/harness: the forge names it in that case."
     end
 
     test "on the workspace's choice, the fix is on the set-up step Harness" do

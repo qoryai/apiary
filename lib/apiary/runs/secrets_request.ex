@@ -482,8 +482,8 @@ defmodule Apiary.Runs.SecretsRequest do
       :ok
     else
       Logger.warning(
-        "a secrets request for the run #{run.node_run_id} was refused: its work " <>
-          "credential may not be sealed for its gateway"
+        "a secrets request for the run #{run.node_run_id} was refused: a credential it " <>
+          "names may not be sealed for its gateway"
       )
 
       {:error, :credential_unavailable}
@@ -566,8 +566,8 @@ defmodule Apiary.Runs.SecretsRequest do
   # then each credential's Activity entry, last. A run's deletion locks the run's row
   # and then its `run_credentials` rows, so both take the run first and cannot deadlock;
   # a request for one entry and no model key has no copies and takes no lock on the run;
-  # a request for both entries takes the run's row `FOR KEY SHARE` before the first
-  # update (`lock_run/2`), since a deletion removes the two rows in no fixed order. A step
+  # a request for two or more entries takes the run's row `FOR KEY SHARE` before the
+  # first update (`lock_run/2`), since a deletion removes the rows in no fixed order. A step
   # that fails rolls them all back, and the credential it failed on is refused for its
   # cause, the others as `not_recorded` (`Apiary.Runs.WorkCredential.refused/4`).
   defp recorded(access_key, run, seal, []), do: record(access_key, run, seal)

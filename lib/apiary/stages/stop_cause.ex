@@ -795,18 +795,10 @@ defmodule Apiary.Stages.StopCause do
       {"its address contains a user name or a password",
        "Owners and admins of #{n.workspace} remove them from the address on the set-up step Harness."}
 
-  defp harness_reason("too_many", _walk, n),
-    do:
-      {"it takes harness sources from more than #{Walk.max_links()} accounts",
-       "Owners and admins of #{n.workspace} take the harness sources from at most #{Walk.max_links()} accounts, on the set-up step Harness."}
+  defp harness_reason("too_many", _walk, _n), do: {:whole, too_many_words(:take_in)}
 
-  defp harness_reason(code, walk, n) when code in ["assigned_without_token", "assigned_gateway"],
-    do:
-      {:whole,
-       harness_token_words(
-         String.to_existing_atom(code),
-         walk.failed_source || "the harness of #{n.workspace}"
-       )}
+  defp harness_reason(code, walk, _n) when code in ["assigned_without_token", "assigned_gateway"],
+    do: {:whole, harness_token_words(String.to_existing_atom(code), walk.failed_source)}
 
   defp harness_reason(
          "source_case",
@@ -815,6 +807,18 @@ defmodule Apiary.Stages.StopCause do
        )
        when is_binary(canonical),
        do: {:whole, source_case_words(canonical)}
+
+  defp harness_reason("source_case", _walk, n),
+    do: {:whole, hidden_source_case_words(n.workspace)}
+
+  # Entries the run configuration cannot take: by the reason, or with the code where the
+  # rule names no host or no source it can show.
+  defp harness_reason("harness_entries" = code, walk, n) do
+    case harness_entries_words(walk.failure_rule, walk.failed_source) do
+      nil -> unknown_reason(code, n)
+      words -> {:whole, words}
+    end
+  end
 
   defp harness_reason("adapter_unavailable", _walk, n),
     do: {"three calls to read it failed", support(n)}
@@ -867,19 +871,27 @@ defmodule Apiary.Stages.StopCause do
       {:whole,
        "No workflow to start: the first stage of the process has no workflow. Add a workflow to that stage."}
 
-  defp harness_reason(code, _walk, n),
+  defp harness_reason(code, _walk, n), do: unknown_reason(code, n)
+
+  defp unknown_reason(code, n),
     do:
       {"a failure Qory Apiary has no description for#{if code, do: ", with the code #{code}", else: ""}",
        support(n)}
 
   @doc false
   # harness_token_words/2 is the fix of a walk that failed because the run gets no read
-  # token for the assigned private harness source `source`: `:assigned_without_token`,
-  # whose adapter gives one token for its whole grant, and `:assigned_gateway`, on a
-  # gateway the run's organisation controls (`Apiary.Dispatches.Handover`). The run's page
-  # and its stop cause show the same words.
-  @spec harness_token_words(:assigned_without_token | :assigned_gateway, String.t()) ::
+  # token for the assigned private harness source `source`, nil for a hidden harness:
+  # `:assigned_without_token`, whose adapter gives one token for its whole grant, and
+  # `:assigned_gateway`, on a gateway or a node pool the run's organisation controls
+  # (`Apiary.Dispatches.Handover`). The run's page and its stop cause show the same words.
+  @spec harness_token_words(:assigned_without_token | :assigned_gateway, String.t() | nil) ::
           String.t()
+  def harness_token_words(_code, nil),
+    do:
+      gettext(
+        "Connect an account that can read the workspace's private harness sources to this organisation, then take the work item in again."
+      )
+
   def harness_token_words(:assigned_without_token, source),
     do:
       gettext(
@@ -893,6 +905,74 @@ defmodule Apiary.Stages.StopCause do
         "Connect an account that can read %{source} to this organisation, then take the work item in again.",
         source: source
       )
+
+  @doc false
+  # hidden_source_case_words/1 is the fix of a walk that failed `source_case` for a hidden
+  # harness, which shows no address: owners and admins of `workspace` write the sources.
+  # The run's page and its stop cause show the same words.
+  @spec hidden_source_case_words(String.t()) :: String.t()
+  def hidden_source_case_words(workspace),
+    do:
+      gettext(
+        "Ask an owner or admin of %{workspace} to write the harness sources in the case the forge names them, then take the work item in again.",
+        workspace: workspace
+      )
+
+  @doc false
+  # too_many_words/1 is the fix of a walk that failed `too_many`, more entries than a run
+  # takes (`Apiary.Harnesses.Walk.max_links/0`): an account of the organisation counts
+  # once, and an account through an assignment once for each assigned repository. It
+  # ends with the action of the surface: `:take_in`, the stop cause; `:explore`, the
+  # Explore tab, whose other harness lines end with running Explore again.
+  @spec too_many_words(:take_in | :explore) :: String.t()
+  def too_many_words(:take_in),
+    do:
+      gettext(
+        "Take the private harness sources from at most %{n} accounts and assigned repositories, then take the work item in again.",
+        n: Walk.max_links()
+      )
+
+  def too_many_words(:explore),
+    do:
+      gettext(
+        "Take the private harness sources from at most %{n} accounts and assigned repositories, then run Explore again.",
+        n: Walk.max_links()
+      )
+
+  @doc false
+  # harness_entries_words/2 is the fix of a walk that failed `harness_entries` at the
+  # claim (`Apiary.Dispatches.Handover`), by the reason in its rule's values: `overlap`
+  # and `too_many_paths` with the host, `path_refused` with the source the walk kept,
+  # `source`. Nil where the rule has no host, or the source is not shown (a hidden
+  # harness). The run's page and its stop cause show the same words.
+  @spec harness_entries_words(map | nil, String.t() | nil) :: String.t() | nil
+  def harness_entries_words(%{"values" => %{"reason" => "overlap", "host" => host}}, _source)
+      when is_binary(host),
+      do:
+        gettext(
+          "Take the private harness sources on %{host} through one account, then take the work item in again. A run reads each forge through one account.",
+          host: host
+        )
+
+  def harness_entries_words(
+        %{"values" => %{"reason" => "too_many_paths", "host" => host}},
+        _source
+      )
+      when is_binary(host),
+      do:
+        gettext(
+          "Take fewer private harness sources from %{host}, then take the work item in again. A run reads at most 32 sources through one account.",
+          host: host
+        )
+
+  def harness_entries_words(%{"values" => %{"reason" => "path_refused"}}, source)
+      when is_binary(source),
+      do:
+        gettext("Write %{source} without *, {, } or .., then take the work item in again.",
+          source: source
+        )
+
+  def harness_entries_words(_rule, _source), do: nil
 
   @doc false
   # source_case_words/1 is the fix of a walk that failed `source_case`: a harness source

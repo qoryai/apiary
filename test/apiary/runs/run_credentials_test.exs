@@ -1385,6 +1385,9 @@ defmodule Apiary.Runs.RunCredentialsTest do
       # A harness entry is linked to its grant and to no connection.
       harness = &Map.merge(%{purpose: "harness", connection_id: nil, grant_id: grant.id}, &1)
 
+      other_connection =
+        Repo.get!(Connection, work_item_fixture(other).connection_id)
+
       row = fn changes ->
         Map.merge(
           %{
@@ -1448,7 +1451,9 @@ defmodule Apiary.Runs.RunCredentialsTest do
             {%{name: "harness-1", purpose: "harness"}, "run_credentials_link_check"},
             {harness.(%{name: "harness-1", grant_id: nil}), "run_credentials_link_check"},
             {%{grant_id: grant.id}, "run_credentials_link_check"},
-            {%{connection_id: nil}, "run_credentials_link_check"}
+            {%{connection_id: nil}, "run_credentials_link_check"},
+            {harness.(%{name: "harness-1", connection_id: work_item.connection_id}),
+             "run_credentials_link_check"}
           ] do
         error = assert_raise Postgrex.Error, fn -> insert.(changes) end
 
@@ -1474,6 +1479,14 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
       error = assert_raise Postgrex.Error, fn -> insert.(Map.delete(pushing, :apply)) end
       assert error.postgres.constraint == "run_credentials_push_ref_check"
+
+      # A row with a connection still has one of the run's organisation.
+      error =
+        assert_raise Postgrex.Error, fn ->
+          insert.(Map.put(pushing, :connection_id, other_connection.id))
+        end
+
+      assert error.postgres.constraint == "run_credentials_connection_id_fkey"
 
       assert {1, _rows} = insert.(pushing)
 
@@ -1659,7 +1672,33 @@ defmodule Apiary.Runs.RunCredentialsTest do
           )
         ])
 
-      assert formed(queued) == {:error, :overlap}
+      assert formed(queued) == {:error, :overlap, {:host, "git.example.com"}}
+    end
+
+    test "two items of one entry on one host, with no path for the resource, overlap", ctx do
+      {work_item, queued} = queued!(ctx)
+      grant = own_grant!(work_item)
+
+      set!(Node, work_item.adapter_id,
+        source_apply: [
+          %{
+            "hosts" => ["git.example.com"],
+            "scheme" => "basic",
+            "paths" => ["/{target.path}.git/*"]
+          },
+          %{"hosts" => ["git.example.com"], "scheme" => "basic", "paths" => ["/{target.path}/*"]}
+        ]
+      )
+
+      # With the resource's path, the two items' paths do not overlap.
+      queued = walked!(queued, [link(grant, [{"R_h", "acme/harness", [@harness_source]}])])
+      assert {:ok, [entry]} = formed(queued)
+
+      assert [%{"paths" => ["/acme/harness.git/*"]}, %{"paths" => ["/acme/harness/*"]}] =
+               entry.apply
+
+      queued = walked!(queued, [link(grant, [{"R_h", nil, [@harness_source]}])])
+      assert formed(queued) == {:error, :overlap, {:host, "git.example.com"}}
     end
 
     test "a path the templates refuse, and more than 32 paths, refuse the entries", ctx do
@@ -1667,28 +1706,42 @@ defmodule Apiary.Runs.RunCredentialsTest do
       grant = own_grant!(work_item)
 
       queued = walked!(queued, [link(grant, [{"R_h", "acme/*", [@harness_source]}])])
-      assert formed(queued) == {:error, :path_refused}
+      assert formed(queued) == {:error, :path_refused, {:source, @harness_source["git"]}}
 
       many = for n <- 1..17, do: {"R_#{n}", "acme/repo-#{n}", [@harness_source]}
       queued = walked!(queued, [link(grant, many)])
-      assert formed(queued) == {:error, :too_many_paths}
+      assert formed(queued) == {:error, :too_many_paths, {:host, "git.example.com"}}
     end
 
-    test "overlap?/1 compares the paths of entries on a shared host" do
+    test "overlap?/1 compares the paths of items on a shared host, of one entry or of two" do
       item = &%{"hosts" => ["git.example.com"], "paths" => &1}
 
       assert RunCredentials.overlap?([[item.(["/acme/a/*"])], [item.(["/acme/a/x"])]])
       assert RunCredentials.overlap?([[item.(["/acme/{}/x"])], [item.(["/acme/b/x"])]])
       assert RunCredentials.overlap?([[item.(["/acme/ab*"])], [item.(["/acme/abc/d"])]])
+      assert RunCredentials.overlap?([[item.(["/acme/ab*"])], [item.(["/acme/a*"])]])
       assert RunCredentials.overlap?([[item.(nil)], [item.(["/acme/b"])]])
+      assert RunCredentials.overlap?([[item.([])], [item.(["/acme/b"])]])
       refute RunCredentials.overlap?([[item.(["/acme/a/*"])], [item.(["/acme/b/*"])]])
       refute RunCredentials.overlap?([[item.(["/acme/{}/x"])], [item.(["/acme/b/y"])]])
-      refute RunCredentials.overlap?([[item.(nil), item.(["/a"])]])
+
+      # A starred prefix longer than a whole segment of the other path does not meet it.
+      refute RunCredentials.overlap?([[item.(["/acme/ab*"])], [item.(["/acme/a/c"])]])
+      refute RunCredentials.overlap?([[item.(["/acme/a/c"])], [item.(["/acme/ab*"])]])
+
+      # Items of one entry are compared as the gateway compares them.
+      assert RunCredentials.overlap?([[item.(nil), item.(["/a"])]])
+      assert RunCredentials.overlap?([[item.(["/acme/a/*"]), item.(["/acme/a/x"])]])
+      refute RunCredentials.overlap?([[item.(["/acme/a.git/*"]), item.(["/acme/a/*"])]])
+      refute RunCredentials.overlap?([[item.(nil)]])
 
       refute RunCredentials.overlap?([
                [item.(nil)],
                [%{"hosts" => ["other.example.com"]}]
              ])
+
+      assert RunCredentials.conflict([[item.(nil)], [item.(["/a"])]]) == "git.example.com"
+      assert RunCredentials.conflict([[item.(["/a"])], [item.(["/b"])]]) == nil
     end
 
     test "the claim writes the entries after the work entry", ctx do
@@ -1713,10 +1766,59 @@ defmodule Apiary.Runs.RunCredentialsTest do
       assert %RunHarness{
                state: :failed,
                failure: "harness_entries",
-               failed_source: nil,
+               failed_source: "https://git.example.com/acme/harness",
                failure_rule: %{
                  "rule" => "harness_entries",
                  "values" => %{"reason" => "path_refused"}
+               }
+             } = Repo.get_by!(RunHarness, dispatch_run_id: queued.id)
+    end
+
+    test "a claim ends the run for a refused path of a hidden harness with no source", ctx do
+      {work_item, queued} = queued!(ctx)
+      grant = own_grant!(work_item)
+      walked!(queued, [link(grant, [{"R_h", "acme/*", [@harness_source]}])])
+
+      {1, _rows} =
+        Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^queued.id),
+          set: [harness_hidden: true]
+        )
+
+      assert {:ok, _claimed} = claim(ctx)
+
+      assert %RunHarness{
+               failure: "harness_entries",
+               failed_source: nil,
+               failure_rule: %{"values" => values}
+             } = Repo.get_by!(RunHarness, dispatch_run_id: queued.id)
+
+      assert values == %{"reason" => "path_refused"}
+    end
+
+    test "a claim ends the run for entries that overlap, with the host and no source", ctx do
+      {work_item, queued} = queued!(ctx)
+      grant = own_grant!(work_item)
+
+      walked!(queued, [
+        link(
+          grant,
+          [{"R_h", nil, [@harness_source]}, {"R_t", "acme/tools", [@tools_source]}],
+          true
+        )
+      ])
+
+      {1, _rows} =
+        Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^queued.id),
+          set: [harness_hidden: true]
+        )
+
+      assert {:ok, _claimed} = claim(ctx)
+
+      assert %RunHarness{
+               failure: "harness_entries",
+               failed_source: nil,
+               failure_rule: %{
+                 "values" => %{"reason" => "overlap", "host" => "git.example.com"}
                }
              } = Repo.get_by!(RunHarness, dispatch_run_id: queued.id)
     end
@@ -1762,6 +1864,45 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
       assert entries() == []
     end
+
+    test "a claim keeps at most 512 code points of a long source it shows", ctx do
+      {work_item, queued} = queued!(ctx)
+      instance_scope = instance_admin_scope()
+      connection = Repo.get!(Connection, work_item.connection_id)
+      now = DateTime.utc_now()
+
+      instance_connection =
+        Repo.insert!(%Connection{
+          public_id: Apiary.PublicId.generate(Connection.prefix()),
+          organisation_id: instance_scope.organisation.id,
+          adapter_id: connection.adapter_id,
+          created_by_id: instance_scope.user.id,
+          state: :connected,
+          pass_nonce: :crypto.strong_rand_bytes(16),
+          pass_nonce_used_at: now,
+          connected_at: now
+        })
+
+      grant =
+        Apiary.HarnessReadsFixtures.live_grant_fixture(
+          instance_scope.organisation.id,
+          %{id: connection.adapter_id},
+          instance_connection,
+          "G_instance"
+        )
+
+      long = "https://git.example.com/acme/" <> String.duplicate("é", 600)
+      source = %{"git" => long, "ref" => "v1"}
+      walked!(queued, [link(grant, [{"R_h", "acme/harness", [source]}], true)])
+
+      assert {:ok, _claimed} = claim(ctx)
+
+      assert %RunHarness{failure: "assigned_gateway", failed_source: shown} =
+               Repo.get_by!(RunHarness, dispatch_run_id: queued.id)
+
+      assert String.length(shown) == 512
+      assert String.starts_with?(long, shown)
+    end
   end
 
   describe "a gateway key made without allow_secrets" do
@@ -1783,6 +1924,23 @@ defmodule Apiary.Runs.RunCredentialsTest do
                ),
                :count
              ) == 0
+
+      assert entries() == []
+    end
+
+    test "ends a run with harness entries alone secrets_not_allowed, and stores no entry",
+         ctx do
+      # The adapter's apply items fill the harness entry; no collection can change the
+      # target, so the run has no work entry.
+      work_item = work_item_fixture(ctx.scope)
+      set!(Node, work_item.adapter_id, source_apply: @apply)
+      queued = queue!(work_item)
+      walked!(queued, [link(own_grant!(work_item), [{"R_h", "acme/harness", [@harness_source]}])])
+
+      assert {:ok, :none} = claim(ctx)
+
+      assert %DispatchRun{state: :ended, end_cause: :secrets_not_allowed} =
+               Repo.get!(DispatchRun, queued.id)
 
       assert entries() == []
     end

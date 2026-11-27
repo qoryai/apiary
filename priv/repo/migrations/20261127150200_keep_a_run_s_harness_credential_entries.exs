@@ -15,10 +15,12 @@ defmodule Apiary.Repo.Migrations.KeepARunSHarnessCredentialEntries do
   #     with a connection still has one of the run's organisation;
   #   * `issued_apply` is allowed on a `harness` row as on a `work` or `push` one.
   #
-  # The new key and the new check are added NOT VALID, so adding them takes no scan under
-  # the lock; the next migration validates them. Every row there before is a `work` or
-  # `push` row with a connection, which passes both. Rolled back, the table is as before,
-  # and the rollback fails while a `harness` row exists.
+  # The new key and the two new checks are added NOT VALID, so adding them takes no scan
+  # under the lock; the next migration validates them. Every row there before is a `work`
+  # or `push` row with a connection, which passes all three. The index on `grant_id` is
+  # built in place: the column is new and NULL on every row, so the index is empty and
+  # its build reads the table once. Rolled back, the table is as before, and the rollback
+  # fails while a `harness` row exists.
   def up do
     alter table(:run_credentials) do
       add :grant_id, references(:adapter_grants, type: :binary_id, on_delete: :nothing)
@@ -43,7 +45,7 @@ defmodule Apiary.Repo.Migrations.KeepARunSHarnessCredentialEntries do
     ) NOT VALID
     """
 
-    issued_apply_check("purpose IN ('work', 'push', 'harness')")
+    issued_apply_check("purpose IN ('work', 'push', 'harness')", false)
   end
 
   def down do
@@ -58,7 +60,7 @@ defmodule Apiary.Repo.Migrations.KeepARunSHarnessCredentialEntries do
     $$
     """
 
-    issued_apply_check("purpose IN ('work', 'push')")
+    issued_apply_check("purpose IN ('work', 'push')", true)
 
     execute "ALTER TABLE run_credentials DROP CONSTRAINT run_credentials_link_check"
     execute "ALTER TABLE run_credentials DROP CONSTRAINT run_credentials_connection_id_fkey"
@@ -78,7 +80,7 @@ defmodule Apiary.Repo.Migrations.KeepARunSHarnessCredentialEntries do
     execute "ALTER TABLE run_credentials ALTER COLUMN connection_id SET NOT NULL"
   end
 
-  defp issued_apply_check(purposes) do
+  defp issued_apply_check(purposes, validate) do
     drop constraint(:run_credentials, :run_credentials_issued_apply_check)
 
     create constraint(:run_credentials, :run_credentials_issued_apply_check,
@@ -89,7 +91,8 @@ defmodule Apiary.Repo.Migrations.KeepARunSHarnessCredentialEntries do
                AND jsonb_array_length(issued_apply) BETWEEN 1 AND 16
                AND NOT jsonb_path_exists(issued_apply, '$[*] ? (@.type() != "object")')
              )
-             """
+             """,
+             validate: validate
            )
   end
 end

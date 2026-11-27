@@ -38,8 +38,8 @@ sources of the harness; a link through an assignment, a grant of another organis
 than the run's, gets one entry for each resource. Each entry has the source role's apply
 items of the link's adapter whose hosts are all in the run's `stack_hosts`, with
 `{target.path}` filled with each resource's `path` from the adapter's `resolve` answer.
-An item has no `paths` where a resource has no `path`. A public source, a source pinned
-to a full commit id and the built-in harness get no entry.
+An item has no `paths` where a resource has no `path`. A source that no grant covers,
+public or at a full commit id, and the built-in harness get no entry.
 
 The gateway sets a harness credential only on the stack proxy, while it fetches the
 harness before the first session, so the run's sessions never get it. On the gateway's
@@ -50,8 +50,11 @@ with the sources the entry reads, or none for a hidden harness. Before each call
 Apiary checks that the grant is live, of a connected connection of the entry's adapter,
 and either of the run's organisation or covered by an assignment still in force for each
 source of the entry, under an adapter whose credential reaches only the resources of the
-call (`credential_scope: resource`). Otherwise the call is not made, and the request is
-refused.
+call (`credential_scope: resource`). An entry under another organisation's grant is
+sealed only for a run that the instance's gateway serves and the instance's node pool
+claimed. Otherwise the call is not made, and the request is refused. The Activity entry
+names the cause: `connection_gone` for a connection that is not connected, and
+`harness_not_allowed` for a grant that ended or that the run may no longer use.
 
 A run ends `harness_unresolved` before it fetches anything in these cases:
 
@@ -68,12 +71,17 @@ A run ends `harness_unresolved` before it fetches anything in these cases:
   organisation goes only to runs that Qory provides both parts of: the instance's gateway
   and the instance's node pool. The claim checks this, the first point where the gateway
   is known, and each secrets request checks it again.
-- `source_case`: a private source whose address's path differs from the `path` the
+- `source_case`: a linked source whose address's path differs from the `path` the
   adapter resolved only in letter case, such as `Acme/Harness` for `acme/harness`. The
-  stack proxy matches paths with case, so the run could not fetch it.
-- `harness_entries`: entries the run configuration cannot take: a path the templates
-  refuse, an item with more than 32 paths, or two entries on one host that overlap or
-  have no paths.
+  stack proxy matches paths with case, so the run could not fetch it. The rule's
+  `canonical` is the address with the adapter's path, its scheme, port and any `.git`
+  kept, and none for a hidden harness.
+- `harness_entries`: entries the run configuration cannot take, with the reason in the
+  rule's values: `path_refused`, a path the templates refuse, with the source as the
+  failed source unless the harness is hidden; `too_many_paths`, an item with more than 32
+  paths; or `overlap`, two items on one host, of one entry or of two, whose paths overlap
+  or one of which has no paths, as the gateway checks them. The last two have the
+  `host`.
 
 ## The run's track
 

@@ -552,10 +552,13 @@ defmodule ApiaryWeb.Activity.Describer.Core do
           time: expiry(expires_at)
         )
 
+      {"issued", _none, nil} ->
+        gettext("Received read access to the run's harness sources, with no end time")
+
       {"issued", _none, sources} ->
-        gettext("Received %{access} access to %{target} for the run, with no end time",
-          access: access_word("read"),
-          target: sources || gettext("the run's harness sources")
+        gettext(
+          "Received read access to the harness sources %{sources} for the run, with no end time",
+          sources: sources
         )
 
       {cause, _expires_at, nil} ->
@@ -1136,6 +1139,9 @@ defmodule ApiaryWeb.Activity.Describer.Core do
       gettext(
         "the connection is not connected, or does not match the run's organisation and adapter"
       )
+
+  defp refusal_cause("harness_not_allowed"),
+    do: gettext("the access to these sources has ended for this organisation")
 
   defp refusal_cause("adapter_key_missing"),
     do: gettext("the adapter is deleted or has no access key in use")

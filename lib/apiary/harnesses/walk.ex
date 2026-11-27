@@ -961,17 +961,20 @@ defmodule Apiary.Harnesses.Walk do
 
   # A linked source whose address's path differs from `path`, the resource's path as its
   # adapter resolved it, only in letter case fails `source_case`, with the address in the
-  # adapter's case: the run's proxy matches the credential's paths with case, and qory
-  # clones the address as written, so the run could not fetch it. A hidden harness's rule
-  # has no address. No path, or a path that differs otherwise, passes.
+  # adapter's case (`canonical`): the address as written, its scheme, host, port and any
+  # `.git` kept, with the adapter's path. The run's proxy matches the credential's paths
+  # with case, and qory clones the address as written, so the run could not fetch it. A
+  # hidden harness's rule has no address. No path, or a path that differs otherwise,
+  # passes.
   defp same_case!(%{"git" => git}, path, shown) when is_binary(path) do
-    %URI{host: host, path: written} = URI.parse(git)
-
-    written =
-      (written || "") |> String.trim("/") |> String.replace_suffix(".git", "")
+    %URI{path: written} = uri = URI.parse(git)
+    trimmed = String.trim(written || "", "/")
+    git_suffix = if String.ends_with?(trimmed, ".git"), do: ".git", else: ""
+    written = String.replace_suffix(trimmed, ".git", "")
 
     if written != path and String.downcase(written) == String.downcase(path) do
-      values = if get(:hidden), do: [], else: [canonical: "#{host}/#{path}"]
+      canonical = shown(URI.to_string(%{uri | path: "/" <> path <> git_suffix}))
+      values = if get(:hidden), do: [], else: [canonical: canonical]
       fail(:source_case, shown, rule("source_case", values))
     end
 

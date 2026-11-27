@@ -1540,7 +1540,7 @@ defmodule ApiaryWeb.HarnessComponents do
   defp walk_words(%{failure: :too_many}, source),
     do:
       gettext(
-        "Correct the harness in %{source}: its modules come from more than %{n} accounts, and a run can read at most %{n}.",
+        "Correct the harness in %{source}: take its private harness sources from at most %{n} accounts and assigned repositories.",
         source: label(source),
         n: Apiary.Harnesses.Walk.max_links()
       )

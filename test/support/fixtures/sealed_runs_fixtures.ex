@@ -52,6 +52,12 @@ defmodule Apiary.SealedRunsFixtures do
   With `attach: false`, the gateway does not attach the run: the map has `run` as the
   claim registered it, `run_key`, the run key its run code was redeemed for, and no
   `attached`, for a test that sends the attach.
+
+  With `machine: :instance`, the instance's node pool claims the run through the
+  instance's gateway, each with a key installed with the instance, the gateway's allowed
+  stored secrets; with `machine: :instance_gateway`, the workspace's node pool claims it
+  through the instance's gateway, which the pool names. A test with either is not async:
+  the instance has one pool and one gateway in use.
   """
   def sealed_run_fixture(%Scope{} = scope, opts \\ []) do
     {:ok, provider} =
@@ -77,7 +83,7 @@ defmodule Apiary.SealedRunsFixtures do
 
     if fun = opts[:before_claim], do: fun.(provider)
 
-    place = Apiary.DispatchedRunsFixtures.handover_place_fixture(scope, allow_secrets: true)
+    place = machine(scope, Keyword.get(opts, :machine))
     {key, seed} = place.gateway_key
 
     work_item =
@@ -116,6 +122,40 @@ defmodule Apiary.SealedRunsFixtures do
     })
     |> Map.merge(attached)
     |> Map.merge(adapter || %{})
+  end
+
+  defp machine(scope, nil),
+    do: Apiary.DispatchedRunsFixtures.handover_place_fixture(scope, allow_secrets: true)
+
+  defp machine(_scope, :instance) do
+    gateway = Apiary.NodesFixtures.instance_gateway_fixture()
+    pool = Apiary.NodesFixtures.instance_pool_fixture()
+    %{access_key: key, pair: pair} = Apiary.AccessKeysFixtures.installed_key_fixture(pool)
+
+    %{gateway: gateway, gateway_key: instance_gateway_key(gateway), pool: pool, key: key}
+    |> Map.put(:seed, pair.secret)
+  end
+
+  defp machine(scope, :instance_gateway) do
+    gateway = Apiary.NodesFixtures.instance_gateway_fixture()
+    pool = Apiary.NodesFixtures.pool_fixture(scope)
+    %{access_key: key, pair: pair} = Apiary.AccessKeysFixtures.enrolled_key_fixture(scope, pool)
+
+    {1, _rows} =
+      Repo.update_all(from(n in Node, where: n.id == ^pool.id),
+        set: [gateway_choice: :named, gateway_id: gateway.id]
+      )
+
+    %{gateway: gateway, gateway_key: instance_gateway_key(gateway), pool: pool, key: key}
+    |> Map.put(:seed, pair.secret)
+  end
+
+  defp instance_gateway_key(gateway) do
+    %{access_key: key, pair: pair} =
+      Apiary.AccessKeysFixtures.installed_key_fixture(gateway, allow_secrets: true)
+
+    {:ok, key} = Apiary.AccessKeys.fetch_for_verification(key.key_id)
+    {key, pair.secret}
   end
 
   @doc """

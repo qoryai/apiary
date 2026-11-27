@@ -112,5 +112,22 @@ defmodule ApiaryWeb.ActivityRunCredentialTest do
       assert sentence(Map.put(hidden, "outcome", "refused")) ==
                "Was refused read access to the run's harness sources: the adapter returned a refusal"
     end
+
+    test "sent with no end time, with the sources or without" do
+      issued = Map.put(@harness, "outcome", "issued")
+
+      assert sentence(issued) ==
+               "Received read access to the harness sources code.example.com/acme/harness, code.example.com/acme/tools for the run, with no end time"
+
+      hidden = issued |> Map.delete("sources") |> Map.put("harness_hidden", true)
+
+      assert sentence(hidden) ==
+               "Received read access to the run's harness sources, with no end time"
+    end
+
+    test "refused because the run may no longer use the grant" do
+      assert sentence(Map.put(@harness, "outcome", "harness_not_allowed")) ==
+               "Was refused read access to the harness sources code.example.com/acme/harness, code.example.com/acme/tools for the run: the access to these sources has ended for this organisation"
+    end
   end
 end
