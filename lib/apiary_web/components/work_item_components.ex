@@ -7662,6 +7662,18 @@ defmodule ApiaryWeb.WorkItemComponents do
           n: Walk.max_links()
         )
 
+      code when code in ["assigned_without_token", "assigned_gateway"] ->
+        Apiary.Stages.StopCause.harness_token_words(String.to_existing_atom(code), source)
+
+      "source_case" ->
+        case failure.rule do
+          %{"values" => %{"canonical" => canonical}} when is_binary(canonical) ->
+            Apiary.Stages.StopCause.source_case_words(canonical)
+
+          _hidden ->
+            nil
+        end
+
       "adapter_unavailable" ->
         rich_gettext(
           "Run Explore again. If the run ends the same way, %{contact_support}. Three calls to the adapter %{adapter} failed.",

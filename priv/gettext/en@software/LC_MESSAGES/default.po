@@ -8441,6 +8441,16 @@ msgstr ""
 msgid "Connect a work source"
 msgstr ""
 
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Connect an account that can read %{source} to this organisation, then take the work item in again."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Connect an account that can read %{source} to this organisation, then take the work item in again. %{source} is a private harness source, and the access assigned to this organisation gives runs no read token for it."
+msgstr ""
+
 #: lib/apiary_web/live/collections_live.ex
 #: lib/apiary_web/live/workspace_setup_live.ex
 #, elixir-autogen, elixir-format
@@ -18088,6 +18098,16 @@ msgstr ""
 msgid "Received %{access} access to %{target} for the run, with no end time"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Received read access to the harness sources %{sources} for the run, until %{time}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Received read access to the run's harness sources, until %{time}"
+msgstr ""
+
 #: lib/apiary_web/live/node_live/show.ex
 #, elixir-autogen, elixir-format
 msgid "Recent runs"
@@ -25254,6 +25274,16 @@ msgstr ""
 msgid "Was refused %{access} access to %{target} for the run: %{cause}"
 msgstr ""
 
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Was refused read access to the harness sources %{sources} for the run: %{cause}"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "Was refused read access to the run's harness sources: %{cause}"
+msgstr ""
+
 #: lib/apiary_web/live/work_item_live/verify_tab.ex
 #, elixir-autogen, elixir-format
 msgid "Watch"
@@ -26000,6 +26030,11 @@ msgstr ""
 #: lib/apiary_web/live/stages_live/words.ex
 #, elixir-autogen, elixir-format
 msgid "Write each track of the gate of %{stage} as an id of lower-case words joined by hyphens, such as small-change."
+msgstr ""
+
+#: lib/apiary/stages/stop_cause.ex
+#, elixir-autogen, elixir-format
+msgid "Write the harness source as %{canonical}: the forge names it in that case."
 msgstr ""
 
 #: lib/apiary_web/components/work_item_components.ex
@@ -28426,6 +28461,11 @@ msgstr ""
 #: lib/apiary_web/components/work_item_components.ex
 #, elixir-autogen, elixir-format
 msgid "the run's credentials"
+msgstr ""
+
+#: lib/apiary_web/activity/describer/core.ex
+#, elixir-autogen, elixir-format
+msgid "the run's harness sources"
 msgstr ""
 
 #: lib/apiary_web/live/run_live/show.ex

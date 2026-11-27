@@ -342,6 +342,42 @@ defmodule Apiary.Stages.StopCauseTest do
       {%{run | state: :ended, end_cause: :harness_unresolved}, work_item}
     end
 
+    test "a private assigned source with no read token: connect an account, with the reason or without" do
+      %{scope: scope} = sign_up_fixture()
+      source = "https://code.example.com/acme/harness"
+
+      {run, work_item} = walk_failed(scope, "assigned_without_token", source)
+
+      assert StopCause.text(run, work_item) ==
+               "Connect an account that can read #{source} to this organisation, then take the work item in again. #{source} is a private harness source, and the access assigned to this organisation gives runs no read token for it."
+
+      {run, work_item} = walk_failed(scope, "assigned_gateway", source)
+
+      assert StopCause.text(run, work_item) ==
+               "Connect an account that can read #{source} to this organisation, then take the work item in again."
+    end
+
+    test "a source in another letter case than the forge's: write it in the forge's case" do
+      %{scope: scope} = sign_up_fixture()
+
+      {run, work_item} =
+        walk_failed(scope, "source_case", "https://code.example.com/Acme/Harness")
+
+      {1, _rows} =
+        Repo.update_all(
+          from(h in Apiary.Harnesses.RunHarness, where: h.dispatch_run_id == ^run.id),
+          set: [
+            failure_rule: %{
+              "rule" => "source_case",
+              "values" => %{"canonical" => "code.example.com/acme/harness"}
+            }
+          ]
+        )
+
+      assert StopCause.text(run, work_item) ==
+               "Write the harness source as code.example.com/acme/harness: the forge names it in that case."
+    end
+
     test "on the workspace's choice, the fix is on the set-up step Harness" do
       %{scope: scope} = sign_up_fixture()
       ws = scope.workspace.name

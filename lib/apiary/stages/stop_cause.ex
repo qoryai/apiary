@@ -800,6 +800,22 @@ defmodule Apiary.Stages.StopCause do
       {"it takes harness sources from more than #{Walk.max_links()} accounts",
        "Owners and admins of #{n.workspace} take the harness sources from at most #{Walk.max_links()} accounts, on the set-up step Harness."}
 
+  defp harness_reason(code, walk, n) when code in ["assigned_without_token", "assigned_gateway"],
+    do:
+      {:whole,
+       harness_token_words(
+         String.to_existing_atom(code),
+         walk.failed_source || "the harness of #{n.workspace}"
+       )}
+
+  defp harness_reason(
+         "source_case",
+         %RunHarness{failure_rule: %{"values" => %{"canonical" => canonical}}},
+         _n
+       )
+       when is_binary(canonical),
+       do: {:whole, source_case_words(canonical)}
+
   defp harness_reason("adapter_unavailable", _walk, n),
     do: {"three calls to read it failed", support(n)}
 
@@ -855,6 +871,39 @@ defmodule Apiary.Stages.StopCause do
     do:
       {"a failure Qory Apiary has no description for#{if code, do: ", with the code #{code}", else: ""}",
        support(n)}
+
+  @doc false
+  # harness_token_words/2 is the fix of a walk that failed because the run gets no read
+  # token for the assigned private harness source `source`: `:assigned_without_token`,
+  # whose adapter gives one token for its whole grant, and `:assigned_gateway`, on a
+  # gateway the run's organisation controls (`Apiary.Dispatches.Handover`). The run's page
+  # and its stop cause show the same words.
+  @spec harness_token_words(:assigned_without_token | :assigned_gateway, String.t()) ::
+          String.t()
+  def harness_token_words(:assigned_without_token, source),
+    do:
+      gettext(
+        "Connect an account that can read %{source} to this organisation, then take the work item in again. %{source} is a private harness source, and the access assigned to this organisation gives runs no read token for it.",
+        source: source
+      )
+
+  def harness_token_words(:assigned_gateway, source),
+    do:
+      gettext(
+        "Connect an account that can read %{source} to this organisation, then take the work item in again.",
+        source: source
+      )
+
+  @doc false
+  # source_case_words/1 is the fix of a walk that failed `source_case`: a harness source
+  # written in another letter case than the forge names it, `canonical`. The run's page and
+  # its stop cause show the same words.
+  @spec source_case_words(String.t()) :: String.t()
+  def source_case_words(canonical),
+    do:
+      gettext("Write the harness source as %{canonical}: the forge names it in that case.",
+        canonical: canonical
+      )
 
   ## Names
 

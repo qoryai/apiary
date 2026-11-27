@@ -525,6 +525,52 @@ defmodule ApiaryWeb.Activity.Describer.Core do
     end
   end
 
+  # A run's harness credential, sent to its gateway or refused (`Apiary.Runs.WorkCredential`,
+  # purpose `harness`): the sources it reads, or none for a hidden harness.
+  def sentence(
+        :"run_credential.issue",
+        %{details: %{"outcome" => outcome, "purpose" => "harness"} = details},
+        _names
+      )
+      when is_binary(outcome) do
+    sources =
+      case {details["sources"], details["harness_hidden"]} do
+        {[_ | _] = sources, hidden} when hidden != true -> Enum.join(sources, ", ")
+        _hidden -> nil
+      end
+
+    case {outcome, details["expires_at"], sources} do
+      {"issued", expires_at, nil} when is_binary(expires_at) ->
+        gettext("Received read access to the run's harness sources, until %{time}",
+          time: expiry(expires_at)
+        )
+
+      {"issued", expires_at, sources} when is_binary(expires_at) ->
+        gettext(
+          "Received read access to the harness sources %{sources} for the run, until %{time}",
+          sources: sources,
+          time: expiry(expires_at)
+        )
+
+      {"issued", _none, sources} ->
+        gettext("Received %{access} access to %{target} for the run, with no end time",
+          access: access_word("read"),
+          target: sources || gettext("the run's harness sources")
+        )
+
+      {cause, _expires_at, nil} ->
+        gettext("Was refused read access to the run's harness sources: %{cause}",
+          cause: refusal_cause(cause)
+        )
+
+      {cause, _expires_at, sources} ->
+        gettext("Was refused read access to the harness sources %{sources} for the run: %{cause}",
+          sources: sources,
+          cause: refusal_cause(cause)
+        )
+    end
+  end
+
   # A run's work credential, sent to its gateway or refused (`Apiary.Runs.WorkCredential`):
   # the entry is the run's, by the gateway's key. The words come from the entry's details,
   # which have no word of the adapter.

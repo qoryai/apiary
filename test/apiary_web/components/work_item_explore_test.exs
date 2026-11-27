@@ -3469,6 +3469,19 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              "Start the run again later. Reading the harness from #{harness} failed: the repository is larger than 16 MiB, or a harness file is larger than 0.25 MiB. If it fails again, contact support."},
             {%{code: "adapter_unavailable", adapter: "code-host"},
              "Run Explore again. If the run ends the same way, contact support. Three calls to the adapter code-host failed."},
+            {%{code: "assigned_without_token", source: "https://code.example.com/acme/harness"},
+             "Connect an account that can read https://code.example.com/acme/harness to this organisation, then take the work item in again. https://code.example.com/acme/harness is a private harness source, and the access assigned to this organisation gives runs no read token for it."},
+            {%{code: "assigned_gateway", source: "https://code.example.com/acme/harness"},
+             "Connect an account that can read https://code.example.com/acme/harness to this organisation, then take the work item in again."},
+            {%{
+               code: "source_case",
+               source: "https://code.example.com/Acme/Harness",
+               rule: %{
+                 "rule" => "source_case",
+                 "values" => %{"canonical" => "code.example.com/acme/harness"}
+               }
+             },
+             "Write the harness source as code.example.com/acme/harness: the forge names it in that case."},
             # A run with no workflow, ended when it was queued.
             {%{code: "many_stacks"},
              "No workflow to start: more than one stack has a workflow. Keep the workflow in one stack."},

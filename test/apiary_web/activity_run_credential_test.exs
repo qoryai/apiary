@@ -77,4 +77,40 @@ defmodule ApiaryWeb.ActivityRunCredentialTest do
                ~r/\AWas refused write access to acme\/shop for the run: (the|Qory Apiary) /
     end
   end
+
+  describe "a harness credential" do
+    @harness %{
+      "run_id" => "6f1c2a40-1d2e-4b5f-9a8b-0c1d2e3f4a5b",
+      "adapter_id" => "na_0123456789abcdef",
+      "access" => "read",
+      "purpose" => "harness",
+      "credential" => "harness-1",
+      "sources" => ["code.example.com/acme/harness", "code.example.com/acme/tools"]
+    }
+
+    test "sent: the sources it reads, and its expiry" do
+      issued =
+        Map.merge(@harness, %{"outcome" => "issued", "expires_at" => "2026-10-25T13:00:00Z"})
+
+      assert sentence(issued) ==
+               "Received read access to the harness sources code.example.com/acme/harness, code.example.com/acme/tools for the run, until 2026-10-25 13:00 UTC"
+    end
+
+    test "refused: the sources and the cause" do
+      assert sentence(Map.put(@harness, "outcome", "timeout")) ==
+               "Was refused read access to the harness sources code.example.com/acme/harness, code.example.com/acme/tools for the run: the call to the adapter timed out"
+    end
+
+    test "for a hidden harness, no source" do
+      hidden = @harness |> Map.delete("sources") |> Map.put("harness_hidden", true)
+
+      assert sentence(
+               Map.merge(hidden, %{"outcome" => "issued", "expires_at" => "2026-10-25T13:00:00Z"})
+             ) ==
+               "Received read access to the run's harness sources, until 2026-10-25 13:00 UTC"
+
+      assert sentence(Map.put(hidden, "outcome", "refused")) ==
+               "Was refused read access to the run's harness sources: the adapter returned a refusal"
+    end
+  end
 end
