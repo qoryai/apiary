@@ -134,9 +134,25 @@ defmodule Apiary.Harnesses.Walk do
   # for its version. Each later read of a repository is at the version the first
   # returned, its pin.
   #
-  # The links: one per grant, with the resources the walk resolved under it, read only.
-  # More than `max_links/0` (5) fails `too_many`. A run's 6 model keys, its registry, work
-  # and push credentials and 5 links are 14 of the 16 credentials of a run configuration.
+  # The links: one per grant, with the resources the walk resolved under it, read only,
+  # each resource's `path` where the adapter's result has one, and the sources the walk
+  # reads through each resource (`git`, `ref`, `path`, `stack`, `module`), and whether the
+  # link is through an assignment: a grant of another organisation than the run's. Each
+  # link is one harness credential entry of the run, and a link through an assignment one
+  # per resource (`entries/1`, `Apiary.Runs.RunCredentials.form_harness/2`). More than
+  # `max_links/0` (5) entries fail `too_many`. A run's 6 model keys, its registry, work and
+  # push credentials and 5 entries are 14 of the 16 credentials of a run configuration.
+  #
+  # A run's walk (`run/2`), and not a save's (`pin_base/3`), has two more checks of a
+  # linked source:
+  #
+  #   * under an assignment whose adapter's credential reaches its whole grant
+  #     (`credential_scope` `grant`), the run gets no read token: a source its host serves
+  #     to anyone is read as public, and any other fails `assigned_without_token`;
+  #   * where the adapter's result has a `path` that differs from the address's path only
+  #     in letter case, the source fails `source_case`, with the address in the adapter's
+  #     case: the run's proxy matches the token's paths with case, so the run could not
+  #     fetch it. A public source, read with no token, has no such check.
   #
   # ## The access level
   #
@@ -214,6 +230,12 @@ defmodule Apiary.Harnesses.Walk do
     :scp_form,
     :credential_in_address,
     :too_many,
+    # An assigned private source whose adapter gives one credential for its whole grant
+    # (`credential_scope` `grant`): a run gets no read token for it.
+    :assigned_without_token,
+    # A linked source whose address differs from the path its adapter resolved only in
+    # letter case.
+    :source_case,
     :adapter_unavailable,
     :adapter_failed,
     :walk_error,
@@ -227,6 +249,11 @@ defmodule Apiary.Harnesses.Walk do
     # and a read that failed.
     :ref_missing,
     :harness_unreadable,
+    # Only a claim fails these two (`Apiary.Dispatches.Handover`): a source assigned to the
+    # run's organisation on a gateway that Qory Apiary does not provide, and harness
+    # entries that do not fit the run configuration (`Apiary.Runs.RunCredentials`).
+    :assigned_gateway,
+    :harness_entries,
     # Only the queue fails these four, for a run with no workflow
     # (`Apiary.Harnesses.WalkJob.queue/2`, `Apiary.Stacks.workflow_or_cause/2`).
     :many_stacks,
@@ -315,7 +342,8 @@ defmodule Apiary.Harnesses.Walk do
   # `{:failed, failure}`, or `{:retry, failure}` for a call that timed out or reached no
   # one.
   @spec run(input, keyword) :: {:ok, walked} | {:failed, failure} | {:retry, failure}
-  def run(%{} = input, opts \\ []), do: within(opts, input.workflow, fn -> walk(input) end)
+  def run(%{} = input, opts \\ []),
+    do: within(Keyword.put(opts, :run, true), input.workflow, fn -> walk(input) end)
 
   @doc false
   # pin_base/3 is the commit `base`, a harness source `%{"git", "ref"}`, with `path` or
@@ -346,6 +374,7 @@ defmodule Apiary.Harnesses.Walk do
       calls: Keyword.get(opts, :max_calls, @max_calls),
       public_calls: Keyword.get(opts, :max_public_calls, @max_calls),
       call_opts: Keyword.get(opts, :call_opts, []),
+      run: Keyword.get(opts, :run, false),
       hidden: false,
       label: nil,
       workflow: workflow,
@@ -843,9 +872,14 @@ defmodule Apiary.Harnesses.Walk do
         shown = Document.shown(source["git"])
 
         case allowed(candidates, organisation_id, source) do
-          {adapter, grant, resource_ref} ->
-            link(adapter, grant, resource_ref)
-            {source, location(adapter, grant.grant_ref, resource_ref, shown, [], shown)}
+          {adapter, grant, resource_ref, path} = candidate ->
+            if without_token?(adapter, grant, organisation_id) do
+              without_token(source, shown)
+            else
+              same_case!(source, path, shown)
+              link(candidate, source, grant.organisation_id != organisation_id)
+              {source, location(adapter, grant.grant_ref, resource_ref, shown, [], shown)}
+            end
 
           nil ->
             # With no public request left, a source at a full commit id passes by rule 5
@@ -858,7 +892,9 @@ defmodule Apiary.Harnesses.Walk do
               public == :ok ->
                 {source, location(:public, nil, source["git"], shown, [], shown)}
 
-              Enum.any?(candidates, fn {_a, grant, _r} -> grant.organisation_id == instance end) ->
+              Enum.any?(candidates, fn {_a, grant, _r, _p} ->
+                grant.organisation_id == instance
+              end) ->
                 fail(:not_allowed, shown)
 
               # No grant, or only other organisations' grants: one result for both.
@@ -872,20 +908,74 @@ defmodule Apiary.Harnesses.Walk do
         end
       end)
 
-    if map_size(get(:links)) > @max_links, do: fail(:too_many)
+    if entries(get(:links)) > @max_links, do: fail(:too_many)
     allowed
+  end
+
+  @doc false
+  # entries/1 is the number of harness credential entries a run gets for `links`, as the
+  # walk stores them: one for a link of the run's organisation, and one for each resource
+  # of a link through an assignment (`Apiary.Harnesses.entries/1`). A link stored before
+  # links had `assigned` counts one.
+  @spec entries(map | [map]) :: non_neg_integer
+  def entries(links) when is_map(links), do: links |> Map.values() |> entries()
+
+  def entries(links) when is_list(links) do
+    Enum.reduce(links, 0, fn
+      %{"assigned" => true, "resources" => resources}, n -> n + length(resources)
+      _link, n -> n + 1
+    end)
   end
 
   # The first candidate under a grant of the run's organisation, else the first under a
   # grant the rule allows; nil for none.
   defp allowed(candidates, organisation_id, source) do
-    Enum.find(candidates, fn {_adapter, grant, _ref} ->
+    Enum.find(candidates, fn {_adapter, grant, _ref, _path} ->
       grant.organisation_id == organisation_id
     end) ||
-      Enum.find(candidates, fn {_adapter, grant, _ref} ->
+      Enum.find(candidates, fn {_adapter, grant, _ref, _path} ->
         Harnesses.allowed?(organisation_id, grant.organisation_id, source)
       end)
   end
+
+  # Whether a run's link through an assignment gives it no read token: the adapter's
+  # credential reaches its whole grant (`credential_scope` `grant`), and the contract
+  # sends no run-credential call for an assignment then. A save's walk (`pin_base/3`)
+  # gets no token, so the rule is the run's alone.
+  defp without_token?(%Node{credential_scope: scope}, grant, organisation_id),
+    do: get(:run) and scope == :grant and grant.organisation_id != organisation_id
+
+  # An assigned source that gives a run no read token: a repository its host serves to
+  # anyone is read from its host, as a public source; any other fails
+  # `assigned_without_token`, at the walk, so a run that could not fetch it never starts.
+  defp without_token(source, shown) do
+    case PublicGit.public(source["git"]) do
+      :ok -> {source, location(:public, nil, source["git"], shown, [], shown)}
+      {:error, :not_found, _hop} -> fail(:assigned_without_token, shown)
+      {:error, cause, hop} -> public_failed(cause, hop, shown, source["ref"])
+    end
+  end
+
+  # A linked source whose address's path differs from `path`, the resource's path as its
+  # adapter resolved it, only in letter case fails `source_case`, with the address in the
+  # adapter's case: the run's proxy matches the credential's paths with case, and qory
+  # clones the address as written, so the run could not fetch it. A hidden harness's rule
+  # has no address. No path, a path that differs otherwise, or a save's walk, passes.
+  defp same_case!(%{"git" => git}, path, shown) when is_binary(path) do
+    %URI{host: host, path: written} = URI.parse(git)
+
+    written =
+      (written || "") |> String.trim("/") |> String.replace_suffix(".git", "")
+
+    if get(:run) and written != path and String.downcase(written) == String.downcase(path) do
+      values = if get(:hidden), do: [], else: [canonical: "#{host}/#{path}"]
+      fail(:source_case, shown, rule("source_case", values))
+    end
+
+    :ok
+  end
+
+  defp same_case!(_source, _path, _shown), do: :ok
 
   # A full commit id, as `Apiary.Dispatches.Built` takes one: 40 lower-case hex digits
   # for SHA-1, 64 for SHA-256. A branch, a tag or a short id is none.
@@ -914,12 +1004,8 @@ defmodule Apiary.Harnesses.Walk do
   defp covered(covered, adapter, %{grant_ref: grant_ref, resource_ref: resource_ref} = result) do
     case live_grant(adapter, grant_ref) do
       %Grant{} = grant ->
-        Map.update(
-          covered,
-          result.address,
-          [{adapter, grant, resource_ref}],
-          &(&1 ++ [{adapter, grant, resource_ref}])
-        )
+        candidate = {adapter, grant, resource_ref, Map.get(result, :path)}
+        Map.update(covered, result.address, [candidate], &(&1 ++ [candidate]))
 
       nil ->
         covered
@@ -947,19 +1033,38 @@ defmodule Apiary.Harnesses.Walk do
     )
   end
 
-  defp link(adapter, %Grant{} = grant, resource_ref) do
+  # The link of `grant`, with `resource_ref` among its resources: beside each resource,
+  # its path as the adapter resolved it, where it has one (`paths`), and the sources the
+  # run reads through it (`sources`); `assigned`, whether the run uses the grant through
+  # an assignment.
+  defp link({adapter, %Grant{} = grant, resource_ref, path}, source, assigned) do
+    source = Map.take(source, ~w(git ref path stack module))
+
     modify(:links, fn links ->
-      Map.update(
-        links,
-        grant.id,
-        %{
+      entry =
+        Map.get(links, grant.id, %{
           "grant_id" => grant.id,
           "adapter_id" => adapter.id,
           "grant_ref" => grant.grant_ref,
-          "resources" => [resource_ref]
-        },
-        fn entry -> Map.update!(entry, "resources", &Enum.uniq(&1 ++ [resource_ref])) end
-      )
+          "assigned" => assigned,
+          "resources" => [],
+          "paths" => %{},
+          "sources" => %{}
+        })
+
+      entry = %{
+        entry
+        | "resources" => Enum.uniq(entry["resources"] ++ [resource_ref]),
+          "paths" =>
+            if(is_binary(path),
+              do: Map.put(entry["paths"], resource_ref, path),
+              else: entry["paths"]
+            ),
+          "sources" =>
+            Map.update(entry["sources"], resource_ref, [source], &Enum.uniq(&1 ++ [source]))
+      }
+
+      Map.put(links, grant.id, entry)
     end)
   end
 
