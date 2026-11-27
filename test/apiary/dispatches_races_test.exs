@@ -543,7 +543,9 @@ defmodule Apiary.DispatchesRacesTest do
     pool = pool_fixture(ctx.scope, instance_limit: 1)
     key = key!(ctx, pool)
     dispatch = ended_with_machine!(ctx, key)
-    net = DateTime.add(dispatch.claimed_at, (1470 + 60) * 60, :second)
+
+    net =
+      DateTime.add(dispatch.claimed_at, (dispatch.machine_lifetime_minutes + 60) * 60, :second)
 
     # The sweep at the net holds the dispatch's row it freed.
     {sweep, sweep_pid} = hold(fn -> {:ok, Slots.free(:all, net)} end)

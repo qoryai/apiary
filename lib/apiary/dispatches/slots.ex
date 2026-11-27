@@ -27,9 +27,11 @@ defmodule Apiary.Dispatches.Slots do
   # freed once the latest of its `dispatched_at`, its `handed_over_at` (a redemption of
   # its run code hands it over with no `dispatched`), its `machine_end_at` (its last
   # report) and its `late_machine_at` is `@net_minutes`, 60, past its machine's
-  # lifetime, the claim answer's `max_lifetime_minutes`: 90 for a prebuild, else 1470
-  # (`Apiary.Dispatches.DispatchRun.machine_lifetime_minutes/1`, read again from the
-  # step of its run of the queue, which never changes). A dispatch with none of the four
+  # lifetime, the claim answer's `max_lifetime_minutes`, which the dispatch keeps
+  # (`machine_lifetime_minutes`); for a dispatch claimed before dispatches kept it, 90 for
+  # a prebuild, else 1470 (`Apiary.Dispatches.DispatchRun.machine_lifetime_minutes/1`,
+  # read again from the step of its run of the queue, which never changes). A dispatch
+  # with none of the four
   # counts from its `claimed_at`, which is earlier than any of them. The starter deletes
   # a machine at
   # the end of its lifetime, so a slot past the net counts a machine whose `gone` was
@@ -380,11 +382,12 @@ defmodule Apiary.Dispatches.Slots do
   # The held slots of `query` due to be freed at `now`: the rule of the moduledoc. A
   # dispatch done, ended or stale, with no machine left: none was made, or it was reported
   # `gone`. Or the safety net: a dispatch done or handed over whose last sign of a
-  # machine is older than the machine's lifetime and `@net_minutes`.
+  # machine is older than the machine's lifetime and `@net_minutes`: the lifetime the
+  # dispatch keeps, else its step's.
   defp due(query, now) do
     prebuild = DispatchRun.prebuild()
     prebuild_cutoff = cutoff(now, DispatchRun.machine_lifetime_minutes(prebuild))
-    other_cutoff = cutoff(now, DispatchRun.max_machine_lifetime_minutes())
+    other_cutoff = cutoff(now, DispatchRun.machine_lifetime_minutes("workflow"))
 
     from d in query,
       join: r in DispatchRun,
@@ -398,12 +401,18 @@ defmodule Apiary.Dispatches.Slots do
                  is_nil(d.stale_at)))) or
           ((not is_nil(d.ended_at) or not is_nil(d.stale_at) or not is_nil(d.handed_over_at)) and
              fragment(
-               "GREATEST(?, ?, ?, ?, ?) <= CASE WHEN ? = ? THEN ? ELSE ? END",
+               """
+               GREATEST(?, ?, ?, ?, ?) <= COALESCE(? - make_interval(mins => ? + ?),
+                 CASE WHEN ? = ? THEN ? ELSE ? END)
+               """,
                d.dispatched_at,
                d.handed_over_at,
                d.machine_end_at,
                d.late_machine_at,
                d.claimed_at,
+               type(^now, :utc_datetime_usec),
+               d.machine_lifetime_minutes,
+               ^@net_minutes,
                r.step,
                ^prebuild,
                type(^prebuild_cutoff, :utc_datetime_usec),
