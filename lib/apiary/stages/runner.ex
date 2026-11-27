@@ -1050,58 +1050,72 @@ defmodule Apiary.Stages.Runner do
     end
   end
 
-  # session_paths/2 is the workflow names of the most sessions that one shared run of the
-  # stage can run, one list per loop, one name per session, in order. A failed output
-  # check starts another round of the last loop that conditions do not pass over, so on
-  # some work items an earlier loop restarts, and a later loop whose condition a session
-  # meets starts at round 1 and restarts in turn. Each list counts one loop as the loop
-  # that restarts: the entries before it once, an earlier loop's body once per round,
-  # then, once per round of that loop, its body and the longest count of the entries
-  # after it, taken as a stage of their own. The longest is the one whose sessions weigh
-  # the most by `weight`, a workflow's weight: the minutes of its session. A stage with
-  # no loop has one list, each entry once. Conditions are not read: an entry they may hold
-  # back still counts.
+  # heaviest/3 is the weight of the most sessions that one shared run of the stage can
+  # run, each session weighed by `weight`, a workflow's weight (the seconds of its
+  # session), and at most `cap`. A failed output check starts another round of the last
+  # loop that conditions do not pass over, so on some work items an earlier loop restarts,
+  # and a later loop whose condition a session meets starts at round 1 and restarts in
+  # turn. Each loop counts in turn as the loop that restarts: the entries before it once,
+  # an earlier loop's body once per round, then, once per round of that loop, its body and
+  # the heaviest count of the entries after it, taken as a stage of their own. The heaviest
+  # count of each such suffix is worked out once, from the end of the sequence, and every
+  # sum stops at `cap`, so the work grows with the square of the entries, not with the
+  # rounds. A stage with no loop counts each entry once. Conditions are not read: an entry
+  # they may hold back still counts.
   # shortcut: with `{input: T, changed: true}` two loops can restart each other with no
   # end, as each new version of T starts the later loop again; no count covers that, and
   # the cap ends such a run; replace with a bound of the runner's restarts if one is set
   @doc false
-  @spec session_paths(map, (String.t() -> number)) :: [[String.t()], ...]
-  def session_paths(stage, weight) do
-    paths(stage, Enum.with_index(sequence(stage)), weight)
-  end
+  @spec heaviest(map, (String.t() -> non_neg_integer), non_neg_integer) :: non_neg_integer
+  def heaviest(stage, weight, cap) do
+    entries = stage |> sequence() |> Enum.with_index()
 
-  # The counts of `entries`, `{entry, index}` in the sequence, one per loop among them as
-  # the loop that restarts (session_paths/2), or the entries once with no loop.
-  defp paths(stage, entries, weight) do
-    case for({%{"loop" => _loop}, index} <- entries, do: index) do
-      [] ->
-        [expanded(stage, entries)]
+    once =
+      Map.new(entries, fn {entry, index} -> {index, once(stage, entry, index, weight, cap)} end)
 
-      loops ->
-        for restart <- loops do
-          {before, [_restart | after_]} = Enum.split_while(entries, &(elem(&1, 1) != restart))
-          rest = Enum.max_by(paths(stage, after_, weight), &weighed(&1, weight))
-
-          expanded(stage, before) ++
-            repeat(names_of(body(stage, restart)) ++ rest, stage, restart)
-        end
-    end
-  end
-
-  defp weighed(names, weight), do: names |> Enum.map(weight) |> Enum.sum()
-
-  # The names of `entries`, `{entry, index}` in the sequence: a workflow once, a loop's body
-  # once per round.
-  defp expanded(stage, entries) do
-    Enum.flat_map(entries, fn
-      {%{"loop" => _loop}, index} -> repeat(names_of(body(stage, index)), stage, index)
-      {entry, _index} -> names_of([entry])
+    entries
+    |> Enum.reverse()
+    |> Enum.reduce(%{length(entries) => 0}, fn {_entry, index}, best ->
+      Map.put(best, index, best_from(stage, entries, index, once, best, weight, cap))
     end)
+    |> Map.fetch!(0)
   end
 
-  # `names` once per round of the loop at `index`.
-  defp repeat(names, stage, index),
-    do: names |> List.duplicate(rounds(stage, index)) |> List.flatten()
+  # The heaviest count of the entries from `from` on, taken as a stage of their own: each
+  # entry once, or a loop at or after `from` as the loop that restarts, the heaviest of
+  # these, from `best`, the counts of the suffixes after `from`.
+  defp best_from(stage, entries, from, once, best, weight, cap) do
+    suffix = Enum.drop(entries, from)
+
+    {plain, restarts} =
+      Enum.reduce(suffix, {0, []}, fn
+        {%{"loop" => _loop}, index}, {before, restarts} ->
+          body = body_weight(stage, index, weight, cap)
+          round = capped(body + Map.fetch!(best, index + 1), cap)
+          restart = capped(before + capped(rounds(stage, index) * round, cap), cap)
+          {capped(before + Map.fetch!(once, index), cap), [restart | restarts]}
+
+        {_entry, index}, {before, restarts} ->
+          {capped(before + Map.fetch!(once, index), cap), restarts}
+      end)
+
+    Enum.max([plain | restarts])
+  end
+
+  # The weight of an entry run once: a workflow's, or a loop's body once per round.
+  defp once(stage, %{"loop" => _loop}, index, weight, cap),
+    do: capped(rounds(stage, index) * body_weight(stage, index, weight, cap), cap)
+
+  defp once(_stage, entry, _index, weight, cap),
+    do: entry |> List.wrap() |> names_of() |> weigh(weight, cap)
+
+  defp body_weight(stage, index, weight, cap),
+    do: stage |> body(index) |> names_of() |> weigh(weight, cap)
+
+  defp weigh(names, weight, cap),
+    do: Enum.reduce(names, 0, &capped(&2 + weight.(&1), cap))
+
+  defp capped(sum, cap), do: min(sum, cap)
 
   defp names_of(entries), do: for(%{"workflow" => name} <- entries, do: name)
 

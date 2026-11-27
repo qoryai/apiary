@@ -1,7 +1,7 @@
 defmodule Apiary.Stages.RunnerTest do
   use ExUnit.Case, async: true
 
-  alias Apiary.Dispatches.RunEnd
+  alias Apiary.Dispatches.{DispatchRun, RunEnd}
   alias Apiary.Stages.Runner
 
   @person %{"kind" => "person", "approvers" => "members"}
@@ -49,13 +49,23 @@ defmodule Apiary.Stages.RunnerTest do
 
   defp answer(text, question), do: %{"text" => text, "action" => "answer", "question" => question}
 
-  describe "the session paths of one pass" do
-    # Each session weighs the same: the longest path has the most sessions.
-    defp paths(stage), do: Runner.session_paths(stage, fn _workflow -> 1 end)
+  describe "the most sessions of one pass" do
+    @cap DispatchRun.max_machine_lifetime_minutes() * 60
+
+    # Each session weighs 1: the heaviest count is the count of the most sessions.
+    defp count(stage), do: Runner.heaviest(stage, fn _workflow -> 1 end, @cap)
+
+    # Each session weighs the seconds of a session of `minutes`; the machine's lifetime.
+    defp lifetime(stage, minutes) do
+      seconds = Runner.heaviest(stage, fn _workflow -> RunEnd.session_seconds(minutes) end, @cap)
+      RunEnd.lifetime_minutes("workflow", seconds)
+    end
 
     test "a stage with no loop runs each workflow once" do
-      assert paths(stage([wf("plan"), wf("implement")])) == [~w(plan implement)]
-      assert paths(stage([])) == [[]]
+      assert count(stage([wf("plan"), wf("implement")])) == 2
+      assert count(stage([])) == 0
+      # 25 + 2 × (30 + 15 + 90).
+      assert lifetime(stage([wf("plan"), wf("implement")]), 15) == 295
     end
 
     test "the last loop runs its body and the entries after it once per round" do
@@ -66,17 +76,17 @@ defmodule Apiary.Stages.RunnerTest do
           loop([wf("implement-changes"), wf("review-changes")])
         ])
 
-      assert paths(build) == [
-               ["plan-the-build"] ++
-                 List.flatten(List.duplicate(~w(implement-changes review-changes), 3))
-             ]
+      assert count(build) == 7
+      # 25 + 7 × (30 + 30 + 90).
+      assert lifetime(build, 30) == 1075
 
-      # The entries after the last loop run again with each round a failed check starts.
-      assert paths(stage([loop([wf("a")], 2), wf("b")])) == [~w(a b a b)]
-      assert paths(explore()) == [List.duplicate("explore-a-ticket", 3)]
+      # The entries after the last loop run again with each round a failed check starts:
+      # a b a b.
+      assert count(stage([loop([wf("a")], 2), wf("b")])) == 4
+      assert count(explore()) == 3
     end
 
-    test "an earlier loop that restarts runs the longest path of the entries after it in each round; a loop with no rounds runs 3" do
+    test "an earlier loop that restarts runs the heaviest count of the entries after it in each round; a loop with no rounds runs 3" do
       sequence = [
         wf("plan"),
         loop([wf("a"), wf("b")], 2),
@@ -85,18 +95,16 @@ defmodule Apiary.Stages.RunnerTest do
       ]
 
       # The first loop as the one that restarts runs the second loop's three rounds, each
-      # with d, in each of its own two; the second loop as the one that restarts runs after
-      # the first's two rounds.
-      assert paths(stage(sequence)) == [
-               ~w(plan a b c d c d c d a b c d c d c d),
-               ~w(plan a b a b c d c d c d)
-             ]
+      # with d, in each of its own two: plan, then 2 × (a b, then 3 × c d), 17. The second
+      # loop as the one that restarts runs after the first's two rounds: plan a b a b,
+      # then 3 × c d, 11.
+      assert count(stage(sequence)) == 17
     end
 
     test "an earlier loop restarts with every entry after it when a condition passes over the last" do
       # On a work item that is not on the track `t`, B is passed over, and a failed check
       # restarts A: a c d three times, 9 sessions. A as the loop that restarts counts B in
-      # each round: 12.
+      # each round: 3 × (a b c d), 12.
       sequence = [
         loop([wf("a")], 3),
         Map.put(loop([wf("b")], 1), "when", %{"track" => "t"}),
@@ -104,7 +112,7 @@ defmodule Apiary.Stages.RunnerTest do
         wf("d")
       ]
 
-      assert paths(stage(sequence)) == [~w(a b c d a b c d a b c d), ~w(a a a b c d)]
+      assert count(stage(sequence)) == 12
     end
 
     test "a later loop whose condition a session meets restarts in a round of the earlier one" do
@@ -119,13 +127,35 @@ defmodule Apiary.Stages.RunnerTest do
           Map.put(loop([wf("m")], 3), "when", %{"input" => "design"})
         ] ++ after_m
 
-      [longest, _m_restarts] = paths(stage(sequence))
       # L's two rounds, each a then M's three rounds with x..v: 2 × (1 + 3 × 6).
-      assert length(longest) == 38
+      assert count(stage(sequence)) == 38
 
       # Sessions of 30 minutes: the lifetime covers the 25 sessions the run can reach.
-      assert RunEnd.lifetime_minutes("workflow", List.duplicate(30, length(longest))) >=
-               25 + 25 * (30 + 30 + 90)
+      assert lifetime(stage(sequence), 30) >= 25 + 25 * (30 + 30 + 90)
+    end
+
+    test "each session weighs its workflow's weight, and the count stops at the cap" do
+      sequence = [loop([wf("long")], 2), loop([wf("short")], 3)]
+
+      weight = fn
+        "long" -> 1000
+        "short" -> 1
+      end
+
+      # long restarting: 2 × (long, 3 × short), 2006; short restarting after long's two
+      # rounds: 2000 + 3, 2003.
+      assert Runner.heaviest(stage(sequence), weight, @cap) == 2006
+      assert Runner.heaviest(stage(sequence), weight, 2001) == 2001
+    end
+
+    test "a stage of 20 loops of 10 rounds stops at the contract's most lifetime at once" do
+      sequence = for n <- 1..20, do: loop(Enum.map(1..10, &wf("w#{n}-#{&1}")), 10)
+
+      {micros, minutes} = :timer.tc(fn -> lifetime(stage(sequence), 1440) end)
+
+      assert minutes == DispatchRun.max_machine_lifetime_minutes()
+      assert count(stage(sequence)) == @cap
+      assert micros < 1_000_000
     end
   end
 

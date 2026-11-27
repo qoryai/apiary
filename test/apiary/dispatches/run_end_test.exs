@@ -103,6 +103,9 @@ defmodule Apiary.Dispatches.RunEndTest do
   end
 
   describe "backstop_seconds/2 and lifetime_minutes/2" do
+    # The seconds of sessions of `limits`: each session's setup, limit and margin.
+    defp seconds(limits), do: limits |> Enum.map(&RunEnd.session_seconds/1) |> Enum.sum()
+
     test "a backstop is the first session's setup, limit and margin; fixed with no limit" do
       # 30 minutes of setup, the limit, and 90 minutes of margin.
       assert Dispatches.backstop_seconds("workflow", 15) == (30 + 15 + 90) * 60
@@ -117,23 +120,23 @@ defmodule Apiary.Dispatches.RunEndTest do
 
     test "a lifetime is the attach window and each session's setup, limit and margin" do
       # One session of 15 minutes: 25 + 30 + 15 + 90.
-      assert RunEnd.lifetime_minutes("workflow", [15]) == 160
+      assert RunEnd.lifetime_minutes("workflow", seconds([15])) == 160
       # Seven sessions of 390 minutes in all, 30 then three rounds of 90 and 30:
       # 25 + 7 × 30 + 390 + 7 × 90.
-      assert RunEnd.lifetime_minutes("workflow", [30, 90, 30, 90, 30, 90, 30]) == 1255
+      assert RunEnd.lifetime_minutes("workflow", seconds([30, 90, 30, 90, 30, 90, 30])) == 1255
     end
 
     test "a lifetime is at most the contract's most; a prebuild's and a run's with no limit are fixed" do
       # 25 + 30 + 1440 + 90, and 25 + 2 × (30 + 1440 + 90).
-      assert RunEnd.lifetime_minutes("workflow", [1440]) == 1585
-      assert RunEnd.lifetime_minutes("workflow", [1440, 1440]) == 3145
+      assert RunEnd.lifetime_minutes("workflow", seconds([1440])) == 1585
+      assert RunEnd.lifetime_minutes("workflow", seconds([1440, 1440])) == 3145
       # 25 + 6 × 1560 is 9385 and 25 + 7 × 1560 is 10,945: 7 days, 10,080, at most.
-      assert RunEnd.lifetime_minutes("workflow", List.duplicate(1440, 6)) == 9385
-      assert RunEnd.lifetime_minutes("workflow", List.duplicate(1440, 7)) == 10_080
+      assert RunEnd.lifetime_minutes("workflow", seconds(List.duplicate(1440, 6))) == 9385
+      assert RunEnd.lifetime_minutes("workflow", seconds(List.duplicate(1440, 7))) == 10_080
       # The attach window and the fixed backstop: 25 + 1455, and 25 + 75.
       assert RunEnd.lifetime_minutes("workflow", nil) == 1480
       assert RunEnd.lifetime_minutes("prebuild", nil) == 100
-      assert RunEnd.lifetime_minutes("prebuild", [1440]) == 100
+      assert RunEnd.lifetime_minutes("prebuild", seconds([1440])) == 100
     end
 
     test "a run attached at the end of the attach window, 25 minutes after its claim, keeps its whole backstop" do
@@ -147,14 +150,14 @@ defmodule Apiary.Dispatches.RunEndTest do
             {"workflow", nil, nil}
           ] do
         backstop_at = DateTime.add(attached_at, Dispatches.backstop_seconds(step, first), :second)
-        lifetime = RunEnd.lifetime_minutes(step, limits)
+        lifetime = RunEnd.lifetime_minutes(step, limits && seconds(limits))
         assert RunEnd.capped(backstop_at, claimed_at, lifetime, step) == backstop_at, step
       end
 
       # One second later, the end of the lifetime cuts the backstop of a run of one session.
       late = DateTime.add(attached_at, 1, :second)
       backstop_at = DateTime.add(late, Dispatches.backstop_seconds("workflow", 15), :second)
-      lifetime = RunEnd.lifetime_minutes("workflow", [15])
+      lifetime = RunEnd.lifetime_minutes("workflow", seconds([15]))
       assert RunEnd.capped(backstop_at, claimed_at, lifetime, "workflow") != backstop_at
     end
 

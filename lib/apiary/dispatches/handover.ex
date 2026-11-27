@@ -495,16 +495,16 @@ defmodule Apiary.Dispatches.Handover do
   # The lifetime of the claim's machine, from the time limits the claim read for the run
   # (`RunEnd.lifetime_minutes/2`), kept on its dispatch, which the claim answer gives.
   defp keep_lifetime(%{run: %DispatchRun{step: step} = run, dispatch: %Dispatch{id: id}} = locked) do
-    limits =
+    seconds =
       case locked.held do
         %{time_limit: limit, time_limits: limits} ->
-          Apiary.Stages.session_limits(run, limit, limits)
+          Apiary.Stages.session_seconds(run, limit, limits)
 
         nil ->
           nil
       end
 
-    lifetime = RunEnd.lifetime_minutes(step, limits)
+    lifetime = RunEnd.lifetime_minutes(step, seconds)
 
     {1, _rows} =
       Repo.update_all(from(d in Dispatch, where: d.id == ^id),

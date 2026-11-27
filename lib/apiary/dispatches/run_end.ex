@@ -244,28 +244,23 @@ defmodule Apiary.Dispatches.RunEnd do
     do: (@setup_minutes + minutes + @margin_minutes) * 60
 
   # lifetime_minutes/2 is the minutes the machine of a claim of a run of the queue of
-  # `step` may live, the claim answer's `max_lifetime_minutes`, for `limits`, the time
-  # limits of the most sessions the run can run (`Apiary.Stages.session_limits/3`): the
-  # attach window once, then each session's setup, limit and margin, at most the
-  # contract's most (`Apiary.Dispatches.DispatchRun.max_machine_lifetime_minutes/0`), and
-  # never below the contract's least, 15, as one session takes more than 120. A
-  # prebuild, and a run with no limits (nil), has the attach window and the fixed
-  # backstop of its step: 100 and 1480 minutes. So the run's backstop, set at its attach
-  # and moved at each next session, comes before its machine powers off, however late in
-  # the attach window the run attaches.
+  # `step` may live, the claim answer's `max_lifetime_minutes`, for `seconds`, the seconds
+  # of the most sessions the run can run, each session's setup, limit and margin
+  # (`Apiary.Stages.session_seconds/3`): the attach window once, then those sessions, at
+  # most the contract's most
+  # (`Apiary.Dispatches.DispatchRun.max_machine_lifetime_minutes/0`), and never below the
+  # contract's least, 15, as one session takes more than 120. A prebuild, and a run with
+  # no limits (nil), has the attach window and the fixed backstop of its step: 100 and
+  # 1480 minutes. So the run's backstop, set at its attach and moved at each next session,
+  # comes before its machine powers off, however late in the attach window the run
+  # attaches.
   @doc false
-  @spec lifetime_minutes(String.t(), [pos_integer] | nil) :: pos_integer
-  def lifetime_minutes(@prebuild, _limits),
+  @spec lifetime_minutes(String.t(), pos_integer | nil) :: pos_integer
+  def lifetime_minutes(@prebuild, _seconds),
     do: @attach_minutes + div(backstop_seconds(@prebuild, nil), 60)
 
-  def lifetime_minutes(step, [_ | _] = limits) when is_binary(step) do
-    minutes =
-      Enum.reduce(limits, @attach_minutes, fn limit, sum ->
-        sum + @setup_minutes + limit + @margin_minutes
-      end)
-
-    min(minutes, DispatchRun.max_machine_lifetime_minutes())
-  end
+  def lifetime_minutes(step, seconds) when is_binary(step) and is_integer(seconds),
+    do: min(@attach_minutes + div(seconds, 60), DispatchRun.max_machine_lifetime_minutes())
 
   def lifetime_minutes(step, nil) when is_binary(step),
     do: @attach_minutes + div(backstop_seconds(step, nil), 60)

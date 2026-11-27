@@ -26,7 +26,7 @@ defmodule Apiary.Runs.TranscriptLimitsTest do
     pool = pool_fixture(scope)
     %{access_key: key} = enrolled_key_fixture(scope, pool)
     %{run: run} = handed_over_fixture(scope, key)
-    %{run: run}
+    %{run: run, scope: scope}
   end
 
   defp limits!(limits) do
@@ -150,6 +150,17 @@ defmodule Apiary.Runs.TranscriptLimitsTest do
 
     assert {:ok, %{size: 100_001, max_sequence: 100_002}} =
              Transcript.check(ctx.run.id, @path)
+  end
+
+  test "a dispatch with no lifetime has a run's with no time limit; a run no queue handed over keeps 100,000",
+       ctx do
+    # A dispatch claimed before dispatches kept a lifetime: 1,480 minutes.
+    lifetime!(ctx.run, nil)
+    assert Transcript.max_chunks(ctx.run.id) == 90_861
+
+    # A run no queue handed over has no machine lifetime: the bound before machines kept
+    # one.
+    assert Transcript.max_chunks(run_fixture(ctx.scope).id) == 100_000
   end
 
   test "a transcript of as many chunks as the run's bound is refused, one fewer passes", ctx do

@@ -528,42 +528,36 @@ defmodule Apiary.Stages do
     end
   end
 
-  # session_limits/3 is the time limits, in minutes, of the most sessions that `run`, a
-  # run of the queue, can run, one per session, from the limits its claim reads: for a run
-  # of a stage with `shared_run: true`, the limits of the workflows of the stage's session
-  # path (`Apiary.Stages.Runner.session_paths/2`, each session weighed by its setup, limit
-  # and margin) whose sessions take the longest
-  # (`Apiary.Dispatches.RunEnd.lifetime_minutes/2`), each limit as `claim_sessions!/3`
-  # keeps it from `limits`; for any other run, `limit`, the limit of its one session. Nil
-  # when a limit is missing, as with `factory` off.
+  # session_seconds/3 is the seconds of the most sessions that `run`, a run of the queue,
+  # can run, each session's setup, limit and margin
+  # (`Apiary.Dispatches.RunEnd.session_seconds/1`), from the limits its claim reads: for a
+  # run of a stage with `shared_run: true`, the sessions of the stage's heaviest count
+  # (`Apiary.Stages.Runner.heaviest/3`), each limit as `claim_sessions!/3` keeps it from
+  # `limits`; for any other run, the one session of `limit`. At most the seconds of the
+  # contract's most lifetime
+  # (`Apiary.Dispatches.DispatchRun.max_machine_lifetime_minutes/0`). Nil when a limit is
+  # missing, as with `factory` off, or the stage has no workflow.
   @doc false
-  @spec session_limits(DispatchRun.t(), pos_integer | nil, %{
+  @spec session_seconds(DispatchRun.t(), pos_integer | nil, %{
           optional(String.t()) => pos_integer
-        }) :: [pos_integer] | nil
-  def session_limits(%DispatchRun{} = run, limit, limits) when is_map(limits) do
-    paths =
-      case shared_stage(run) do
-        nil ->
-          [[limit]]
+        }) :: pos_integer | nil
+  def session_seconds(%DispatchRun{} = run, limit, limits) when is_map(limits) do
+    cap = DispatchRun.max_machine_lifetime_minutes() * 60
 
-        stage ->
-          minutes = Map.new(Runner.workflows(stage), &{&1, session_minutes(run, limits, &1)})
-          weight = &weight(Map.fetch!(minutes, &1))
+    case shared_stage(run) do
+      nil ->
+        if is_integer(limit), do: min(weight(limit), cap)
 
-          for path <- Runner.session_paths(stage, weight),
-              do: Enum.map(path, &Map.fetch!(minutes, &1))
-      end
+      stage ->
+        minutes = Map.new(Runner.workflows(stage), &{&1, session_minutes(run, limits, &1)})
 
-    if Enum.all?(paths, &(&1 != [] and Enum.all?(&1, fn minutes -> is_integer(minutes) end))),
-      do: Enum.max_by(paths, &Apiary.Dispatches.RunEnd.lifetime_minutes(run.step, &1))
+        if minutes != %{} and Enum.all?(Map.values(minutes), &is_integer/1),
+          do: Runner.heaviest(stage, &weight(Map.fetch!(minutes, &1)), cap)
+    end
   end
 
-  # The weight of a session whose limit is `minutes`: the seconds it may take. A missing
-  # limit weighs nothing, as session_limits/3 then has none.
-  defp weight(minutes) when is_integer(minutes),
-    do: Apiary.Dispatches.RunEnd.session_seconds(minutes)
-
-  defp weight(_minutes), do: 0
+  # The weight of a session whose limit is `minutes`: the seconds it may take.
+  defp weight(minutes), do: Apiary.Dispatches.RunEnd.session_seconds(minutes)
 
   # The minutes of a session of `workflow` of `run`: its limit in `limits`, as the claim
   # read them, else read now.
