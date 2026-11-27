@@ -35,7 +35,7 @@
 # priv/contract/integration/ has no `.contract-ref`: this file covers it. The run
 # contract is copied from this commit too: see test/fixtures/contract/run/v1/
 # .contract-ref. The explore, diagnostics and provisioner contracts and the run
-# contract's documents.schema.json in lib/apiary/stacks/ are copied from earlier
+# contract's documents.schema.json in lib/apiary/stacks/ are copied from other
 # integrations commits: see `.contract-ref` in test/fixtures/contract/<contract>/v1/
 # and lib/apiary/stacks/.
 #

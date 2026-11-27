@@ -1,6 +1,7 @@
 defmodule Apiary.Stages.RunnerTest do
   use ExUnit.Case, async: true
 
+  alias Apiary.Dispatches.RunEnd
   alias Apiary.Stages.Runner
 
   @person %{"kind" => "person", "approvers" => "members"}
@@ -48,10 +49,13 @@ defmodule Apiary.Stages.RunnerTest do
 
   defp answer(text, question), do: %{"text" => text, "action" => "answer", "question" => question}
 
-  describe "the most sessions of one pass" do
+  describe "the session paths of one pass" do
+    # Each session weighs the same: the longest path has the most sessions.
+    defp paths(stage), do: Runner.session_paths(stage, fn _workflow -> 1 end)
+
     test "a stage with no loop runs each workflow once" do
-      assert Runner.most_sessions(stage([wf("plan"), wf("implement")])) == ~w(plan implement)
-      assert Runner.most_sessions(stage([])) == []
+      assert paths(stage([wf("plan"), wf("implement")])) == [~w(plan implement)]
+      assert paths(stage([])) == [[]]
     end
 
     test "the last loop runs its body and the entries after it once per round" do
@@ -62,16 +66,17 @@ defmodule Apiary.Stages.RunnerTest do
           loop([wf("implement-changes"), wf("review-changes")])
         ])
 
-      assert Runner.most_sessions(build) ==
+      assert paths(build) == [
                ["plan-the-build"] ++
                  List.flatten(List.duplicate(~w(implement-changes review-changes), 3))
+             ]
 
       # The entries after the last loop run again with each round a failed check starts.
-      assert Runner.most_sessions(stage([loop([wf("a")], 2), wf("b")])) == ~w(a b a b)
-      assert Runner.most_sessions(explore()) == List.duplicate("explore-a-ticket", 3)
+      assert paths(stage([loop([wf("a")], 2), wf("b")])) == [~w(a b a b)]
+      assert paths(explore()) == [List.duplicate("explore-a-ticket", 3)]
     end
 
-    test "an earlier loop runs its body once per round; a loop with no rounds runs 3" do
+    test "an earlier loop that restarts runs the longest path of the entries after it in each round; a loop with no rounds runs 3" do
       sequence = [
         wf("plan"),
         loop([wf("a"), wf("b")], 2),
@@ -79,20 +84,19 @@ defmodule Apiary.Stages.RunnerTest do
         wf("d")
       ]
 
-      # The first loop as the one that restarts runs the second loop's three rounds in
-      # each of its own two; the second loop as the one that restarts runs after the
-      # first's two rounds.
-      assert Runner.session_paths(stage(sequence)) == [
-               ~w(plan a b c c c d a b c c c d),
+      # The first loop as the one that restarts runs the second loop's three rounds, each
+      # with d, in each of its own two; the second loop as the one that restarts runs after
+      # the first's two rounds.
+      assert paths(stage(sequence)) == [
+               ~w(plan a b c d c d c d a b c d c d c d),
                ~w(plan a b a b c d c d c d)
              ]
-
-      assert Runner.most_sessions(stage(sequence)) == ~w(plan a b c c c d a b c c c d)
     end
 
     test "an earlier loop restarts with every entry after it when a condition passes over the last" do
       # On a work item that is not on the track `t`, B is passed over, and a failed check
-      # restarts A: a c d three times, 9 sessions, more than A's rounds and B's once.
+      # restarts A: a c d three times, 9 sessions. A as the loop that restarts counts B in
+      # each round: 12.
       sequence = [
         loop([wf("a")], 3),
         Map.put(loop([wf("b")], 1), "when", %{"track" => "t"}),
@@ -100,8 +104,28 @@ defmodule Apiary.Stages.RunnerTest do
         wf("d")
       ]
 
-      # A as the loop that restarts counts B in each round: 12 sessions, at least those 9.
-      assert Runner.most_sessions(stage(sequence)) == ~w(a b c d a b c d a b c d)
+      assert paths(stage(sequence)) == [~w(a b c d a b c d a b c d), ~w(a a a b c d)]
+    end
+
+    test "a later loop whose condition a session meets restarts in a round of the earlier one" do
+      # L restarts once with M passed over (a, x..v); in L's round 2, a stores `design`, M
+      # starts at round 1, and a failed check restarts M twice: (m, x..v) three times, 25
+      # sessions in all.
+      after_m = Enum.map(~w(x y z w v), &wf/1)
+
+      sequence =
+        [
+          loop([wf("a")], 2),
+          Map.put(loop([wf("m")], 3), "when", %{"input" => "design"})
+        ] ++ after_m
+
+      [longest, _m_restarts] = paths(stage(sequence))
+      # L's two rounds, each a then M's three rounds with x..v: 2 × (1 + 3 × 6).
+      assert length(longest) == 38
+
+      # Sessions of 30 minutes: the lifetime covers the 25 sessions the run can reach.
+      assert RunEnd.lifetime_minutes("workflow", List.duplicate(30, length(longest))) >=
+               25 + 25 * (30 + 30 + 90)
     end
   end
 

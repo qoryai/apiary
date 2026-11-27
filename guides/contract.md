@@ -580,7 +580,7 @@ the run endpoint's.
 
 | Status | When | Body |
 |---|---|---|
-| `404` | the run is not attached to the gateway that sends the request, or the key may not post its events (`run.post_events`), or it ended, a lost run once it is lost for good, or it has no `resume`; the paused run is no longer the one it continues; or the transcript is gone, has a gap in its offsets, is over 64 MiB, or has 100,000 chunks or more | `{"error":"not_found"}` |
+| `404` | the run is not attached to the gateway that sends the request, or the key may not post its events (`run.post_events`), or it ended, a lost run once it is lost for good, or it has no `resume`; the paused run is no longer the one it continues; or the transcript is gone, has a gap in its offsets, is over 64 MiB, or has as many chunks as 2,048 plus one per second of the paused run's machine lifetime, one per 120 minutes of it, and one, or more | `{"error":"not_found"}` |
 | `503` | the transcript could not be read | `{"error":"unavailable"}` |
 | `200` | found | the transcript, `application/x-ndjson` |
 

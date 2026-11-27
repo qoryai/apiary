@@ -1050,38 +1050,45 @@ defmodule Apiary.Stages.Runner do
     end
   end
 
-  # session_paths/1 is the workflow names of the most sessions that one shared run of the
+  # session_paths/2 is the workflow names of the most sessions that one shared run of the
   # stage can run, one list per loop, one name per session, in order. A failed output
   # check starts another round of the last loop that conditions do not pass over, so on
-  # some work items an earlier loop restarts: each list counts one loop as the loop that
-  # restarts. It has the entries before that loop once, an earlier loop's body once per
-  # round, then, once per round of that loop, its body and every entry after it, a later
-  # loop's body once per round, as facts may change between rounds. A stage with no loop
-  # has one list, each entry once. Conditions are not read: an entry they may hold back
-  # still counts.
+  # some work items an earlier loop restarts, and a later loop whose condition a session
+  # meets starts at round 1 and restarts in turn. Each list counts one loop as the loop
+  # that restarts: the entries before it once, an earlier loop's body once per round,
+  # then, once per round of that loop, its body and the longest count of the entries
+  # after it, taken as a stage of their own. The longest is the one whose sessions weigh
+  # the most by `weight`, a workflow's weight: the minutes of its session. A stage with
+  # no loop has one list, each entry once. Conditions are not read: an entry they may hold
+  # back still counts.
+  # shortcut: with `{input: T, changed: true}` two loops can restart each other with no
+  # end, as each new version of T starts the later loop again; no count covers that, and
+  # the cap ends such a run; replace with a bound of the runner's restarts if one is set
   @doc false
-  @spec session_paths(map) :: [[String.t()], ...]
-  def session_paths(stage) do
-    entries = Enum.with_index(sequence(stage))
+  @spec session_paths(map, (String.t() -> number)) :: [[String.t()], ...]
+  def session_paths(stage, weight) do
+    paths(stage, Enum.with_index(sequence(stage)), weight)
+  end
 
+  # The counts of `entries`, `{entry, index}` in the sequence, one per loop among them as
+  # the loop that restarts (session_paths/2), or the entries once with no loop.
+  defp paths(stage, entries, weight) do
     case for({%{"loop" => _loop}, index} <- entries, do: index) do
       [] ->
         [expanded(stage, entries)]
 
       loops ->
         for restart <- loops do
-          {before, [_restart | after_]} = Enum.split(entries, restart)
+          {before, [_restart | after_]} = Enum.split_while(entries, &(elem(&1, 1) != restart))
+          rest = Enum.max_by(paths(stage, after_, weight), &weighed(&1, weight))
 
           expanded(stage, before) ++
-            repeat(names_of(body(stage, restart)) ++ expanded(stage, after_), stage, restart)
+            repeat(names_of(body(stage, restart)) ++ rest, stage, restart)
         end
     end
   end
 
-  # most_sessions/1 is the longest of `session_paths/1`.
-  @doc false
-  @spec most_sessions(map) :: [String.t()]
-  def most_sessions(stage), do: stage |> session_paths() |> Enum.max_by(&length/1)
+  defp weighed(names, weight), do: names |> Enum.map(weight) |> Enum.sum()
 
   # The names of `entries`, `{entry, index}` in the sequence: a workflow once, a loop's body
   # once per round.

@@ -839,7 +839,7 @@ defmodule Apiary.Runs.Projector do
   #   * none once the stored chunks pass `Transcript.max_file/0` bytes: the chunk that
   #     passes it is kept, so the check of the file (`Apiary.Runs.Transcript.check/2`)
   #     refuses it;
-  #   * none once `Transcript.max_chunks/0` are stored, as many as the check refuses;
+  #   * none once `Transcript.max_chunks/1` are stored, as many as the check refuses;
   #   * none once the stored chunks up to the run's projected sequence, before which every
   #     event is in, have a gap in `offset`: no chunk that arrives later can fill it. A
   #     chunk above that sequence is kept, as an event that arrives late may fill a gap
@@ -858,12 +858,14 @@ defmodule Apiary.Runs.Projector do
     chunks = new_chunks(run, chunks)
     paths = chunks |> Enum.map(& &1.path) |> Enum.uniq()
     checked = checked_paths(run, paths)
+    max_chunks = Transcript.max_chunks(run.id)
 
     {rows, states} =
       chunks
       |> Enum.group_by(& &1.path)
       |> Enum.map(fn {path, path_chunks} ->
-        kept(run, path_chunks, Map.get_lazy(checked, path, fn -> new_path(run, path) end))
+        state = Map.get_lazy(checked, path, fn -> new_path(run, path) end)
+        kept(run, path_chunks, state, max_chunks)
       end)
       |> Enum.unzip()
 
@@ -962,9 +964,9 @@ defmodule Apiary.Runs.Projector do
   end
 
   # The chunks of one path that are kept, in sequence order, given what is stored of it,
-  # and the path's row with them counted.
-  defp kept(run, chunks, state) do
-    case keep(Enum.sort_by(chunks, & &1.sequence), state, []) do
+  # and the path's row with them counted, at most `max_chunks` of the path in all.
+  defp kept(run, chunks, state, max_chunks) do
+    case keep(Enum.sort_by(chunks, & &1.sequence), state, max_chunks, []) do
       {kept, state, nil} ->
         {kept, state}
 
@@ -977,9 +979,9 @@ defmodule Apiary.Runs.Projector do
     end
   end
 
-  defp keep([], state, acc), do: {Enum.reverse(acc), state, nil}
+  defp keep([], state, _max_chunks, acc), do: {Enum.reverse(acc), state, nil}
 
-  defp keep([chunk | rest] = chunks, state, acc) do
+  defp keep([chunk | rest] = chunks, state, max_chunks, acc) do
     cond do
       state.gap ->
         {Enum.reverse(acc), state, {:gap, length(chunks)}}
@@ -987,12 +989,12 @@ defmodule Apiary.Runs.Projector do
       state.bytes > Transcript.max_file() ->
         {Enum.reverse(acc), state, {:too_large, length(chunks)}}
 
-      state.chunks >= Transcript.max_chunks() ->
+      state.chunks >= max_chunks ->
         {Enum.reverse(acc), state, {:too_many, length(chunks)}}
 
       true ->
         state = %{state | chunks: state.chunks + 1, bytes: state.bytes + byte_size(chunk.bytes)}
-        keep(rest, state, [chunk | acc])
+        keep(rest, state, max_chunks, [chunk | acc])
     end
   end
 

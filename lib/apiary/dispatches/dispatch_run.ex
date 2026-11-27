@@ -287,8 +287,11 @@ defmodule Apiary.Dispatches.DispatchRun do
   # run of the queue of `step` live, for a dispatch claimed before dispatches kept their
   # lifetime (`dispatches.machine_lifetime_minutes`): 90 for a prebuild and 1470 for any
   # other step, read from the step of its run of the queue, which never changes
-  # (`Apiary.Dispatches.Slots`, `Apiary.Dispatches.RunEnd.capped/4`). A claim now gives
-  # the lifetime of `Apiary.Dispatches.RunEnd.lifetime_minutes/2`.
+  # (`Apiary.Dispatches.Slots`, `Apiary.Dispatches.RunEnd.capped/4`). A dispatch whose
+  # claim ended its run before it registered it has none either: the claim inserts the
+  # dispatch first, and only a registration keeps a lifetime
+  # (`Apiary.Dispatches.Handover.end_claimed/3`). A claim that registers its run gives the
+  # lifetime of `Apiary.Dispatches.RunEnd.lifetime_minutes/2`.
   @doc false
   @spec machine_lifetime_minutes(String.t()) :: pos_integer
   def machine_lifetime_minutes(@prebuild), do: 90

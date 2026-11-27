@@ -355,10 +355,11 @@ claim reads: the attach window of 25 minutes (the run code's 15 minutes from the
 then the run key's 600 seconds from the redemption), then for each session 30 minutes of
 setup, its time limit and a margin of 90 minutes, over the most sessions the run's stage
 can run, at most the most the contract allows. A failed output check starts another round
-of the last loop that conditions do not pass over, so the count takes each loop in turn as
-the loop that restarts: the entries before it once, an earlier loop's body once per round,
-then, once per round of that loop, its body and every entry after it, a later loop's body
-once per round. The count whose sessions take the longest is the run's. A run of one
+of the last loop that conditions do not pass over, and a later loop whose condition a
+session meets starts at round 1, so the count takes each loop in turn as the loop that
+restarts: the entries before it once, an earlier loop's body once per round, then, once per
+round of that loop, its body and the longest count of the entries after it, counted the same
+way. The count whose sessions take the longest is the run's. A run of one
 Explore session of 15 minutes has 25 + 30 + 15 + 90 = 160 minutes. A prebuild has 100
 minutes, and a run with no time limit 1480: the attach window and the backstop the attach
 sets, so a run that attaches at the end of the window keeps its whole backstop. The
@@ -1245,7 +1246,8 @@ Each of these is `404 {"error":"not_found"}`: a run the run API would not find, 
 that ended, a lost run once it is lost for good, a run with no `resume`, a paused run
 that is no longer the one the run continues (of the same organisation, workspace, work
 item and stage, registered, and ended with `model_key_limit`), and a transcript that is gone, has a gap in its offsets,
-is over 64 MiB, or has 100,000 chunks or more. Else the answer is `200`,
+is over 64 MiB, or has as many chunks as the paused run's chunk bound or more (The log
+and the terminal, below). Else the answer is `200`,
 `application/x-ndjson`, the paused run's
 chunks of the path in the run's `resume`, in sequence order, sent in chunks and signed
 over their SHA-256. An exception before the answer starts is
@@ -1394,8 +1396,11 @@ whitespace, is refused and not stored, as a continuation's machine writes the fi
 that path; the projection logs one line per pass with their count. A run's transcript of
 a path is its chunks of that path in sequence order, and it can be restored only when
 they start at offset 0, each starts where the one before it ends, they are at most 64 MiB
-together, and they are fewer than 100,000. The projection keeps no more chunks of a path
-once the stored ones pass 64 MiB, once 100,000 are stored, or once the chunks up to the
+together, and they are fewer than the run's chunk bound: 2,048, the chunks of a full
+file, plus one per second of the machine lifetime its dispatch keeps, one per 120 minutes
+of it, and one, so 90,861 for a lifetime of 1,480 minutes (`Apiary.Runs.Transcript`). A
+run its claim did not register has the bound of 1,480 minutes. The projection keeps no
+more chunks of a path once the stored ones pass 64 MiB, once the bound is stored, or once the chunks up to the
 run's projected sequence have a gap in `offset`, and logs the chunks it left out, one
 line per pass and path. It checks each stored chunk for a gap once, when the projected
 sequence passes it, against a row per run and path (`transcript_paths`,
