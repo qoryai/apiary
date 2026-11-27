@@ -2489,6 +2489,15 @@ defmodule ApiaryWeb.WorkspaceSetupLive.FlowTest do
       words = &refusal_words(&1, source, "main", "Acme")
       harness = "Correct the harness in acme/harness: "
 
+      # A linked source in another letter case than the forge's.
+      assert words.(
+               failure.(:source_case, "https://code.example.com/Acme/Harness", %{
+                 "rule" => "source_case",
+                 "values" => %{"canonical" => "code.example.com/acme/harness"}
+               })
+             ) ==
+               "Write the harness source as code.example.com/acme/harness: the forge names it in that case."
+
       # The chosen source's address or folder, before any call: the form rule it breaks.
       for {rule, line} <- [
             {%{"rule" => "host", "values" => %{}},

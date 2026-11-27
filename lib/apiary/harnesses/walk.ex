@@ -143,12 +143,12 @@ defmodule Apiary.Harnesses.Walk do
   # `max_links/0` (5) entries fail `too_many`. A run's 6 model keys, its registry, work and
   # push credentials and 5 entries are 14 of the 16 credentials of a run configuration.
   #
-  # A run's walk (`run/2`), and not a save's (`pin_base/3`), has two more checks of a
-  # linked source:
+  # Two more checks of a linked source:
   #
-  #   * under an assignment whose adapter's credential reaches its whole grant
-  #     (`credential_scope` `grant`), the run gets no read token: a source its host serves
-  #     to anyone is read as public, and any other fails `assigned_without_token`;
+  #   * in a run's walk (`run/2`), not a save's (`pin_base/3`): under an assignment whose
+  #     adapter's credential reaches its whole grant (`credential_scope` `grant`), the run
+  #     gets no read token: a source its host serves to anyone is read as public, and any
+  #     other fails `assigned_without_token`;
   #   * where the adapter's result has a `path` that differs from the address's path only
   #     in letter case, the source fails `source_case`, with the address in the adapter's
   #     case: the run's proxy matches the token's paths with case, so the run could not
@@ -960,14 +960,14 @@ defmodule Apiary.Harnesses.Walk do
   # adapter resolved it, only in letter case fails `source_case`, with the address in the
   # adapter's case: the run's proxy matches the credential's paths with case, and qory
   # clones the address as written, so the run could not fetch it. A hidden harness's rule
-  # has no address. No path, a path that differs otherwise, or a save's walk, passes.
+  # has no address. No path, or a path that differs otherwise, passes.
   defp same_case!(%{"git" => git}, path, shown) when is_binary(path) do
     %URI{host: host, path: written} = URI.parse(git)
 
     written =
       (written || "") |> String.trim("/") |> String.replace_suffix(".git", "")
 
-    if get(:run) and written != path and String.downcase(written) == String.downcase(path) do
+    if written != path and String.downcase(written) == String.downcase(path) do
       values = if get(:hidden), do: [], else: [canonical: "#{host}/#{path}"]
       fail(:source_case, shown, rule("source_case", values))
     end

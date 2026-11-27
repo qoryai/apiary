@@ -1530,6 +1530,13 @@ defmodule ApiaryWeb.HarnessComponents do
   defp walk_words(%{failure: :invalid, rule: %{"rule" => "both_files"} = rule}, source),
     do: invalid_words("harness.yaml", rule, source)
 
+  defp walk_words(
+         %{failure: :source_case, rule: %{"values" => %{"canonical" => canonical}}},
+         _source
+       )
+       when is_binary(canonical),
+       do: Apiary.Stages.StopCause.source_case_words(canonical)
+
   defp walk_words(%{failure: :too_many}, source),
     do:
       gettext(

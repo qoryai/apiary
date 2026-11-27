@@ -357,6 +357,23 @@ defmodule Apiary.Stages.StopCauseTest do
                "Connect an account that can read #{source} to this organisation, then take the work item in again."
     end
 
+    test "a cause with no words of its own: the code, a hidden source, no case shown" do
+      %{scope: scope} = sign_up_fixture()
+      ws = scope.workspace.name
+
+      {run, work_item} = walk_failed(scope, "harness_entries", nil)
+      assert StopCause.text(run, work_item) =~ "with the code harness_entries"
+
+      {run, work_item} = walk_failed(scope, "assigned_gateway", nil)
+
+      assert StopCause.text(run, work_item) ==
+               "Connect an account that can read the harness of #{ws} to this organisation, then take the work item in again."
+
+      # A hidden harness's case failure has no address to show.
+      {run, work_item} = walk_failed(scope, "source_case", nil)
+      assert StopCause.text(run, work_item) =~ "with the code source_case"
+    end
+
     test "a source in another letter case than the forge's: write it in the forge's case" do
       %{scope: scope} = sign_up_fixture()
 

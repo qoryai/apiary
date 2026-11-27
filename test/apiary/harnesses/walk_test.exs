@@ -4067,6 +4067,14 @@ defmodule Apiary.Harnesses.WalkTest do
                   "values" => %{"canonical" => "code.example.com/acme/harness"}
                 }
               }} = Walk.run(ctx.input)
+
+      # A save's walk fails the same way.
+      assert {:failed, %{failure: :source_case}} =
+               Walk.pin_base(ctx.scope.organisation, %{
+                 "git" => mixed,
+                 "ref" => "v1",
+                 "stack" => "web"
+               })
     end
 
     test "a covered source written in the case of its path passes", ctx do

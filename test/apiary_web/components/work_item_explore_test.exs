@@ -3471,6 +3471,8 @@ defmodule ApiaryWeb.WorkItemExploreTest do
              "Run Explore again. If the run ends the same way, contact support. Three calls to the adapter code-host failed."},
             {%{code: "assigned_without_token", source: "https://code.example.com/acme/harness"},
              "Connect an account that can read https://code.example.com/acme/harness to this organisation, then take the work item in again. https://code.example.com/acme/harness is a private harness source, and the access assigned to this organisation gives runs no read token for it."},
+            {%{code: "assigned_gateway", source: nil},
+             "Connect an account that can read the workspace's harness setting to this organisation, then take the work item in again."},
             {%{code: "assigned_gateway", source: "https://code.example.com/acme/harness"},
              "Connect an account that can read https://code.example.com/acme/harness to this organisation, then take the work item in again."},
             {%{
@@ -3513,6 +3515,32 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                  "The run did not start.",
                  line
                ]
+      end
+
+      # A code with no words on the tab: the heading alone, as for any unknown code.
+      for failure <- [
+            %{
+              code: "harness_entries",
+              rule: %{"rule" => "harness_entries", "values" => %{"reason" => "overlap"}}
+            },
+            %{code: "source_case", rule: %{"rule" => "source_case", "values" => %{}}}
+          ] do
+        r =
+          run(%{
+            id: nil,
+            path: nil,
+            state: :failed,
+            outcome: :error,
+            end_cause: :harness_unresolved,
+            harness_failure: Map.merge(%{source: nil, adapter: nil}, failure),
+            proposal: nil,
+            started_at: nil,
+            ended_at: ago(3600),
+            duration: nil
+          })
+
+        html = tab(work_item(%{number: 97, status: :no_result, run: r}))
+        assert text(html, "#work-item-explore-none-h") == "The run did not start."
       end
 
       # A call that failed otherwise: the adapter's line alone says what happened.
