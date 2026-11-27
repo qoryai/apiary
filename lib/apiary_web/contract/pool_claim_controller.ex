@@ -36,9 +36,10 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
   #      claim, the run key's `gateway_url`, which the run key is made only for when it
   #      passes `Apiary.Contract.GatewayUrl.valid?/1`, else the claim is `503`
   #      `unavailable`; `max_lifetime_minutes`, the minutes the starter lets the machine
-  #      live, is 90 for a prebuild, which Qory ends 75 minutes after its attach
-  #      (`Apiary.Dispatches.RunEnd`), and 1470, the most the contract allows, for any other
-  #      claim.
+  #      live, is the lifetime the claim kept on its dispatch: the most the run's sessions
+  #      can take, from their time limits, up to the most the contract allows; 90 for a
+  #      prebuild, and 1470 for a run with no time limit
+  #      (`Apiary.Dispatches.RunEnd.lifetime_minutes/2`).
   #
   # **The hold.** While the pool can claim nothing, its workspace's queue empty or the
   # pool at its instance limit, the request is held, up to its `wait_seconds`: it listens
@@ -65,7 +66,7 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
 
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Dispatches
-  alias Apiary.Dispatches.{DispatchRun, Wire}
+  alias Apiary.Dispatches.Wire
   alias ApiaryWeb.Contract.{AdapterRequest, DispatchAnswer}
 
   @hold 25_000
@@ -220,7 +221,7 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
             [
               {"run_code", claimed.run_code},
               {"gateway_url", claimed.gateway_url},
-              {"max_lifetime_minutes", lifetime_minutes(claimed.run)}
+              {"max_lifetime_minutes", dispatch.machine_lifetime_minutes}
             ]
         )
       )
@@ -244,10 +245,6 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
   end
 
   defp machine(_dispatch), do: []
-
-  # The minutes the machine of a claim may live: 90 for a prebuild, else the contract's
-  # most (`Apiary.Dispatches.DispatchRun.machine_lifetime_minutes/1`).
-  defp lifetime_minutes(%{step: step}), do: DispatchRun.machine_lifetime_minutes(step)
 
   defp refuse(conn, status, code), do: conn |> put_status(status) |> json(%{error: code})
 end

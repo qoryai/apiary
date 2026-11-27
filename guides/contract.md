@@ -444,7 +444,11 @@ node attaches the run: it is refused `wrong_gateway` before `run_attached`.
 A run found lost, with no heartbeat for three of its intervals (90 seconds at Forager's
 30), is still live until it is lost for good. A run of a workspace's queue is lost for
 good once it has gone 600 seconds without a heartbeat, or once it is past its backstop,
-the deadline its attach set for its end. Between 90 and 600 seconds, a gateway that
+the deadline for its end. The attach sets the backstop to 30 minutes of setup, the first
+session's time limit and 90 minutes of margin after the attach. Each next-session answer
+of a run of a stage with `shared_run: true` moves it to the same span for the next session
+after the answer, at most to the end of the machine lifetime of the run's claim. Between
+90 and 600 seconds, a gateway that
 restarted attaches the run again, from the same node and instance, is given the answer it
 was given, and every route of the run serves it: the secrets request and the work entry
 it issues, the registry credential, the model keys report, the run API and the

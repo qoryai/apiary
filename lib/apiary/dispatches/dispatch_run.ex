@@ -285,17 +285,20 @@ defmodule Apiary.Dispatches.DispatchRun do
 
   # machine_lifetime_minutes/1 is the minutes the starter lets the machine of a claim of a
   # run of the queue of `step` live, as `max_lifetime_minutes` in the claim's response sets
-  # it: 90 for a prebuild, which Qory ends 75 minutes after its attach
-  # (`Apiary.Dispatches.RunEnd`), and 1470, the contract's most, for any other step. A
-  # run's step never changes, so a dispatch's lifetime is read again from its run of the
-  # queue (`Apiary.Dispatches.Slots`).
+  # it, where the run's time limits do not set it
+  # (`Apiary.Dispatches.RunEnd.lifetime_minutes/2`): 90 for a prebuild, which Qory ends 75
+  # minutes after its attach (`Apiary.Dispatches.RunEnd`), and 1470 for a run of any other
+  # step with no time limit, which Qory ends 24 hours and 15 minutes after its attach. A
+  # dispatch claimed before claims kept their lifetime (`dispatches.machine_lifetime_minutes`)
+  # has this one, read from the step of its run of the queue, which never changes
+  # (`Apiary.Dispatches.Slots`).
   @doc false
   @spec machine_lifetime_minutes(String.t()) :: pos_integer
   def machine_lifetime_minutes(@prebuild), do: 90
-  def machine_lifetime_minutes(step) when is_binary(step), do: max_machine_lifetime_minutes()
+  def machine_lifetime_minutes(step) when is_binary(step), do: 1470
 
-  # max_machine_lifetime_minutes/0 is the contract's most, 1470: the lifetime of the
-  # machine of a claim of any step but a prebuild.
+  # max_machine_lifetime_minutes/0 is the contract's most, 1470: the longest lifetime the
+  # machine of a claim is given.
   @doc false
   @spec max_machine_lifetime_minutes() :: pos_integer
   def max_machine_lifetime_minutes, do: 1470

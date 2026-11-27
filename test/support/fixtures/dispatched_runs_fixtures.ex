@@ -55,7 +55,7 @@ defmodule Apiary.DispatchedRunsFixtures do
   choice resolves to, or, when it resolves to none, a fresh gateway the pool is pointed at
   (`gateway_for!/2`); of the pool's node and key, running, registered and its run key
   issued a minute ago, attached 30 seconds ago, last heard 5 seconds ago, with the
-  backstop its attach sets for `explore`. `run_attrs` change the registered run;
+  backstop its attach sets for its first session's time limit. `run_attrs` change the registered run;
   `unattached/0` are the ones of a run never attached. Returns `%{dispatch_run:
   run_of_queue, dispatch: dispatch, run: run}`, each as stored.
   """
@@ -96,7 +96,11 @@ defmodule Apiary.DispatchedRunsFixtures do
       |> Ecto.Changeset.change(run_code_public_key: :binary.copy(<<1>>, 32))
       |> Ecto.Changeset.change(
         backstop_at:
-          DateTime.add(attrs.attached_at, Dispatches.backstop_seconds("workflow"), :second)
+          DateTime.add(
+            attrs.attached_at,
+            Dispatches.backstop_seconds("workflow", first_limit(registered)),
+            :second
+          )
       )
       |> Ecto.Changeset.change(Map.new(run_attrs))
       |> Repo.update!()
@@ -107,6 +111,13 @@ defmodule Apiary.DispatchedRunsFixtures do
       run: run
     }
   end
+
+  # The time limit of the first session of `run`, a run its claim registered, in its
+  # documents, as its attach reads it (`Apiary.Runs.Attach`); nil for none.
+  defp first_limit(%Run{run_documents: documents}) when is_binary(documents),
+    do: Jason.decode!(documents)["time_limit_minutes"]
+
+  defp first_limit(%Run{}), do: nil
 
   # A claim under `key` that took a run. A pool whose choice resolves to no gateway is
   # pointed at a fresh gateway of the scope's workspace first (`gateway_for!/2`).

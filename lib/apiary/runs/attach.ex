@@ -121,7 +121,7 @@ defmodule Apiary.Runs.Attach do
   alias Apiary.{Access, AccessKeys, Dispatches, Environments, Repo, Runs}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
-  alias Apiary.Dispatches.{Dispatch, DispatchRun}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun, RunEnd}
   alias Apiary.Lingo.Domain
   alias Apiary.Nodes.{Instance, Node}
   alias Apiary.Organisations.Workspace
@@ -462,7 +462,7 @@ defmodule Apiary.Runs.Attach do
           gateway_instance_id: kept_instance(meta[:instance_id]),
           forager_version: kept_version(meta[:forager_version] || attach.forager_version),
           contract_version: attach.contract_version,
-          backstop_at: backstop_at(dispatched, now),
+          backstop_at: backstop_at(dispatched, run, now),
           configured_image: image,
           started_image_from: started_from,
           started_image: started_image,
@@ -479,8 +479,9 @@ defmodule Apiary.Runs.Attach do
   defp started(image) when is_binary(image), do: {"top_level", image}
   defp started(nil), do: {"none", nil}
 
-  # For a run a workspace's queue handed over, its step and the node pool that claimed
-  # it, whose dispatch was handed over; nil for any other run.
+  # For a run a workspace's queue handed over, its step, and the node pool that claimed
+  # it, when, and the lifetime it gave the machine, of its dispatch that was handed over;
+  # nil for any other run.
   defp dispatched(%Run{dispatch_run_id: nil}), do: nil
 
   defp dispatched(%Run{dispatch_run_id: id}) do
@@ -491,7 +492,12 @@ defmodule Apiary.Runs.Attach do
         where: r.id == ^id,
         order_by: [desc: d.handed_over_at],
         limit: 1,
-        select: %{step: r.step, pool_id: d.pool_id}
+        select: %{
+          step: r.step,
+          pool_id: d.pool_id,
+          claimed_at: d.claimed_at,
+          lifetime: d.machine_lifetime_minutes
+        }
     )
   end
 
@@ -526,14 +532,35 @@ defmodule Apiary.Runs.Attach do
     end
   end
 
-  # A run a workspace's queue handed over is lost should it have no exit by its step's
-  # limit after its attach, nor, for a run that is not a prebuild, an outcome stored on it
-  # before a run of the queue was refused one (`Apiary.Dispatches.RunEnd`). Any other run
-  # has no such deadline.
-  defp backstop_at(nil, _now), do: nil
+  # A run a workspace's queue handed over is lost should it have no exit by its backstop,
+  # nor, for a run that is not a prebuild, an outcome stored on it before a run of the
+  # queue was refused one (`Apiary.Dispatches.RunEnd`): from its attach, the setup, the
+  # time limit and the margin of its first session, the limit its documents have
+  # (`time_limit_minutes`), or its step's fixed backstop for a prebuild and a run with no
+  # limit (`Apiary.Dispatches.backstop_seconds/2`); at the latest when the lifetime its
+  # claim gave its machine ends (`Apiary.Dispatches.RunEnd.capped/4`). Any other run has
+  # no such deadline.
+  defp backstop_at(nil, _run, _now), do: nil
 
-  defp backstop_at(%{step: step}, now),
-    do: DateTime.add(now, Dispatches.backstop_seconds(step), :second)
+  defp backstop_at(%{step: step} = dispatched, run, now) do
+    now
+    |> DateTime.add(Dispatches.backstop_seconds(step, first_limit(run)), :second)
+    |> RunEnd.capped(dispatched.claimed_at, dispatched.lifetime, step)
+  end
+
+  # The time limit of the run's first session, its documents' `time_limit_minutes`; nil
+  # for none.
+  defp first_limit(%Run{run_documents: documents}) when is_binary(documents) do
+    case Jason.decode(documents) do
+      {:ok, %{"time_limit_minutes" => minutes}} when is_integer(minutes) and minutes > 0 ->
+        minutes
+
+      _none ->
+        nil
+    end
+  end
+
+  defp first_limit(%Run{}), do: nil
 
   # The instance id the request was signed with, when it can be kept; nil otherwise, so the
   # run's next request from its gateway gives it one.

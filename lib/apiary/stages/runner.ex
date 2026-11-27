@@ -1050,6 +1050,46 @@ defmodule Apiary.Stages.Runner do
     end
   end
 
+  # most_sessions/1 is the workflow names of the most sessions that one shared run of the
+  # stage can run, one name per session, in order: each workflow entry before the last
+  # loop once, an earlier loop's body once per round, then the last loop's body and the
+  # workflow entries after it once per round of that loop, as a failed output check starts
+  # another round of the last loop. A stage with no loop runs each entry once. Conditions
+  # are not read: an entry they may hold back still counts.
+  @doc false
+  @spec most_sessions(map) :: [String.t()]
+  def most_sessions(stage) do
+    sequence = sequence(stage)
+
+    case last_loop(stage) do
+      nil ->
+        names_of(sequence)
+
+      last ->
+        before =
+          sequence
+          |> Enum.take(last)
+          |> Enum.with_index()
+          |> Enum.flat_map(fn
+            {%{"loop" => _loop}, index} -> repeat(names_of(body(stage, index)), stage, index)
+            {entry, _index} -> names_of([entry])
+          end)
+
+        before ++
+          repeat(
+            names_of(body(stage, last)) ++ names_of(Enum.drop(sequence, last + 1)),
+            stage,
+            last
+          )
+    end
+  end
+
+  # `names` once per round of the loop at `index`.
+  defp repeat(names, stage, index),
+    do: names |> List.duplicate(rounds(stage, index)) |> List.flatten()
+
+  defp names_of(entries), do: for(%{"workflow" => name} <- entries, do: name)
+
   # loops/2 is the indexes of the stage's loops that are not passed over with `facts`
   # (`passed_over?/3`), in order.
   @doc false

@@ -348,9 +348,15 @@ serves revision 1 of that contract alone: a request whose `X-Qory-Contract-Versi
 any other revision is refused `400` `unsupported_contract_version`, and each claim answer
 has `revision` 1. A claim answer is a request for a machine: `version`, `revision`,
 `dispatch_id`, `pool_id` (the claiming key's node pool), `lease_until`, `run_code`,
-`gateway_url` and `max_lifetime_minutes`, 90 for a prebuild and 1470 for any other claim,
-sent with `Cache-Control: no-store`, and nothing of the run, neither its `run_id`, its
-`step`, its `access`, its `target`, its `subject` nor its `trigger`. A claim may have
+`gateway_url` and `max_lifetime_minutes`, sent with `Cache-Control: no-store`, and nothing of the run, neither its `run_id`, its
+`step`, its `access`, its `target`, its `subject` nor its `trigger`. The machine lifetime,
+`max_lifetime_minutes`, is the most the run's sessions can take, from the time limits the
+claim reads: the attach window of 10 minutes, then for each session 30 minutes of setup,
+its time limit and a margin of 90 minutes, over the most sessions the run's stage can run
+(each entry before the last loop once, an earlier loop's body once per round, then the
+last loop's body and the entries after it once per round), at most the most the contract
+allows. A prebuild has 90 minutes, and a run with no time limit 1470. The dispatch keeps
+it (`dispatches.machine_lifetime_minutes`). A claim may have
 `offers`, 1 to 64 `machine_spec`s: the machines the pool can start. Qory Apiary keeps the
 offers of the pool's latest claim (`nodes.offers`, null for a claim without them). A pool
 that sends offers takes only a run whose machine type one of them fits (each number at least the
@@ -581,8 +587,7 @@ to come deciding (`Apiary.Dispatches.RunEnd`): its `dev.qory.run.exited` once fo
 whatever its state, ends it `run_ended`; a `dev.qory.run.refused` once folded ends it
 `run_refused`, for a run that is not a prebuild; and the lost-run check ends it `lost`
 when its gateway never attached it by its `attach_by`, when it has no exit by its
-backstop, 87,300 seconds (24 hours and 15 minutes) after its attach for the step
-`workflow` and 4500 (1 hour and 15 minutes) for `prebuild` (Liveness), or when it went
+backstop (Liveness), or when it went
 600 seconds without a heartbeat after its attach and before an exit: with the gateway
 down, no exit reaches Qory Apiary, and that end frees the slot. A heartbeat stored and
 not yet folded counts by its arrival. Such a silent run is `lost` for good: its registered
@@ -1689,10 +1694,15 @@ all. A `running` run is measured from its last heartbeat, else from the arrival 
 when the workspace first heard of it, its registration for a run that registered. A run
 through a gateway that is never attached is lost at its `attach_by`, and not before; until
 then it holds its node's instance. A run a workspace's queue handed over is also lost at
-its backstop, which its attach sets to the attach and its step's limit, 87,300 seconds for
-`workflow` and 4500 for `prebuild` (`runs.backstop_at`), should it have no exit by then,
-however recently it beat; no heartbeat or start that arrives after that brings it back,
-and only its exit changes its state: a run of the queue takes no outcome. A run of the
+its backstop (`runs.backstop_at`), should it have no exit by then, however recently it
+beat. Its attach sets the backstop to the attach and its first session's 30 minutes of
+setup, time limit and 90 minutes of margin; a prebuild's to 4500 seconds after it, and a
+run's with no time limit to 87,300 seconds (24 hours and 15 minutes) after it. Each
+next-session answer of a run of a stage with `shared_run: true` moves it to the answer
+and the next session's setup, time limit and margin, where that is later, unless the run
+is past its backstop or went silent. Neither sets it past the end of the machine lifetime
+the claim gave, from the claim. No heartbeat or start that arrives after the backstop
+brings the run back, and only its exit changes its state: a run of the queue takes no outcome. A run of the
 queue that went 600 seconds without a heartbeat after its attach, before an exit, has its
 backstop moved back to the end of that silence when the lost-run check ends its dispatch,
 so it is lost from then on in the same way. A heartbeat

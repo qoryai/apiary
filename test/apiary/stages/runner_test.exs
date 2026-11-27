@@ -48,6 +48,41 @@ defmodule Apiary.Stages.RunnerTest do
 
   defp answer(text, question), do: %{"text" => text, "action" => "answer", "question" => question}
 
+  describe "the most sessions of one pass" do
+    test "a stage with no loop runs each workflow once" do
+      assert Runner.most_sessions(stage([wf("plan"), wf("implement")])) == ~w(plan implement)
+      assert Runner.most_sessions(stage([])) == []
+    end
+
+    test "the last loop runs its body and the entries after it once per round" do
+      # plan-the-build, then three rounds of implement-changes and review-changes: 7.
+      build =
+        stage([
+          wf("plan-the-build"),
+          loop([wf("implement-changes"), wf("review-changes")])
+        ])
+
+      assert Runner.most_sessions(build) ==
+               ["plan-the-build"] ++
+                 List.flatten(List.duplicate(~w(implement-changes review-changes), 3))
+
+      # The entries after the last loop run again with each round a failed check starts.
+      assert Runner.most_sessions(stage([loop([wf("a")], 2), wf("b")])) == ~w(a b a b)
+      assert Runner.most_sessions(explore()) == List.duplicate("explore-a-ticket", 3)
+    end
+
+    test "an earlier loop runs its body once per round; a loop with no rounds runs 3" do
+      sequence = [
+        wf("plan"),
+        loop([wf("a"), wf("b")], 2),
+        %{"loop" => %{"body" => [wf("c")]}},
+        wf("d")
+      ]
+
+      assert Runner.most_sessions(stage(sequence)) == ~w(plan a b a b c d c d c d)
+    end
+  end
+
   describe "entering" do
     test "starts the sequence at once, a loop at its round 1" do
       outcome = Runner.step(explore(), nil, :enter)

@@ -188,8 +188,12 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
                "lease_until" => lease_until,
                "run_code" => run_code,
                "gateway_url" => "https://gateway.example",
-               "max_lifetime_minutes" => 1470
+               # The run's one session of 180 minutes, the default time limit: 10 minutes
+               # to attach, 30 of setup and 90 of margin beside it.
+               "max_lifetime_minutes" => 10 + 30 + 180 + 90
              }
+
+      assert dispatch.machine_lifetime_minutes == 310
 
       assert [head, fingerprint] = String.split(run_code, ".")
       assert head =~ ~r/\Aqecr_[0-9A-HJKMNP-TV-Z]{26}\z/
@@ -280,6 +284,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
                "max_lifetime_minutes" => 90
              }
 
+      assert dispatch.machine_lifetime_minutes == 90
       assert Repo.get!(DispatchRun, run.id).state == :claimed
     end
 
@@ -304,7 +309,7 @@ defmodule ApiaryWeb.Contract.PoolClaimTest do
       assert members(conn.resp_body) ==
                ~w(version revision dispatch_id pool_id lease_until run_code gateway_url max_lifetime_minutes)
 
-      assert answer["max_lifetime_minutes"] == 1470
+      assert answer["max_lifetime_minutes"] == 310
       assert claimed_run_id(conn) == run.run_id
     end
 

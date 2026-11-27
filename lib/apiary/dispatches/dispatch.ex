@@ -31,8 +31,12 @@ defmodule Apiary.Dispatches.Dispatch do
   # until the first report (`Apiary.Dispatches.MachineEnds`). `late_machine_at` is when a
   # machine last showed up for it too late: a `dispatched` refused, or a redemption of its
   # run code refused because it was stale or ended; nil until one
-  # (`Apiary.Dispatches.Slots.late_machine/2`). At most one dispatch of a run
-  # is live and not stale at a time.
+  # (`Apiary.Dispatches.Slots.late_machine/2`). `machine_lifetime_minutes` is the
+  # lifetime its claim answer gave the machine, `max_lifetime_minutes`, which the claim
+  # computes from the run's time limits (`Apiary.Dispatches.RunEnd.lifetime_minutes/2`);
+  # nil for a dispatch claimed before claims kept it, which has its step's
+  # (`Apiary.Dispatches.DispatchRun.machine_lifetime_minutes/1`). At most one dispatch of a
+  # run is live and not stale at a time.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false
@@ -69,6 +73,7 @@ defmodule Apiary.Dispatches.Dispatch do
     field :machine_end_state, Ecto.Enum, values: [:deleting, :gone, :delete_failed]
     field :machine_end_at, :utc_datetime_usec
     field :late_machine_at, :utc_datetime_usec
+    field :machine_lifetime_minutes, :integer
     # The secrets found in the machine log and in the release reason beyond the 1,000 kept
     # for each (`Apiary.Runs.LeakedSecrets`).
     field :machine_log_secrets_omitted, :integer, default: 0

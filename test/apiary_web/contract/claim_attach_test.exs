@@ -145,7 +145,8 @@ defmodule ApiaryWeb.Contract.ClaimAttachTest do
     run = Repo.get!(Run, stored.id)
     assert run.attach_answer_digest == digest
     assert %DateTime{} = run.attached_at
-    assert DateTime.diff(run.backstop_at, run.attached_at) == 87_300
+    # The backstop: the setup, the run's time limit of 180 minutes and the margin.
+    assert DateTime.diff(run.backstop_at, run.attached_at) == (30 + 180 + 90) * 60
 
     # A reload returns the same answer, the same digest: the SHA-256 of its bytes.
     reload = gateway_reload(ctx, run_id)
@@ -184,6 +185,29 @@ defmodule ApiaryWeb.Contract.ClaimAttachTest do
              Repo.get!(Dispatch, dispatch.id)
 
     assert Slots.held(ctx.pool.id) == 1
+  end
+
+  test "the backstop at the attach is at most the end of the lifetime the claim gave", ctx do
+    work_item = work_item_fixture(ctx.scope)
+    {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+    %{"dispatch_id" => dispatch_id, "run_code" => code} = claim(ctx)
+    dispatch = Repo.get_by!(Dispatch, public_id: dispatch_id)
+    assert dispatch.machine_lifetime_minutes == 310
+
+    # A lifetime shorter than the session's 300 minutes from the attach: the backstop is
+    # the end of the lifetime, from the claim.
+    {1, _rows} =
+      Repo.update_all(from(d in Dispatch, where: d.id == ^dispatch.id),
+        set: [machine_lifetime_minutes: 200]
+      )
+
+    assert pool_post(ctx, dispatch, "dispatched").status == 204
+    run_key = redeemed_run_key!(code)
+    assert gateway_attach(ctx, queued.run_id, run_key).status == 200
+
+    run = Repo.one!(from r in Run, where: r.dispatch_run_id == ^queued.id)
+    assert run.backstop_at == DateTime.add(dispatch.claimed_at, 200 * 60, :second)
+    assert DateTime.diff(run.backstop_at, run.attached_at) < (30 + 180 + 90) * 60
   end
 
   test "the attach answer's labels carry the repository and its further repositories", ctx do
