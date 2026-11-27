@@ -83,6 +83,42 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
   describe "with the workflow model, a run of a stage entry with limits" do
     @describetag needs: [:factory, :workflow_model]
 
+    # The workspace's process: Explore, whose workflows share one run, with `sequence`.
+    defp shared!(%{scope: scope}, sequence) do
+      stage = %{
+        "id" => "st_r79kph11eg",
+        "name" => "Explore",
+        "inputs" => [],
+        "shared_run" => true,
+        "sequence" => sequence,
+        "outputs" => [],
+        "gate" => %{"kind" => "person", "approvers" => "members"}
+      }
+
+      document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => [stage]}
+      {:ok, _version} = Apiary.Processes.save(scope, scope.workspace, document)
+    end
+
+    # The machine lifetime of a fresh work item's explore run, claimed under `place`'s pool
+    # key: the one the claim returns, which its dispatch keeps.
+    defp claimed_lifetime!(%{scope: scope} = ctx, place) do
+      work_item =
+        work_item_fixture(scope, %{
+          connection_id: ctx.connection.id,
+          external_ref: "acme/shop##{System.unique_integer([:positive])}"
+        })
+
+      {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+      walk_resolved!(queued, [])
+
+      {:ok, %{dispatch: dispatch}} =
+        Apiary.DispatchedRunsFixtures.walked_claim(place.key, Dispatches.now(), @body)
+
+      stored = Repo.get!(Apiary.Dispatches.Dispatch, dispatch.id)
+      assert stored.machine_lifetime_minutes == dispatch.machine_lifetime_minutes
+      dispatch.machine_lifetime_minutes
+    end
+
     # The workspace's process: Explore runs `workflow`, explore-a-ticket by default, with
     # `limits`.
     defp entry_limits!(%{scope: scope}, limits, workflow \\ "explore-a-ticket") do
@@ -150,6 +186,53 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
 
       entry_limits!(ctx, %{}, "review")
       assert %{"time_limit_minutes" => 90} = session(claim!(ctx, place))
+    end
+
+    test "a claim gives the machine the most the run's sessions take, kept on its dispatch",
+         ctx do
+      place = handover_place_fixture(ctx.scope)
+
+      # plan-the-build, then 3 rounds of implement-changes and review-changes: 7 sessions.
+      shared!(ctx, [
+        %{"workflow" => "plan-the-build"},
+        %{
+          "loop" => %{
+            "rounds" => 3,
+            "body" => [%{"workflow" => "implement-changes"}, %{"workflow" => "review-changes"}]
+          }
+        }
+      ])
+
+      for {workflow, minutes} <- [
+            {"plan-the-build", 30},
+            {"implement-changes", 90},
+            {"review-changes", 30}
+          ],
+          do: {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, workflow, minutes)
+
+      # 25 minutes to attach, then each session's 30 of setup, its limit and 90 of margin:
+      # 25 + 7 × 30 + (30 + 3 × (90 + 30)) + 7 × 90.
+      assert claimed_lifetime!(ctx, place) == 1255
+
+      # 25 + 7 × 30 + (30 + 3 × (240 + 30)) + 7 × 90: past a day, as no cap of a day holds it.
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "implement-changes", 240)
+      assert claimed_lifetime!(ctx, place) == 1705
+
+      # A stage whose sessions take more than the contract's most, 7 days, gets the most:
+      # 25 + 7 × 30 + 7 × 1440 + 7 × 90 is 10,945.
+      for workflow <- ["plan-the-build", "implement-changes", "review-changes"],
+          do: {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, workflow, 1440)
+
+      assert claimed_lifetime!(ctx, place) == 10_080
+    end
+
+    test "a claim of a run of one session gives its machine that session and 145 minutes",
+         ctx do
+      place = handover_place_fixture(ctx.scope)
+      {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 15)
+
+      # 25 + 30 + 15 + 90.
+      assert claimed_lifetime!(ctx, place) == 160
     end
 
     test "reads the target when the entry's access is read, whatever the walk resolved",

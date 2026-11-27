@@ -16,7 +16,8 @@ defmodule Apiary.Runs.Transcript do
   **The file.** A run's transcript at a path is its chunks of that path in sequence
   order. It can be restored only when they start at offset 0 and each starts where the
   one before ended, when they are at most #{64 * 1024 * 1024} bytes (64 MiB) in
-  all, and when they are fewer than `max_chunks/0`: a gap in `offset`, a larger file, or
+  all, and when they are fewer than `max_chunks/1`, a bound from the minutes the run's
+  machine may live: a gap in `offset`, a larger file, or
   as many chunks, cannot be restored, and is never served. `check/2` checks it from the
   chunks' offsets and lengths alone, and returns the highest sequence it checked, so the
   digest (`digest/3`) and the bytes sent (`stream/3`) are of the chunks it checked. A
@@ -45,19 +46,16 @@ defmodule Apiary.Runs.Transcript do
 
   require Logger
 
-  alias Apiary.Dispatches.DispatchRun
+  alias Apiary.Dispatches.{Dispatch, DispatchRun}
   alias Apiary.Repo
   alias Apiary.Runs.{Run, SessionChunk}
 
   @max_file 64 * 1024 * 1024
   @max_chunk 32_768
-  # The most chunks of one path a run keeps. The session reads the transcript once a
-  # second and once more before a session ends, and cuts what it read into chunks of at
-  # most 32,768 bytes (the contract, A session's transcript): a file of 64 MiB is at most
-  # 2,048 full chunks, plus one shorter chunk per read. A machine lives at most 1,470
-  # minutes (`Apiary.Dispatches.DispatchRun`), 88,200 reads: 2,048 + 88,200 = 90,248,
-  # rounded up to 100,000 for the last read of each session.
-  @max_chunks 100_000
+  # The chunks of a full file: 64 MiB in chunks of at most 32,768 bytes.
+  @full_chunks div(64 * 1024 * 1024, 32_768)
+  # The bound of a run with no handed-over dispatch (max_chunks/1).
+  @no_dispatch_chunks 100_000
   @max_encoded 43_692
   @int4 2_147_483_647
   @int8 9_223_372_036_854_775_807
@@ -85,11 +83,52 @@ defmodule Apiary.Runs.Transcript do
   def max_file, do: limit(:max_file, @max_file)
 
   @doc """
-  The most chunks of one path a run keeps, and fewer than a restored file has: 100,000. A
-  test sets a lower one as `:max_chunks`, as for `max_file/0`.
+  The most chunks of one path the run `run_id` keeps, and fewer than a restored file
+  has, from the minutes its machine may live: the lifetime its handed-over dispatch keeps
+  (`dispatches.machine_lifetime_minutes`), which every handed-over dispatch has. A run
+  with no handed-over dispatch, such as one no queue handed over, has no machine lifetime
+  and keeps 100,000 chunks. A test sets a lower one as `:max_chunks`, as for
+  `max_file/0`.
   """
-  @spec max_chunks() :: pos_integer
-  def max_chunks, do: limit(:max_chunks, @max_chunks)
+  @spec max_chunks(Ecto.UUID.t()) :: pos_integer
+  def max_chunks(run_id), do: limit(:max_chunks, bound(run_id))
+
+  @doc """
+  The most chunks one path of a run whose machine lives `minutes` can have, plus one.
+  The session reads the transcript once a second and once more before each session ends,
+  and cuts what it read into chunks of at most 32,768 bytes (the contract, A session's
+  transcript): a file of 64 MiB is at most 2,048 full chunks, plus one shorter chunk per
+  read. A session takes more than 120 minutes of the lifetime (its setup and margin,
+  Apiary.Dispatches.RunEnd), so a machine of 1,480 minutes reads at most 88,800 + 12
+  times: 2,048 + 88,812 + 1 = 90,861. This holds as qory reads the transcript only while a
+  session's agent runs, never in the attach window or a session's setup.
+  """
+  @spec chunk_bound(pos_integer) :: pos_integer
+  def chunk_bound(minutes) when is_integer(minutes) and minutes > 0,
+    do: @full_chunks + minutes * 60 + div(minutes, 120) + 1
+
+  defp bound(run_id) do
+    case handed_over_lifetime(run_id) do
+      nil -> @no_dispatch_chunks
+      minutes -> chunk_bound(minutes)
+    end
+  end
+
+  # The lifetime the run's last handed-over dispatch keeps; nil with no handed-over
+  # dispatch.
+  defp handed_over_lifetime(run_id) do
+    Repo.one(
+      from(r in Run,
+        join: d in Dispatch,
+        on: d.dispatch_run_id == r.dispatch_run_id and not is_nil(d.handed_over_at),
+        where: r.id == ^run_id,
+        order_by: [desc: d.handed_over_at],
+        limit: 1,
+        select: d.machine_lifetime_minutes
+      ),
+      log: false
+    )
+  end
 
   defp limit(name, default),
     do: min(Keyword.get(Application.get_env(:apiary, __MODULE__, []), name, default), default)
@@ -182,7 +221,7 @@ defmodule Apiary.Runs.Transcript do
   chunks' offsets and lengths, with no read of their bytes: `{:ok, %{size: bytes,
   max_sequence: sequence}}`, the file's size and the highest sequence of its chunks, or
   `{:error, cause}`: `:none` with no chunk, `:gap` with a gap in `offset`, `:too_large`
-  over 64 MiB or with `max_chunks/0` chunks. A gap or a file over the limit is logged in
+  over 64 MiB or with `max_chunks/1` chunks. A gap or a file over the limit is logged in
   one line, with the run's id and the cause.
   """
   @spec check(Ecto.UUID.t(), String.t()) ::
@@ -206,7 +245,7 @@ defmodule Apiary.Runs.Transcript do
       not contiguous? ->
         refused(run_id, :gap)
 
-      size > max_file() or count >= max_chunks() ->
+      size > max_file() or count >= max_chunks(run_id) ->
         refused(run_id, :too_large)
 
       true ->

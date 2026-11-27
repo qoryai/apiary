@@ -20,8 +20,8 @@ defmodule Apiary.Dispatches.RunEnd do
   #   code as its reason (`Apiary.Runs.Fold`). A refusal that comes after an exit or any
   #   other end changes nothing, and a prebuild's refusal ends nothing of the queue;
   # - the lost-run check (`lose/3`, from `Apiary.Runs.Liveness`): `lost`, for a run its
-  #   gateway never attached by its `attach_by`, or with no exit by its `backstop_at`,
-  #   which its attach sets to the attach and `backstop_seconds/1` of its step. The check
+  #   gateway never attached by its `attach_by`, or with no exit by its `backstop_at`
+  #   (**The backstop**). The check
   #   marks the registered run lost by its rules first; this ends the run of the queue. It
   #   also ends `lost` an attached run with no exit whose last heartbeat, or its attach
   #   when it has none, is more than `silence_seconds/0` (600) before `now` (**silent**):
@@ -92,6 +92,16 @@ defmodule Apiary.Dispatches.RunEnd do
   # work item is held `FOR UPDATE` (`hold/1`), as for a missing image; an end that finds
   # such an exit with its work item not held so, as `hold/1` read the run before its exit
   # was folded, ends nothing, and the next check ends it with the work item held.
+  #
+  # **The backstop.** The attach sets `backstop_at` to the attach and
+  # `backstop_seconds/2`: the setup, the time limit and the margin of the run's first
+  # session (`session_seconds/1`), or a prebuild's 4,500 seconds, or 87,300 for a run with
+  # no time limit. Each next-session answer of a shared run (`Apiary.Stages`) moves it to
+  # the answer's time and `session_seconds/1` of the next session's limit, where that is
+  # later (`extend/3`): the next session's setup starts after the answer. Neither sets it
+  # past the end of the lifetime the claim gave the run's machine (`capped/3`,
+  # `lifetime_minutes/2`), which counts the most sessions the run's stage can run, so the
+  # run is lost before its machine powers off.
   #
   # The run of the queue ends once: `ended`, with its end cause. Its live dispatch, the one
   # handed over, ends with it with the same cause; a stale dispatch of it not yet ended ends
@@ -184,13 +194,29 @@ defmodule Apiary.Dispatches.RunEnd do
   # The reason of a run's exit whose image the registry does not have.
   @image_missing "image_missing"
 
-  # The seconds from its attach by which a run of each step has its exit, or is lost:
-  # a workflow's 24 hours and 15 minutes, the longest time limit (1440 minutes,
-  # `Apiary.TimeLimits`) and a margin, and a prebuild's 1 hour and 15 minutes, within the
-  # 90 minutes its claim lets its machine live (`ApiaryWeb.Contract.PoolClaimController`).
-  # A step not named here has a workflow's.
-  @backstops %{"workflow" => 87_300, "prebuild" => 4500}
+  # The seconds from its attach by which a run with no time limit has its exit, or is
+  # lost: a prebuild's 1 hour and 15 minutes, and for any other step 24 hours and 15
+  # minutes, the longest time limit (1440 minutes, `Apiary.TimeLimits`) and a margin. Its
+  # claim lets its machine live the attach window and these (`lifetime_minutes/2`).
+  @backstops %{"prebuild" => 4500}
   @default_backstop 87_300
+  # The minutes a run takes beside its sessions' time limits, from qory's limits:
+  # - the attach window, 25 minutes, once per run: the run code works for 15 minutes
+  #   after the claim (`Apiary.Runs.RunCode.ttl_seconds/0`), and the run key its
+  #   redemption makes allows 600 seconds to attach (`Apiary.Runs.RunCode`, its
+  #   `attach_by`, which the attach checks, `Apiary.Runs.Attach`);
+  # - the setup before each session's limit starts, up to 30 minutes per session (qory's
+  #   `setupLimit`);
+  # - the margin for qory's steps outside a session's limit, 90 minutes per session, at
+  #   qory's worst case: the push, 2 (`pushAfterLimit`); the next-session request with its
+  #   retries, 10 (`nextSessionLimit`); a walled run's copy back, 10 (`copyStepLimit`); the
+  #   check of the copied-back bundles, up to 60 (`stepLimitFor`, `maxStepLimit`); and the
+  #   exit, 8.
+  #   shortcut: exit time has no qory constant; replace with the measured value after the
+  #   first run
+  @attach_minutes 25
+  @setup_minutes 30
+  @margin_minutes 90
   # The seconds without a heartbeat after which an attached run with no exit is lost for
   # good, and its dispatch ends.
   @silence 600
@@ -199,17 +225,113 @@ defmodule Apiary.Dispatches.RunEnd do
   # The runs of the queue one check looks at at most; the rest wait for the next.
   @batch 100
 
-  # backstop_seconds/1 is the seconds after its attach by which a run of `step` has its
-  # exit, or is lost.
+  # backstop_seconds/2 is the seconds after its attach by which a run of `step` whose
+  # first session has the time limit `minutes` has its exit, or is lost: the setup, the
+  # limit and the margin of one session (`session_seconds/1`). A prebuild, and a run with
+  # no time limit (nil), has the fixed backstop of its step.
   @doc false
-  @spec backstop_seconds(String.t() | nil) :: pos_integer
-  def backstop_seconds(step), do: Map.get(@backstops, step, @default_backstop)
+  @spec backstop_seconds(String.t() | nil, pos_integer | nil) :: pos_integer
+  def backstop_seconds(@prebuild, _minutes), do: Map.fetch!(@backstops, @prebuild)
+  def backstop_seconds(_step, minutes) when is_integer(minutes), do: session_seconds(minutes)
+  def backstop_seconds(step, nil), do: Map.get(@backstops, step, @default_backstop)
+
+  # session_seconds/1 is the seconds a session whose time limit is `minutes` may take from
+  # the attach, or from the next-session answer that starts it: its setup, its limit and
+  # the margin.
+  @doc false
+  @spec session_seconds(pos_integer) :: pos_integer
+  def session_seconds(minutes) when is_integer(minutes) and minutes > 0,
+    do: (@setup_minutes + minutes + @margin_minutes) * 60
+
+  # lifetime_minutes/2 is the minutes the machine of a claim of a run of the queue of
+  # `step` may live, the claim answer's `max_lifetime_minutes`, for `seconds`, the seconds
+  # of the most sessions the run can run, each session's setup, limit and margin
+  # (`Apiary.Stages.session_seconds/3`): the attach window once, then those sessions, at
+  # most the contract's most
+  # (`Apiary.Dispatches.DispatchRun.max_machine_lifetime_minutes/0`), and never below the
+  # contract's least, 15, as one session takes more than 120. A prebuild, and a run with
+  # no limits (nil), has the attach window and the fixed backstop of its step: 100 and
+  # 1480 minutes. So the run's backstop, set at its attach and moved at each next session,
+  # comes before its machine powers off, however late in the attach window the run
+  # attaches.
+  @doc false
+  @spec lifetime_minutes(String.t(), pos_integer | nil) :: pos_integer
+  def lifetime_minutes(@prebuild, _seconds),
+    do: @attach_minutes + div(backstop_seconds(@prebuild, nil), 60)
+
+  def lifetime_minutes(step, seconds) when is_binary(step) and is_integer(seconds),
+    do: min(@attach_minutes + div(seconds, 60), DispatchRun.max_machine_lifetime_minutes())
+
+  def lifetime_minutes(step, nil) when is_binary(step),
+    do: @attach_minutes + div(backstop_seconds(step, nil), 60)
+
+  # capped/3 is `at`, a backstop, or the end of the lifetime of the machine of the claim
+  # made at `claimed_at` when that comes first: `minutes`, the lifetime the claim kept on
+  # its dispatch, which every handed-over dispatch has. `at` as it is with no claim.
+  @doc false
+  @spec capped(DateTime.t(), nil, pos_integer | nil) :: DateTime.t()
+  @spec capped(DateTime.t(), DateTime.t(), pos_integer) :: DateTime.t()
+  def capped(%DateTime{} = at, nil, _minutes), do: at
+
+  def capped(%DateTime{} = at, %DateTime{} = claimed_at, minutes) when is_integer(minutes),
+    do: Enum.min([at, DateTime.add(claimed_at, minutes * 60, :second)], DateTime)
 
   # silence_seconds/0 is the seconds without a heartbeat after which an attached run with
   # no exit is lost for good (the moduledoc).
   @doc false
   @spec silence_seconds() :: pos_integer
   def silence_seconds, do: @silence
+
+  # extend/3 moves the backstop of the registered run of the run of the queue
+  # `dispatch_run_id`, at the next-session answer `answered_at` that starts a session whose
+  # time limit is `minutes`, to `answered_at` and `session_seconds/1` of `minutes`, at most
+  # the end of the lifetime of its machine (`capped/3`), inside the caller's transaction,
+  # which holds the run's work item `FOR UPDATE` (`Apiary.Stages`). It locks the run of the
+  # queue `FOR UPDATE`, then the registered run, as an end does, and moves the backstop
+  # only later, and only for a run whose backstop is after `answered_at` and that did not
+  # go silent (`silenced_at`): a run past its backstop or lost for good stays so. Nothing
+  # for nil `minutes`, a run with no time limit, whose backstop stays fixed.
+  @doc false
+  @spec extend(Ecto.UUID.t(), pos_integer | nil, DateTime.t()) :: :ok
+  def extend(_dispatch_run_id, nil, %DateTime{}), do: :ok
+
+  def extend(dispatch_run_id, minutes, %DateTime{} = answered_at)
+      when is_binary(dispatch_run_id) and is_integer(minutes) and minutes > 0 do
+    with %DispatchRun{} <- lock(dispatch_run_id),
+         %Run{backstop_at: %DateTime{} = backstop_at, silenced_at: nil} = run <-
+           Repo.one(
+             from r in Run, where: r.dispatch_run_id == ^dispatch_run_id, lock: "FOR UPDATE"
+           ),
+         :gt <- DateTime.compare(backstop_at, answered_at) do
+      {claimed_at, lifetime} = handed_over_claim(dispatch_run_id)
+
+      extended =
+        answered_at
+        |> DateTime.add(session_seconds(minutes), :second)
+        |> capped(claimed_at, lifetime)
+
+      if DateTime.compare(extended, backstop_at) == :gt do
+        {1, _rows} =
+          Repo.update_all(from(r in Run, where: r.id == ^run.id),
+            set: [backstop_at: extended, updated_at: answered_at]
+          )
+      end
+    end
+
+    :ok
+  end
+
+  # When the dispatch of the run of the queue `dispatch_run_id` that was handed over was
+  # claimed, and the lifetime its claim gave the machine; nils for none.
+  defp handed_over_claim(dispatch_run_id) do
+    Repo.one(
+      from d in Dispatch,
+        where: d.dispatch_run_id == ^dispatch_run_id and not is_nil(d.handed_over_at),
+        order_by: [desc: d.handed_over_at],
+        limit: 1,
+        select: {d.claimed_at, d.machine_lifetime_minutes}
+    ) || {nil, nil}
+  end
 
   # lock/1 locks the run of the queue `id` `FOR UPDATE`, inside the caller's transaction:
   # the row, or nil for none.

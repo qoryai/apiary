@@ -1089,9 +1089,10 @@ defmodule Apiary.DispatchesTest do
     defp dispatched(key, dispatch),
       do: Dispatches.dispatched(key, dispatch.public_id, %{external: nil})
 
-    # The time the safety net frees the slot of a dispatch of a run that is not a
-    # prebuild, whose last sign of a machine was at `at`: 1470 + 60 minutes later.
-    defp net(at), do: DateTime.add(at, (1470 + 60) * 60, :second)
+    # The time the safety net frees the slot of `dispatch`, whose last sign of a machine was
+    # at `at`: the lifetime its claim gave the machine and 60 minutes later.
+    defp net(dispatch, at),
+      do: DateTime.add(at, (dispatch.machine_lifetime_minutes + 60) * 60, :second)
 
     test "a dispatch handed over holds its slot after its end; deleting and delete_failed keep it, gone frees it",
          ctx do
@@ -1217,17 +1218,51 @@ defmodule Apiary.DispatchesTest do
       hand_over!(dispatch, at)
       end!(dispatch)
 
-      Dispatches.sweep(DateTime.add(net(at), -1, :microsecond))
+      Dispatches.sweep(DateTime.add(net(dispatch, at), -1, :microsecond))
       assert %Dispatch{slot_freed_at: nil} = dispatch!(dispatch)
 
-      assert Dispatches.sweep(net(at)) == [ctx.scope.workspace.id]
+      assert Dispatches.sweep(net(dispatch, at)) == [ctx.scope.workspace.id]
       assert %Dispatch{slot_freed_at: freed_at} = dispatch!(dispatch)
-      assert freed_at == net(at)
+      assert freed_at == net(dispatch, at)
 
       report!(ctx.key, dispatch, :gone)
 
       assert %Dispatch{machine_end_state: :gone, slot_freed_at: ^freed_at} =
                dispatch!(dispatch)
+    end
+
+    test "the safety net counts the lifetime the dispatch keeps; one whose claim ended its run, its step's",
+         ctx do
+      queued!(ctx.scope)
+      dispatch = claimed!(ctx.key)
+      # The run's one session of 180 minutes, the default time limit.
+      assert dispatch.machine_lifetime_minutes == 25 + 30 + 180 + 90
+      at = DateTime.add(dispatch.claimed_at, 1, :second)
+      hand_over!(dispatch, at)
+      end!(dispatch)
+
+      Dispatches.sweep(DateTime.add(at, (325 + 60) * 60 - 1, :second))
+      assert Slots.held(ctx.pool.id) == 1
+      Dispatches.sweep(DateTime.add(at, (325 + 60) * 60, :second))
+      assert Slots.held(ctx.pool.id) == 0
+
+      # A dispatch whose claim ended its run before registering it keeps no lifetime
+      # (`Apiary.Dispatches.Handover.end_claimed/3`), and is never handed over; once a
+      # machine shows up late for it, the net gives it the 1470 minutes of a step that is
+      # not a prebuild.
+      queued!(ctx.scope)
+      ended = claimed!(ctx.key)
+      at = DateTime.add(ended.claimed_at, 1, :second)
+      end!(ended)
+
+      Repo.update_all(from(d in Dispatch, where: d.id == ^ended.id),
+        set: [machine_lifetime_minutes: nil, late_machine_at: at]
+      )
+
+      Dispatches.sweep(DateTime.add(at, (1470 + 60) * 60 - 1, :second))
+      assert Slots.held(ctx.pool.id) == 1
+      Dispatches.sweep(DateTime.add(at, (1470 + 60) * 60, :second))
+      assert Slots.held(ctx.pool.id) == 0
     end
 
     test "the safety net frees a dispatch handed over by its run code's redemption alone",
@@ -1251,11 +1286,11 @@ defmodule Apiary.DispatchesTest do
       assert %Dispatch{dispatched_at: nil, machine_end_state: nil, slot_freed_at: nil} =
                dispatch!(dispatch)
 
-      Dispatches.sweep(DateTime.add(net(at), -1, :microsecond))
+      Dispatches.sweep(DateTime.add(net(dispatch, at), -1, :microsecond))
       assert Slots.held(ctx.pool.id) == 1
 
-      Dispatches.sweep(net(at))
-      assert dispatch!(dispatch).slot_freed_at == net(at)
+      Dispatches.sweep(net(dispatch, at))
+      assert dispatch!(dispatch).slot_freed_at == net(dispatch, at)
       assert Slots.held(ctx.pool.id) == 0
     end
 
@@ -1266,7 +1301,7 @@ defmodule Apiary.DispatchesTest do
       hand_over!(dispatch, dispatch.claimed_at)
       end!(dispatch)
 
-      Dispatches.sweep(net(dispatch.claimed_at))
+      Dispatches.sweep(net(dispatch, dispatch.claimed_at))
       assert Slots.held(ctx.pool.id) == 0
 
       report!(ctx.key, dispatch, :deleting)
@@ -1274,11 +1309,11 @@ defmodule Apiary.DispatchesTest do
       assert DateTime.compare(reported_at, dispatch.claimed_at) == :gt
 
       # The net counts from the report now, not from the dispatched.
-      Dispatches.sweep(net(dispatch.claimed_at))
-      Dispatches.sweep(DateTime.add(net(reported_at), -1, :microsecond))
+      Dispatches.sweep(net(dispatch, dispatch.claimed_at))
+      Dispatches.sweep(DateTime.add(net(dispatch, reported_at), -1, :microsecond))
       assert Slots.held(ctx.pool.id) == 1
 
-      Dispatches.sweep(net(reported_at))
+      Dispatches.sweep(net(dispatch, reported_at))
       assert Slots.held(ctx.pool.id) == 0
     end
 
@@ -1292,12 +1327,12 @@ defmodule Apiary.DispatchesTest do
       assert %Dispatch{late_machine_at: late, slot_freed_at: nil} = dispatch!(dispatch)
       assert DateTime.compare(late, dispatch.claimed_at) == :gt
 
-      Dispatches.sweep(net(dispatch.claimed_at))
-      Dispatches.sweep(DateTime.add(net(late), -1, :microsecond))
+      Dispatches.sweep(net(dispatch, dispatch.claimed_at))
+      Dispatches.sweep(DateTime.add(net(dispatch, late), -1, :microsecond))
       assert Slots.held(ctx.pool.id) == 1
 
-      Dispatches.sweep(net(late))
-      assert dispatch!(dispatch).slot_freed_at == net(late)
+      Dispatches.sweep(net(dispatch, late))
+      assert dispatch!(dispatch).slot_freed_at == net(dispatch, late)
       assert Slots.held(ctx.pool.id) == 0
     end
   end

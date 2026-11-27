@@ -305,14 +305,16 @@ defmodule Apiary.Dispatches.Handover do
 
   @typedoc """
   A run registered at its claim: the registered run, its run code, the address of the
-  gateway the claim resolved to, and what the run's documents are made from
-  (`ApiaryWeb.Contract.DispatchAnswer.documents/1`).
+  gateway the claim resolved to, what the run's documents are made from
+  (`ApiaryWeb.Contract.DispatchAnswer.documents/1`), and the minutes its machine may live,
+  kept on the dispatch.
   """
   @type registered :: %{
           run: Run.t(),
           run_code: String.t(),
           gateway_url: String.t(),
-          documents: map
+          documents: map,
+          machine_lifetime_minutes: pos_integer
         }
 
   @type refusal ::
@@ -476,10 +478,40 @@ defmodule Apiary.Dispatches.Handover do
               session_models(formed)
             )
 
+          lifetime = keep_lifetime(locked)
+
           {:ok,
-           %{run: run, run_code: code, gateway_url: grant.gateway_url, documents: formed.answer}}
+           %{
+             run: run,
+             run_code: code,
+             gateway_url: grant.gateway_url,
+             documents: formed.answer,
+             machine_lifetime_minutes: lifetime
+           }}
         end
     end
+  end
+
+  # The lifetime of the claim's machine, from the time limits the claim read for the run
+  # (`RunEnd.lifetime_minutes/2`), kept on its dispatch, which the claim answer gives.
+  defp keep_lifetime(%{run: %DispatchRun{step: step} = run, dispatch: %Dispatch{id: id}} = locked) do
+    seconds =
+      case locked.held do
+        %{time_limit: limit, time_limits: limits} ->
+          Apiary.Stages.session_seconds(run, limit, limits)
+
+        nil ->
+          nil
+      end
+
+    lifetime = RunEnd.lifetime_minutes(step, seconds)
+
+    {1, _rows} =
+      Repo.update_all(from(d in Dispatch, where: d.id == ^id),
+        set: [machine_lifetime_minutes: lifetime]
+      )
+
+    lifetime
   end
 
   # The most bytes the run's documents take, encoded: what the 201 to the code's

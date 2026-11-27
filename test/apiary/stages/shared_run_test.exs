@@ -252,6 +252,36 @@ defmodule Apiary.Stages.SharedRunTest do
     end
   end
 
+  describe "the run's backstop at a next session" do
+    test "moves to the answer and the next session's setup, limit and margin, once", %{
+      scope: scope
+    } do
+      save!(scope, [build(workflows(~w(plan-the-build review-changes)))])
+      {_work_item, run} = taken_in!(scope)
+
+      # The run attached, with its backstop a minute from now.
+      backstop_at = DateTime.add(DateTime.utc_now(), 60, :second)
+
+      {1, _rows} =
+        Repo.update_all(from(r in Run, where: r.dispatch_run_id == ^run.id),
+          set: [backstop_at: backstop_at]
+        )
+
+      :ok = verdict!(run, "passed")
+      assert {:session, %{time_limit_minutes: 180}} = report(run, 1)
+
+      # From the time session 1 stored its answer: 30 minutes of setup, the limit of 180
+      # and 90 of margin.
+      [answered, _next] = sessions(run)
+      extended = DateTime.add(answered.updated_at, (30 + 180 + 90) * 60, :second)
+      assert Repo.get_by!(Run, dispatch_run_id: run.id).backstop_at == extended
+
+      # A repeat of the report returns the stored answer and moves nothing.
+      assert {:session, _next} = report(run, 1)
+      assert Repo.get_by!(Run, dispatch_run_id: run.id).backstop_at == extended
+    end
+  end
+
   describe "a stage with a loop" do
     test "a session with no verdict in the loop runs the next workflow of the ring; changes requested run round 2, and round 3 ends the run with the escalation",
          %{scope: scope} do
