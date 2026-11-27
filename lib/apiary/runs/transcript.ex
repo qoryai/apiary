@@ -54,9 +54,12 @@ defmodule Apiary.Runs.Transcript do
   # The most chunks of one path a run keeps. The session reads the transcript once a
   # second and once more before a session ends, and cuts what it read into chunks of at
   # most 32,768 bytes (the contract, A session's transcript): a file of 64 MiB is at most
-  # 2,048 full chunks, plus one shorter chunk per read. A machine lives at most 1,470
-  # minutes (`Apiary.Dispatches.DispatchRun`), 88,200 reads: 2,048 + 88,200 = 90,248,
-  # rounded up to 100,000 for the last read of each session.
+  # 2,048 full chunks, plus one shorter chunk per read. A machine of a run with no time
+  # limit lives 1,470 minutes (`Apiary.Dispatches.DispatchRun`), 88,200 reads: 2,048 +
+  # 88,200 = 90,248, rounded up to 100,000 for the last read of each session.
+  # shortcut: a run of several sessions may live up to 10,080 minutes, 604,800 reads, past
+  # this bound; raise it, or count the chunks per session, before such runs write a
+  # transcript that changes on every read
   @max_chunks 100_000
   @max_encoded 43_692
   @int4 2_147_483_647

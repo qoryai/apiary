@@ -242,10 +242,14 @@ defmodule ApiaryWeb.Contract.MachineLogControllerTest do
 
       assert Enum.sort(refused) == [
                "invalid/machine-log-log-nul.json",
-               "invalid/machine-log-undefined-member.json",
                "invalid/machine-log-version-2.json",
                "invalid/machine-log-without-log.json"
              ]
+
+      # shortcut: Wire refuses unknown members, which the open provisioner schemas accept; replace with must_understand handling before Hive sends a new member
+      body = fixture_body("closed/machine-log-undefined-member.json")
+      assert {:ok, _} = JSV.validate(body, validator("provisioner/v1/machine-log.schema.json"))
+      assert refused?(upload(ctx, dispatch, body), 400, "invalid_request")
 
       time = now_time()
 

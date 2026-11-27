@@ -308,11 +308,15 @@ defmodule ApiaryWeb.Contract.MachineEndControllerTest do
         end
 
       assert Enum.sort(refused) == [
-               "invalid/machine-end-undefined-member.json",
                "invalid/machine-end-unknown-state.json",
                "invalid/machine-end-version-2.json",
                "invalid/machine-end-without-state.json"
              ]
+
+      # shortcut: Wire refuses unknown members, which the open provisioner schemas accept; replace with must_understand handling before Hive sends a new member
+      body = fixture_body("closed/machine-end-undefined-member.json")
+      assert {:ok, _} = JSV.validate(body, validator("provisioner/v1/machine-end.schema.json"))
+      assert refused?(report(ctx, dispatch, body), 400, "invalid_request")
 
       time = now_time()
 

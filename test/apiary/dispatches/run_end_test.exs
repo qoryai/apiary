@@ -124,9 +124,12 @@ defmodule Apiary.Dispatches.RunEndTest do
     end
 
     test "a lifetime is at most the contract's most; a prebuild's and a run's with no limit are fixed" do
-      assert RunEnd.lifetime_minutes("workflow", [1340]) == 1470
-      assert RunEnd.lifetime_minutes("workflow", [1341]) == 1470
-      assert RunEnd.lifetime_minutes("workflow", [1440, 1440]) == 1470
+      # 10 + 30 + 1440 + 90, and 10 + 2 × (30 + 1440 + 90).
+      assert RunEnd.lifetime_minutes("workflow", [1440]) == 1570
+      assert RunEnd.lifetime_minutes("workflow", [1440, 1440]) == 3130
+      # 10 + 6 × 1560 is 9370 and 10 + 7 × 1560 is 10,930: 7 days, 10,080, at most.
+      assert RunEnd.lifetime_minutes("workflow", List.duplicate(1440, 6)) == 9370
+      assert RunEnd.lifetime_minutes("workflow", List.duplicate(1440, 7)) == 10_080
       assert RunEnd.lifetime_minutes("workflow", nil) == 1470
       assert RunEnd.lifetime_minutes("prebuild", nil) == 90
       assert RunEnd.lifetime_minutes("prebuild", [1440]) == 90

@@ -43,11 +43,14 @@ defmodule Apiary.Dispatches.WireTest do
     def resolve(url, _roots), do: {:error, {:not_vendored, url}}
   end
 
-  # The schema a fixture is held to: its directory's, or, for one under `invalid/`, the
-  # schema its name starts with, the longest that matches.
+  # The schema a fixture is held to: its directory's, or, for one under `invalid/` or
+  # `closed/`, the schema its name starts with, the longest that matches.
   @schemas ~w(claim-answer claim dispatched release machine-log machine-end refusal)
 
   defp schema_of("invalid/" <> name),
+    do: Enum.find(@schemas, &String.starts_with?(name, &1 <> "-"))
+
+  defp schema_of("closed/" <> name),
     do: Enum.find(@schemas, &String.starts_with?(name, &1 <> "-"))
 
   defp schema_of(path), do: path |> Path.split() |> hd()
@@ -105,10 +108,11 @@ defmodule Apiary.Dispatches.WireTest do
     "time" => "2026-10-15T12:02:00Z",
     "reason" => "The job could not start."
   }
-  # The vendored contracts are at four integrations commits. The provisioner contract
-  # is at 8d859a1d, after 6fed8c73, which describes a machine's dispatch as dispatch_id in
-  # place of key, and after 55a22cb8, which adds the access value write-no-push to the run
-  # documents. The run contract is at 699a22cf, the integration contract's commit, which
+  # The vendored contracts are at five integrations commits. The provisioner contract
+  # is at 4761b92c, which allows a claim answer's max_lifetime_minutes up to 10080, after
+  # 699a22cf, which opens its schemas: a reader ignores a member that a schema does not
+  # define unless must_understand lists it, and the fixtures with such a member move from
+  # `invalid/` to `closed/`. The run contract is at 699a22cf, the integration contract's commit, which
   # adds deliver, read_targets, the findings calls, a workflow's review_group and
   # runs_locked_checks, and the end codes next_session_failed and outputs_invalid. It keeps
   # type_settings in place of full_suite, and a reader that ignores a member that a schema
@@ -135,7 +139,7 @@ defmodule Apiary.Dispatches.WireTest do
   # definitions.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
-          {"provisioner/v1", "8d859a1d5bd0693bd647e0543d29aa8651230c3f"},
+          {"provisioner/v1", "4761b92ce5fa22a5e95659bf8a00936b437ea225"},
           {"run/v1", "699a22cf96ee3e0e8da5897c5f8835d07f71150c"},
           {"explore/v1", "4ad23d9c3dac160af283e95c184a1b11db293074"},
           {"diagnostics/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"},
@@ -317,20 +321,30 @@ defmodule Apiary.Dispatches.WireTest do
     invalid_requests =
       for "invalid/" <> name = path <- all, not String.contains?(name, "-answer-"), do: path
 
+    closed_requests =
+      for "closed/" <> name = path <- all,
+          not String.contains?(name, "-answer-"),
+          not String.starts_with?(name, "refusal-"),
+          do: path
+
     answers =
       for path <- all,
           String.starts_with?(path, "claim-answer/") or
-            (String.starts_with?(path, "invalid/") and String.contains?(path, "-answer-")),
+            (String.starts_with?(path, ["invalid/", "closed/"]) and
+               String.contains?(path, "-answer-")),
           do: path
 
-    refusals = for "refusal/" <> _ = path <- all, do: path
+    refusals =
+      for path <- all, String.starts_with?(path, ["refusal/", "closed/refusal-"]), do: path
 
-    assert Enum.sort(requests ++ invalid_requests ++ answers ++ refusals) == Enum.sort(all)
+    assert Enum.sort(requests ++ invalid_requests ++ closed_requests ++ answers ++ refusals) ==
+             Enum.sort(all)
 
     assert length(requests) == 16
-    assert length(invalid_requests) == 31
-    assert length(answers) == 19
-    assert length(refusals) == 3
+    assert length(invalid_requests) == 26
+    assert length(closed_requests) == 7
+    assert length(answers) == 21
+    assert length(refusals) == 4
   end
 
   test "each refusal fixture is a code, written as the control plane writes a refusal" do
@@ -468,12 +482,10 @@ defmodule Apiary.Dispatches.WireTest do
                "claim-offers-empty.json",
                "claim-offers-memory-mib-511.json",
                "claim-offers-memory-mib-8388609.json",
-               "claim-offers-undefined-member.json",
                "claim-offers-vcpus-0.json",
                "claim-offers-vcpus-1025.json",
                "claim-offers-without-arch.json",
                "claim-pool-id-node.json",
-               "claim-undefined-member.json",
                "claim-wait-seconds-26.json",
                "dispatched-external-ref-nul.json",
                "dispatched-external-type-upper-case.json",
@@ -482,15 +494,39 @@ defmodule Apiary.Dispatches.WireTest do
                "dispatched-machine-type-empty.json",
                "dispatched-machine-type-non-ascii.json",
                "dispatched-machine-type-space.json",
-               "machine-end-undefined-member.json",
                "machine-end-unknown-state.json",
                "machine-end-version-2.json",
                "machine-end-without-state.json",
                "machine-log-log-nul.json",
-               "machine-log-undefined-member.json",
                "machine-log-version-2.json",
                "machine-log-without-log.json",
-               "release-reason-nul.json",
+               "release-reason-nul.json"
+             ]
+    end
+
+    # shortcut: Wire refuses unknown members, which the open provisioner schemas accept; replace with must_understand handling before Hive sends a new member
+    @tag :contract
+    test "every closed request fixture is valid under its schema and refused here" do
+      refused =
+        for path <- Path.wildcard(Path.join([@fixtures, "closed", "*.json"])),
+            name = Path.basename(path),
+            # An answer's and a refusal's fixtures are the starter's to read.
+            not String.contains?(name, "-answer-"),
+            not String.starts_with?(name, "refusal-") do
+          kind = Enum.find(Map.keys(@readers), &String.starts_with?(name, &1 <> "-"))
+          raw = File.read!(path)
+          assert valid?(schema_of("closed/" <> name), Jason.decode!(raw)), name
+          assert read(Map.fetch!(@readers, kind), raw) == :error, name
+          name
+        end
+
+      assert Enum.sort(refused) == [
+               "claim-offers-undefined-member.json",
+               "claim-undefined-member.json",
+               "dispatched-external-undefined-member.json",
+               "dispatched-undefined-member.json",
+               "machine-end-undefined-member.json",
+               "machine-log-undefined-member.json",
                "release-with-retry.json"
              ]
     end

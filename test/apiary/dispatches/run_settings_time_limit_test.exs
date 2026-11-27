@@ -214,9 +214,16 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
       # 10 + 7 × 30 + (30 + 3 × (90 + 30)) + 7 × 90.
       assert claimed_lifetime!(ctx, place) == 1240
 
-      # A stage whose sessions take more than the contract's most gets the most.
+      # 10 + 7 × 30 + (30 + 3 × (240 + 30)) + 7 × 90: past a day, as no cap of a day holds it.
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "implement-changes", 240)
-      assert claimed_lifetime!(ctx, place) == 1470
+      assert claimed_lifetime!(ctx, place) == 1690
+
+      # A stage whose sessions take more than the contract's most, 7 days, gets the most:
+      # 10 + 7 × 30 + 7 × 1440 + 7 × 90 is 10,930.
+      for workflow <- ["plan-the-build", "implement-changes", "review-changes"],
+          do: {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, workflow, 1440)
+
+      assert claimed_lifetime!(ctx, place) == 10_080
     end
 
     test "a claim of a run of one session gives its machine that session and 130 minutes",

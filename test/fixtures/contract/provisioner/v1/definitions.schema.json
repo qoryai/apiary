@@ -22,7 +22,6 @@
     "machine_spec": {
       "description": "The size and kind of a machine: what a node pool offers in a claim, and what an instance admin defines for a machine type in the control plane. A machine fits a spec when its vcpus, memory_mib and disk_gib are each at least the spec's, its arch is the spec's, and its virtualization is true when the spec's is true.",
       "type": "object",
-      "additionalProperties": false,
       "required": [
         "vcpus",
         "memory_mib",

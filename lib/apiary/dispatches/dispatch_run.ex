@@ -297,11 +297,11 @@ defmodule Apiary.Dispatches.DispatchRun do
   def machine_lifetime_minutes(@prebuild), do: 90
   def machine_lifetime_minutes(step) when is_binary(step), do: 1470
 
-  # max_machine_lifetime_minutes/0 is the contract's most, 1470: the longest lifetime the
-  # machine of a claim is given.
+  # max_machine_lifetime_minutes/0 is the contract's most, 10080, 7 days: the longest
+  # lifetime the machine of a claim is given.
   @doc false
   @spec max_machine_lifetime_minutes() :: pos_integer
-  def max_machine_lifetime_minutes, do: 1470
+  def max_machine_lifetime_minutes, do: 10_080
 
   # prebuild_changeset/2 is the changeset of a new run of the queue for the step
   # `prebuild`: the collection whose target it builds, the node pool it is held for, the
