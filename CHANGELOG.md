@@ -3542,6 +3542,10 @@ self-hoster knows what a restart does before doing it (the Upgrading guide,
 
 ### Migrations
 
+<!-- feature: factory -->
+- `dispatches` (20261127140000): Adds `dispatches.machine_lifetime_minutes`. Dispatches
+  claimed before it keep the lifetime their machine was given.
+<!-- /feature -->
 <!-- feature: workflow_model -->
 - `artifact_versions` (20261126120000): a nullable column `workflow`, the workflow of the
   run's session that pushed the version. It changes no row: a version stored before this
