@@ -72,14 +72,19 @@ defmodule Apiary.Harnesses.WalkTest do
 
   ## Setting up
 
-  # An adapter with a call address, persisted, as its start-up declares one, and its seed.
+  # An adapter with a call address and a credential per resource of a call, persisted,
+  # as its start-up declares them, and its seed.
   defp adapter(attrs \\ %{}) do
     %{adapter: adapter, pair: pair} = connectable_adapter_fixture(attrs)
     host = adapter.name <> ".localhost"
 
     {1, _} =
       Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
-        set: [call_url: "https://#{host}/calls/", call_instance_id: "instance-1"]
+        set: [
+          call_url: "https://#{host}/calls/",
+          call_instance_id: "instance-1",
+          credential_scope: :resource
+        ]
       )
 
     %{adapter: Repo.get!(Node, adapter.id), host: host, seed: pair.secret}
@@ -4142,6 +4147,36 @@ defmodule Apiary.Harnesses.WalkTest do
                {:failed, %{failure: :assigned_without_token}},
                Walk.pin_base(ctx.scope.organisation, base)
              )
+    end
+
+    test "under an adapter that has not said its credential's reach since it started, a private assigned source fails assigned_without_token",
+         ctx do
+      setting(ctx.scope, @setting)
+      %{instance: instance} = instance(ctx, [{@harness, "v1"}, {@tools, "v2"}])
+
+      {1, _} =
+        Repo.update_all(from(n in Node, where: n.id == ^instance.adapter.id),
+          set: [credential_scope: nil]
+        )
+
+      instance = %{instance | adapter: Repo.get!(Node, instance.adapter.id)}
+      PublicGitServer.serve(%{})
+
+      serve([ctx.run, instance],
+        covered:
+          Map.put(
+            %{ctx.run.adapter.id => %{@target => {"G_run", "R_app"}}},
+            instance.adapter.id,
+            %{
+              @harness => {"G_i", "R_harness"},
+              @tools => {"G_i", "R_tools"}
+            }
+          ),
+        files: @base_files
+      )
+
+      assert {:failed, %{failure: :assigned_without_token, source: @harness}} =
+               Walk.run(ctx.input)
     end
 
     test "under an adapter whose token reaches its whole grant, a public assigned source is read from its host",

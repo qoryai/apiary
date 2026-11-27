@@ -444,9 +444,10 @@ the Activity page shows each token sent or refused. Write the repository's addre
 letter case of the forge, such as `https://github.com/example-org/harness`: a run of
 `https://github.com/Example-Org/Harness` ends with "Write the harness source as
 github.com/example-org/harness: the forge names it in that case." A harness source that an
-instance admin assigned to Acme gets its token only on a gateway that Qory provides. On a
-gateway of Acme, the run ends with "Connect an account that can read … to this
-organisation, then take the work item in again."; connect such an account to Acme.
+instance admin assigned to Acme gets its token only where Qory provides both the run's
+gateway and its node pool. On a gateway or a node pool of Acme, the run ends with "Connect
+an account that can read … to this organisation, then take the work item in again.";
+connect such an account to Acme.
 
 With the `workflow_model` feature, the Harness page has no workflow choice, and each
 stage runs the workflows set for it. On **Workspace settings › Harness**, select

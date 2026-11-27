@@ -49,18 +49,25 @@ gateway's key, as for `work-1`. Each call writes a `run_credential.issue` Activi
 with the sources the entry reads, or none for a hidden harness. Before each call, Qory
 Apiary checks that the grant is live, of a connected connection of the entry's adapter,
 and either of the run's organisation or covered by an assignment still in force for each
-source of the entry. Otherwise the call is not made, and the request is refused.
+source of the entry, under an adapter whose credential reaches only the resources of the
+call (`credential_scope: resource`). Otherwise the call is not made, and the request is
+refused.
 
 A run ends `harness_unresolved` before it fetches anything in these cases:
 
 - `assigned_without_token`: an assigned private source, under an adapter whose credential
-  reaches its whole grant (`credential_scope: grant` in the adapter's description). Such
+  reaches its whole grant (`credential_scope: grant` in the adapter's description), or
+  under an adapter that has not started since Qory Apiary began to keep that value. Such
   an adapter gives no token for an assigned source. A public assigned source is read
   from its host.
-- `assigned_gateway`: a link through an assignment on a gateway that the run's
-  organisation controls. The read token for a source assigned from another organisation
-  goes only to gateways that Qory provides, at the instance's level. The claim checks
-  this, the first point where the gateway is known.
+- `assigned_gateway`: a link through an assignment on a machine that the run's
+  organisation controls: a gateway of the organisation or of one of its workspaces, or a
+  node pool of a workspace, also one that names the instance's gateway. The run's machine
+  reaches the gateway's stack proxy with the run key, and the proxy sets the token on its
+  requests until the first session. So the read token for a source assigned from another
+  organisation goes only to runs that Qory provides both parts of: the instance's gateway
+  and the instance's node pool. The claim checks this, the first point where the gateway
+  is known, and each secrets request checks it again.
 - `source_case`: a private source whose address's path differs from the `path` the
   adapter resolved only in letter case, such as `Acme/Harness` for `acme/harness`. The
   stack proxy matches paths with case, so the run could not fetch it.

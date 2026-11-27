@@ -272,7 +272,8 @@ defmodule Apiary.Dispatches.Handover do
     RunCredential,
     RunCredentials,
     RunVariables,
-    Target
+    Target,
+    WorkCredential
   }
 
   alias Apiary.Stacks.Document
@@ -939,7 +940,7 @@ defmodule Apiary.Dispatches.Handover do
          :ok <- shared_access(dispatch_run),
          :ok <- shared_models(dispatch_run),
          {:ok, harness} <- harness(dispatch_run, target, locked.harness_read, locked.now),
-         {:ok, entries} <- harness_entries(dispatch_run, locked.gateway, locked.now),
+         {:ok, entries} <- harness_entries(dispatch_run, locked),
          level = RunCredentials.run_access(dispatch_run),
          collection = RunCredentials.work_collection(dispatch_run, work_item, target),
          harness = with_level(harness, level),
@@ -1057,16 +1058,21 @@ defmodule Apiary.Dispatches.Handover do
   # gateway is known, so the run ends `harness_unresolved` before it fetches anything:
   #
   #   * `assigned_gateway`, for a link through an assignment, a grant of another
-  #     organisation than the run's, on a gateway that is not the instance's
-  #     (`Apiary.Gateways.level/1`): the read token of a source assigned from another
-  #     organisation goes only to gateways that Qory Apiary provides;
+  #     organisation than the run's, on a machine that Qory Apiary does not provide: a
+  #     gateway that is not the instance's (`Apiary.Gateways.level/1`), or a claiming
+  #     pool of an organisation or a workspace (`WorkCredential.assigned_machine?/2`).
+  #     The run's machine reaches the gateway's stack proxy with the run key, so the read
+  #     token of a source assigned from another organisation goes only to machines that
+  #     Qory Apiary provides;
   #   * `harness_entries`, for entries the run configuration cannot take, with the
   #     reason: a path the templates refuse, an item with more than 32 paths, or two
   #     entries on one host that overlap or have no paths.
-  defp harness_entries(%DispatchRun{id: id} = dispatch_run, {gateway, _workspace}, now) do
+  defp harness_entries(%DispatchRun{id: id} = dispatch_run, locked) do
+    %{gateway: {gateway, _workspace}, key: %{node: pool}, now: now} = locked
+
     case Repo.one(from h in RunHarness, where: h.dispatch_run_id == ^id and h.state == :resolved) do
       %RunHarness{} = walk ->
-        with :ok <- assigned_gateway(walk, dispatch_run, gateway, now) do
+        with :ok <- assigned_gateway(walk, dispatch_run, {gateway, pool}, now) do
           case RunCredentials.form_harness(
                  dispatch_run,
                  Apiary.Policy.ComposedConfiguration.stack_hosts(walk.pins)
@@ -1084,7 +1090,7 @@ defmodule Apiary.Dispatches.Handover do
     end
   end
 
-  defp assigned_gateway(walk, dispatch_run, gateway, now) do
+  defp assigned_gateway(walk, dispatch_run, {gateway, pool}, now) do
     assigned =
       Enum.filter(walk.harness_links, fn link ->
         case Repo.get(Grant, link["grant_id"]) do
@@ -1093,7 +1099,7 @@ defmodule Apiary.Dispatches.Handover do
         end
       end)
 
-    if assigned == [] or Gateways.level(gateway) == :instance do
+    if assigned == [] or WorkCredential.assigned_machine?(gateway, pool) do
       :ok
     else
       source =

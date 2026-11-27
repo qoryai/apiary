@@ -146,9 +146,10 @@ defmodule Apiary.Harnesses.Walk do
   # Two more checks of a linked source:
   #
   #   * in a run's walk (`run/2`), not a save's (`pin_base/3`): under an assignment whose
-  #     adapter's credential reaches its whole grant (`credential_scope` `grant`), the run
-  #     gets no read token: a source its host serves to anyone is read as public, and any
-  #     other fails `assigned_without_token`;
+  #     adapter's credential does not reach only the resources of a call (a
+  #     `credential_scope` other than `resource`: `grant`, or none said since the adapter
+  #     started), the run gets no read token: a source its host serves to anyone is read
+  #     as public, and any other fails `assigned_without_token`;
   #   * where the adapter's result has a `path` that differs from the address's path only
   #     in letter case, the source fails `source_case`, with the address in the adapter's
   #     case: the run's proxy matches the token's paths with case, so the run could not
@@ -230,8 +231,9 @@ defmodule Apiary.Harnesses.Walk do
     :scp_form,
     :credential_in_address,
     :too_many,
-    # An assigned private source whose adapter gives one credential for its whole grant
-    # (`credential_scope` `grant`): a run gets no read token for it.
+    # An assigned private source whose adapter's credential does not reach only the
+    # resources of a call (a `credential_scope` other than `resource`): a run gets no
+    # read token for it.
     :assigned_without_token,
     # A linked source whose address differs from the path its adapter resolved only in
     # letter case.
@@ -939,11 +941,12 @@ defmodule Apiary.Harnesses.Walk do
   end
 
   # Whether a run's link through an assignment gives it no read token: the adapter's
-  # credential reaches its whole grant (`credential_scope` `grant`), and the contract
-  # sends no run-credential call for an assignment then. A save's walk (`pin_base/3`)
-  # gets no token, so the rule is the run's alone.
+  # credential does not reach only the resources of a call (`credential_scope` `grant`,
+  # or none said since the adapter started), and the contract sends no run-credential
+  # call for an assignment then. A save's walk (`pin_base/3`) gets no token, so the rule
+  # is the run's alone.
   defp without_token?(%Node{credential_scope: scope}, grant, organisation_id),
-    do: get(:run) and scope == :grant and grant.organisation_id != organisation_id
+    do: get(:run) and scope != :resource and grant.organisation_id != organisation_id
 
   # An assigned source that gives a run no read token: a repository its host serves to
   # anyone is read from its host, as a public source; any other fails

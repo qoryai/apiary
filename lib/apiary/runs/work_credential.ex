@@ -26,7 +26,7 @@ defmodule Apiary.Runs.WorkCredential do
   #      harness entry, its grant is live, of a connected connection of the entry's
   #      adapter, and the run may use it now: a grant of the run's organisation, or one of
   #      the instance's organisation with an assignment still in force for each source of
-  #      the entry, under an adapter whose `credential_scope` is not `grant`
+  #      the entry, under an adapter whose `credential_scope` is `resource`
   #      (`:connection_gone`).
   #   2. The call (`Apiary.Adapters.Calls.run_credential/3`), with the purpose `work`, also
   #      for a push entry: the connection's public id, the one resource the entry has, the
@@ -145,10 +145,11 @@ defmodule Apiary.Runs.WorkCredential do
   @doc false
   # entry_sealable_to?/3 is whether the credential of the entry `row` of `run` may be
   # sealed for `gateway`: `sealable_to?/2`, and for a harness entry whose grant is of
-  # another organisation than the run's, one that an assignment lets the run use, only a
-  # gateway that Qory Apiary provides, at the instance's level (`Apiary.Gateways.level/1`):
-  # a gateway that the run's organisation controls never receives a token from another
-  # organisation's grant. False for a harness entry whose grant is gone.
+  # another organisation than the run's, one that an assignment lets the run use, only
+  # for a run on a machine that Qory Apiary provides (`assigned_machine?/2`, with the
+  # run's pool): neither a gateway nor a pool that the run's organisation controls ever
+  # receives a token from another organisation's grant. False for a harness entry whose
+  # grant is gone.
   @spec entry_sealable_to?(Node.t(), Run.t(), RunCredential.t()) :: boolean
   def entry_sealable_to?(gateway, %Run{} = run, %RunCredential{purpose: :harness} = row) do
     case row.grant_id && Repo.get(Grant, row.grant_id) do
@@ -156,7 +157,8 @@ defmodule Apiary.Runs.WorkCredential do
         sealable_to?(gateway, run)
 
       %Grant{} ->
-        sealable_to?(gateway, run) and Gateways.level(gateway) == :instance
+        sealable_to?(gateway, run) and
+          assigned_machine?(gateway, run.node_id && Repo.get(Node, run.node_id))
 
       nil ->
         false
@@ -164,6 +166,21 @@ defmodule Apiary.Runs.WorkCredential do
   end
 
   def entry_sealable_to?(gateway, %Run{} = run, %RunCredential{}), do: sealable_to?(gateway, run)
+
+  @doc false
+  # assigned_machine?/2 is whether a run whose gateway is `gateway` and whose pool is
+  # `pool` runs on a machine that Qory Apiary provides: the gateway is at the instance's
+  # level (`Apiary.Gateways.level/1`) and the pool belongs to no organisation and no
+  # workspace. The run's machine reaches the gateway's stack proxy with the run key, so a
+  # read token from another organisation's grant goes only to such a run. False for no
+  # pool.
+  @spec assigned_machine?(Node.t(), Node.t() | nil) :: boolean
+  def assigned_machine?(%Node{kind: :gateway} = gateway, pool) do
+    Gateways.level(gateway) == :instance and
+      match?(%Node{organisation_id: nil, workspace_id: nil}, pool)
+  end
+
+  def assigned_machine?(_gateway, _pool), do: false
 
   # How long past `until` the request waits for a call that has not ended: the call ends
   # itself at `until` (`Apiary.Adapters.Calls`), so only a call that fails to will wait.
@@ -502,7 +519,8 @@ defmodule Apiary.Runs.WorkCredential do
   # the run may use it now: a grant of the run's organisation, or of the instance's
   # organisation with an assignment in force for each source the entry reads, under an
   # adapter whose credential reaches only the resources of the call
-  # (`Apiary.Harnesses.allowed?/3`, `credential_scope`). Else `:connection_gone`.
+  # (`Apiary.Harnesses.allowed?/3`, `credential_scope` `resource`; an adapter that has not
+  # said its scope since it started counts as `grant`). Else `:connection_gone`.
   defp live(%{grant: grant, connection: connection, adapter: adapter} = place, run, %{
          purpose: :harness,
          resources: resources
@@ -530,7 +548,7 @@ defmodule Apiary.Runs.WorkCredential do
     sources = Enum.flat_map(resources, &List.wrap(&1["sources"]))
 
     grant.organisation_id == Edition.instance_organisation_id() and
-      match?(%Node{credential_scope: scope} when scope != :grant, adapter) and sources != [] and
+      match?(%Node{credential_scope: :resource}, adapter) and sources != [] and
       Enum.all?(sources, &Harnesses.allowed?(run.organisation_id, grant.organisation_id, &1))
   end
 

@@ -2006,9 +2006,12 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
           )
       end
 
-      scope!.(:grant)
-      assert {{:error, :credential_unavailable}, _log} = with_log(issue)
-      assert WorkCredentialStub.calls() == []
+      # An adapter that has not said its scope since it started counts as grant-wide.
+      for scope <- [:grant, nil] do
+        scope!.(scope)
+        assert {{:error, :credential_unavailable}, _log} = with_log(issue)
+        assert WorkCredentialStub.calls() == []
+      end
 
       # With the assignment in force and a token per resource, the credential is issued.
       scope!.(:resource)
@@ -2029,7 +2032,7 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert WorkCredentialStub.calls() == []
 
       # The request records an issued credential once sealed; the issue alone does not.
-      assert ~w(connection_gone connection_gone connection_gone) ==
+      assert ~w(connection_gone connection_gone connection_gone connection_gone) ==
                for(%Entry{details: d} <- issues(), do: d["outcome"])
     end
 
@@ -2054,10 +2057,14 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
       assert WorkCredentialStub.calls() == []
       assert seals() == []
 
-      # Only a gateway Qory Apiary provides, at the instance's level, may receive it; an
-      # entry under a grant of the run's organisation goes to the run's gateway as before.
+      # Only a run on a machine Qory Apiary provides may receive it: the gateway at the
+      # instance's level and the instance's pool. The run's pool is the workspace's,
+      # so even the instance's gateway is refused for it. An entry under a grant of the
+      # run's organisation goes to the run's gateway as before.
       run = Repo.get!(Run, ctx.run.id)
+      assert run.node_id == ctx.pool.id
       instance = %Apiary.Nodes.Node{kind: :gateway, organisation_id: nil, workspace_id: nil}
+      instance_pool = Apiary.NodesFixtures.instance_pool_fixture()
 
       organisation = %Apiary.Nodes.Node{
         kind: :gateway,
@@ -2065,7 +2072,11 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
         workspace_id: nil
       }
 
-      assert WorkCredential.entry_sealable_to?(instance, run, harness_row(ctx))
+      on_instance_pool = %{run | node_id: instance_pool.id}
+      assert WorkCredential.entry_sealable_to?(instance, on_instance_pool, harness_row(ctx))
+      refute WorkCredential.entry_sealable_to?(organisation, on_instance_pool, harness_row(ctx))
+      refute WorkCredential.entry_sealable_to?(instance, run, harness_row(ctx))
+      refute WorkCredential.entry_sealable_to?(instance, %{run | node_id: nil}, harness_row(ctx))
       refute WorkCredential.entry_sealable_to?(organisation, run, harness_row(ctx))
       Repo.delete!(harness_row(ctx))
       ctx = harness_entry!(ctx, own_grant!(ctx, "G_own"))

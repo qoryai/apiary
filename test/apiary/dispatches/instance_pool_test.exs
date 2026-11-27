@@ -17,8 +17,9 @@ defmodule Apiary.Dispatches.InstancePoolTest do
   alias Apiary.{Dispatches, Nodes}
   alias Apiary.Audit.Entry
   alias Apiary.Dispatches.{Dispatch, DispatchRun}
+  alias Apiary.Harnesses.RunHarness
   alias Apiary.Nodes.Node
-  alias Apiary.Runs.Run
+  alias Apiary.Runs.{Run, RunCredential, RunCredentials}
 
   @moduletag needs: :factory
 
@@ -392,6 +393,115 @@ defmodule Apiary.Dispatches.InstancePoolTest do
 
       assert rows_read(nodes(plan)) == 901
       assert rows_read(nodes(plan)) <= ci_bound
+    end
+  end
+
+  describe "a harness source assigned from the instance's organisation" do
+    # The run's machine reaches the gateway's stack proxy with the run key, so the read
+    # token of a source of another organisation's grant goes only to a run on a machine
+    # that Qory Apiary provides: the instance's gateway and the instance's pool.
+    @harness_source %{"git" => "https://git.example.com/acme/harness", "ref" => "v1"}
+    @harness_apply [
+      %{
+        "hosts" => ["git.example.com"],
+        "scheme" => "basic",
+        "username" => "x-access",
+        "paths" => ["/{target.path}.git/*", "/{target.path}/*"]
+      }
+    ]
+
+    # A run of the scope's queue whose walk resolved with one link through an assignment,
+    # under a live grant of the instance's organisation to the work item's adapter.
+    defp assigned!(scope) do
+      work_item = work_item_fixture(scope)
+      adapter = Repo.get!(Node, work_item.adapter_id)
+
+      {1, _rows} =
+        Repo.update_all(from(n in Node, where: n.id == ^adapter.id),
+          set: [source_apply: @harness_apply, credential_scope: :resource]
+        )
+
+      instance_scope = instance_admin_scope()
+      now = DateTime.utc_now()
+
+      connection =
+        Repo.insert!(%Apiary.Adapters.Connection{
+          public_id: Apiary.PublicId.generate(Apiary.Adapters.Connection.prefix()),
+          organisation_id: instance_scope.organisation.id,
+          adapter_id: adapter.id,
+          created_by_id: instance_scope.user.id,
+          state: :connected,
+          pass_nonce: :crypto.strong_rand_bytes(16),
+          pass_nonce_used_at: now,
+          connected_at: now
+        })
+
+      grant =
+        Apiary.HarnessReadsFixtures.live_grant_fixture(
+          instance_scope.organisation.id,
+          adapter,
+          connection,
+          "G_instance"
+        )
+
+      {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+
+      {1, _rows} =
+        Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^queued.id),
+          set: [
+            state: :resolved,
+            origin: :none,
+            pins: [Map.put(@harness_source, "at", "c1")],
+            harness_links: [
+              %{
+                "grant_id" => grant.id,
+                "adapter_id" => adapter.id,
+                "grant_ref" => grant.grant_ref,
+                "assigned" => true,
+                "resources" => ["R_h"],
+                "paths" => %{"R_h" => "acme/harness"},
+                "sources" => %{"R_h" => [@harness_source]}
+              }
+            ]
+          ]
+        )
+
+      {queued, grant}
+    end
+
+    test "the instance's pool, through the instance's gateway, gets the link's entry", ctx do
+      {queued, grant} = assigned!(ctx.a)
+
+      assert {:ok, %{run: %{id: id}, registered: %Run{} = run}} = claim(ctx.key)
+      assert id == queued.id
+
+      assert [%{name: "harness-1", row: row}] = RunCredentials.harness(run)
+      assert row.grant_id == grant.id
+      assert [%{"paths" => ["/acme/harness.git/*", "/acme/harness/*"]}] = row.apply
+    end
+
+    test "a workspace's pool that names the instance's gateway ends the run assigned_gateway, with no entry",
+         ctx do
+      theirs = pool_fixture(ctx.c)
+      %{access_key: their_key} = enrolled_key_fixture(ctx.c, theirs)
+
+      {1, _rows} =
+        Repo.update_all(from(n in Node, where: n.id == ^theirs.id),
+          set: [gateway_choice: :named, gateway_id: ctx.gateway.id]
+        )
+
+      {queued, _grant} = assigned!(ctx.c)
+
+      assert {:ok, _claimed} = claim(their_key)
+      assert %DispatchRun{end_cause: :harness_unresolved} = Repo.get!(DispatchRun, queued.id)
+
+      assert %RunHarness{
+               state: :failed,
+               failure: "assigned_gateway",
+               failed_source: "https://git.example.com/acme/harness"
+             } = Repo.get_by!(RunHarness, dispatch_run_id: queued.id)
+
+      assert Repo.all(from c in RunCredential, where: c.purpose == :harness) == []
     end
   end
 
