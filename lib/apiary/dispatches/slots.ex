@@ -28,8 +28,9 @@ defmodule Apiary.Dispatches.Slots do
   # its run code hands it over with no `dispatched`), its `machine_end_at` (its last
   # report) and its `late_machine_at` is `@net_minutes`, 60, past its machine's
   # lifetime, the claim answer's `max_lifetime_minutes`, which the dispatch keeps
-  # (`machine_lifetime_minutes`); for a dispatch claimed before dispatches kept it, 90 for
-  # a prebuild, else 1470 (`Apiary.Dispatches.DispatchRun.machine_lifetime_minutes/1`,
+  # (`machine_lifetime_minutes`); for a dispatch whose claim ended its run before
+  # registering it, the only one with none (`Apiary.Dispatches.Handover.end_claimed/3`), 90
+  # for a prebuild, else 1470 (`Apiary.Dispatches.DispatchRun.machine_lifetime_minutes/1`,
   # read again from the step of its run of the queue, which never changes). A dispatch
   # with none of the four
   # counts from its `claimed_at`, which is earlier than any of them. The starter deletes
@@ -383,7 +384,8 @@ defmodule Apiary.Dispatches.Slots do
   # dispatch done, ended or stale, with no machine left: none was made, or it was reported
   # `gone`. Or the safety net: a dispatch done or handed over whose last sign of a
   # machine is older than the machine's lifetime and `@net_minutes`: the lifetime the
-  # dispatch keeps, else its step's.
+  # dispatch keeps, else its step's, only for a dispatch whose claim ended its run before
+  # registering it (`Apiary.Dispatches.Handover.end_claimed/3`).
   defp due(query, now) do
     prebuild = DispatchRun.prebuild()
     prebuild_cutoff = cutoff(now, DispatchRun.machine_lifetime_minutes(prebuild))

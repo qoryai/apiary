@@ -99,7 +99,7 @@ defmodule Apiary.Dispatches.RunEnd do
   # no time limit. Each next-session answer of a shared run (`Apiary.Stages`) moves it to
   # the answer's time and `session_seconds/1` of the next session's limit, where that is
   # later (`extend/3`): the next session's setup starts after the answer. Neither sets it
-  # past the end of the lifetime the claim gave the run's machine (`capped/4`,
+  # past the end of the lifetime the claim gave the run's machine (`capped/3`,
   # `lifetime_minutes/2`), which counts the most sessions the run's stage can run, so the
   # run is lost before its machine powers off.
   #
@@ -265,19 +265,15 @@ defmodule Apiary.Dispatches.RunEnd do
   def lifetime_minutes(step, nil) when is_binary(step),
     do: @attach_minutes + div(backstop_seconds(step, nil), 60)
 
-  # capped/4 is `at`, a backstop, or the end of the lifetime of the machine of the claim
-  # made at `claimed_at` when that comes first: `minutes`, the lifetime the claim kept, or
-  # for a claim made before claims kept it, the lifetime of `step`
-  # (`Apiary.Dispatches.DispatchRun.machine_lifetime_minutes/1`). `at` as it is with no
-  # claim.
+  # capped/3 is `at`, a backstop, or the end of the lifetime of the machine of the claim
+  # made at `claimed_at` when that comes first: `minutes`, the lifetime the claim kept on
+  # its dispatch, which every handed-over dispatch has. `at` as it is with no claim.
   @doc false
-  @spec capped(DateTime.t(), DateTime.t() | nil, pos_integer | nil, String.t()) :: DateTime.t()
-  def capped(%DateTime{} = at, nil, _minutes, _step), do: at
+  @spec capped(DateTime.t(), DateTime.t() | nil, pos_integer | nil) :: DateTime.t()
+  def capped(%DateTime{} = at, nil, _minutes), do: at
 
-  def capped(%DateTime{} = at, %DateTime{} = claimed_at, minutes, step) do
-    minutes = minutes || DispatchRun.machine_lifetime_minutes(step)
-    Enum.min([at, DateTime.add(claimed_at, minutes * 60, :second)], DateTime)
-  end
+  def capped(%DateTime{} = at, %DateTime{} = claimed_at, minutes) when is_integer(minutes),
+    do: Enum.min([at, DateTime.add(claimed_at, minutes * 60, :second)], DateTime)
 
   # silence_seconds/0 is the seconds without a heartbeat after which an attached run with
   # no exit is lost for good (the moduledoc).
@@ -288,7 +284,7 @@ defmodule Apiary.Dispatches.RunEnd do
   # extend/3 moves the backstop of the registered run of the run of the queue
   # `dispatch_run_id`, at the next-session answer `answered_at` that starts a session whose
   # time limit is `minutes`, to `answered_at` and `session_seconds/1` of `minutes`, at most
-  # the end of the lifetime of its machine (`capped/4`), inside the caller's transaction,
+  # the end of the lifetime of its machine (`capped/3`), inside the caller's transaction,
   # which holds the run's work item `FOR UPDATE` (`Apiary.Stages`). It locks the run of the
   # queue `FOR UPDATE`, then the registered run, as an end does, and moves the backstop
   # only later, and only for a run whose backstop is after `answered_at` and that did not
@@ -300,7 +296,7 @@ defmodule Apiary.Dispatches.RunEnd do
 
   def extend(dispatch_run_id, minutes, %DateTime{} = answered_at)
       when is_binary(dispatch_run_id) and is_integer(minutes) and minutes > 0 do
-    with %DispatchRun{step: step} <- lock(dispatch_run_id),
+    with %DispatchRun{} <- lock(dispatch_run_id),
          %Run{backstop_at: %DateTime{} = backstop_at, silenced_at: nil} = run <-
            Repo.one(
              from r in Run, where: r.dispatch_run_id == ^dispatch_run_id, lock: "FOR UPDATE"
@@ -311,7 +307,7 @@ defmodule Apiary.Dispatches.RunEnd do
       extended =
         answered_at
         |> DateTime.add(session_seconds(minutes), :second)
-        |> capped(claimed_at, lifetime, step)
+        |> capped(claimed_at, lifetime)
 
       if DateTime.compare(extended, backstop_at) == :gt do
         {1, _rows} =

@@ -46,7 +46,7 @@ defmodule Apiary.Runs.Transcript do
 
   require Logger
 
-  alias Apiary.Dispatches.{Dispatch, DispatchRun, RunEnd}
+  alias Apiary.Dispatches.{Dispatch, DispatchRun}
   alias Apiary.Repo
   alias Apiary.Runs.{Run, SessionChunk}
 
@@ -54,7 +54,7 @@ defmodule Apiary.Runs.Transcript do
   @max_chunk 32_768
   # The chunks of a full file: 64 MiB in chunks of at most 32,768 bytes.
   @full_chunks div(64 * 1024 * 1024, 32_768)
-  # The least bound of a run no queue handed over (max_chunks/1).
+  # The bound of a run with no handed-over dispatch (max_chunks/1).
   @no_dispatch_chunks 100_000
   @max_encoded 43_692
   @int4 2_147_483_647
@@ -85,11 +85,9 @@ defmodule Apiary.Runs.Transcript do
   @doc """
   The most chunks of one path the run `run_id` keeps, and fewer than a restored file
   has, from the minutes its machine may live: the lifetime its handed-over dispatch keeps
-  (`dispatches.machine_lifetime_minutes`). A dispatch claimed before dispatches kept a
-  lifetime has the bound of a run with no time limit (lifetime_minutes/2 of
-  Apiary.Dispatches.RunEnd), more than a prebuild needs. A run no queue handed over has
-  no machine lifetime, and keeps that bound or 100,000 chunks, whichever is more, the
-  bound before machines kept a lifetime. A test sets a lower one as `:max_chunks`, as for
+  (`dispatches.machine_lifetime_minutes`), which every handed-over dispatch has. A run
+  with no handed-over dispatch, such as one no queue handed over, has no machine lifetime
+  and keeps 100,000 chunks. A test sets a lower one as `:max_chunks`, as for
   `max_file/0`.
   """
   @spec max_chunks(Ecto.UUID.t()) :: pos_integer
@@ -110,17 +108,14 @@ defmodule Apiary.Runs.Transcript do
     do: @full_chunks + minutes * 60 + div(minutes, 120) + 1
 
   defp bound(run_id) do
-    no_limit = chunk_bound(RunEnd.lifetime_minutes("workflow", nil))
-
     case handed_over_lifetime(run_id) do
-      nil -> max(no_limit, @no_dispatch_chunks)
-      {nil} -> no_limit
-      {minutes} -> chunk_bound(minutes)
+      nil -> @no_dispatch_chunks
+      minutes -> chunk_bound(minutes)
     end
   end
 
-  # `{minutes}`, the lifetime the run's last handed-over dispatch keeps, nil in a dispatch
-  # claimed before dispatches kept it; nil with no handed-over dispatch.
+  # The lifetime the run's last handed-over dispatch keeps; nil with no handed-over
+  # dispatch.
   defp handed_over_lifetime(run_id) do
     Repo.one(
       from(r in Run,
@@ -129,7 +124,7 @@ defmodule Apiary.Runs.Transcript do
         where: r.id == ^run_id,
         order_by: [desc: d.handed_over_at],
         limit: 1,
-        select: {d.machine_lifetime_minutes}
+        select: d.machine_lifetime_minutes
       ),
       log: false
     )

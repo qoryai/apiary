@@ -152,14 +152,7 @@ defmodule Apiary.Runs.TranscriptLimitsTest do
              Transcript.check(ctx.run.id, @path)
   end
 
-  test "a dispatch with no lifetime has a run's with no time limit; a run no queue handed over keeps 100,000",
-       ctx do
-    # A dispatch claimed before dispatches kept a lifetime: 1,480 minutes.
-    lifetime!(ctx.run, nil)
-    assert Transcript.max_chunks(ctx.run.id) == 90_861
-
-    # A run no queue handed over has no machine lifetime: the bound before machines kept
-    # one.
+  test "a run no queue handed over has no machine lifetime and keeps 100,000 chunks", ctx do
     assert Transcript.max_chunks(run_fixture(ctx.scope).id) == 100_000
   end
 

@@ -538,14 +538,14 @@ defmodule Apiary.Runs.Attach do
   # time limit and the margin of its first session, the limit its documents have
   # (`time_limit_minutes`), or its step's fixed backstop for a prebuild and a run with no
   # limit (`Apiary.Dispatches.backstop_seconds/2`); at the latest when the lifetime its
-  # claim gave its machine ends (`Apiary.Dispatches.RunEnd.capped/4`). Any other run has
+  # claim gave its machine ends (`Apiary.Dispatches.RunEnd.capped/3`). Any other run has
   # no such deadline.
   defp backstop_at(nil, _run, _now), do: nil
 
   defp backstop_at(%{step: step} = dispatched, run, now) do
     now
     |> DateTime.add(Dispatches.backstop_seconds(step, first_limit(run)), :second)
-    |> RunEnd.capped(dispatched.claimed_at, dispatched.lifetime, step)
+    |> RunEnd.capped(dispatched.claimed_at, dispatched.lifetime)
   end
 
   # The time limit of the run's first session, its documents' `time_limit_minutes`; nil

@@ -1231,7 +1231,7 @@ defmodule Apiary.DispatchesTest do
                dispatch!(dispatch)
     end
 
-    test "the safety net counts the lifetime the dispatch keeps; one claimed before it kept one, its step's",
+    test "the safety net counts the lifetime the dispatch keeps; one whose claim ended its run, its step's",
          ctx do
       queued!(ctx.scope)
       dispatch = claimed!(ctx.key)
@@ -1246,16 +1246,17 @@ defmodule Apiary.DispatchesTest do
       Dispatches.sweep(DateTime.add(at, (325 + 60) * 60, :second))
       assert Slots.held(ctx.pool.id) == 0
 
-      # A dispatch with no lifetime kept has the 1470 minutes of a step that is not a
-      # prebuild.
+      # A dispatch whose claim ended its run before registering it keeps no lifetime
+      # (`Apiary.Dispatches.Handover.end_claimed/3`), and is never handed over; once a
+      # machine shows up late for it, the net gives it the 1470 minutes of a step that is
+      # not a prebuild.
       queued!(ctx.scope)
-      older = claimed!(ctx.key)
-      at = DateTime.add(older.claimed_at, 1, :second)
-      hand_over!(older, at)
-      end!(older)
+      ended = claimed!(ctx.key)
+      at = DateTime.add(ended.claimed_at, 1, :second)
+      end!(ended)
 
-      Repo.update_all(from(d in Dispatch, where: d.id == ^older.id),
-        set: [machine_lifetime_minutes: nil]
+      Repo.update_all(from(d in Dispatch, where: d.id == ^ended.id),
+        set: [machine_lifetime_minutes: nil, late_machine_at: at]
       )
 
       Dispatches.sweep(DateTime.add(at, (1470 + 60) * 60 - 1, :second))

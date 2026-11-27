@@ -34,9 +34,10 @@ defmodule Apiary.Dispatches.Dispatch do
   # (`Apiary.Dispatches.Slots.late_machine/2`). `machine_lifetime_minutes` is the
   # lifetime its claim answer gave the machine, `max_lifetime_minutes`, which the claim
   # computes from the run's time limits (`Apiary.Dispatches.RunEnd.lifetime_minutes/2`);
-  # nil for a dispatch claimed before claims kept it, which has its step's
-  # (`Apiary.Dispatches.DispatchRun.machine_lifetime_minutes/1`). At most one dispatch of a
-  # run is live and not stale at a time.
+  # every handed-over dispatch has it. Nil only for a dispatch whose claim ended its run
+  # before registering it (`Apiary.Dispatches.Handover.end_claimed/3`), which the slot net
+  # gives its step's (`Apiary.Dispatches.DispatchRun.machine_lifetime_minutes/1`). At most
+  # one dispatch of a run is live and not stale at a time.
   #
   # Left out of the documentation at `/docs` (`@moduledoc false`), as the work items are.
   @moduledoc false

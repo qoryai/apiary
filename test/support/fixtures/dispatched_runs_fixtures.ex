@@ -56,7 +56,7 @@ defmodule Apiary.DispatchedRunsFixtures do
   (`gateway_for!/2`); of the pool's node and key, running, registered and its run key
   issued a minute ago, attached 30 seconds ago, last heard 5 seconds ago, with the
   backstop its attach sets for its first session's time limit. The backstop skips the cap
-  at the end of the machine's lifetime (`Apiary.Dispatches.RunEnd.capped/4`): with the
+  at the end of the machine's lifetime (`Apiary.Dispatches.RunEnd.capped/3`): with the
   claim a minute ago, that end comes after the backstop for every lifetime a claim gives.
   `run_attrs` change the registered run;
   `unattached/0` are the ones of a run never attached. Returns `%{dispatch_run:

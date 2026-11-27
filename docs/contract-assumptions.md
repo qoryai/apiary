@@ -1399,8 +1399,8 @@ they start at offset 0, each starts where the one before it ends, they are at mo
 together, and they are fewer than the run's chunk bound: 2,048, the chunks of a full
 file, plus one per second of the machine lifetime its dispatch keeps, one per 120 minutes
 of it, and one, so 90,861 for a lifetime of 1,480 minutes (`Apiary.Runs.Transcript`). A
-dispatch claimed before dispatches kept a lifetime has the bound of 1,480 minutes, and a
-run no queue handed over has that bound or 100,000 chunks, whichever is more. The projection keeps no
+run with no handed-over dispatch, such as one no queue handed over, has the bound of
+100,000 chunks. The projection keeps no
 more chunks of a path once the stored ones pass 64 MiB, once the bound is stored, or once the chunks up to the
 run's projected sequence have a gap in `offset`, and logs the chunks it left out, one
 line per pass and path. It checks each stored chunk for a gap once, when the projected

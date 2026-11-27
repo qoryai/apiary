@@ -151,14 +151,14 @@ defmodule Apiary.Dispatches.RunEndTest do
           ] do
         backstop_at = DateTime.add(attached_at, Dispatches.backstop_seconds(step, first), :second)
         lifetime = RunEnd.lifetime_minutes(step, limits && seconds(limits))
-        assert RunEnd.capped(backstop_at, claimed_at, lifetime, step) == backstop_at, step
+        assert RunEnd.capped(backstop_at, claimed_at, lifetime) == backstop_at, step
       end
 
       # One second later, the end of the lifetime cuts the backstop of a run of one session.
       late = DateTime.add(attached_at, 1, :second)
       backstop_at = DateTime.add(late, Dispatches.backstop_seconds("workflow", 15), :second)
       lifetime = RunEnd.lifetime_minutes("workflow", seconds([15]))
-      assert RunEnd.capped(backstop_at, claimed_at, lifetime, "workflow") != backstop_at
+      assert RunEnd.capped(backstop_at, claimed_at, lifetime) != backstop_at
     end
 
     test "a backstop capped at the end of the machine's lifetime from the claim" do
@@ -166,12 +166,9 @@ defmodule Apiary.Dispatches.RunEndTest do
       at = ~U[2026-11-27 12:00:00.000000Z]
 
       # A lifetime of 145 minutes ends at 12:25, after `at`; one of 100 at 11:40, before.
-      assert RunEnd.capped(at, claimed_at, 145, "workflow") == at
-      assert RunEnd.capped(at, claimed_at, 100, "workflow") == ~U[2026-11-27 11:40:00.000000Z]
-      # A claim made before claims kept a lifetime has its step's: 90 for a prebuild.
-      assert RunEnd.capped(at, claimed_at, nil, "prebuild") == ~U[2026-11-27 11:30:00.000000Z]
-      assert RunEnd.capped(at, claimed_at, nil, "workflow") == at
-      assert RunEnd.capped(at, nil, 100, "workflow") == at
+      assert RunEnd.capped(at, claimed_at, 145) == at
+      assert RunEnd.capped(at, claimed_at, 100) == ~U[2026-11-27 11:40:00.000000Z]
+      assert RunEnd.capped(at, nil, 100) == at
     end
 
     test "the silence is 600 s" do
@@ -410,14 +407,6 @@ defmodule Apiary.Dispatches.RunEndTest do
     test "is at most the end of the lifetime the claim gave the machine", ctx do
       end_of_life = DateTime.add(ctx.handed.dispatch.claimed_at, 1470 * 60, :second)
       assert extend!(ctx.handed, 1440, ctx.now) == end_of_life
-
-      # A dispatch claimed before claims kept a lifetime has its step's, 1470 minutes.
-      {1, _rows} =
-        Repo.update_all(from(d in Dispatch, where: d.id == ^ctx.handed.dispatch.id),
-          set: [machine_lifetime_minutes: nil]
-        )
-
-      assert extend!(ctx.handed, 1440, DateTime.add(ctx.now, 60, :second)) == end_of_life
     end
 
     test "changes nothing for a run past its backstop or one that went silent", ctx do
