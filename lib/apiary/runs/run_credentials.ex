@@ -50,8 +50,31 @@ defmodule Apiary.Runs.RunCredentials do
   # prebuild have the work entry alone. Only Forager's push proxy gets the push entry's
   # value; the run's sessions get the work entry's.
   #
-  # The claim writes the entries with their run (`insert!/2`), once. `work/1` and `push/1`
-  # read them back for the run's documents and its secrets request.
+  # ## The harness entries
+  #
+  # `form_harness/2` forms the run's harness entries, `harness-1` to `harness-5`, from the
+  # links its harness walk resolved (`Apiary.Harnesses.entries/1`), in that order: one
+  # entry per link of the run's organisation, one per resource of a link through an
+  # assignment. Each entry is read only, under the link's grant (`grant_id`, no
+  # connection), and takes its adapter's apply items (`Apiary.Nodes.Node`'s
+  # `source_apply`):
+  #
+  #   * a path with `{target.path}` is filled with each resource's path, as the adapter
+  #     resolved it (`Apiary.Integrations.ApplyTemplates.fill/2`), the paths of all its
+  #     resources in one item, each once; where one of its resources has no path, the
+  #     item has no `paths`, so it covers every path of its hosts;
+  #   * only the items whose hosts are all in the run's `stack_hosts` are kept, since only
+  #     the stack proxy sets a harness credential, on those hosts alone.
+  #
+  # A link whose adapter is gone or declares no apply items, or keeps no item, gets no
+  # entry. The entries are refused, and the run does not start, when a resource's path is
+  # one the templates refuse (`:path_refused`), an item gets more than 32 paths
+  # (`:too_many_paths`), or two entries have items on one host that overlap or have no
+  # paths (`:overlap`), which the gateway refuses (`run-configuration.schema.json`). So,
+  # without the adapters' paths, a run has one link per forge host.
+  #
+  # The claim writes the entries with their run (`insert!/2`), once. `work/1`, `push/1` and
+  # `harness/1` read them back for the run's documents and its secrets request.
   #
   # The module reference leaves out this module of the `factory` feature.
   @moduledoc false
@@ -69,6 +92,9 @@ defmodule Apiary.Runs.RunCredentials do
   alias Apiary.WorkItems.WorkItem
 
   @work_name "work-1"
+  @harness_prefix "harness-"
+  # The most paths of an item (`run-configuration.schema.json`, `credential_paths`).
+  @max_paths 32
   @push_name "push-1"
   @push_ref "refs/heads/qory/"
   @prebuild DispatchRun.prebuild()
@@ -303,6 +329,173 @@ defmodule Apiary.Runs.RunCredentials do
   def push_from(_work, _level, _work_item), do: nil
 
   @doc false
+  # form_harness/2 is the harness entries of the run of the queue `dispatch_run`, whose
+  # run configuration has `stack_hosts` (the moduledoc): `{:ok, entries}`, not yet stored,
+  # `[]` for none, or `{:error, reason}`, `:path_refused`, `:too_many_paths` or
+  # `:overlap`.
+  @spec form_harness(DispatchRun.t(), [String.t()]) ::
+          {:ok, [RunCredential.t()]} | {:error, :path_refused | :too_many_paths | :overlap}
+  def form_harness(%DispatchRun{} = dispatch_run, stack_hosts) when is_list(stack_hosts) do
+    dispatch_run
+    |> Apiary.Harnesses.entries()
+    |> Enum.reduce_while({:ok, []}, fn link, {:ok, formed} ->
+      case harness_apply(link, stack_hosts) do
+        {:ok, nil} -> {:cont, {:ok, formed}}
+        {:ok, apply} -> {:cont, {:ok, formed ++ [{link, apply}]}}
+        {:error, _reason} = error -> {:halt, error}
+      end
+    end)
+    |> case do
+      {:ok, formed} ->
+        if overlap?(Enum.map(formed, &elem(&1, 1))),
+          do: {:error, :overlap},
+          else: {:ok, harness_rows(dispatch_run, formed)}
+
+      error ->
+        error
+    end
+  end
+
+  defp harness_rows(dispatch_run, formed) do
+    formed
+    |> Enum.with_index(1)
+    |> Enum.map(fn {{link, apply}, n} ->
+      %RunCredential{
+        organisation_id: dispatch_run.organisation_id,
+        workspace_id: dispatch_run.workspace_id,
+        connection_id: nil,
+        grant_id: link.link_id,
+        adapter_id: link.adapter_id,
+        name: @harness_prefix <> Integer.to_string(n),
+        purpose: :harness,
+        access: :read,
+        resources: link.resources,
+        apply: apply,
+        placeholders: nil
+      }
+    end)
+  end
+
+  # The apply items of one harness entry, each a map in a run configuration's order of
+  # members (the moduledoc); nil for none.
+  defp harness_apply(link, stack_hosts) do
+    case link.adapter_id && Repo.get(Node, link.adapter_id) do
+      %Node{source_apply: [_ | _] = items, deleted_at: nil} ->
+        items
+        |> Enum.filter(fn %{"hosts" => hosts} -> Enum.all?(hosts, &(&1 in stack_hosts)) end)
+        |> Enum.reduce_while({:ok, []}, fn item, {:ok, done} ->
+          case harness_item(item, link.resources) do
+            {:ok, item} -> {:cont, {:ok, done ++ [item]}}
+            error -> {:halt, error}
+          end
+        end)
+        |> case do
+          {:ok, []} -> {:ok, nil}
+          other -> other
+        end
+
+      _none ->
+        {:ok, nil}
+    end
+  end
+
+  # One template item for `resources`: its paths filled with each resource's path.
+  defp harness_item(%{"paths" => templates} = item, resources) do
+    filled? = Enum.any?(templates, &String.contains?(&1, "{target.path}"))
+    paths = Enum.map(resources, & &1["path"])
+
+    cond do
+      not filled? ->
+        {:ok, ordered_map(item)}
+
+      Enum.any?(paths, &is_nil/1) ->
+        {:ok, item |> Map.delete("paths") |> ordered_map()}
+
+      true ->
+        Enum.reduce_while(paths, {:ok, []}, fn path, {:ok, all} ->
+          case ApplyTemplates.fill([item], path) do
+            {:ok, [filled]} -> {:cont, {:ok, all ++ filled["paths"]}}
+            {:error, :path_refused} -> {:halt, {:error, :path_refused}}
+          end
+        end)
+        |> case do
+          {:ok, all} ->
+            all = Enum.uniq(all)
+
+            if length(all) > @max_paths,
+              do: {:error, :too_many_paths},
+              else: {:ok, item |> Map.put("paths", all) |> ordered_map()}
+
+          error ->
+            error
+        end
+    end
+  end
+
+  defp harness_item(item, _resources), do: {:ok, ordered_map(item)}
+
+  defp ordered_map(item), do: item |> ApplyTemplates.ordered() |> Map.get(:values) |> Map.new()
+
+  @doc false
+  # overlap?/1 is whether two of the harness entries whose apply items are `entries`
+  # (one list of items each) have items on one host that the gateway refuses together:
+  # one of them has no `paths`, or a path of one and a path of the other match one
+  # request. A path matches whole, or up to a final `*` as a prefix, and a segment
+  # written `{}` matches one segment that is not empty. Items of one entry are not
+  # compared.
+  @spec overlap?([[map]]) :: boolean
+  def overlap?(entries) do
+    claims =
+      for {items, n} <- Enum.with_index(entries),
+          item <- items,
+          host <- item["hosts"],
+          do: {host, n, item["paths"]}
+
+    for {host, n, a} <- claims, {^host, m, b} <- claims, n < m, reduce: false do
+      true ->
+        true
+
+      false ->
+        is_nil(a) or is_nil(b) or Enum.any?(a, fn x -> Enum.any?(b, &paths_meet?(x, &1)) end)
+    end
+  end
+
+  # Whether two path patterns match one request path.
+  defp paths_meet?(a, b), do: meet?(pattern(a), pattern(b))
+
+  # A pattern's segments, and whether it ends with `*`: the last segment is then the
+  # prefix of a segment, after which anything may follow.
+  defp pattern(path) do
+    {path, star} =
+      if String.ends_with?(path, "*"),
+        do: {String.trim_trailing(path, "*"), true},
+        else: {path, false}
+
+    ["" | segments] = String.split(path, "/")
+    {segments, star}
+  end
+
+  defp meet?({[a], true}, {[b | _], _star}), do: prefix_meets?(a, b)
+  defp meet?({[a | _], _star}, {[b], true}), do: prefix_meets?(b, a)
+  defp meet?({[], false}, {[], false}), do: true
+
+  defp meet?({[a | rest_a], star_a}, {[b | rest_b], star_b}) do
+    segment_meets?(a, b) and meet?({rest_a, star_a}, {rest_b, star_b})
+  end
+
+  defp meet?(_a, _b), do: false
+
+  # A segment starting with `prefix` and the segment pattern `segment` (or a prefix too).
+  defp prefix_meets?(_prefix, "{}"), do: true
+
+  defp prefix_meets?(prefix, segment),
+    do: String.starts_with?(segment, prefix) or String.starts_with?(prefix, segment)
+
+  defp segment_meets?("{}", b), do: b != ""
+  defp segment_meets?(a, "{}"), do: a != ""
+  defp segment_meets?(a, b), do: a == b
+
+  @doc false
   # run_access/1 is the access level of the run of the queue `dispatch_run`: its harness
   # walk's. With the workflow model, the lower of the walk's and the stage entry's, and
   # for a run of a stage that shares one run, the highest level of the stage's entries,
@@ -368,16 +561,42 @@ defmodule Apiary.Runs.RunCredentials do
         nil
 
       %RunCredential{} = row ->
-        %{
-          name: row.name,
-          entry: listed_entry(row),
-          hosts: ApplyTemplates.hosts(row.apply),
-          row: row
-        }
+        listed_row(row)
     end
   end
 
   defp listed(_run, _purpose), do: nil
+
+  defp listed_row(%RunCredential{} = row) do
+    %{
+      name: row.name,
+      entry: listed_entry(row),
+      hosts: ApplyTemplates.hosts(row.apply),
+      row: row
+    }
+  end
+
+  @doc false
+  # harness/1 is the harness entries of `run`, as `work/1` is the work entry, with
+  # `purpose` `harness`, in the order of their names; `[]` for none.
+  @spec harness(map | nil) :: [
+          %{
+            name: String.t(),
+            entry: Jason.OrderedObject.t(),
+            hosts: [String.t()],
+            row: RunCredential.t()
+          }
+        ]
+  def harness(%{id: run_id}) when is_binary(run_id) do
+    from(c in RunCredential,
+      where: c.run_id == ^run_id and c.purpose == :harness,
+      order_by: [asc: c.name]
+    )
+    |> Repo.all()
+    |> Enum.map(&listed_row/1)
+  end
+
+  def harness(_run), do: []
 
   @doc false
   # workspace_hosts/1 is the hosts a run of `workspace` can gain with its work entry: the

@@ -1372,6 +1372,19 @@ defmodule Apiary.Runs.RunCredentialsTest do
       [entry] = entries()
       other = sign_up_fixture().scope
 
+      connection = Repo.get!(Connection, work_item.connection_id)
+
+      grant =
+        Apiary.HarnessReadsFixtures.live_grant_fixture(
+          connection.organisation_id,
+          %{id: connection.adapter_id},
+          connection,
+          "G_table"
+        )
+
+      # A harness entry is linked to its grant and to no connection.
+      harness = &Map.merge(%{purpose: "harness", connection_id: nil, grant_id: grant.id}, &1)
+
       row = fn changes ->
         Map.merge(
           %{
@@ -1392,27 +1405,32 @@ defmodule Apiary.Runs.RunCredentialsTest do
         )
       end
 
-      uuids = ~w(id organisation_id workspace_id run_id connection_id adapter_id)a
+      uuids = ~w(id organisation_id workspace_id run_id connection_id adapter_id grant_id)a
 
       insert = fn changes ->
         row = row.(changes)
-        row = Enum.reduce(uuids, row, &Map.update!(&2, &1, fn id -> Ecto.UUID.dump!(id) end))
+
+        row =
+          Enum.reduce(
+            uuids,
+            row,
+            &Map.update(&2, &1, nil, fn id -> id && Ecto.UUID.dump!(id) end)
+          )
+
         Repo.insert_all("run_credentials", [row])
       end
 
       for {changes, constraint} <- [
             {%{}, "run_credentials_work_index"},
             # Another organisation's place: the run is not of that workspace.
-            {%{
+            {harness.(%{
                name: "harness-2",
-               purpose: "harness",
                organisation_id: other.organisation.id,
                workspace_id: other.workspace.id
-             }, "run_credentials_run_id_fkey"},
-            {%{name: "harness-2", purpose: "harness", workspace_id: other.workspace.id},
+             }), "run_credentials_run_id_fkey"},
+            {harness.(%{name: "harness-2", workspace_id: other.workspace.id}),
              "run_credentials_workspace_id_fkey"},
-            {%{name: "harness-1", purpose: "harness", access: "write"},
-             "run_credentials_entry_check"},
+            {harness.(%{name: "harness-1", access: "write"}), "run_credentials_entry_check"},
             {%{name: "harness-1"}, "run_credentials_entry_check"},
             {%{name: "work-10"}, "run_credentials_entry_check"},
             # A work entry is not named for the push, and a push entry reads nowhere.
@@ -1422,11 +1440,15 @@ defmodule Apiary.Runs.RunCredentialsTest do
             {%{name: "push-1", purpose: "push"}, "run_credentials_entry_check"},
             {%{name: "work-2", purpose: "push", access: "write"}, "run_credentials_entry_check"},
             {%{name: "push-0", purpose: "push", access: "write"}, "run_credentials_entry_check"},
-            {%{name: "harness-1", purpose: "harness", apply: []}, "run_credentials_values_check"},
-            {%{name: "harness-1", purpose: "harness", resources: [1]},
-             "run_credentials_values_check"},
-            {%{name: "harness-1", purpose: "harness", placeholders: []},
-             "run_credentials_values_check"}
+            {harness.(%{name: "harness-1", apply: []}), "run_credentials_values_check"},
+            {harness.(%{name: "harness-1", resources: [1]}), "run_credentials_values_check"},
+            {harness.(%{name: "harness-1", placeholders: []}), "run_credentials_values_check"},
+            # A harness entry has a grant and no connection; a work or push entry the
+            # other way round.
+            {%{name: "harness-1", purpose: "harness"}, "run_credentials_link_check"},
+            {harness.(%{name: "harness-1", grant_id: nil}), "run_credentials_link_check"},
+            {%{grant_id: grant.id}, "run_credentials_link_check"},
+            {%{connection_id: nil}, "run_credentials_link_check"}
           ] do
         error = assert_raise Postgrex.Error, fn -> insert.(changes) end
 
@@ -1434,7 +1456,7 @@ defmodule Apiary.Runs.RunCredentialsTest do
                inspect({changes, error.postgres.constraint})
       end
 
-      assert {1, _rows} = insert.(%{name: "harness-1", purpose: "harness"})
+      assert {1, _rows} = insert.(harness.(%{name: "harness-1"}))
 
       # A push entry has a push_ref on every apply item.
       pushing = %{
@@ -1472,12 +1494,10 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
       assert %{num_rows: 1} = kept.("push-1")
 
-      error = assert_raise Postgrex.Error, fn -> kept.("harness-1") end
-      assert error.postgres.constraint == "run_credentials_issued_apply_check"
+      # A harness entry keeps the apply items of its first credential too.
+      assert %{num_rows: 1} = kept.("harness-1")
 
-      error =
-        assert_raise Postgrex.Error, fn -> insert.(%{name: "harness-1", purpose: "harness"}) end
-
+      error = assert_raise Postgrex.Error, fn -> insert.(harness.(%{name: "harness-1"})) end
       assert error.postgres.constraint == "run_credentials_run_id_name_index"
 
       # Another organisation's connection is not this run's.
@@ -1485,13 +1505,261 @@ defmodule Apiary.Runs.RunCredentialsTest do
 
       error =
         assert_raise Postgrex.Error, fn ->
-          insert.(%{name: "harness-2", purpose: "harness", connection_id: other_connection.id})
+          Repo.query!(
+            "UPDATE run_credentials SET connection_id = $2 WHERE run_id = $1 AND name = 'work-1'",
+            [Ecto.UUID.dump!(run.id), Ecto.UUID.dump!(other_connection.id)]
+          )
         end
 
       assert error.postgres.constraint == "run_credentials_connection_id_fkey"
 
+      # A harness entry's grant may be of another organisation: an assigned grant.
+      other_grant =
+        Apiary.HarnessReadsFixtures.live_grant_fixture(
+          other.organisation.id,
+          %{id: other_connection.adapter_id},
+          other_connection,
+          "G_other"
+        )
+
+      assert {1, _rows} = insert.(harness.(%{name: "harness-2", grant_id: other_grant.id}))
+
       # The rows go with their run.
       Repo.delete!(run)
+      assert entries() == []
+    end
+  end
+
+  describe "the harness entries" do
+    @harness_source %{"git" => "https://git.example.com/acme/harness", "ref" => "v1"}
+    @tools_source %{"git" => "https://git.example.com/acme/tools", "ref" => "v2"}
+
+    # The walk of the run of the queue `queued` resolved with `links`, its pins on
+    # git.example.com.
+    defp walked!(queued, links) do
+      {1, _rows} =
+        Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^queued.id),
+          set: [
+            state: :resolved,
+            origin: :none,
+            pins: [Map.put(@harness_source, "at", "c1"), Map.put(@tools_source, "at", "c2")],
+            harness_links: links
+          ]
+        )
+
+      queued
+    end
+
+    # A walk's link under `grant`, for `resources`, `{ref, path, sources}` each, `path`
+    # nil for none.
+    defp link(grant, resources, assigned \\ false) do
+      %{
+        "grant_id" => grant.id,
+        "adapter_id" => grant.adapter_id,
+        "grant_ref" => grant.grant_ref,
+        "assigned" => assigned,
+        "resources" => for({ref, _path, _sources} <- resources, do: ref),
+        "paths" => for({ref, path, _sources} <- resources, path, into: %{}, do: {ref, path}),
+        "sources" => for({ref, _path, sources} <- resources, into: %{}, do: {ref, sources})
+      }
+    end
+
+    defp own_grant!(work_item) do
+      connection = Repo.get!(Connection, work_item.connection_id)
+
+      Apiary.HarnessReadsFixtures.live_grant_fixture(
+        connection.organisation_id,
+        %{id: connection.adapter_id},
+        connection,
+        "G_harness"
+      )
+    end
+
+    defp formed(queued, hosts \\ ["git.example.com"]) do
+      RunCredentials.form_harness(Repo.get!(DispatchRun, queued.id), hosts)
+    end
+
+    test "a link of the run's organisation is one entry, its paths filled for each resource",
+         ctx do
+      {work_item, queued} = queued!(ctx)
+      grant = own_grant!(work_item)
+
+      queued =
+        walked!(queued, [
+          link(grant, [
+            {"R_h", "acme/harness", [@harness_source]},
+            {"R_t", "acme/tools", [@tools_source]}
+          ])
+        ])
+
+      assert {:ok, [entry]} = formed(queued)
+      assert %RunCredential{name: "harness-1", purpose: :harness, access: :read} = entry
+      assert entry.grant_id == grant.id
+      assert entry.connection_id == nil
+
+      # The item on a host outside the stack's hosts is left out.
+      assert entry.apply == [
+               %{
+                 "hosts" => ["git.example.com"],
+                 "scheme" => "basic",
+                 "username" => "token-user",
+                 "paths" => [
+                   "/acme/harness.git/*",
+                   "/acme/harness/*",
+                   "/acme/tools.git/*",
+                   "/acme/tools/*"
+                 ]
+               }
+             ]
+
+      assert [
+               %{"resource_ref" => "R_h", "path" => "acme/harness", "sources" => [_]},
+               %{"resource_ref" => "R_t", "path" => "acme/tools"}
+             ] = entry.resources
+
+      # No host of the stack: no entry.
+      assert formed(queued, []) == {:ok, []}
+    end
+
+    test "an assigned link is one entry per resource", ctx do
+      {work_item, queued} = queued!(ctx)
+      grant = own_grant!(work_item)
+
+      queued =
+        walked!(queued, [
+          link(
+            grant,
+            [{"R_h", "acme/harness", [@harness_source]}, {"R_t", "acme/tools", [@tools_source]}],
+            true
+          )
+        ])
+
+      assert {:ok, [first, second]} = formed(queued)
+      assert {first.name, second.name} == {"harness-1", "harness-2"}
+      assert [%{"paths" => ["/acme/harness.git/*", "/acme/harness/*"]}] = first.apply
+      assert [%{"paths" => ["/acme/tools.git/*", "/acme/tools/*"]}] = second.apply
+    end
+
+    test "with no path for a resource, the item has no paths, and two such entries on one host overlap",
+         ctx do
+      {work_item, queued} = queued!(ctx)
+      grant = own_grant!(work_item)
+
+      queued = walked!(queued, [link(grant, [{"R_h", nil, [@harness_source]}])])
+      assert {:ok, [entry]} = formed(queued)
+      assert [item] = entry.apply
+      refute Map.has_key?(item, "paths")
+
+      queued =
+        walked!(queued, [
+          link(
+            grant,
+            [{"R_h", nil, [@harness_source]}, {"R_t", "acme/tools", [@tools_source]}],
+            true
+          )
+        ])
+
+      assert formed(queued) == {:error, :overlap}
+    end
+
+    test "a path the templates refuse, and more than 32 paths, refuse the entries", ctx do
+      {work_item, queued} = queued!(ctx)
+      grant = own_grant!(work_item)
+
+      queued = walked!(queued, [link(grant, [{"R_h", "acme/*", [@harness_source]}])])
+      assert formed(queued) == {:error, :path_refused}
+
+      many = for n <- 1..17, do: {"R_#{n}", "acme/repo-#{n}", [@harness_source]}
+      queued = walked!(queued, [link(grant, many)])
+      assert formed(queued) == {:error, :too_many_paths}
+    end
+
+    test "overlap?/1 compares the paths of entries on a shared host" do
+      item = &%{"hosts" => ["git.example.com"], "paths" => &1}
+
+      assert RunCredentials.overlap?([[item.(["/acme/a/*"])], [item.(["/acme/a/x"])]])
+      assert RunCredentials.overlap?([[item.(["/acme/{}/x"])], [item.(["/acme/b/x"])]])
+      assert RunCredentials.overlap?([[item.(["/acme/ab*"])], [item.(["/acme/abc/d"])]])
+      assert RunCredentials.overlap?([[item.(nil)], [item.(["/acme/b"])]])
+      refute RunCredentials.overlap?([[item.(["/acme/a/*"])], [item.(["/acme/b/*"])]])
+      refute RunCredentials.overlap?([[item.(["/acme/{}/x"])], [item.(["/acme/b/y"])]])
+      refute RunCredentials.overlap?([[item.(nil), item.(["/a"])]])
+
+      refute RunCredentials.overlap?([
+               [item.(nil)],
+               [%{"hosts" => ["other.example.com"]}]
+             ])
+    end
+
+    test "the claim writes the entries after the work entry", ctx do
+      {work_item, queued} = queued!(ctx)
+      grant = own_grant!(work_item)
+      walked!(queued, [link(grant, [{"R_h", "acme/harness", [@harness_source]}])])
+
+      assert {:ok, %{registered: %Run{} = run}} = claim(ctx)
+      assert [%{name: "harness-1", row: row}] = RunCredentials.harness(run)
+      assert row.grant_id == grant.id
+      assert [%{"paths" => ["/acme/harness.git/*", "/acme/harness/*"]}] = row.apply
+    end
+
+    test "a claim ends the run for entries the run configuration cannot take", ctx do
+      {work_item, queued} = queued!(ctx)
+      grant = own_grant!(work_item)
+      walked!(queued, [link(grant, [{"R_h", "acme/*", [@harness_source]}])])
+
+      assert {:ok, _claimed} = claim(ctx)
+      assert %DispatchRun{end_cause: :harness_unresolved} = Repo.get!(DispatchRun, queued.id)
+
+      assert %RunHarness{
+               state: :failed,
+               failure: "harness_entries",
+               failed_source: nil,
+               failure_rule: %{
+                 "rule" => "harness_entries",
+                 "values" => %{"reason" => "path_refused"}
+               }
+             } = Repo.get_by!(RunHarness, dispatch_run_id: queued.id)
+    end
+
+    test "a claim through a gateway the run's organisation controls ends the run for a link of another organisation's grant",
+         ctx do
+      {work_item, queued} = queued!(ctx)
+      instance_scope = instance_admin_scope()
+      connection = Repo.get!(Connection, work_item.connection_id)
+      now = DateTime.utc_now()
+
+      instance_connection =
+        Repo.insert!(%Connection{
+          public_id: Apiary.PublicId.generate(Connection.prefix()),
+          organisation_id: instance_scope.organisation.id,
+          adapter_id: connection.adapter_id,
+          created_by_id: instance_scope.user.id,
+          state: :connected,
+          pass_nonce: :crypto.strong_rand_bytes(16),
+          pass_nonce_used_at: now,
+          connected_at: now
+        })
+
+      grant =
+        Apiary.HarnessReadsFixtures.live_grant_fixture(
+          instance_scope.organisation.id,
+          %{id: connection.adapter_id},
+          instance_connection,
+          "G_instance"
+        )
+
+      queued = walked!(queued, [link(grant, [{"R_h", "acme/harness", [@harness_source]}], true)])
+
+      assert {:ok, _claimed} = claim(ctx)
+
+      assert %DispatchRun{end_cause: :harness_unresolved} = Repo.get!(DispatchRun, queued.id)
+
+      assert %RunHarness{
+               state: :failed,
+               failure: "assigned_gateway",
+               failed_source: "https://git.example.com/acme/harness"
+             } = Repo.get_by!(RunHarness, dispatch_run_id: queued.id)
+
       assert entries() == []
     end
   end

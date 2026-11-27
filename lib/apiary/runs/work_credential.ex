@@ -1,12 +1,14 @@
 defmodule Apiary.Runs.WorkCredential do
-  # The value of a run's work entry or push entry (`Apiary.Runs.RunCredentials`, `work-1`
-  # and `push-1`), for a secrets request that names it (`Apiary.Runs.SecretsRequest`):
+  # The value of a run's work entry, push entry or harness entries
+  # (`Apiary.Runs.RunCredentials`, `work-1`, `push-1` and `harness-<n>`), for a secrets
+  # request that names it (`Apiary.Runs.SecretsRequest`):
   # `issue_all/5` asks the adapter for the credentials, one call
   # for each entry, all at the same time, and checks the answers; the caller seals them,
   # then keeps its apply items (`keep/1`) and writes its Activity entry (`record_issued/3`)
-  # in one transaction. The adapter's call is the same for both entries, with the purpose
-  # `work`: only the access differs, `read` for the work entry and `write` for the push
-  # entry.
+  # in one transaction. The adapter's call is the same for the work and the push entry,
+  # with the purpose `work`: only the access differs, `read` for the work entry and `write`
+  # for the push entry. A harness entry's call has the purpose `harness`, the access
+  # `read`, the entry's grant's `grant_ref` and its resources, and no connection.
   #
   # The caller makes every check that needs no token first, the model key's read
   # included, so that a credential the adapter issued fails only at a step that needs it.
@@ -20,7 +22,12 @@ defmodule Apiary.Runs.WorkCredential do
   #
   #   1. The entry's connection is connected, of the run's organisation and of the
   #      entry's adapter (`:connection_gone`), and the adapter is not deleted and has an
-  #      access key in use (`:adapter_key_missing`). Otherwise no call is made.
+  #      access key in use (`:adapter_key_missing`). Otherwise no call is made. For a
+  #      harness entry, its grant is live, of a connected connection of the entry's
+  #      adapter, and the run may use it now: a grant of the run's organisation, or one of
+  #      the instance's organisation with an assignment still in force for each source of
+  #      the entry, under an adapter whose `credential_scope` is not `grant`
+  #      (`:connection_gone`).
   #   2. The call (`Apiary.Adapters.Calls.run_credential/3`), with the purpose `work`, also
   #      for a push entry: the connection's public id, the one resource the entry has, the
   #      collection's ref as the adapter listed it, and the entry's access, with no
@@ -49,9 +56,11 @@ defmodule Apiary.Runs.WorkCredential do
   # entry's of the same request failed, so it was not sent (`refused/4`). Its
   # details: the run's id, the connection's, the adapter's and the collection's public
   # ids, the target's path, the access, the purpose, the entry's name, the expiry when
-  # issued and the outcome. Every detail comes from the entry, the connection, the
-  # adapter and the collection, and the expiry from the checked answer: nothing of the
-  # token, and no word of the adapter.
+  # issued and the outcome. A harness entry's has the run's id, the adapter's public id,
+  # the sources it reads as shown, or `harness_hidden` and no source for a hidden
+  # harness, and no grant, connection or collection. Every detail comes from the entry,
+  # the connection, the adapter, the collection and the walk, and the expiry from the
+  # checked answer: nothing of the token, and no word of the adapter.
   #
   # A refusal is `:unavailable` for a call that timed out or reached no one and for an
   # entry that could not be written, `:gone` for a run no longer live, and
@@ -73,10 +82,12 @@ defmodule Apiary.Runs.WorkCredential do
 
   require Logger
 
-  alias Apiary.{Access, AccessKeys, Audit, Gateways, Repo}
+  alias Apiary.{Access, AccessKeys, Audit, Edition, Gateways, Harnesses, Repo}
   alias Apiary.AccessKeys.AccessKey
   alias Apiary.Accounts.Scope
-  alias Apiary.Adapters.{CallFailure, Calls, Collection, Connection}
+  alias Apiary.Adapters.{CallFailure, Calls, Collection, Connection, Grant}
+  alias Apiary.Harnesses.RunHarness
+  alias Apiary.Stacks.Document
   alias Apiary.Adapters.RunCredential, as: Answer
   alias Apiary.Dispatches.DispatchRun
   alias Apiary.Nodes.Node
@@ -131,6 +142,29 @@ defmodule Apiary.Runs.WorkCredential do
 
   def sealable_to?(_gateway, _run), do: false
 
+  @doc false
+  # entry_sealable_to?/3 is whether the credential of the entry `row` of `run` may be
+  # sealed for `gateway`: `sealable_to?/2`, and for a harness entry whose grant is of
+  # another organisation than the run's, one that an assignment lets the run use, only a
+  # gateway that Qory Apiary provides, at the instance's level (`Apiary.Gateways.level/1`):
+  # a gateway that the run's organisation controls never receives a token from another
+  # organisation's grant. False for a harness entry whose grant is gone.
+  @spec entry_sealable_to?(Node.t(), Run.t(), RunCredential.t()) :: boolean
+  def entry_sealable_to?(gateway, %Run{} = run, %RunCredential{purpose: :harness} = row) do
+    case row.grant_id && Repo.get(Grant, row.grant_id) do
+      %Grant{organisation_id: id} when id == run.organisation_id ->
+        sealable_to?(gateway, run)
+
+      %Grant{} ->
+        sealable_to?(gateway, run) and Gateways.level(gateway) == :instance
+
+      nil ->
+        false
+    end
+  end
+
+  def entry_sealable_to?(gateway, %Run{} = run, %RunCredential{}), do: sealable_to?(gateway, run)
+
   # How long past `until` the request waits for a call that has not ended: the call ends
   # itself at `until` (`Apiary.Adapters.Calls`), so only a call that fails to will wait.
   @grace 500
@@ -178,7 +212,7 @@ defmodule Apiary.Runs.WorkCredential do
   end
 
   defp prepare_one(run, %RunCredential{purpose: purpose, access: access} = row, access_key)
-       when purpose in [:work, :push] do
+       when purpose in [:work, :push, :harness] do
     case may_issue(access_key, run) do
       :ok when purpose == :work and access == :write ->
         # A work entry is for the run's sessions and reads: only the push entry gets a write
@@ -193,7 +227,7 @@ defmodule Apiary.Runs.WorkCredential do
       :ok ->
         place = place(row)
 
-        case live(place, run) do
+        case live(place, run, row) do
           :ok -> {:ok, %{row: row, place: place, keys: Calls.answer_keys(place.adapter)}}
           {:error, cause, failure} -> refusal(access_key, run, row, place, cause, failure)
         end
@@ -439,6 +473,17 @@ defmodule Apiary.Runs.WorkCredential do
 
   ## The connection and its adapter
 
+  defp place(%RunCredential{purpose: :harness} = row) do
+    grant = row.grant_id && Repo.get(Grant, row.grant_id)
+
+    %{
+      grant: grant,
+      connection: grant && Repo.get(Connection, grant.connection_id),
+      adapter: Repo.get(Node, row.adapter_id),
+      collection: nil
+    }
+  end
+
   defp place(%RunCredential{} = row) do
     collection_id =
       case row.resources do
@@ -453,20 +498,48 @@ defmodule Apiary.Runs.WorkCredential do
     }
   end
 
-  defp live(%{connection: connection, adapter: adapter}, %Run{} = run) do
-    cond do
-      not match?(%Connection{state: :connected}, connection) or
-        connection.organisation_id != run.organisation_id or
-          connection.adapter_id != adapter_id(adapter) ->
-        {:error, :connection_gone, nil}
+  # A harness entry's grant is live, of a connected connection of the entry's adapter, and
+  # the run may use it now: a grant of the run's organisation, or of the instance's
+  # organisation with an assignment in force for each source the entry reads, under an
+  # adapter whose credential reaches only the resources of the call
+  # (`Apiary.Harnesses.allowed?/3`, `credential_scope`). Else `:connection_gone`.
+  defp live(%{grant: grant, connection: connection, adapter: adapter} = place, run, %{
+         purpose: :harness,
+         resources: resources
+       }) do
+    if match?(%Grant{ended_at: nil}, grant) and
+         match?(%Connection{state: :connected}, connection) and
+         grant.adapter_id == adapter_id(adapter) and connection.adapter_id == grant.adapter_id and
+         harness_allowed?(grant, adapter, run, resources),
+       do: adapter_live(place),
+       else: {:error, :connection_gone, nil}
+  end
 
-      not match?(%Node{kind: :adapter, deleted_at: nil}, adapter) or
-          AccessKeys.active_keys(adapter) == [] ->
-        {:error, :adapter_key_missing, nil}
+  defp live(%{connection: connection, adapter: adapter} = place, %Run{} = run, _row) do
+    if not match?(%Connection{state: :connected}, connection) or
+         connection.organisation_id != run.organisation_id or
+         connection.adapter_id != adapter_id(adapter),
+       do: {:error, :connection_gone, nil},
+       else: adapter_live(place)
+  end
 
-      true ->
-        :ok
-    end
+  defp harness_allowed?(%Grant{organisation_id: id}, _adapter, %Run{organisation_id: id}, _r),
+    do: true
+
+  defp harness_allowed?(%Grant{} = grant, adapter, %Run{} = run, resources) do
+    sources = Enum.flat_map(resources, &List.wrap(&1["sources"]))
+
+    grant.organisation_id == Edition.instance_organisation_id() and
+      match?(%Node{credential_scope: scope} when scope != :grant, adapter) and sources != [] and
+      Enum.all?(sources, &Harnesses.allowed?(run.organisation_id, grant.organisation_id, &1))
+  end
+
+  # The entry's adapter is not deleted and has an access key in use.
+  defp adapter_live(%{adapter: adapter}) do
+    if match?(%Node{kind: :adapter, deleted_at: nil}, adapter) and
+         AccessKeys.active_keys(adapter) != [],
+       do: :ok,
+       else: {:error, :adapter_key_missing, nil}
   end
 
   defp adapter_id(%Node{id: id}), do: id
@@ -474,15 +547,9 @@ defmodule Apiary.Runs.WorkCredential do
 
   ## The call
 
-  defp call(%{connection: connection, adapter: adapter}, %RunCredential{} = row, until, keys) do
-    [%{"external_ref" => ref} | _] = row.resources
-
-    request = %{
-      connection_id: connection.public_id,
-      resources: [ref],
-      access: row.access,
-      purpose: :work
-    }
+  defp call(place, %RunCredential{} = row, until, keys) do
+    request = request(place, row)
+    adapter = place.adapter
 
     case Calls.run_credential(adapter, request, until: until, answer_keys: keys) do
       {:ok, %Answer{} = answer} -> {:ok, answer}
@@ -493,6 +560,22 @@ defmodule Apiary.Runs.WorkCredential do
     _exception -> {:error, :call_failed, nil}
   catch
     _kind, _reason -> {:error, :call_failed, nil}
+  end
+
+  # A harness entry's call is under its grant, for the resources the entry has, read
+  # only, with no connection; a work or push entry's under its connection, for its one
+  # collection.
+  defp request(%{grant: %Grant{grant_ref: grant_ref}}, %RunCredential{purpose: :harness} = row),
+    do: %{
+      grant_ref: grant_ref,
+      resources: Enum.map(row.resources, & &1["resource_ref"]),
+      access: :read,
+      purpose: :harness
+    }
+
+  defp request(%{connection: connection}, %RunCredential{} = row) do
+    [%{"external_ref" => ref} | _] = row.resources
+    %{connection_id: connection.public_id, resources: [ref], access: row.access, purpose: :work}
   end
 
   ## The answer
@@ -540,7 +623,7 @@ defmodule Apiary.Runs.WorkCredential do
 
   defp noted(cause, failure, %Run{} = run, %RunCredential{} = row, place) do
     Logger.warning(
-      "a work credential for the run #{run.node_run_id} was not issued " <>
+      "a #{kind(row)} credential for the run #{run.node_run_id} was not issued " <>
         "connection=#{public_id(place.connection)} adapter=#{public_id(place.adapter)} " <>
         "credential=#{row.name} cause=#{cause}"
     )
@@ -572,6 +655,9 @@ defmodule Apiary.Runs.WorkCredential do
 
   defp answer_failure(_cause, _adapter), do: nil
 
+  defp kind(%RunCredential{purpose: :harness}), do: "harness"
+  defp kind(%RunCredential{}), do: "work"
+
   defp public_id(%{public_id: public_id}), do: public_id
   defp public_id(nil), do: "none"
 
@@ -579,17 +665,8 @@ defmodule Apiary.Runs.WorkCredential do
 
   defp record(access_key, %Run{} = run, %RunCredential{} = row, place, result, expires_at) do
     details =
-      %{
-        "run_id" => run.node_run_id,
-        "connection_id" => public_id_or_nil(place.connection),
-        "adapter_id" => public_id_or_nil(place.adapter),
-        "collection_id" => public_id_or_nil(place.collection),
-        "target_path" => target_path(row),
-        "access" => Atom.to_string(row.access),
-        "purpose" => Atom.to_string(row.purpose),
-        "credential" => row.name,
-        "outcome" => result
-      }
+      row
+      |> details(run, place, result)
       |> then(
         &if(expires_at, do: Map.put(&1, "expires_at", DateTime.to_iso8601(expires_at)), else: &1)
       )
@@ -602,13 +679,64 @@ defmodule Apiary.Runs.WorkCredential do
     else
       _failed ->
         Logger.error(
-          "the Activity entry of a work credential for the run #{run.node_run_id} could " <>
-            "not be written"
+          "the Activity entry of a #{kind(row)} credential for the run #{run.node_run_id} " <>
+            "could not be written"
         )
 
         {:error, :unavailable}
     end
   end
+
+  # A harness entry's details: the run, the adapter, the sources the entry reads, each once
+  # as `Apiary.Stacks.Document.shown/1` writes it, and `harness_hidden`, true and no
+  # sources, for a run whose harness is hidden. No grant or connection: either may be of
+  # another organisation.
+  defp details(%RunCredential{purpose: :harness} = row, run, place, result) do
+    base = %{
+      "run_id" => run.node_run_id,
+      "adapter_id" => public_id_or_nil(place.adapter),
+      "access" => Atom.to_string(row.access),
+      "purpose" => "harness",
+      "credential" => row.name,
+      "outcome" => result
+    }
+
+    if harness_hidden?(run) do
+      Map.put(base, "harness_hidden", true)
+    else
+      sources =
+        for resource <- row.resources,
+            %{"git" => git} <- List.wrap(resource["sources"]),
+            is_binary(git),
+            uniq: true,
+            do: Document.shown(git)
+
+      Map.put(base, "sources", sources)
+    end
+  end
+
+  defp details(%RunCredential{} = row, run, place, result) do
+    %{
+      "run_id" => run.node_run_id,
+      "connection_id" => public_id_or_nil(place.connection),
+      "adapter_id" => public_id_or_nil(place.adapter),
+      "collection_id" => public_id_or_nil(place.collection),
+      "target_path" => target_path(row),
+      "access" => Atom.to_string(row.access),
+      "purpose" => Atom.to_string(row.purpose),
+      "credential" => row.name,
+      "outcome" => result
+    }
+  end
+
+  # Whether the harness walk of the run's run of the queue hid the run's harness. A run
+  # with no walk found hides it, so no source shows.
+  defp harness_hidden?(%Run{dispatch_run_id: id}) when is_binary(id) do
+    Repo.one(from h in RunHarness, where: h.dispatch_run_id == ^id, select: h.harness_hidden) !=
+      false
+  end
+
+  defp harness_hidden?(_run), do: true
 
   defp public_id_or_nil(%{public_id: public_id}), do: public_id
   defp public_id_or_nil(nil), do: nil

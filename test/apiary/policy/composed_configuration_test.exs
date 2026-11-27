@@ -14,7 +14,7 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
 
   alias Apiary.Policy
   alias Apiary.Policy.{ComposedConfiguration, Render, RunConfiguration, Schema, Serving}
-  alias Apiary.Runs.{Batch, RunCredentials}
+  alias Apiary.Runs.{Batch, RunCredential, RunCredentials}
   alias ApiaryWeb.ConnectionLive.Rules
 
   @image "registry.example.com/acme/shop-env@sha256:" <> String.duplicate("3b9d", 16)
@@ -570,6 +570,87 @@ defmodule Apiary.Policy.ComposedConfigurationTest do
         refute document =~ "push_ref"
         assert RunCredentials.push(run) == nil
       end
+    end
+
+    test "a run's harness entries come after push-1, with their hosts in no egress list",
+         ctx do
+      work = work_run!(ctx.scope, "enforce", :write)
+      run = work.run
+
+      [work_row] =
+        Repo.all(from c in RunCredential, where: c.run_id == ^run.id and c.purpose == :work)
+
+      connection = Repo.get!(Apiary.Adapters.Connection, work_row.connection_id)
+
+      grant =
+        Apiary.HarnessReadsFixtures.live_grant_fixture(
+          connection.organisation_id,
+          %{id: connection.adapter_id},
+          connection,
+          "G_harness"
+        )
+
+      harness = [
+        %{
+          "hosts" => ["code.example.org"],
+          "scheme" => "basic",
+          "username" => "x-access",
+          "paths" => ["/acme/harness.git/*"]
+        }
+      ]
+
+      for {name, apply} <- [
+            {"harness-1", harness},
+            {"harness-2", [%{"hosts" => ["tools.example.org"], "scheme" => "bearer"}]}
+          ] do
+        Repo.insert!(%{
+          Ecto.put_meta(work_row, state: :built)
+          | id: nil,
+            name: name,
+            purpose: :harness,
+            access: :read,
+            connection_id: nil,
+            grant_id: grant.id,
+            resources: [%{"resource_ref" => "R_" <> name, "sources" => []}],
+            apply: apply,
+            placeholders: nil
+        })
+      end
+
+      {key, _seed} = work.secrets_key
+
+      {:ok, %{settings: settings}} =
+        Apiary.Runs.Registration.fetch(
+          key,
+          run.node_run_id,
+          Apiary.ContractFixtures.instance_id()
+        )
+
+      decoded = Jason.decode!(settings)
+      names = for entry <- decoded["credentials"], do: entry["name"]
+      assert Enum.take(names, -4) == ["work-1", "push-1", "harness-1", "harness-2"]
+
+      assert List.last(decoded["credentials"]) == %{
+               "name" => "harness-2",
+               "purpose" => "harness",
+               "apply" => [%{"hosts" => ["tools.example.org"], "scheme" => "bearer"}]
+             }
+
+      assert Enum.at(decoded["credentials"], -2)["apply"] == harness
+
+      egress = decoded["security_policy"]["egress"]
+
+      for host <- ["code.example.org", "tools.example.org"] do
+        refute host in egress["allow_first"]
+        refute host in egress["allow"]
+      end
+
+      assert Apiary.ForagerSchemas.validate("run-configuration.schema.json", settings) == :ok
+
+      assert [%{name: "harness-1", hosts: ["code.example.org"]}, %{name: "harness-2"}] =
+               RunCredentials.harness(run)
+
+      assert RunCredentials.harness(nil) == []
     end
 
     test "under observe has its hosts in allow_first alone", ctx do
