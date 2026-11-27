@@ -183,7 +183,9 @@ defmodule Apiary.Adapters.Calls do
   @doc false
   # resolve/3 asks `adapter` which of its grants and resources cover `addresses`
   # (`resolve`). `{:ok, results}`, one for each address, in order: `%{address:,
-  # grant_ref:, resource_ref:}`, or `%{address:, covered: false}`; or
+  # grant_ref:, resource_ref:}`, with `path:`, the resource's path as the adapter writes
+  # it, where the result has one, or `%{address:, covered: false}`, among the forms
+  # `Apiary.Adapters.CallWire` reads; or
   # `{:error, %CallFailure{}}`. Whether the run may use a grant is the caller's to check
   # (`Apiary.Adapters.Grants.live_for_organisation/3`).
   @spec resolve(Node.t(), [String.t()], keyword) :: {:ok, [map]} | {:error, CallFailure.t()}

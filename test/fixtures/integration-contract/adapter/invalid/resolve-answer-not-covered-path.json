@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "revision": 1,
+  "results": [
+    {
+      "address": "https://code.example.com/example-org/example-repo",
+      "covered": false,
+      "path": "example-org/example-repo"
+    }
+  ]
+}

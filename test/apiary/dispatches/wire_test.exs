@@ -108,9 +108,10 @@ defmodule Apiary.Dispatches.WireTest do
   # The vendored contracts are at four integrations commits. The provisioner contract
   # is at 8d859a1d, after 6fed8c73, which describes a machine's dispatch as dispatch_id in
   # place of key, and after 55a22cb8, which adds the access value write-no-push to the run
-  # documents. The run contract is at 699a22cf, the integration contract's commit, which
-  # adds deliver, read_targets, the findings calls, a workflow's review_group and
-  # runs_locked_checks, and the end codes next_session_failed and outputs_invalid. It keeps
+  # documents. The run contract is at 6f810d29, the integration contract's commit, whose
+  # run contract is 699a22cf's, which adds deliver, read_targets, the findings calls, a
+  # workflow's review_group and runs_locked_checks, and the end codes next_session_failed
+  # and outputs_invalid. It keeps
   # type_settings in place of full_suite, and a reader that ignores a member that a schema
   # does not define unless must_understand lists it. The explore contract, and the run
   # contract's documents.schema.json that the harness save reads, are at 4ad23d9c. That
@@ -130,16 +131,16 @@ defmodule Apiary.Dispatches.WireTest do
   # the tier balanced in place of fast, the outcome of a run with its end codes, a later
   # session's runtime, run_settings on every explore run, and
   # model_provider_credential_name in place of model_credential in the next-session
-  # answer. The integration contract is at 699a22cf too:
-  # test/apiary/contract_copies_test.exs checks its copies, and the run schemas read its
-  # definitions.
+  # answer. The integration contract is at 6f810d29 too, which adds `path` to a resolve
+  # result: test/apiary/contract_copies_test.exs checks its copies, and the run schemas
+  # read its definitions.
   test "the vendored contracts are the commits their refs name" do
     for {dir, ref} <- [
           {"provisioner/v1", "8d859a1d5bd0693bd647e0543d29aa8651230c3f"},
-          {"run/v1", "699a22cf96ee3e0e8da5897c5f8835d07f71150c"},
+          {"run/v1", "6f810d29bbee7662056a799cef21a3a32a1ed213"},
           {"explore/v1", "4ad23d9c3dac160af283e95c184a1b11db293074"},
           {"diagnostics/v1", "e0d7be154b18fac6df3b637c80486ac1102ce707"},
-          {"integration/v1", "699a22cf96ee3e0e8da5897c5f8835d07f71150c"}
+          {"integration/v1", "6f810d29bbee7662056a799cef21a3a32a1ed213"}
         ] do
       assert File.read!(Path.join([@vendored, dir, ".contract-ref"])) == ref <> "\n", dir
     end

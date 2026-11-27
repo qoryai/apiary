@@ -31,13 +31,13 @@
         "type": "string",
         "maxLength": 256,
         "not": {"pattern": "\\n"},
-        "pattern": "^(?:/results|/results/(?:0|[1-9][0-9]*)|/results/(?:0|[1-9][0-9]*)/address|/results/(?:0|[1-9][0-9]*)/covered|/results/(?:0|[1-9][0-9]*)/grant_ref|/results/(?:0|[1-9][0-9]*)/public|/results/(?:0|[1-9][0-9]*)/public_ref|/results/(?:0|[1-9][0-9]*)/resource_ref|/revision|/version)$"
+        "pattern": "^(?:/results|/results/(?:0|[1-9][0-9]*)|/results/(?:0|[1-9][0-9]*)/address|/results/(?:0|[1-9][0-9]*)/covered|/results/(?:0|[1-9][0-9]*)/grant_ref|/results/(?:0|[1-9][0-9]*)/path|/results/(?:0|[1-9][0-9]*)/public|/results/(?:0|[1-9][0-9]*)/public_ref|/results/(?:0|[1-9][0-9]*)/resource_ref|/revision|/version)$"
       }
     }
   },
   "$defs": {
     "result": {
-      "description": "The result for one address, in one of three forms: grant_ref and resource_ref, the grant and the resource at the source that cover it, which may also contain public: true and public_ref when the source shows that resource without a credential; public: true, resource_ref and public_ref, with no grant_ref, which the adapter may answer when no grant it holds covers the address and the source shows the resource without a credential; or covered: false, when the adapter cannot read the address, or no grant it holds covers it and the adapter does not answer public: true for it, and then no grant_ref, resource_ref, public or public_ref. The control plane sends the call with the path read-public with the result's public_ref, never with the resource_ref of a covered result.",
+      "description": "The result for one address, in one of three forms: grant_ref and resource_ref, the grant and the resource at the source that cover it, which may also contain public: true and public_ref when the source shows that resource without a credential; public: true, resource_ref and public_ref, with no grant_ref, which the adapter may answer when no grant it holds covers the address and the source shows the resource without a credential; or covered: false, when the adapter cannot read the address, or no grant it holds covers it and the adapter does not answer public: true for it, and then no grant_ref, resource_ref, path, public or public_ref. The control plane sends the call with the path read-public with the result's public_ref, never with the resource_ref of a covered result.",
       "type": "object",
       "required": ["address"],
       "properties": {
@@ -46,10 +46,11 @@
         "resource_ref": {"description": "The adapter's ref to the resource at the address, stable for that resource. The control plane compares it and stores it, and never reads meaning into it.", "$ref": "definitions.schema.json#/$defs/ref"},
         "covered": {"description": "false: no grant the adapter holds covers the address, and the adapter does not answer public: true for it.", "const": false},
         "public_ref": {"description": "The ref of the resource at the address that a request without a credential, under no grant, can use, such as a host followed by a path: the ref that the control plane sends as resource_ref in the call with the path read-public (read-public.schema.json). Present exactly when public is true. In a result with no grant_ref, it may be equal to resource_ref. The control plane compares it and stores it, and never reads meaning into it.", "$ref": "definitions.schema.json#/$defs/ref"},
+        "path": {"description": "The path of the resource at the address on its system, as the adapter writes it, such as owner/name for a repository on a forge, current at the moment of the call. The control plane stores it and fills the path templates of the source's credential items with it. An adapter that has no path for the resource leaves it out.", "$ref": "definitions.schema.json#/$defs/address_path"},
         "public": {"description": "true: the source shows the resource at the address to anyone without a credential. A result may contain it, and an adapter answers public: true only if it serves the call with the path read-public (read-public.schema.json). The adapter decides it from the visibility of the resource as a request without a credential sees it at the moment of the call, never from a grant it holds. A resource that the source shows only to signed-in users is not public. Absent, the control plane treats the resource as not public.", "const": true}
       },
       "if": {"required": ["covered"]},
-      "then": {"properties": {"grant_ref": false, "resource_ref": false, "public": false, "public_ref": false}},
+      "then": {"properties": {"grant_ref": false, "resource_ref": false, "path": false, "public": false, "public_ref": false}},
       "else": {
         "required": ["resource_ref"],
         "if": {"required": ["public"]},
