@@ -889,7 +889,7 @@ for each other and never on each other at once:
    and the key's row in `secret_values` `FOR KEY SHARE`, then writes the key's row in
    `model_key_copies`, then the audit entry `secret.seal`: a key or a run deleted
    meanwhile is left out of the copies. A request for the model keys alone ends there. A
-   request that also lists the work entry or the push entry then, in the same
+   request that also lists the work entry, the push entry or a harness entry then, in the same
    transaction, writes the apply items on each entry's row in `run_credentials`, and last
    the Activity entry `run_credential.issue`. The calls to the adapters, one for each
    entry, are made before any of these writes, at the same time and under one deadline of
@@ -904,8 +904,9 @@ for each other and never on each other at once:
    Activity entry, and that entry's refusal is the answer. A run's deletion
    locks the run's row, then
    its rows in `model_key_copies` and `run_credentials`, so both take the run's row first
-   and cannot deadlock. A request for one entry, `work-1` or `push-1`, and no model key
-   takes no lock on the run's row. A request that names both takes the run's row
+   and cannot deadlock. A request for one entry, `work-1`, `push-1` or a harness entry,
+   and no model key takes no lock on the run's row. A request that names two or more
+   entries takes the run's row
    `FOR KEY SHARE` before it updates the first row (`lock_run/2` in
    `Apiary.Runs.SecretsRequest`), because a deletion removes the two rows in no fixed
    order. A deletion of a secret, as

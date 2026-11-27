@@ -437,6 +437,17 @@ address**, and enter its address in **Public address**, such as
 **Workflow**, choose one of the workflows that the repository's stack lists, and select
 **Save**. **Save** sets only which workflow Main's runs use, not their harness.
 
+A run reads a private harness repository with a read-only token from the integration of the
+account linked to it, such as `example-org/harness` through a GitHub account. The run's
+gateway uses the token only while it fetches the harness, before the first session, and
+the Activity page shows each token sent or refused. Write the repository's address in the
+letter case of the forge, such as `https://github.com/example-org/harness`: a run of
+`https://github.com/Example-Org/Harness` ends with "Write the harness source as
+github.com/example-org/harness: the forge names it in that case." A harness source that an
+instance admin assigned to Acme gets its token only on a gateway that Qory provides. On a
+gateway of Acme, the run ends with "Connect an account that can read … to this
+organisation, then take the work item in again."; connect such an account to Acme.
+
 With the `workflow_model` feature, the Harness page has no workflow choice, and each
 stage runs the workflows set for it. On **Workspace settings › Harness**, select
 **Change**, choose **A harness repository** with its **Repository**, **Stack** and

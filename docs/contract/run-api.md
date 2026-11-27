@@ -29,6 +29,45 @@ of the workflow's entry in the stage of `process.yaml`, which may be `read` or
 none declares `read`. A run of a stage whose version has no entry for its workflow has
 `read`.
 
+## The run's harness credentials
+
+A run whose harness comes from private sources gets one read-only credential entry for
+each link of its harness walk, `harness-1` to `harness-5`, beside `work-1` and `push-1`
+in the run configuration. A link is the grant of one account's integration that covers
+sources of the harness; a link through an assignment, a grant of another organisation
+than the run's, gets one entry for each resource. Each entry has the source role's apply
+items of the link's adapter whose hosts are all in the run's `stack_hosts`, with
+`{target.path}` filled with each resource's `path` from the adapter's `resolve` answer.
+An item has no `paths` where a resource has no `path`. A public source, a source pinned
+to a full commit id and the built-in harness get no entry.
+
+The gateway sets a harness credential only on the stack proxy, while it fetches the
+harness before the first session, so the run's sessions never get it. On the gateway's
+secrets request, Qory Apiary calls the link's adapter with purpose `harness`, the
+grant's `grant_ref`, the resources and access `read`, and seals the answer to the
+gateway's key, as for `work-1`. Each call writes a `run_credential.issue` Activity entry,
+with the sources the entry reads, or none for a hidden harness. Before each call, Qory
+Apiary checks that the grant is live, of a connected connection of the entry's adapter,
+and either of the run's organisation or covered by an assignment still in force for each
+source of the entry. Otherwise the call is not made, and the request is refused.
+
+A run ends `harness_unresolved` before it fetches anything in these cases:
+
+- `assigned_without_token`: an assigned private source, under an adapter whose credential
+  reaches its whole grant (`credential_scope: grant` in the adapter's description). Such
+  an adapter gives no token for an assigned source. A public assigned source is read
+  from its host.
+- `assigned_gateway`: a link through an assignment on a gateway that the run's
+  organisation controls. The read token for a source assigned from another organisation
+  goes only to gateways that Qory provides, at the instance's level. The claim checks
+  this, the first point where the gateway is known.
+- `source_case`: a private source whose address's path differs from the `path` the
+  adapter resolved only in letter case, such as `Acme/Harness` for `acme/harness`. The
+  stack proxy matches paths with case, so the run could not fetch it.
+- `harness_entries`: entries the run configuration cannot take: a path the templates
+  refuse, an item with more than 32 paths, or two entries on one host that overlap or
+  have no paths.
+
 ## The run's track
 
 The `inputs` of a run of any stage but Explore's contain `track`, the id of the work
