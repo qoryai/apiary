@@ -1067,10 +1067,11 @@ defmodule Apiary.Dispatches.Handover do
   #   * `harness_entries`, for entries the run configuration cannot take, with the
   #     reason in the rule's values: `path_refused`, a path the templates refuse, with
   #     the source as the failed source; `too_many_paths`, an item with more than 32
-  #     paths; `overlap`, the paths of two entries that claim one host overlap; or
-  #     `integration_overlap`, two items of one entry claim one host, or an item has no
-  #     paths. The last three have the host in the values. A hidden harness shows neither
-  #     the source nor the host.
+  #     paths; `overlap`, the paths of the entries of two links that claim one host
+  #     overlap; `nested_sources`, the paths of two resources of one assigned link
+  #     overlap, with the address of each one's first source as `first` and `second`; or
+  #     `integration_overlap`, the adapter's items overlap. The last four have the host
+  #     in the values. A hidden harness shows neither a source nor the host.
   defp harness_entries(%DispatchRun{id: id} = dispatch_run, locked) do
     %{gateway: {gateway, _workspace}, key: %{node: pool}, now: now} = locked
 
@@ -1092,6 +1093,15 @@ defmodule Apiary.Dispatches.Handover do
 
                   {:host, host} when walk.harness_hidden != true ->
                     {nil, %{"host" => host}}
+
+                  {:nested, host, first, second} when walk.harness_hidden != true ->
+                    {nil,
+                     for(
+                       {key, git} <- [{"first", first}, {"second", second}],
+                       is_binary(git),
+                       into: %{"host" => host},
+                       do: {key, git |> Document.shown() |> cut()}
+                     )}
 
                   _hidden ->
                     {nil, %{}}
@@ -1135,7 +1145,7 @@ defmodule Apiary.Dispatches.Handover do
 
   # The walk failed at the claim with `code`: the run ends `harness_unresolved` with that
   # code (`end_claimed/3`), and the run's page shows `source`, at most 512 code points as
-  # the row's check counts them (`Apiary.Harnesses.Walk`), and the rule's values.
+  # the row's check counts them (`Apiary.Harnesses.Walk`, `cut/1`), and the rule's values.
   defp walk_failed(walk, code, source, values, now) do
     Logger.warning(
       "a claim ended a run before it started end_cause=harness_unresolved failure=#{code}"
@@ -1148,8 +1158,7 @@ defmodule Apiary.Dispatches.Handover do
         origin: nil,
         document: nil,
         failure: Atom.to_string(code),
-        failed_source:
-          source && source |> String.to_charlist() |> Enum.take(512) |> List.to_string(),
+        failed_source: source && cut(source),
         failure_rule: values && %{"rule" => Atom.to_string(code), "values" => values},
         updated_at: now
       )
@@ -1157,6 +1166,9 @@ defmodule Apiary.Dispatches.Handover do
 
     {:end, {:harness_unresolved, code}}
   end
+
+  # A source address the run's page shows: at most 512 code points.
+  defp cut(source), do: source |> String.to_charlist() |> Enum.take(512) |> List.to_string()
 
   # The `deliver` entries of a run's documents, `{type, send}` objects: the types that the
   # run's process version delivers (`Apiary.Processes.delivered_entries/1`), in the order

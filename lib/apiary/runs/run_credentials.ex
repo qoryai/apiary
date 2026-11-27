@@ -333,29 +333,46 @@ defmodule Apiary.Runs.RunCredentials do
   # run configuration has `stack_hosts` (the moduledoc): `{:ok, entries}`, not yet stored,
   # `[]` for none, or `{:error, reason, at}`: `:path_refused` with `{:source, git}`, the
   # address of the source whose path the templates refuse; `:too_many_paths` with
-  # `{:host, host}`, the first host of the item; or, with `{:host, host}`, the host two
-  # items claim (`conflict/1`), `:integration_overlap` where the adapter's items cause it,
-  # and `:overlap` where the entries of two links or two resources do.
+  # `{:host, host}`, the first host of the item; or, with the host two items claim
+  # (`conflict/1`): `:integration_overlap` with `{:host, host}` where the adapter's items
+  # cause it, `:overlap` with `{:host, host}` where the entries of two links do, and
+  # `:nested_sources` with `{:nested, host, first, second}` where two resources of one
+  # assigned link nest, `first` and `second` the address of the first source each reads,
+  # nil for none.
   @spec form_harness(DispatchRun.t(), [String.t()]) ::
           {:ok, [RunCredential.t()]}
           | {:error, :path_refused, {:source, String.t() | nil}}
           | {:error, :too_many_paths | :overlap | :integration_overlap, {:host, String.t()}}
+          | {:error, :nested_sources, {:nested, String.t(), String.t() | nil, String.t() | nil}}
   def form_harness(%DispatchRun{} = dispatch_run, stack_hosts) when is_list(stack_hosts) do
     dispatch_run
     |> Apiary.Harnesses.entries()
     |> Enum.reduce_while({:ok, []}, fn link, {:ok, formed} ->
       case harness_apply(link, stack_hosts) do
         {:ok, nil} -> {:cont, {:ok, formed}}
-        {:ok, apply} -> {:cont, {:ok, formed ++ [{link, apply}]}}
+        {:ok, {apply, fixed}} -> {:cont, {:ok, formed ++ [{link, apply, fixed}]}}
         {:error, _reason, _at} = error -> {:halt, error}
       end
     end)
     |> case do
       {:ok, formed} ->
-        case conflict(Enum.map(formed, &elem(&1, 1))) do
-          nil -> {:ok, harness_rows(dispatch_run, formed)}
-          {host, :integration} -> {:error, :integration_overlap, {:host, host}}
-          {host, :accounts} -> {:error, :overlap, {:host, host}}
+        claims =
+          for {link, apply, fixed} <- formed,
+              do: %{grant: link.link_id, items: apply, fixed: fixed}
+
+        case conflict(claims) do
+          nil ->
+            {:ok, harness_rows(dispatch_run, Enum.map(formed, &Tuple.delete_at(&1, 2)))}
+
+          {host, :integration} ->
+            {:error, :integration_overlap, {:host, host}}
+
+          {host, :accounts} ->
+            {:error, :overlap, {:host, host}}
+
+          {host, {:nested, m, n}} ->
+            [first, second] = for i <- [m, n], do: formed |> Enum.at(i) |> elem(0) |> entry_git()
+            {:error, :nested_sources, {:nested, host, first, second}}
         end
 
       error ->
@@ -383,13 +400,27 @@ defmodule Apiary.Runs.RunCredentials do
     end)
   end
 
+  # The address of the first source the first resource of the harness entry `link` reads,
+  # nil for none.
+  defp entry_git(link), do: Enum.find_value(link.resources, &first_git/1)
+
   # The apply items of one harness entry, each a map in a run configuration's order of
-  # members (the moduledoc); nil for none.
+  # members (the moduledoc), and the paths of the adapter's templates that no resource
+  # fills (no `{target.path}`); nil for no item.
   defp harness_apply(link, stack_hosts) do
     case link.adapter_id && Repo.get(Node, link.adapter_id) do
       %Node{source_apply: [_ | _] = items, deleted_at: nil} ->
+        items =
+          Enum.filter(items, fn %{"hosts" => hosts} -> Enum.all?(hosts, &(&1 in stack_hosts)) end)
+
+        fixed =
+          for %{"paths" => [_ | _] = paths} <- items,
+              path <- paths,
+              not String.contains?(path, "{target.path}"),
+              uniq: true,
+              do: path
+
         items
-        |> Enum.filter(fn %{"hosts" => hosts} -> Enum.all?(hosts, &(&1 in stack_hosts)) end)
         |> Enum.reduce_while({:ok, []}, fn item, {:ok, done} ->
           case harness_item(item, link.resources) do
             {:ok, item} -> {:cont, {:ok, done ++ [item]}}
@@ -398,7 +429,8 @@ defmodule Apiary.Runs.RunCredentials do
         end)
         |> case do
           {:ok, []} -> {:ok, nil}
-          other -> other
+          {:ok, apply} -> {:ok, {apply, fixed}}
+          error -> error
         end
 
       _none ->
@@ -455,49 +487,73 @@ defmodule Apiary.Runs.RunCredentials do
 
   @doc false
   # overlap?/1 is whether two apply items of the harness entries whose items are `entries`
-  # (one list of items each), of one entry or of two, claim one host in a way the gateway
-  # refuses (`conflict/1`).
+  # (one list of items each, each entry of a link of its own), of one entry or of two,
+  # claim one host in a way the gateway refuses (`conflict/1`).
   @spec overlap?([[map]]) :: boolean
-  def overlap?(entries), do: conflict(entries) != nil
+  def overlap?(entries),
+    do: conflict(for(items <- entries, do: %{grant: nil, items: items, fixed: []})) != nil
 
   @doc false
-  # conflict/1 is the first host that two apply items of the harness entries whose items
-  # are `entries` claim in a way the gateway refuses, with who causes it, nil for none: as
-  # the gateway checks a run configuration's harness credentials, each item is compared
-  # with every item before it, of the same entry or of another, and on a host both claim,
-  # one of them has no `paths`, or a path of one and a path of the other match one
-  # request. A path matches whole, or up to a final `*` as a prefix, and a segment
-  # written `{}` matches one segment that is not empty. `{host, :integration}` for two
-  # items of one entry, or an item with no paths: the adapter's items, or a resource it
-  # resolved no path for; `{host, :accounts}` for the paths of two entries.
-  @spec conflict([[map]]) :: {String.t(), :integration | :accounts} | nil
+  # conflict/1 is the first host that two apply items of the harness entries `entries`
+  # claim in a way the gateway refuses, with who causes it, nil for none. Each entry is
+  # `%{grant:, items:, fixed:}`: the id of its link, its apply items, and the paths of the
+  # adapter's templates that no resource fills. As the gateway checks a run
+  # configuration's harness credentials, each item is compared with every item before
+  # it, of the same entry or of another, and on a host both claim, one of them has no
+  # `paths`, or a path of one and a path of the other match one request. A path matches
+  # whole, or up to a final `*` as a prefix, and a segment written `{}` matches one
+  # segment that is not empty.
+  #
+  # `{host, :integration}` where the adapter's items cause it: two items of one entry, an
+  # item with no paths (a resource the adapter resolved no path for), or a path that no
+  # resource fills. Else, for two entries whose paths filled from resources match:
+  # `{host, {:nested, m, n}}` for two entries of one link, the indexes of the earlier
+  # entry and the later one, whose resources nest; `{host, :accounts}` for entries of two
+  # links.
+  @spec conflict([%{grant: term, items: [map], fixed: [String.t()]}]) ::
+          {String.t(), :integration | :accounts | {:nested, integer, integer}} | nil
   def conflict(entries) do
     items =
-      for {items, n} <- Enum.with_index(entries), item <- items do
-        {item, n}
+      for {entry, n} <- Enum.with_index(entries), item <- entry.items do
+        {item, entry, n}
       end
       |> Enum.with_index()
 
-    Enum.find_value(items, fn {{item, n}, i} ->
-      Enum.find_value(Enum.take(items, i), fn {{earlier, m}, _j} ->
-        host =
-          Enum.find(item["hosts"], fn host ->
-            host in earlier["hosts"] and claims_meet?(earlier["paths"], item["paths"])
-          end)
+    Enum.find_value(items, fn {later, i} ->
+      Enum.find_value(Enum.take(items, i), fn {earlier, _j} ->
+        {item, _entry, _n} = later
 
-        cond do
-          is_nil(host) -> nil
-          n == m or pathless?(earlier) or pathless?(item) -> {host, :integration}
-          true -> {host, :accounts}
-        end
+        Enum.find_value(item["hosts"], fn host ->
+          if host in elem(earlier, 0)["hosts"], do: claim_conflict(host, earlier, later)
+        end)
       end)
     end)
   end
 
-  defp pathless?(item), do: item["paths"] in [nil, []]
+  # Two items, each with its entry and that entry's index, on `host`, which both claim.
+  defp claim_conflict(host, {a, entry_a, m}, {b, entry_b, n}) do
+    if pathless?(a) or pathless?(b) do
+      {host, :integration}
+    else
+      meeting = for x <- a["paths"], y <- b["paths"], paths_meet?(x, y), do: {x, y}
 
-  defp claims_meet?(a, b) when is_nil(a) or is_nil(b) or a == [] or b == [], do: true
-  defp claims_meet?(a, b), do: Enum.any?(a, fn x -> Enum.any?(b, &paths_meet?(x, &1)) end)
+      cond do
+        meeting == [] ->
+          nil
+
+        m == n or Enum.any?(meeting, fn {x, y} -> x in entry_a.fixed or y in entry_b.fixed end) ->
+          {host, :integration}
+
+        not is_nil(entry_a.grant) and entry_a.grant == entry_b.grant ->
+          {host, {:nested, m, n}}
+
+        true ->
+          {host, :accounts}
+      end
+    end
+  end
+
+  defp pathless?(item), do: item["paths"] in [nil, []]
 
   # Whether two path patterns match one request path.
   defp paths_meet?(a, b), do: meet?(pattern(a), pattern(b))

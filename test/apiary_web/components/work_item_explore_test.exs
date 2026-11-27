@@ -3504,7 +3504,20 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                source: "https://code.example.com/acme/harness",
                rule: %{"rule" => "harness_entries", "values" => %{"reason" => "path_refused"}}
              },
-             "Write https://code.example.com/acme/harness without spaces or any of * ? # { } // .., then run Explore again."},
+             "Write the path of https://code.example.com/acme/harness without spaces or any of * ? # { } // .., then run Explore again."},
+            {%{
+               code: "harness_entries",
+               rule: %{
+                 "rule" => "harness_entries",
+                 "values" => %{
+                   "reason" => "nested_sources",
+                   "host" => "code.example.com",
+                   "first" => "https://code.example.com/acme/tools",
+                   "second" => "https://code.example.com/acme/tools/sub"
+                 }
+               }
+             },
+             "Take only one of https://code.example.com/acme/tools and https://code.example.com/acme/tools/sub, which nest on code.example.com, then run Explore again."},
             {%{code: "assigned_gateway", source: "https://code.example.com/acme/harness"},
              "Connect an account that can read https://code.example.com/acme/harness to this organisation, then run Explore again."},
             {%{
@@ -3515,7 +3528,7 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                  "values" => %{"canonical" => "https://code.example.com/acme/harness"}
                }
              },
-             "Write the harness source as https://code.example.com/acme/harness: the forge names it in that case."},
+             "Write the harness source as https://code.example.com/acme/harness, the case the forge names it in, then run Explore again."},
             {%{
                code: "harness_entries",
                rule: %{
@@ -3543,6 +3556,12 @@ defmodule ApiaryWeb.WorkItemExploreTest do
                rule: %{"rule" => "harness_entries", "values" => %{"reason" => "path_refused"}}
              },
              "Ask an owner or admin of Main to correct the harness source addresses, then run Explore again."},
+            {%{
+               code: "harness_entries",
+               workspace: "Main",
+               rule: %{"rule" => "harness_entries", "values" => %{"reason" => "nested_sources"}}
+             },
+             "Ask an owner or admin of Main to take only one of the nested private harness sources on each forge, then run Explore again."},
             {%{
                code: "harness_entries",
                workspace: "Main",

@@ -1859,6 +1859,35 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
 
   # The credential names of a run with a model key and a work entry, in the run
   # configuration's order, and of a write run, which has a push entry after it.
+  describe "a work entry refused for the gateway" do
+    @describetag :work
+
+    test "writes no Activity entry", ctx do
+      run = Repo.get!(Run, ctx.run.id)
+
+      # A gateway of another organisation may receive none of the run's credentials.
+      other = %Apiary.Nodes.Node{
+        kind: :gateway,
+        organisation_id: Ecto.UUID.generate(),
+        workspace_id: nil
+      }
+
+      key = %{gateway_key(ctx) | node: other}
+      assert WorkCredential.seal_refusal(other, run, work_row(ctx)) == :not_sealable
+
+      {result, log} =
+        with_log(fn ->
+          Apiary.Runs.SecretsRequest.work_sealable(run, [%{row: work_row(ctx)}], key)
+        end)
+
+      assert result == {:error, :credential_unavailable}
+      assert log =~ "may not be sealed for its gateway"
+      assert issues() == []
+      assert seals() == []
+      assert WorkCredentialStub.calls() == []
+    end
+  end
+
   describe "a request that names a harness entry" do
     @describetag :work
 
@@ -2132,6 +2161,30 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
                for(%Entry{details: d} <- issues(), do: {d["credential"], d["outcome"]})
     end
 
+    @tag machine: :instance_gateway
+    test "under another organisation's grant, is unavailable where the Activity entry of the machine refusal cannot be written",
+         ctx do
+      ctx = assigned_entry!(ctx)
+      key = gateway_key(ctx)
+
+      # The run's organisation is gone: its Activity entry has nowhere to be written.
+      gone = %{Repo.get!(Run, ctx.run.id) | organisation_id: Ecto.UUID.generate()}
+
+      assert WorkCredential.seal_refusal(key.node, gone, harness_row(ctx)) ==
+               :machine_not_provided
+
+      {result, log} =
+        with_log(fn ->
+          Apiary.Runs.SecretsRequest.work_sealable(gone, [%{row: harness_row(ctx)}], key)
+        end)
+
+      assert result == {:error, :unavailable}
+      assert log =~ "could not be written"
+      assert issues() == []
+      assert seals() == []
+      assert WorkCredentialStub.calls() == []
+    end
+
     test "that names the work entry and two harness entries takes the run's row first", ctx do
       issued!(ctx)
       running!(ctx)
@@ -2237,6 +2290,12 @@ defmodule ApiaryWeb.Contract.SecretsControllerTest do
   defp work_row(ctx), do: Repo.get_by!(RunCredential, run_id: ctx.run.id, purpose: :work)
 
   defp harness_row(ctx), do: Repo.get_by!(RunCredential, run_id: ctx.run.id, name: "harness-1")
+
+  # The access key of the run's gateway, with its node, as a request reads it.
+  defp gateway_key(ctx) do
+    {key, _seed} = ctx.secrets_key
+    Repo.preload(Repo.get!(Apiary.AccessKeys.AccessKey, key.id), [:workspace, :node])
+  end
 
   # A live grant `grant_ref` of the work entry's connection, of the run's organisation: the
   # connection's live grant where it has one, else a new one.

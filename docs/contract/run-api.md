@@ -81,11 +81,14 @@ A run ends `harness_unresolved` before it fetches anything in these cases:
 - `harness_entries`: entries the run configuration cannot take, with the reason in the
   rule's values: `path_refused`, a path the templates refuse, with the source as the
   failed source unless the harness is hidden; `too_many_paths`, an item with more than 32
-  paths; `overlap`, the paths of two entries on one host overlap; or
-  `integration_overlap`, two items of one entry on one host, or an item with no paths
-  beside another on its host: the adapter's items, or a resource it resolved no `path`
-  for. The gateway checks the items in the same way. The last three have the `host`,
-  except for a hidden harness.
+  paths; `overlap`, the paths of the entries of two links on one host overlap;
+  `nested_sources`, the paths of two resources of one assigned link nest, with the
+  address of each one's first source as `first` and `second`; or
+  `integration_overlap`, the adapter's items cause the overlap: two items of one entry
+  on one host, an item with no paths beside another on its host (a resource the adapter
+  resolved no `path` for), or a path with no `{target.path}`, which every entry of the
+  adapter has. The gateway checks the items in the same way. The last four have the
+  `host`, except for a hidden harness.
 
 ## The run's track
 

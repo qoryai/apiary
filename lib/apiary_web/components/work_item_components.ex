@@ -7672,7 +7672,7 @@ defmodule ApiaryWeb.WorkItemComponents do
       "source_case" ->
         case failure.rule do
           %{"values" => %{"canonical" => canonical}} when is_binary(canonical) ->
-            Apiary.Stages.StopCause.source_case_words(canonical)
+            Apiary.Stages.StopCause.source_case_words(canonical, :explore)
 
           _hidden ->
             Apiary.Stages.StopCause.hidden_source_case_words(

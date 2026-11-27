@@ -1535,7 +1535,10 @@ defmodule ApiaryWeb.HarnessComponents do
          _source
        )
        when is_binary(canonical),
-       do: Apiary.Stages.StopCause.source_case_words(canonical)
+       do:
+         gettext("Write the harness source as %{canonical}: the forge names it in that case.",
+           canonical: canonical
+         )
 
   defp walk_words(%{failure: :too_many}, source),
     do:

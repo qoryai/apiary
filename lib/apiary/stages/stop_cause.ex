@@ -981,12 +981,29 @@ defmodule Apiary.Stages.StopCause do
   # claim (`Apiary.Dispatches.Handover`), by the reason in its rule's values, ending with
   # `ending`: `overlap` and `too_many_paths` with the host, or, with none (a hidden
   # harness), what owners and admins of `workspace` do; `path_refused` with `source`, the
-  # source the walk kept, or with none the same; `integration_overlap`, which the
+  # source the walk kept, or with none the same; `nested_sources` with the host and the
+  # two nested sources, or with none the same; `integration_overlap`, which the
   # integration of the host causes, with the host, or with none the integration for the
   # workspace's harness sources. Nil for any other rule.
   @spec harness_entries_words(map | nil, String.t() | nil, String.t(), :take_in | :explore) ::
           String.t() | nil
   def harness_entries_words(rule, source, workspace, ending \\ :take_in)
+
+  def harness_entries_words(
+        %{
+          "values" => %{
+            "reason" => "nested_sources",
+            "host" => host,
+            "first" => first,
+            "second" => second
+          }
+        },
+        _source,
+        _ws,
+        ending
+      )
+      when is_binary(host) and is_binary(first) and is_binary(second),
+      do: nested_words(host, first, second, ending)
 
   def harness_entries_words(%{"values" => %{"reason" => reason} = values}, source, ws, ending) do
     entries_words(reason, values["host"], source, ws, ending)
@@ -1052,13 +1069,14 @@ defmodule Apiary.Stages.StopCause do
   defp entries_words("path_refused", _host, source, _ws, :take_in) when is_binary(source),
     do:
       gettext(
-        "Write %{source} without spaces or any of * ? # { } // .., then take the work item in again.",
+        "Write the path of %{source} without spaces or any of * ? # { } // .., then take the work item in again.",
         source: source
       )
 
   defp entries_words("path_refused", _host, source, _ws, :explore) when is_binary(source),
     do:
-      gettext("Write %{source} without spaces or any of * ? # { } // .., then run Explore again.",
+      gettext(
+        "Write the path of %{source} without spaces or any of * ? # { } // .., then run Explore again.",
         source: source
       )
 
@@ -1102,16 +1120,58 @@ defmodule Apiary.Stages.StopCause do
         "Ask your Qory Apiary admin to update the integration for this workspace's harness sources, then run Explore again."
       )
 
+  defp entries_words("nested_sources", _host, _source, ws, :take_in),
+    do:
+      gettext(
+        "Ask an owner or admin of %{workspace} to take only one of the nested private harness sources on each forge, then take the work item in again.",
+        workspace: ws
+      )
+
+  defp entries_words("nested_sources", _host, _source, ws, :explore),
+    do:
+      gettext(
+        "Ask an owner or admin of %{workspace} to take only one of the nested private harness sources on each forge, then run Explore again.",
+        workspace: ws
+      )
+
   defp entries_words(_reason, _host, _source, _ws, _ending), do: nil
 
-  @doc false
-  # source_case_words/1 is the fix of a walk that failed `source_case`: a harness source
-  # written in another letter case than the forge names it, `canonical`. The run's page and
-  # its stop cause show the same words.
-  @spec source_case_words(String.t()) :: String.t()
-  def source_case_words(canonical),
+  defp nested_words(host, first, second, :take_in),
     do:
-      gettext("Write the harness source as %{canonical}: the forge names it in that case.",
+      gettext(
+        "Take only one of %{first} and %{second}, which nest on %{host}, then take the work item in again.",
+        first: first,
+        second: second,
+        host: host
+      )
+
+  defp nested_words(host, first, second, :explore),
+    do:
+      gettext(
+        "Take only one of %{first} and %{second}, which nest on %{host}, then run Explore again.",
+        first: first,
+        second: second,
+        host: host
+      )
+
+  @doc false
+  # source_case_words/2 is the fix of a walk that failed `source_case`: a harness source
+  # written in another letter case than the forge names it, `canonical`, ending with
+  # `ending`. The run's page and its stop cause show the same words.
+  @spec source_case_words(String.t(), :take_in | :explore) :: String.t()
+  def source_case_words(canonical, ending \\ :take_in)
+
+  def source_case_words(canonical, :take_in),
+    do:
+      gettext(
+        "Write the harness source as %{canonical}, the case the forge names it in, then take the work item in again.",
+        canonical: canonical
+      )
+
+  def source_case_words(canonical, :explore),
+    do:
+      gettext(
+        "Write the harness source as %{canonical}, the case the forge names it in, then run Explore again.",
         canonical: canonical
       )
 

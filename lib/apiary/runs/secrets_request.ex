@@ -473,16 +473,22 @@ defmodule Apiary.Runs.SecretsRequest do
   defp provider_organisation(%{chain: "organisation"}, %Run{organisation_id: id}), do: id
   defp provider_organisation(provider, _run), do: provider.organisation_id
 
-  # The work entry's and the push entry's credentials may be sealed for a gateway of the
-  # run's organisation, or the instance's gateway (`Apiary.Runs.WorkCredential.sealable_to?/2`);
-  # a harness entry's from another organisation's grant only for a run on a machine that
-  # Qory Apiary provides (`Apiary.Runs.WorkCredential.entry_sealable_to?/3`). A harness
-  # entry refused for its machine alone gets its Activity entry, `machine_not_provided`
+  @doc false
+  # work_sealable/3 is `:ok` where the credentials of the entries `works` (each with its
+  # `row`) of `run` may be sealed for the gateway of `access_key`. The work entry's and
+  # the push entry's credentials may be sealed for a gateway of the run's organisation, or
+  # the instance's gateway (`Apiary.Runs.WorkCredential.sealable_to?/2`); a harness
+  # entry's from another organisation's grant only for a run on a machine that Qory
+  # Apiary provides (`Apiary.Runs.WorkCredential.entry_sealable_to?/3`). A harness entry
+  # refused for its machine alone gets its Activity entry, `machine_not_provided`
   # (`Apiary.Runs.WorkCredential.seal_refusal/3`); `{:error, :unavailable}` where it
-  # cannot be written.
-  defp work_sealable(_run, [], _access_key), do: :ok
+  # cannot be written. Every other refusal is `{:error, :credential_unavailable}`, with
+  # no Activity entry.
+  @spec work_sealable(Run.t(), [%{row: Apiary.Runs.RunCredential.t()}], AccessKey.t()) ::
+          :ok | {:error, :credential_unavailable | :unavailable}
+  def work_sealable(_run, [], _access_key), do: :ok
 
-  defp work_sealable(%Run{} = run, [_ | _] = works, %AccessKey{node: node} = access_key) do
+  def work_sealable(%Run{} = run, [_ | _] = works, %AccessKey{node: node} = access_key) do
     case for(
            work <- works,
            cause = WorkCredential.seal_refusal(node, run, work.row),

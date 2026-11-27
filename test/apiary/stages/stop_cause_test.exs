@@ -395,7 +395,15 @@ defmodule Apiary.Stages.StopCauseTest do
             {nil, %{"reason" => "too_many_paths", "host" => "code.example.com"},
              "Take fewer private harness sources from code.example.com, then take the work item in again."},
             {source, %{"reason" => "path_refused"},
-             "Write #{source} without spaces or any of * ? # { } // .., then take the work item in again."},
+             "Write the path of #{source} without spaces or any of * ? # { } // .., then take the work item in again."},
+            {nil,
+             %{
+               "reason" => "nested_sources",
+               "host" => "code.example.com",
+               "first" => "https://code.example.com/acme/tools",
+               "second" => "https://code.example.com/acme/tools/sub"
+             },
+             "Take only one of https://code.example.com/acme/tools and https://code.example.com/acme/tools/sub, which nest on code.example.com, then take the work item in again."},
             {nil, %{"reason" => "integration_overlap", "host" => "code.example.com"},
              "Ask your Qory Apiary admin to update the code.example.com integration, then take the work item in again."},
             # A hidden harness shows no host and no source, and neither does a rule
@@ -406,6 +414,10 @@ defmodule Apiary.Stages.StopCauseTest do
              "Ask an owner or admin of #{ws} to take fewer private harness sources from one forge, then take the work item in again."},
             {nil, %{"reason" => "path_refused"},
              "Ask an owner or admin of #{ws} to correct the harness source addresses, then take the work item in again."},
+            {nil, %{"reason" => "nested_sources"},
+             "Ask an owner or admin of #{ws} to take only one of the nested private harness sources on each forge, then take the work item in again."},
+            {nil, %{"reason" => "nested_sources", "host" => "code.example.com"},
+             "Ask an owner or admin of #{ws} to take only one of the nested private harness sources on each forge, then take the work item in again."},
             {nil, %{"reason" => "integration_overlap"},
              "Ask your Qory Apiary admin to update the integration for this workspace's harness sources, then take the work item in again."}
           ] do
@@ -448,7 +460,7 @@ defmodule Apiary.Stages.StopCauseTest do
         )
 
       assert StopCause.text(run, work_item) ==
-               "Write the harness source as https://code.example.com/acme/harness: the forge names it in that case."
+               "Write the harness source as https://code.example.com/acme/harness, the case the forge names it in, then take the work item in again."
     end
 
     test "on the workspace's choice, the fix is on the set-up step Harness" do

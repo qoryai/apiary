@@ -1588,6 +1588,10 @@ defmodule Apiary.Runs.RunCredentialsTest do
       )
     end
 
+    # A second link's grant, as the walk stores it: the entries read no more of it.
+    defp other_grant(grant),
+      do: %{id: Ecto.UUID.generate(), adapter_id: grant.adapter_id, grant_ref: "G_other"}
+
     defp formed(queued, hosts \\ ["git.example.com"]) do
       RunCredentials.form_harness(Repo.get!(DispatchRun, queued.id), hosts)
     end
@@ -1745,13 +1749,89 @@ defmodule Apiary.Runs.RunCredentialsTest do
                [%{"hosts" => ["other.example.com"]}]
              ])
 
-      # The adapter's items cause an overlap of one entry, or one with no paths; the
-      # paths of two entries cause the others.
+      # The adapter's items cause an overlap of one entry, one with no paths, and one on
+      # a path no resource fills; the paths filled from the resources of two entries
+      # cause the others: of one link, nested resources, and of two links, two accounts.
       host = "git.example.com"
-      assert RunCredentials.conflict([[item.(nil)], [item.(["/a"])]]) == {host, :integration}
-      assert RunCredentials.conflict([[item.(["/a"]), item.(["/a"])]]) == {host, :integration}
-      assert RunCredentials.conflict([[item.(["/a/*"])], [item.(["/a/b"])]]) == {host, :accounts}
-      assert RunCredentials.conflict([[item.(["/a"])], [item.(["/b"])]]) == nil
+      entry = fn grant, items, fixed -> %{grant: grant, items: items, fixed: fixed} end
+      one = fn grant, paths -> entry.(grant, [item.(paths)], []) end
+
+      assert RunCredentials.conflict([one.("G1", nil), one.("G2", ["/a"])]) ==
+               {host, :integration}
+
+      assert RunCredentials.conflict([entry.("G1", [item.(["/a"]), item.(["/a"])], [])]) ==
+               {host, :integration}
+
+      assert RunCredentials.conflict([one.("G1", ["/a/*"]), one.("G2", ["/a/b"])]) ==
+               {host, :accounts}
+
+      assert RunCredentials.conflict([one.("G1", ["/a/*"]), one.("G1", ["/a/b"])]) ==
+               {host, {:nested, 0, 1}}
+
+      fixed = fn grant, path -> entry.(grant, [item.([path, "/info/lfs/*"])], ["/info/lfs/*"]) end
+
+      assert RunCredentials.conflict([fixed.("G1", "/a/*"), fixed.("G1", "/b/*")]) ==
+               {host, :integration}
+
+      assert RunCredentials.conflict([fixed.("G1", "/a/*"), fixed.("G2", "/b/*")]) ==
+               {host, :integration}
+
+      assert RunCredentials.conflict([one.("G1", ["/a"]), one.("G1", ["/b"])]) == nil
+    end
+
+    test "the entries of two links whose paths overlap are two accounts on one host", ctx do
+      {work_item, queued} = queued!(ctx)
+      grant = own_grant!(work_item)
+
+      queued =
+        walked!(queued, [
+          link(grant, [{"R_t", "acme/tools", [@tools_source]}]),
+          link(other_grant(grant), [
+            {"R_s", "acme/tools/sub", [%{"git" => "https://git.example.com/acme/tools/sub"}]}
+          ])
+        ])
+
+      assert formed(queued) == {:error, :overlap, {:host, "git.example.com"}}
+    end
+
+    test "a path of the adapter's item that no resource fills overlaps in every entry", ctx do
+      {work_item, queued} = queued!(ctx)
+      grant = own_grant!(work_item)
+
+      set!(Node, work_item.adapter_id,
+        source_apply: [
+          %{
+            "hosts" => ["git.example.com"],
+            "scheme" => "basic",
+            "paths" => ["/{target.path}.git/*", "/info/lfs/*"]
+          }
+        ]
+      )
+
+      # One entry alone takes the path.
+      queued = walked!(queued, [link(grant, [{"R_h", "acme/harness", [@harness_source]}])])
+      assert {:ok, [entry]} = formed(queued)
+      assert [%{"paths" => ["/acme/harness.git/*", "/info/lfs/*"]}] = entry.apply
+
+      # Two entries, of one link or of two, both claim it: the adapter's items cause it.
+      queued =
+        walked!(queued, [
+          link(
+            grant,
+            [{"R_h", "acme/harness", [@harness_source]}, {"R_t", "acme/tools", [@tools_source]}],
+            true
+          )
+        ])
+
+      assert formed(queued) == {:error, :integration_overlap, {:host, "git.example.com"}}
+
+      queued =
+        walked!(queued, [
+          link(grant, [{"R_h", "acme/harness", [@harness_source]}]),
+          link(other_grant(grant), [{"R_t", "acme/tools", [@tools_source]}])
+        ])
+
+      assert formed(queued) == {:error, :integration_overlap, {:host, "git.example.com"}}
     end
 
     test "the claim writes the entries after the work entry", ctx do
@@ -1842,30 +1922,59 @@ defmodule Apiary.Runs.RunCredentialsTest do
       end
     end
 
-    test "a claim ends the run for two entries whose paths overlap, with the host unless hidden",
-         ctx do
-      {work_item, queued} = queued!(ctx)
-      grant = own_grant!(work_item)
+    for hidden <- [false, true] do
+      test "a claim ends the run for two nested resources of one assigned link, hidden: #{hidden}",
+           ctx do
+        {work_item, queued} = queued!(ctx)
+        grant = own_grant!(work_item)
+        sub = "https://git.example.com/acme/tools/sub"
+        # A long address is cut to 512 code points, as the run's page shows a source.
+        long = "https://git.example.com/acme/tools/sub/" <> String.duplicate("é", 600)
 
-      nested = [
-        {"R_a", "acme/tools", [@tools_source]},
-        {"R_b", "acme/tools/sub", [%{"git" => "https://git.example.com/acme/tools/sub"}]}
-      ]
+        nested = [
+          {"R_a", "acme/tools", [@tools_source]},
+          {"R_b", "acme/tools/sub", [%{"git" => sub}]}
+        ]
 
-      queued = walked!(queued, [link(grant, nested, true)])
-      assert formed(queued) == {:error, :overlap, {:host, "git.example.com"}}
+        queued = walked!(queued, [link(grant, nested, true)])
 
-      {1, _rows} =
-        Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^queued.id),
-          set: [harness_hidden: true]
-        )
+        assert formed(queued) ==
+                 {:error, :nested_sources,
+                  {:nested, "git.example.com", @tools_source["git"], sub}}
 
-      assert {:ok, _claimed} = claim(ctx)
+        long_nested = [
+          {"R_a", "acme/tools", [@tools_source]},
+          {"R_b", "acme/tools/sub", [%{"git" => long}]}
+        ]
 
-      assert %RunHarness{failure: "harness_entries", failure_rule: %{"values" => values}} =
-               Repo.get_by!(RunHarness, dispatch_run_id: queued.id)
+        queued = walked!(queued, [link(grant, long_nested, true)])
 
-      assert values == %{"reason" => "overlap"}
+        {1, _rows} =
+          Repo.update_all(from(h in RunHarness, where: h.dispatch_run_id == ^queued.id),
+            set: [harness_hidden: unquote(hidden)]
+          )
+
+        assert {:ok, _claimed} = claim(ctx)
+
+        assert %RunHarness{
+                 failure: "harness_entries",
+                 failed_source: nil,
+                 failure_rule: %{"values" => values}
+               } = Repo.get_by!(RunHarness, dispatch_run_id: queued.id)
+
+        if unquote(hidden) do
+          assert values == %{"reason" => "nested_sources"}
+        else
+          assert values == %{
+                   "reason" => "nested_sources",
+                   "host" => "git.example.com",
+                   "first" => @tools_source["git"],
+                   "second" => long |> String.to_charlist() |> Enum.take(512) |> List.to_string()
+                 }
+
+          assert String.length(values["second"]) == 512
+        end
+      end
     end
 
     test "a claim through a gateway the run's organisation controls ends the run for a link of another organisation's grant",
