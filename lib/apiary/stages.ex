@@ -530,22 +530,28 @@ defmodule Apiary.Stages do
 
   # session_limits/3 is the time limits, in minutes, of the most sessions that `run`, a
   # run of the queue, can run, one per session, from the limits its claim reads: for a run
-  # of a stage with `shared_run: true`, the limit of each workflow of the most sessions of
-  # the stage (`Apiary.Stages.Runner.most_sessions/1`), as `claim_sessions!/3` keeps it
-  # from `limits`; for any other run, `limit`, the limit of its one session. Nil when a
-  # limit is missing, as with `factory` off.
+  # of a stage with `shared_run: true`, the limits of the workflows of the stage's session
+  # path (`Apiary.Stages.Runner.session_paths/1`) whose sessions take the longest
+  # (`Apiary.Dispatches.RunEnd.lifetime_minutes/2`), each limit as `claim_sessions!/3`
+  # keeps it from `limits`; for any other run, `limit`, the limit of its one session. Nil
+  # when a limit is missing, as with `factory` off.
   @doc false
   @spec session_limits(DispatchRun.t(), pos_integer | nil, %{
           optional(String.t()) => pos_integer
         }) :: [pos_integer] | nil
   def session_limits(%DispatchRun{} = run, limit, limits) when is_map(limits) do
-    minutes =
+    paths =
       case shared_stage(run) do
-        nil -> [limit]
-        stage -> stage |> Runner.most_sessions() |> Enum.map(&session_minutes(run, limits, &1))
+        nil ->
+          [[limit]]
+
+        stage ->
+          for path <- Runner.session_paths(stage),
+              do: Enum.map(path, &session_minutes(run, limits, &1))
       end
 
-    if minutes != [] and Enum.all?(minutes, &is_integer/1), do: minutes
+    if Enum.all?(paths, &(&1 != [] and Enum.all?(&1, fn minutes -> is_integer(minutes) end))),
+      do: Enum.max_by(paths, &Apiary.Dispatches.RunEnd.lifetime_minutes(run.step, &1))
   end
 
   # The minutes of a session of `workflow` of `run`: its limit in `limits`, as the claim

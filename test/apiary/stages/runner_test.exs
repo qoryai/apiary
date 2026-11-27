@@ -79,7 +79,29 @@ defmodule Apiary.Stages.RunnerTest do
         wf("d")
       ]
 
-      assert Runner.most_sessions(stage(sequence)) == ~w(plan a b a b c d c d c d)
+      # The first loop as the one that restarts runs the second loop's three rounds in
+      # each of its own two; the second loop as the one that restarts runs after the
+      # first's two rounds.
+      assert Runner.session_paths(stage(sequence)) == [
+               ~w(plan a b c c c d a b c c c d),
+               ~w(plan a b a b c d c d c d)
+             ]
+
+      assert Runner.most_sessions(stage(sequence)) == ~w(plan a b c c c d a b c c c d)
+    end
+
+    test "an earlier loop restarts with every entry after it when a condition passes over the last" do
+      # On a work item that is not on the track `t`, B is passed over, and a failed check
+      # restarts A: a c d three times, 9 sessions, more than A's rounds and B's once.
+      sequence = [
+        loop([wf("a")], 3),
+        Map.put(loop([wf("b")], 1), "when", %{"track" => "t"}),
+        wf("c"),
+        wf("d")
+      ]
+
+      # A as the loop that restarts counts B in each round: 12 sessions, at least those 9.
+      assert Runner.most_sessions(stage(sequence)) == ~w(a b c d a b c d a b c d)
     end
   end
 

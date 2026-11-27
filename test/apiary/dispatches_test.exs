@@ -1236,14 +1236,14 @@ defmodule Apiary.DispatchesTest do
       queued!(ctx.scope)
       dispatch = claimed!(ctx.key)
       # The run's one session of 180 minutes, the default time limit.
-      assert dispatch.machine_lifetime_minutes == 10 + 30 + 180 + 90
+      assert dispatch.machine_lifetime_minutes == 25 + 30 + 180 + 90
       at = DateTime.add(dispatch.claimed_at, 1, :second)
       hand_over!(dispatch, at)
       end!(dispatch)
 
-      Dispatches.sweep(DateTime.add(at, (310 + 60) * 60 - 1, :second))
+      Dispatches.sweep(DateTime.add(at, (325 + 60) * 60 - 1, :second))
       assert Slots.held(ctx.pool.id) == 1
-      Dispatches.sweep(DateTime.add(at, (310 + 60) * 60, :second))
+      Dispatches.sweep(DateTime.add(at, (325 + 60) * 60, :second))
       assert Slots.held(ctx.pool.id) == 0
 
       # A dispatch with no lifetime kept has the 1470 minutes of a step that is not a

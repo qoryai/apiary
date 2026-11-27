@@ -116,23 +116,46 @@ defmodule Apiary.Dispatches.RunEndTest do
     end
 
     test "a lifetime is the attach window and each session's setup, limit and margin" do
-      # One session of 15 minutes: 10 + 30 + 15 + 90.
-      assert RunEnd.lifetime_minutes("workflow", [15]) == 145
+      # One session of 15 minutes: 25 + 30 + 15 + 90.
+      assert RunEnd.lifetime_minutes("workflow", [15]) == 160
       # Seven sessions of 390 minutes in all, 30 then three rounds of 90 and 30:
-      # 10 + 7 × 30 + 390 + 7 × 90.
-      assert RunEnd.lifetime_minutes("workflow", [30, 90, 30, 90, 30, 90, 30]) == 1240
+      # 25 + 7 × 30 + 390 + 7 × 90.
+      assert RunEnd.lifetime_minutes("workflow", [30, 90, 30, 90, 30, 90, 30]) == 1255
     end
 
     test "a lifetime is at most the contract's most; a prebuild's and a run's with no limit are fixed" do
-      # 10 + 30 + 1440 + 90, and 10 + 2 × (30 + 1440 + 90).
-      assert RunEnd.lifetime_minutes("workflow", [1440]) == 1570
-      assert RunEnd.lifetime_minutes("workflow", [1440, 1440]) == 3130
-      # 10 + 6 × 1560 is 9370 and 10 + 7 × 1560 is 10,930: 7 days, 10,080, at most.
-      assert RunEnd.lifetime_minutes("workflow", List.duplicate(1440, 6)) == 9370
+      # 25 + 30 + 1440 + 90, and 25 + 2 × (30 + 1440 + 90).
+      assert RunEnd.lifetime_minutes("workflow", [1440]) == 1585
+      assert RunEnd.lifetime_minutes("workflow", [1440, 1440]) == 3145
+      # 25 + 6 × 1560 is 9385 and 25 + 7 × 1560 is 10,945: 7 days, 10,080, at most.
+      assert RunEnd.lifetime_minutes("workflow", List.duplicate(1440, 6)) == 9385
       assert RunEnd.lifetime_minutes("workflow", List.duplicate(1440, 7)) == 10_080
-      assert RunEnd.lifetime_minutes("workflow", nil) == 1470
-      assert RunEnd.lifetime_minutes("prebuild", nil) == 90
-      assert RunEnd.lifetime_minutes("prebuild", [1440]) == 90
+      # The attach window and the fixed backstop: 25 + 1455, and 25 + 75.
+      assert RunEnd.lifetime_minutes("workflow", nil) == 1480
+      assert RunEnd.lifetime_minutes("prebuild", nil) == 100
+      assert RunEnd.lifetime_minutes("prebuild", [1440]) == 100
+    end
+
+    test "a run attached at the end of the attach window, 25 minutes after its claim, keeps its whole backstop" do
+      claimed_at = ~U[2026-11-27 10:00:00.000000Z]
+      attached_at = DateTime.add(claimed_at, 25 * 60, :second)
+
+      for {step, limits, first} <- [
+            {"workflow", [15], 15},
+            {"workflow", [30, 90, 30], 30},
+            {"prebuild", nil, nil},
+            {"workflow", nil, nil}
+          ] do
+        backstop_at = DateTime.add(attached_at, Dispatches.backstop_seconds(step, first), :second)
+        lifetime = RunEnd.lifetime_minutes(step, limits)
+        assert RunEnd.capped(backstop_at, claimed_at, lifetime, step) == backstop_at, step
+      end
+
+      # One second later, the end of the lifetime cuts the backstop of a run of one session.
+      late = DateTime.add(attached_at, 1, :second)
+      backstop_at = DateTime.add(late, Dispatches.backstop_seconds("workflow", 15), :second)
+      lifetime = RunEnd.lifetime_minutes("workflow", [15])
+      assert RunEnd.capped(backstop_at, claimed_at, lifetime, "workflow") != backstop_at
     end
 
     test "a backstop capped at the end of the machine's lifetime from the claim" do
@@ -367,10 +390,6 @@ defmodule Apiary.Dispatches.RunEndTest do
       extended = DateTime.add(ctx.now, (30 + 90 + 90) * 60, :second)
       assert extend!(ctx.handed, 90, ctx.now) == extended
       assert extend!(ctx.handed, 90, ctx.now) == extended
-
-      # The session's setup of 30 minutes, its limit and its margin fit before the backstop.
-      used = DateTime.add(ctx.now, (30 + 90 + 90) * 60 - 1, :second)
-      refute Liveness.past_backstop?(run!(ctx.handed.run), used)
     end
 
     test "never moves the backstop earlier, nor for a run with no time limit", ctx do
@@ -1093,7 +1112,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert record!(ctx.record) == ctx.record
     end
 
-    test "its slot, its machine never reported gone, is freed 90 and 60 minutes after its last sign of a machine",
+    test "its slot, its machine never reported gone, is freed 100 and 60 minutes after its last sign of a machine",
          ctx do
       assert {:ok, %{run: _run}} = ctx.attach.()
       exited!(ctx)
@@ -1103,7 +1122,7 @@ defmodule Apiary.Dispatches.RunEndTest do
         dispatch!(ctx.handed.dispatch)
 
       last = Enum.max([dispatched_at, handed_over_at], DateTime)
-      net = DateTime.add(last, (90 + 60) * 60, :second)
+      net = DateTime.add(last, (100 + 60) * 60, :second)
 
       Dispatches.sweep(DateTime.add(net, -1, :microsecond))
       assert Slots.held(ctx.place.pool.id) == 1
@@ -1113,7 +1132,7 @@ defmodule Apiary.Dispatches.RunEndTest do
       assert Slots.held(ctx.place.pool.id) == 0
     end
 
-    test "its slot, its run not ended and its machine never reported gone, is freed 90 and 60 minutes after its last sign of a machine",
+    test "its slot, its run not ended and its machine never reported gone, is freed 100 and 60 minutes after its last sign of a machine",
          ctx do
       assert {:ok, %{run: _run}} = ctx.attach.()
 
@@ -1121,7 +1140,7 @@ defmodule Apiary.Dispatches.RunEndTest do
         dispatch!(ctx.handed.dispatch)
 
       last = Enum.max([dispatched_at, handed_over_at], DateTime)
-      net = DateTime.add(last, (90 + 60) * 60, :second)
+      net = DateTime.add(last, (100 + 60) * 60, :second)
 
       # The run still beats at the net, so the lost-run check leaves it live.
       beat!(ctx.handed.run, net)

@@ -1050,38 +1050,46 @@ defmodule Apiary.Stages.Runner do
     end
   end
 
-  # most_sessions/1 is the workflow names of the most sessions that one shared run of the
-  # stage can run, one name per session, in order: each workflow entry before the last
-  # loop once, an earlier loop's body once per round, then the last loop's body and the
-  # workflow entries after it once per round of that loop, as a failed output check starts
-  # another round of the last loop. A stage with no loop runs each entry once. Conditions
-  # are not read: an entry they may hold back still counts.
+  # session_paths/1 is the workflow names of the most sessions that one shared run of the
+  # stage can run, one list per loop, one name per session, in order. A failed output
+  # check starts another round of the last loop that conditions do not pass over, so on
+  # some work items an earlier loop restarts: each list counts one loop as the loop that
+  # restarts. It has the entries before that loop once, an earlier loop's body once per
+  # round, then, once per round of that loop, its body and every entry after it, a later
+  # loop's body once per round, as facts may change between rounds. A stage with no loop
+  # has one list, each entry once. Conditions are not read: an entry they may hold back
+  # still counts.
+  @doc false
+  @spec session_paths(map) :: [[String.t()], ...]
+  def session_paths(stage) do
+    entries = Enum.with_index(sequence(stage))
+
+    case for({%{"loop" => _loop}, index} <- entries, do: index) do
+      [] ->
+        [expanded(stage, entries)]
+
+      loops ->
+        for restart <- loops do
+          {before, [_restart | after_]} = Enum.split(entries, restart)
+
+          expanded(stage, before) ++
+            repeat(names_of(body(stage, restart)) ++ expanded(stage, after_), stage, restart)
+        end
+    end
+  end
+
+  # most_sessions/1 is the longest of `session_paths/1`.
   @doc false
   @spec most_sessions(map) :: [String.t()]
-  def most_sessions(stage) do
-    sequence = sequence(stage)
+  def most_sessions(stage), do: stage |> session_paths() |> Enum.max_by(&length/1)
 
-    case last_loop(stage) do
-      nil ->
-        names_of(sequence)
-
-      last ->
-        before =
-          sequence
-          |> Enum.take(last)
-          |> Enum.with_index()
-          |> Enum.flat_map(fn
-            {%{"loop" => _loop}, index} -> repeat(names_of(body(stage, index)), stage, index)
-            {entry, _index} -> names_of([entry])
-          end)
-
-        before ++
-          repeat(
-            names_of(body(stage, last)) ++ names_of(Enum.drop(sequence, last + 1)),
-            stage,
-            last
-          )
-    end
+  # The names of `entries`, `{entry, index}` in the sequence: a workflow once, a loop's body
+  # once per round.
+  defp expanded(stage, entries) do
+    Enum.flat_map(entries, fn
+      {%{"loop" => _loop}, index} -> repeat(names_of(body(stage, index)), stage, index)
+      {entry, _index} -> names_of([entry])
+    end)
   end
 
   # `names` once per round of the loop at `index`.

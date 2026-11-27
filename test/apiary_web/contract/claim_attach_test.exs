@@ -192,7 +192,7 @@ defmodule ApiaryWeb.Contract.ClaimAttachTest do
     {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
     %{"dispatch_id" => dispatch_id, "run_code" => code} = claim(ctx)
     dispatch = Repo.get_by!(Dispatch, public_id: dispatch_id)
-    assert dispatch.machine_lifetime_minutes == 310
+    assert dispatch.machine_lifetime_minutes == 325
 
     # A lifetime shorter than the session's 300 minutes from the attach: the backstop is
     # the end of the lifetime, from the claim.
@@ -208,6 +208,42 @@ defmodule ApiaryWeb.Contract.ClaimAttachTest do
     run = Repo.one!(from r in Run, where: r.dispatch_run_id == ^queued.id)
     assert run.backstop_at == DateTime.add(dispatch.claimed_at, 200 * 60, :second)
     assert DateTime.diff(run.backstop_at, run.attached_at) < (30 + 180 + 90) * 60
+  end
+
+  @tag needs: [:factory, :workflow_model]
+  test "a run whose workflows share it has the backstop of its first session from the attach",
+       ctx do
+    # Explore's two workflows share one run: 30 minutes, then 240.
+    stage = %{
+      "id" => "st_r79kph11eg",
+      "name" => "Explore",
+      "inputs" => [],
+      "shared_run" => true,
+      "sequence" => [%{"workflow" => "plan-the-build"}, %{"workflow" => "review-changes"}],
+      "outputs" => [],
+      "gate" => %{"kind" => "person", "approvers" => "members"}
+    }
+
+    document = %{"schema" => "qory.process/v1", "machine" => "default", "stages" => [stage]}
+    {:ok, _version} = Apiary.Processes.save(ctx.scope, ctx.scope.workspace, document)
+
+    for {workflow, minutes} <- [{"plan-the-build", 30}, {"review-changes", 240}],
+        do: {:ok, _} = Apiary.TimeLimits.put_limit(ctx.scope, :workspace, workflow, minutes)
+
+    work_item = work_item_fixture(ctx.scope)
+    {:ok, queued} = Repo.transact(fn -> Dispatches.queue(work_item, 1) end)
+    %{"dispatch_id" => dispatch_id, "run_code" => code} = claim(ctx)
+    dispatch = Repo.get_by!(Dispatch, public_id: dispatch_id)
+    # 25 minutes to attach, then each session's 30 of setup, its limit and 90 of margin.
+    assert dispatch.machine_lifetime_minutes == 25 + (30 + 30 + 90) + (30 + 240 + 90)
+
+    assert pool_post(ctx, dispatch, "dispatched").status == 204
+    run_key = redeemed_run_key!(code)
+    assert gateway_attach(ctx, queued.run_id, run_key).status == 200
+
+    # The first session's 30 minutes, not the 240 of the second.
+    run = Repo.one!(from r in Run, where: r.dispatch_run_id == ^queued.id)
+    assert DateTime.diff(run.backstop_at, run.attached_at) == (30 + 30 + 90) * 60
   end
 
   test "the attach answer's labels carry the repository and its further repositories", ctx do

@@ -37,8 +37,8 @@ defmodule ApiaryWeb.Contract.PoolClaimController do
   #      passes `Apiary.Contract.GatewayUrl.valid?/1`, else the claim is `503`
   #      `unavailable`; `max_lifetime_minutes`, the minutes the starter lets the machine
   #      live, is the lifetime the claim kept on its dispatch: the most the run's sessions
-  #      can take, from their time limits, up to the most the contract allows; 90 for a
-  #      prebuild, and 1470 for a run with no time limit
+  #      can take, from their time limits, up to the most the contract allows; 100 for a
+  #      prebuild, and 1480 for a run with no time limit
   #      (`Apiary.Dispatches.RunEnd.lifetime_minutes/2`).
   #
   # **The hold.** While the pool can claim nothing, its workspace's queue empty or the

@@ -210,29 +210,29 @@ defmodule Apiary.Dispatches.RunSettingsTimeLimitTest do
           ],
           do: {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, workflow, minutes)
 
-      # 10 minutes to attach, then each session's 30 of setup, its limit and 90 of margin:
-      # 10 + 7 × 30 + (30 + 3 × (90 + 30)) + 7 × 90.
-      assert claimed_lifetime!(ctx, place) == 1240
+      # 25 minutes to attach, then each session's 30 of setup, its limit and 90 of margin:
+      # 25 + 7 × 30 + (30 + 3 × (90 + 30)) + 7 × 90.
+      assert claimed_lifetime!(ctx, place) == 1255
 
-      # 10 + 7 × 30 + (30 + 3 × (240 + 30)) + 7 × 90: past a day, as no cap of a day holds it.
+      # 25 + 7 × 30 + (30 + 3 × (240 + 30)) + 7 × 90: past a day, as no cap of a day holds it.
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "implement-changes", 240)
-      assert claimed_lifetime!(ctx, place) == 1690
+      assert claimed_lifetime!(ctx, place) == 1705
 
       # A stage whose sessions take more than the contract's most, 7 days, gets the most:
-      # 10 + 7 × 30 + 7 × 1440 + 7 × 90 is 10,930.
+      # 25 + 7 × 30 + 7 × 1440 + 7 × 90 is 10,945.
       for workflow <- ["plan-the-build", "implement-changes", "review-changes"],
           do: {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, workflow, 1440)
 
       assert claimed_lifetime!(ctx, place) == 10_080
     end
 
-    test "a claim of a run of one session gives its machine that session and 130 minutes",
+    test "a claim of a run of one session gives its machine that session and 145 minutes",
          ctx do
       place = handover_place_fixture(ctx.scope)
       {:ok, _} = TimeLimits.put_limit(ctx.scope, :workspace, "explore-a-ticket", 15)
 
-      # 10 + 30 + 15 + 90.
-      assert claimed_lifetime!(ctx, place) == 145
+      # 25 + 30 + 15 + 90.
+      assert claimed_lifetime!(ctx, place) == 160
     end
 
     test "reads the target when the entry's access is read, whatever the walk resolved",

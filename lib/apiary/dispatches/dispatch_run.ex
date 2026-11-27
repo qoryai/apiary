@@ -283,15 +283,12 @@ defmodule Apiary.Dispatches.DispatchRun do
   @spec prebuild() :: String.t()
   def prebuild, do: @prebuild
 
-  # machine_lifetime_minutes/1 is the minutes the starter lets the machine of a claim of a
-  # run of the queue of `step` live, as `max_lifetime_minutes` in the claim's response sets
-  # it, where the run's time limits do not set it
-  # (`Apiary.Dispatches.RunEnd.lifetime_minutes/2`): 90 for a prebuild, which Qory ends 75
-  # minutes after its attach (`Apiary.Dispatches.RunEnd`), and 1470 for a run of any other
-  # step with no time limit, which Qory ends 24 hours and 15 minutes after its attach. A
-  # dispatch claimed before claims kept their lifetime (`dispatches.machine_lifetime_minutes`)
-  # has this one, read from the step of its run of the queue, which never changes
-  # (`Apiary.Dispatches.Slots`).
+  # machine_lifetime_minutes/1 is the minutes the starter let the machine of a claim of a
+  # run of the queue of `step` live, for a dispatch claimed before dispatches kept their
+  # lifetime (`dispatches.machine_lifetime_minutes`): 90 for a prebuild and 1470 for any
+  # other step, read from the step of its run of the queue, which never changes
+  # (`Apiary.Dispatches.Slots`, `Apiary.Dispatches.RunEnd.capped/4`). A claim now gives
+  # the lifetime of `Apiary.Dispatches.RunEnd.lifetime_minutes/2`.
   @doc false
   @spec machine_lifetime_minutes(String.t()) :: pos_integer
   def machine_lifetime_minutes(@prebuild), do: 90

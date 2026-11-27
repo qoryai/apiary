@@ -351,12 +351,18 @@ has `revision` 1. A claim answer is a request for a machine: `version`, `revisio
 `gateway_url` and `max_lifetime_minutes`, sent with `Cache-Control: no-store`, and nothing of the run, neither its `run_id`, its
 `step`, its `access`, its `target`, its `subject` nor its `trigger`. The machine lifetime,
 `max_lifetime_minutes`, is the most the run's sessions can take, from the time limits the
-claim reads: the attach window of 10 minutes, then for each session 30 minutes of setup,
-its time limit and a margin of 90 minutes, over the most sessions the run's stage can run
-(each entry before the last loop once, an earlier loop's body once per round, then the
-last loop's body and the entries after it once per round), at most the most the contract
-allows. A prebuild has 90 minutes, and a run with no time limit 1470. The dispatch keeps
-it (`dispatches.machine_lifetime_minutes`). A claim may have
+claim reads: the attach window of 25 minutes (the run code's 15 minutes from the claim,
+then the run key's 600 seconds from the redemption), then for each session 30 minutes of
+setup, its time limit and a margin of 90 minutes, over the most sessions the run's stage
+can run, at most the most the contract allows. A failed output check starts another round
+of the last loop that conditions do not pass over, so the count takes each loop in turn as
+the loop that restarts: the entries before it once, an earlier loop's body once per round,
+then, once per round of that loop, its body and every entry after it, a later loop's body
+once per round. The count whose sessions take the longest is the run's. A run of one
+Explore session of 15 minutes has 25 + 30 + 15 + 90 = 160 minutes. A prebuild has 100
+minutes, and a run with no time limit 1480: the attach window and the backstop the attach
+sets, so a run that attaches at the end of the window keeps its whole backstop. The
+dispatch keeps it (`dispatches.machine_lifetime_minutes`). A claim may have
 `offers`, 1 to 64 `machine_spec`s: the machines the pool can start. Qory Apiary keeps the
 offers of the pool's latest claim (`nodes.offers`, null for a claim without them). A pool
 that sends offers takes only a run whose machine type one of them fits (each number at least the

@@ -445,7 +445,8 @@ A run found lost, with no heartbeat for three of its intervals (90 seconds at Fo
 30), is still live until it is lost for good. A run of a workspace's queue is lost for
 good once it has gone 600 seconds without a heartbeat, or once it is past its backstop,
 the deadline for its end. The attach sets the backstop to 30 minutes of setup, the first
-session's time limit and 90 minutes of margin after the attach. Each next-session answer
+session's time limit and 90 minutes of margin after the attach; a prebuild's is 75 minutes,
+and a run with no time limit has 24 hours and 15 minutes. Each next-session answer
 of a run of a stage with `shared_run: true` moves it to the same span for the next session
 after the answer, at most to the end of the machine lifetime of the run's claim. Between
 90 and 600 seconds, a gateway that

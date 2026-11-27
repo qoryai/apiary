@@ -195,15 +195,16 @@ defmodule Apiary.Dispatches.RunEnd do
   @image_missing "image_missing"
 
   # The seconds from its attach by which a run with no time limit has its exit, or is
-  # lost: a prebuild's 1 hour and 15 minutes, within the 90 minutes its claim lets its
-  # machine live (`Apiary.Dispatches.DispatchRun.machine_lifetime_minutes/1`), and for any
-  # other step 24 hours and 15 minutes, the longest time limit (1440 minutes,
-  # `Apiary.TimeLimits`) and a margin, within its 1470.
+  # lost: a prebuild's 1 hour and 15 minutes, and for any other step 24 hours and 15
+  # minutes, the longest time limit (1440 minutes, `Apiary.TimeLimits`) and a margin. Its
+  # claim lets its machine live the attach window and these (`lifetime_minutes/2`).
   @backstops %{"prebuild" => 4500}
   @default_backstop 87_300
   # The minutes a run takes beside its sessions' time limits, from qory's limits:
-  # - the attach window of the run key its claim makes, 10 minutes, once per run
-  #   (`Apiary.Dispatches.Handover`);
+  # - the attach window, 25 minutes, once per run: the run code works for 15 minutes
+  #   after the claim (`Apiary.Runs.RunCode.ttl_seconds/0`), and the run key its
+  #   redemption makes allows 600 seconds to attach (`Apiary.Runs.RunCode`, its
+  #   `attach_by`, which the attach checks, `Apiary.Runs.Attach`);
   # - the setup before each session's limit starts, up to 30 minutes per session (qory's
   #   `setupLimit`);
   # - the margin for qory's steps outside a session's limit, 90 minutes per session, at
@@ -213,7 +214,7 @@ defmodule Apiary.Dispatches.RunEnd do
   #   exit, 8.
   #   shortcut: exit time has no qory constant; replace with the measured value after the
   #   first run
-  @attach_minutes 10
+  @attach_minutes 25
   @setup_minutes 30
   @margin_minutes 90
   # The seconds without a heartbeat after which an attached run with no exit is lost for
@@ -247,13 +248,15 @@ defmodule Apiary.Dispatches.RunEnd do
   # limits of the most sessions the run can run (`Apiary.Stages.session_limits/3`): the
   # attach window once, then each session's setup, limit and margin, at most the
   # contract's most (`Apiary.Dispatches.DispatchRun.max_machine_lifetime_minutes/0`), and
-  # never below the contract's least, 15, as one session takes more than 120. So
-  # the run's backstop, set at its attach and moved at each next session, comes before
-  # its machine powers off. A prebuild, and a run with no limits (nil), has the lifetime
-  # of its step (`Apiary.Dispatches.DispatchRun.machine_lifetime_minutes/1`).
+  # never below the contract's least, 15, as one session takes more than 120. A
+  # prebuild, and a run with no limits (nil), has the attach window and the fixed
+  # backstop of its step: 100 and 1480 minutes. So the run's backstop, set at its attach
+  # and moved at each next session, comes before its machine powers off, however late in
+  # the attach window the run attaches.
   @doc false
   @spec lifetime_minutes(String.t(), [pos_integer] | nil) :: pos_integer
-  def lifetime_minutes(@prebuild, _limits), do: DispatchRun.machine_lifetime_minutes(@prebuild)
+  def lifetime_minutes(@prebuild, _limits),
+    do: @attach_minutes + div(backstop_seconds(@prebuild, nil), 60)
 
   def lifetime_minutes(step, [_ | _] = limits) when is_binary(step) do
     minutes =
@@ -265,7 +268,7 @@ defmodule Apiary.Dispatches.RunEnd do
   end
 
   def lifetime_minutes(step, nil) when is_binary(step),
-    do: DispatchRun.machine_lifetime_minutes(step)
+    do: @attach_minutes + div(backstop_seconds(step, nil), 60)
 
   # capped/4 is `at`, a backstop, or the end of the lifetime of the machine of the claim
   # made at `claimed_at` when that comes first: `minutes`, the lifetime the claim kept, or
